@@ -99,14 +99,3 @@ def test_intake_is_registered_as_api_and_openapi_service():
     assert "intake" not in groups["core"]
     assert "intake" in groups["api"]
     assert "intake" in registry.get_openapi_service_names(available)
-
-
-def test_safe_synthesizer_is_openapi_only_by_default():
-    clear_registry_caches()
-    available = registry.get_available_services()
-    groups = registry.get_service_groups(available)
-
-    assert available["safe-synthesizer"] == "nmp.safe_synthesizer.main:service"
-    assert "safe-synthesizer" not in groups["api"]
-    assert "safe-synthesizer" not in groups["all"]
-    assert "safe-synthesizer" in registry.get_openapi_service_names(available)

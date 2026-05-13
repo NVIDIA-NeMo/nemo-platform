@@ -88,14 +88,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=True,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.safe_synthesizer:app",
-        name="safe-synthesizer",
-        help="Safe Synthesizer operations.",
-        panel="Functional plugins",
-        kind="group",
-        hidden=True,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.secrets:app",
         name="secrets",
         help="Manage secrets.",

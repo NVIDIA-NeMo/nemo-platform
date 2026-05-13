@@ -112,8 +112,7 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 
 | Permission | Description | Viewer | Editor | Admin |
 |------------|-------------|:------:|:------:|:-----:|
-| `safe-synthesizer.jobs.(read \| list)` | Read, list safe synthesizer jobs | ✓ | ✓ | ✓ |
-| `safe-synthesizer.jobs.(create \| delete \| cancel)` | Create, delete, cancel safe synthesizer jobs |  | ✓ | ✓ |
+| `safe-synthesizer.jobs.(read \| list \| create \| delete \| cancel)` | Read, list, create, delete, cancel safe synthesizer jobs |  |  |  |
 
 ## Secrets API
 

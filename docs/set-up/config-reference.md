@@ -818,7 +818,7 @@ evaluator:
 
 ### `safe_synthesizer`
 
-Configuration for the Safe Synthesizer service.
+Configuration for Safe Synthesizer plugin API and task compilation.
 
 ```yaml
 safe_synthesizer:
@@ -829,9 +829,20 @@ safe_synthesizer:
   entrypoint:
   - python
   - -m
-  - nmp.safe_synthesizer.tasks.safe_synthesizer
+  - nemo_safe_synthesizer_plugin.tasks.safe_synthesizer
+  # default: 'subprocess-local' | values: 'subprocess-local' | 'container'
+  job_mode: subprocess-local
   # default: 'default'
   job_executor_profile: default
+  # default: 'nmp-gpu-tasks'
+  container_image: nmp-gpu-tasks
+  # default: '.nemo/safe-synthesizer-runtime'
+  runtime_venv: .nemo/safe-synthesizer-runtime
+  # default: 'nemo-safe-synthesizer[engine,cu129]==0.1.1'
+  runtime_package: nemo-safe-synthesizer[engine,cu129]==0.1.1
+  # default: '3.11'
+  runtime_python_version: '3.11'
+  runtime_python:
   # default: '16G'
   default_job_resource_memory_request: 16G
   # default: '4'

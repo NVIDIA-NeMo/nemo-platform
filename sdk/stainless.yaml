@@ -861,56 +861,12 @@ resources:
     standalone_api: true
     subresources:
       jobs:
-        models:
-          classify_config: ClassifyConfig
-          column: Column
-          column_actions: ColumnActions
-          data_parameters: DataParameters
-          differential_privacy_hyperparams: DifferentialPrivacyHyperparams
-          evaluation_parameters: EvaluationParameters
-          generate_parameters: GenerateParameters
-          gliner_config: GlinerConfig
-          globals: Globals
-          ner_config: NERConfig
-          pii_replacer_config: PiiReplacerConfig
-          row: Row
-          row_actions: RowActions
-          safe_synthesizer_job: SafeSynthesizerJob
-          safe_synthesizer_job_config: SafeSynthesizerJobConfig
-          safe_synthesizer_job_request: SafeSynthesizerJobRequest
-          safe_synthesizer_jobs_list_filter: SafeSynthesizerJobsListFilter
-          safe_synthesizer_jobs_page: SafeSynthesizerJobsPage
-          safe_synthesizer_jobs_sort_field: SafeSynthesizerJobsSortField
-          safe_synthesizer_parameters: SafeSynthesizerParameters
-          step_definition: StepDefinition
-          time_series_parameters: TimeSeriesParameters
-          training_hyperparams: TrainingHyperparams
-          validation_parameters: ValidationParameters
-        methods:
-          create: post /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs
-          list: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs
-          retrieve: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}
-          delete: delete /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}
-          cancel: post /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/cancel
-          get_logs:
-            endpoint: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/logs
-            paginated: true
-          get_status: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/status
+        models: {}
+        methods: {}
         subresources:
           results:
-            models:
-              safe_synthesizer_summary: SafeSynthesizerSummary
-              safe_synthesizer_timing: SafeSynthesizerTiming
-            methods:
-              list: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/results
-              retrieve: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}
-              download: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}/download
-              download_evaluation_report: get 
-                /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/evaluation-report/download
-              download_summary: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/summary/download
-              download_synthetic_data: get 
-                /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/synthetic-data/download
-              download_adapter: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/adapter/download
+            models: {}
+            methods: {}
   secrets:
     standalone_api: true
     models:

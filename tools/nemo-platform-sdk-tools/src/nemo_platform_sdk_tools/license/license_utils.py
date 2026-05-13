@@ -81,8 +81,8 @@ def get_override_key_for_package(name: str, version: str) -> str:
     if not name:
         return name
     key = name
-    if "+" in version or "-cu128" in name or "_cu128" in name:
-        key = name.replace("-cu128", "").replace("_cu128", "").strip("-_") or name
+    if "+" in version or "-cu129" in name or "_cu129" in name:
+        key = name.replace("-cu129", "").replace("_cu129", "").strip("-_") or name
     return key
 
 
