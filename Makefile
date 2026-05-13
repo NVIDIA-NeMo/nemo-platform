@@ -67,8 +67,8 @@ stainless: ## Run Stainless to generate the OpenAPI spec and sync it with the SD
 	SDK_RELEASE_TIER=ga ./sdk/stainless.sh sync
 
 .PHONY: update-web-sdk
-update-web-sdk: ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
-	cd web && pnpm gen
+update-web-sdk: verify-mise ## Regenerate the TypeScript web SDK (web/packages/sdk) from the OpenAPI spec via Orval
+	cd web && $(MISE_EXEC) pnpm gen
 
 .PHONY: update-sdk
 update-sdk: build-policy refresh-openapi stainless update-web-sdk update-cli ## Update the SDK by regenerating the OpenAPI spec and syncing it with Stainless
@@ -209,24 +209,6 @@ verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
 	fi
 	$(MISE) trust --all --silent
 	$(MISE) install --yes
-	@$(MAKE) --no-print-directory setup-mise-shell
-
-.PHONY: setup-mise-shell
-setup-mise-shell: ## Append `mise activate` to shell rc (idempotent; skipped in CI)
-	@if [ "$$CI" = "true" ]; then exit 0; fi; \
-	shell_name=$$(basename "$$SHELL"); \
-	case "$$shell_name" in \
-		zsh)  rc="$$HOME/.zshrc";                    line='eval "$$(mise activate zsh)"';; \
-		bash) rc="$$HOME/.bashrc";                   line='eval "$$(mise activate bash)"';; \
-		fish) rc="$$HOME/.config/fish/config.fish";  line='mise activate fish | source';; \
-		*) echo "Unknown shell '$$shell_name'; activate mise manually."; exit 0;; \
-	esac; \
-	mkdir -p "$$(dirname "$$rc")"; \
-	touch "$$rc"; \
-	if ! grep -Fq "$$line" "$$rc"; then \
-		printf '\n%s\n' "$$line" >> "$$rc"; \
-		echo "Appended mise activation to $$rc. Run: $$line"; \
-	fi
 
 .PHONY: verify-pnpm
 verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
