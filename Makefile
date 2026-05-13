@@ -195,18 +195,55 @@ bootstrap-python: ## Bootstrap Python dependencies.
 		$(BOOTSTRAP_ACTIVATION_REMINDER); \
 	fi
 
+MISE := $(shell command -v mise 2>/dev/null || echo $(HOME)/.local/bin/mise)
+MISE_EXEC := $(MISE) exec --
+
+.PHONY: verify-mise
+verify-mise: ## Install mise (if missing) and run `mise install` from mise.toml
+	@if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		curl -fsSL https://mise.run | sh; \
+	fi
+	@if [ ! -x "$(MISE)" ] && ! command -v mise >/dev/null 2>&1; then \
+		echo "mise not on PATH. Add $$HOME/.local/bin to PATH and re-run."; \
+		exit 1; \
+	fi
+	$(MISE) trust --all --silent
+	$(MISE) install --yes
+	@$(MAKE) --no-print-directory setup-mise-shell
+
+.PHONY: setup-mise-shell
+setup-mise-shell: ## Append `mise activate` to shell rc (idempotent; skipped in CI)
+	@if [ "$$CI" = "true" ]; then exit 0; fi; \
+	shell_name=$$(basename "$$SHELL"); \
+	case "$$shell_name" in \
+		zsh)  rc="$$HOME/.zshrc";                    line='eval "$$(mise activate zsh)"';; \
+		bash) rc="$$HOME/.bashrc";                   line='eval "$$(mise activate bash)"';; \
+		fish) rc="$$HOME/.config/fish/config.fish";  line='mise activate fish | source';; \
+		*) echo "Unknown shell '$$shell_name'; activate mise manually."; exit 0;; \
+	esac; \
+	mkdir -p "$$(dirname "$$rc")"; \
+	touch "$$rc"; \
+	if ! grep -Fq "$$line" "$$rc"; then \
+		printf '\n%s\n' "$$line" >> "$$rc"; \
+		echo "Appended mise activation to $$rc. Run: $$line"; \
+	fi
+
+.PHONY: verify-pnpm
+verify-pnpm: verify-mise ## Verify pnpm is available for Studio bootstrap
+	@$(MISE_EXEC) pnpm --version
+
 .PHONY: verify-node-version
-verify-node-version: ## Verify pnpm and Node.js satisfy Studio's package engine
+verify-node-version: verify-pnpm ## Verify pnpm and Node.js satisfy Studio's package engine
 	@echo "~~~~~~"
 	@echo "verifying Node.js version from web/package.json engines"
-	@script/verify-node-version.sh
+	@$(MISE_EXEC) script/verify-node-version.sh
 
 .PHONY: bootstrap-studio
 bootstrap-studio: verify-node-version ## Install web dependencies and build Studio assets for FastAPI
 	@echo "~~~~~~"
 	@echo "installing Studio web dependencies and building FastAPI assets"
-	cd web && CI=true pnpm install --frozen-lockfile
-	cd web && pnpm --filter nemo-studio-ui build:fastapi
+	cd web && CI=true $(MISE_EXEC) pnpm install --frozen-lockfile
+	cd web && $(MISE_EXEC) pnpm --filter nemo-studio-ui build:fastapi
 
 .PHONY: bootstrap-plugins
 bootstrap-plugins: .venv ## Install editable plugin packages not covered by the root uv workspace
