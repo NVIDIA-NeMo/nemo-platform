@@ -192,12 +192,16 @@ check-copyright-headers:
 	$(CMD_COPYRIGHT_HEADER_FIXER) --check
 
 .PHONY: lint
-lint: ## Run all linters (licenses, openapi, config docs, python style/types/sdk, vendored SDK, CLI, auth config)
+lint: ## Run lint scripts in tools/lint; optionally pass LINTS="lint-openapi lint-python-style"
 	bash tools/lint/lint-all.sh
 
 .PHONY: lint-fix
-lint-fix: ## Auto-fix lint issues in dependency order (openapi → stainless → style → cli → vendor → licenses → config-docs)
+lint-fix: ## Run corresponding lint-fix scripts in dependency order; optionally pass LINTS="lint-openapi"
 	bash tools/lint/lint-fix.sh
+
+.PHONY: lint-fix-failed
+lint-fix-failed: ## Run lint-fix scripts for failures recorded by the last make lint
+	bash tools/lint/lint-fix.sh --failed
 
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata

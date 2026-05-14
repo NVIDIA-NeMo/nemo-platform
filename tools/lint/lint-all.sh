@@ -2,41 +2,31 @@
 set -uo pipefail
 # Run all lint scripts serially, report summary, exit with failure if any failed.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+source "${SCRIPT_DIR}/lint-common.sh"
 cd "${PROJECT_ROOT}" || exit 1
 
-declare -a scripts=(
-  "lint-licenses:tools/lint/lint-licenses.sh"
-  "lint-openapi:tools/lint/lint-openapi.sh"
-  "lint-config-reference-docs:tools/lint/lint-config-reference-docs.sh"
-  "lint-python-style:tools/lint/lint-python-style.sh"
-  "lint-python-types:tools/lint/lint-python-types.sh"
-  "lint-python-sdk:tools/lint/lint-python-sdk.sh"
-  "lint-sdk-vendored:tools/lint/lint-sdk-vendored.sh"
-  "lint-web-sdk:tools/lint/lint-web-sdk.sh"
-  "lint-cli:tools/lint/lint-cli.sh"
-  "lint-auth-config:tools/lint/lint-auth-config.sh"
-  "lint-merge-conflict:tools/lint/lint-merge-conflict.sh"
-  "lint-copyright-headers:tools/lint/lint-copyright-headers.sh"
-)
+validate_lint_fix_pairs || exit 1
 
-is_no_fix_lint() {
-  local lint_name="$1"
-  case "${lint_name}" in
-    lint-python-types|lint-merge-conflict)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
+selected_output="$(selected_lint_names "${LINT_SCRIPT_NAMES[@]}")" || exit 1
+declare -a lint_names=()
+if [[ -n "${selected_output}" ]]; then
+  mapfile -t lint_names <<< "${selected_output}"
+fi
+
+if [[ ${#lint_names[@]} -eq 0 ]]; then
+  echo "No lint scripts selected."
+  write_lint_failures || exit 1
+  exit 0
+fi
+
+if [[ -n "${LINTS:-}" ]]; then
+  echo "Selected lints: ${lint_names[*]}"
+fi
 
 declare -a failed=()
 declare -a timing_lines=()
-for entry in "${scripts[@]}"; do
-  name="${entry%%:*}"
-  path="${entry#*:}"
+for name in "${lint_names[@]}"; do
+  path="$(lint_script_path "${name}")"
   start=$(date +%s)
   if bash "${path}"; then
     echo "[PASS] ${name}"
@@ -52,7 +42,7 @@ done
 
 echo ""
 echo "--- Lint summary ---"
-echo "Passed: $((${#scripts[@]} - ${#failed[@]}))"
+echo "Passed: $((${#lint_names[@]} - ${#failed[@]}))"
 echo "Failed: ${#failed[@]}"
 echo ""
 echo "Timings:"
@@ -62,26 +52,21 @@ for line in "${timing_lines[@]}"; do
   printf "  %-40s %s\n" "${name}" "${details}"
 done
 if [[ ${#failed[@]} -gt 0 ]]; then
+  write_lint_failures "${failed[@]}" || exit 1
   echo "Failed lints: ${failed[*]}"
+  echo "Recorded failed lints in $(lint_failure_file_display_path)."
   echo ""
-  # Check if any failed lint has an auto-fix command
-  has_fix=false
+  echo "To run fixes for the recorded failures in dependency order:"
+  echo "  make lint-fix-failed"
+  echo ""
+  echo "To run fixes for a specific subset:"
+  echo "  make lint-fix LINTS=\"${failed[*]}\""
+  echo ""
+  echo "Failed lint -> corresponding fix script:"
   for name in "${failed[@]}"; do
-    if ! is_no_fix_lint "${name}"; then
-      has_fix=true
-      break
-    fi
-  done
-  if [[ "${has_fix}" == "true" ]]; then
-    echo "To fix auto-fixable issues, run:"
-    echo "  make lint-fix"
-    echo ""
-  fi
-  for name in "${failed[@]}"; do
-    if is_no_fix_lint "${name}"; then
-      echo "  ${name}: (see output above for manual fix)"
-    fi
+    printf "  %-30s %s\n" "${name}" "$(lint_fix_script_display_path "${name}")"
   done
   exit 1
 fi
+write_lint_failures || exit 1
 exit 0

@@ -16,4 +16,7 @@ if ! command -v pnpm >/dev/null 2>&1; then
   exit 0
 fi
 
-exec pnpm gen:check
+pnpm gen:check || {
+  echo "Run 'tools/lint/lint-fix-web-sdk.sh' to regenerate the web SDK."
+  exit 1
+}

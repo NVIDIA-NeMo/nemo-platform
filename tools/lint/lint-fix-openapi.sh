@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Run copyright header generation.
+# Regenerate OpenAPI specifications.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${PROJECT_ROOT}" || exit 1
 
-make check-copyright-headers || {
-  echo "Run 'tools/lint/lint-fix-copyright-headers.sh' to update copyright headers."
-  exit 1
-}
+make refresh-openapi
+rm -rf openapicheck

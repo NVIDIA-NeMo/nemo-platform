@@ -24,4 +24,7 @@ for rule in "${ci_ignored_rules[@]}"; do
   ignore_args+=(--ignore "$rule")
 done
 
-uv run --frozen ty check "${ignore_args[@]}"
+uv run --frozen ty check "${ignore_args[@]}" || {
+  echo "Run 'tools/lint/lint-fix-python-types.sh' after manually fixing type errors."
+  exit 1
+}

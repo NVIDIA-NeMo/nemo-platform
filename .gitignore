@@ -23,6 +23,7 @@ venv*
 **/node_modules
 # Linter output files
 diff.txt
+.lint-failures
 
 temp
 __pycache__

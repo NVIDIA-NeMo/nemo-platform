@@ -1,46 +1,78 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Run all auto-fix commands in dependency order:
-#   1. OpenAPI spec regeneration (other steps depend on this)
-#   2. Web SDK regeneration (Orval reads openapi/ga/individual/platform.openapi.yaml)
-#   3. Stainless sync (pulls updated Python SDK from Stainless; openapi already done in step 1)
-#   4. Python style (ruff; run before vendoring so generated files aren't re-linted)
-#   5. CLI command generation (the vendoring and docs are handled by the next step)
-#   6. Vendor all packages (covers nemo_platform_ext too) + CLI reference docs
-#   7. License update (may change after vendoring)
-#   8. Config reference docs (independent, but run after structural changes)
-#   9. Auth docs (regenerate permissions reference from static-authz.yaml)
-#
-# Note: update-sdk = build-policy + refresh-openapi + stainless + update-cli, so we use
-# stainless directly here to avoid re-running refresh-openapi and update-cli redundantly.
-# Note: update-cli = generate-cli-commands + vendor-nemo-platform-ext + generate-cli-reference-docs,
-# but vendor-nemo-platform-ext is a subset of make vendor and generate-cli-reference-docs would
-# run twice. So we run generate-cli-commands alone, then let make vendor cover all vendoring.
+# Run corresponding lint-fix scripts in dependency order. Each entry in
+# LINT_FIX_ORDER is a lint name and maps mechanically to lint-fix-<suffix>.sh.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
+source "${SCRIPT_DIR}/lint-common.sh"
 cd "${PROJECT_ROOT}" || exit 1
 
-declare -a steps=(
-  "refresh-openapi:make refresh-openapi"
-  "web-sdk:bash tools/lint/lint-fix-web-sdk.sh"
-  "stainless:uv run --frozen nemo-platform-sdk-tools is-up-to-date --output-dir \"${TMPDIR:-/tmp}/nmp-sdk-lint\" || make stainless"
-  "python-style:uv run ruff format && uv run ruff check --fix"
-  "generate-cli-commands:make generate-cli-commands"
-  "vendor+cli-reference-docs:make vendor && make generate-cli-reference-docs"
-  "update-licenses:bash tools/lint/lint-fix-licenses.sh"
-  "auth-config:uv run python services/core/auth/scripts/auth-tools.py update"
-  "generate-config-docs:uv run generate-config-docs"
-  "generate-auth-docs:uv run python services/core/auth/scripts/auth-tools.py generate-docs"
-)
+use_failed=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --failed)
+      use_failed=true
+      ;;
+    -h|--help)
+      echo "Usage: $0 [--failed]"
+      echo ""
+      echo "Environment:"
+      echo "  LINTS=\"lint-openapi lint-python-style\"  Run fixes for a subset."
+      echo "  LINT_FAILURES_FILE=.lint-failures        Override failed-lint state file."
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+  shift
+done
+
+validate_lint_fix_pairs || exit 1
+
+declare -a lint_names=()
+declare -a requested_lints=()
+if [[ "${use_failed}" == "true" ]]; then
+  if [[ -n "${LINTS:-}" ]]; then
+    echo "Use either --failed or LINTS=..., not both." >&2
+    exit 1
+  fi
+
+  failed_output="$(read_lint_failures)" || exit 1
+  if [[ -z "${failed_output}" ]]; then
+    echo "No recorded lint failures in $(lint_failure_file_display_path). Run 'make lint' first."
+    exit 0
+  fi
+
+  mapfile -t requested_lints <<< "${failed_output}"
+  ordered_output="$(ordered_fix_lint_names "${requested_lints[@]}")" || exit 1
+  if [[ -n "${ordered_output}" ]]; then
+    mapfile -t lint_names <<< "${ordered_output}"
+  fi
+  echo "Selected fixes from $(lint_failure_file_display_path): ${lint_names[*]}"
+elif [[ -n "${LINTS:-}" ]]; then
+  requested_output="$(normalize_lint_names_from_text "${LINTS}")" || exit 1
+  if [[ -n "${requested_output}" ]]; then
+    mapfile -t requested_lints <<< "${requested_output}"
+  fi
+  ordered_output="$(ordered_fix_lint_names "${requested_lints[@]}")" || exit 1
+  if [[ -n "${ordered_output}" ]]; then
+    mapfile -t lint_names <<< "${ordered_output}"
+  fi
+  echo "Selected fixes: ${lint_names[*]}"
+else
+  lint_names=("${LINT_FIX_ORDER[@]}")
+fi
 
 declare -a failed=()
 declare -a timing_rows=()
-for entry in "${steps[@]}"; do
-  name="${entry%%:*}"
-  cmd="${entry#*:}"
-  echo ">>> ${name}: ${cmd}"
+for lint_name in "${lint_names[@]}"; do
+  name="$(lint_fix_script_name "${lint_name}")"
+  path="$(lint_fix_script_path "${lint_name}")"
+  display_path="$(lint_fix_script_display_path "${lint_name}")"
+  echo ">>> ${lint_name} -> ${display_path}"
   start=$(date +%s)
-  if eval "${cmd}"; then
+  if bash "${path}"; then
     echo "[DONE] ${name}"
     result="DONE"
   else
@@ -54,7 +86,7 @@ for entry in "${steps[@]}"; do
 done
 
 echo "--- Fix summary ---"
-echo "Completed: $((${#steps[@]} - ${#failed[@]}))"
+echo "Completed: $((${#lint_names[@]} - ${#failed[@]}))"
 echo "Failed: ${#failed[@]}"
 echo ""
 echo "Timings:"
@@ -65,5 +97,9 @@ if [[ ${#failed[@]} -gt 0 ]]; then
   echo ""
   echo "Failed steps: ${failed[*]}"
   exit 1
+fi
+if [[ "${use_failed}" == "true" ]]; then
+  echo ""
+  echo "Run 'make lint' to verify and refresh $(lint_failure_file_display_path)."
 fi
 exit 0
