@@ -16,7 +16,7 @@ from data_designer.config.analysis.dataset_profiler import DatasetProfilerResult
 from data_designer.config.utils.visualization import WithRecordSamplerMixin
 from data_designer.logging import RandomEmoji
 from nemo_data_designer_plugin.sdk import http
-from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
+from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError, extract_http_error_info
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -54,8 +54,8 @@ def _raise_for_status(resp: httpx.Response) -> None:
     try:
         resp.raise_for_status()
     except httpx.HTTPStatusError as exc:
-        detail = exc.response.text
-        raise DataDesignerJobError(detail) from exc
+        status_code, detail = extract_http_error_info(exc)
+        raise DataDesignerJobError(detail, status_code=status_code) from exc
 
 
 @dataclass
@@ -271,7 +271,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
                 else:
                     logger.warning(f"Job ended with status {status!r}. Fetching completed {result_name} result.")
             except DataDesignerJobError as e:
-                if "404" in str(e):
+                if e.status_code == 404:
                     raise DataDesignerJobError(f"{result_name!r} result is not available.") from e
                 raise DataDesignerJobError(f"🛑 Error loading dataset: {e}") from e
         else:
@@ -478,7 +478,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
                 else:
                     logger.warning(f"Job ended with status {status!r}. Fetching completed {result_name} result.")
             except DataDesignerJobError as e:
-                if "404" in str(e):
+                if e.status_code == 404:
                     raise DataDesignerJobError(f"{result_name!r} result is not available.") from e
                 raise DataDesignerJobError(f"🛑 Error loading dataset: {e}") from e
         else:

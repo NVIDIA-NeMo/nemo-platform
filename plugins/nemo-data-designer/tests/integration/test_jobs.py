@@ -348,20 +348,15 @@ async def test_load_analysis_when_terminally_incomplete_warns_and_returns_partia
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_load_analysis_raises_when_active_but_result_missing() -> None:
-    """An ``active`` job whose analysis result has not yet been written returns a 404 from the
-    Jobs service; the resource raises ``DataDesignerJobError``.
-
-    Note: ``_check_if_result_available`` has a friendly-message branch for 404s
-    (``f"{result_name!r} result is not available."``), but that branch checks for
-    the literal substring ``"404"`` in the error message, while the real Jobs service
-    returns ``"Job result not found"`` with no status code in the body. The user
-    therefore gets the generic "Error loading dataset" message instead. We assert
-    the current behavior; the friendly-message detection logic is worth a follow-up.
+async def test_load_analysis_raises_friendly_error_when_active_but_result_missing() -> None:
+    """An ``active`` job whose analysis result hasn't been written yet returns a 404 from the
+    Jobs service; ``_check_if_result_available`` translates that into a friendly
+    ``"'analysis' result is not available."`` message instead of leaking the underlying
+    HTTP error.
     """
     async with _pending_job() as ctx:
         job_resource = DataDesignerResource(ctx.sdk).get_job_resource(_JOB_NAME, workspace="default")
 
         with _patch_status(job_resource, "active"):
-            with pytest.raises(DataDesignerJobError, match="Job result not found"):
+            with pytest.raises(DataDesignerJobError, match="'analysis' result is not available"):
                 job_resource.load_analysis()
