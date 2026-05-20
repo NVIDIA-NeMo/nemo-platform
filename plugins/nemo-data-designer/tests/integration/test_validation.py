@@ -25,12 +25,8 @@ def _assert_error(
         assert fragment in str(exc_info.value)
 
 
-@pytest.mark.integration
-def test_unknown_provider_in_request() -> None:
-    unknown_provider = "some-unknown-provider"
-    bad_model_config = u.make_model_config(provider=unknown_provider)
-
-    builder = dd.DataDesignerConfigBuilder(model_configs=[bad_model_config])
+def _builder_with_llm_column(model_config: dd.ModelConfig) -> dd.DataDesignerConfigBuilder:
+    builder = dd.DataDesignerConfigBuilder(model_configs=[model_config])
     builder.add_column(
         column_config=dd.SamplerColumnConfig(
             name="foo", sampler_type=dd.SamplerType.CATEGORY, params=dd.CategorySamplerParams(values=["a", "b"])
@@ -38,9 +34,17 @@ def test_unknown_provider_in_request() -> None:
     )
     builder.add_column(
         column_config=dd.LLMTextColumnConfig(
-            name="story", prompt="Write a story about {{ foo }}", model_alias=bad_model_config.alias
+            name="story", prompt="Write a story about {{ foo }}", model_alias=model_config.alias
         )
     )
+    return builder
+
+
+@pytest.mark.integration
+def test_unknown_provider_in_request() -> None:
+    unknown_provider = "some-unknown-provider"
+    bad_model_config = u.make_model_config(provider=unknown_provider)
+    builder = _builder_with_llm_column(bad_model_config)
 
     with u.make_mock_client_context() as client_context:
         dd_client = u.make_dd_client(client_context)
@@ -48,21 +52,33 @@ def test_unknown_provider_in_request() -> None:
 
 
 @pytest.mark.integration
+def test_model_config_without_explicit_provider_is_rejected() -> None:
+    alias = "no-provider-specified"
+    bad_model_config = dd.ModelConfig(alias=alias, model="some-model")
+    builder = _builder_with_llm_column(bad_model_config)
+
+    with u.make_mock_client_context() as client_context:
+        dd_client = u.make_dd_client(client_context)
+        _assert_error(dd_client, builder, ["does not have an explicit provider defined", alias])
+
+
+@pytest.mark.integration
+def test_malformed_provider_reference_is_rejected() -> None:
+    alias = "too-many-slashes"
+    malformed_provider_name = "foo/bar/baz"
+    bad_model_config = dd.ModelConfig(alias=alias, model="some-model", provider=malformed_provider_name)
+    builder = _builder_with_llm_column(bad_model_config)
+
+    with u.make_mock_client_context() as client_context:
+        dd_client = u.make_dd_client(client_context)
+        _assert_error(dd_client, builder, ["Malformed model provider", alias, malformed_provider_name])
+
+
+@pytest.mark.integration
 def test_invalid_models_provided() -> None:
     disallowed_model = "this-model-is-not-allowed"
     bad_model_config = u.make_model_config(provider=u.RESTRICTED_PROVIDER_NAME, model=disallowed_model)
-
-    builder = dd.DataDesignerConfigBuilder(model_configs=[bad_model_config])
-    builder.add_column(
-        column_config=dd.SamplerColumnConfig(
-            name="foo", sampler_type=dd.SamplerType.CATEGORY, params=dd.CategorySamplerParams(values=["a", "b"])
-        )
-    )
-    builder.add_column(
-        column_config=dd.LLMTextColumnConfig(
-            name="story", prompt="Write a story about {{ foo }}", model_alias=bad_model_config.alias
-        )
-    )
+    builder = _builder_with_llm_column(bad_model_config)
 
     with (
         u.make_mock_client_context() as client_context,
