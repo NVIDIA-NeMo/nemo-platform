@@ -78,6 +78,7 @@ members = [
     "safe-synthesizer-sdk",
 ]
 constraints = [
+    { name = "aiohttp", specifier = ">=3.13.4" },
     { name = "authlib", specifier = ">=1.6.11" },
     { name = "black", specifier = ">=26.3.1" },
     { name = "cryptography", specifier = ">=46.0.7" },
@@ -103,6 +104,7 @@ constraints = [
     { name = "python-multipart", specifier = ">=0.0.27" },
     { name = "regex", specifier = "==2025.7.34" },
     { name = "safetensors", specifier = ">=0.8.0rc0" },
+    { name = "sqlfluff", specifier = "==4.1.0" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "uv", specifier = ">=0.9.14,<0.10.0" },
 ]
@@ -135,6 +137,7 @@ overrides = [
     { name = "ray", marker = "sys_platform == 'never'" },
     { name = "setuptools", specifier = ">=78.1.1" },
     { name = "simpleeval", specifier = ">=1.0.5" },
+    { name = "sqlfluff", specifier = ">=4.1.0" },
     { name = "ujson", specifier = ">=5.12.0" },
     { name = "urllib3", specifier = ">=2.7.0" },
     { name = "wandb", specifier = ">=0.25.1" },
@@ -11186,7 +11189,7 @@ wheels = [
 
 [[package]]
 name = "sqlfluff"
-version = "3.4.0"
+version = "4.1.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "chardet", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'darwin' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128')" },
@@ -11202,9 +11205,9 @@ dependencies = [
     { name = "tblib", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'darwin' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128')" },
     { name = "tqdm", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'darwin' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128')" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/37/9f/501f119821c8e1eaccf079a0f82428e84a3411bd6a2f7a418620689c769d/sqlfluff-3.4.0.tar.gz", hash = "sha256:6e1ea2d39b20cc791a1a009c234afaf043b448c7f2eb1c11551316fb41f36f47", size = 882079, upload-time = "2025-04-17T09:54:30.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/c1/ffe7b97441b8a6febfb8288226344898944fa2007e93779607096e8bc93a/sqlfluff-4.1.0.tar.gz", hash = "sha256:83dd4c081afb48c0af861833015a18b13d52726bfe52a286246dbd7a64b7d111", size = 992214, upload-time = "2026-03-26T22:37:32.063Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6c/c9/477317d2b9ebba9fbdc20190d7bc06c0e9d08dcf6ca3bdb87661df6ff8b7/sqlfluff-3.4.0-py3-none-any.whl", hash = "sha256:115e3f1bf1dc1318c58426ba3299eb682642cb67b5d12d9ea7c42b5e23aeabd6", size = 886362, upload-time = "2025-04-17T09:54:28.819Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/77/1b42179aa7d68baa665b4f42dce2d947c1acd6b19af0760d34423fdc591f/sqlfluff-4.1.0-py3-none-any.whl", hash = "sha256:ae11123ca4a697abadbd2783f85f04e58c36e7dd26ae8024f400efccc6a44631", size = 985010, upload-time = "2026-03-26T22:37:30.054Z" },
 ]
 
 [[package]]
