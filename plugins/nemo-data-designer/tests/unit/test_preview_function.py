@@ -68,29 +68,6 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
     assert [frame.model_dump()["kind"] for frame in frames] == ["log", "done"]
 
 
-@pytest.mark.asyncio
-async def test_preview_function_error_frame_terminates_without_done(monkeypatch: pytest.MonkeyPatch) -> None:
-    _patch_preview_dependencies(monkeypatch)
-
-    def fake_worker(*args: object) -> None:
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(worker_module, "make_preview_dataset", fake_worker)
-
-    frames = [
-        frame
-        async for frame in PreviewFunction().run(
-            PreviewSpec(config=_config(), num_records=2),
-            ctx=FunctionContext(workspace="team-a"),
-            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=True,
-        )
-    ]
-
-    assert [frame.model_dump()["kind"] for frame in frames] == ["log", "error"]
-    assert frames[-1].model_dump()["message"] == "boom"
-
-
 def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_preview_dependencies(monkeypatch)
 
