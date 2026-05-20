@@ -405,7 +405,10 @@ async def task_context(
                 workspace="default",
                 name=job_name,
                 source="data-designer",
-                spec={},
+                # Store the canonical DataDesignerStepConfig as the job's spec so that
+                # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
+                # which deserializes the stored spec back through the schema) succeed.
+                spec=step_config,
                 platform_spec=job_config_dict,
             )
             job_ctx = JobContext(
