@@ -24,11 +24,13 @@ reusable actions, and supporting docs.
 - `studio-ci.yaml`
   Frontend/Studio CI workflow.
 
-- `gpu-test.yaml`
-  GPU integration test workflow.
-
 - `semantic-pull-requests.yaml`
   Pull request title validation.
+
+- `dco-assistant.yml`
+  Developer Certificate of Origin (DCO) assistant. It checks pull request
+  comments for the configured DCO sign-off text and stores accepted signatures
+  in `dco-signatures.json` on the separate `signatures` branch.
 
 ### Deployment and Release Workflows
 
