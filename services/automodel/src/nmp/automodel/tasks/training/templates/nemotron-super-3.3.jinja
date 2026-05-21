@@ -1,0 +1,82 @@
+{{- bos_token }}
+{%- set ns = namespace(p='', has_tools=False) %}
+{%- if tools is not none and tool_choice is not none %}
+    {%- set ns.has_tools = True %}
+    {%- set ns.p = ns.p + 'You are an expert in composing functions. You are given a question and a set of possible functions. ' %}
+    {%- set ns.p = ns.p + 'Based on the question, you will need to make one or more function/tool calls to achieve the purpose. ' %}
+    {%- set ns.p = ns.p + 'If none of the function can be used, point it out. ' %}
+    {%- set ns.p = ns.p + 'If the given question lacks the parameters required by the function, also point it out. ' %}
+    {%- set ns.p = ns.p + 'You should only return the function call in tools call sections. ' %}
+    {%- set ns.p = ns.p + 'Here is a list of functions in JSON format that you can invoke.\n' %}
+    {%- set ns.p = ns.p + '<AVAILABLE_TOOLS>[' %}
+    {%- for tool in tools %}
+        {%- set function = tool.function %}
+        {%- set keys = function.keys() | reject('equalto', 'return') | list %}
+        {%- set ns.p = ns.p + '{"type": "function", "function": {' %}
+        {%- for key in keys %}
+            {%- set val = function[key] %}
+            {%- if val is string %}
+                {%- set ns.p = ns.p + '"' + key + '": "' + val + '"' %}
+            {%- else %}
+                {%- set ns.p = ns.p + '"' + key + '": ' + val|tojson %}
+            {%- endif %}
+            {%- if not loop.last %}
+                {%- set ns.p = ns.p + ', ' %}
+            {%- endif %}
+        {%- endfor %}
+        {%- set ns.p = ns.p + '}}' %}
+        {%- if not loop.last %}
+            {%- set ns.p = ns.p + ', ' %}
+        {%- endif %}
+    {%- endfor %}
+    {%- set ns.p = ns.p + ']</AVAILABLE_TOOLS>\n' %}
+    {%- set ns.p = ns.p + 'If you decide to invoke any of the function(s), put it in the JSON TOOL CALLING format of <TOOLCALL>' %}
+    {%- set ns.p = ns.p + '[{"name": "func_name1", "arguments": {"params_name1": "params_value1", "params_name2": "params_value2"}}, ' %}
+    {%- set ns.p = ns.p + '{"name": "func_name2", "arguments": {"params_name1": "params_value1", "params_name2": "params_value2"}}] ' %}
+    {%- set ns.p = ns.p + '</TOOLCALL>\n' %}
+    {%- set ns.p = ns.p + 'You SHOULD NOT include any other information in the response. REMEMBER TO USE JSON TOOL CALLING FORMAT.\n\n' %}
+{%- endif %}
+{%- for message in messages %}
+    {%- if message['role'] == 'user' %}
+        {%- if ns.has_tools %}
+            {%- if add_generation_prompt and loop.index0 == ((messages | length) - 1) %}
+                {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + ns.p + (message['content'] | trim) + '<|eot_id|>' }}
+            {%- elif not add_generation_prompt and loop.index0 == ((messages | length) - 2) %}
+                {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + ns.p + (message['content'] | trim) + '<|eot_id|>' }}
+            {%- else %}
+                {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + (message['content'] | trim) + '<|eot_id|>' }}
+            {%- endif %}
+        {%- else %}
+            {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + (message['content'] | trim) + '<|eot_id|>' }}
+        {%- endif %}
+    {%- elif message['role'] in ['ipython', 'tool'] %}
+        {{- '<|start_header_id|>user<|end_header_id|>\n\n' }}
+        {{- 'Here are the results from the tool:' +  (message['content'] | trim) + '<|eot_id|>' }}
+    {%- elif message['role'] == 'assistant' %}
+        {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+        {%- generation %}
+            {%- if message.get('tool_calls') is not none %}
+                {{- '<TOOLCALL>[' }}
+                {%- for tool_call in message['tool_calls'] %}
+                    {{- '{"name": "' + tool_call.function.name + '", "arguments": ' + tool_call.function.arguments | tojson }}
+                    {%- if tool_call.get('id') is not none %}
+                        {{- ', "id": "' + tool_call.id + '"' }}
+                    {%- endif %}
+                    {{- '}' }}
+                    {%- if not loop.last %}
+                        {{- ', ' }}
+                    {%- endif %}
+                {%- endfor %}
+                {{- ']</TOOLCALL>' }}
+                {{- '<|eot_id|>' }}
+            {%- else %}
+                {{- message['content'] | trim + '<|eot_id|>' }}
+            {%- endif %}
+        {%- endgeneration %}
+    {%- else %}
+        {{- '<|start_header_id|>' + message['role'] + '<|end_header_id|>\n\n' + (message['content'] | trim) + '<|eot_id|>' }}
+    {%- endif %}
+{%- endfor %}
+{%- if add_generation_prompt %}
+    {{- '<|start_header_id|>assistant<|end_header_id|>\n\n' }}
+{%- endif %}

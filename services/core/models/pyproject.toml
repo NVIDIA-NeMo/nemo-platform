@@ -37,8 +37,8 @@ packages = ["src/nmp"]
 [dependency-groups]
 # No task deps for models — `nmp.core.models.parallelism` is the only consumer of
 # torch/transformers/accelerate, and it's only invoked from the `model_spec` batch
-# task. That task runs in the `customizer-tasks` image, which installs torch
-# itself; parallelism tests in this repo guard with `pytest.importorskip("torch")`.
+# task. That task runs in the `nmp-automodel-tasks` image (PyTorch from
+# nmp-automodel-base); parallelism tests in this repo guard with `pytest.importorskip("torch")`.
 
 dev = [
     "pytest>=8.3.4",

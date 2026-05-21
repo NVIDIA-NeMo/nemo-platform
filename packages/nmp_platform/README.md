@@ -62,3 +62,11 @@ tests/test_main.py
 The `config/` files (`local.yaml`, `local.env`) are not Python — they are the
 default config consumed by `nemo services run` during local development and
 referenced from several Makefiles and run scripts in the repo.
+
+`local.env` sets SQLite for the entity store (`~/.local/share/nemo/nmp-platform.db`)
+so no PostgreSQL is required. Source it before starting services:
+
+```bash
+set -a && source packages/nmp_platform/config/local.env && set +a
+uv run nemo services run --host 127.0.0.1 --port 8080
+```
