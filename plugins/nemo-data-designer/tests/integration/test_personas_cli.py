@@ -6,12 +6,10 @@ from unittest.mock import Mock, patch
 
 import nemo_data_designer_plugin.testing.utils as u
 import pytest
-import typer
 from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.cli import personas as personas_module
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.files import NGCStorageConfig
-from typer.testing import CliRunner
 
 
 @pytest.fixture
@@ -41,27 +39,14 @@ def sdk(monkeypatch: pytest.MonkeyPatch, mock_ngc_client: dict[str, Mock]) -> Ge
 
 
 @pytest.fixture
-def runner() -> CliRunner:
-    return CliRunner()
-
-
-@pytest.fixture
-def app() -> typer.Typer:
-    return u.make_data_designer_cli_app()
-
-
-@pytest.fixture
 def cli_sdk(monkeypatch: pytest.MonkeyPatch, sdk: NeMoPlatform) -> NeMoPlatform:
     monkeypatch.setattr(personas_module, "NeMoPlatform", lambda: sdk)
     return sdk
 
 
 @pytest.mark.integration
-def test_make_fileset_creates_requested_locale_with_existing_secret(
-    runner: CliRunner, app: typer.Typer, cli_sdk: NeMoPlatform
-) -> None:
-    result = runner.invoke(
-        app,
+def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeMoPlatform) -> None:
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -69,7 +54,7 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(
             "en_US",
             "--api-key-secret",
             "system/ngc-api-key",
-        ],
+        ]
     )
 
     assert result.exit_code == 0, result.output
@@ -83,12 +68,11 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(
 
 @pytest.mark.integration
 def test_make_fileset_creates_secret_from_env_then_fileset(
-    monkeypatch: pytest.MonkeyPatch, runner: CliRunner, app: typer.Typer, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
-    result = runner.invoke(
-        app,
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -98,7 +82,7 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
             "system/my-ngc-key",
             "--api-key-env-var",
             "MY_NGC_API_KEY",
-        ],
+        ]
     )
 
     assert result.exit_code == 0, result.output
@@ -111,9 +95,8 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
 
 
 @pytest.mark.integration
-def test_make_fileset_missing_env_var_is_clear(runner: CliRunner, app: typer.Typer) -> None:
-    result = runner.invoke(
-        app,
+def test_make_fileset_missing_env_var() -> None:
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -123,7 +106,7 @@ def test_make_fileset_missing_env_var_is_clear(runner: CliRunner, app: typer.Typ
             "system/my-ngc-key",
             "--api-key-env-var",
             "MISSING_NGC_API_KEY",
-        ],
+        ]
     )
 
     assert result.exit_code != 0
@@ -132,9 +115,8 @@ def test_make_fileset_missing_env_var_is_clear(runner: CliRunner, app: typer.Typ
 
 
 @pytest.mark.integration
-def test_make_fileset_unknown_locale_is_clear(runner: CliRunner, app: typer.Typer) -> None:
-    result = runner.invoke(
-        app,
+def test_make_fileset_unknown_locale() -> None:
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -142,7 +124,7 @@ def test_make_fileset_unknown_locale_is_clear(runner: CliRunner, app: typer.Type
             "de_DE",
             "--api-key-secret",
             "system/ngc-api-key",
-        ],
+        ]
     )
 
     assert result.exit_code != 0
@@ -151,9 +133,8 @@ def test_make_fileset_unknown_locale_is_clear(runner: CliRunner, app: typer.Type
 
 
 @pytest.mark.integration
-def test_make_fileset_bare_secret_name_is_clear(runner: CliRunner, app: typer.Typer) -> None:
-    result = runner.invoke(
-        app,
+def test_make_fileset_bare_secret_name() -> None:
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -161,7 +142,7 @@ def test_make_fileset_bare_secret_name_is_clear(runner: CliRunner, app: typer.Ty
             "en_US",
             "--api-key-secret",
             "ngc-api-key",
-        ],
+        ]
     )
 
     assert result.exit_code != 0
@@ -170,13 +151,12 @@ def test_make_fileset_bare_secret_name_is_clear(runner: CliRunner, app: typer.Ty
 
 @pytest.mark.integration
 def test_make_fileset_create_secret_conflict_does_not_create_fileset(
-    monkeypatch: pytest.MonkeyPatch, runner: CliRunner, app: typer.Typer, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
     cli_sdk.secrets.create(workspace="system", name="my-ngc-key", value="nvapi-existing")
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
-    result = runner.invoke(
-        app,
+    result = u.invoke_cli(
         [
             "personas",
             "make-fileset",
@@ -186,7 +166,7 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
             "system/my-ngc-key",
             "--api-key-env-var",
             "MY_NGC_API_KEY",
-        ],
+        ]
     )
 
     assert result.exit_code == 1
@@ -197,7 +177,7 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
 
 @pytest.mark.integration
 def test_make_fileset_create_secret_internal_error_surfaces_clearly(
-    monkeypatch: pytest.MonkeyPatch, runner: CliRunner, app: typer.Typer, cli_sdk: NeMoPlatform
+    monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
     monkeypatch.setenv("MY_NGC_API_KEY", "nvapi-from-env")
 
@@ -205,8 +185,7 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
         raise RuntimeError("secrets backend exploded")
 
     with patch.object(cli_sdk.secrets, "create", side_effect=_boom):
-        result = runner.invoke(
-            app,
+        result = u.invoke_cli(
             [
                 "personas",
                 "make-fileset",
@@ -216,7 +195,7 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
                 "system/my-ngc-key",
                 "--api-key-env-var",
                 "MY_NGC_API_KEY",
-            ],
+            ]
         )
 
     assert result.exit_code == 1

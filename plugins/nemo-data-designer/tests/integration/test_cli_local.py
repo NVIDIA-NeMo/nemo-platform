@@ -6,30 +6,17 @@ from pathlib import Path
 import nemo_data_designer_plugin.testing.utils as u
 import pandas as pd
 import pytest
-import typer
 from data_designer.cli.utils.sample_records_pager import PAGER_FILENAME
 from data_designer.config.analysis.dataset_profiler import DatasetProfilerResults
-from typer.testing import CliRunner
-
-
-@pytest.fixture
-def runner() -> CliRunner:
-    return CliRunner()
-
-
-@pytest.fixture
-def app() -> typer.Typer:
-    return u.make_data_designer_cli_app()
 
 
 @pytest.mark.integration
-def test_preview_run_saves_expected_artifacts(runner: CliRunner, app: typer.Typer, tmp_path: Path) -> None:
+def test_preview_run_saves_expected_artifacts(tmp_path: Path) -> None:
     config_path = _write_sampler_config(tmp_path)
     artifact_path = tmp_path / "preview-artifacts"
 
     with u.make_mock_client_context(workspace="default") as client_context:
-        result = runner.invoke(
-            app,
+        result = u.invoke_cli(
             [
                 "preview",
                 "run",
@@ -40,7 +27,7 @@ def test_preview_run_saves_expected_artifacts(runner: CliRunner, app: typer.Type
                 "--artifact-path",
                 str(artifact_path),
             ],
-            obj=u.make_data_designer_cli_state(client_context),
+            client_context
         )
 
     assert result.exit_code == 0, result.output
@@ -54,7 +41,7 @@ def test_preview_run_saves_expected_artifacts(runner: CliRunner, app: typer.Type
 
 
 @pytest.mark.integration
-def test_preview_run_supports_local_file_seed_source(runner: CliRunner, app: typer.Typer, tmp_path: Path) -> None:
+def test_preview_run_supports_local_file_seed_source(tmp_path: Path) -> None:
     seed_path = tmp_path / "seed.parquet"
     u.SEED_DATA.to_parquet(seed_path, index=False)
     config_path = u.write_config_file(
@@ -74,8 +61,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     artifact_path = tmp_path / "preview-artifacts"
 
     with u.make_mock_client_context(workspace="default") as client_context:
-        result = runner.invoke(
-            app,
+        result = u.invoke_cli(
             [
                 "preview",
                 "run",
@@ -86,7 +72,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
                 "--artifact-path",
                 str(artifact_path),
             ],
-            obj=u.make_data_designer_cli_state(client_context),
+            client_context,
         )
 
     assert result.exit_code == 0, result.output
@@ -95,9 +81,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
 
 
 @pytest.mark.integration
-def test_preview_run_rejects_dataframe_seed_with_clear_error(
-    runner: CliRunner, app: typer.Typer, tmp_path: Path
-) -> None:
+def test_preview_run_rejects_dataframe_seed_with_clear_error(tmp_path: Path) -> None:
     config_path = u.write_config_file(
         tmp_path,
         """
@@ -115,10 +99,9 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     )
 
     with u.make_mock_client_context(workspace="default") as client_context:
-        result = runner.invoke(
-            app,
+        result = u.invoke_cli(
             ["preview", "run", str(config_path), "--num-records", "3"],
-            obj=u.make_data_designer_cli_state(client_context),
+            client_context,
         )
 
     message = result.output
@@ -131,14 +114,14 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
 
 
 @pytest.mark.integration
-def test_create_run_reports_artifacts_and_dataset_path(runner: CliRunner, app: typer.Typer, tmp_path: Path) -> None:
+def test_create_run_reports_artifacts_and_dataset_path(tmp_path: Path) -> None:
     config_path = _write_sampler_config(tmp_path)
 
     with u.make_mock_client_context(workspace="default") as client_context:
-        result = runner.invoke(
-            app,
+        result = u.invoke_cli(
             ["create", "run", str(config_path), "--num-records", "3"],
-            obj=u.make_data_designer_cli_state(client_context, output_format="json"),
+            client_context,
+            output_format="json",
         )
 
     assert result.exit_code == 0, result.output
