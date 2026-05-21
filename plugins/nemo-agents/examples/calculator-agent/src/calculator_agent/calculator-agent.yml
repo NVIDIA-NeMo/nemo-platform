@@ -37,3 +37,8 @@ workflow:
   llm_name: llm
   verbose: false
   parse_agent_response_max_retries: 3
+  # Use the LLM's native tool-calling API (bind_tools) instead of NAT's text-mode
+  # ReAct regex parser. The text parser in nvidia-nat-core>=1.7 rejects tool-call
+  # output where JSON args are followed by trailing prose (e.g. Nemotron-3 emits
+  # `{"numbers":[50,35]}\n\nThen we get ...`).
+  use_native_tool_calling: true

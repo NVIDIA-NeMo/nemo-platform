@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "NAT ``calculator`` function group for the nemo-agents calculator ReAct example."
 requires-python = ">=3.11"
 dependencies = [
-    "nvidia-nat-core>=1.7.0rc1,<2.0",
+    "nvidia-nat-core>=1.7.0rc3,<1.8",
 ]
 
 [project.entry-points."nat.components"]
