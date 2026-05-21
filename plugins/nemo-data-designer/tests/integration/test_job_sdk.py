@@ -230,8 +230,7 @@ async def test_wait_until_done_logs_terminal_failure_for_cancelled_status(
 # by the Files service's OTLP endpoint. ``task_context`` runs ``CreateJob.run``
 # in-process and bypasses the OTLP log-capture pipeline a real container runner
 # would populate, so ``get_logs`` always returns ``[]`` here regardless of what
-# the task emitted. Pagination is therefore covered indirectly through
-# ``wait_until_done``'s ``_poll_safe(self.get_logs, ...)`` calls.
+# the task emitted.
 # ---------------------------------------------------------------------------
 
 
