@@ -45,6 +45,15 @@ def cli_sdk(monkeypatch: pytest.MonkeyPatch, sdk: NeMoPlatform) -> NeMoPlatform:
 
 
 @pytest.mark.integration
+def test_personas_download_is_wired_properly() -> None:
+    result = u.invoke_cli(["personas", "download", "--help"])
+
+    assert result.exit_code == 0, result.output
+    assert "nemo data-designer personas download --list" in result.output
+    assert "data-designer download personas" not in result.output
+
+
+@pytest.mark.integration
 def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeMoPlatform) -> None:
     result = u.invoke_cli(
         [
