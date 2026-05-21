@@ -7,10 +7,10 @@ import asyncio
 import contextlib
 import io
 import subprocess
-import sys
 from pathlib import Path
 
 from evaluator_agent_eval.task_config import load_agentic_use_task_config
+from evaluator_agent_eval.task_metric_utils import contains_all, run_python_file, score_checks
 from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
 from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 
@@ -34,7 +34,7 @@ class ExactMatchEvaluationMetric:
         code_ran = process is not None and process.returncode == 0
         expected_summary = await asyncio.to_thread(_render_expected_summary) if code_ran else ""
         actual_summary = process.stdout if process is not None else ""
-        required_terms_present = code is not None and _contains_all(
+        required_terms_present = code is not None and contains_all(
             f"{final_text}\n{code}\n{actual_summary}",
             _required_terms(item),
         )
@@ -45,19 +45,15 @@ class ExactMatchEvaluationMetric:
         task_success = bool(
             item.get("final_answer_extracted") is True and required_terms_present and output_schema_valid and code_ran
         )
-        verification_score = (
-            sum(
-                float(value)
-                for value in (
-                    item.get("final_answer_extracted") is True,
-                    required_terms_present,
-                    code is not None,
-                    code_ran,
-                    has_summary_call,
-                    summary_matches,
-                )
-            )
-            / 6.0
+        verification_score = score_checks(
+            [
+                item.get("final_answer_extracted") is True,
+                required_terms_present,
+                code is not None,
+                code_ran,
+                has_summary_call,
+                summary_matches,
+            ]
         )
         return MetricResult(
             scores=[
@@ -92,24 +88,13 @@ def _read_solution(path: Path | None) -> str | None:
 
 
 def _run_solution(path: Path | None) -> subprocess.CompletedProcess[str]:
-    if path is None:
-        return subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="missing solution.py")
-    try:
-        return subprocess.run(
-            [sys.executable, str(path)],
-            check=False,
-            capture_output=True,
-            text=True,
-            cwd=_repo_root(path),
-            timeout=20,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return subprocess.CompletedProcess(
-            args=exc.cmd or [sys.executable, str(path)],
-            returncode=124,
-            stdout=_timeout_text(exc.stdout),
-            stderr=_timeout_text(exc.stderr, fallback="candidate exact-match code timed out"),
-        )
+    return run_python_file(
+        path,
+        timeout=20,
+        cwd=_repo_root(path),
+        timeout_stderr="candidate exact-match code timed out",
+        missing_stderr="missing solution.py",
+    )
 
 
 def _render_expected_summary() -> str:
@@ -130,14 +115,6 @@ def _render_expected_summary() -> str:
     return output.getvalue()
 
 
-def _timeout_text(value: str | bytes | None, *, fallback: str = "") -> str:
-    if isinstance(value, bytes):
-        return value.decode("utf-8", errors="replace")
-    if isinstance(value, str):
-        return value
-    return fallback
-
-
 def _repo_root(path: Path | None) -> Path:
     candidates: list[Path] = []
     if path is not None:
@@ -151,11 +128,6 @@ def _repo_root(path: Path | None) -> Path:
 
 def _normalize_summary(text: str) -> str:
     return text.strip().replace("\r\n", "\n")
-
-
-def _contains_all(text: str, terms: list[str]) -> bool:
-    lowered = text.lower()
-    return all(term.lower() in lowered for term in terms)
 
 
 def _required_terms(item: dict) -> list[str]:

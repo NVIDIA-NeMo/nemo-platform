@@ -5,12 +5,6 @@
 
 from collections.abc import Sequence
 
-from evaluator_agent_eval.metrics.outcome import (
-    DeterministicTaskSuccessMetric,
-    OutputSchemaValidMetric,
-    SurfaceGatedSuccessMetric,
-    VerificationScoreMetric,
-)
 from evaluator_agent_eval.metrics.surface import (
     LEGACY_SURFACE,
     LEGACY_TEXT_PATTERNS,
@@ -34,13 +28,9 @@ TRAJECTORY_FIELD_KEYS = {
 }
 
 __all__ = [
-    "DeterministicTaskSuccessMetric",
     "LegacySurfaceAvoidanceMetric",
-    "OutputSchemaValidMetric",
     "SurfaceAdherenceMetric",
-    "SurfaceGatedSuccessMetric",
     "TrajectoryEvidenceMetric",
-    "VerificationScoreMetric",
     "default_agent_eval_metrics",
 ]
 

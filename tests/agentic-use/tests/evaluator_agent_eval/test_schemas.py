@@ -10,7 +10,6 @@ from evaluator_agent_eval.schemas import (
     AgentAttemptOutput,
     CapturedAgentAttempt,
     EvaluatorScoringRow,
-    TaskCheckResult,
     TrajectorySummary,
 )
 
@@ -70,16 +69,3 @@ def test_schema_keeps_candidate_model():
 def test_trajectory_summary_rejects_negative_counts():
     with pytest.raises(ValueError, match="non-negative"):
         TrajectorySummary(tool_call_count=-1)
-
-
-def test_task_check_result_requires_unit_interval_score():
-    with pytest.raises(ValueError, match="verification_score"):
-        TaskCheckResult(task_success=False, verification_score=1.1, output_schema_valid=True)
-
-
-def test_scoring_row_carries_normalized_check_result_fields():
-    row = _scoring_row(task_success=True, verification_score=0.75, output_schema_valid=True)
-
-    assert row.task_success is True
-    assert row.verification_score == 0.75
-    assert row.output_schema_valid is True

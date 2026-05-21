@@ -12,6 +12,7 @@ from evaluator_agent_eval.factory import build_evaluator_scoring_row, capture_ag
 from evaluator_agent_eval.runner import score_evaluator_rows
 from evaluator_agent_eval.schemas import CapturedAgentAttempt
 from evaluator_agent_eval.task_config import AgenticUseTaskConfig, load_agentic_use_task_config
+from evaluator_agent_eval.task_metric_utils import extract_marker_json_object
 from nemo_evaluator_sdk.metrics.base import Metric
 
 
@@ -378,3 +379,255 @@ def _score_task_metric(
             if score.name in score_values:
                 score_values[score.name].append(score.value)
     return score_values
+
+
+def test_agent_target_metric_requires_runnable_agent_target_code(tmp_path: Path, agent_log_dir: Path):
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text(
+        """
+version = "1.0"
+
+[evaluator.surface]
+constraint = "standalone_sdk"
+allowed = ["standalone_sdk"]
+forbidden = ["cli", "plugin_sdk", "legacy_service"]
+
+[evaluator.expected]
+required_terms = [
+  "packages/nemo_evaluator_sdk",
+  "Evaluator",
+  "run_sync",
+  "Agent",
+  "nemo_evaluator_sdk.values.agents",
+  "AgentFormat.GENERIC",
+  "ExactMatchMetric",
+  "response_path",
+  "$.answer",
+  "trajectory_path",
+  "$.trajectory",
+  "candidate_agent_runtime",
+  "candidate_agent_model",
+]
+""".strip(),
+        encoding="utf-8",
+    )
+    (task_dir / "instruction.md").write_text("Configure an agent target.", encoding="utf-8")
+    (agent_log_dir / "final_message.txt").write_text(
+        """
+Use packages/nemo_evaluator_sdk with Evaluator.run_sync, Agent, AgentFormat.GENERIC, and ExactMatchMetric.
+The metadata identifies candidate_agent_runtime and candidate_agent_model.
+
+```python
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from threading import Thread
+import json
+
+from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
+from nemo_evaluator_sdk.enums import AgentFormat
+from nemo_evaluator_sdk.values.agents import Agent
+
+
+class Handler(BaseHTTPRequestHandler):
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("content-length", "0")))
+        body = {"answer": "4", "trajectory": {"steps": [{"tool_calls": [{"name": "calculator"}]}]}}
+        payload = json.dumps(body).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def log_message(self, *args):
+        pass
+
+
+server = HTTPServer(("127.0.0.1", 0), Handler)
+thread = Thread(target=server.serve_forever, daemon=True)
+thread.start()
+try:
+    agent = Agent(
+        url=f"http://127.0.0.1:{server.server_port}",
+        name="mock-calculator-agent",
+        format=AgentFormat.GENERIC,
+        body={"prompt": "{{ prompt }}"},
+        response_path="$.answer",
+        trajectory_path="$.trajectory",
+    )
+    rows = [
+        {
+            "prompt": "What is 2+2?",
+            "expected": "4",
+            "candidate_agent_runtime": "mock-agent",
+            "candidate_agent_model": "mock-calculator-v1",
+        }
+    ]
+    result = Evaluator().run_sync(
+        metrics=[ExactMatchMetric(reference="{{ item.expected }}")],
+        dataset=rows,
+        target=agent,
+        prompt_template="{{ item.prompt }}",
+    )
+    payload = {
+        "answer": result.row_scores[0].sample["output_text"],
+        "exact_match": result.row_scores[0].metrics["exact-match"][0].value,
+        "trajectory_tool_calls": result.row_scores[0].sample["trajectory"]["steps"][0]["tool_calls"],
+        "candidate_agent_runtime": rows[0]["candidate_agent_runtime"],
+        "candidate_agent_model": rows[0]["candidate_agent_model"],
+    }
+    print(json.dumps(payload, indent=2))
+finally:
+    server.shutdown()
+```
+""".strip(),
+        encoding="utf-8",
+    )
+    artifacts = AgentArtifacts.from_dir(agent_log_dir)
+    task_config = load_agentic_use_task_config(task_dir)
+    attempt = capture_agent_attempt(task_dir=task_dir, artifacts=artifacts)
+    module = _load_task_metrics("evaluator-standalone-sdk-agent-target")
+
+    scores = _score_task_metric(
+        metric=module.AgentTargetConfigurationMetric(),
+        task_dir=task_dir,
+        artifacts=artifacts,
+        task_config=task_config,
+        attempt=attempt,
+    )
+
+    assert scores["task_success"] == [1.0]
+    assert scores["verification_score"] == [1.0]
+    assert scores["output_schema_valid"] == [1.0]
+
+
+def test_agent_target_metric_reads_workspace_python_artifact(tmp_path: Path, agent_log_dir: Path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    (workspace_dir / "agent_target_exact_match.py").write_text(
+        "from nemo_evaluator_sdk import Evaluator\n"
+        "from nemo_evaluator_sdk.values.agents import Agent\n"
+        "Evaluator().run_sync(target=Agent(response_path='$.answer', trajectory_path='$.trajectory'))\n",
+        encoding="utf-8",
+    )
+    artifacts = AgentArtifacts.from_dir(agent_log_dir, workspace_dir=workspace_dir)
+    module = _load_task_metrics("evaluator-standalone-sdk-agent-target")
+
+    code = module._extract_workspace_python_code(artifacts)
+
+    assert code is not None
+    assert "agent_target_exact_match.py" not in code
+    assert "Evaluator().run_sync" in code
+
+
+def test_surface_adherence_metric_authoring_runs_candidate_metric(tmp_path: Path, agent_log_dir: Path):
+    task_dir = tmp_path / "task"
+    task_dir.mkdir()
+    (task_dir / "task.toml").write_text(
+        """
+version = "1.0"
+
+[evaluator.surface]
+constraint = "standalone_sdk"
+allowed = ["standalone_sdk"]
+forbidden = ["cli", "plugin_sdk", "legacy_service"]
+
+[evaluator.expected]
+required_terms = [
+  "packages/nemo_evaluator_sdk",
+  "Metric",
+  "type",
+  "compute_scores",
+  "score_names",
+  "MetricResult",
+  "MetricScore",
+  "surface_adherence",
+  "surface_violation_count",
+  "observed_surfaces",
+  "allowed_surfaces",
+  "forbidden_surfaces",
+]
+""".strip(),
+        encoding="utf-8",
+    )
+    (task_dir / "instruction.md").write_text("Author a surface-adherence metric.", encoding="utf-8")
+    (agent_log_dir / "final_message.txt").write_text(
+        """
+Use packages/nemo_evaluator_sdk and implement a Metric-compatible class with compute_scores and score_names.
+
+```python
+from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+
+
+class SurfaceAdherenceMetric:
+    @property
+    def type(self) -> str:
+        return "agent_eval/surface_adherence"
+
+    def score_names(self) -> list[str]:
+        return ["surface_adherence", "surface_violation_count"]
+
+    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+        observed_surfaces = set(item["observed_surfaces"])
+        allowed_surfaces = set(item["allowed_surfaces"])
+        forbidden_surfaces = set(item["forbidden_surfaces"])
+        violations = (observed_surfaces - allowed_surfaces) | (observed_surfaces & forbidden_surfaces)
+        adherence = 1.0 if not violations else 0.0
+        return MetricResult(
+            scores=[
+                MetricScore(name="surface_adherence", value=adherence),
+                MetricScore(name="surface_violation_count", value=float(len(violations))),
+            ]
+        )
+```
+""".strip(),
+        encoding="utf-8",
+    )
+    artifacts = AgentArtifacts.from_dir(agent_log_dir)
+    task_config = load_agentic_use_task_config(task_dir)
+    attempt = capture_agent_attempt(task_dir=task_dir, artifacts=artifacts)
+    module = _load_task_metrics("evaluator-standalone-sdk-surface-adherence-metric")
+
+    scores = _score_task_metric(
+        metric=module.SurfaceAdherenceMetricAuthoringMetric(),
+        task_dir=task_dir,
+        artifacts=artifacts,
+        task_config=task_config,
+        attempt=attempt,
+    )
+
+    assert scores["task_success"] == [1.0]
+    assert scores["verification_score"] == [1.0]
+    assert scores["output_schema_valid"] == [1.0]
+
+
+def test_surface_adherence_metric_reads_workspace_python_artifact(tmp_path: Path, agent_log_dir: Path):
+    workspace_dir = tmp_path / "workspace"
+    workspace_dir.mkdir()
+    (workspace_dir / "surface_adherence_metric.py").write_text(
+        "from nemo_evaluator_sdk.values.results import MetricResult, MetricScore\n"
+        "class SurfaceAdherenceMetric:\n"
+        "    async def compute_scores(self, item, sample):\n"
+        "        return MetricResult(scores=[MetricScore(name='surface_adherence', value=1.0)])\n",
+        encoding="utf-8",
+    )
+    artifacts = AgentArtifacts.from_dir(agent_log_dir, workspace_dir=workspace_dir)
+    module = _load_task_metrics("evaluator-standalone-sdk-surface-adherence-metric")
+
+    code = module._extract_workspace_python_code(artifacts)
+
+    assert code is not None
+    assert "compute_scores" in code
+    assert "MetricScore" in code
+
+
+def test_extract_marker_json_object_skips_trailing_malformed_marker():
+    stdout = "\n".join(
+        [
+            "prefix",
+            '__RESULT__={"score": 1}',
+            '__RESULT__={"truncated"',
+        ]
+    )
+
+    assert extract_marker_json_object(stdout, marker="__RESULT__=") == {"score": 1}

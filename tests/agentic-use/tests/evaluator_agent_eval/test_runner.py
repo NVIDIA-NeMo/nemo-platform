@@ -29,9 +29,6 @@ def _row(**overrides: object) -> EvaluatorScoringRow:
         "allowed_surfaces": ["standalone_sdk"],
         "forbidden_surfaces": ["legacy_service"],
         "output_text": "Used nemo_evaluator_sdk only.",
-        "task_success": True,
-        "verification_score": 1.0,
-        "output_schema_valid": True,
         "observed_surfaces": ["standalone_sdk"],
         "trajectory_summary": {"tool_call_count": 3, "failed_command_count": 1, "recovery_event_count": 1},
     }
@@ -40,9 +37,7 @@ def _row(**overrides: object) -> EvaluatorScoringRow:
 
 
 def test_score_evaluator_rows_uses_evaluator_sdk():
-    result = score_evaluator_rows(
-        [_row(), _row(task_success=False, verification_score=0.25, output_schema_valid=False)]
-    )
+    result = score_evaluator_rows([_row(), _row(output_text="Still used nemo_evaluator_sdk.")])
 
     assert len(result.row_scores) == 2
     aggregate_names = {score.name for score in result.aggregate_scores.scores}

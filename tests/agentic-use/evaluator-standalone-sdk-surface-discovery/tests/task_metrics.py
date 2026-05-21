@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 
 from evaluator_agent_eval.task_config import load_agentic_use_task_config
+from evaluator_agent_eval.task_metric_utils import contains_all, extract_fenced_python_code, score_checks
 from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 
 
@@ -24,7 +25,7 @@ class SurfaceDiscoveryMetric:
     async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
         final_text = str(item.get("output_text", ""))
         code = _extract_python_code(final_text)
-        required_terms_present = _contains_all(final_text, _required_terms(item))
+        required_terms_present = contains_all(final_text, _required_terms(item))
         imports_valid = bool(code) and _imports_sdk_symbols(code)
         dataset_valid = bool(code) and _contains_expected_dataset(code)
         metric_templates_valid = bool(code) and _uses_exact_match_templates(code)
@@ -42,7 +43,7 @@ class SurfaceDiscoveryMetric:
             metric_templates_valid,
             invocation_valid,
         ]
-        verification_score = sum(float(value) for value in checks) / len(checks)
+        verification_score = score_checks(checks)
         task_success = bool(
             item.get("final_answer_extracted") is True and required_terms_present and output_schema_valid
         )
@@ -57,25 +58,23 @@ class SurfaceDiscoveryMetric:
 
 
 def _extract_python_code(text: str) -> str | None:
-    best_code: str | None = None
-    best_score = 0
-    for match in re.finditer(r"```(?:python|py)\s*\n(?P<code>.*?)```", text, re.DOTALL | re.IGNORECASE):
-        code = match.group("code").strip()
-        if "Evaluator" not in code or "ExactMatchMetric" not in code:
-            continue
-        score = sum(
-            [
-                "dataset" in code,
-                "ExactMatchMetric(" in code,
-                "{{item.expected}}" in code,
-                "{{item.prediction}}" in code,
-                ".run_sync(" in code or ".run(" in code,
-            ]
-        )
-        if score > best_score:
-            best_code = code
-            best_score = score
-    return best_code
+    return extract_fenced_python_code(
+        text,
+        predicate=lambda code: "Evaluator" in code and "ExactMatchMetric" in code,
+        scorer=_surface_discovery_code_score,
+    )
+
+
+def _surface_discovery_code_score(code: str) -> int:
+    return sum(
+        [
+            "dataset" in code,
+            "ExactMatchMetric(" in code,
+            "{{item.expected}}" in code,
+            "{{item.prediction}}" in code,
+            ".run_sync(" in code or ".run(" in code,
+        ]
+    )
 
 
 def _imports_sdk_symbols(code: str) -> bool:
@@ -179,11 +178,6 @@ def _literal_value(node: ast.AST):
         return ast.literal_eval(node)
     except (ValueError, SyntaxError):
         return None
-
-
-def _contains_all(text: str, terms: list[str]) -> bool:
-    lowered = text.lower()
-    return all(term.lower() in lowered for term in terms)
 
 
 def _required_terms(item: dict) -> list[str]:

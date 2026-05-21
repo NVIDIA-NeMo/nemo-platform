@@ -126,7 +126,10 @@ Codex auth:
 - Preferred for CI: set `OPENAI_API_KEY` in the runner environment.
 - Local development: run `codex login` on the host once, then opt in to using
   that session by passing `--codex-auth-json ~/.codex/auth.json`. The file is
-  mounted read-only and copied into the container for the Codex invocation.
+  mounted read-only and copied into a fresh, task-local `CODEX_HOME` for the
+  Codex invocation. Host `config.toml`, MCP servers, and project agent
+  instructions are not copied into the task container; auth is the only
+  optional host Codex state.
 
 Cursor Agent auth:
 - Set `CURSOR_API_KEY` in the runner environment, for example
@@ -134,8 +137,78 @@ Cursor Agent auth:
 - The container backend does not mount host Cursor session state; use an API
   key for reproducible local and CI runs.
 
+Claude Code auth:
+- Set `ANTHROPIC_API_KEY` in the runner environment. For NVIDIA-hosted Claude
+  access, set `ANTHROPIC_BASE_URL=https://inference-api.nvidia.com` and pass a
+  concrete allowed model such as `--agent-model aws/anthropic/bedrock-claude-sonnet-4-6`.
+- Smoke the model outside the benchmark before a slow matrix run:
+  `claude -p 'Reply with OK only.' --model aws/anthropic/bedrock-claude-sonnet-4-6 --output-format json`.
+  Claude Code's default model may not be allowed by NVIDIA inference keys.
+
 Placeholder values such as `null`, `none`, or an empty string are treated as
 unset by the runner.
+
+### Agent matrix benchmark runbook
+
+Use `agent_matrix_benchmark.py` when comparing direct coding agents over the
+same task set. It writes `benchmark_summary.json`, `benchmark_summary.md`, and
+`benchmark_report.html` under the selected run directory.
+
+Known-good local flow:
+
+```bash
+# Build or refresh the base and task images first.
+docker build -f Dockerfile.agentic-base -t nmp-agentic-base:latest .
+
+python tests/agentic-use/nat_runner.py \
+  --manifest manifests/evaluator_agent_benchmark_mvp.txt \
+  --agent-backend codex \
+  --build-only
+
+# Smoke Claude Code against the NVIDIA endpoint before a full matrix run.
+export ANTHROPIC_BASE_URL=https://inference-api.nvidia.com
+claude -p 'Reply with OK only.' \
+  --model aws/anthropic/bedrock-claude-sonnet-4-6 \
+  --output-format json
+
+# Run Codex, Cursor Agent, and Claude Code concurrently, one task at a time per agent.
+python tests/agentic-use/agent_matrix_benchmark.py \
+  --manifest manifests/evaluator_agent_benchmark_mvp.txt \
+  --agent codex:gpt-5.5 \
+  --agent cursor-agent \
+  --agent claude-code:aws/anthropic/bedrock-claude-sonnet-4-6 \
+  --codex-auth-json ~/.codex/auth.json \
+  --jobs-dir nat-jobs/agent-matrix \
+  --run-id pr470-three-agent \
+  --skip-build \
+  --allow-dirty \
+  --parallel-candidates 3
+```
+
+Notes:
+- `--parallel-candidates` parallelizes across candidates only. Each candidate's
+  `nat_runner.py` invocation still runs the selected task list serially.
+- Values greater than `1` require `--skip-build`; build the selected task images
+  before the parallel matrix run to avoid Docker tag races.
+- For Codex, the runner copies only auth into a fresh container-local
+  `CODEX_HOME`; host config and MCP servers are not reproduced. Codex receives
+  the same task instruction as the other direct agents, runs from `/app`, and
+  writes task files directly under `/app/workspace`.
+- For Claude Code with NVIDIA inference, always pass a concrete allowed model.
+  The default Claude Code model may not be enabled for a given NVIDIA key.
+- Open the generated HTML report at
+  `nat-jobs/agent-matrix/<run-id>/benchmark_report.html`.
+
+### Task metric authoring direction
+
+Task-local verification should prefer Evaluator SDK `Metric` implementations.
+Keep reusable mechanics in `shared/evaluator_agent_eval/` helpers and keep
+task-specific files focused on task semantics.
+
+Until the SDK supports enriched row-level metric outputs, task-local diagnostics
+can be emitted as additional numeric metric scores. Once the broader
+`MetricResult` output contract lands, move richer structured diagnostics into
+SDK metric outputs.
 
 ## Planned follow-ups
 

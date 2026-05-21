@@ -94,24 +94,6 @@ class TrajectorySummary(BaseModel):
         return value
 
 
-class TaskCheckResult(BaseModel):
-    """Normalized result produced by a task-specific checker."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    task_success: bool
-    verification_score: float
-    output_schema_valid: bool
-    details: dict[str, object] = Field(default_factory=dict)
-
-    @field_validator("verification_score")
-    @classmethod
-    def _score_in_unit_interval(cls, value: float) -> float:
-        if value < 0.0 or value > 1.0:
-            raise ValueError("verification_score must be between 0.0 and 1.0")
-        return value
-
-
 class EvaluatorScoringRow(BaseModel):
     """Evaluator-specific dataset row derived from one captured attempt.
 
@@ -141,10 +123,6 @@ class EvaluatorScoringRow(BaseModel):
     final_answer_extracted: bool = False
     final_answer_source: str | None = None
     raw_log_paths: list[str] = Field(default_factory=list)
-    task_success: bool | None = None
-    verification_score: float | None = None
-    output_schema_valid: bool | None = None
-    verification_details: dict[str, object] = Field(default_factory=dict)
     observed_surfaces: list[SurfaceName] = Field(default_factory=list)
     forbidden_surface_hits: list[str] = Field(default_factory=list)
     atif_trajectory_path: str | None = None
@@ -157,13 +135,6 @@ class EvaluatorScoringRow(BaseModel):
     def _allowed_surfaces_not_empty(cls, value: list[SurfaceName]) -> list[SurfaceName]:
         if not value:
             raise ValueError("allowed_surfaces must not be empty")
-        return value
-
-    @field_validator("verification_score")
-    @classmethod
-    def _verification_score_in_unit_interval(cls, value: float | None) -> float | None:
-        if value is not None and (value < 0.0 or value > 1.0):
-            raise ValueError("verification_score must be between 0.0 and 1.0")
         return value
 
     def to_dataset_row(self) -> dict[str, object]:

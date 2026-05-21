@@ -8,7 +8,6 @@ from pathlib import Path
 
 from evaluator_agent_eval.artifacts import AgentArtifacts
 from evaluator_agent_eval.factory import AgentRunMetadata, build_evaluator_scoring_row, capture_agent_attempt
-from evaluator_agent_eval.schemas import TaskCheckResult
 
 
 def test_capture_agent_attempt_from_task_config_and_artifacts(evaluator_task_dir: Path, agent_log_dir: Path):
@@ -50,7 +49,6 @@ def test_build_evaluator_scoring_row_from_task_config_and_artifacts(evaluator_ta
         task_dir=evaluator_task_dir,
         attempt=attempt,
         artifacts=artifacts,
-        task_check_result=TaskCheckResult(task_success=True, verification_score=1.0, output_schema_valid=True),
     )
 
     assert scoring_row.task_id == "task"
@@ -63,10 +61,6 @@ def test_build_evaluator_scoring_row_from_task_config_and_artifacts(evaluator_ta
     assert scoring_row.agent_model == "sonnet"
     assert scoring_row.final_answer_extracted is True
     assert scoring_row.final_answer_source == "final_message.txt"
-    assert scoring_row.task_success is True
-    assert scoring_row.verification_score == 1.0
-    assert scoring_row.output_schema_valid is True
-    assert scoring_row.verification_details == {}
     assert scoring_row.observed_surfaces == ["standalone_sdk"]
 
 
@@ -90,9 +84,6 @@ def test_build_evaluator_scoring_row_allows_sdk_task_metrics_to_populate_scores(
         artifacts=artifacts,
     )
 
-    assert scoring_row.task_success is None
-    assert scoring_row.verification_score is None
-    assert scoring_row.output_schema_valid is None
     assert scoring_row.output_text == "Use packages/nemo_evaluator_sdk with Evaluator, run_sync, and ExactMatchMetric."
 
 
@@ -137,13 +128,9 @@ def test_build_evaluator_scoring_row_fails_success_when_final_answer_missing(
         task_dir=evaluator_task_dir,
         attempt=attempt,
         artifacts=artifacts,
-        task_check_result=TaskCheckResult(task_success=False, verification_score=0.0, output_schema_valid=False),
     )
 
     assert scoring_row.output_text == ""
-    assert scoring_row.task_success is False
-    assert scoring_row.verification_score == 0.0
-    assert scoring_row.output_schema_valid is False
 
 
 def test_capture_agent_attempt_carries_runtime_metadata(evaluator_task_dir: Path, agent_log_dir: Path):
@@ -194,7 +181,6 @@ def test_build_evaluator_scoring_row_validates_atif_and_populates_trajectory_sum
         task_dir=evaluator_task_dir,
         attempt=attempt,
         artifacts=artifacts,
-        task_check_result=TaskCheckResult(task_success=True, verification_score=1.0, output_schema_valid=True),
     )
 
     assert scoring_row.atif_trajectory_path == str(agent_log_dir / "trajectory.json")
@@ -226,7 +212,6 @@ def test_build_evaluator_scoring_row_ignores_raw_log_prompt_echo_for_surface_det
         task_dir=evaluator_task_dir,
         attempt=attempt,
         artifacts=artifacts,
-        task_check_result=TaskCheckResult(task_success=True, verification_score=1.0, output_schema_valid=True),
     )
 
     assert scoring_row.observed_surfaces == ["standalone_sdk"]

@@ -53,6 +53,8 @@ def test_manifest_tasks_have_evaluator_config_and_verifier():
     assert task_names == [
         "evaluator-standalone-sdk-surface-discovery",
         "evaluator-standalone-sdk-simple-exact-match",
+        "evaluator-standalone-sdk-agent-target",
+        "evaluator-standalone-sdk-surface-adherence-metric",
     ]
     for task_name in task_names:
         task_dir = agentic_use_dir / task_name

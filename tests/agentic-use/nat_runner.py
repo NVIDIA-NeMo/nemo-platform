@@ -72,6 +72,7 @@ import argparse
 import fnmatch
 import json
 import os
+import shlex
 import subprocess
 import sys
 import textwrap
@@ -97,50 +98,6 @@ PLATFORM_CONFIG_PATH = "/app/packages/nmp_platform/config/local.yaml"
 DOCKER_SOCKET_HOST_PATH = Path("/var/run/docker.sock")
 DOCKER_SOCKET_CONTAINER_PATH = "/var/run/docker.sock"
 PLACEHOLDER_SECRET_VALUES = {"null", "none"}
-CODEX_STRUCTURED_OUTPUT_SCHEMA = json.dumps(
-    {
-        "type": "object",
-        "additionalProperties": False,
-        "properties": {
-            "final_summary": {
-                "type": "string",
-                "description": "A short final answer to show as the agent's response.",
-            },
-            "output_files": {
-                "type": "array",
-                "description": "Files the runner should materialize under /app after Codex finishes.",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "properties": {
-                        "path": {
-                            "type": "string",
-                            "description": "Path relative to /app, for example workspace/solution.py.",
-                        },
-                        "content": {
-                            "type": "string",
-                            "description": "Complete UTF-8 file contents.",
-                        },
-                    },
-                    "required": ["path", "content"],
-                },
-            },
-        },
-        "required": ["final_summary", "output_files"],
-    },
-    indent=2,
-)
-CODEX_STRUCTURED_PROMPT_PREFIX = """\
-You are running in a read-only Codex benchmark backend.
-
-Inspect the repository as needed with read-only commands. Do not attempt to
-write files directly. When the task asks you to create or modify files, return
-those files in the structured output_files array instead. The benchmark runner
-will materialize them under /app after Codex exits.
-
-Use paths relative to /app. For example, /app/workspace/solution.py should be
-returned as {"path": "workspace/solution.py", "content": "..."}.
-"""
 
 
 def _normalize_secret(value: str | None) -> str:
@@ -153,6 +110,58 @@ def _normalize_secret(value: str | None) -> str:
 
 def _secret_from_env(name: str) -> str:
     return _normalize_secret(os.environ.get(name))
+
+
+_CANDIDATE_PARAM_STRING_KEYS = frozenset(
+    {
+        "permission_mode",
+        "intelligence",
+        "speed",
+        "sandbox",
+        "mode",
+    }
+)
+_CANDIDATE_PARAM_NUMBER_KEYS = frozenset({"max_budget_usd"})
+_CANDIDATE_PARAM_OBJECT_KEYS = frozenset({"config"})
+_CANDIDATE_PARAM_KEYS = _CANDIDATE_PARAM_STRING_KEYS | _CANDIDATE_PARAM_NUMBER_KEYS | _CANDIDATE_PARAM_OBJECT_KEYS
+
+
+def _coerce_candidate_number_param(key: str, value: object) -> int | float:
+    if type(value) in (int, float):
+        return value
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"--candidate-params key {key!r} must be numeric") from exc
+    raise ValueError(f"--candidate-params key {key!r} must be numeric")
+
+
+def _parse_candidate_params(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"--candidate-params must be a JSON object: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise ValueError("--candidate-params must be a JSON object")
+    unknown_keys = sorted(set(parsed) - _CANDIDATE_PARAM_KEYS)
+    if unknown_keys:
+        raise ValueError(f"--candidate-params includes unsupported key(s): {', '.join(unknown_keys)}")
+    normalized: dict[str, Any] = {}
+    for key, raw_value in parsed.items():
+        if key in _CANDIDATE_PARAM_STRING_KEYS:
+            if not isinstance(raw_value, str):
+                raise ValueError(f"--candidate-params key {key!r} must be a string")
+            normalized[key] = raw_value
+        elif key in _CANDIDATE_PARAM_NUMBER_KEYS:
+            normalized[key] = _coerce_candidate_number_param(key, raw_value)
+        elif key in _CANDIDATE_PARAM_OBJECT_KEYS:
+            if not isinstance(raw_value, dict):
+                raise ValueError(f"--candidate-params key {key!r} must be a JSON object")
+            normalized[key] = dict(raw_value)
+    return normalized
 
 
 # ---------------------------------------------------------------------------
@@ -720,7 +729,7 @@ PY
     ]
 
 
-def _build_claude_code_agent_cmd(instruction_container: str) -> list[str]:
+def _build_claude_code_agent_cmd(instruction_container: str, agent_params: dict[str, Any]) -> list[str]:
     """Build the ``bash -c`` command that runs the claude-code backend.
 
     ``--output-format json`` wraps the agent's final response in a single
@@ -730,6 +739,7 @@ def _build_claude_code_agent_cmd(instruction_container: str) -> list[str]:
     envelope and surfaces the same token shape we record for AUT, so the
     dual-baseline comparison is apples-to-apples.
     """
+    extra_args = _claude_code_shell_args(agent_params)
     return [
         "bash",
         "-c",
@@ -739,9 +749,11 @@ def _build_claude_code_agent_cmd(instruction_container: str) -> list[str]:
             if [ -n "${{AGENT_MODEL:-}}" ]; then
               model_args=(--model "${{AGENT_MODEL}}")
             fi
+            extra_args=({extra_args})
             set +e
             claude -p "$(cat {instruction_container})" \
               "${{model_args[@]}}" \
+              "${{extra_args[@]}}" \
               --output-format json \
               > /tmp/nat_agent.log 2> /tmp/nat_agent.stderr
             rc=$?
@@ -753,22 +765,52 @@ def _build_claude_code_agent_cmd(instruction_container: str) -> list[str]:
     ]
 
 
-def _build_codex_agent_cmd(instruction_container: str) -> list[str]:
+def _claude_code_shell_args(agent_params: dict[str, Any]) -> str:
+    args: list[str] = []
+    permission_mode = agent_params.get("permission_mode")
+    if isinstance(permission_mode, str):
+        args.extend(["--permission-mode", permission_mode])
+    max_budget_usd = agent_params.get("max_budget_usd")
+    if isinstance(max_budget_usd, int | float):
+        args.extend(["--max-budget-usd", str(max_budget_usd)])
+    return " ".join(shlex.quote(arg) for arg in args)
+
+
+def _codex_config_shell_args(agent_params: dict[str, Any]) -> str:
+    config: dict[str, Any] = {}
+    intelligence = agent_params.get("intelligence")
+    if isinstance(intelligence, str):
+        config["model_reasoning_effort"] = intelligence
+    speed = agent_params.get("speed")
+    if speed == "fast":
+        config["service_tier"] = "fast"
+    explicit_config = agent_params.get("config")
+    if isinstance(explicit_config, dict):
+        config.update(explicit_config)
+    args: list[str] = []
+    for key, value in sorted(config.items()):
+        args.append("-c")
+        args.append(f"{key}={json.dumps(value)}")
+    return " ".join(shlex.quote(arg) for arg in args)
+
+
+def _build_codex_agent_cmd(instruction_container: str, agent_params: dict[str, Any]) -> list[str]:
     """Build the command that runs Codex CLI headlessly inside the task container."""
-    return ["bash", "-c", _codex_agent_script(instruction_container)]
+    return ["bash", "-c", _codex_agent_script(instruction_container, agent_params)]
 
 
-def _codex_agent_script(instruction_container: str) -> str:
+def _codex_agent_script(instruction_container: str, agent_params: dict[str, Any]) -> str:
+    config_args = _codex_config_shell_args(agent_params)
     return (
         CODEX_AGENT_SCRIPT_TEMPLATE_PATH.read_text(encoding="utf-8")
-        .replace("@@CODEX_STRUCTURED_OUTPUT_SCHEMA@@", repr(CODEX_STRUCTURED_OUTPUT_SCHEMA))
-        .replace("@@INSTRUCTION_CONTAINER@@", repr(instruction_container))
-        .replace("@@CODEX_STRUCTURED_PROMPT_PREFIX@@", repr(CODEX_STRUCTURED_PROMPT_PREFIX))
+        .replace("@@INSTRUCTION_CONTAINER@@", shlex.quote(instruction_container))
+        .replace("@@CODEX_CONFIG_ARGS@@", config_args)
     )
 
 
-def _build_cursor_agent_cmd(instruction_container: str) -> list[str]:
+def _build_cursor_agent_cmd(instruction_container: str, agent_params: dict[str, Any]) -> list[str]:
     """Build the command that runs Cursor Agent headlessly inside the task container."""
+    extra_args = _cursor_agent_shell_args(agent_params)
     return [
         "bash",
         "-c",
@@ -778,14 +820,15 @@ def _build_cursor_agent_cmd(instruction_container: str) -> list[str]:
             if [ -n "${{AGENT_MODEL:-}}" ]; then
               model_args=(--model "${{AGENT_MODEL}}")
             fi
+            extra_args=({extra_args})
             set +e
             cursor-agent \
               --print \
               --output-format json \
-              --sandbox disabled \
               --trust \
               --workspace /app \
               "${{model_args[@]}}" \
+              "${{extra_args[@]}}" \
               "$(cat {instruction_container})" \
               > /tmp/nat_agent.log 2> /tmp/nat_agent.stderr
             rc=$?
@@ -798,6 +841,17 @@ def _build_cursor_agent_cmd(instruction_container: str) -> list[str]:
     ]
 
 
+def _cursor_agent_shell_args(agent_params: dict[str, Any]) -> str:
+    args: list[str] = []
+    if "sandbox" in agent_params:
+        sandbox = agent_params.get("sandbox")
+        args.extend(["--sandbox", sandbox if isinstance(sandbox, str) else "disabled"])
+    mode = agent_params.get("mode")
+    if isinstance(mode, str):
+        args.extend(["--mode", mode])
+    return " ".join(shlex.quote(arg) for arg in args)
+
+
 def run_agent_phase(
     task_dir: Path,
     image: str,
@@ -808,6 +862,7 @@ def run_agent_phase(
     anthropic_base_url: str,
     nmp_base_url: str,
     agent_model: str | None,
+    agent_params: dict[str, Any],
     codex_auth_json: Path | None,
     timeout: int,
     agent_backend: str,
@@ -888,6 +943,8 @@ def run_agent_phase(
     }
     if DOCKER_SOCKET_HOST_PATH.exists():
         env["DOCKER_HOST"] = f"unix://{DOCKER_SOCKET_CONTAINER_PATH}"
+    if agent_params:
+        env["NAT_CANDIDATE_PARAMS"] = json.dumps(agent_params, sort_keys=True)
     nvidia_api_key = _normalize_secret(nvidia_api_key)
     anthropic_api_key = _normalize_secret(anthropic_api_key)
     if agent_backend in {"aut", "workflow"} and nvidia_api_key:
@@ -960,11 +1017,11 @@ def run_agent_phase(
         agent_cmd = _build_aut_agent_cmd(instruction_container)
     elif agent_backend == "claude-code":
         env["ANTHROPIC_BASE_URL"] = anthropic_base_url
-        agent_cmd = _build_claude_code_agent_cmd(instruction_container)
+        agent_cmd = _build_claude_code_agent_cmd(instruction_container, agent_params)
     elif agent_backend == "codex":
-        agent_cmd = _build_codex_agent_cmd(instruction_container)
+        agent_cmd = _build_codex_agent_cmd(instruction_container, agent_params)
     elif agent_backend == "cursor-agent":
-        agent_cmd = _build_cursor_agent_cmd(instruction_container)
+        agent_cmd = _build_cursor_agent_cmd(instruction_container, agent_params)
     else:
         raise ValueError(f"Unsupported agent backend: {agent_backend}")
 
@@ -1111,17 +1168,9 @@ class TokenMetrics(TypedDict):
     duration_ms: float | None
 
 
-def _is_positive_int(value: object) -> bool:
-    """Token-budget gate predicate: a metric is "present" iff it is a
-    strictly positive int.
-
-    Used at the ``has_tokens`` decision point to decide whether the
-    extracted agent log carried usable token accounting at all. Negative
-    or zero values are treated as missing — some backends emit ``0`` as a
-    placeholder for "field exists but no data" and we want those to fall
-    through to the unavailable path.
-    """
-    return isinstance(value, int) and value > 0
+def _is_nonnegative_int(value: object) -> bool:
+    """Token-budget gate predicate for a parsed usage envelope."""
+    return isinstance(value, int) and value >= 0
 
 
 def _iter_agent_log_json_payloads(agent_log: str) -> list[dict[str, Any]]:
@@ -1196,33 +1245,47 @@ def _extract_usage_metrics(agent_log: str) -> TokenMetrics:
     if not agent_log.strip():
         return zero
 
-    def _bucket_from_usage(usage_obj: dict[str, Any]) -> tuple[int, int, int, int]:
-        """Return (input, output, cache_creation, cache_read) tokens for one usage dict."""
-        input_tokens = usage_obj.get("input_tokens")
-        if not isinstance(input_tokens, int):
-            input_tokens = usage_obj.get("prompt_tokens")
-        if not isinstance(input_tokens, int):
-            input_tokens = 0
-        output_tokens = usage_obj.get("output_tokens")
-        if not isinstance(output_tokens, int):
-            output_tokens = usage_obj.get("completion_tokens")
-        if not isinstance(output_tokens, int):
-            output_tokens = 0
+    def _first_int(usage_obj: dict[str, Any], keys: tuple[str, ...]) -> tuple[int | None, bool]:
+        for key in keys:
+            value = usage_obj.get(key)
+            if isinstance(value, int):
+                return value, True
+        return None, False
+
+    def _bucket_from_usage(usage_obj: dict[str, Any]) -> tuple[int | None, int | None, int | None, int | None, bool]:
+        """Return (input, output, cache_creation, cache_read, has_known_key)."""
+        input_tokens, has_input = _first_int(usage_obj, ("input_tokens", "prompt_tokens", "inputTokens"))
+        output_tokens, has_output = _first_int(usage_obj, ("output_tokens", "completion_tokens", "outputTokens"))
         # Anthropic raw shape (claude-code --output-format json).
-        cache_creation_tokens = usage_obj.get("cache_creation_input_tokens")
-        cache_read_tokens = usage_obj.get("cache_read_input_tokens")
+        cache_creation_tokens, has_cache_creation = _first_int(
+            usage_obj,
+            ("cache_creation_input_tokens", "cacheWriteTokens"),
+        )
+        cache_read_tokens, has_cache_read = _first_int(
+            usage_obj,
+            ("cache_read_input_tokens", "cacheReadTokens", "cached_input_tokens"),
+        )
         # LangChain normalised shape (AUT via langchain_anthropic / LiteLLM).
         details = usage_obj.get("input_token_details")
         if isinstance(details, dict):
-            if not isinstance(cache_creation_tokens, int):
-                cache_creation_tokens = details.get("cache_creation")
-            if not isinstance(cache_read_tokens, int):
-                cache_read_tokens = details.get("cache_read")
-        if not isinstance(cache_creation_tokens, int):
-            cache_creation_tokens = 0
-        if not isinstance(cache_read_tokens, int):
-            cache_read_tokens = 0
-        return input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+            if not has_cache_creation:
+                cache_creation_tokens, has_cache_creation = _first_int(details, ("cache_creation",))
+            if not has_cache_read:
+                cache_read_tokens, has_cache_read = _first_int(details, ("cache_read",))
+        # OpenAI-style usage reports surface total input tokens plus a
+        # cached-input subset under ``cached_input_tokens``. Convert that to
+        # the benchmark's bucketed shape:
+        # prompt_tokens=uncached input, cache_read_tokens=cached input.
+        if (
+            "cached_input_tokens" in usage_obj
+            and has_input
+            and has_cache_read
+            and input_tokens is not None
+            and cache_read_tokens is not None
+        ):
+            input_tokens = max(input_tokens - cache_read_tokens, 0)
+        has_known_key = has_input or has_output or has_cache_creation or has_cache_read
+        return input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, has_known_key
 
     def _looks_usage_bearing(d: dict[str, Any]) -> bool:
         """Heuristic: does this dict contain something we can extract usage from?"""
@@ -1263,6 +1326,12 @@ def _extract_usage_metrics(agent_log: str) -> TokenMetrics:
         "cache_read_tokens": 0,
         "n_assistant_messages": 0,
     }
+    bucket_presence = {
+        "input_tokens": False,
+        "output_tokens": False,
+        "cache_creation_tokens": False,
+        "cache_read_tokens": False,
+    }
     has_data = False
 
     # Path 1 (preferred when present): walk every message in messages[] and
@@ -1289,12 +1358,22 @@ def _extract_usage_metrics(agent_log: str) -> TokenMetrics:
                         usage_obj = token_usage
             if not usage_obj:
                 continue
-            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = _bucket_from_usage(usage_obj)
-            if input_tokens or output_tokens or cache_creation_tokens or cache_read_tokens:
-                sums["input_tokens"] += input_tokens
-                sums["output_tokens"] += output_tokens
-                sums["cache_creation_tokens"] += cache_creation_tokens
-                sums["cache_read_tokens"] += cache_read_tokens
+            input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, has_known_key = _bucket_from_usage(
+                usage_obj
+            )
+            if has_known_key:
+                if input_tokens is not None:
+                    sums["input_tokens"] += input_tokens
+                    bucket_presence["input_tokens"] = True
+                if output_tokens is not None:
+                    sums["output_tokens"] += output_tokens
+                    bucket_presence["output_tokens"] = True
+                if cache_creation_tokens is not None:
+                    sums["cache_creation_tokens"] += cache_creation_tokens
+                    bucket_presence["cache_creation_tokens"] = True
+                if cache_read_tokens is not None:
+                    sums["cache_read_tokens"] += cache_read_tokens
+                    bucket_presence["cache_read_tokens"] = True
                 sums["n_assistant_messages"] += 1
                 has_data = True
             else:
@@ -1320,14 +1399,26 @@ def _extract_usage_metrics(agent_log: str) -> TokenMetrics:
             for key in ("usage", "usage_metadata"):
                 usage_obj = candidate_payload.get(key)
                 if isinstance(usage_obj, dict) and usage_obj:
-                    input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens = _bucket_from_usage(
-                        usage_obj
-                    )
-                    if input_tokens or output_tokens or cache_creation_tokens or cache_read_tokens:
-                        sums["input_tokens"] = input_tokens
-                        sums["output_tokens"] = output_tokens
-                        sums["cache_creation_tokens"] = cache_creation_tokens
-                        sums["cache_read_tokens"] = cache_read_tokens
+                    (
+                        input_tokens,
+                        output_tokens,
+                        cache_creation_tokens,
+                        cache_read_tokens,
+                        has_known_key,
+                    ) = _bucket_from_usage(usage_obj)
+                    if has_known_key:
+                        if input_tokens is not None:
+                            sums["input_tokens"] = input_tokens
+                            bucket_presence["input_tokens"] = True
+                        if output_tokens is not None:
+                            sums["output_tokens"] = output_tokens
+                            bucket_presence["output_tokens"] = True
+                        if cache_creation_tokens is not None:
+                            sums["cache_creation_tokens"] = cache_creation_tokens
+                            bucket_presence["cache_creation_tokens"] = True
+                        if cache_read_tokens is not None:
+                            sums["cache_read_tokens"] = cache_read_tokens
+                            bucket_presence["cache_read_tokens"] = True
                         # ``num_turns`` (claude-code) is the natural N here.
                         num_turns_value = candidate_payload.get("num_turns")
                         sums["n_assistant_messages"] = num_turns_value if isinstance(num_turns_value, int) else 1
@@ -1347,13 +1438,19 @@ def _extract_usage_metrics(agent_log: str) -> TokenMetrics:
         )
         return zero
 
-    total = sums["input_tokens"] + sums["output_tokens"] + sums["cache_creation_tokens"] + sums["cache_read_tokens"]
+    total_components = [
+        sums["input_tokens"] if bucket_presence["input_tokens"] else None,
+        sums["output_tokens"] if bucket_presence["output_tokens"] else None,
+        sums["cache_creation_tokens"] if bucket_presence["cache_creation_tokens"] else None,
+        sums["cache_read_tokens"] if bucket_presence["cache_read_tokens"] else None,
+    ]
+    total = sum(component for component in total_components if component is not None)
     out: TokenMetrics = {
-        "prompt_tokens": sums["input_tokens"],
-        "completion_tokens": sums["output_tokens"],
-        "total_tokens": total,
-        "cache_creation_tokens": sums["cache_creation_tokens"],
-        "cache_read_tokens": sums["cache_read_tokens"],
+        "prompt_tokens": sums["input_tokens"] if bucket_presence["input_tokens"] else None,
+        "completion_tokens": sums["output_tokens"] if bucket_presence["output_tokens"] else None,
+        "total_tokens": total if any(component is not None for component in total_components) else None,
+        "cache_creation_tokens": sums["cache_creation_tokens"] if bucket_presence["cache_creation_tokens"] else None,
+        "cache_read_tokens": sums["cache_read_tokens"] if bucket_presence["cache_read_tokens"] else None,
         "n_assistant_messages": sums["n_assistant_messages"],
         "cost_usd": None,
         "num_turns": None,
@@ -1452,6 +1549,8 @@ def run_verify_phase(
             (str(tests_dir), "/tests"),
             (str(task_dir), "/task"),
             (str(workspace_dir), "/app/workspace"),
+            (str(SHARED_DIR), "/app/tests/agentic-use/shared:ro"),
+            (str(REPO_ROOT / "packages" / "nemo_evaluator_sdk" / "src"), "/app/packages/nemo_evaluator_sdk/src:ro"),
             (str(output_dir / "agent"), "/logs/agent"),
             (str(verifier_log_dir), "/logs/verifier"),
             # Persist service/database state across AGENT and VERIFY containers.
@@ -1493,15 +1592,18 @@ def run_task(
     anthropic_base_url: str,
     nmp_base_url: str,
     agent_model: str | None,
+    agent_params: dict[str, Any] | None,
     codex_auth_json: Path | None,
     agent_timeout: int,
     skip_build: bool,
+    build_only: bool,
     skip_agent: bool,
     agent_backend: str,
     aut_agent_name: str,
     aut_agent_config: str | None,
     aut_seed_providers: bool,
     smoke_workspace: str | None,
+    candidate_id: str | None = None,
     provenance: dict[str, Any] | None = None,
 ) -> dict:
     """Run a single agentic-use eval task end to end."""
@@ -1525,6 +1627,10 @@ def run_task(
         "timestamp": ts,
         "output_dir": str(output_dir),
         "image": image_tag,
+        "agent_backend": agent_backend,
+        "agent_model": _agent_model_for_backend(agent_backend=agent_backend, agent_model=agent_model),
+        "candidate_params": agent_params or {},
+        "candidate_id": candidate_id,
         "build": None,
         "agent": None,
         "verify": None,
@@ -1544,6 +1650,7 @@ def run_task(
             "token_metrics_status": "unavailable",
             "token_metrics_note": None,
         },
+        "verifier_scores": None,
         "provenance": dict(provenance) if provenance else None,
     }
     task_timeout = _task_agent_timeout(task_dir)
@@ -1587,6 +1694,15 @@ def run_task(
             _write_result(output_dir, result)
             return result
 
+    if build_only:
+        result["agent"] = "skipped"
+        result["verify"] = "skipped"
+        result["passed"] = None
+        result["reward"] = None
+        result["runtime_sec"] = round(time.monotonic() - task_start_monotonic, 3)
+        _write_result(output_dir, result)
+        return result
+
     # ------------------------------------------------------------------
     # 2. AGENT
     # ------------------------------------------------------------------
@@ -1601,6 +1717,7 @@ def run_task(
                 anthropic_base_url=anthropic_base_url,
                 nmp_base_url=nmp_base_url,
                 agent_model=agent_model,
+                agent_params=agent_params or {},
                 codex_auth_json=codex_auth_json,
                 timeout=effective_agent_timeout,
                 agent_backend=agent_backend,
@@ -1627,7 +1744,7 @@ def run_task(
                 ):
                     result["metrics"][key] = usage_metrics.get(key)
                 has_tokens = any(
-                    _is_positive_int(result["metrics"].get(k))
+                    _is_nonnegative_int(result["metrics"].get(k))
                     for k in ("prompt_tokens", "completion_tokens", "total_tokens")
                 )
                 if has_tokens:
@@ -1677,6 +1794,7 @@ def run_task(
         result["verify"] = "ok" if verify_ok else "failed"
         result["passed"] = verify_ok
         result["reward"] = 1 if verify_ok else 0
+        result["verifier_scores"] = _read_json_object(output_dir / "verifier" / "evaluator_scores.json")
     except Exception as e:
         print(f"[nat_runner] Verify phase error: {e}")
         result["verify"] = f"error: {e}"
@@ -1696,6 +1814,17 @@ def _agent_model_for_backend(
     if agent_backend in {"claude-code", "codex", "cursor-agent"}:
         return agent_model or "default"
     return agent_model or "unknown"
+
+
+def _read_json_object(path: Path) -> dict[str, Any] | None:
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        print(f"[nat_runner] WARN: could not read JSON object from {path}: {exc}")
+        return None
+    return payload if isinstance(payload, dict) else None
 
 
 def _agent_model_from_env(agent_backend: str) -> str | None:
@@ -1812,6 +1941,11 @@ def main() -> int:
         help="Skip agent phase; only run the verifier (useful for debugging tests)",
     )
     parser.add_argument(
+        "--build-only",
+        action="store_true",
+        help="Build selected task images and skip agent/verifier phases.",
+    )
+    parser.add_argument(
         "--jobs-dir",
         type=Path,
         default=DEFAULT_JOBS_DIR,
@@ -1867,6 +2001,16 @@ def main() -> int:
         default=None,
         help="Explicit path to a Codex auth.json file to mount read-only for "
         "--agent-backend=codex when OPENAI_API_KEY is unset.",
+    )
+    parser.add_argument(
+        "--candidate-id",
+        default=os.environ.get("NAT_CANDIDATE_ID"),
+        help="Optional stable candidate id to record in result.json for matrix benchmark aggregation.",
+    )
+    parser.add_argument(
+        "--candidate-params",
+        default=os.environ.get("NAT_CANDIDATE_PARAMS"),
+        help="Optional JSON object of candidate-specific params to record and pass to backend command construction.",
     )
     parser.add_argument(
         "--aut-agent-name",
@@ -1988,13 +2132,18 @@ def main() -> int:
     if args.manifest is not None and args.tasks:
         print("ERROR: Provide either TASK_OR_GLOB args or --manifest, not both.", file=sys.stderr)
         return 1
+    try:
+        candidate_params = _parse_candidate_params(args.candidate_params)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
 
     # Validate API keys early
     nvidia_api_key = _secret_from_env("NVIDIA_API_KEY")
     anthropic_api_key = _secret_from_env("ANTHROPIC_API_KEY") or nvidia_api_key
     openai_api_key = _secret_from_env("OPENAI_API_KEY")
     cursor_api_key = _secret_from_env("CURSOR_API_KEY")
-    if not args.skip_agent:
+    if not args.skip_agent and not args.build_only:
         if args.agent_backend in {"aut", "workflow"} and not nvidia_api_key:
             print("ERROR: NVIDIA_API_KEY environment variable is required for this backend.", file=sys.stderr)
             print("  export NVIDIA_API_KEY=<your-key>  # from https://build.nvidia.com", file=sys.stderr)
@@ -2139,19 +2288,25 @@ def main() -> int:
                 anthropic_base_url=args.anthropic_base_url,
                 nmp_base_url=args.nmp_base_url,
                 agent_model=args.agent_model,
+                agent_params=candidate_params,
                 codex_auth_json=args.codex_auth_json,
                 agent_timeout=args.timeout,
                 skip_build=args.skip_build,
+                build_only=args.build_only,
                 skip_agent=args.skip_agent,
                 agent_backend=args.agent_backend,
                 aut_agent_name=args.aut_agent_name,
                 aut_agent_config=args.aut_agent_config,
                 aut_seed_providers=args.aut_seed_providers,
                 smoke_workspace=args.smoke_workspace,
+                candidate_id=args.candidate_id,
                 provenance=provenance,
             )
             results.append(result)
-            if result.get("reward") != 1:
+            if args.build_only:
+                if result.get("build") not in {"ok", "skipped"}:
+                    failed.append(task_name)
+            elif result.get("reward") != 1:
                 failed.append(task_name)
         except Exception as e:
             print(f"[nat_runner] ERROR running task {task_name}: {e}", file=sys.stderr)
@@ -2159,6 +2314,18 @@ def main() -> int:
 
     # Summary
     total = len(results)
+    if args.build_only:
+        build_ok = sum(1 for r in results if r.get("build") == "ok")
+        build_skipped = sum(1 for r in results if r.get("build") == "skipped")
+        build_failed = len(failed)
+        print(f"\n{'=' * 60}")
+        print(f"[nat_runner] BUILD SUMMARY: {build_ok + build_skipped}/{total} task images ready")
+        print(f"[nat_runner] built: {build_ok}  skipped: {build_skipped}  failed: {build_failed}")
+        if failed:
+            print(f"[nat_runner] FAILED builds: {', '.join(failed)}")
+        print(f"{'=' * 60}")
+        return 0 if not failed else 1
+
     passed = sum(1 for r in results if r.get("reward") == 1)
     token_values = [
         r.get("metrics", {}).get("total_tokens")

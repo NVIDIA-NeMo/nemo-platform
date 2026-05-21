@@ -7,13 +7,9 @@ from math import isnan
 
 import pytest
 from evaluator_agent_eval.metrics import (
-    DeterministicTaskSuccessMetric,
     LegacySurfaceAvoidanceMetric,
-    OutputSchemaValidMetric,
     SurfaceAdherenceMetric,
-    SurfaceGatedSuccessMetric,
     TrajectoryEvidenceMetric,
-    VerificationScoreMetric,
     default_agent_eval_metrics,
 )
 from evaluator_agent_eval.schemas import EvaluatorScoringRow
@@ -42,9 +38,6 @@ def _row(**overrides: object) -> EvaluatorScoringRow:
         "allowed_surfaces": ["standalone_sdk"],
         "forbidden_surfaces": ["legacy_service"],
         "output_text": "Used nemo_evaluator_sdk only.",
-        "task_success": True,
-        "verification_score": 1.0,
-        "output_schema_valid": True,
         "observed_surfaces": ["standalone_sdk"],
         "trajectory_summary": {"tool_call_count": 3, "failed_command_count": 1, "recovery_event_count": 1},
     }
@@ -54,14 +47,6 @@ def _row(**overrides: object) -> EvaluatorScoringRow:
 
 def _scores_by_name(result) -> dict[str, float]:
     return {score.name: score.value for score in result.scores}
-
-
-@pytest.mark.asyncio
-async def test_task_success_metric_can_use_configured_success_key():
-    metric = DeterministicTaskSuccessMetric(success_key="verifier_passed")
-    result = await metric.compute_scores({"verifier_passed": True}, {})
-
-    assert _scores_by_name(result)["task_success"] == 1.0
 
 
 @pytest.mark.asyncio
@@ -77,31 +62,6 @@ async def test_surface_adherence_penalizes_forbidden_surface_hits():
     scores = _scores_by_name(result)
     assert scores["surface_adherence"] == 0.0
     assert scores["surface_violation_count"] == 2.0
-
-
-@pytest.mark.asyncio
-async def test_surface_gated_success_requires_task_success_and_adherence():
-    metric = SurfaceGatedSuccessMetric(success_key="task_success", **SURFACE_FIELD_KEYS)
-    clean = await metric.compute_scores(_row().to_dataset_row(), {})
-    violated = await metric.compute_scores(
-        _row(observed_surfaces=["standalone_sdk", "legacy_service"]).to_dataset_row(), {}
-    )
-    failed = await metric.compute_scores(_row(task_success=False).to_dataset_row(), {})
-
-    assert _scores_by_name(clean)["surface_gated_success"] == 1.0
-    assert _scores_by_name(violated)["surface_gated_success"] == 0.0
-    assert _scores_by_name(failed)["surface_gated_success"] == 0.0
-
-
-@pytest.mark.asyncio
-async def test_surface_gated_success_can_use_configured_success_key():
-    metric = SurfaceGatedSuccessMetric(success_key="verifier_passed", **SURFACE_FIELD_KEYS)
-    result = await metric.compute_scores(
-        _row(task_success=False).to_dataset_row() | {"verifier_passed": True},
-        {},
-    )
-
-    assert _scores_by_name(result)["surface_gated_success"] == 1.0
 
 
 @pytest.mark.asyncio
@@ -178,31 +138,6 @@ async def test_surface_adherence_returns_nan_for_malformed_surface_fields():
 
 
 @pytest.mark.asyncio
-async def test_surface_gated_success_returns_nan_for_malformed_surface_fields():
-    metric = SurfaceGatedSuccessMetric(success_key="task_success", **SURFACE_FIELD_KEYS)
-    result = await metric.compute_scores(
-        _row().to_dataset_row() | {"forbidden_surface_hits": [1]},
-        {},
-    )
-
-    assert isnan(_scores_by_name(result)["surface_gated_success"])
-
-
-@pytest.mark.asyncio
-async def test_surface_gated_success_logs_malformed_surface_error(caplog):
-    metric = SurfaceGatedSuccessMetric(success_key="task_success", **SURFACE_FIELD_KEYS)
-
-    with caplog.at_level("WARNING", logger="evaluator_agent_eval.metrics.outcome"):
-        result = await metric.compute_scores(
-            _row().to_dataset_row() | {"forbidden_surface_hits": [1]},
-            {},
-        )
-
-    assert isnan(_scores_by_name(result)["surface_gated_success"])
-    assert "Surface fields must be list[str]" in caplog.text
-
-
-@pytest.mark.asyncio
 async def test_legacy_surface_avoidance_returns_nan_for_malformed_fields():
     metric = LegacySurfaceAvoidanceMetric(
         observed_surfaces_key="observed_surfaces",
@@ -272,27 +207,3 @@ async def test_trajectory_metric_returns_nan_for_malformed_summary():
     assert isnan(scores["tool_call_count"])
     assert isnan(scores["failed_command_count"])
     assert isnan(scores["recovery_event_count"])
-
-
-@pytest.mark.asyncio
-async def test_verification_score_metric_passes_through_configured_score_key():
-    metric = VerificationScoreMetric(score_key="score")
-    result = await metric.compute_scores({"score": 0.75}, {})
-
-    assert _scores_by_name(result)["verification_score"] == 0.75
-
-
-@pytest.mark.asyncio
-async def test_verification_score_metric_returns_nan_for_bad_score():
-    metric = VerificationScoreMetric(score_key="score")
-    result = await metric.compute_scores({"score": 1.5}, {})
-
-    assert isnan(_scores_by_name(result)["verification_score"])
-
-
-@pytest.mark.asyncio
-async def test_output_schema_valid_metric_can_use_configured_key():
-    metric = OutputSchemaValidMetric(valid_key="schema_ok")
-    result = await metric.compute_scores({"schema_ok": True}, {})
-
-    assert _scores_by_name(result)["output_schema_valid"] == 1.0

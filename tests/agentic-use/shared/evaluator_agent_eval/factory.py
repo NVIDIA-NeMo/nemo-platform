@@ -14,7 +14,6 @@ from evaluator_agent_eval.schemas import (
     AgentAttemptTrace,
     CapturedAgentAttempt,
     EvaluatorScoringRow,
-    TaskCheckResult,
 )
 from evaluator_agent_eval.surfaces import detect_surfaces, evidence_from_artifacts
 from evaluator_agent_eval.task_config import AgenticUseTaskConfig, load_agentic_use_task_config
@@ -84,7 +83,6 @@ def build_evaluator_scoring_row(
     task_dir: str | Path,
     attempt: CapturedAgentAttempt,
     artifacts: AgentArtifacts,
-    task_check_result: TaskCheckResult | None = None,
     task_config: AgenticUseTaskConfig | None = None,
 ) -> EvaluatorScoringRow:
     """Build an Evaluator SDK dataset row for one captured attempt."""
@@ -127,10 +125,6 @@ def build_evaluator_scoring_row(
         final_answer_extracted=attempt.output.final_answer_extracted,
         final_answer_source=attempt.output.final_answer_source,
         raw_log_paths=attempt.output.raw_log_paths,
-        task_success=task_check_result.task_success if task_check_result is not None else None,
-        verification_score=task_check_result.verification_score if task_check_result is not None else None,
-        output_schema_valid=task_check_result.output_schema_valid if task_check_result is not None else None,
-        verification_details=task_check_result.details if task_check_result is not None else {},
         observed_surfaces=surface_detection.observed_surfaces,
         forbidden_surface_hits=surface_detection.forbidden_surface_hits,
         atif_trajectory_path=attempt.trace.atif_path if attempt.trace else None,

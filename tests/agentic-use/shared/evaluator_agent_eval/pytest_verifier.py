@@ -3,6 +3,7 @@
 
 """Shared pytest verifier for Evaluator agent benchmark tasks."""
 
+import json
 import os
 from pathlib import Path
 from typing import Sequence
@@ -15,9 +16,9 @@ from nemo_evaluator_sdk.metrics.base import Metric
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 
 AGENT_LOG_DIR = Path("/logs/agent")
+VERIFIER_LOG_DIR = Path("/logs/verifier")
 TASK_DIR = Path(os.environ.get("AGENTIC_USE_TASK_DIR", "/task"))
 WORKSPACE_DIR = Path(os.environ.get("AGENTIC_USE_WORKSPACE_DIR", "/app/workspace"))
-
 TASK_SUCCESS_SCORE = "task_success"
 VERIFICATION_SCORE = "verification_score"
 OUTPUT_SCHEMA_VALID_SCORE = "output_schema_valid"
@@ -41,7 +42,12 @@ def verify_agent_attempt_scores_with_evaluator_sdk(*, task_specific_metrics: Seq
         artifacts=artifacts,
         task_config=task_config,
     )
-    scored = score_evaluator_rows([scoring_row], additional_metrics=task_specific_metrics)
+
+    scored = score_evaluator_rows(
+        [scoring_row],
+        additional_metrics=task_specific_metrics,
+    )
+    _write_evaluator_scores(scored=scored)
     _assert_evaluator_scores(scored)
 
 
@@ -56,7 +62,7 @@ def _assert_evaluator_scores(scored: BenchmarkEvaluationResult) -> None:
     if missing:
         raise AssertionError(f"Task-specific Evaluator metrics did not emit required scores: {', '.join(missing)}")
 
-    aggregate_scores = {score.name: score.mean for score in scored.aggregate_scores.scores}
+    aggregate_scores = _aggregate_scores(scored)
     assert all(value == 1.0 for value in score_values[TASK_SUCCESS_SCORE])
     assert sum(score_values[VERIFICATION_SCORE]) / len(score_values[VERIFICATION_SCORE]) == 1.0
     assert all(value == 1.0 for value in score_values[OUTPUT_SCHEMA_VALID_SCORE])
@@ -64,9 +70,7 @@ def _assert_evaluator_scores(scored: BenchmarkEvaluationResult) -> None:
     assert aggregate_scores["agent_eval/legacy_surface_avoidance.legacy_surface_avoidance"] == 1.0
 
 
-def _task_score_values(
-    scored: BenchmarkEvaluationResult,
-) -> dict[str, list[float]]:
+def _task_score_values(scored: BenchmarkEvaluationResult) -> dict[str, list[float]]:
     score_values: dict[str, list[float]] = {
         TASK_SUCCESS_SCORE: [],
         VERIFICATION_SCORE: [],
@@ -78,5 +82,19 @@ def _task_score_values(
     for metric_scores in scored.row_scores[0].metrics.values():
         for score in metric_scores:
             if score.name in score_values:
-                score_values[score.name].append(score.value)
+                score_values[score.name].append(float(score.value))
     return score_values
+
+
+def _aggregate_scores(scored: BenchmarkEvaluationResult) -> dict[str, float]:
+    return {str(score.name): float(score.mean) for score in scored.aggregate_scores.scores if score.mean is not None}
+
+
+def _write_evaluator_scores(*, scored: BenchmarkEvaluationResult) -> None:
+    VERIFIER_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "aggregate_scores": [
+            {"name": name, "mean": value} for name, value in sorted(_aggregate_scores(scored).items())
+        ],
+    }
+    (VERIFIER_LOG_DIR / "evaluator_scores.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
