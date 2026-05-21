@@ -1,0 +1,1 @@
+nemo_automodel==0.2.0
