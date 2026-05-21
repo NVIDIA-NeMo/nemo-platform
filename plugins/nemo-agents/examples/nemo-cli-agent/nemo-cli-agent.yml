@@ -1,0 +1,30 @@
+# NeMo CLI Agent
+#
+# A DeepAgents workflow for operating NeMo Platform through the `nemo` CLI.
+#
+# Try it locally:
+#   nemo agents invoke \
+#     --agent-config plugins/nemo-agents/examples/nemo-cli-agent/nemo-cli-agent.yml \
+#     --input "load the nemo cli skills"
+#   nemo agents invoke \
+#     --agent-config plugins/nemo-agents/examples/nemo-cli-agent/nemo-cli-agent.yml \
+#     --input "list all my workspaces"
+#
+# Or deploy it:
+#   nemo agents create --name nemo-cli-agent \
+#     --agent-config plugins/nemo-agents/examples/nemo-cli-agent/nemo-cli-agent.yml
+#   nemo agents deploy --agent nemo-cli-agent
+#   nemo agents invoke --agent nemo-cli-agent --input "Create a workspace called demo"
+
+llms:
+  agent:
+    _type: openai
+    base_url: ${NEMO_DEFAULT_INFERENCE_BASE_URL}
+    api_key: ${NEMO_DEFAULT_INFERENCE_API_KEY}
+    model_name: ${NEMO_DEFAULT_MODEL}
+
+workflow:
+  # Generic wrapper for current NAT/LangGraph compatibility gaps.
+  _type: nat_compatible_langgraph_wrapper
+  graph: nemo_cli_agent.agent:create_nemo_cli_agent
+  description: NeMo Platform CLI assistant using LangChain Deep Agents

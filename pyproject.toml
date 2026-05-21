@@ -177,7 +177,7 @@ enabled-plugins = [
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
   "nemo-switchyard",
-  "nemo-agents-plugin",
+  "nemo-agents-plugin[cli-agent]",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke

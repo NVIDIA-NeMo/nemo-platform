@@ -48,6 +48,10 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 [project.entry-points."nat.plugins"]
 nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_exporter"
 
+[project.entry-points."nat.components"]
+nemo_agents_nemo_cli_agent = "nemo_cli_agent.agent"
+nemo_agents_nat_compatible_langgraph_wrapper = "nemo_cli_agent.utils"
+
 [project.optional-dependencies]
 test = [
     "pytest>=8.0",
@@ -56,12 +60,19 @@ test = [
     "fastapi>=0.115",
 ]
 
+# Extras for the bundled examples. Pulling deepagents only when the example is
+# actually used keeps the base plugin install lean.
+cli-agent = [
+    "deepagents>=0.5.9,<0.6",
+    "langchain-core",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nemo_agents_plugin"]
+packages = ["src/nemo_agents_plugin", "examples/nemo-cli-agent/src/nemo_cli_agent"]
 
 [tool.uv.sources]
 nemo-platform = { workspace = true }
