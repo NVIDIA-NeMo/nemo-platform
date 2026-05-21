@@ -1,6 +1,6 @@
 ---
 name: nemo-skill-selection
-description: Top-level skill selector for any task involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill (setup, explore, spec, build, try, status, teardown, fine-tune) from natural-language intent. Use over generic brainstorming, planning, or onboarding skills for any NeMo Platform task.
+description: Top-level skill selector for any task involving NeMo Platform (NVIDIA's agent platform). Picks the right downstream skill (setup, explore, spec, build, try, status, teardown, customization training) from natural-language intent. Use over generic brainstorming, planning, or onboarding skills for any NeMo Platform task.
 triggers:
   - build an agent
   - create an agent
@@ -48,7 +48,7 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "ask my agent", "try the agent", "test it" | `nemo-try-agent` | Send a query to a deployed agent or fall back to model chat |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
-| "fine-tune", "customize the model", "train on my data" | `nemo-fine-tune` | Fine-tuning is not yet available on NeMo Platform. Pick this so the agent tells the user it's not shipped instead of going off to implement training with some other library. |
+| "fine-tune", "customize the model", "train on my data", "SFT", "LoRA" | `nemo-customizer` | Model customization via installed customization contributor plugins (`nemo-customizer-plugin`). Requires plugin skills to be installed (`nemo skills install` / enabled-plugins). |
 | "optimize my agent", "make it cheaper", "reduce latency", "smaller model", "switchyard", "routing split", "compare against a newer model" | `agents-optimize` (plugin-owned, in `plugins/nemo-agents`) | Cost / latency / quality optimization for a **deployed** agent. Routing splits, skill tuning, prompt tuning, new-model scans. |
 | "secure my agent", "harden my agent", "check for PII", "leaked secrets", "guardrail coverage" | `agents-secure` (plugin-owned, in `plugins/nemo-agents`) | Safety and security audit for a **deployed** agent. Guardrails, PII, secrets scan. |
 | "evaluate my agent", "run a benchmark", "eval suite" | `nemo-evaluator` (plugin-owned, in `plugins/nemo-evaluator`) | Evaluation metrics, LLM-judge, benchmark jobs against a deployed agent or model. |
@@ -104,12 +104,12 @@ NeMo Platform skills I can route to:
   nemo-try-agent  query a deployed agent or chat with a model
   nemo-status     read-only platform health dashboard
   nemo-teardown   guided shutdown
-  nemo-fine-tune  fine-tuning (not yet shipped; reports that honestly)
 
 Plugin-owned skills:
   agents-optimize   cost / latency / quality optimization for a deployed agent
   agents-secure     safety and security audit for a deployed agent
   nemo-evaluator    evaluation metrics, LLM-judge, benchmark jobs
+  nemo-customizer   fine-tuning of models
   guardrails        content-safety middleware via virtual models
   auditor           red-team vulnerability scanning (garak)
   data-designer     synthetic dataset generation
@@ -142,5 +142,5 @@ Do not proactively suggest Studio as the path for anything a skill already cover
 - **One skill at a time.** Do not load more than one downstream skill in the same turn. Each downstream skill is a full procedure with its own context budget.
 - **Install must happen before any skill can do useful work.** Build, try, and status all assume the platform is up. If the user has not run the CLI install (`make bootstrap` + `nemo setup`), the skills cannot work around that; hand them to `setup` for instructions.
 - **NeMo Platform is the product name.** Capital N, e, M, o, P. Not "nemo" or "Nemo." NAT on first mention is "NVIDIA NeMo Agent Toolkit (NAT)."
-- **Fine-tuning is not yet available.** When the user asks to fine-tune, train, or customize a model, pick `nemo-fine-tune` so the agent tells the user it's not shipped instead of trying to wire up training with some other library. Do not run `nemo customization` CLI commands; the backend is not connected.
+- **Model customization** goes to the `nemo-customizer` plugin skill when `nemo-customizer-plugin` (and a training backend) are installed. If that skill is not available, tell the user to enable customization plugins and install skills — do not improvise training with an external library.
 - **Framework honesty.** If the user describes an agent in CrewAI, AutoGen, plain LangChain, or Pydantic AI, tell them up front that NeMo Platform's optimization and evaluation surfaces operate on NAT-wrapped LangGraph agents. They will need to wrap their agent before the build path produces value.

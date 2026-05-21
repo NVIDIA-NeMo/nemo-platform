@@ -64,6 +64,7 @@ API_SERVICES = [
 
 OPENAPI_SERVICES = [
     "auth",
+    "customization",
     "entities",
     "evaluation",
     "files",

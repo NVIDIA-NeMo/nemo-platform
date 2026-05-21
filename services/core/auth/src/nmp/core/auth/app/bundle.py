@@ -13,8 +13,11 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
+import logging
 import yaml
 from nmp.common.auth import ALL_WORKSPACES
+
+logger = logging.getLogger(__name__)
 from nmp.common.auth.authz_format import validate_static_authz_data
 from nmp.common.config import get_service_config
 from nmp.common.entities import EntityClient
@@ -80,6 +83,23 @@ async def get_opa_bundle_with_etag(entities_client: Optional[EntityClient] = Non
         return bundle_bytes, etag
 
 
+def _merge_plugin_authz_contributions(static_data: dict) -> dict:
+    """Overlay authorization rules from installed NeMo Platform plugins."""
+    try:
+        from nemo_platform_plugin.authz_discovery import discover_authz_contribution_dicts
+        from nmp.common.auth.authz_merge import merge_authz_contributions
+    except ImportError:
+        logger.debug("Plugin authz discovery unavailable; using static authz only")
+        return static_data
+
+    contributions = discover_authz_contribution_dicts()
+    if not contributions:
+        return static_data
+
+    logger.debug("Merging %d plugin authz contribution(s)", len(contributions))
+    return merge_authz_contributions(static_data, contributions)
+
+
 async def _build_authorization_data_internal(entities_client: Optional[EntityClient] = None) -> dict:
     """Build authorization data for NeMo Platform.
 
@@ -102,6 +122,7 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
     with open(static_data_path, "r") as f:
         static_data = yaml.safe_load(f)
 
+    static_data = _merge_plugin_authz_contributions(static_data)
     validate_static_authz_data(static_data)
 
     # Initialize workspaces and principals if not present
