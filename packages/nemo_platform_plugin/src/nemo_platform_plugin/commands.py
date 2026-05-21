@@ -87,6 +87,7 @@ import inspect
 import json
 import logging
 import os
+import sys
 from collections.abc import AsyncIterator, Callable, Iterable, Mapping
 from pathlib import Path
 from typing import Any, Literal, Optional, cast
@@ -116,6 +117,7 @@ from nemo_platform_plugin.jobs._cli_options import (
     merge_options,
     parse_dotted_kv_list,
 )
+from nemo_platform_plugin.jobs._venv_reexec import reexec_run_in_venv
 from nemo_platform_plugin.run_dependencies import LocalRunError
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import BaseModel, ValidationError
@@ -152,7 +154,7 @@ _FN_SUBMIT_RESERVED_FLAGS: frozenset[str] = _FN_RUN_RESERVED_FLAGS | frozenset({
 # / ``--workspace``) and the options-passthrough flags (``-o`` /
 # ``--options-file``). Reserved spec fields remain reachable via
 # ``--spec`` / ``--spec-file`` JSON.
-_JOB_RUN_RESERVED_FLAGS: frozenset[str] = frozenset({"spec", "spec_file", "config", "config_file"})
+_JOB_RUN_RESERVED_FLAGS: frozenset[str] = frozenset({"spec", "spec_file", "config", "config_file", "venv"})
 _JOB_SUBMIT_RESERVED_FLAGS: frozenset[str] = _JOB_RUN_RESERVED_FLAGS | frozenset(
     {"options", "options_file", "profile", "cluster", "base_url", "workspace"}
 )
@@ -399,9 +401,15 @@ def _add_run_command(
         original_kwargs = dict(kwargs)
         spec_str: str = cast(str, kwargs.pop("spec", "{}"))
         spec_file: Path | None = cast("Path | None", kwargs.pop("spec_file", None))
+        venv: Path | None = cast("Path | None", kwargs.pop("venv", None))
         config: str | None = cast("str | None", kwargs.pop("config", None))
         config_file: Path | None = cast("Path | None", kwargs.pop("config_file", None))
 
+        if venv is not None:
+            # Re-exec inside the caller-supplied venv. All remaining flag
+            # parsing (spec / --config / --spec-file) happens in the child
+            # — the parent intentionally doesn't interpret them.
+            raise typer.Exit(code=reexec_run_in_venv(venv, sys.argv))
         effective_spec_str = config if config is not None else spec_str
         effective_spec_file = config_file if config_file is not None else spec_file
         base = _load_spec(effective_spec_str, effective_spec_file)
@@ -480,6 +488,19 @@ def _build_job_run_signature(leaves: list[SpecLeafField]) -> inspect.Signature:
                 None,
                 "--spec-file",
                 help="Path to a YAML or JSON spec file (used as base; per-flag values override).",
+                rich_help_panel=_PANEL_SPEC_SOURCE,
+            ),
+        ),
+        kw(
+            "venv",
+            Optional[Path],
+            typer.Option(
+                None,
+                "--venv",
+                help=(
+                    "Re-exec `run` inside this venv's Python (must have nemo-platform installed). "
+                    "Bypasses local spec parsing — the child re-parses --spec/--spec-file."
+                ),
                 rich_help_panel=_PANEL_SPEC_SOURCE,
             ),
         ),
