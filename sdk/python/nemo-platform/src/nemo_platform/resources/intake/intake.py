@@ -17,6 +17,14 @@
 
 from __future__ import annotations
 
+from .traces import (
+    TracesResource,
+    AsyncTracesResource,
+    TracesResourceWithRawResponse,
+    AsyncTracesResourceWithRawResponse,
+    TracesResourceWithStreamingResponse,
+    AsyncTracesResourceWithStreamingResponse,
+)
 from ..._compat import cached_property
 from .apps.apps import (
     AppsResource,
@@ -97,6 +105,10 @@ class IntakeResource(SyncAPIResource):
         return SpansResource(self._client)
 
     @cached_property
+    def traces(self) -> TracesResource:
+        return TracesResource(self._client)
+
+    @cached_property
     def with_raw_response(self) -> IntakeResourceWithRawResponse:
         """
         This property can be used as a prefix for any HTTP method call to return
@@ -140,6 +152,10 @@ class AsyncIntakeResource(AsyncAPIResource):
     @cached_property
     def spans(self) -> AsyncSpansResource:
         return AsyncSpansResource(self._client)
+
+    @cached_property
+    def traces(self) -> AsyncTracesResource:
+        return AsyncTracesResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> AsyncIntakeResourceWithRawResponse:
@@ -189,6 +205,10 @@ class IntakeResourceWithRawResponse:
     def spans(self) -> SpansResourceWithRawResponse:
         return SpansResourceWithRawResponse(self._intake.spans)
 
+    @cached_property
+    def traces(self) -> TracesResourceWithRawResponse:
+        return TracesResourceWithRawResponse(self._intake.traces)
+
 
 class AsyncIntakeResourceWithRawResponse:
     def __init__(self, intake: AsyncIntakeResource) -> None:
@@ -217,6 +237,10 @@ class AsyncIntakeResourceWithRawResponse:
     @cached_property
     def spans(self) -> AsyncSpansResourceWithRawResponse:
         return AsyncSpansResourceWithRawResponse(self._intake.spans)
+
+    @cached_property
+    def traces(self) -> AsyncTracesResourceWithRawResponse:
+        return AsyncTracesResourceWithRawResponse(self._intake.traces)
 
 
 class IntakeResourceWithStreamingResponse:
@@ -247,6 +271,10 @@ class IntakeResourceWithStreamingResponse:
     def spans(self) -> SpansResourceWithStreamingResponse:
         return SpansResourceWithStreamingResponse(self._intake.spans)
 
+    @cached_property
+    def traces(self) -> TracesResourceWithStreamingResponse:
+        return TracesResourceWithStreamingResponse(self._intake.traces)
+
 
 class AsyncIntakeResourceWithStreamingResponse:
     def __init__(self, intake: AsyncIntakeResource) -> None:
@@ -275,3 +303,7 @@ class AsyncIntakeResourceWithStreamingResponse:
     @cached_property
     def spans(self) -> AsyncSpansResourceWithStreamingResponse:
         return AsyncSpansResourceWithStreamingResponse(self._intake.spans)
+
+    @cached_property
+    def traces(self) -> AsyncTracesResourceWithStreamingResponse:
+        return AsyncTracesResourceWithStreamingResponse(self._intake.traces)

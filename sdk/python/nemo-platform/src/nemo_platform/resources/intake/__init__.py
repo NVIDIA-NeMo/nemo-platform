@@ -47,6 +47,14 @@ from .intake import (
     IntakeResourceWithStreamingResponse,
     AsyncIntakeResourceWithStreamingResponse,
 )
+from .traces import (
+    TracesResource,
+    AsyncTracesResource,
+    TracesResourceWithRawResponse,
+    AsyncTracesResourceWithRawResponse,
+    TracesResourceWithStreamingResponse,
+    AsyncTracesResourceWithStreamingResponse,
+)
 from .entries import (
     EntriesResource,
     AsyncEntriesResource,
@@ -109,6 +117,12 @@ __all__ = [
     "AsyncSpansResourceWithRawResponse",
     "SpansResourceWithStreamingResponse",
     "AsyncSpansResourceWithStreamingResponse",
+    "TracesResource",
+    "AsyncTracesResource",
+    "TracesResourceWithRawResponse",
+    "AsyncTracesResourceWithRawResponse",
+    "TracesResourceWithStreamingResponse",
+    "AsyncTracesResourceWithStreamingResponse",
     "IntakeResource",
     "AsyncIntakeResource",
     "IntakeResourceWithRawResponse",

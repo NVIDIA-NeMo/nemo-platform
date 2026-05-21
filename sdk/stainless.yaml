@@ -1181,3 +1181,12 @@ resources:
           evaluator_results:
             methods:
               list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results
+      traces:
+        models:
+          trace: Trace
+          trace_filter: TraceFilter
+          trace_sort_field: TraceSortField
+          traces_page: TracesPage
+        methods:
+          list: get /apis/intake/v2/workspaces/{workspace}/traces
+          retrieve: get /apis/intake/v2/workspaces/{workspace}/traces/{id}

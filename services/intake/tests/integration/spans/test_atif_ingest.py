@@ -321,7 +321,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert len(spans) == 7
     spans_by_name = {span["name"]: span for span in spans}
     assert set(spans_by_name) == {
-        "atif-trajectory",
+        "sample-agent",
         "user-1",
         "agent-2",
         "Bash",
@@ -331,16 +331,22 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     }
     assert {span["session_id"] for span in spans} == {"d074dfb7-3691-443c-b137-720d75e40afa"}
 
-    trajectory = spans_by_name["atif-trajectory"]
+    trajectory = spans_by_name["sample-agent"]
     assert trajectory["kind"] == "AGENT"
     assert trajectory["source"] == "atif"
+    assert trajectory["status"] == "error"
+    assert trajectory["input"] == body["steps"][0]["message"]
+    assert trajectory["output"] == body["steps"][2]["message"]
     assert trajectory["model"] == "provider/sample-model"
     assert trajectory["agent_name"] == "sample-agent"
-    assert trajectory["input_tokens"] == 51701
-    assert trajectory["output_tokens"] == 255
-    assert trajectory["cached_tokens"] == 0
-    assert trajectory["total_tokens"] == 51956
-    assert Decimal(str(trajectory["cost_total_usd"])) == Decimal("0.264321")
+    # Token and cost accounting lives on the agent step spans that incurred the
+    # LLM calls, not on the trajectory coordinator. The trace-level rollup sums
+    # per-step metrics; see _trajectory_to_span.
+    assert "input_tokens" not in trajectory
+    assert "output_tokens" not in trajectory
+    assert "cached_tokens" not in trajectory
+    assert "total_tokens" not in trajectory
+    assert "cost_total_usd" not in trajectory
     assert trajectory["evaluation_context"] == evaluation_context
     assert "attributes_string" not in trajectory
     trajectory_raw = json.loads(trajectory["raw_attributes"])
@@ -351,7 +357,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert trajectory["ended_at"] == "2026-05-04T19:06:45.570079"
 
     for span in spans:
-        if span["name"] == "atif-trajectory":
+        if span["name"] == "sample-agent":
             continue
         assert "evaluation_context" not in span
 
@@ -362,7 +368,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert evaluation_response.status_code == 200, evaluation_response.text
     evaluation_spans = evaluation_response.json()["data"]
     assert len(evaluation_spans) == 1
-    assert evaluation_spans[0]["name"] == "atif-trajectory"
+    assert evaluation_spans[0]["name"] == "sample-agent"
 
     for field, value in {
         "evaluation_id": evaluation_context["evaluation_id"],
@@ -380,7 +386,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         assert filtered.status_code == 200, filtered.text
         filtered_spans = filtered.json()["data"]
         assert len(filtered_spans) == 1
-        assert filtered_spans[0]["name"] == "atif-trajectory"
+        assert filtered_spans[0]["name"] == "sample-agent"
         assert filtered_spans[0]["evaluation_context"][field] == value
 
     evaluator_span = spans_by_name["harbor.verifier"]
@@ -483,7 +489,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert evaluation_roots_response.status_code == 200, evaluation_roots_response.text
     evaluation_roots = evaluation_roots_response.json()["data"]
     assert len(evaluation_roots) == 2
-    assert {span["name"] for span in evaluation_roots} == {"atif-trajectory"}
+    assert {span["name"] for span in evaluation_roots} == {"sample-agent"}
     assert {span["evaluation_context"]["evaluation_run_id"] for span in evaluation_roots} == {evaluation_run_id}
     assert {span["session_id"] for span in evaluation_roots} == {
         "d074dfb7-3691-443c-b137-720d75e40afa",
@@ -509,7 +515,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert other_evaluation_response.status_code == 200, other_evaluation_response.text
     other_spans = other_evaluation_response.json()["data"]
     assert len(other_spans) == 1
-    assert other_spans[0]["name"] == "atif-trajectory"
+    assert other_spans[0]["name"] == "sample-agent"
     assert other_spans[0]["span_id"] == trajectory["span_id"]
 
     same_session_response = client.get(
@@ -519,3 +525,118 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert same_session_response.status_code == 200, same_session_response.text
     same_session_spans_by_name = {span["name"]: span for span in same_session_response.json()["data"]}
     assert same_session_spans_by_name["user-1"]["span_id"] == user_step["span_id"]
+
+
+def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_carry_metrics(
+    client: TestClient,
+):
+    """Regression: emitters like opencode populate both trajectory.final_metrics AND
+    per-step metrics that sum to it. The trajectory span must NOT carry token attributes,
+    or the trace-level rollup would sum them and report 2x the real total.
+    """
+    body = {
+        "schema_version": "ATIF-v1.6",
+        "session_id": "atif-rollup-no-double-count",
+        "agent": {
+            "name": "opencode",
+            "version": "1.14.33",
+            "model_name": "test-provider/test-model",
+        },
+        "final_metrics": {
+            # If the trajectory span were to keep these as attributes, the rollup
+            # would double-count against the per-step metrics below.
+            "total_prompt_tokens": 30000,
+            "total_completion_tokens": 600,
+            "total_cached_tokens": 0,
+            "total_cost_usd": 0.45,
+            "total_steps": 2,
+        },
+        "steps": [
+            {
+                "step_id": 1,
+                "timestamp": "2026-05-04T19:00:00Z",
+                "source": "user",
+                "message": "Help me with a task.",
+            },
+            {
+                "step_id": 2,
+                "timestamp": "2026-05-04T19:00:05Z",
+                "source": "agent",
+                "model_name": "test-provider/test-model",
+                "message": "Here is the first response.",
+                "metrics": {
+                    "prompt_tokens": 12000,
+                    "completion_tokens": 250,
+                    "cached_tokens": 0,
+                    "cost_usd": 0.18,
+                },
+            },
+            {
+                "step_id": 3,
+                "timestamp": "2026-05-04T19:00:10Z",
+                "source": "agent",
+                "model_name": "test-provider/test-model",
+                "message": "Here is the follow-up.",
+                "metrics": {
+                    "prompt_tokens": 18000,
+                    "completion_tokens": 350,
+                    "cached_tokens": 0,
+                    "cost_usd": 0.27,
+                },
+            },
+        ],
+    }
+
+    ingest_response = client.post("/apis/intake/v2/workspaces/default/ingest/atif", json=body)
+    assert ingest_response.status_code == 201, ingest_response.text
+
+    # Trajectory span (kind=AGENT) carries no token or cost attributes.
+    spans_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans",
+        params={
+            "filter[session_id]": body["session_id"],
+            "page_size": 20,
+            "sort": "started_at",
+        },
+    )
+    assert spans_response.status_code == 200, spans_response.text
+    spans = spans_response.json()["data"]
+    trajectory = next(span for span in spans if span["kind"] == "AGENT")
+    for field in (
+        "input_tokens",
+        "output_tokens",
+        "cached_tokens",
+        "total_tokens",
+        "cost_usd",
+        "cost_input_usd",
+        "cost_output_usd",
+        "cost_total_usd",
+    ):
+        assert field not in trajectory, f"trajectory span unexpectedly carries {field}: {trajectory.get(field)}"
+
+    # Per-step LLM spans carry their own metrics.
+    llm_steps = sorted(
+        (span for span in spans if span["kind"] == "LLM"),
+        key=lambda span: span["started_at"],
+    )
+    assert len(llm_steps) == 2
+    assert llm_steps[0]["input_tokens"] == 12000
+    assert llm_steps[0]["output_tokens"] == 250
+    assert llm_steps[1]["input_tokens"] == 18000
+    assert llm_steps[1]["output_tokens"] == 350
+
+    # Trace-level rollup equals the sum of per-step metrics, NOT 2x.
+    traces_response = client.get(
+        "/apis/intake/v2/workspaces/default/traces",
+        params={"filter[session_id]": body["session_id"], "page_size": 10},
+    )
+    assert traces_response.status_code == 200, traces_response.text
+    traces = traces_response.json()["data"]
+    assert len(traces) == 1
+    trace = traces[0]
+    assert trace["input_tokens"] == 30000, (
+        f"expected per-step sum (30000); got {trace['input_tokens']} — double-counted?"
+    )
+    assert trace["output_tokens"] == 600
+    assert trace["total_tokens"] == 30600
+    assert trace["cost_usd"] == pytest.approx(0.45)

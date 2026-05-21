@@ -194,6 +194,9 @@ authz:
           description: "List intake spans"
         read:
           description: "Read intake spans"
+      traces:
+        read:
+          description: "Read intake traces"
       tasks:
         create:
           description: "Create intake tasks"
@@ -350,6 +353,7 @@ authz:
       - intake.spans.read
       - intake.tasks.list
       - intake.tasks.read
+      - intake.traces.read
       - jobs.list
       - jobs.read
       - models.adapters.list
@@ -1373,6 +1377,20 @@ authz:
       get:
         permissions:
         - intake.evaluator-results.list
+        scopes:
+        - intake:read
+        - platform:read
+    /apis/intake/v2/workspaces/{workspace}/traces:
+      get:
+        permissions:
+        - intake.traces.read
+        scopes:
+        - intake:read
+        - platform:read
+    /apis/intake/v2/workspaces/{workspace}/traces/{id}:
+      get:
+        permissions:
+        - intake.traces.read
         scopes:
         - intake:read
         - platform:read

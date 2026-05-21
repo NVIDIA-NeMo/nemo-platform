@@ -6874,6 +6874,129 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces:
+    get:
+      tags:
+      - Traces
+      summary: List Traces
+      operationId: list_traces_apis_intake_v2_workspaces__workspace__traces_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/TraceSortField'
+          default: -started_at
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Use summary for root-span trace fields only, or detailed to
+            include token, cost, and span-count rollups.
+          default: detailed
+          title: Mode
+        description: Use summary for root-span trace fields only, or detailed to include
+          token, cost, and span-count rollups.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/TraceFilter'
+        description: Filter root-span-backed traces by id, session_id, rolled-up status,
+          root span started_at, and root-span evaluation context fields.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/traces/{id}:
+    get:
+      tags:
+      - Traces
+      summary: Get Trace
+      operationId: get_trace_apis_intake_v2_workspaces__workspace__traces__id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Id
+      - name: mode
+        in: query
+        required: false
+        schema:
+          enum:
+          - summary
+          - detailed
+          type: string
+          description: Use summary for root-span trace fields only, or detailed to
+            include token, cost, and span-count rollups.
+          default: detailed
+          title: Mode
+        description: Use summary for root-span trace fields only, or detailed to include
+          token, cost, and span-count rollups.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trace'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/jobs/v2/execution-profiles:
     get:
       tags:
@@ -12944,10 +13067,14 @@ components:
           $ref: '#/components/schemas/FlexibleEntryResponse'
         session_id:
           title: Session Id
+          description: Groups related chat-completions calls without forcing them
+            into the same trace.
           type: string
         trace_id:
           title: Trace Id
-          description: Defaults to session_id when omitted.
+          description: Opt into joining an existing trace built via OTel or ATIF.
+            This is not a grouping mechanism for chat-completions calls; use session_id
+            to group related calls.
           type: string
         evaluation_context:
           $ref: '#/components/schemas/EvaluationContext'
@@ -29864,6 +29991,157 @@ components:
       - judge_model
       title: TopicAdherenceMetricResponse
       description: Response type for TopicAdherence metrics.
+    Trace:
+      properties:
+        id:
+          type: string
+          title: Id
+        root_span_id:
+          title: Root Span Id
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        workspace:
+          type: string
+          title: Workspace
+        name:
+          title: Name
+          type: string
+        evaluation_context:
+          $ref: '#/components/schemas/SpanEvaluationContext'
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        duration_ms:
+          title: Duration Ms
+          type: number
+        status:
+          $ref: '#/components/schemas/SpanStatus'
+        input_tokens:
+          title: Input Tokens
+          type: integer
+          minimum: 0.0
+        output_tokens:
+          title: Output Tokens
+          type: integer
+          minimum: 0.0
+        cached_tokens:
+          title: Cached Tokens
+          type: integer
+          minimum: 0.0
+        total_tokens:
+          title: Total Tokens
+          type: integer
+          minimum: 0.0
+        cost_usd:
+          title: Cost Usd
+          type: number
+        cost_input_usd:
+          title: Cost Input Usd
+          type: number
+        cost_output_usd:
+          title: Cost Output Usd
+          type: number
+        span_count:
+          title: Span Count
+          type: integer
+          minimum: 0.0
+        error_count:
+          title: Error Count
+          type: integer
+          minimum: 0.0
+      type: object
+      required:
+      - id
+      - session_id
+      - workspace
+      - started_at
+      - status
+      title: Trace
+    TraceFilter:
+      properties:
+        id:
+          description: Filter by canonical Intake trace id.
+          title: Id
+          type: string
+        session_id:
+          description: Filter by session id.
+          title: Session Id
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: Filter by rolled-up trace status.
+        started_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by root span start timestamp.
+        evaluation_id:
+          description: Filter by root-span evaluation id.
+          title: Evaluation Id
+          type: string
+        evaluation_sha:
+          description: Filter by root-span evaluation sha.
+          title: Evaluation Sha
+          type: string
+        evaluation_run_id:
+          description: Filter by root-span evaluation run id.
+          title: Evaluation Run Id
+          type: string
+        dataset_id:
+          description: Filter by root-span dataset id.
+          title: Dataset Id
+          type: string
+        dataset_name:
+          description: Filter by root-span dataset name.
+          title: Dataset Name
+          type: string
+        dataset_version:
+          description: Filter by root-span dataset version.
+          title: Dataset Version
+          type: string
+        test_case_id:
+          description: Filter by root-span dataset test case id.
+          title: Test Case Id
+          type: string
+      title: TraceFilter
+      type: object
+    TraceSortField:
+      type: string
+      enum:
+      - started_at
+      - -started_at
+      title: TraceSortField
+    TracesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Trace'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: TracesPage
     TracingConfig:
       properties:
         enabled:

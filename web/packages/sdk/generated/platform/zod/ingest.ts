@@ -315,8 +315,16 @@ export const IngestChatCompletionBody = zod.object({
     .describe(
       'Flexible entry response that accepts any object shape.\n\nThis flexibility enables the Intake service to store responses from various LLM providers\nand future model types without requiring schema updates.\n\nRequired: either `choices` (successful response) or `error` (failed call).\nCommon optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`, etc.'
     ),
-  session_id: zod.string().optional(),
-  trace_id: zod.string().optional().describe('Defaults to session_id when omitted.'),
+  session_id: zod
+    .string()
+    .optional()
+    .describe('Groups related chat-completions calls without forcing them into the same trace.'),
+  trace_id: zod
+    .string()
+    .optional()
+    .describe(
+      'Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.'
+    ),
   evaluation_context: zod
     .object({
       evaluation_id: zod.string().optional(),

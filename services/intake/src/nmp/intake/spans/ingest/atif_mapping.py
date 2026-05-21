@@ -119,22 +119,18 @@ def _trajectory_to_span(
     # atif.raw for now. Only subagent_trajectory_ref entries are materialized as
     # lightweight delegation spans until embedded trajectory expansion has
     # explicit trace identity and parentage semantics.
-    final_metrics = trajectory.final_metrics
     # ATIF span IDs are trace-native by design: session_id is the trace identity,
     # while evaluation_context is queryable metadata on the root span.
+    #
+    # Token/cost accounting belongs on the spans that incurred the LLM calls
+    # (the agent steps), not duplicated onto the trajectory coordinator span.
+    # The trace-level rollup sums per-step metrics; writing trajectory.final_metrics
+    # here too would double-count any source that emits both (e.g. opencode).
     external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
         agent_name=trajectory.agent.name,
         evaluation_context=trajectory.evaluation_context,
-        input_tokens=final_metrics.total_prompt_tokens if final_metrics is not None else None,
-        output_tokens=final_metrics.total_completion_tokens if final_metrics is not None else None,
-        cached_tokens=final_metrics.total_cached_tokens if final_metrics is not None else None,
-        total_tokens=_sum_ints(
-            final_metrics.total_prompt_tokens if final_metrics is not None else None,
-            final_metrics.total_completion_tokens if final_metrics is not None else None,
-        ),
-        cost_total_usd=_decimal(final_metrics.total_cost_usd) if final_metrics is not None else None,
         raw_attributes=raw_attributes,
     )
     return IntakeSpan(
@@ -144,15 +140,15 @@ def _trajectory_to_span(
         source_format="atif",
         external_span_id=external_span_id,
         kind=SpanKind.AGENT,
-        name="atif-trajectory",
-        # A tool call can fail while the overall trajectory remains a valid run.
-        # Child error spans stay queryable without rolling the root to ERROR.
-        status=SpanStatus.SUCCESS,
+        name=trajectory.agent.name,
+        status=SpanStatus.ERROR if _trajectory_has_error(trajectory) else SpanStatus.SUCCESS,
         start_time=_trajectory_started_at(trajectory, ingested_at),
         end_time=_trajectory_ended_at(trajectory),
         attributes_string=attribute_bags.string,
         attributes_number=attribute_bags.number,
         attributes_bool=attribute_bags.boolean,
+        input=_trajectory_input(trajectory) or "",
+        output=_trajectory_output(trajectory) or "",
         event_ts=ingested_at,
     )
 
@@ -552,6 +548,35 @@ def _step_model_name(step: AtifStep) -> str | None:
 
 def _step_metrics(step: AtifStep) -> AtifMetrics | None:
     return step.metrics if isinstance(step, AtifStepAgent) else None
+
+
+def _trajectory_input(trajectory: AtifTrajectory) -> str | None:
+    for step in trajectory.steps:
+        if step.source == "user":
+            return _string_or_json(step.message)
+    return None
+
+
+def _trajectory_output(trajectory: AtifTrajectory) -> str | None:
+    for step in reversed(trajectory.steps):
+        if isinstance(step, AtifStepAgent):
+            if step.message != "":
+                return _string_or_json(step.message)
+            return _step_output(step)
+    return None
+
+
+def _trajectory_has_error(trajectory: AtifTrajectory) -> bool:
+    for step in trajectory.steps:
+        if not isinstance(step, AtifStepAgent):
+            continue
+        observation = _step_observation(step)
+        if observation is None:
+            continue
+        for result in observation.results:
+            if _tool_result_is_error(step, result):
+                return True
+    return False
 
 
 def _step_tool_calls(step: AtifStep) -> list[AtifToolCall]:

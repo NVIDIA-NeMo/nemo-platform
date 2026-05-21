@@ -12,7 +12,7 @@ from nmp.intake.api.v2.entries import endpoints as entries
 from nmp.intake.api.v2.exports import endpoints as exports
 from nmp.intake.api.v2.tasks import endpoints as tasks
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api import evaluator_results, spans
+from nmp.intake.spans.api import evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 
@@ -47,6 +47,7 @@ class IntakeService(Service[IntakeConfig]):
             RouterConfig(entries.router, tag="Entries", description="Entry management endpoints"),
             RouterConfig(exports.router, tag="Exports", description="Export endpoints"),
             RouterConfig(spans.router, tag="Spans", description="ClickHouse-backed span read endpoints"),
+            RouterConfig(traces.router, tag="Traces", description="ClickHouse-backed trace summary read endpoints"),
             RouterConfig(
                 evaluator_results.router,
                 tag="Evaluator Results",

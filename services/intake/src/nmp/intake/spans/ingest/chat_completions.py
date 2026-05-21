@@ -37,8 +37,17 @@ class ChatCompletionsIngestRequest(BaseModel):
     request: FlexibleEntryRequest
     response: FlexibleEntryResponse
 
-    session_id: str | None = None
-    trace_id: str | None = Field(default=None, description="Defaults to session_id when omitted.")
+    session_id: str | None = Field(
+        default=None,
+        description="Groups related chat-completions calls without forcing them into the same trace.",
+    )
+    trace_id: str | None = Field(
+        default=None,
+        description=(
+            "Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for "
+            "chat-completions calls; use session_id to group related calls."
+        ),
+    )
     evaluation_context: EvaluationContext | None = None
     provider: str | None = None
 
@@ -76,7 +85,7 @@ def _chat_completion_to_span(
     usage = _dict_or_empty(response.get("usage"))
 
     external_span_id = _external_span_id(response, request)
-    trace_id = body.trace_id or body.session_id or external_span_id
+    trace_id = body.trace_id or external_span_id
     session_id = body.session_id or trace_id
 
     error = response.get("error") if isinstance(response.get("error"), dict) else None

@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 INGEST_URL = "/apis/intake/v2/workspaces/default/ingest/chat-completions"
 SPANS_URL = "/apis/intake/v2/workspaces/default/spans"
+TRACES_URL = "/apis/intake/v2/workspaces/default/traces"
 EVALUATION_CONTEXT = {
     "evaluation_id": "chat-eval",
     "evaluation_sha": "chat-eval-sha",
@@ -223,6 +224,17 @@ def test_chat_completions_ingest_groups_by_session_id(client: TestClient):
     assert len(spans) == 2
     assert {s["span_id"] for s in spans} == {"chatcmpl-turn-0", "chatcmpl-turn-1"}
     assert all(s["session_id"] == "shared-session" for s in spans)
+
+    traces_response = client.get(
+        TRACES_URL,
+        params={"filter[session_id]": "shared-session", "mode": "summary", "page_size": 10},
+    )
+    assert traces_response.status_code == 200, traces_response.text
+    traces = traces_response.json()["data"]
+    assert len(traces) == 2
+    assert {trace["id"] for trace in traces} == {"chatcmpl-turn-0", "chatcmpl-turn-1"}
+    assert {trace["session_id"] for trace in traces} == {"shared-session"}
+    assert all("total_tokens" not in trace for trace in traces)
 
 
 # ---------------------------------------------------------------------------

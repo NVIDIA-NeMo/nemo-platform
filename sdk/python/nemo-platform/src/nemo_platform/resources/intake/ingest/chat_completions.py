@@ -99,7 +99,11 @@ class ChatCompletionsResource(SyncAPIResource):
               Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
               etc.
 
-          trace_id: Defaults to session_id when omitted.
+          session_id: Groups related chat-completions calls without forcing them into the same trace.
+
+          trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
+              grouping mechanism for chat-completions calls; use session_id to group related
+              calls.
 
           extra_headers: Send extra headers
 
@@ -192,7 +196,11 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
               Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
               etc.
 
-          trace_id: Defaults to session_id when omitted.
+          session_id: Groups related chat-completions calls without forcing them into the same trace.
+
+          trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
+              grouping mechanism for chat-completions calls; use session_id to group related
+              calls.
 
           extra_headers: Send extra headers
 

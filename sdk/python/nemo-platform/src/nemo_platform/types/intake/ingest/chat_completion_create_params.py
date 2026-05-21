@@ -56,6 +56,11 @@ class ChatCompletionCreateParams(TypedDict, total=False):
     provider: str
 
     session_id: str
+    """Groups related chat-completions calls without forcing them into the same trace."""
 
     trace_id: str
-    """Defaults to session_id when omitted."""
+    """Opt into joining an existing trace built via OTel or ATIF.
+
+    This is not a grouping mechanism for chat-completions calls; use session_id to
+    group related calls.
+    """

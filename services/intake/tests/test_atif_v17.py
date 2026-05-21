@@ -9,9 +9,11 @@ from typing import Any
 
 import pytest
 from nmp.intake.spans.api.spans_schemas import Span
+from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.ingest.atif import AtifIngestRequest
 from nmp.intake.spans.ingest.atif_domain import (
     AtifAgent,
+    AtifStepAgent,
     AtifStepUser,
     AtifSubagentTrajectoryRef,
     AtifTrajectory,
@@ -102,7 +104,7 @@ def test_atif_v17_embedded_subagent_trajectories_are_preserved_but_not_expanded(
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
 
-    assert [span.name for span in spans] == ["atif-trajectory"]
+    assert [span.name for span in spans] == ["root"]
     root_raw = json.loads(spans[0].attributes_string["atif.raw"])
     assert root_raw["subagent_trajectories"][0]["trajectory_id"] == "sub-trajectory"
     assert root_raw["subagent_trajectories"][0]["steps"][0]["message"] == "subagent work"
@@ -154,7 +156,11 @@ def test_atif_v17_subagent_ref_requires_resolution_key() -> None:
             ],
         }
     )
-    legacy_ref = legacy.steps[0].observation.results[0].subagent_trajectory_ref[0]
+    assert isinstance(legacy.steps[0], AtifStepAgent)
+    assert legacy.steps[0].observation is not None
+    legacy_refs = legacy.steps[0].observation.results[0].subagent_trajectory_ref
+    assert legacy_refs is not None
+    legacy_ref = legacy_refs[0]
     assert legacy_ref.session_id == "trace-session-id"
 
     assert AtifSubagentTrajectoryRef(trajectory_id="sub-trajectory").trajectory_id == "sub-trajectory"
@@ -207,7 +213,7 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
         ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
     )
 
-    root = next(span for span in spans if span.name == "atif-trajectory")
+    root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
     assert root.attributes_string["evaluation.id"] == EVALUATION_CONTEXT["evaluation_id"]
     assert root.attributes_string["evaluation.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
@@ -237,6 +243,46 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     assert child_response.evaluation_context is None
     assert "evaluation.run_id" not in child.attributes_string
     assert "evaluation.metadata" not in child.attributes_string
+
+
+def test_atif_mapping_populates_root_content_and_rolls_child_errors() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "solve the task"},
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "message": "using a tool",
+                    "tool_calls": [{"tool_call_id": "call-1", "function_name": "Bash"}],
+                    "observation": {
+                        "results": [
+                            {
+                                "source_call_id": "call-1",
+                                "content": "Exit code 1\n[error] failed",
+                            }
+                        ]
+                    },
+                },
+                {"step_id": 3, "source": "agent", "message": "final answer"},
+            ],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    root = spans[0]
+    assert root.name == "sample-agent"
+    assert root.input == "solve the task"
+    assert root.output == "final answer"
+    assert root.status == SpanStatus.ERROR
 
 
 def test_atif_mapping_span_ids_are_trace_native_and_ignore_evaluation_run_id() -> None:

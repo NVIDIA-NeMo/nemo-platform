@@ -13,8 +13,9 @@ import type { FlexibleEntryResponse } from './FlexibleEntryResponse';
 export interface ChatCompletionsIngestRequest {
   request: FlexibleEntryRequestInput;
   response: FlexibleEntryResponse;
+  /** Groups related chat-completions calls without forcing them into the same trace. */
   session_id?: string;
-  /** Defaults to session_id when omitted. */
+  /** Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls. */
   trace_id?: string;
   evaluation_context?: EvaluationContext;
   provider?: string;

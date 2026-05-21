@@ -82,6 +82,7 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 | `intake.spans.(read \| list)` | Read, list intake spans | ✓ | ✓ | ✓ |
 | `intake.tasks.(read \| list)` | Read, list intake tasks | ✓ | ✓ | ✓ |
 | `intake.tasks.(create \| update \| delete)` | Create, update, delete intake tasks |  | ✓ | ✓ |
+| `intake.traces.read` | Read intake traces | ✓ | ✓ | ✓ |
 
 ## Jobs API
 

@@ -253,3 +253,16 @@ from nemo_platform.types.intake.spans import EvaluatorResultListResponse
 Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results">client.intake.spans.evaluator_results.<a href="./src/nemo_platform/resources/intake/spans/evaluator_results.py">list</a>(span_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/spans/evaluator_result_list_response.py">EvaluatorResultListResponse</a></code>
+
+## Traces
+
+Types:
+
+```python
+from nemo_platform.types.intake import Trace, TraceFilter, TraceSortField, TracesPage
+```
+
+Methods:
+
+- <code title="get /apis/intake/v2/workspaces/{workspace}/traces/{id}">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">retrieve</a>(id, \*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_retrieve_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">Trace</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/traces">client.intake.traces.<a href="./src/nemo_platform/resources/intake/traces.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/trace_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/trace.py">SyncDefaultPagination[Trace]</a></code>

@@ -135,6 +135,7 @@ import type {
   GatewayProxyPostBody,
   GatewayProxyPut200,
   GatewayProxyPutBody,
+  GetTraceParams,
   GuardrailCheckRequest,
   GuardrailCheckResponse,
   GuardrailConfig,
@@ -159,6 +160,7 @@ import type {
   ListFilesetFilesResponse,
   ListSpansParams,
   ListTasksParams,
+  ListTracesParams,
   ListVirtualModelsParams,
   LogQueryRequest,
   MetricEvaluationJob,
@@ -266,6 +268,8 @@ import type {
   ToolCallingMetricResponse,
   TopicAdherenceMetricInput,
   TopicAdherenceMetricResponse,
+  Trace,
+  TracesPage,
   UpdateAdapterRequest,
   UpdateFilesetRequest,
   UpdateModelDeploymentConfigRequest,
@@ -22825,6 +22829,426 @@ export function useListEvaluatorResultsForSpanSuspense<
     spanId,
     options
   );
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List Traces
+ */
+export const listTraces = (workspace: string, params?: ListTracesParams, signal?: AbortSignal) => {
+  return customFetch<TracesPage>({
+    url: `/apis/intake/v2/workspaces/${encodeURIComponent(String(workspace))}/traces`,
+    method: 'GET',
+    params,
+    signal,
+  });
+};
+
+export const getListTracesQueryKey = (workspace: string, params?: ListTracesParams) => {
+  return [`/apis/intake/v2/workspaces/${workspace}/traces`, ...(params ? [params] : [])] as const;
+};
+
+export const getListTracesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTracesQueryKey(workspace, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTraces>>> = ({ signal }) =>
+    listTraces(workspace, params, signal);
+
+  return { queryKey, queryFn, enabled: !!workspace, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listTraces>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListTracesQueryResult = NonNullable<Awaited<ReturnType<typeof listTraces>>>;
+export type ListTracesQueryError = ErrorType<HTTPValidationError>;
+
+export function useListTraces<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params: undefined | ListTracesParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listTraces>>,
+          TError,
+          Awaited<ReturnType<typeof listTraces>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTraces<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof listTraces>>,
+          TError,
+          Awaited<ReturnType<typeof listTraces>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTraces<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Traces
+ */
+
+export function useListTraces<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListTracesQueryOptions(workspace, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getListTracesSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListTracesQueryKey(workspace, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listTraces>>> = ({ signal }) =>
+    listTraces(workspace, params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof listTraces>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type ListTracesSuspenseQueryResult = NonNullable<Awaited<ReturnType<typeof listTraces>>>;
+export type ListTracesSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useListTracesSuspense<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params: undefined | ListTracesParams,
+  options: {
+    query: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTracesSuspense<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useListTracesSuspense<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary List Traces
+ */
+
+export function useListTracesSuspense<
+  TData = Awaited<ReturnType<typeof listTraces>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  params?: ListTracesParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof listTraces>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getListTracesSuspenseQueryOptions(workspace, params, options);
+
+  const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
+    TData,
+    TError
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get Trace
+ */
+export const getTrace = (
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  signal?: AbortSignal
+) => {
+  return customFetch<Trace>({
+    url: `/apis/intake/v2/workspaces/${encodeURIComponent(String(workspace))}/traces/${encodeURIComponent(String(id))}`,
+    method: 'GET',
+    params,
+    signal,
+  });
+};
+
+export const getGetTraceQueryKey = (workspace: string, id: string, params?: GetTraceParams) => {
+  return [
+    `/apis/intake/v2/workspaces/${workspace}/traces/${id}`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getGetTraceQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTraceQueryKey(workspace, id, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrace>>> = ({ signal }) =>
+    getTrace(workspace, id, params, signal);
+
+  return { queryKey, queryFn, enabled: !!(workspace && id), ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getTrace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetTraceQueryResult = NonNullable<Awaited<ReturnType<typeof getTrace>>>;
+export type GetTraceQueryError = ErrorType<HTTPValidationError>;
+
+export function useGetTrace<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params: undefined | GetTraceParams,
+  options: {
+    query: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>> &
+      Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTrace>>,
+          TError,
+          Awaited<ReturnType<typeof getTrace>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTrace<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>> &
+      Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getTrace>>,
+          TError,
+          Awaited<ReturnType<typeof getTrace>>
+        >,
+        'initialData'
+      >;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTrace<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Trace
+ */
+
+export function useGetTrace<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTraceQueryOptions(workspace, id, params, options);
+
+  const query = useQuery(queryOptions, queryClient) as UseQueryResult<TData, TError> & {
+    queryKey: DataTag<QueryKey, TData, TError>;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+export const getGetTraceSuspenseQueryOptions = <
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  }
+) => {
+  const { query: queryOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetTraceQueryKey(workspace, id, params);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getTrace>>> = ({ signal }) =>
+    getTrace(workspace, id, params, signal);
+
+  return { queryKey, queryFn, ...queryOptions } as UseSuspenseQueryOptions<
+    Awaited<ReturnType<typeof getTrace>>,
+    TError,
+    TData
+  > & { queryKey: DataTag<QueryKey, TData, TError> };
+};
+
+export type GetTraceSuspenseQueryResult = NonNullable<Awaited<ReturnType<typeof getTrace>>>;
+export type GetTraceSuspenseQueryError = ErrorType<HTTPValidationError>;
+
+export function useGetTraceSuspense<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params: undefined | GetTraceParams,
+  options: {
+    query: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTraceSuspense<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+export function useGetTraceSuspense<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+/**
+ * @summary Get Trace
+ */
+
+export function useGetTraceSuspense<
+  TData = Awaited<ReturnType<typeof getTrace>>,
+  TError = ErrorType<HTTPValidationError>,
+>(
+  workspace: string,
+  id: string,
+  params?: GetTraceParams,
+  options?: {
+    query?: Partial<UseSuspenseQueryOptions<Awaited<ReturnType<typeof getTrace>>, TError, TData>>;
+  },
+  queryClient?: QueryClient
+): UseSuspenseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+  const queryOptions = getGetTraceSuspenseQueryOptions(workspace, id, params, options);
 
   const query = useSuspenseQuery(queryOptions, queryClient) as UseSuspenseQueryResult<
     TData,

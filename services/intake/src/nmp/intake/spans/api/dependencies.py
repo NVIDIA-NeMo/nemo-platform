@@ -12,6 +12,7 @@ from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient, get_clickho
 from nmp.intake.spans.evaluator_results_repository import EvaluatorResultsRepository
 from nmp.intake.spans.service import IntakeSpansService
 from nmp.intake.spans.span_repository import SpanRepository
+from nmp.intake.spans.trace_repository import TraceRepository
 
 
 async def require_workspace_access(
@@ -49,6 +50,12 @@ def get_span_repository(
     return SpanRepository(client)
 
 
+def get_trace_repository(
+    client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
+) -> TraceRepository:
+    return TraceRepository(client)
+
+
 def get_evaluator_results_repository(
     client: Annotated[ClickHouseSpanClient, Depends(get_clickhouse_client)],
 ) -> EvaluatorResultsRepository:
@@ -57,9 +64,10 @@ def get_evaluator_results_repository(
 
 def get_spans_service(
     span_repository: Annotated[SpanRepository, Depends(get_span_repository)],
+    trace_repository: Annotated[TraceRepository, Depends(get_trace_repository)],
     evaluator_results_repository: Annotated[EvaluatorResultsRepository, Depends(get_evaluator_results_repository)],
 ) -> IntakeSpansService:
-    return IntakeSpansService(span_repository, evaluator_results_repository)
+    return IntakeSpansService(span_repository, trace_repository, evaluator_results_repository)
 
 
 SpansServiceDep = Annotated[IntakeSpansService, Depends(get_spans_service)]

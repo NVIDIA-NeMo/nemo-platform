@@ -41,8 +41,19 @@ def create_chat_completions(
     ] = None,
     evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
     provider: Annotated[str | None, typer.Option("--provider")] = None,
-    session_id: Annotated[str | None, typer.Option("--session-id")] = None,
-    trace_id: Annotated[str | None, typer.Option("--trace-id", help="Defaults to session_id when omitted.")] = None,
+    session_id: Annotated[
+        str | None,
+        typer.Option(
+            "--session-id", help="Groups related chat-completions calls without forcing them into the same trace."
+        ),
+    ] = None,
+    trace_id: Annotated[
+        str | None,
+        typer.Option(
+            "--trace-id",
+            help="Opt into joining an existing trace built via OTel or ATIF. This is not a grouping mechanism for chat-completions calls; use session_id to group related calls.",
+        ),
+    ] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
