@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.constants import PLACEHOLDER_INFERENCE_API_KEY
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.metrics.ragas import (
@@ -67,11 +68,11 @@ def _is_chat_handler_factory(value: object) -> TypeGuard[_ChatHandlerFactory]:
 
 
 def _get_score_value(result: MetricResult, score_name: str) -> float:
-    """Helper to get score value from v2 MetricResult (list of MetricScore)."""
-    for score in result.scores:
-        if score.name == score_name:
-            return score.value
-    raise KeyError(f"Score '{score_name}' not found in result")
+    """Helper to get output value from MetricResult."""
+    for output in result.outputs:
+        if output.name == score_name:
+            return output.value
+    raise KeyError(f"Output '{score_name}' not found in result")
 
 
 @pytest.mark.asyncio
@@ -104,7 +105,7 @@ async def test_metric_types(metric_class, expected_type, params):
 
 def test_score_names_defaults_to_metric_type_value():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
-    assert metric.score_names() == [metric.type.value]
+    assert output_names(metric) == [metric.type.value]
 
 
 def test_llm_backed_ragas_metric_exposes_ignore_request_failure():
@@ -128,7 +129,7 @@ async def test_topic_adherence_metric():
     mock_evaluate = MagicMock()
     mock_evaluate.return_value.scores = [{"topic_relevance": 0.85}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
-        result = await metric.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
         assert isinstance(result, MetricResult)
         assert _get_score_value(result, "topic_relevance") == 0.85
 
@@ -141,7 +142,7 @@ async def test_tool_call_accuracy_metric():
     mock_evaluate = MagicMock()
     mock_evaluate.return_value.scores = [{"tool_call_accuracy": 0.9}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
-        result = await metric.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
         assert isinstance(result, MetricResult)
         assert _get_score_value(result, "tool_call_accuracy") == 0.9
 
@@ -157,7 +158,7 @@ async def test_agent_goal_accuracy_metric():
     mock_evaluate = MagicMock()
     mock_evaluate.return_value.scores = [{"agent_goal_accuracy": 0.95}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
-        result = await metric_with_ref.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric_with_ref, MOCK_ITEM, MOCK_SAMPLE)
         assert _get_score_value(result, "agent_goal_accuracy") == 0.95
 
     # Test without reference
@@ -168,7 +169,7 @@ async def test_agent_goal_accuracy_metric():
     mock_evaluate2 = MagicMock()
     mock_evaluate2.return_value.scores = [{"agent_goal_accuracy": 0.85}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate2):
-        result = await metric_without_ref.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric_without_ref, MOCK_ITEM, MOCK_SAMPLE)
         assert _get_score_value(result, "agent_goal_accuracy") == 0.85
 
 
@@ -508,7 +509,7 @@ async def test_embeddings_client_validation():
     mock_evaluate = MagicMock()
     mock_evaluate.return_value.scores = [{"answer_relevancy": 0.9}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
-        result = await metric.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
         assert isinstance(result, MetricResult)
 
 
@@ -600,15 +601,15 @@ async def test_metric_result_format():
     mock_evaluate = MagicMock()
     mock_evaluate.return_value.scores = [{"topic_relevance": 0.85, "another_score": 0.9}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
-        result = await metric.compute_scores(MOCK_ITEM, MOCK_SAMPLE)
+        result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
 
-        # v2 format: MetricResult.scores is a list of MetricScore
+        # MetricResult.outputs is a list of MetricOutput.
         assert isinstance(result, MetricResult)
-        assert isinstance(result.scores, list)
-        assert len(result.scores) == 2
+        assert isinstance(result.outputs, list)
+        assert len(result.outputs) == 2
 
-        # Check that scores are MetricScore objects with name and value
-        score_dict = {s.name: s.value for s in result.scores}
+        # Check that outputs have name and value.
+        score_dict = {s.name: s.value for s in result.outputs}
         assert score_dict["topic_relevance"] == 0.85
         assert score_dict["another_score"] == 0.9
 

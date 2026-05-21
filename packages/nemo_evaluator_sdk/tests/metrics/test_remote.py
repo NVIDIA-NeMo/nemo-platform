@@ -5,10 +5,11 @@ import math
 from unittest.mock import AsyncMock
 
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.inference import requests_log_var
+from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
 from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, RemoteMetric, _post_to_remote_endpoint
 from nemo_evaluator_sdk.values.common import SecretRef
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RemoteScore
 from pytest_mock import MockerFixture
 
@@ -71,7 +72,7 @@ class TestRemoteMetric:
             body={"input": "{{item.prompt}}"},
             scores=[RemoteScore(name="quality", parser=JSONScoreParser(json_path="$.result.quality"))],
         )
-        assert metric.score_names() == ["quality"]
+        assert output_names(metric) == ["quality"]
 
     @pytest.mark.asyncio
     async def test_compute_scores(self, mocker: MockerFixture):
@@ -86,11 +87,11 @@ class TestRemoteMetric:
             scores=[RemoteScore(name="quality", parser=JSONScoreParser(json_path="$.result.quality"))],
         )
 
-        result = await metric.compute_scores({"prompt": "hello"}, {})
+        result = await compute_scores(metric, {"prompt": "hello"}, {})
 
         mock_post.assert_awaited_once()
-        assert result.scores[0].name == "quality"
-        assert result.scores[0].value == 0.75
+        assert result.outputs[0].name == "quality"
+        assert result.outputs[0].value == 0.75
 
     @pytest.mark.asyncio
     async def test_missing_template_key_raises_clear_error(self):
@@ -101,7 +102,7 @@ class TestRemoteMetric:
         )
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores({}, {})
+            await compute_scores(metric, {}, {})
 
         assert "could not render its 'body' template for this row" in str(exc_info.value)
 
@@ -118,8 +119,8 @@ class TestRemoteMetric:
             scores=[RemoteScore(name="quality", parser=JSONScoreParser(json_path="$.result.quality"))],
         )
 
-        result = await metric.compute_scores({"prompt": "hello"}, {})
-        assert math.isnan(result.scores[0].value)
+        result = await compute_scores(metric, {"prompt": "hello"}, {})
+        assert math.isnan(result.outputs[0].value)
 
     @pytest.mark.asyncio
     async def test_compute_scores_passes_rendered_body_dict_to_remote_endpoint(self, mocker: MockerFixture):
@@ -134,7 +135,7 @@ class TestRemoteMetric:
             scores=[RemoteScore(name="quality", parser=JSONScoreParser(json_path="$.result.quality"))],
         )
 
-        await metric.compute_scores({"prompt": "hello"}, {})
+        await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert mock_post.await_args.kwargs["payload"] == {"input": "hello"}
 
@@ -153,7 +154,7 @@ class TestRemoteMetric:
         )
 
         with pytest.raises(TypeError):
-            await metric.compute_scores({"prompt": "hello"}, {})
+            await compute_scores(metric, {"prompt": "hello"}, {})
 
         log_exception.assert_called_once()
 
@@ -172,16 +173,16 @@ class TestRemoteMetric:
             "compute_scores",
             new=AsyncMock(
                 return_value=MetricResult(
-                    scores=[
-                        MetricScore(name="quality", value=0.7),
-                        MetricScore(name="helpfulness", value=0.8),
+                    outputs=[
+                        MetricOutput(name="quality", value=0.7),
+                        MetricOutput(name="helpfulness", value=0.8),
                     ]
                 )
             ),
         )
-        result = await metric.compute_scores({"prompt": "hello"}, {})
-        assert [score.name for score in result.scores] == ["quality", "helpfulness"]
-        assert [score.value for score in result.scores] == [0.7, 0.8]
+        result = await compute_scores(metric, {"prompt": "hello"}, {})
+        assert [score.name for score in result.outputs] == ["quality", "helpfulness"]
+        assert [score.value for score in result.outputs] == [0.7, 0.8]
 
     @pytest.mark.asyncio
     async def test_metric_uses_single_score_when_only_one_score_is_returned(self, mocker: MockerFixture):
@@ -193,9 +194,9 @@ class TestRemoteMetric:
         mocker.patch.object(
             RemoteMetric,
             "compute_scores",
-            new=AsyncMock(return_value=MetricResult(scores=[MetricScore(name="quality", value=0.7)])),
+            new=AsyncMock(return_value=MetricResult(outputs=[MetricOutput(name="quality", value=0.7)])),
         )
-        assert (await metric.compute_scores({"prompt": "hello"}, {})).scores[0].value == 0.7
+        assert (await compute_scores(metric, {"prompt": "hello"}, {})).outputs[0].value == 0.7
 
     @pytest.mark.asyncio
     async def test_metric_runs_inside_existing_event_loop(self, mocker: MockerFixture):
@@ -207,10 +208,10 @@ class TestRemoteMetric:
         mocker.patch.object(
             RemoteMetric,
             "compute_scores",
-            new=AsyncMock(return_value=MetricResult(scores=[MetricScore(name="quality", value=0.7)])),
+            new=AsyncMock(return_value=MetricResult(outputs=[MetricOutput(name="quality", value=0.7)])),
         )
 
-        assert (await metric.compute_scores({"prompt": "hello"}, {})).scores[0].value == 0.7
+        assert (await compute_scores(metric, {"prompt": "hello"}, {})).outputs[0].value == 0.7
 
     @pytest.mark.asyncio
     async def test_resolve_secrets(self, mocker: MockerFixture):
@@ -237,7 +238,7 @@ class TestRemoteMetric:
             return "secret-value"
 
         await metric.resolve_secrets(fake_resolver)
-        await metric.compute_scores({"prompt": "hello"}, {})
+        await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert captured_api_keys == ["secret-value"]
 
@@ -296,7 +297,7 @@ class TestRemoteMetric:
         )
         assert metric._get_api_key() == "env-secret"
 
-        await metric.compute_scores({"prompt": "hello"}, {})
+        await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert captured_api_keys == ["env-secret"]
 
@@ -315,7 +316,7 @@ class TestRemoteMetric:
 
         token = requests_log_var.set([])
         try:
-            await metric.compute_scores({"prompt": "hello"}, {})
+            await compute_scores(metric, {"prompt": "hello"}, {})
             assert requests_log_var.get() == [
                 {"request": {"input": "hello"}, "response": {"result": {"quality": 0.75}}}
             ]
@@ -336,12 +337,12 @@ class TestNemoAgentToolkitRemoteMetric:
             evaluator_name="tool-accuracy",
         )
 
-        result = await metric.compute_scores({"prompt": "hello"}, {})
+        result = await compute_scores(metric, {"prompt": "hello"}, {})
 
         payload = mock_post.await_args.kwargs["payload"]
         assert payload["evaluator_name"] == "tool-accuracy"
         assert payload["item"] == {"prompt": "hello"}
-        assert result.scores[0].name == "tool-accuracy"
+        assert result.outputs[0].name == "tool-accuracy"
 
     @pytest.mark.asyncio
     async def test_nemo_agent_toolkit_missing_score_returns_nan(self, mocker: MockerFixture):
@@ -355,16 +356,16 @@ class TestNemoAgentToolkitRemoteMetric:
             evaluator_name="tool-accuracy",
         )
 
-        result = await metric.compute_scores({"prompt": "hello"}, {})
+        result = await compute_scores(metric, {"prompt": "hello"}, {})
 
-        assert math.isnan(result.scores[0].value)
+        assert math.isnan(result.outputs[0].value)
 
     def test_nemo_agent_toolkit_score_names(self):
         metric = NemoAgentToolkitRemoteMetric(
             url="https://remote.example.test",
             evaluator_name="tool-accuracy",
         )
-        assert metric.score_names() == ["tool-accuracy"]
+        assert output_names(metric) == ["tool-accuracy"]
 
     @pytest.mark.asyncio
     async def test_nemo_agent_toolkit_resolve_secrets(self, mocker: MockerFixture):
@@ -390,7 +391,7 @@ class TestNemoAgentToolkitRemoteMetric:
             return "secret-value"
 
         await metric.resolve_secrets(fake_resolver)
-        await metric.compute_scores({"prompt": "hello"}, {})
+        await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert metric._get_api_key() == "secret-value"
         assert captured_api_keys == ["secret-value"]
@@ -418,7 +419,7 @@ class TestNemoAgentToolkitRemoteMetric:
             api_key_secret=SecretRef(root="remote-api-key"),
         )
 
-        await metric.compute_scores({"prompt": "hello"}, {})
+        await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert metric._get_api_key() == "env-secret"
         assert captured_api_keys == ["env-secret"]
@@ -437,7 +438,7 @@ class TestNemoAgentToolkitRemoteMetric:
 
         token = requests_log_var.set([])
         try:
-            await metric.compute_scores({"prompt": "hello"}, {})
+            await compute_scores(metric, {"prompt": "hello"}, {})
             assert requests_log_var.get() == [
                 {
                     "request": {"evaluator_name": "tool-accuracy", "item": {"prompt": "hello"}},
@@ -459,4 +460,4 @@ class TestNemoAgentToolkitRemoteMetric:
             return_value={"result": {"score": 0.9}},
         )
 
-        assert (await metric.compute_scores({"prompt": "hello"}, {})).scores[0].value == 0.9
+        assert (await compute_scores(metric, {"prompt": "hello"}, {})).outputs[0].value == 0.9

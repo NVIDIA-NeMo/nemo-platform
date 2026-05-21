@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from metrics.helpers import compute_corpus_scores, compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.bleu import BLEUMetric, MetricResult
 
@@ -11,7 +12,9 @@ class TestBLEUMetric:
     async def test_metric_default_candidate(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
         score = (
-            (await metric.compute_scores({"reference": "the cat sat"}, {"output_text": "the cat sat"})).scores[0].value
+            (await compute_scores(metric, {"reference": "the cat sat"}, {"output_text": "the cat sat"}))
+            .outputs[0]
+            .value
         )
         assert score == pytest.approx(100.0)
 
@@ -20,11 +23,11 @@ class TestBLEUMetric:
         metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
         score = (
             (
-                await metric.compute_scores(
-                    {"reference": "the cat sat", "pred": "the cat sat"}, {"output_text": "ignored"}
+                await compute_scores(
+                    metric, {"reference": "the cat sat", "pred": "the cat sat"}, {"output_text": "ignored"}
                 )
             )
-            .scores[0]
+            .outputs[0]
             .value
         )
         assert score == pytest.approx(100.0)
@@ -32,10 +35,10 @@ class TestBLEUMetric:
     @pytest.mark.asyncio
     async def test_metric_scores(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
-        assert (await metric.compute_scores({"reference": "the cat"}, {"output_text": "the cat"})).scores[
+        assert (await compute_scores(metric, {"reference": "the cat"}, {"output_text": "the cat"})).outputs[
             0
         ].value == pytest.approx(100.0)
-        assert (await metric.compute_scores({"reference": "the cat"}, {"output_text": "dog barked"})).scores[
+        assert (await compute_scores(metric, {"reference": "the cat"}, {"output_text": "dog barked"})).outputs[
             0
         ].value == pytest.approx(0.0)
 
@@ -43,41 +46,43 @@ class TestBLEUMetric:
     async def test_metric_validates_reference_and_candidate_types(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
         with pytest.raises(TypeError, match="The reference must be a string"):
-            await metric.compute_scores({"reference": 1}, {"output_text": "1"})
+            await compute_scores(metric, {"reference": 1}, {"output_text": "1"})
 
         bad_candidate = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
         with pytest.raises(TypeError, match="The candidate must be a string"):
-            await bad_candidate.compute_scores({"reference": "x", "pred": 1}, {"output_text": "ignored"})
+            await compute_scores(bad_candidate, {"reference": "x", "pred": 1}, {"output_text": "ignored"})
 
     @pytest.mark.asyncio
     async def test_metric_default_candidate_non_string_raises_value_error(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
         with pytest.raises(TypeError, match="The candidate must be a string"):
-            await metric.compute_scores({"reference": "x"}, {"output_text": 123})
+            await compute_scores(metric, {"reference": "x"}, {"output_text": 123})
 
     @pytest.mark.asyncio
     async def test_metric_default_candidate_missing_output_text_raises_clear_error(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
         with pytest.raises(ValueError, match=r"candidate=\.\.\."):
-            await metric.compute_scores({"reference": "x"}, {})
+            await compute_scores(metric, {"reference": "x"}, {})
 
     @pytest.mark.asyncio
     async def test_compute_scores_and_corpus_scores(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
-        row_result = await metric.compute_scores({"reference": "the cat"}, {"output_text": "the cat"})
-        assert row_result.scores[0].name == "sentence"
+        row_result = await compute_scores(metric, {"reference": "the cat"}, {"output_text": "the cat"})
+        assert row_result.outputs[0].name == "sentence"
 
-        corpus_result = await metric.compute_corpus_scores(
+        corpus_result = await compute_corpus_scores(
+            metric,
             items=[{"reference": "the cat"}, {"reference": "a dog"}],
             samples=[{"output_text": "the cat"}, {"output_text": "a dog"}],
         )
         assert corpus_result is not None
-        assert corpus_result.scores[0].name == "corpus"
+        assert corpus_result.outputs[0].name == "corpus"
 
     @pytest.mark.asyncio
     async def test_corpus_uses_candidate_template_and_validates_type(self):
         metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
-        corpus_result = await metric.compute_corpus_scores(
+        corpus_result = await compute_corpus_scores(
+            metric,
             items=[{"reference": "the cat", "pred": "the cat"}],
             samples=[{"output_text": "ignored"}],
         )
@@ -85,7 +90,8 @@ class TestBLEUMetric:
 
         bad_metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
         with pytest.raises(TypeError, match="The candidate must be a string"):
-            await bad_metric.compute_corpus_scores(
+            await compute_corpus_scores(
+                bad_metric,
                 items=[{"reference": "the cat", "pred": 1}],
                 samples=[{"output_text": "ignored"}],
             )
@@ -94,13 +100,13 @@ class TestBLEUMetric:
     async def test_raises_clear_error_for_missing_reference_field(self):
         metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{sample.output_text}}")
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(item={"prompt": "hello"}, sample={"output_text": "hi"})
+            await compute_scores(metric, item={"prompt": "hello"}, sample={"output_text": "hi"})
         assert "could not render its 'references[0]' template for this row" in str(exc_info.value)
         assert "missing_key='reference'" in str(exc_info.value)
 
     def test_score_names(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
-        assert metric.score_names() == ["sentence"]
+        assert output_names(metric) == ["sentence"]
 
     def test_run_sync_adds_corpus_score(self):
         metric = BLEUMetric(references=["{{item.reference}}"], candidate="{{item.pred}}")
@@ -125,19 +131,19 @@ class TestBLEUMetric:
         item = {"reference": "The cat sat on the mat."}
         sample = {"output_text": "The cat sat on the mat."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "sentence"
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "sentence"
         # Exact match should give a perfect or near-perfect BLEU score
-        assert result.scores[0].value > 90.0
+        assert result.outputs[0].value > 90.0
 
     @pytest.mark.asyncio
     async def test_score_names_match_compute_scores(self):
         metric = BLEUMetric(references=["{{item.reference}}"])
-        result = await metric.compute_scores({"reference": "a"}, {"output_text": "a"})
-        assert {score.name for score in result.scores} == set(metric.score_names())
+        result = await compute_scores(metric, {"reference": "a"}, {"output_text": "a"})
+        assert {score.name for score in result.outputs} == set(output_names(metric))
 
     @pytest.mark.asyncio
     async def test_compute_scores_partial_match(self):
@@ -149,13 +155,13 @@ class TestBLEUMetric:
         item = {"reference": "The cat sat on the mat."}
         sample = {"output_text": "The dog sat on the floor."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "sentence"
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "sentence"
         # Partial match should give a lower score
-        assert 0.0 <= result.scores[0].value < 100.0
+        assert 0.0 <= result.outputs[0].value < 100.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_no_match(self):
@@ -167,13 +173,13 @@ class TestBLEUMetric:
         item = {"reference": "The cat sat on the mat."}
         sample = {"output_text": "Completely different sentence with no overlap."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "sentence"
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "sentence"
         # No match should give a very low score
-        assert result.scores[0].value >= 0.0
+        assert result.outputs[0].value >= 0.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_with_custom_candidate(self):
@@ -186,11 +192,11 @@ class TestBLEUMetric:
         item = {"reference": "The cat sat on the mat.", "custom_output": "The cat sat on the mat."}
         sample = {"output_text": "This should be ignored."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].value > 90.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].value > 90.0
 
     @pytest.mark.asyncio
     async def test_compute_corpus_scores(self):
@@ -208,13 +214,13 @@ class TestBLEUMetric:
             {"output_text": "The dog ran in the park."},
         ]
 
-        result = await metric.compute_corpus_scores(items, samples)
+        result = await compute_corpus_scores(metric, items, samples)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "corpus"
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "corpus"
         # Good matches should give high corpus score
-        assert result.scores[0].value > 90.0
+        assert result.outputs[0].value > 90.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_multiple_references(self):
@@ -226,9 +232,9 @@ class TestBLEUMetric:
         item = {"reference1": "The cat sat on the mat.", "reference2": "A cat was sitting on the mat."}
         sample = {"output_text": "The cat sat on the mat."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
+        assert len(result.outputs) == 1
         # With multiple references, should still compute properly
-        assert result.scores[0].value >= 0.0
+        assert result.outputs[0].value >= 0.0

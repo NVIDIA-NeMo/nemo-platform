@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
-from nemo_evaluator_sdk.values import DatasetRows, MetricScore, Model, RowScore
+from nemo_evaluator_sdk.values import DatasetRows, MetricOutput, Model, RowScore
 from nmp.evaluator.api.v2.metrics.schemas.evaluation import (
     EvaluateDatasetRows,
     MetricEvaluationRequest,
@@ -348,7 +348,7 @@ class TestMetricEvaluationRequestMetricUnion:
 def _row_score(
     *,
     index: int = 0,
-    metrics: dict[str, list[MetricScore]] | None = None,
+    metrics: dict[str, list[MetricOutput]] | None = None,
     metric_errors: dict[str, str] | None = None,
 ) -> RowScore:
     """Build a minimal RowScore with only the fields `from_row_score` reads."""
@@ -374,7 +374,7 @@ class TestMetricEvaluationRowScoreFromRowScore:
         """Finite metric values pass through unchanged into the scores dict."""
         row_score = _row_score(
             index=3,
-            metrics={"exact_match": [MetricScore(name="score", value=1.0)]},
+            metrics={"exact_match": [MetricOutput(name="score", value=1.0)]},
         )
         result = MetricEvaluationRowScore.from_row_score(row_score, row=ROW, index=3)
 
@@ -387,7 +387,7 @@ class TestMetricEvaluationRowScoreFromRowScore:
     def test_non_finite_scores_become_none(self, bad_value: float) -> None:
         """NaN and ±inf are serialized as None for JSON compatibility."""
         row_score = _row_score(
-            metrics={"m": [MetricScore(name="score", value=bad_value)]},
+            metrics={"m": [MetricOutput(name="score", value=bad_value)]},
         )
         result = MetricEvaluationRowScore.from_row_score(row_score, row=ROW, index=0)
 
@@ -404,17 +404,32 @@ class TestMetricEvaluationRowScoreFromRowScore:
         assert "boom" in result.error
 
     def test_multiple_metrics_flatten_into_single_scores_dict(self) -> None:
-        """All MetricScore entries across metric keys flatten into one dict keyed by name."""
+        """All MetricOutput entries across metric keys flatten into one dict keyed by name."""
         row_score = _row_score(
             index=2,
             metrics={
-                "a": [MetricScore(name="precision", value=0.5)],
-                "b": [MetricScore(name="recall", value=0.75)],
+                "a": [MetricOutput(name="precision", value=0.5)],
+                "b": [MetricOutput(name="recall", value=0.75)],
             },
         )
         result = MetricEvaluationRowScore.from_row_score(row_score, row=ROW, index=2)
 
         assert result.scores == {"precision": 0.5, "recall": 0.75}
+
+    def test_non_numeric_outputs_are_excluded_from_scores_dict(self) -> None:
+        """Labels and structured outputs stay in row artifacts but not the live scores response."""
+        row_score = _row_score(
+            metrics={
+                "judge": [
+                    MetricOutput(name="quality", value=0.75),
+                    MetricOutput(name="quality.label", value="good"),
+                    MetricOutput(name="details", value={"rationale": "clear"}),
+                ]
+            },
+        )
+        result = MetricEvaluationRowScore.from_row_score(row_score, row=ROW, index=0)
+
+        assert result.scores == {"quality": 0.75}
 
     def test_empty_metrics_emit_empty_scores_dict(self) -> None:
         """Successful rows with no metrics still emit a (possibly empty) scores dict."""

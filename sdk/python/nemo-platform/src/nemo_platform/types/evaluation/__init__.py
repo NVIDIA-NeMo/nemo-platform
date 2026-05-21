@@ -36,9 +36,8 @@ from .metric_type import MetricType as MetricType
 from .model_param import ModelParam as ModelParam
 from .percentiles import Percentiles as Percentiles
 from .range_score import RangeScore as RangeScore
-from .score_stats import ScoreStats as ScoreStats
 from .dataset_rows import DatasetRows as DatasetRows
-from .metric_score import MetricScore as MetricScore
+from .metric_output import MetricOutput as MetricOutput
 from .remote_score import RemoteScore as RemoteScore
 from .rouge_metric import RougeMetric as RougeMetric
 from .rubric_param import RubricParam as RubricParam

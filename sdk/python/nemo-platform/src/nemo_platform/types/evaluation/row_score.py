@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Dict, List, Optional
 from pydantic import Field as FieldInfo
 
 from ..._models import BaseModel
-from .metric_score import MetricScore
+from .metric_output import MetricOutput
 
 __all__ = ["RowScore"]
 
@@ -31,8 +31,8 @@ class RowScore(BaseModel):
     item: Dict[str, object]
     """Input item metadata for the evaluated row."""
 
-    metrics: Dict[str, List[MetricScore]]
-    """Metric-level row scores by metric key."""
+    metrics: Dict[str, List[MetricOutput]]
+    """Metric-level row outputs by metric key."""
 
     requests: List[Dict[str, object]]
     """Request details captured during evaluation."""

@@ -25,7 +25,7 @@ export interface RowScore {
   item: RowScoreItem;
   /** Sample output payload for the evaluated row. */
   sample: RowScoreSample;
-  /** Metric-level row scores by metric key. */
+  /** Metric-level row outputs by metric key. */
   metrics: RowScoreMetrics;
   /** Request details captured during evaluation. */
   requests: RowScoreRequestsItem[];

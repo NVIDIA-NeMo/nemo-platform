@@ -16,6 +16,7 @@ import httpx
 import nemo_platform.beta.evaluator.constants as constants
 from nemo_platform.beta.evaluator.enums import MetricType
 from nemo_platform.beta.evaluator.inference import get_logger, requests_log_var
+from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 # Lazy imports for RAGAS - these are getter functions that defer the expensive
 # RAGAS/langchain imports (~20-30s) until first use, improving startup time.
@@ -29,8 +30,6 @@ from nemo_platform.beta.evaluator.metrics.ragas.imports import (
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values import (
     MetricBase,
-    MetricResult,
-    MetricScore,
     Model,
     SecretRef,
 )
@@ -108,9 +107,10 @@ class BaseRAGASMetric(MetricBase):
     _secrets: dict[str, SecretRef] = PrivateAttr(default_factory=dict)
     _log: logging.Logger = logging.getLogger(__name__)
 
-    def score_names(self) -> list[str]:
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
         if isinstance(self.type, MetricType):
-            return [self.type.value]
+            return [MetricOutputSpec.continuous_score(self.type.value)]
         return []
 
     def __init__(self, logger: logging.Logger | None = None, **data):
@@ -220,7 +220,7 @@ class BaseRAGASMetric(MetricBase):
                 metric_names.append(metric_name)
 
         if not metric_names:
-            metric_names = self.score_names()
+            metric_names = [output.name for output in self.output_spec()]
 
         return {metric_name: float("nan") for metric_name in metric_names}
 
@@ -363,11 +363,15 @@ class BaseRAGASMetric(MetricBase):
             if response:
                 payload["response"] = response
 
-        return EvaluationDatasetCls.from_list([payload])
+        return cast(Any, EvaluationDatasetCls).from_list([payload])
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute the scores for the metric."""
-        return await _run_function_in_plain_loop(self.compute_scores_async, item, sample)
+        return await _run_function_in_plain_loop(
+            self.compute_scores_async,
+            input.row.data,
+            input.candidate.as_sample(),
+        )
 
     async def compute_scores_async(self, item: dict, sample: dict) -> MetricResult:
         """Compute the scores for the metric asynchronously."""
@@ -376,7 +380,9 @@ class BaseRAGASMetric(MetricBase):
             llm_judge = self._get_llm_judge(client)
             scores = self._metric(data, llm_judge)
             return MetricResult(
-                scores=[MetricScore(name=metric_name, value=score_value) for metric_name, score_value in scores.items()]
+                outputs=[
+                    MetricOutput(name=metric_name, value=score_value) for metric_name, score_value in scores.items()
+                ]
             )
 
     def _metric(self, data: EvaluationDataset, llm_judge: LangchainLLMWrapper | None) -> dict[str, float]:

@@ -15,7 +15,7 @@ from nemo_evaluator_sdk import (
 )
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.inference import InferenceFn
-from nemo_evaluator_sdk.metrics.base import Metric, MetricWithPreflight, MetricWithSecrets, SecretResolver
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithPreflight, MetricWithSecrets, SecretResolver
 from nemo_evaluator_sdk.metrics.ragas.metrics import RAGAS_METRIC_CLASSES
 from nemo_evaluator_sdk.values import MetricBase, SupportedJobTypes
 from nmp.evaluator.app import inference as app_inference

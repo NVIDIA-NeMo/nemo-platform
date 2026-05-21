@@ -6,12 +6,12 @@ from unittest.mock import patch
 
 import pytest
 from nemo_evaluator_sdk.enums import MetricType, ModelFormat
-from nemo_evaluator_sdk.metrics.base import Metric
 from nemo_evaluator_sdk.metrics.bleu import BLEUMetric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.number_check import NumberCheckMetric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.rouge import ROUGEMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric

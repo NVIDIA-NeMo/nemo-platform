@@ -6,9 +6,13 @@
 from functools import cached_property
 from typing import ClassVar, Literal
 
-from nemo_platform.beta.evaluator.metrics.template_rendering import render_reference_and_candidate, template_metric_repr
+from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_platform.beta.evaluator.metrics.template_rendering import (
+    TemplateSample,
+    render_reference_and_candidate,
+    template_metric_repr,
+)
 from nemo_platform.beta.evaluator.values.metrics import ROUGE
-from nemo_platform.beta.evaluator.values.results import MetricResult, MetricScore
 
 __all__ = ["ROUGEMetric", "RougeScoreName"]
 
@@ -40,11 +44,11 @@ class ROUGEMetric(ROUGE):
 
         return rouge_scorer.RougeScorer(["rouge1", "rouge2", "rouge3", "rougeL"], use_stemmer=True)
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return list(self.scores_mapping.keys())
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        return [MetricOutputSpec.continuous_score(score_name) for score_name in self.scores_mapping]
 
-    def _metric(self, item: dict, sample: dict) -> dict:
+    def _metric(self, item: dict, sample: TemplateSample) -> dict:
         """Compute raw ROUGE scores for one item/sample pair."""
         ground_truth, prediction = render_reference_and_candidate(
             metric_repr=template_metric_repr(self),
@@ -56,12 +60,12 @@ class ROUGEMetric(ROUGE):
         )
         return self._scorer.score(ground_truth, prediction)
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
-        scores = self._metric(item, sample)
+        scores = self._metric(input.row.data, input.candidate)
         return MetricResult(
-            scores=[
-                MetricScore(name=score_name, value=scores[score_key].fmeasure)
+            outputs=[
+                MetricOutput(name=score_name, value=scores[score_key].fmeasure)
                 for score_name, score_key in self.scores_mapping.items()
             ]
         )

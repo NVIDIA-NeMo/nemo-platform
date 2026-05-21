@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from typing import cast
 
 from nemo_platform.beta.evaluator.execution._protocols import JobParamsConfigurableMetric
-from nemo_platform.beta.evaluator.metrics.base import Metric, MetricWithPreflight, MetricWithSecrets
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricWithPreflight, MetricWithSecrets
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.values.params import RunConfig
 from pydantic import BaseModel

@@ -10,11 +10,11 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from nemo_evaluator_sdk.metrics.protocol import MetricOutput
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateFieldName,
     EvaluationResult,
-    MetricScore,
     ResultView,
     RowScore,
     flatten_dict,
@@ -49,8 +49,8 @@ def _filter_aggregate_fields(
     return AggregatedMetricResult(scores=filtered_scores)
 
 
-def _extract_metric_scores(row_score: RowScore, expected_key: str) -> list[MetricScore]:
-    """Resolve the score list for one metric from a row result.
+def _extract_metric_outputs(row_score: RowScore, expected_key: str) -> list[MetricOutput]:
+    """Resolve the output list for one metric from a row result.
 
     This exists because local and remote execution paths may return row scores
     either already keyed by the final metric key or as a single unnamed metric
@@ -61,7 +61,7 @@ def _extract_metric_scores(row_score: RowScore, expected_key: str) -> list[Metri
         expected_key: Metric key the caller expects to find on the row.
 
     Returns:
-        The score list for the requested metric key, or an empty list when the
+        The output list for the requested metric key, or an empty list when the
         row has no metric output because evaluation failed.
 
     Raises:
@@ -74,7 +74,7 @@ def _extract_metric_scores(row_score: RowScore, expected_key: str) -> list[Metri
         return []
     if len(row_score.metrics) == 1:
         return next(iter(row_score.metrics.values()))
-    raise ValueError(f"Unable to resolve row metric scores for key {expected_key!r}")
+    raise ValueError(f"Unable to resolve row metric outputs for key {expected_key!r}")
 
 
 def _extract_metric_error(row_score: RowScore, expected_key: str) -> str | None:
@@ -123,7 +123,7 @@ def namespace_result(
             row_index=row_score.row_index,
             item=row_score.item,
             sample=row_score.sample,
-            metrics={metric_key: _extract_metric_scores(row_score, metric_key)},
+            metrics={metric_key: _extract_metric_outputs(row_score, metric_key)},
             requests=row_score.requests,
             metric_errors={metric_key: error} if (error := _extract_metric_error(row_score, metric_key)) else None,
         )
@@ -176,12 +176,12 @@ def collapse_results(
     combined_rows: list[RowScore] = []
     for index in range(row_count):
         first_row = results_by_key[ordered_keys[0]].row_scores[index]
-        metrics: dict[str, list[MetricScore]] = {}
+        metrics: dict[str, list[MetricOutput]] = {}
         requests: list[dict[str, Any]] = []
         metric_errors: dict[str, str] = {}
         for metric_key in ordered_keys:
             row_score = results_by_key[metric_key].row_scores[index]
-            metrics[metric_key] = _extract_metric_scores(row_score, metric_key)
+            metrics[metric_key] = _extract_metric_outputs(row_score, metric_key)
             requests.extend(row_score.requests)
             if row_score.metric_errors:
                 metric_errors.update(row_score.metric_errors)
@@ -252,8 +252,8 @@ class BenchmarkEvaluationResult(BaseModel):
                 if error_text := row_error_text(row_score):
                     record["error"] = error_text
                 for metric_key, metric_scores in row_score.metrics.items():
-                    for score in metric_scores:
-                        record[f"score.{metric_key}.{score.name}"] = serialize_value(score.value)
+                    for output in metric_scores:
+                        record[f"output.{metric_key}.{output.name}"] = serialize_value(output.value)
                 records.append(record)
             return records
 

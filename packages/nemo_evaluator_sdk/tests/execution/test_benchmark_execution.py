@@ -25,10 +25,11 @@ from nemo_evaluator_sdk.execution.benchmark_execution import (
     evaluate_benchmark,
 )
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import Agent
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnlineModel
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore, RowScore
+from nemo_evaluator_sdk.values.results import RowScore
 from pytest_mock import MockerFixture
 
 
@@ -50,19 +51,21 @@ class _ScriptedMetric:
         """Return the public metric type identifier."""
         return self._name
 
-    def score_names(self) -> list[str]:
-        """Return the score names exposed by this metric."""
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs exposed by this metric."""
+        return [MetricOutputSpec.continuous_score("score")]
 
     def metric(self, item: dict, sample: dict, trace=None) -> float:
         """Return a raw score for protocol conformance."""
         del trace
         return float(self._score_fn(item, sample))
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Record the call and produce a single-score metric result."""
+        item = input.row.data
+        sample = input.candidate.as_sample()
         self.calls.append((dict(item), dict(sample)))
-        return MetricResult(scores=[MetricScore(name="score", value=float(self._score_fn(item, sample)))])
+        return MetricResult(outputs=[MetricOutput(name="score", value=float(self._score_fn(item, sample)))])
 
 
 class _RaisingMetric:
@@ -78,26 +81,26 @@ class _RaisingMetric:
         """Return the public metric type identifier."""
         return self._name
 
-    def score_names(self) -> list[str]:
-        """Return the score names exposed by this metric."""
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs exposed by this metric."""
+        return [MetricOutputSpec.continuous_score("score")]
 
     def metric(self, item: dict, sample: dict, trace=None) -> float:
         """Raise the configured exception for protocol conformance."""
         del item, sample, trace
         raise self._exc
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Raise the configured exception to exercise failure handling."""
-        del item, sample
+        del input
         raise self._exc
 
 
-class _NoScoreNamesMetric(_ScriptedMetric):
-    """Metric stub that deliberately declares no score names."""
+class _NoOutputsMetric(_ScriptedMetric):
+    """Metric stub that deliberately declares no outputs."""
 
-    def score_names(self) -> list[str]:
-        """Return no score names to exercise pipeline validation."""
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return no outputs to exercise pipeline validation."""
         return []
 
 
@@ -115,12 +118,16 @@ class _CorpusMetric(_ScriptedMetric):
     def __init__(self, name: str, score_fn):
         """Configure row scoring and call tracking for corpus scoring."""
         super().__init__(name, score_fn)
-        self.corpus_calls: list[tuple[list[dict], list[dict]]] = []
+        self.corpus_calls: list[list[MetricInput]] = []
 
-    async def compute_corpus_scores(self, items: list[dict], samples: list[dict]) -> MetricResult:
+    def corpus_output_spec(self) -> list[MetricOutputSpec]:
+        """Return corpus-level outputs exposed by this metric."""
+        return [MetricOutputSpec.continuous_score("corpus")]
+
+    async def compute_corpus_scores(self, inputs: list[MetricInput]) -> MetricResult:
         """Record corpus inputs and return one corpus score."""
-        self.corpus_calls.append((items, samples))
-        return MetricResult(scores=[MetricScore(name="corpus", value=42.0)])
+        self.corpus_calls.append(inputs)
+        return MetricResult(outputs=[MetricOutput(name="corpus", value=42.0)])
 
 
 def _make_model() -> Model:
@@ -633,15 +640,15 @@ class TestEvaluateBenchmarkFailurePolicy:
                 """Return the public metric type identifier."""
                 return self._name
 
-            def score_names(self) -> list[str]:
-                """Return the score names exposed by this metric."""
-                return ["score"]
+            def output_spec(self) -> list[MetricOutputSpec]:
+                """Return the outputs exposed by this metric."""
+                return [MetricOutputSpec.continuous_score("score")]
 
-            async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+            async def compute_scores(self, input: MetricInput) -> MetricResult:
                 """Record a metric-specific request and return the configured score."""
-                del item, sample
+                del input
                 inference.requests_log_var.get().append({"phase": "metric", "metric": self._name})
-                return MetricResult(scores=[MetricScore(name="score", value=self._value)])
+                return MetricResult(outputs=[MetricOutput(name="score", value=self._value)])
 
         mocker.patch(
             "nemo_evaluator_sdk.execution.benchmark_execution.generate_online_sample",
@@ -737,7 +744,10 @@ class TestEvaluateBenchmarkEdgeCases:
             params=RunConfig(parallelism=1),
         )
 
-        assert metric.corpus_calls == [([{"prompt": "a"}, {"prompt": "b"}], [{}, {}])]
+        assert [[input.row.data for input in call] for call in metric.corpus_calls] == [
+            [{"prompt": "a"}, {"prompt": "b"}]
+        ]
+        assert [[input.candidate.as_sample() for input in call] for call in metric.corpus_calls] == [[{}, {}]]
         assert [score.name for score in result.per_metric["custom.ref"].aggregate_scores.scores] == [
             "custom.ref.score",
             "custom.ref.corpus",
@@ -776,7 +786,10 @@ class TestEvaluateBenchmarkEdgeCases:
             prompt_template="{{prompt}}",
         )
 
-        assert metric.corpus_calls == [([{"prompt": "ok"}], [{"output_text": "ok", "response": {}}])]
+        assert [[input.row.data for input in call] for call in metric.corpus_calls] == [[{"prompt": "ok"}]]
+        assert [[input.candidate.as_sample() for input in call] for call in metric.corpus_calls] == [
+            [{"output_text": "ok", "response": {}}]
+        ]
         aggregate_scores = result.per_metric["custom.ref"].aggregate_scores.scores
         assert [(score.name, score.count, score.nan_count) for score in aggregate_scores] == [
             ("custom.ref.score", 1, 1),
@@ -823,7 +836,10 @@ class TestEvaluateBenchmarkEdgeCases:
             "inference_error": "generation boom",
         }
         assert failed_row.metric_errors is None
-        assert metric.corpus_calls == [([{"prompt": "ok"}], [{"output_text": "ok", "response": {}}])]
+        assert [[input.row.data for input in call] for call in metric.corpus_calls] == [[{"prompt": "ok"}]]
+        assert [[input.candidate.as_sample() for input in call] for call in metric.corpus_calls] == [
+            [{"output_text": "ok", "response": {}}]
+        ]
         aggregate_scores = result.per_metric["custom.ref"].aggregate_scores.scores
         assert [(score.name, score.count, score.nan_count) for score in aggregate_scores] == [
             ("custom.ref.score", 1, 1),
@@ -872,23 +888,27 @@ class TestBenchmarkHelpers:
         reporter: ProgressReporter = _NoOpProgressReporter()
         assert reporter.increment_work() is None
 
-    def test_normalize_metric_result_preserves_unexpected_scores_after_expected_scores(self) -> None:
+    def test_normalize_metric_result_orders_declared_outputs(self) -> None:
         result = _normalize_metric_result(
-            MetricResult(scores=[MetricScore(name="extra", value=3.0)]),
-            ["score"],
+            MetricResult(
+                outputs=[
+                    MetricOutput(name="second", value=2.0),
+                    MetricOutput(name="first", value=1.0),
+                ]
+            ),
+            [MetricOutputSpec.continuous_score("first"), MetricOutputSpec.continuous_score("second")],
         )
 
-        assert [score.name for score in result.scores] == ["score", "extra"]
-        assert math.isnan(result.scores[0].value)
-        assert result.scores[1].value == 3.0
+        assert [output.name for output in result.outputs] == ["first", "second"]
+        assert [output.value for output in result.outputs] == [1.0, 2.0]
 
     def test_benchmark_error_from_exception_returns_none_without_typed_leaf(self) -> None:
         assert _benchmark_error_from_exception(ValueError("plain failure")) is None
 
-    def test_build_metric_pipelines_rejects_metric_without_score_names(self) -> None:
-        metric = _NoScoreNamesMetric("empty", lambda item, sample: 1.0)
+    def test_build_metric_pipelines_rejects_metric_without_outputs(self) -> None:
+        metric = _NoOutputsMetric("empty", lambda item, sample: 1.0)
 
-        with pytest.raises(RuntimeError, match="does not declare any score names"):
+        with pytest.raises(RuntimeError, match="does not declare any outputs"):
             _build_metric_pipelines([("empty", metric)], item_count=1, queue_capacity=1)
 
 
@@ -902,7 +922,7 @@ class TestMetricWorker:
         pipeline = _MetricPipeline(
             metric_ref="a",
             metric=_ScriptedMetric("a", lambda item, sample: 1.0),
-            score_names=["score"],
+            output_spec=[MetricOutputSpec.continuous_score("score")],
             queue=queue,
             results=[None],
         )
@@ -930,7 +950,7 @@ class TestPutPipelineSentinelsCancellation:
         pipeline = _MetricPipeline(
             metric_ref="a",
             metric=_ScriptedMetric("a", lambda item, sample: 1.0),
-            score_names=["score"],
+            output_spec=[MetricOutputSpec.continuous_score("score")],
             queue=queue,
             results=[None],
         )

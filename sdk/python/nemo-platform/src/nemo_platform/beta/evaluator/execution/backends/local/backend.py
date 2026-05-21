@@ -14,7 +14,7 @@ from nemo_platform.beta.evaluator.execution.benchmark_execution import evaluate_
 from nemo_platform.beta.evaluator.execution.config import EvaluationRequest
 from nemo_platform.beta.evaluator.execution.metric_execution import _merge_online_hooks, evaluate_metric
 from nemo_platform.beta.evaluator.execution.utils import prepare_metric_for_local_execution, unique_metric_keys
-from nemo_platform.beta.evaluator.metrics.base import Metric
+from nemo_platform.beta.evaluator.metrics.protocol import Metric
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.values.multi_metric_results import BenchmarkEvaluationResult, namespace_result
 from nemo_platform.beta.evaluator.values.results import EvaluationResult

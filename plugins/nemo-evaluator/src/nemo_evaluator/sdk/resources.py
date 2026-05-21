@@ -24,7 +24,7 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
     AggregateFieldName,

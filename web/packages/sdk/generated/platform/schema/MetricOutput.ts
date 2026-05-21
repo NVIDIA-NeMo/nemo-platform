@@ -6,14 +6,11 @@
  * Do not edit manually.
  * Nemo Platform API
  */
-import type { ScoreStats } from './ScoreStats';
 
 /**
- * A computed score for the metric
+ * One named value emitted by a metric.
  */
-export interface MetricScore {
+export interface MetricOutput {
   name: string;
-  value: number;
-  /** Computed score statistics for the score. */
-  stats?: ScoreStats;
+  value: unknown;
 }

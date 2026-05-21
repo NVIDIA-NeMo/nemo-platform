@@ -8,8 +8,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import RunConfig
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 from pydantic import BaseModel
 
 
@@ -39,14 +39,14 @@ class DuplicateMetric:
         """Return the metric key used by the backend when namespacing results."""
         return "duplicate"
 
-    def score_names(self) -> list[str]:
-        """Return the score names exposed by this metric."""
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs exposed by this metric."""
+        return [MetricOutputSpec.continuous_score("score")]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Return one structured score result for protocol conformance in tests."""
-        del item, sample
-        return MetricResult(scores=[MetricScore(name="score", value=1.0)])
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 
 
 class PreparedBenchmarkMetric(BaseModel):
@@ -57,9 +57,9 @@ class PreparedBenchmarkMetric(BaseModel):
     secrets_resolved: bool = False
     preflight_ran: bool = False
 
-    def score_names(self) -> list[str]:
-        """Return the score names exposed by this metric."""
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs exposed by this metric."""
+        return [MetricOutputSpec.continuous_score("score")]
 
     def secrets(self) -> dict[str, object]:
         """Return no concrete secret refs while satisfying the secrets protocol."""
@@ -78,7 +78,7 @@ class PreparedBenchmarkMetric(BaseModel):
         """Record that local metric preparation ran preflight."""
         self.preflight_ran = True
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Return one structured score result for protocol conformance in tests."""
-        del item, sample
-        return MetricResult(scores=[MetricScore(name="score", value=1.0)])
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])

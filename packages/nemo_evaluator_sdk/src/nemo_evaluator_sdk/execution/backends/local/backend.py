@@ -14,7 +14,7 @@ from nemo_evaluator_sdk.execution.benchmark_execution import evaluate_benchmark 
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.execution.metric_execution import _merge_online_hooks, evaluate_metric
 from nemo_evaluator_sdk.execution.utils import prepare_metric_for_local_execution, unique_metric_keys
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult, namespace_result
 from nemo_evaluator_sdk.values.results import EvaluationResult

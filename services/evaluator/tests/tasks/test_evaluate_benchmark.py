@@ -5,9 +5,9 @@ from pathlib import Path
 
 import pytest
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import AggregateRangeScore
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult as SDKBenchmarkEvaluationResult
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 from nmp.common.jobs.constants import NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.evaluator.app.values import (
     BenchmarkEvaluationResult,
@@ -252,14 +252,14 @@ class TestEvaluateBenchmark:
         class _FakeMetric:
             """Metric test double that returns a fixed score."""
 
-            def score_names(self) -> list[str]:
-                """Return the score names exposed by this metric."""
-                return ["score"]
+            def output_spec(self) -> list[MetricOutputSpec]:
+                """Return the outputs exposed by this metric."""
+                return [MetricOutputSpec.continuous_score("score")]
 
-            async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+            async def compute_scores(self, input: MetricInput) -> MetricResult:
                 """Return one fixed metric score."""
-                del item, sample
-                return MetricResult(scores=[MetricScore(name="score", value=1.0)])
+                del input
+                return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
 
         async def _agent_inference(
             agent,

@@ -33,7 +33,7 @@ from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
     EvaluationResult,
-    MetricScore,
+    MetricOutput,
     RowScore,
 )
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus, PlatformJobStatusResponse
@@ -140,7 +140,7 @@ def _evaluation_result_parts() -> tuple[AggregatedMetricResult, list[RowScore]]:
             row_index=0,
             item={"expected": "a", "output": "a"},
             sample={},
-            metrics={"serializable": [MetricScore(name="score", value=1.0)]},
+            metrics={"serializable": [MetricOutput(name="score", value=1.0)]},
             requests=[],
         )
     ]

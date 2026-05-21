@@ -2,9 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import math
+from typing import cast
 
 import nmp.evaluator.entities as entities
 import pytest
+from nemo_evaluator_sdk.metrics.aggregation import aggregate_metrics
 from nemo_evaluator_sdk.metrics.bleu import BLEUMetric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
@@ -13,26 +15,36 @@ from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
 from nemo_evaluator_sdk.values import (
     AggregateRangeScore,
-    AggregateRubricScore,
+    MetricOutput,
+    MetricOutputSpec,
     MetricResult,
-    MetricScore,
-    RubricScoreStat,
-    ScoreStats,
 )
-from nmp.evaluator.app.metrics.aggregation import aggregate_metrics
 from nmp.evaluator.app.metrics.metric import new_metric
+from nmp.evaluator.app.values.metrics import Metric as MetricParams
+
+
+def _metric_result(name: str, value: float | int | bool) -> MetricResult:
+    return MetricResult(outputs=[MetricOutput(name=name, value=value)])
+
+
+def _output_specs(*names: str) -> list[MetricOutputSpec]:
+    return [MetricOutputSpec.continuous_score(name) for name in names]
+
+
+async def _new_metric(params: object):
+    return await new_metric(cast(MetricParams, params))
 
 
 def test_aggregate_metrics():
     """Test basic aggregation computes all statistics correctly."""
     metric_results = [
-        MetricResult(scores=[MetricScore(name="my-score", value=0)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=2)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=5)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=15)]),
+        _metric_result("my-score", 0),
+        _metric_result("my-score", 2),
+        _metric_result("my-score", 5),
+        _metric_result("my-score", 15),
     ]
     # Expected: sum=22, mean=5.5, min=0, max=15, variance=33.25, stddev=5.766...
-    results = aggregate_metrics(metric_results)
+    results = aggregate_metrics(metric_results, _output_specs("my-score"))
 
     assert len(results.scores) == 1
     score = results.scores[0]
@@ -43,6 +55,8 @@ def test_aggregate_metrics():
     assert score.sum == 22.0
     assert score.min == 0.0
     assert score.max == 15.0
+    assert score.variance is not None
+    assert score.std_dev is not None
     assert math.isclose(score.variance, 33.25)  # population variance
     assert math.isclose(score.std_dev, 5.766281297335398)
     assert score.nan_count == 0
@@ -51,14 +65,14 @@ def test_aggregate_metrics():
 def test_aggregate_metrics_nan():
     """Test that NaN values are excluded from statistics but counted."""
     metric_results = [
-        MetricResult(scores=[MetricScore(name="my-score", value=0)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=float("nan"))]),
-        MetricResult(scores=[MetricScore(name="my-score", value=2)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=5)]),
-        MetricResult(scores=[MetricScore(name="my-score", value=float("nan"))]),
-        MetricResult(scores=[MetricScore(name="my-score", value=15)]),
+        _metric_result("my-score", 0),
+        _metric_result("my-score", float("nan")),
+        _metric_result("my-score", 2),
+        _metric_result("my-score", 5),
+        _metric_result("my-score", float("nan")),
+        _metric_result("my-score", 15),
     ]
-    results = aggregate_metrics(metric_results)
+    results = aggregate_metrics(metric_results, _output_specs("my-score"))
 
     assert len(results.scores) == 1
     score = results.scores[0]
@@ -74,11 +88,11 @@ def test_aggregate_metrics_nan():
 
 def test_aggregate_metrics_all_nan_returns_null_aggregates():
     metric_results = [
-        MetricResult(scores=[MetricScore(name="my-score", value=float("nan"))]),
-        MetricResult(scores=[MetricScore(name="my-score", value=float("nan"))]),
+        _metric_result("my-score", float("nan")),
+        _metric_result("my-score", float("nan")),
     ]
 
-    results = aggregate_metrics(metric_results)
+    results = aggregate_metrics(metric_results, _output_specs("my-score"))
 
     assert len(results.scores) == 1
     score = results.scores[0]
@@ -95,117 +109,11 @@ def test_aggregate_metrics_all_nan_returns_null_aggregates():
     assert score.percentiles is None
 
 
-def test_aggregate_metrics_rubrics():
-    """Test rubric score aggregation with distribution tracking."""
-    metric_results = [
-        MetricResult(
-            scores=[
-                MetricScore(
-                    name="length",
-                    value=2,
-                    stats=ScoreStats(
-                        rubric_distribution=[
-                            RubricScoreStat(label="short", value=0, count=0),
-                            RubricScoreStat(label="medium", value=1, count=0),
-                            RubricScoreStat(label="long", value=2, count=1),
-                        ]
-                    ),
-                )
-            ]
-        ),
-        MetricResult(
-            scores=[
-                MetricScore(
-                    name="length",
-                    value=1,
-                    stats=ScoreStats(
-                        rubric_distribution=[
-                            RubricScoreStat(label="short", value=0, count=0),
-                            RubricScoreStat(label="medium", value=1, count=1),
-                            RubricScoreStat(label="long", value=2, count=0),
-                        ]
-                    ),
-                )
-            ]
-        ),
-        MetricResult(
-            scores=[
-                MetricScore(
-                    name="length",
-                    value=2,
-                    stats=ScoreStats(
-                        rubric_distribution=[
-                            RubricScoreStat(label="short", value=0, count=0),
-                            RubricScoreStat(label="medium", value=1, count=0),
-                            RubricScoreStat(label="long", value=2, count=1),
-                        ]
-                    ),
-                )
-            ]
-        ),
-        MetricResult(
-            scores=[
-                MetricScore(
-                    name="length",
-                    value=0,
-                    stats=ScoreStats(
-                        rubric_distribution=[
-                            RubricScoreStat(label="short", value=0, count=1),
-                            RubricScoreStat(label="medium", value=1, count=0),
-                            RubricScoreStat(label="long", value=2, count=0),
-                        ]
-                    ),
-                )
-            ]
-        ),
-        MetricResult(
-            scores=[
-                MetricScore(
-                    name="quality",
-                    value=10,
-                    stats=ScoreStats(
-                        rubric_distribution=[
-                            RubricScoreStat(label="high", value=10, count=1),
-                            RubricScoreStat(label="low", value=0, count=0),
-                        ]
-                    ),
-                )
-            ]
-        ),
-    ]
-
-    results = aggregate_metrics(metric_results)
-
-    # Check "length" score - values [2, 1, 2, 0]
-    length_score = next(s for s in results.scores if s.name == "length")
-    assert isinstance(length_score, AggregateRubricScore)
-    assert length_score.mean == 1.25
-    assert length_score.count == 4
-    assert length_score.sum == 5.0
-    assert length_score.min == 0.0
-    assert length_score.max == 2.0
-    assert length_score.nan_count == 0
-    # Rubric distribution should be aggregated
-    rubric_dict = {r.label: r.count for r in length_score.rubric_distribution}
-    assert rubric_dict == {"short": 1, "medium": 1, "long": 2}
-    # Mode category should be "long" (count=2)
-    assert length_score.mode_category == "long"
-
-    # Check "quality" score - single value [10]
-    quality_score = next(s for s in results.scores if s.name == "quality")
-    assert isinstance(quality_score, AggregateRubricScore)
-    assert quality_score.mean == 10.0
-    assert quality_score.count == 1
-    assert quality_score.sum == 10.0
-    assert quality_score.variance == 0.0  # Single value has 0 variance
-    assert len(quality_score.rubric_distribution) > 0
-
-
 def test_aggregate_metrics_returns_distribution():
     """Test that aggregate_metrics returns percentiles and histogram for range scores."""
-    metric_results = [MetricResult(scores=[MetricScore(name="my-score", value=i)]) for i in range(10)]  # values 0-9
+    metric_results = [_metric_result("my-score", i) for i in range(10)]  # values 0-9
 
-    result = aggregate_metrics(metric_results)
+    result = aggregate_metrics(metric_results, _output_specs("my-score"))
 
     assert len(result.scores) == 1
     agg_score = result.scores[0]
@@ -217,6 +125,7 @@ def test_aggregate_metrics_returns_distribution():
     assert agg_score.max == 9.0
 
     # Check percentiles (approximate for 10 values)
+    assert agg_score.percentiles is not None
     assert agg_score.percentiles.p50 == 4.5  # median
     assert agg_score.percentiles.p100 == 9.0  # max
 
@@ -237,7 +146,7 @@ class TestNewMetricBLEU:
             references=["{{item.reference}}"],
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, BLEUMetric)
         assert metric.references == ["{{item.reference}}"]
@@ -256,7 +165,7 @@ class TestNewMetricExactMatch:
             reference="{{item.reference}}",
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, ExactMatchMetric)
         assert metric.reference == "{{item.reference}}"
@@ -275,7 +184,7 @@ class TestNewMetricF1:
             reference="{{item.reference}}",
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, F1Metric)
         assert metric.reference == "{{item.reference}}"
@@ -294,7 +203,7 @@ class TestNewMetricROUGE:
             reference="{{item.reference}}",
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, ROUGEMetric)
         assert metric.reference == "{{item.reference}}"
@@ -315,7 +224,7 @@ class TestNewMetricStringCheck:
             right_template="{{sample.output_text}}",
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, StringCheckMetric)
         assert metric.operation == "equals"
@@ -334,7 +243,7 @@ class TestNewMetricToolCalling:
             reference="{{item.expected_tool_calls}}",
         )
 
-        metric = await new_metric(params)
+        metric = await _new_metric(params)
 
         assert isinstance(metric, ToolCallingMetric)
         assert metric.reference == "{{item.expected_tool_calls}}"

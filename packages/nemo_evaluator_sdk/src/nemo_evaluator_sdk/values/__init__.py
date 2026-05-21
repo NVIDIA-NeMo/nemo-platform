@@ -3,6 +3,19 @@
 
 """Public value types for evaluator SDK runtime."""
 
+from nemo_evaluator_sdk.metrics.protocol import (
+    BooleanValue,
+    CandidateOutput,
+    ContinuousScore,
+    DatasetRow,
+    DiscreteScore,
+    Label,
+    MetricDescriptor,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+)
 from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
 from nemo_evaluator_sdk.values.dataset_schemas import (
@@ -53,7 +66,6 @@ from nemo_evaluator_sdk.values.results import (
     EvaluationResult,
     Histogram,
     HistogramBin,
-    MetricResult,
     MetricScore,
     Percentiles,
     RowScore,
@@ -81,8 +93,13 @@ __all__ = [
     "AggregateRubricScore",
     "AggregateScore",
     "AggregateScoreBase",
+    "BooleanValue",
+    "CandidateOutput",
+    "ContinuousScore",
+    "DatasetRow",
     "DatasetRows",
     "DefaultAggregateFieldName",
+    "DiscreteScore",
     "RunConfig",
     "RunConfigOnline",
     "RunConfigOnlineModel",
@@ -91,6 +108,11 @@ __all__ = [
     "HistogramBin",
     "InferenceParams",
     "JSONScoreParser",
+    "Label",
+    "MetricDescriptor",
+    "MetricInput",
+    "MetricOutput",
+    "MetricOutputSpec",
     "MetricResult",
     "MetricScore",
     "Model",

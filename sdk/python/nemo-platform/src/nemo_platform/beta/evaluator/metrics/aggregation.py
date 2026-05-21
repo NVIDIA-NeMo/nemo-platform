@@ -7,7 +7,17 @@
 
 import math
 from collections import OrderedDict, defaultdict
+from collections.abc import Mapping, Sequence
+from typing import Protocol, cast, runtime_checkable
 
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    BooleanValue,
+    ContinuousScore,
+    DiscreteScore,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+)
 from nemo_platform.beta.evaluator.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
@@ -15,15 +25,100 @@ from nemo_platform.beta.evaluator.values.results import (
     AggregateScore,
     Histogram,
     HistogramBin,
-    MetricResult,
     MetricScore,
     Percentiles,
     RubricScoreStat,
     ScoreStats,
 )
+from nemo_platform.beta.evaluator.values.scores import RubricScore, Score
 
 
-def add_corpus_scores(aggregated_result: AggregatedMetricResult, corpus_result: MetricResult) -> None:
+def is_aggregateable_output_spec(output_spec: MetricOutputSpec) -> bool:
+    """Return whether an output should contribute aggregate statistics."""
+    return issubclass(output_spec.value_schema, (ContinuousScore, DiscreteScore, BooleanValue))
+
+
+@runtime_checkable
+class MetricWithScores(Protocol):
+    """Metric config protocol for metrics that carry rubric score definitions."""
+
+    @property
+    def scores(self) -> Sequence[Score]: ...
+
+
+def _coerce_aggregate_output(output: MetricOutput, output_spec: MetricOutputSpec) -> MetricScore | None:
+    """Convert one declared aggregateable metric output into MetricScore form."""
+    if not is_aggregateable_output_spec(output_spec):
+        return None
+    if (
+        issubclass(output_spec.value_schema, BooleanValue)
+        and isinstance(output.value, float)
+        and math.isnan(output.value)
+    ):
+        return MetricScore(name=output.name, value=output.value)
+    coerced = cast(ContinuousScore | DiscreteScore | BooleanValue, output_spec.coerce_output(output))
+    value = coerced.root
+    if isinstance(value, bool):
+        value = 1.0 if value else 0.0
+    return MetricScore(name=output.name, value=value)
+
+
+def _attach_rubric_stats(
+    score: MetricScore,
+    output_by_name: Mapping[str, MetricOutput],
+    rubric_definitions: Mapping[str, Sequence[RubricScoreStat]],
+) -> MetricScore:
+    """Attach per-row rubric bucket stats from companion label outputs."""
+    rubric_definition = rubric_definitions.get(score.name)
+    if not rubric_definition:
+        return score
+
+    label_output = output_by_name.get(f"{score.name}.label")
+    selected_label = label_output.value if label_output is not None else None
+    if isinstance(score.value, float) and math.isnan(score.value):
+        selected_label = None
+
+    rubric_distribution = [
+        RubricScoreStat(
+            label=rubric.label,
+            description=rubric.description,
+            value=rubric.value,
+            count=int(isinstance(selected_label, str) and selected_label == rubric.label),
+        )
+        for rubric in rubric_definition
+    ]
+    return MetricScore(
+        name=score.name,
+        value=score.value,
+        stats=ScoreStats(rubric_distribution=rubric_distribution),
+    )
+
+
+def _aggregateable_scores(
+    result: MetricResult,
+    output_specs: list[MetricOutputSpec],
+    rubric_definitions: Mapping[str, Sequence[RubricScoreStat]] | None = None,
+) -> list[MetricScore]:
+    """Extract score-like outputs from a metric result using declared output specs."""
+    specs_by_name = {output_spec.name: output_spec for output_spec in output_specs}
+    output_by_name = {output.name: output for output in result.outputs}
+    scores: list[MetricScore] = []
+    for output in result.outputs:
+        output_spec = specs_by_name.get(output.name)
+        if output_spec is None:
+            continue
+        score = _coerce_aggregate_output(output, output_spec)
+        if score is not None:
+            score = _attach_rubric_stats(score, output_by_name, rubric_definitions or {})
+            scores.append(score)
+    return scores
+
+
+def add_corpus_scores(
+    aggregated_result: AggregatedMetricResult,
+    corpus_result: MetricResult,
+    output_specs: list[MetricOutputSpec],
+) -> None:
     """Append corpus-level scores using aggregate-score schema fields.
 
     Args:
@@ -33,7 +128,7 @@ def add_corpus_scores(aggregated_result: AggregatedMetricResult, corpus_result: 
     Returns:
         ``None``. The ``aggregated_result`` object is updated in place.
     """
-    for score in corpus_result.scores:
+    for score in _aggregateable_scores(corpus_result, output_specs):
         value = score.value
         # Corpus-level metrics contribute one already-aggregated value, so
         # expose them through the same aggregate schema with count=1.
@@ -148,7 +243,11 @@ def _compute_histogram(values: list[float], num_bins: int = 10) -> Histogram:
     return Histogram(bins=bins)
 
 
-def aggregate_metrics(items: list[MetricResult]) -> AggregatedMetricResult:
+def aggregate_metrics(
+    items: list[MetricResult],
+    output_specs: list[MetricOutputSpec],
+    rubric_definitions: Mapping[str, Sequence[RubricScoreStat]] | None = None,
+) -> AggregatedMetricResult:
     """Aggregate row-level metric results into range or rubric summaries.
 
     This function performs two logical passes:
@@ -158,6 +257,11 @@ def aggregate_metrics(items: list[MetricResult]) -> AggregatedMetricResult:
 
     Args:
         items: Row-level metric results to aggregate.
+        output_specs: Declared outputs for the metric. Only continuous,
+            discrete, and boolean output values contribute to aggregate scores.
+        rubric_definitions: Optional rubric bucket definitions keyed by numeric
+            output name. This is aggregation metadata, not metric protocol
+            metadata, and is usually derived from LLM judge score config.
 
     Returns:
         Aggregate metric result with one aggregate score per score name.
@@ -169,7 +273,7 @@ def aggregate_metrics(items: list[MetricResult]) -> AggregatedMetricResult:
     has_rubric: dict[str, bool] = {}
 
     for item in items:
-        for score in item.scores:
+        for score in _aggregateable_scores(item, output_specs, rubric_definitions):
             if score.name not in aggregated_results:
                 # Keep one running accumulator per score name; distribution
                 # details are materialized in a second pass once all values exist.
@@ -317,3 +421,31 @@ def aggregate_metrics(items: list[MetricResult]) -> AggregatedMetricResult:
             )
 
     return AggregatedMetricResult(scores=aggregated_scores)
+
+
+def rubric_definitions_from_scores(scores: Sequence[Score]) -> dict[str, list[RubricScoreStat]]:
+    """Return declared rubric buckets keyed by score name."""
+    definitions: dict[str, list[RubricScoreStat]] = {}
+    for score in scores:
+        if not isinstance(score, RubricScore):
+            continue
+        definitions[score.name] = [
+            RubricScoreStat(
+                label=rubric.label,
+                description=rubric.description,
+                value=rubric.value,
+                count=0,
+            )
+            for rubric in score.rubric
+        ]
+    return definitions
+
+
+def rubric_definitions_from_metric(metric: object) -> dict[str, list[RubricScoreStat]]:
+    """Return rubric bucket definitions for metrics that carry score config."""
+    if not isinstance(metric, MetricWithScores):
+        return {}
+    scores = metric.scores
+    if not isinstance(scores, Sequence) or isinstance(scores, (str, bytes)):
+        return {}
+    return rubric_definitions_from_scores(scores)

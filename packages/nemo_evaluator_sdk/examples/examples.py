@@ -21,12 +21,12 @@ from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.execution.values import EvaluationError
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.values import (
     InferenceParams,
     JSONScoreParser,
     MetricResult,
-    MetricScore,
     Model,
     RangeScore,
     RunConfig,
@@ -315,32 +315,27 @@ class CustomExactMatchMetric:
         """
         self.db_connection_string = db_connection_string
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs produced by the metric."""
+        return [MetricOutputSpec.continuous_score(self.type)]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Convert the custom score into the SDK metric result shape.
 
         Args:
-            item: Original dataset row.
-            sample: Evaluated sample payload.
+            input: Original dataset row and evaluated candidate output.
 
         Returns:
             A metric result containing one exact-match score.
         """
-        prediction = sample.get("output_text")
-        reference = item.get("actual")
+        prediction = input.candidate.output_text
+        reference = input.row.data.get("actual")
         if reference is None:
-            reference = item.get("reference")
+            reference = input.row.data.get("reference")
         if prediction is None or reference is None:
-            return MetricResult(scores=[MetricScore(name=self.type, value=0.0)])
+            return MetricResult(outputs=[MetricOutput(name=self.type, value=0.0)])
         score = 1.0 if prediction == reference else 0.0
-        return MetricResult(scores=[MetricScore(name=self.type, value=score)])
-
-    def score_names(self) -> list[str]:
-        """Return the score names produced by the metric.
-
-        Returns:
-            A one-element list containing the exact-match score name.
-        """
-        return [self.type]
+        return MetricResult(outputs=[MetricOutput(name=self.type, value=score)])
 
 
 class CustomFailingMetric:
@@ -356,27 +351,23 @@ class CustomFailingMetric:
         """
         self.message = message
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the outputs produced by the metric."""
+        return [MetricOutputSpec.continuous_score(self.type)]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Convert the intentionally raised error into normal metric execution.
 
         Args:
-            item: Original dataset row.
-            sample: Evaluated sample payload.
+            input: Original dataset row and evaluated candidate output.
 
         Raises:
             RuntimeError: Always raised to exercise benchmark failure handling.
         """
+        del input
         # This example metric is intentionally failing to demonstrate structured
         # benchmark error handling in local evaluator workflows.
         raise RuntimeError(self.message)
-
-    def score_names(self) -> list[str]:
-        """Return the score names produced by the metric.
-
-        Returns:
-            A one-element list containing the intentionally failing score name.
-        """
-        return [self.type]
 
 
 # --- 2. Local evaluator workflows ---

@@ -67,6 +67,7 @@ class TestStartupFailureExitCode:
             timeout=30,
         )
 
+        stderr = result.stderr.decode()
         assert result.returncode == 2
-        assert "invalid choice" in result.stderr.decode()
-        assert "choose from 'task'" in result.stderr.decode()
+        assert "invalid choice" in stderr
+        assert "choose from 'task'" in stderr or "choose from task" in stderr

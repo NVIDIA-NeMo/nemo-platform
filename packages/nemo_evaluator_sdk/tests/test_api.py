@@ -7,14 +7,15 @@ from pathlib import Path
 import pytest
 from jinja2 import UndefinedError
 from nemo_evaluator_sdk import Evaluator
+from nemo_evaluator_sdk.execution.scoring import build_metric_input
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
     AggregateRubricScore,
     EvaluationResult,
     Histogram,
-    MetricScore,
     Percentiles,
     RowScore,
     RubricScoreStat,
@@ -53,6 +54,10 @@ def _make_range_score(name: str, *, count: int, nan_count: int = 0) -> Aggregate
         ),
         histogram=Histogram(bins=[]),
     )
+
+
+def _metric_input(item: dict[str, str], sample: dict[str, str]) -> MetricInput:
+    return build_metric_input(item, sample, 0)
 
 
 class TestExactMatchMetric:
@@ -130,17 +135,11 @@ class TestExactMatchMetric:
     @pytest.mark.asyncio
     async def test_default_candidate_uses_output_text(self):
         metric = ExactMatchMetric(reference="{{item.expected}}")
-        match = await metric.compute_scores(
-            item={"expected": "blue"},
-            sample={"output_text": "Blue"},
-        )
-        mismatch = await metric.compute_scores(
-            item={"expected": "Jupiter"},
-            sample={"output_text": "Saturn"},
-        )
+        match = await metric.compute_scores(_metric_input({"expected": "blue"}, {"output_text": "Blue"}))
+        mismatch = await metric.compute_scores(_metric_input({"expected": "Jupiter"}, {"output_text": "Saturn"}))
 
-        assert match.scores[0].value == 1.0
-        assert mismatch.scores[0].value == 0.0
+        assert match.outputs[0].value == 1.0
+        assert mismatch.outputs[0].value == 0.0
 
 
 class TestComputeScores:
@@ -150,8 +149,7 @@ class TestComputeScores:
 
         with pytest.raises(ValueError) as exc_info:
             await metric.compute_scores(
-                item={"prompt": "What is the capital of France?"},
-                sample={"output_text": "Paris"},
+                _metric_input({"prompt": "What is the capital of France?"}, {"output_text": "Paris"})
             )
 
         assert str(exc_info.value) == (
@@ -168,10 +166,7 @@ class TestComputeScores:
         metric = ExactMatchMetric(reference="{{item.reference}}", candidate="{{sample.prediction}}")
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(
-                item={"reference": "Paris"},
-                sample={"output_text": "Paris"},
-            )
+            await metric.compute_scores(_metric_input({"reference": "Paris"}, {"output_text": "Paris"}))
 
         assert str(exc_info.value) == (
             "ExactMatchMetric(reference='{{item.reference}}', candidate='{{sample.prediction}}') "
@@ -188,8 +183,7 @@ class TestComputeScores:
 
         with pytest.raises(ValueError) as exc_info:
             await metric.compute_scores(
-                item={"prompt": "What is the capital of France?"},
-                sample={"output_text": "Paris"},
+                _metric_input({"prompt": "What is the capital of France?"}, {"output_text": "Paris"})
             )
 
         assert str(exc_info.value) == (
@@ -206,10 +200,7 @@ class TestComputeScores:
         metric = ExactMatchMetric(reference="{{item.reference}}")
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(
-                item={"reference": "Paris"},
-                sample={"some_other_field": "Paris"},
-            )
+            await metric.compute_scores(_metric_input({"reference": "Paris"}, {"some_other_field": "Paris"}))
 
         assert str(exc_info.value) == (
             "ExactMatchMetric has missing `candidate` field.\n"
@@ -227,8 +218,7 @@ class TestComputeScores:
 
         with pytest.raises(ValueError, match=r"jinja_error='custom undefined message'"):
             await metric.compute_scores(
-                item={"prompt": "What is the capital of France?"},
-                sample={"output_text": "Paris"},
+                _metric_input({"prompt": "What is the capital of France?"}, {"output_text": "Paris"})
             )
 
 
@@ -247,8 +237,8 @@ class TestOfflineEvaluationResult:
     def test_to_records_rows(self, result):
         records = result.to_records(view="rows")
         assert len(records) == 2
-        assert records[0]["score.exact-match"] == 1.0
-        assert records[1]["score.exact-match"] == 0.0
+        assert records[0]["output.exact-match"] == 1.0
+        assert records[1]["output.exact-match"] == 0.0
         assert records[0]["item.expected"] == "blue"
         assert records[1]["item.expected"] == "Jupiter"
         assert records[0]["item.model_output"] == "Blue"
@@ -264,13 +254,13 @@ class TestOfflineEvaluationResult:
     def test_to_table_returns_pyarrow_table(self, result):
         table = result.to_table(view="rows")
         assert table.num_rows == 2
-        assert "score.exact-match" in table.column_names
+        assert "output.exact-match" in table.column_names
 
     def test_to_pandas_returns_dataframe_when_available(self, result):
         pd = pytest.importorskip("pandas")
         dataframe = result.to_pandas(view="rows")
         assert isinstance(dataframe, pd.DataFrame)
-        assert "score.exact-match" in dataframe.columns
+        assert "output.exact-match" in dataframe.columns
 
     def test_format_summary_and_str(self, result):
         formatted = result.format_summary(max_rows=1)
@@ -314,7 +304,7 @@ class TestOfflineEvaluationResult:
                     row_index=3,
                     item={"prompt": "hello"},
                     sample={"output_text": "world"},
-                    metrics={"judge": [MetricScore(name="judge", value=0.5)]},
+                    metrics={"judge": [MetricOutput(name="judge", value=0.5)]},
                     requests=[],
                     metric_errors={"judge": "bad but scored"},
                 )
@@ -331,7 +321,7 @@ class TestOfflineEvaluationResult:
                 "item.prompt": "hello",
                 "sample.output_text": "world",
                 "error": "judge: bad but scored",
-                "score.judge": 0.5,
+                "output.judge": 0.5,
             }
         ]
 
@@ -393,7 +383,7 @@ class TestOfflineEvaluationResult:
                     row_index=3,
                     item={"prompt": "first"},
                     sample={"response": {"id": "hidden"}, "output_text": "text"},
-                    metrics={"judge": [MetricScore(name="judge", value=0.5)]},
+                    metrics={"judge": [MetricOutput(name="judge", value=0.5)]},
                     requests=[],
                     metric_errors={"judge": "bad but scored"},
                 ),

@@ -9,7 +9,7 @@ from collections.abc import Sequence
 from typing import Protocol
 
 from nemo_platform.beta.evaluator.execution.config import EvaluationRequest
-from nemo_platform.beta.evaluator.metrics.base import Metric
+from nemo_platform.beta.evaluator.metrics.protocol import Metric
 from nemo_platform.beta.evaluator.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_platform.beta.evaluator.values.results import EvaluationResult
 

@@ -79,6 +79,7 @@ const createHangingStream = (content: string): Stream<ChatCompletionChunk> => {
 };
 
 const completion = createCompletion('Hello from inference gateway.');
+const interactionTimeoutMs = 10_000;
 
 interface CompletionRequestWithSignal {
   signal?: AbortSignal;
@@ -97,138 +98,161 @@ describe('AssistantChat', () => {
     mocks.createChatCompletion.mockResolvedValue(completion);
   });
 
-  it('sends text prompts through useChatCompletion', async () => {
-    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+  it(
+    'sends text prompts through useChatCompletion',
+    async () => {
+      renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-    await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hello model');
-    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hello model');
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
-    expect(await screen.findByText('Hello from inference gateway.')).toBeInTheDocument();
-    expect(screen.getByText('Hello model')).toBeInTheDocument();
+      expect(await screen.findByText('Hello from inference gateway.')).toBeInTheDocument();
+      expect(screen.getByText('Hello model')).toBeInTheDocument();
 
-    await waitFor(() =>
-      expect(mocks.createChatCompletion).toHaveBeenCalledWith(
+      await waitFor(() =>
+        expect(mocks.createChatCompletion).toHaveBeenCalledWith(
+          expect.objectContaining({
+            model: 'test-model',
+            workspace: 'default',
+            stream: true,
+            messages: [{ role: 'user', content: 'Hello model' }],
+          })
+        )
+      );
+    },
+    interactionTimeoutMs
+  );
+
+  it(
+    'clears the current thread',
+    async () => {
+      renderAssistantChat(
+        <AssistantChat
+          model="test-model"
+          initialMessages={[
+            {
+              role: 'user',
+              content: [{ type: 'text', text: 'Existing message' }],
+            },
+          ]}
+        />
+      );
+
+      expect(screen.getByText('Existing message')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Reset/i }));
+
+      expect(screen.queryByText('Existing message')).not.toBeInTheDocument();
+      expect(screen.getByText('Ready')).toBeInTheDocument();
+    },
+    interactionTimeoutMs
+  );
+
+  it(
+    'edits a user message and re-runs inference with the edited prompt',
+    async () => {
+      mocks.createChatCompletion
+        .mockResolvedValueOnce(createCompletion('Original response.'))
+        .mockResolvedValueOnce(createCompletion('Edited response.'));
+
+      renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /Task prompt/i }),
+        'Original prompt'
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+      expect(await screen.findByText('Original response.')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
+      const editInput = screen.getByRole('textbox', { name: /Edit message/i });
+      expect(editInput).toHaveValue('Original prompt');
+      expect(editInput.tagName).toBe('TEXTAREA');
+
+      await userEvent.clear(editInput);
+      await userEvent.type(editInput, 'Edited prompt');
+      await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
+
+      expect(await screen.findByText('Edited response.')).toBeInTheDocument();
+      expect(screen.getByText('Edited prompt')).toBeInTheDocument();
+      expect(screen.queryByText('Original prompt')).not.toBeInTheDocument();
+      expect(screen.queryByText('Original response.')).not.toBeInTheDocument();
+
+      await waitFor(() => expect(mocks.createChatCompletion).toHaveBeenCalledTimes(2));
+      expect(mocks.createChatCompletion).toHaveBeenLastCalledWith(
         expect.objectContaining({
           model: 'test-model',
           workspace: 'default',
           stream: true,
-          messages: [{ role: 'user', content: 'Hello model' }],
+          messages: [{ role: 'user', content: 'Edited prompt' }],
         })
-      )
-    );
-  });
+      );
+    },
+    interactionTimeoutMs
+  );
 
-  it('clears the current thread', async () => {
-    renderAssistantChat(
-      <AssistantChat
-        model="test-model"
-        initialMessages={[
-          {
-            role: 'user',
-            content: [{ type: 'text', text: 'Existing message' }],
-          },
-        ]}
-      />
-    );
+  it(
+    'stops a hanging stream when stop is clicked',
+    async () => {
+      const stream = createHangingStream('0 this is an example response');
+      const abortSpy = vi.spyOn(stream.controller, 'abort');
+      mocks.createChatCompletion.mockResolvedValueOnce(stream);
 
-    expect(screen.getByText('Existing message')).toBeInTheDocument();
+      renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-    await userEvent.click(screen.getByRole('button', { name: /Reset/i }));
+      await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hang forever');
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
-    expect(screen.queryByText('Existing message')).not.toBeInTheDocument();
-    expect(screen.getByText('Ready')).toBeInTheDocument();
-  });
+      expect(await screen.findByText('0 this is an example response')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /Stop/i })).toBeEnabled();
 
-  it('edits a user message and re-runs inference with the edited prompt', async () => {
-    mocks.createChatCompletion
-      .mockResolvedValueOnce(createCompletion('Original response.'))
-      .mockResolvedValueOnce(createCompletion('Edited response.'));
+      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
 
-    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+      await waitFor(() => expect(abortSpy).toHaveBeenCalledTimes(1));
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument()
+      );
+      expect(screen.getByRole('button', { name: /Submit/i })).toBeInTheDocument();
+      expect(screen.getByText('0 this is an example response')).toBeInTheDocument();
+    },
+    interactionTimeoutMs
+  );
 
-    await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Original prompt');
-    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+  it(
+    'aborts a pending completion request when stop is clicked',
+    async () => {
+      let requestSignal: AbortSignal | undefined;
+      const abortError = new Error('aborted');
+      abortError.name = 'AbortError';
 
-    expect(await screen.findByText('Original response.')).toBeInTheDocument();
+      mocks.createChatCompletion.mockImplementationOnce((request: CompletionRequestWithSignal) => {
+        requestSignal = request.signal;
 
-    await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
-    const editInput = screen.getByRole('textbox', { name: /Edit message/i });
-    expect(editInput).toHaveValue('Original prompt');
-    expect(editInput.tagName).toBe('TEXTAREA');
-
-    await userEvent.clear(editInput);
-    await userEvent.type(editInput, 'Edited prompt');
-    await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
-
-    expect(await screen.findByText('Edited response.')).toBeInTheDocument();
-    expect(screen.getByText('Edited prompt')).toBeInTheDocument();
-    expect(screen.queryByText('Original prompt')).not.toBeInTheDocument();
-    expect(screen.queryByText('Original response.')).not.toBeInTheDocument();
-
-    await waitFor(() => expect(mocks.createChatCompletion).toHaveBeenCalledTimes(2));
-    expect(mocks.createChatCompletion).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        model: 'test-model',
-        workspace: 'default',
-        stream: true,
-        messages: [{ role: 'user', content: 'Edited prompt' }],
-      })
-    );
-  });
-
-  it('stops a hanging stream when stop is clicked', async () => {
-    const stream = createHangingStream('0 this is an example response');
-    const abortSpy = vi.spyOn(stream.controller, 'abort');
-    mocks.createChatCompletion.mockResolvedValueOnce(stream);
-
-    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
-
-    await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Hang forever');
-    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
-
-    expect(await screen.findByText('0 this is an example response')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Stop/i })).toBeEnabled();
-
-    await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
-
-    await waitFor(() => expect(abortSpy).toHaveBeenCalledTimes(1));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument()
-    );
-    expect(screen.getByRole('button', { name: /Submit/i })).toBeInTheDocument();
-    expect(screen.getByText('0 this is an example response')).toBeInTheDocument();
-  });
-
-  it('aborts a pending completion request when stop is clicked', async () => {
-    let requestSignal: AbortSignal | undefined;
-    const abortError = new Error('aborted');
-    abortError.name = 'AbortError';
-
-    mocks.createChatCompletion.mockImplementationOnce((request: CompletionRequestWithSignal) => {
-      requestSignal = request.signal;
-
-      return new Promise<ChatCompletion>((_resolve, reject) => {
-        request.signal?.addEventListener('abort', () => reject(abortError), { once: true });
+        return new Promise<ChatCompletion>((_resolve, reject) => {
+          request.signal?.addEventListener('abort', () => reject(abortError), { once: true });
+        });
       });
-    });
 
-    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+      renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
 
-    await userEvent.type(
-      screen.getByRole('textbox', { name: /Task prompt/i }),
-      'Hang before stream'
-    );
-    await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+      await userEvent.type(
+        screen.getByRole('textbox', { name: /Task prompt/i }),
+        'Hang before stream'
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
-    await waitFor(() => expect(requestSignal).toBeDefined());
-    expect(requestSignal?.aborted).toBe(false);
+      await waitFor(() => expect(requestSignal).toBeDefined());
+      expect(requestSignal?.aborted).toBe(false);
 
-    await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
 
-    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument()
-    );
-    expect(screen.queryByText('aborted')).not.toBeInTheDocument();
-  });
+      await waitFor(() => expect(requestSignal?.aborted).toBe(true));
+      await waitFor(() =>
+        expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument()
+      );
+      expect(screen.queryByText('aborted')).not.toBeInTheDocument();
+    },
+    interactionTimeoutMs
+  );
 });

@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.sdk.types import ExecutionMode
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
 

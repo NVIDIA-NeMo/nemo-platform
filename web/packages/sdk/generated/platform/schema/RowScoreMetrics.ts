@@ -6,9 +6,9 @@
  * Do not edit manually.
  * Nemo Platform API
  */
-import type { MetricScore } from './MetricScore';
+import type { MetricOutput } from './MetricOutput';
 
 /**
- * Metric-level row scores by metric key.
+ * Metric-level row outputs by metric key.
  */
-export type RowScoreMetrics = { [key: string]: MetricScore[] };
+export type RowScoreMetrics = { [key: string]: MetricOutput[] };
