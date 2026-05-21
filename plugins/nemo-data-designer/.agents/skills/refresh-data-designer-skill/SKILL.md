@@ -30,7 +30,7 @@ Extract the version from `plugins/nemo-data-designer/pyproject.toml`:
 grep -E '"data-designer==' plugins/nemo-data-designer/pyproject.toml | head -1
 ```
 
-Capture the version string (e.g., `0.5.7`) — this is `$VERSION` for the rest of the procedure.
+Capture the version string (e.g., `0.6.0`) — this is `$VERSION` for the rest of the procedure.
 
 ### Step 2 — Enumerate and fetch the upstream bundle
 

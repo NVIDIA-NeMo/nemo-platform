@@ -31,7 +31,7 @@ class DisplayRecordMixin:
         html_str = render_record_html(
             row,
             record_index=i,
-            original_text_column=get_original_text_column(trace_dataframe),
+            resolved_text_column=get_original_text_column(trace_dataframe),
         )
 
         try:

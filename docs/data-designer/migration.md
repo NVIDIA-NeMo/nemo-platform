@@ -80,4 +80,4 @@ Before switching execution modes, verify:
 - **Execution Modes:** See [Execution Modes](execution-modes.md) for the conceptual model.
 - **CLI:** See [Data Designer CLI](cli.md) for `run`, `submit`, and persona commands.
 - **Tutorials:** Follow the [tutorials](tutorials/index.md) for hands-on examples.
-- **Library Docs:** Refer to the [open-source library documentation](https://nvidia-nemo.github.io/DataDesigner/0.5.7/) for configuration details.
+- **Library Docs:** Refer to the [open-source library documentation](https://nvidia-nemo.github.io/DataDesigner/0.6.0/) for configuration details.
