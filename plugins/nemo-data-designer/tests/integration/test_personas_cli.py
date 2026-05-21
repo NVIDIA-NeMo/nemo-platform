@@ -23,6 +23,16 @@ def mock_ngc_client() -> Generator[dict[str, Mock]]:
         mock_client = Mock()
         mock_resource_api = Mock()
 
+        # `nemo-data-designer` no longer pins NGC versions when creating filesets
+        # (see commit 7399308); the NGC backend resolves "latest" by calling
+        # `list_versions(...)` and reading `.versionId` off the first entry, so
+        # the mock must yield a fresh iterator of version-shaped objects on
+        # every call (each backend instance re-resolves and consumes the
+        # iterator once).
+        mock_version = Mock()
+        mock_version.versionId = "0.0.2"
+        mock_resource_api.list_versions.side_effect = lambda *_a, **_kw: iter([mock_version])
+
         mock_client_cls.return_value = mock_client
         mock_resource_api_cls.return_value = mock_resource_api
 
