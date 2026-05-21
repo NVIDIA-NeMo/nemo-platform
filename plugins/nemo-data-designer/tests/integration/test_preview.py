@@ -11,7 +11,7 @@ import pandas as pd
 import pytest
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.config import get_config
-from nemo_data_designer_plugin.sdk.errors import DataDesignerConfigValidationError
+from nemo_data_designer_plugin.sdk.errors import DataDesignerConfigValidationError, DataDesignerPreviewError
 
 
 @pytest.mark.integration
@@ -68,7 +68,7 @@ def test_happy_path_preview() -> None:
 
 
 @pytest.mark.integration
-def test_seed_dataset() -> None:
+def test_hf_seed_dataset() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.with_seed_dataset(
         dd.HuggingFaceSeedSource(path="my-ws/my-fileset#path/to/data.parquet", token=u.SECRET_NAME)
@@ -173,6 +173,34 @@ def test_preview_with_schema_transform_processor() -> None:
     assert isinstance(processor_records, list)
     assert len(processor_records) == 3
     assert "messages" in processor_records[0]
+
+
+@pytest.mark.integration
+def test_preview_surfaces_worker_error_through_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When the preview worker thread raises, the function emits a ``LogFrame`` and an
+    ``Error`` frame instead of ``Done``; the SDK's ``_PreviewFrameCollector`` translates
+    that ``Error`` into a typed ``DataDesignerPreviewError`` with the original message.
+    """
+    from nemo_data_designer_plugin.functions import _preview_worker as worker_module
+
+    def boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("forced worker failure")
+
+    monkeypatch.setattr(worker_module, "make_preview_dataset", boom)
+
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a"]),
+        )
+    )
+
+    with u.make_mock_client_context() as client_context:
+        dd_client = u.make_dd_client(client_context)
+        with pytest.raises(DataDesignerPreviewError, match="forced worker failure"):
+            dd_client.preview(builder, num_records=3)
 
 
 def assert_message_with(messages: list[str], exact: str | None = None, fuzzy: str | None = None) -> None:
