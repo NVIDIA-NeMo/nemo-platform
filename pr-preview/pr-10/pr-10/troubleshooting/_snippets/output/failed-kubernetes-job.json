@@ -1,0 +1,125 @@
+{
+  "job_id": "job-ppdpvptwim5w5b5hxgeumw",
+  "status": "error",
+  "status_details": {},
+  "error_details": {
+    "pods": [
+      {
+        "name": "jobstep-7f5cramwfhfithi9fuieat-5jlnf",
+        "phase": "Failed",
+        "conditions": [
+          {
+            "type": "PodReadyToStartContainers",
+            "status": "False",
+            "reason": null,
+            "message": null
+          },
+          {
+            "type": "Initialized",
+            "status": "True",
+            "reason": null,
+            "message": null
+          },
+          {
+            "type": "Ready",
+            "status": "False",
+            "reason": "PodFailed",
+            "message": null
+          },
+          {
+            "type": "ContainersReady",
+            "status": "False",
+            "reason": "PodFailed",
+            "message": null
+          },
+          {
+            "type": "PodScheduled",
+            "status": "True",
+            "reason": null,
+            "message": null
+          }
+        ],
+        "containers": [
+          {
+            "name": "nemo-job-task",
+            "ready": false,
+            "restart_count": 0,
+            "terminated": {
+              "exit_code": 1,
+              "reason": "Error",
+              "message": null
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "steps": [
+    {
+      "name": "audit",
+      "status": "error",
+      "status_details": {},
+      "error_details": {
+        "pods": [
+          {
+            "name": "jobstep-7f5cramwfhfithi9fuieat-5jlnf",
+            "phase": "Failed",
+            "conditions": [
+              {
+                "type": "PodReadyToStartContainers",
+                "status": "False",
+                "reason": null,
+                "message": null
+              },
+              {
+                "type": "Initialized",
+                "status": "True",
+                "reason": null,
+                "message": null
+              },
+              {
+                "type": "Ready",
+                "status": "False",
+                "reason": "PodFailed",
+                "message": null
+              },
+              {
+                "type": "ContainersReady",
+                "status": "False",
+                "reason": "PodFailed",
+                "message": null
+              },
+              {
+                "type": "PodScheduled",
+                "status": "True",
+                "reason": null,
+                "message": null
+              }
+            ],
+            "containers": [
+              {
+                "name": "nemo-job-task",
+                "ready": false,
+                "restart_count": 0,
+                "terminated": {
+                  "exit_code": 1,
+                  "reason": "Error",
+                  "message": null
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "tasks": [
+        {
+          "id": "f45369be-5a06-4dba-ba9f-8fc49a235092",
+          "status": "error",
+          "status_details": {},
+          "error_details": {},
+          "error_stack": null
+        }
+      ]
+    }
+  ]
+}
