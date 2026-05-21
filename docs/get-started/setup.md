@@ -17,7 +17,7 @@ Clone the source repository and bootstrap the local environment:
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
-cd Platform
+cd nemo-platform
 make bootstrap
 source .venv/bin/activate
 ```

@@ -81,7 +81,7 @@ flow.
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
-cd Platform
+cd nemo-platform
 make bootstrap
 nemo setup
 ```

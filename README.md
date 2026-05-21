@@ -19,7 +19,7 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 
 ```bash
 git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
-cd Platform
+cd nemo-platform
 
 make bootstrap
 source .venv/bin/activate
@@ -84,7 +84,7 @@ nemo setup --auto --start-services --install-skills --deploy-agent
 
 ## Use NeMo Platform from your coding agent
 
-After installation, launch your coding agent (Claude Code, Codex, Cursor, OpenCode, etc) from inside the `Platform` directory. This is the primary way of interacting with the NeMo Platform.
+After installation, launch your coding agent (Claude Code, Codex, Cursor, OpenCode, etc) from inside the `nemo-platform` directory. This is the primary way of interacting with the NeMo Platform.
 
 Things you can ask it to do, once the platform is running:
 
