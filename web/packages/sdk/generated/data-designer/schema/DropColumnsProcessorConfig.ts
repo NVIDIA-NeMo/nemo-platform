@@ -11,7 +11,7 @@
  * Drop columns from the output dataset (prefer ``drop=True`` in the column config).
 
 This processor removes specified columns from the generated dataset. The dropped
-columns are saved separately in a `dropped-columns` directory for reference.
+columns are saved separately in the `dropped-columns-parquet-files` directory for reference.
 When this processor is added via the config builder, the corresponding column
 configs are automatically marked with `drop = True`.
 

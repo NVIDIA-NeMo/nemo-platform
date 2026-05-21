@@ -1000,17 +1000,18 @@ components:
       - columns
       title: DataDesignerConfig
       description: "Configuration for NeMo Data Designer.\n\nThis class defines the\
-        \ main configuration structure for NeMo Data Designer,\nwhich orchestrates\
-        \ the generation of synthetic data.\n\nAttributes:\n    columns: Required\
-        \ list of column configurations defining how each column\n        should be\
-        \ generated. Must contain at least one column.\n    model_configs: Optional\
-        \ list of model configurations for LLM-based generation.\n        Each model\
-        \ config defines the model, provider, and inference parameters.\n    tool_configs:\
-        \ Optional list of tool configurations for MCP tool calling.\n        Each\
-        \ tool config defines the provider, allowed tools, and execution limits.\n\
-        \    seed_config: Optional seed dataset settings to use for generation.\n\
-        \    constraints: Optional list of column constraints.\n    profilers: Optional\
-        \ list of column profilers for analyzing generated data characteristics."
+        \ main configuration structure for NeMo Data Designer,\nwhich the engine consumes\
+        \ when generating synthetic data.\n\nAttributes:\n    columns: Required list\
+        \ of column configurations defining how each column\n        should be generated.\
+        \ Must contain at least one column.\n    model_configs: Optional list of model\
+        \ configurations for LLM-based generation.\n        Each model config defines\
+        \ the model, provider, and inference parameters.\n    tool_configs: Optional\
+        \ list of tool configurations for MCP tool calling.\n        Each tool config\
+        \ defines the provider, allowed tools, and execution limits.\n    seed_config:\
+        \ Optional seed dataset settings to use for generation.\n    constraints:\
+        \ Optional list of column constraints.\n    profilers: Optional list of column\
+        \ profilers for analyzing generated data characteristics.\n    processors:\
+        \ Optional list of processor configurations for post-generation transformations."
     DataDesignerJobConfig:
       properties:
         num_records:
@@ -1076,7 +1077,7 @@ components:
         end:
           type: string
           title: End
-          description: Latest possible datetime for sampling range, inclusive.
+          description: Exclusive upper bound for datetime sampling range.
         unit:
           type: string
           enum:
@@ -1107,11 +1108,11 @@ components:
         \ between consecutive samples.\n\nAttributes:\n    start (required): Earliest\
         \ possible datetime for the sampling range (inclusive). Must be a valid\n\
         \        datetime string parseable by pandas.to_datetime().\n    end (required):\
-        \ Latest possible datetime for the sampling range (inclusive). Must be a valid\n\
-        \        datetime string parseable by pandas.to_datetime().\n    unit: Time\
-        \ unit for sampling granularity. Options:\n        - \"Y\": Years\n      \
-        \  - \"M\": Months\n        - \"D\": Days (default)\n        - \"h\": Hours\n\
-        \        - \"m\": Minutes\n        - \"s\": Seconds"
+        \ Exclusive upper bound for the sampling range. Must be a valid\n        datetime\
+        \ string parseable by pandas.to_datetime().\n    unit: Time unit for sampling\
+        \ granularity. Options:\n        - \"Y\": Years\n        - \"M\": Months\n\
+        \        - \"D\": Days (default)\n        - \"h\": Hours\n        - \"m\"\
+        : Minutes\n        - \"s\": Seconds"
     DirectorySeedSource:
       properties:
         seed_type:
@@ -1174,7 +1175,7 @@ components:
       title: DropColumnsProcessorConfig
       description: "Drop columns from the output dataset (prefer ``drop=True`` in\
         \ the column config).\n\nThis processor removes specified columns from the\
-        \ generated dataset. The dropped\ncolumns are saved separately in a `dropped-columns`\
+        \ generated dataset. The dropped\ncolumns are saved separately in the `dropped-columns-parquet-files`\
         \ directory for reference.\nWhen this processor is added via the config builder,\
         \ the corresponding column\nconfigs are automatically marked with `drop =\
         \ True`.\n\nAttributes:\n    column_names (required): List of column names\
@@ -1641,7 +1642,8 @@ components:
         \ configuration.\n    summary_score_sample_size: Number of score samples to\
         \ include when prompting the LLM\n        to generate summaries. Larger sample\
         \ sizes provide more context but increase\n        token usage. Must be at\
-        \ least 1. Defaults to 20."
+        \ least 1 when provided. Set to None to skip LLM-generated\n        summaries.\
+        \ Defaults to 20."
     LLMCodeColumnConfig:
       properties:
         name:
@@ -2177,9 +2179,12 @@ components:
         \  model: Model identifier (e.g., from build.nvidia.com or other providers).\n\
         \    inference_parameters: Inference parameters for the model (temperature,\
         \ top_p, max_tokens, etc.).\n        The generation_type is determined by\
-        \ the type of inference_parameters.\n    provider: Optional model provider\
-        \ name if using custom providers.\n    skip_health_check: Whether to skip\
-        \ the health check for this model. Defaults to False."
+        \ the type of inference_parameters.\n    provider: Name of the model provider.\
+        \ Required in a future release. Leaving\n        ``provider`` unset (or ``None``)\
+        \ currently routes through the registry's\n        implicit default and is\
+        \ **deprecated**; specify ``provider=`` explicitly.\n        See issue #589.\n\
+        \    skip_health_check: Whether to skip the health check for this model. Defaults\
+        \ to False."
     ModelProvider:
       properties:
         name:
@@ -2334,7 +2339,7 @@ components:
             that a synthetic person will be sampled from. Must be a locale supported
             by a managed Nemotron Personas dataset. Managed datasets exist for the
             following locales: en_US, en_IN, en_SG, fr_FR, hi_Deva_IN, hi_Latn_IN,
-            ja_JP, pt_BR.'
+            ja_JP, ko_KR, pt_BR.'
           default: en_US
         sex:
           title: Sex
@@ -2406,13 +2411,13 @@ components:
       title: PersonSamplerParams
       description: "Parameters for sampling synthetic person data with demographic\
         \ attributes.\n\nGenerates realistic synthetic person data including names,\
-        \ addresses, phone numbers, and other\ndemographic information. Data can be\
-        \ sampled from managed datasets (when available) or generated\nusing Faker.\
-        \ The sampler supports filtering by locale, sex, age, geographic location,\
-        \ and can\noptionally include synthetic persona descriptions.\n\nAttributes:\n\
-        \    locale: Locale string determining the language and geographic region\
-        \ for synthetic people.\n        Must be a locale supported by a managed Nemotron\
-        \ Personas dataset. The dataset must\n        be downloaded and available\
+        \ addresses, phone numbers, and other\ndemographic information from managed\
+        \ datasets. The sampler supports filtering by locale, sex, age,\ngeographic\
+        \ location, and selected managed-dataset fields, and can optionally include\
+        \ synthetic\npersona descriptions. For Faker-generated person data, use PersonFromFakerSamplerParams.\n\
+        \nAttributes:\n    locale: Locale string determining the language and geographic\
+        \ region for synthetic people.\n        Must be a locale supported by a managed\
+        \ Nemotron Personas dataset. The dataset must\n        be downloaded and available\
         \ in the managed assets directory.\n    sex: If specified, filters to only\
         \ sample people of the specified sex. Options: \"Male\" or\n        \"Female\"\
         . If None, samples both sexes.\n    city: If specified, filters to only sample\
@@ -2423,11 +2428,9 @@ components:
         \        maximum allowed ages.\n    with_synthetic_personas: If True, appends\
         \ additional synthetic persona columns including\n        personality traits,\
         \ interests, and background descriptions. Only supported for certain\n   \
-        \     locales with managed datasets.\n    sample_dataset_when_available: If\
-        \ True, samples from curated managed datasets when available\n        for\
-        \ the specified locale. If False or unavailable, falls back to Faker-generated\
-        \ data.\n        Managed datasets typically provide more realistic and diverse\
-        \ synthetic people."
+        \     locales with managed datasets.\n    select_field_values: Optional field-value\
+        \ filters for managed datasets. Supported field\n        names are checked\
+        \ against the managed person data fields."
     PlatformJobListResultResponse:
       properties:
         data:
@@ -2881,17 +2884,17 @@ components:
       - sampler_type
       - params
       title: SamplerColumnConfig
-      description: "Configuration for columns generated using numerical samplers.\n\
-        \nSampler columns provide efficient data generation using numerical samplers\
-        \ for\ncommon data types and distributions. Supported samplers include UUID\
-        \ generation,\ndatetime/timedelta sampling, person generation, category /\
-        \ subcategory sampling,\nand various statistical distributions (uniform, gaussian,\
-        \ binomial, poisson, scipy).\n\nAttributes:\n    sampler_type (required):\
-        \ Type of sampler to use. Available types include:\n        \"uuid\", \"category\"\
-        , \"subcategory\", \"uniform\", \"gaussian\", \"bernoulli\",\n        \"bernoulli_mixture\"\
-        , \"binomial\", \"poisson\", \"scipy\", \"person\", \"datetime\", \"timedelta\"\
-        .\n    params (required): Parameters specific to the chosen sampler type.\
-        \ Type varies based on the `sampler_type`\n        (e.g., `CategorySamplerParams`,\
+      description: "Configuration for columns generated using built-in samplers.\n\
+        \nSampler columns provide efficient data generation for common data types\
+        \ and\ndistributions. Supported samplers include UUID generation,\ndatetime/timedelta\
+        \ sampling, person generation, category / subcategory sampling,\nand various\
+        \ statistical distributions (uniform, gaussian, binomial, poisson, scipy).\n\
+        \nAttributes:\n    sampler_type (required): Type of sampler to use. Available\
+        \ types include:\n        \"uuid\", \"category\", \"subcategory\", \"uniform\"\
+        , \"gaussian\", \"bernoulli\",\n        \"bernoulli_mixture\", \"binomial\"\
+        , \"poisson\", \"scipy\", \"person\",\n        \"person_from_faker\", \"datetime\"\
+        , \"timedelta\".\n    params (required): Parameters specific to the chosen\
+        \ sampler type. Type varies based on the `sampler_type`\n        (e.g., `CategorySamplerParams`,\
         \ `UniformSamplerParams`, `PersonSamplerParams`).\n    conditional_params:\
         \ Optional dictionary for conditional parameters. The dict keys\n        are\
         \ the conditions that must be met (e.g., \"age > 21\") for the conditional\
@@ -3004,7 +3007,7 @@ components:
         \ templates.\n\nThis processor creates a new dataset with a transformed schema.\
         \ Each key in the\ntemplate becomes a column in the output, and values are\
         \ Jinja2 templates that\ncan reference any column in the batch. The transformed\
-        \ dataset is written to\na `processors-outputs/{processor_name}/` directory\
+        \ dataset is written to\na `processors-files/{processor_name}/` directory\
         \ alongside the main dataset.\n\nAttributes:\n    template (required): Dictionary\
         \ defining the output schema. Keys are new column names,\n        values are\
         \ Jinja2 templates (strings, lists, or nested structures).\n        Must be\
@@ -3120,7 +3123,7 @@ components:
       required:
       - source
       title: SeedConfig
-      description: "Configuration for sampling data from a seed dataset.\n\nArgs:\n\
+      description: "Configuration for sampling data from a seed dataset.\n\nAttributes:\n\
         \    source: A SeedSource defining where the seed data exists\n    sampling_strategy:\
         \ Strategy for how to sample rows from the dataset.\n        - ORDERED: Read\
         \ rows sequentially in their original order.\n        - SHUFFLE: Randomly\
@@ -3454,7 +3457,7 @@ components:
         high:
           type: number
           title: High
-          description: Upper bound of the uniform distribution, inclusive.
+          description: Upper bound of the uniform distribution.
         decimal_places:
           title: Decimal Places
           description: Number of decimal places to round the sampled values to.
@@ -3476,10 +3479,10 @@ components:
         \ when all values within a range are\nequally likely, such as random percentages,\
         \ proportions, or unbiased measurements.\n\nAttributes:\n    low (required):\
         \ Lower bound of the uniform distribution (inclusive). Can be any real number.\n\
-        \    high (required): Upper bound of the uniform distribution (inclusive).\
-        \ Must be greater than `low`.\n    decimal_places: Optional number of decimal\
-        \ places to round sampled values to. If None,\n        values are not rounded\
-        \ and may have many decimal places."
+        \    high (required): Upper bound of the uniform distribution. Must be greater\
+        \ than `low`.\n    decimal_places: Optional number of decimal places to round\
+        \ sampled values to. If None,\n        values are not rounded and may have\
+        \ many decimal places."
     ValidationColumnConfig:
       properties:
         name:
@@ -3558,20 +3561,20 @@ components:
         \ a\n          DataFrame with target columns and must return a DataFrame with\
         \ validation results.\n        - \"local_callable\": Call a local Python function\
         \ with the data. Only supported\n          when running DataDesigner locally.\n\
-        \        - \"remote\": Send data to a remote HTTP endpoint for validation.\
-        \ Useful for\n    validator_params (required): Parameters specific to the\
-        \ validator type. Type varies by validator:\n        - CodeValidatorParams:\
-        \ Specifies code language (python or SQL dialect like\n          \"sql:postgres\"\
-        , \"sql:mysql\").\n        - LocalCallableValidatorParams: Provides validation\
-        \ function (Callable[[pd.DataFrame],\n          pd.DataFrame]) and optional\
-        \ output schema for validation results.\n        - RemoteValidatorParams:\
-        \ Configures endpoint URL, HTTP timeout, retry behavior\n          (max_retries,\
-        \ retry_backoff), and parallel request limits (max_parallel_requests).\n \
-        \   batch_size: Number of records to process in each validation batch. Defaults\
-        \ to 10.\n        Larger batches are more efficient but use more memory. Adjust\
-        \ based on validator\n        complexity and available resources.\n\nInherited\
-        \ Attributes:\n    name (required): Unique name of the column to be generated.\n\
-        \    drop: If True, generate this column but remove it from the final dataset."
+        \        - \"remote\": Send data to a remote HTTP endpoint for validation.\n\
+        \    validator_params (required): Parameters specific to the validator type.\
+        \ Type varies by validator:\n        - CodeValidatorParams: Specifies code\
+        \ language (python or SQL dialect like\n          \"sql:postgres\", \"sql:mysql\"\
+        ).\n        - LocalCallableValidatorParams: Provides validation function (Callable[[pd.DataFrame],\n\
+        \          pd.DataFrame]) and optional output schema for validation results.\n\
+        \        - RemoteValidatorParams: Configures endpoint URL, HTTP timeout, retry\
+        \ behavior\n          (max_retries, retry_backoff), and parallel request limits\
+        \ (max_parallel_requests).\n    batch_size: Number of records to process in\
+        \ each validation batch. Defaults to 10.\n        Larger batches are more\
+        \ efficient but use more memory. Adjust based on validator\n        complexity\
+        \ and available resources.\n\nInherited Attributes:\n    name (required):\
+        \ Unique name of the column to be generated.\n    drop: If True, generate\
+        \ this column but remove it from the final dataset."
     ValidationError:
       properties:
         loc:

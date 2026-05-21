@@ -14,7 +14,7 @@ import type { SchemaTransformProcessorConfigTemplate } from './SchemaTransformPr
 This processor creates a new dataset with a transformed schema. Each key in the
 template becomes a column in the output, and values are Jinja2 templates that
 can reference any column in the batch. The transformed dataset is written to
-a `processors-outputs/{processor_name}/` directory alongside the main dataset.
+a `processors-files/{processor_name}/` directory alongside the main dataset.
 
 Attributes:
     template (required): Dictionary defining the output schema. Keys are new column names,

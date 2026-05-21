@@ -13,9 +13,9 @@ import type { PersonSamplerParamsSex } from './PersonSamplerParamsSex';
  * Parameters for sampling synthetic person data with demographic attributes.
 
 Generates realistic synthetic person data including names, addresses, phone numbers, and other
-demographic information. Data can be sampled from managed datasets (when available) or generated
-using Faker. The sampler supports filtering by locale, sex, age, geographic location, and can
-optionally include synthetic persona descriptions.
+demographic information from managed datasets. The sampler supports filtering by locale, sex, age,
+geographic location, and selected managed-dataset fields, and can optionally include synthetic
+persona descriptions. For Faker-generated person data, use PersonFromFakerSamplerParams.
 
 Attributes:
     locale: Locale string determining the language and geographic region for synthetic people.
@@ -31,12 +31,11 @@ Attributes:
     with_synthetic_personas: If True, appends additional synthetic persona columns including
         personality traits, interests, and background descriptions. Only supported for certain
         locales with managed datasets.
-    sample_dataset_when_available: If True, samples from curated managed datasets when available
-        for the specified locale. If False or unavailable, falls back to Faker-generated data.
-        Managed datasets typically provide more realistic and diverse synthetic people.
+    select_field_values: Optional field-value filters for managed datasets. Supported field
+        names are checked against the managed person data fields.
  */
 export interface PersonSamplerParams {
-  /** Locale that determines the language and geographic location that a synthetic person will be sampled from. Must be a locale supported by a managed Nemotron Personas dataset. Managed datasets exist for the following locales: en_US, en_IN, en_SG, fr_FR, hi_Deva_IN, hi_Latn_IN, ja_JP, pt_BR. */
+  /** Locale that determines the language and geographic location that a synthetic person will be sampled from. Must be a locale supported by a managed Nemotron Personas dataset. Managed datasets exist for the following locales: en_US, en_IN, en_SG, fr_FR, hi_Deva_IN, hi_Latn_IN, ja_JP, ko_KR, pt_BR. */
   locale?: string;
   /** If specified, then only synthetic people of the specified sex will be sampled. */
   sex?: PersonSamplerParamsSex;

@@ -25,17 +25,18 @@ import type { UniformSamplerParams } from './UniformSamplerParams';
 import type { UUIDSamplerParams } from './UUIDSamplerParams';
 
 /**
- * Configuration for columns generated using numerical samplers.
+ * Configuration for columns generated using built-in samplers.
 
-Sampler columns provide efficient data generation using numerical samplers for
-common data types and distributions. Supported samplers include UUID generation,
+Sampler columns provide efficient data generation for common data types and
+distributions. Supported samplers include UUID generation,
 datetime/timedelta sampling, person generation, category / subcategory sampling,
 and various statistical distributions (uniform, gaussian, binomial, poisson, scipy).
 
 Attributes:
     sampler_type (required): Type of sampler to use. Available types include:
         "uuid", "category", "subcategory", "uniform", "gaussian", "bernoulli",
-        "bernoulli_mixture", "binomial", "poisson", "scipy", "person", "datetime", "timedelta".
+        "bernoulli_mixture", "binomial", "poisson", "scipy", "person",
+        "person_from_faker", "datetime", "timedelta".
     params (required): Parameters specific to the chosen sampler type. Type varies based on the `sampler_type`
         (e.g., `CategorySamplerParams`, `UniformSamplerParams`, `PersonSamplerParams`).
     conditional_params: Optional dictionary for conditional parameters. The dict keys
