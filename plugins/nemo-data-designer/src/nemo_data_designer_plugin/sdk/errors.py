@@ -37,10 +37,7 @@ def extract_http_error_info(exc: httpx.HTTPStatusError) -> tuple[int, str]:
 
     Tries to parse the response body as JSON and use its ``detail`` field (the
     convention used by FastAPI / NeMo Platform); falls back to the raw body
-    text if that isn't available. We do this because the basic httpx client we
-    use in this SDK doesn't expose the structured error types that the
-    Stainless-generated client did, so the response body is the only source of
-    truth for the human-facing message.
+    text if that isn't available.
     """
     response = exc.response
     try:
