@@ -1,0 +1,25 @@
+[project]
+name = "nemo-insights-plugin"
+version = "0.0.1"
+description = "NeMo Insights Plugin - analyst agent onboarding and optimization diagnosis"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "nvidia-nat-core>=1.7.0rc3,<1.8",
+    "nvidia-nat-langchain>=1.7.0rc3,<1.8",
+    "pyyaml>=6.0",
+]
+
+[project.entry-points.'nat.plugins']
+nemo_insights = "nemo_insights_plugin.register"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_insights_plugin"]
+
+[tool.uv.sources]
+nemo-platform = { workspace = true }
+nemo-platform-plugin = { workspace = true }
+nmp-common = { workspace = true }
