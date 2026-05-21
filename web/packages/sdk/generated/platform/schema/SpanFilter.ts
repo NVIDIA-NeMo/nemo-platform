@@ -43,6 +43,12 @@ export interface SpanFilter {
   provider?: string;
   /** Filter by agent identifier. */
   agent_id?: string;
+  /** Filter by agent application name (e.g. 'claude-code', 'codex'). */
+  agent_name?: string;
+  /** Filter by prompt template name. */
+  prompt_name?: string;
+  /** Filter by prompt template version. */
+  prompt_version?: string;
   /** Filter by parent span id. Use to fetch direct children of a span. */
   parent_span_id?: string;
   /** Filter by span start timestamp. */

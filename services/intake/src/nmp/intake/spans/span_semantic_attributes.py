@@ -25,7 +25,10 @@ class SpanSemanticAttributes(BaseModel):
     model: str | None = None
     provider: str | None = None
     prompt_id: str | None = None
+    prompt_name: str | None = None
+    prompt_version: str | None = None
     agent_id: str | None = None
+    agent_name: str | None = None
     tool_name: str | None = None
     project: str | None = None
     evaluation_id: str | None = None

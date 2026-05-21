@@ -30,6 +30,9 @@ class SpanFilterParam(TypedDict, total=False):
     agent_id: str
     """Filter by agent identifier."""
 
+    agent_name: str
+    """Filter by agent application name (e.g. 'claude-code', 'codex')."""
+
     dataset_id: str
     """Filter by dataset id."""
 
@@ -63,6 +66,12 @@ class SpanFilterParam(TypedDict, total=False):
 
     project: str
     """Filter by project name."""
+
+    prompt_name: str
+    """Filter by prompt template name."""
+
+    prompt_version: str
+    """Filter by prompt template version."""
 
     provider: str
     """Filter by provider (e.g. 'openai', 'nim', 'anthropic')."""

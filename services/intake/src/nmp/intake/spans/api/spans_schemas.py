@@ -50,6 +50,11 @@ class SpanFilter(BaseModel):
     tool_name: str | None = Field(default=None, description="Filter by tool name.")
     provider: str | None = Field(default=None, description="Filter by provider (e.g. 'openai', 'nim', 'anthropic').")
     agent_id: str | None = Field(default=None, description="Filter by agent identifier.")
+    agent_name: str | None = Field(
+        default=None, description="Filter by agent application name (e.g. 'claude-code', 'codex')."
+    )
+    prompt_name: str | None = Field(default=None, description="Filter by prompt template name.")
+    prompt_version: str | None = Field(default=None, description="Filter by prompt template version.")
     parent_span_id: str | None = Field(
         default=None, description="Filter by parent span id. Use to fetch direct children of a span."
     )
@@ -125,7 +130,10 @@ class Span(BaseModel):
     provider: str | None = None
     model: str | None = None
     prompt_id: str | None = None
+    prompt_name: str | None = None
+    prompt_version: str | None = None
     agent_id: str | None = None
+    agent_name: str | None = None
     tool_name: str | None = None
     input_tokens: int | None = Field(default=None, ge=0)
     output_tokens: int | None = Field(default=None, ge=0)
@@ -170,7 +178,10 @@ class Span(BaseModel):
             provider=semantic_attributes.provider,
             model=semantic_attributes.model,
             prompt_id=semantic_attributes.prompt_id,
+            prompt_name=semantic_attributes.prompt_name,
+            prompt_version=semantic_attributes.prompt_version,
             agent_id=semantic_attributes.agent_id,
+            agent_name=semantic_attributes.agent_name,
             tool_name=semantic_attributes.tool_name,
             input_tokens=semantic_attributes.input_tokens,
             output_tokens=semantic_attributes.output_tokens,

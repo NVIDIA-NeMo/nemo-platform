@@ -31,7 +31,10 @@ class SpanAttributeField(StrEnum):
     MODEL = "model"
     PROVIDER = "provider"
     PROMPT_ID = "prompt_id"
+    PROMPT_NAME = "prompt_name"
+    PROMPT_VERSION = "prompt_version"
     AGENT_ID = "agent_id"
+    AGENT_NAME = "agent_name"
     TOOL_NAME = "tool_name"
     PROJECT = "project"
     EVALUATION_ID = "evaluation_id"
@@ -104,12 +107,42 @@ ATTRIBUTE_SPECS = (
         ),
     ),
     AttributeSpec(
+        field=SpanAttributeField.PROMPT_NAME,
+        bag=AttributeBag.STRING,
+        bag_key="prompt.name",
+        source_keys=(
+            "gen_ai.prompt.name",
+            "llm.prompt_template.name",
+            "prompt.name",
+        ),
+    ),
+    AttributeSpec(
+        field=SpanAttributeField.PROMPT_VERSION,
+        bag=AttributeBag.STRING,
+        bag_key="prompt.version",
+        source_keys=(
+            "gen_ai.prompt.version",
+            "llm.prompt_template.version",
+            "prompt.version",
+        ),
+    ),
+    AttributeSpec(
         field=SpanAttributeField.AGENT_ID,
         bag=AttributeBag.STRING,
         bag_key="gen_ai.agent.id",
         source_keys=(
             "gen_ai.agent.id",
             "agent.id",
+        ),
+    ),
+    AttributeSpec(
+        field=SpanAttributeField.AGENT_NAME,
+        bag=AttributeBag.STRING,
+        bag_key="gen_ai.agent.name",
+        source_keys=(
+            "gen_ai.agent.name",
+            "llm.agent.name",
+            "agent.name",
         ),
     ),
     AttributeSpec(
@@ -230,6 +263,7 @@ ATTRIBUTE_SPECS = (
         bag_key="llm.token_count.cached",
         source_keys=(
             "gen_ai.usage.cached_tokens",
+            "gen_ai.usage.input_cache_tokens",
             "llm.token_count.prompt_details.cache_read",
             "llm.token_count.cached",
         ),

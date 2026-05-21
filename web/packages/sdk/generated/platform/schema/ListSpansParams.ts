@@ -25,7 +25,7 @@ export type ListSpansParams = {
   sort?: SpanSortField;
   mode?: ListSpansMode;
   /**
-   * Filter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, and started_at.
+   * Filter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.
    */
   filter?: SpanFilter;
 };

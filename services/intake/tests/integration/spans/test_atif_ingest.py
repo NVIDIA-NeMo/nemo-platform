@@ -335,7 +335,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert trajectory["kind"] == "AGENT"
     assert trajectory["source"] == "atif"
     assert trajectory["model"] == "provider/sample-model"
-    assert trajectory["agent_id"] == "sample-agent"
+    assert trajectory["agent_name"] == "sample-agent"
     assert trajectory["input_tokens"] == 51701
     assert trajectory["output_tokens"] == 255
     assert trajectory["cached_tokens"] == 0

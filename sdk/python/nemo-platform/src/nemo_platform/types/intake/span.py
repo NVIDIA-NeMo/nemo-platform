@@ -45,6 +45,8 @@ class Span(BaseModel):
 
     agent_id: Optional[str] = None
 
+    agent_name: Optional[str] = None
+
     cached_tokens: Optional[int] = None
 
     cost_details: Optional[Dict[str, float]] = None
@@ -80,6 +82,10 @@ class Span(BaseModel):
     project: Optional[str] = None
 
     prompt_id: Optional[str] = None
+
+    prompt_name: Optional[str] = None
+
+    prompt_version: Optional[str] = None
 
     provider: Optional[str] = None
 

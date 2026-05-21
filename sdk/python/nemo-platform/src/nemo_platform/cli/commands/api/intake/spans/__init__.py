@@ -39,11 +39,14 @@ def list_spans(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, and started_at.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
     filter_agent_id: Annotated[str | None, typer.Option("--filter.agent-id", rich_help_panel="Filter Options")] = None,
+    filter_agent_name: Annotated[
+        str | None, typer.Option("--filter.agent-name", rich_help_panel="Filter Options")
+    ] = None,
     filter_dataset_id: Annotated[
         str | None, typer.Option("--filter.dataset-id", rich_help_panel="Filter Options")
     ] = None,
@@ -68,6 +71,12 @@ def list_spans(
         str | None, typer.Option("--filter.parent-span-id", rich_help_panel="Filter Options")
     ] = None,
     filter_project: Annotated[str | None, typer.Option("--filter.project", rich_help_panel="Filter Options")] = None,
+    filter_prompt_name: Annotated[
+        str | None, typer.Option("--filter.prompt-name", rich_help_panel="Filter Options")
+    ] = None,
+    filter_prompt_version: Annotated[
+        str | None, typer.Option("--filter.prompt-version", rich_help_panel="Filter Options")
+    ] = None,
     filter_provider: Annotated[str | None, typer.Option("--filter.provider", rich_help_panel="Filter Options")] = None,
     filter_session_id: Annotated[
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
@@ -108,6 +117,7 @@ def list_spans(
         filter=merge_filter_dict(
             filter,
             agent_id=filter_agent_id,
+            agent_name=filter_agent_name,
             dataset_id=filter_dataset_id,
             dataset_name=filter_dataset_name,
             dataset_version=filter_dataset_version,
@@ -118,6 +128,8 @@ def list_spans(
             model=filter_model,
             parent_span_id=filter_parent_span_id,
             project=filter_project,
+            prompt_name=filter_prompt_name,
+            prompt_version=filter_prompt_version,
             provider=filter_provider,
             session_id=filter_session_id,
             source=filter_source,

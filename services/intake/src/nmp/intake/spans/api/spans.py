@@ -41,6 +41,9 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
         "tool_name",
         "provider",
         "agent_id",
+        "agent_name",
+        "prompt_name",
+        "prompt_version",
     }
 )
 
@@ -54,7 +57,8 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
         filter_schema=SpanFilter,
         filter_description=(
             "Filter spans by session_id, parent_span_id, project, evaluation context fields, "
-            "source, kind, status, model, tool_name, provider, agent_id, and started_at."
+            "source, kind, status, model, tool_name, provider, agent_id, agent_name, "
+            "prompt_name, prompt_version, and started_at."
         ),
     ),
 )

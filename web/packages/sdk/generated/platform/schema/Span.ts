@@ -31,7 +31,10 @@ export interface Span {
   provider?: string;
   model?: string;
   prompt_id?: string;
+  prompt_name?: string;
+  prompt_version?: string;
   agent_id?: string;
+  agent_name?: string;
   tool_name?: string;
   /** @minimum 0 */
   input_tokens?: number;

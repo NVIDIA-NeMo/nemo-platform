@@ -125,7 +125,7 @@ def _trajectory_to_span(
     external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
-        agent_id=trajectory.agent.name,
+        agent_name=trajectory.agent.name,
         evaluation_context=trajectory.evaluation_context,
         input_tokens=final_metrics.total_prompt_tokens if final_metrics is not None else None,
         output_tokens=final_metrics.total_completion_tokens if final_metrics is not None else None,
@@ -182,7 +182,7 @@ def _step_to_span(
     )
     attribute_bags = _span_attributes(
         model=model_name or default_model_name,
-        agent_id=default_agent_name,
+        agent_name=default_agent_name,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cached_tokens=metrics.cached_tokens if metrics is not None else None,
@@ -237,7 +237,7 @@ def _tool_call_to_span(
     )
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
-        agent_id=default_agent_name,
+        agent_name=default_agent_name,
         tool_name=tool_call.function_name,
         error_message=error_message,
         raw_attributes={
@@ -297,7 +297,7 @@ def _subagent_ref_to_span(
     )
     attribute_bags = _span_attributes(
         model=_step_model_name(step) or default_model_name,
-        agent_id=default_agent_name,
+        agent_name=default_agent_name,
         error_message=error_message,
         raw_attributes={
             "step_id": step.step_id,
@@ -390,7 +390,7 @@ def _evaluator_result_to_span(
     )
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
-        agent_id=trajectory.agent.name,
+        agent_name=trajectory.agent.name,
         raw_attributes=raw_attributes,
     )
     return [
@@ -419,7 +419,7 @@ def _evaluator_result_to_span(
 def _span_attributes(
     *,
     model: str | None = None,
-    agent_id: str | None = None,
+    agent_name: str | None = None,
     evaluation_context: EvaluationContext | None = None,
     tool_name: str | None = None,
     error_message: str | None = None,
@@ -432,7 +432,7 @@ def _span_attributes(
 ) -> SpanAttributeBags:
     semantic_attributes = SpanSemanticAttributes(
         model=model,
-        agent_id=agent_id,
+        agent_name=agent_name,
         evaluation_id=evaluation_context.evaluation_id if evaluation_context is not None else None,
         evaluation_sha=evaluation_context.evaluation_sha if evaluation_context is not None else None,
         evaluation_run_id=evaluation_context.evaluation_run_id if evaluation_context is not None else None,

@@ -79,6 +79,12 @@ export const ListSpansQueryParams = zod.object({
         .optional()
         .describe("Filter by provider (e.g. 'openai', 'nim', 'anthropic')."),
       agent_id: zod.string().optional().describe('Filter by agent identifier.'),
+      agent_name: zod
+        .string()
+        .optional()
+        .describe("Filter by agent application name (e.g. 'claude-code', 'codex')."),
+      prompt_name: zod.string().optional().describe('Filter by prompt template name.'),
+      prompt_version: zod.string().optional().describe('Filter by prompt template version.'),
       parent_span_id: zod
         .string()
         .optional()
@@ -101,7 +107,7 @@ export const ListSpansQueryParams = zod.object({
     })
     .optional()
     .describe(
-      'Filter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, and started_at.'
+      'Filter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.'
     ),
 });
 
@@ -156,7 +162,10 @@ export const ListSpansResponse = zod.object({
       provider: zod.string().optional(),
       model: zod.string().optional(),
       prompt_id: zod.string().optional(),
+      prompt_name: zod.string().optional(),
+      prompt_version: zod.string().optional(),
       agent_id: zod.string().optional(),
+      agent_name: zod.string().optional(),
       tool_name: zod.string().optional(),
       input_tokens: zod.number().min(listSpansResponseDataItemInputTokensMin).optional(),
       output_tokens: zod.number().min(listSpansResponseDataItemOutputTokensMin).optional(),
@@ -244,7 +253,10 @@ export const GetSpanResponse = zod.object({
   provider: zod.string().optional(),
   model: zod.string().optional(),
   prompt_id: zod.string().optional(),
+  prompt_name: zod.string().optional(),
+  prompt_version: zod.string().optional(),
   agent_id: zod.string().optional(),
+  agent_name: zod.string().optional(),
   tool_name: zod.string().optional(),
   input_tokens: zod.number().min(getSpanResponseInputTokensMin).optional(),
   output_tokens: zod.number().min(getSpanResponseOutputTokensMin).optional(),

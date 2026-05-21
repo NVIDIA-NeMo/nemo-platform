@@ -101,6 +101,7 @@ class TestSpans:
             workspace="workspace",
             filter={
                 "agent_id": "agent_id",
+                "agent_name": "agent_name",
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
@@ -111,6 +112,8 @@ class TestSpans:
                 "model": "model",
                 "parent_span_id": "parent_span_id",
                 "project": "project",
+                "prompt_name": "prompt_name",
+                "prompt_version": "prompt_version",
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
@@ -236,6 +239,7 @@ class TestAsyncSpans:
             workspace="workspace",
             filter={
                 "agent_id": "agent_id",
+                "agent_name": "agent_name",
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",
                 "dataset_version": "dataset_version",
@@ -246,6 +250,8 @@ class TestAsyncSpans:
                 "model": "model",
                 "parent_span_id": "parent_span_id",
                 "project": "project",
+                "prompt_name": "prompt_name",
+                "prompt_version": "prompt_version",
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
