@@ -26,6 +26,7 @@ agents = "nemo_agents_plugin.service:AgentsService"
 
 [project.entry-points."nemo.cli"]
 agents = "nemo_agents_plugin.cli:AgentsCLI"
+ask = "nemo_cli_agent.cli:AskCLI"
 
 [project.entry-points."nemo.sdk"]
 agents = "nemo_agents_plugin.sdk:agents_sdk_resources"
