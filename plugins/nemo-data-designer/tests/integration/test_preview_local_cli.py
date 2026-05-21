@@ -27,7 +27,7 @@ def test_preview_run_saves_expected_artifacts(tmp_path: Path) -> None:
                 "--artifact-path",
                 str(artifact_path),
             ],
-            client_context
+            client_context,
         )
 
     assert result.exit_code == 0, result.output
