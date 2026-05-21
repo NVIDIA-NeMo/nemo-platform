@@ -32,4 +32,14 @@ rc=$?
 set -e
 cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
 cp /tmp/nat_agent.stderr /logs/agent/nat_agent.stderr 2>/dev/null || true
+if [ $rc -eq 0 ]; then
+  /app/.venv/bin/python /app/tests/agentic-use/scripts/nat_trace_export.py convert-codex-jsonl \
+    --input /logs/agent/nat_agent.log \
+    --output /logs/agent/trajectory.json \
+    --instruction @@INSTRUCTION_CONTAINER@@ \
+    --final-message /logs/agent/final_message.txt \
+    >> /tmp/nat_agent.log 2>&1
+  rc=$?
+  cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+fi
 exit $rc
