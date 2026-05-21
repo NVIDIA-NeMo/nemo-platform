@@ -6792,7 +6792,7 @@ paths:
           $ref: '#/components/schemas/SpanFilter'
         description: Filter spans by session_id, parent_span_id, project, evaluation
           context fields, source, kind, status, model, tool_name, provider, agent_id,
-          and started_at.
+          agent_name, prompt_name, prompt_version, and started_at.
       responses:
         '200':
           description: Successful Response
@@ -27719,8 +27719,17 @@ components:
         prompt_id:
           title: Prompt Id
           type: string
+        prompt_name:
+          title: Prompt Name
+          type: string
+        prompt_version:
+          title: Prompt Version
+          type: string
         agent_id:
           title: Agent Id
+          type: string
+        agent_name:
+          title: Agent Name
           type: string
         tool_name:
           title: Tool Name
@@ -27881,6 +27890,18 @@ components:
         agent_id:
           description: Filter by agent identifier.
           title: Agent Id
+          type: string
+        agent_name:
+          description: Filter by agent application name (e.g. 'claude-code', 'codex').
+          title: Agent Name
+          type: string
+        prompt_name:
+          description: Filter by prompt template name.
+          title: Prompt Name
+          type: string
+        prompt_version:
+          description: Filter by prompt template version.
+          title: Prompt Version
           type: string
         parent_span_id:
           description: Filter by parent span id. Use to fetch direct children of a
