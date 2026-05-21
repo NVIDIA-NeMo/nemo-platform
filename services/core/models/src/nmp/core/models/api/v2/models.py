@@ -270,8 +270,9 @@ async def start_update_model_spec_job(model_entity: ModelEntity):
                 executor=CPUExecutionProviderSpec(
                     provider="cpu",
                     container=ContainerSpec(
-                        image=get_qualified_image("customizer-tasks"),
-                        command=["nemo-platform", "run", "task", "--task", "nmp.core.models.tasks.model_spec"],
+                        image=get_qualified_image("nmp-automodel-tasks"),
+                        entrypoint=["/opt/venv/bin/python"],
+                        command=["-m", "nmp.core.models.tasks.model_spec"],
                     ),
                     resources=ResourcesSpec(
                         requests=ResourcesRequestsSpec(

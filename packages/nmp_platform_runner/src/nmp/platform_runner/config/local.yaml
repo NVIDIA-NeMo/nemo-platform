@@ -1,13 +1,16 @@
+# Bundled fallback when NMP_CONFIG_FILE_PATH is unset. For local dev, prefer:
+#   source packages/nmp_platform/config/local.env  (SQLite + paths)
 platform:
   runtime: "docker"
-  base_url: "http://0.0.0.0:8080"
+  base_url: "http://127.0.0.1:8080"
 
 service: {}
 
 auth:
-  enabled: false
+  enabled: true
+  allow_unsigned_jwt: true
   policy_decision_point_provider: embedded
-  policy_decision_point_base_url: "http://localhost:8080"
+  policy_decision_point_base_url: "http://127.0.0.1:8080"
   policy_data_refresh_interval: 2
   bundle_cache_seconds: 0
   admin_email: "admin@example.com"

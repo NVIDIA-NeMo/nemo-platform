@@ -3013,6 +3013,233 @@
             "version": "26.1.1",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-06-05T12:45:14Z",
+              "published": "2026-06-01T17:17:35Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-196",
+              "aliases": [
+                "CVE-2026-8643"
+              ],
+              "details": "pip would treat console_scripts and gui_scripts as paths instead of file names without sanitizing the resolved absolute path to the installation directory, leading to entry points being installed outside the installation directory.",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:L/AC:L/PR:L/UI:N/S:U/C:N/I:H/A:N"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pip",
+                    "purl": "pkg:pypi/pip"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "26.1.2"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.2",
+                    "0.2.1",
+                    "0.3",
+                    "0.3.1",
+                    "0.4",
+                    "0.5",
+                    "0.5.1",
+                    "0.6",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3",
+                    "0.7",
+                    "0.7.1",
+                    "0.7.2",
+                    "0.8",
+                    "0.8.1",
+                    "0.8.2",
+                    "0.8.3",
+                    "1.0",
+                    "1.0.1",
+                    "1.0.2",
+                    "1.1",
+                    "1.2",
+                    "1.2.1",
+                    "1.3",
+                    "1.3.1",
+                    "1.4",
+                    "1.4.1",
+                    "1.5",
+                    "1.5.1",
+                    "1.5.2",
+                    "1.5.3",
+                    "1.5.4",
+                    "1.5.5",
+                    "1.5.6",
+                    "10.0.0",
+                    "10.0.0b1",
+                    "10.0.0b2",
+                    "10.0.1",
+                    "18.0",
+                    "18.1",
+                    "19.0",
+                    "19.0.1",
+                    "19.0.2",
+                    "19.0.3",
+                    "19.1",
+                    "19.1.1",
+                    "19.2",
+                    "19.2.1",
+                    "19.2.2",
+                    "19.2.3",
+                    "19.3",
+                    "19.3.1",
+                    "20.0",
+                    "20.0.1",
+                    "20.0.2",
+                    "20.1",
+                    "20.1.1",
+                    "20.1b1",
+                    "20.2",
+                    "20.2.1",
+                    "20.2.2",
+                    "20.2.3",
+                    "20.2.4",
+                    "20.2b1",
+                    "20.3",
+                    "20.3.1",
+                    "20.3.2",
+                    "20.3.3",
+                    "20.3.4",
+                    "20.3b1",
+                    "21.0",
+                    "21.0.1",
+                    "21.1",
+                    "21.1.1",
+                    "21.1.2",
+                    "21.1.3",
+                    "21.2",
+                    "21.2.1",
+                    "21.2.2",
+                    "21.2.3",
+                    "21.2.4",
+                    "21.3",
+                    "21.3.1",
+                    "22.0",
+                    "22.0.1",
+                    "22.0.2",
+                    "22.0.3",
+                    "22.0.4",
+                    "22.1",
+                    "22.1.1",
+                    "22.1.2",
+                    "22.1b1",
+                    "22.2",
+                    "22.2.1",
+                    "22.2.2",
+                    "22.3",
+                    "22.3.1",
+                    "23.0",
+                    "23.0.1",
+                    "23.1",
+                    "23.1.1",
+                    "23.1.2",
+                    "23.2",
+                    "23.2.1",
+                    "23.3",
+                    "23.3.1",
+                    "23.3.2",
+                    "24.0",
+                    "24.1",
+                    "24.1.1",
+                    "24.1.2",
+                    "24.1b1",
+                    "24.1b2",
+                    "24.2",
+                    "24.3",
+                    "24.3.1",
+                    "25.0",
+                    "25.0.1",
+                    "25.1",
+                    "25.1.1",
+                    "25.2",
+                    "25.3",
+                    "26.0",
+                    "26.0.1",
+                    "26.1",
+                    "26.1.1",
+                    "6.0",
+                    "6.0.1",
+                    "6.0.2",
+                    "6.0.3",
+                    "6.0.4",
+                    "6.0.5",
+                    "6.0.6",
+                    "6.0.7",
+                    "6.0.8",
+                    "6.1.0",
+                    "6.1.1",
+                    "7.0.0",
+                    "7.0.1",
+                    "7.0.2",
+                    "7.0.3",
+                    "7.1.0",
+                    "7.1.1",
+                    "7.1.2",
+                    "8.0.0",
+                    "8.0.1",
+                    "8.0.2",
+                    "8.0.3",
+                    "8.1.0",
+                    "8.1.1",
+                    "8.1.2",
+                    "9.0.0",
+                    "9.0.1",
+                    "9.0.2",
+                    "9.0.3"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pip/PYSEC-2026-196.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "http://www.openwall.com/lists/oss-security/2026/06/01/5"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://mail.python.org/archives/list/security-announce@python.org/thread/YV63UET5D3OOJY7O4M5XCVYO2YM4NBYJ/"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/pypa/pip/pull/14000"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-196"
+              ],
+              "aliases": [
+                "CVE-2026-8643",
+                "PYSEC-2026-196"
+              ],
+              "max_severity": "5.5"
+            }
+          ],
           "licenses": [
             "MIT"
           ]
@@ -3185,12 +3412,13 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-05-20T09:19:11Z",
+              "modified": "2026-06-05T21:56:07Z",
               "published": "2026-02-17T14:16:01Z",
               "schema_version": "1.7.5",
               "id": "PYSEC-2026-113",
               "aliases": [
-                "CVE-2026-25087"
+                "CVE-2026-25087",
+                "GHSA-rgxp-2hwp-jwgg"
               ],
               "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
               "severity": [
@@ -3254,15 +3482,111 @@
                   "url": "https://github.com/apache/arrow/pull/48925"
                 }
               ]
+            },
+            {
+              "modified": "2026-06-05T21:56:07Z",
+              "published": "2026-02-17T15:31:35Z",
+              "schema_version": "1.7.5",
+              "id": "GHSA-rgxp-2hwp-jwgg",
+              "aliases": [
+                "CVE-2026-25087",
+                "PYSEC-2026-113"
+              ],
+              "summary": "Apache Arrow: Potential use-after-free when reading IPC file with pre-buffering",
+              "details": "Use After Free vulnerability in Apache Arrow C++.\n\nThis issue affects Apache Arrow C++ from 15.0.0 through 23.0.0. It can be triggered when reading an Arrow IPC file (but not an IPC stream) with pre-buffering enabled, if the IPC file contains data with variadic buffers (such as Binary View and String View data). Depending on the number of variadic buffers in a record batch column and on the temporal sequence of multi-threaded IO, a write to a dangling pointer could occur. The value (a `std::shared_ptr<Buffer>` object)\u00a0that is written to the dangling pointer is not under direct control of the attacker.\n\nPre-buffering is disabled by default but can be enabled using a specific C++ API call (`RecordBatchFileReader::PreBufferMetadata`). The functionality is not exposed in language bindings (Python, Ruby, C GLib), so these bindings are not vulnerable.\n\nThe most likely consequence of this issue would be random crashes or memory corruption when reading specific kinds of IPC files. If the application allows ingesting IPC files from untrusted sources, this could plausibly be exploited for denial of service. Inducing more targeted kinds of misbehavior (such as confidential data extraction from the running process) depends on memory allocation and multi-threaded IO temporal patterns that are unlikely to be easily controlled by an attacker.\n\nAdvice for users of Arrow C++:\n\n1. check whether you enable pre-buffering on the IPC file reader (using\u00a0`RecordBatchFileReader::PreBufferMetadata`)\n\n2. if so, either disable pre-buffering (which may have adverse performance consequences), or switch to Arrow 23.0.1 which is not vulnerable",
+              "severity": [
+                {
+                  "type": "CVSS_V3",
+                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H"
+                }
+              ],
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "pyarrow",
+                    "purl": "pkg:pypi/pyarrow"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "15.0.0"
+                        },
+                        {
+                          "fixed": "23.0.1"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "15.0.0",
+                    "15.0.1",
+                    "15.0.2",
+                    "16.0.0",
+                    "16.1.0",
+                    "17.0.0",
+                    "18.0.0",
+                    "18.1.0",
+                    "19.0.0",
+                    "19.0.1",
+                    "20.0.0",
+                    "21.0.0",
+                    "22.0.0",
+                    "23.0.0"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/02/GHSA-rgxp-2hwp-jwgg/GHSA-rgxp-2hwp-jwgg.json"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ADVISORY",
+                  "url": "https://nvd.nist.gov/vuln/detail/CVE-2026-25087"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/apache/arrow/pull/48925"
+                },
+                {
+                  "type": "PACKAGE",
+                  "url": "https://github.com/apache/arrow"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://github.com/pypa/advisory-database/tree/main/vulns/pyarrow/PYSEC-2026-113.yaml"
+                },
+                {
+                  "type": "WEB",
+                  "url": "https://lists.apache.org/thread/mpm4ld1qony30tchfpjtk5b11tcyvmwh"
+                },
+                {
+                  "type": "WEB",
+                  "url": "http://www.openwall.com/lists/oss-security/2026/02/17/4"
+                }
+              ],
+              "database_specific": {
+                "cwe_ids": [
+                  "CWE-416"
+                ],
+                "github_reviewed": true,
+                "github_reviewed_at": "2026-06-05T21:39:35Z",
+                "nvd_published_at": "2026-02-17T14:16:01Z",
+                "severity": "HIGH"
+              }
             }
           ],
           "groups": [
             {
               "ids": [
-                "PYSEC-2026-113"
+                "PYSEC-2026-113",
+                "GHSA-rgxp-2hwp-jwgg"
               ],
               "aliases": [
                 "CVE-2026-25087",
+                "GHSA-rgxp-2hwp-jwgg",
                 "PYSEC-2026-113"
               ],
               "max_severity": "7.0"
@@ -4168,6 +4492,16 @@
           },
           "licenses": [
             "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
+            "name": "safetensors",
+            "version": "0.8.0rc1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "non-standard"
           ]
         },
         {
@@ -5259,6 +5593,16 @@
         },
         {
           "package": {
+            "name": "transformers",
+            "version": "5.10.2",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "typer",
             "version": "0.24.1",
             "ecosystem": "PyPI"
@@ -5737,11 +6081,11 @@
     },
     {
       "name": "Apache-2.0",
-      "count": 80
+      "count": 81
     },
     {
       "name": "non-standard",
-      "count": 42
+      "count": 43
     },
     {
       "name": "BSD-3-Clause",

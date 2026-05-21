@@ -68,7 +68,7 @@ The skills that drive the agent lifecycle are:
 | `agents-optimize` | Selects a deployed agent, establishes an evaluation baseline, and suggests Switchyard routing, model swaps, skill optimization, prompt tuning, and new-model evaluations. See [Optimize Agents](optimization.md). |
 | `agents-secure` | Selects a deployed agent, checks guardrail coverage, and scans recent telemetry for sensitive data. See [Secure Agents](security.md). |
 
-Plugin-owned skills cover guardrails, evaluations, optimization, data
+Plugin-owned skills cover customization, guardrails, evaluations, optimization, data
 designer, anonymizer, and auditor. They are installed with their plugin and
 appear in `nemo skills list` once the platform restarts.
 

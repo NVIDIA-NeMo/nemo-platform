@@ -171,6 +171,8 @@ enabled-plugins = [
   "nemo-safe-synthesizer-plugin",
   "nemo-switchyard",
   "nemo-agents-plugin",
+  "nemo-customizer-plugin",
+  "nemo-automodel-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -366,6 +368,9 @@ nemo-safe-synthesizer-plugin = { workspace = true }
 nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-customizer-plugin = { workspace = true }
+nemo-automodel-plugin = { workspace = true }
+nmp-automodel = { workspace = true }
 
 
 [tool.uv.workspace]
@@ -414,6 +419,9 @@ members = [
   "plugins/nemo-switchyard",
   "plugins/nemo-agents",
   "plugins/nemo-agents/examples/calculator-agent",
+  "plugins/nemo-customizer",
+  "plugins/nemo-automodel",
+  "services/automodel",
 ]
 
 
