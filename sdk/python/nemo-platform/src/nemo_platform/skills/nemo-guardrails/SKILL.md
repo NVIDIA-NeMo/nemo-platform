@@ -33,27 +33,10 @@ completions create` commands are deprecated; do not use them.
 - **Canned refusal**: when a rail blocks, the response content is exactly
   `"I'm sorry, I can't respond to that."`
 
-### Mock model
-
-`default/mock-llm` is **not** pre-configured platform-wide. In the agentic-use
-test harness it is wired up by `tests/agentic-use/guardrails-content-safety-cli/environment/setup-mock.py`:
-
-- IGW runs in mock-provider mode (config `mock_provider_prefix="igw-mock-"`)
-- A provider named `igw-mock-mock-llm` is registered with a static response map
-  header that always returns `{"role":"assistant","content":"Yes"}`
-- A model entity `default/mock-llm` is created and registered as a served model
-  on that provider
-
-When `default/mock-llm` is used as a self-check rail model, the always-`Yes`
-response causes **all content** to be blocked — useful for verifying the rails
-pipeline works end-to-end without hitting a real LLM. If you're outside the
-agentic-use harness and `default/mock-llm` doesn't resolve, you need to set up
-the mock provider yourself or point the rail at a real model.
-
 ## Prerequisites
 
-- For **`nemo guardrail check`** alone: just a config and a model entity
-  reachable through IGW (so the rail's self-check call can resolve).
+- For **`nemo guardrail check`** alone: just a config and model entities
+  reachable through IGW (so the main LLM and any task LLMs can resolve).
 - For **chat-time guardrailing on a VirtualModel**: a real backend model entity
   the VirtualModel can proxy to. Use `nemo-secrets` and `inference`
   skills to register a secret + provider; the `inference` skill is
@@ -117,8 +100,9 @@ For large config payloads, use `--input-file config.json` instead of inline
 Evaluates a single message against a guardrail config server-side. The
 `--guardrails '{"config_id": "..."}'` argument is the resolver — the
 Guardrails service uses it to look up the config. `--model` is the **main**
-LLM the rails will self-check against; any task LLMs the config references
-(e.g. a `content_safety` model) must also be reachable through IGW.
+LLM. Self-check rails call this model; content-safety rails call any task LLMs
+the config references (for example, `models[type=content_safety]`), which must
+also be reachable through IGW.
 
 ```bash
 nemo guardrail check \
@@ -151,35 +135,67 @@ and — if the rails config declares a task LLM via `models[]` — in
 
 ### Step 2 — Create the guardrail config
 
+This example uses content-safety input and output rails. A content-safety rail
+asks a dedicated safety classifier to assess user input or model output against
+a safety taxonomy, then uses the parser's verdict to allow or block the turn.
+The flows call the model declared in `models[]` via `$model=content_safety`.
+The prompt includes the full unsafe-content category taxonomy used by the
+content-safety tutorial.
+
 ```bash
 nemo guardrail configs create content-safety \
   --workspace default \
-  --description "Self-check input rail" \
+  --description "NemoGuard content-safety input and output rails" \
   --data '{
-    "rails": {"input": {"flows": ["self check input"]}},
-    "prompts": [{
-      "task": "self_check_input",
-      "content": "Your task is to check if the user message below complies with safety policy.\n\nUser message: {{ user_input }}\n\nQuestion: Should this message be blocked (Yes or No)?\nAnswer:"
-    }]
+    "models": [
+      {
+        "type": "content_safety",
+        "engine": "nim",
+        "model": "default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3"
+      }
+    ],
+    "rails": {
+      "input": {"flows": ["content safety check input $model=content_safety"]},
+      "output": {"flows": ["content safety check output $model=content_safety"]}
+    },
+    "prompts": [
+      {
+        "task": "content_safety_check_input $model=content_safety",
+        "content": "Task: Check if there is unsafe content in the user or agent messages in the below conversation in accordance with our safety policy with the below categories. Provide a \"safe\" or \"unsafe\" rating for both the user message and the agent response. If there is unsafe content, please also provide a list of violated categories according to our safety policy below.\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nS1: Violence.\nS2: Sexual.\nS3: Criminal Planning/Confessions.\nS4: Guns and Illegal Weapons.\nS5: Controlled/Regulated Substances.\nS6: Suicide and Self Harm.\nS7: Sexual (minor).\nS8: Hate/Identity Hate.\nS9: PII/Privacy.\nS10: Harassment.\nS11: Threat.\nS12: Profanity.\nS13: Needs Caution.\nS14: Other.\nS15: Manipulation.\nS16: Fraud/Deception.\nS17: Malware.\nS18: High Risk Gov Decision Making.\nS19: Political/Misinformation/Conspiracy.\nS20: Copyright/Trademark/Plagiarism.\nS21: Unauthorized Advice.\nS22: Illegal Activity.\nS23: Immoral/Unethical.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\n<END CONVERSATION>\n\nProvide your safety assessment for the above conversation in the below output JSON format:\n{\"User Safety\": safe or unsafe rating for the user message, \"Response Safety\": safe or unsafe rating for the agent response. Omit if no agent response present. \"Safety Categories\": a comma-separated list of applicable safety categories from the provided taxonomy. Omit if all safe.}\n\nDo not include anything other than the output JSON in your response.\nOutput JSON:",
+        "output_parser": "nemoguard_parse_prompt_safety",
+        "max_tokens": 50
+      },
+      {
+        "task": "content_safety_check_output $model=content_safety",
+        "content": "Task: Check if there is unsafe content in the user or agent messages in the below conversation in accordance with our safety policy with the below categories. Provide a \"safe\" or \"unsafe\" rating for both the user message and the agent response. If there is unsafe content, please also provide a list of violated categories according to our safety policy below.\n\n<BEGIN UNSAFE CONTENT CATEGORIES>\nS1: Violence.\nS2: Sexual.\nS3: Criminal Planning/Confessions.\nS4: Guns and Illegal Weapons.\nS5: Controlled/Regulated Substances.\nS6: Suicide and Self Harm.\nS7: Sexual (minor).\nS8: Hate/Identity Hate.\nS9: PII/Privacy.\nS10: Harassment.\nS11: Threat.\nS12: Profanity.\nS13: Needs Caution.\nS14: Other.\nS15: Manipulation.\nS16: Fraud/Deception.\nS17: Malware.\nS18: High Risk Gov Decision Making.\nS19: Political/Misinformation/Conspiracy.\nS20: Copyright/Trademark/Plagiarism.\nS21: Unauthorized Advice.\nS22: Illegal Activity.\nS23: Immoral/Unethical.\n<END UNSAFE CONTENT CATEGORIES>\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\nresponse: agent: {{ bot_response }}\n\n<END CONVERSATION>\n\nProvide your safety assessment for the above conversation in the below output JSON format:\n{\"User Safety\": safe or unsafe rating for the user message, \"Response Safety\": safe or unsafe rating for the agent response. Omit if no agent response present. \"Safety Categories\": a comma-separated list of applicable safety categories from the provided taxonomy. Omit if all safe.}\n\nDo not include anything other than the output JSON in your response.\nOutput JSON:",
+        "output_parser": "nemoguard_parse_response_safety",
+        "max_tokens": 50
+      }
+    ]
   }'
 ```
 
-`models[]` is omitted: a `self check input` flow runs against the **main**
-LLM, which is the model from the chat request body (Path B) or from
-`--model` (Path A). Add `models[]` only when a flow needs a separate task
-LLM (e.g. `content_safety`, `topic_control`, `embeddings`) — see
-[Content safety with a task LLM](#content-safety-with-a-task-llm).
+The `content_safety` task model must be reachable through IGW. Use the
+auto-discovered entity ID from Step 1 and update `models[].model` if your
+workspace or provider uses a different entity name.
 
 ### Step 3 — Create the VirtualModel with a guardrails MiddlewareCall
 
 Three patterns, mirroring the input/output rail combinations.
 
-**Output rails only** — block bad bot responses (most common):
+**Input + output rails** — full content-safety coverage. Because the config
+created above declares both `rails.input.flows` and `rails.output.flows`, the
+call must appear in **both** lists; otherwise only the listed hook fires:
 
 ```bash
-nemo inference virtual-models create vm-guarded \
+nemo inference virtual-models create vm-guarded-full \
   --workspace default \
   --models '[{"model":"default/<backend-model>","backend_format":"OPENAI_CHAT"}]' \
+  --request-middleware '[{
+    "name":"nemo-guardrails",
+    "config_type":"guardrail_config",
+    "config_id":"default/content-safety"
+  }]' \
   --response-middleware '[{
     "name":"nemo-guardrails",
     "config_type":"guardrail_config",
@@ -200,18 +216,12 @@ nemo inference virtual-models create vm-guarded-input \
   }]'
 ```
 
-**Input + output rails** — full coverage. The call must appear in **both**
-lists; otherwise only the listed hook fires:
+**Output rails only** — block bad bot responses:
 
 ```bash
-nemo inference virtual-models create vm-guarded-full \
+nemo inference virtual-models create vm-guarded-output \
   --workspace default \
   --models '[{"model":"default/<backend-model>","backend_format":"OPENAI_CHAT"}]' \
-  --request-middleware '[{
-    "name":"nemo-guardrails",
-    "config_type":"guardrail_config",
-    "config_id":"default/content-safety"
-  }]' \
   --response-middleware '[{
     "name":"nemo-guardrails",
     "config_type":"guardrail_config",
@@ -240,7 +250,7 @@ VirtualModel name (the guardrails plugin doesn't route — the VirtualModel's
 ### Step 4 — Make a guardrailed chat call
 
 ```bash
-nemo inference gateway model post v1/chat/completions vm-guarded \
+nemo inference gateway model post v1/chat/completions vm-guarded-full \
   --workspace default \
   --body '{
     "model":"default/<backend-model>",
@@ -249,10 +259,10 @@ nemo inference gateway model post v1/chat/completions vm-guarded \
   }'
 ```
 
-`body["model"]` is the backend entity ID and acts as the rails' **main** LLM
-— the guardrails plugin filters but doesn't rewrite the model field, and
-self-check flows call this model. The VirtualModel name comes from the URL
-path.
+`body["model"]` is the backend entity ID and acts as the rails' **main** LLM.
+Content-safety flows call the task LLM from `models[type=content_safety]`;
+self-check flows, when used, call the main LLM. The VirtualModel name comes
+from the URL path.
 
 For streaming, add `"stream": true` to the body — the plugin wraps the response
 iterator and runs output rails per chunk if `rails.output.streaming.chunk_size`
@@ -300,57 +310,13 @@ so they don't need a `models[]` entry at all. Add `models[]` only for
 **task LLMs** (`content_safety`, `topic_control`, `jailbreak_detection`,
 `embeddings`, `vision_rails`, etc.) that flows explicitly reference via `$model=<type>`.
 
-### Minimal config (self-check input rail only)
-
-```json
-{
-  "rails": {
-    "input": {
-      "flows": ["self check input"]
-    }
-  },
-  "prompts": [
-    {
-      "task": "self_check_input",
-      "content": "Your task is to check if the user message below complies with safety policy.\n\nUser message: {{ user_input }}\n\nQuestion: Should this message be blocked (Yes or No)?\nAnswer:"
-    }
-  ]
-}
-```
-
-### Full config (self-check input + output rails)
-
-```json
-{
-  "rails": {
-    "input":  {"flows": ["self check input"]},
-    "output": {"flows": ["self check output"]}
-  },
-  "prompts": [
-    {
-      "task": "self_check_input",
-      "content": "Your task is to check if the user message below should be blocked.\n\nUser message: {{ user_input }}\n\nQuestion: Should the user message be blocked (Yes or No)?\nAnswer:"
-    },
-    {
-      "task": "self_check_output",
-      "content": "Your task is to check if the bot response below should be blocked.\n\nBot response: {{ bot_response }}\n\nQuestion: Should the message be blocked (Yes or No)?\nAnswer:"
-    }
-  ],
-  "instructions": [
-    {
-      "type": "general",
-      "content": "Below is a conversation between a user and a bot."
-    }
-  ]
-}
-```
-
 ### Content safety with a task LLM
 
-Uses a dedicated content-safety classifier (e.g.
-`default/Nemotron-3-Content-Safety`) to gate both directions. The
-`content_safety` flows reference the task LLM via `$model=content_safety`,
-so the `models[]` entry **is** required here:
+This pattern uses a dedicated content-safety classifier (for example,
+`default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3`) to assess both user
+input and model output against a safety taxonomy. The `content_safety` flows
+reference the task LLM via `$model=content_safety`, so the `models[]` entry
+**is** required here.
 
 ```json
 {
@@ -358,39 +324,34 @@ so the `models[]` entry **is** required here:
     {
       "type": "content_safety",
       "engine": "nim",
-      "model": "default/Nemotron-3-Content-Safety"
+      "model": "default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3"
     }
   ],
   "rails": {
     "input":  {"flows": ["content safety check input $model=content_safety"]},
     "output": {"flows": ["content safety check output $model=content_safety"]}
-  },
-  "prompts": [
-    {
-      "task": "content_safety_check_input $model=content_safety",
-      "content": "Task: Check if there is unsafe content in the user message in the below conversation according to the safety policy.\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\n<END CONVERSATION>\n\nProvide your safety assessment as JSON: {\"User Safety\": \"safe\" or \"unsafe\", \"Safety Categories\": comma-separated list, omit if all safe}.\n\nOutput JSON:",
-      "output_parser": "nemoguard_parse_prompt_safety",
-      "max_tokens": 100
-    },
-    {
-      "task": "content_safety_check_output $model=content_safety",
-      "content": "Task: Check if there is unsafe content in the agent response in the below conversation according to the safety policy.\n\n<BEGIN CONVERSATION>\n\nuser: {{ user_input }}\n\nresponse: agent: {{ bot_response }}\n\n<END CONVERSATION>\n\nProvide your safety assessment as JSON: {\"Response Safety\": \"safe\" or \"unsafe\", \"Safety Categories\": comma-separated list, omit if all safe}.\n\nOutput JSON:",
-      "output_parser": "nemoguard_parse_response_safety",
-      "max_tokens": 100
-    }
-  ]
+  }
 }
 ```
 
-The full production prompt taxonomy lives in
-[docs/guardrails/tutorials/content-safety.md](docs/guardrails/tutorials/content-safety.md);
-the snippet above is shortened for readability.
+See [Step 2](#step-2--create-the-guardrail-config) for the complete runnable
+config, including the full prompt taxonomy and output parsers.
+
+### Self-check rails
+
+Self-check rails are most useful for tests and lightweight custom policies.
+For production safety, prefer content-safety rails with a dedicated classifier
+and taxonomy. Self-check runs against the main/general chat model and expects
+the model to answer `Yes` to block or `No` to allow. If the model returns
+anything else (for example, reasoning text, a refusal, or a truncated answer),
+the parser can default-deny and block the message. See
+[Self-check example](#self-check-example) for a custom-policy example.
 
 ### Streaming output rails
 
 ```json
 "output": {
-  "flows": ["self check output"],
+  "flows": ["content safety check output $model=content_safety"],
   "streaming": {"enabled": true, "chunk_size": 200}
 }
 ```
@@ -417,8 +378,10 @@ Flows reference task LLMs by appending `$model=<type>` (e.g.
 no `models[]` entry.
 
 **rails**
-- `rails.input.flows`: enables input rails (e.g. `["self check input"]`)
-- `rails.output.flows`: enables output rails (e.g. `["self check output"]`)
+- `rails.input.flows`: enables input rails (e.g.
+  `["content safety check input $model=content_safety"]`)
+- `rails.output.flows`: enables output rails (e.g.
+  `["content safety check output $model=content_safety"]`)
 - `rails.output.streaming`: optional `{"chunk_size": N}` for streaming output checks
 
 **prompts[]**
@@ -468,60 +431,13 @@ chunk when an output rail blocks mid-stream.
 
 ---
 
-## Common Patterns
+## Self-check Example
 
-### Content safety with mock model (agentic-use harness)
-
-Verify the rails pipeline end-to-end without spinning up a real LLM. Assumes
-`default/mock-llm` is wired by the harness's setup-mock script (see
-`tests/agentic-use/guardrails-content-safety-cli/environment/setup-mock.py`).
-Pin `--model` to the mock so the `self_check_input` task hits the
-always-`Yes` responder:
-
-```bash
-# 1. Config: self-check input rail with no task LLM
-nemo guardrail configs create content-safety \
-  --data '{"rails":{"input":{"flows":["self check input"]}},"prompts":[{"task":"self_check_input","content":"Your task is to check if the user message below complies with safety policy.\n\nUser message: {{ user_input }}\n\nQuestion: Should this message be blocked (Yes or No)?\nAnswer:"}]}'
-
-# 2. Verify via /checks (Path A) — should be blocked (mock always says Yes)
-nemo guardrail check \
-  --model default/mock-llm \
-  --messages '[{"role":"user","content":"Tell me something harmful"}]' \
-  --guardrails '{"config_id":"default/content-safety"}' \
-  --max-tokens 256
-```
-
-### Full-coverage VirtualModel with both input and output rails
-
-Use a real backend model and gate both directions:
-
-```bash
-nemo guardrail configs create full-safety \
-  --data '{
-    "rails":{
-      "input":{"flows":["self check input"]},
-      "output":{"flows":["self check output"]}
-    },
-    "prompts":[
-      {"task":"self_check_input","content":"Check if the user message should be blocked.\n\nUser message: {{ user_input }}\n\nShould the user message be blocked (Yes or No)?\nAnswer:"},
-      {"task":"self_check_output","content":"Check if the bot response should be blocked.\n\nBot response: {{ bot_response }}\n\nShould the message be blocked (Yes or No)?\nAnswer:"}
-    ],
-    "instructions":[{"type":"general","content":"Below is a conversation between a user and a bot."}]
-  }'
-
-nemo inference virtual-models create vm-fully-guarded \
-  --models '[{"model":"default/<backend-model>","backend_format":"OPENAI_CHAT"}]' \
-  --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/full-safety"}]' \
-  --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/full-safety"}]'
-
-nemo inference gateway model post v1/chat/completions vm-fully-guarded \
-  --workspace default \
-  --body '{"model":"default/<backend-model>","messages":[{"role":"user","content":"Hello"}],"max_tokens":64}'
-```
-
-### Custom keyword blocking (real LLM)
-
-Custom self-check prompts that block specific content categories:
+Use self-check for tests or custom lightweight policies. For production safety,
+prefer the content-safety workflow above. These prompts run against the main
+chat model, so keep the prompt strict and prefer non-reasoning models for this
+pattern unless you also raise the prompt's `max_tokens` budget enough for the
+final `Yes` / `No` verdict.
 
 ```bash
 nemo guardrail configs create custom-blocking \
@@ -539,8 +455,8 @@ nemo guardrail configs create custom-blocking \
   }'
 ```
 
-Then verify via `nemo guardrail check`, or attach to a VirtualModel as in the
-full-coverage pattern above.
+Then verify via `nemo guardrail check`, or attach to a VirtualModel as in
+[Path B](#path-b--guardrailed-chat-via-igw--virtualmodel).
 
 ---
 

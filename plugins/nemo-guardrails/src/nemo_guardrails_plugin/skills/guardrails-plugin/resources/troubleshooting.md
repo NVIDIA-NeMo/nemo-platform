@@ -61,12 +61,20 @@ To evaluate the rail outcomes for a `GuardrailConfig`, query the rails subsystem
   "messages": [{"role":"user","content":"test"}],
   "guardrails": {
     "config_id": "default/<config-name>",
-    "options": {"log": {"activated_rails": true, "internal_events": true}}
+    "options": {"log": {"activated_rails": true, "internal_events": true, "llm_calls": true}}
   }
 }
 ```
 
-`options.log` is supported on both the `/checks` path and the IGW chat-completions path. `activated_rails` and `internal_events` are the most useful sub-fields for diagnosing which flow fired and why.
+`options.log` is supported on both the `/checks` path and the IGW chat-completions path. Use these fields to debug scenarios where a request blocks or passes unexpectedly, or a rail does not appear to run:
+
+- `activated_rails`: Shows which rails executed and which rail stopped the request. Use it to confirm whether input rails, output rails, or both were actually invoked.
+- `internal_events`: Shows the lower-level Guardrails event trace. Use it when `activated_rails` is not enough to explain the control flow; for example, to see which actions ran before the block.
+- `llm_calls`: Shows raw prompts, completions, and parser inputs for rail model calls. Use it to confirm the rail model received the expected prompt and returned output in the format expected by the configured parser.
+
+`llm_calls` can include raw prompts and completions, including user data or other sensitive content. Consider enabling it for scoped debugging
+and disabling it or, if needed, redacting captured data before storing or using
+logs in production environments.
 
 ## Testing without a real LLM (agentic-use mock harness)
 
