@@ -10,7 +10,7 @@
     "start": "vite --mode dev",
     "start:stg": "vite --mode stg",
     "start:dev": "VITE_IS_LOC_ENV='true' vite --mode dev",
-    "build": "vite build",
+    "build": "NODE_ENV=production vite build",
     "build:dev": "tsc && vite build --mode dev",
     "build:fastapi": "pnpm build --mode fastapi",
     "build:fastapi:dev": "export NODE_ENV=fastapi && pnpm build --mode fastapi",
