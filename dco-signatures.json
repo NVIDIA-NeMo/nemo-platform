@@ -1,3 +1,20 @@
 {
-   "signedContributors": []
+  "signedContributors": [
+    {
+      "name": "SandyChapman",
+      "id": 3920249,
+      "comment_id": 4508329493,
+      "created_at": "2026-05-21T12:38:39Z",
+      "repoId": 1239104861,
+      "pullRequestNo": 3
+    },
+    {
+      "name": "SandyChapman",
+      "id": 3920249,
+      "comment_id": 4508410254,
+      "created_at": "2026-05-21T12:49:34Z",
+      "repoId": 1239104861,
+      "pullRequestNo": 3
+    }
+  ]
 }
