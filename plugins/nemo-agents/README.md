@@ -352,6 +352,23 @@ The injected URL format:
 
 ---
 
+## Performance tips
+
+### First-deploy cold start
+
+The first `nemo agents deploy` after installing packages is noticeably slower
+than subsequent deploys because Python compiles `.pyc` bytecache files on first
+import. Pre-compiling NAT's dependencies eliminates this overhead:
+
+```bash
+python -m compileall -q $(python -c "import nat; print(nat.__path__[0])") 2>/dev/null
+python -m compileall -q .venv/lib/ 2>/dev/null
+```
+
+This can cut 20--40 seconds off the first deploy.
+
+---
+
 ## Notes and known limitations
 
 - **`tool_calling_agent`** is broken with `langchain-openai==1.1.x` due to a

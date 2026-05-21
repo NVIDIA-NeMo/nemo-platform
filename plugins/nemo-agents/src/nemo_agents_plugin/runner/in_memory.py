@@ -101,6 +101,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         self._deployments: dict[str, DeploymentInfo] = {}
         self._next_port: int = config.port_range_start
         self._temp_files: dict[str, Path] = {}
+        self._http_client: httpx.AsyncClient | None = None
 
     @property
     def output_base_dir(self) -> Path:
@@ -227,21 +228,38 @@ class InMemoryRunnerBackend(RunnerBackend):
     async def health_check(self, endpoint: str) -> bool:
         url = endpoint.rstrip("/") + "/health"
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
-                resp = await client.get(url)
-                return resp.status_code < 400
+            client = self._get_http_client()
+            resp = await client.get(url)
+            return resp.status_code < 400
         except Exception:
             return False
 
-    def shutdown(self) -> None:
-        """Terminate all managed processes synchronously."""
-        for name, proc in list(self._processes.items()):
-            self._terminate(name, proc)
+    def _get_http_client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(timeout=5.0)
+        return self._http_client
+
+    async def shutdown(self) -> None:
+        """Terminate all managed processes (best-effort)."""
+        names = list(self._processes.keys())
+        results = await asyncio.gather(
+            *(asyncio.to_thread(self._terminate, name, proc) for name, proc in list(self._processes.items())),
+            return_exceptions=True,
+        )
+        for name, result in zip(names, results, strict=False):
+            if isinstance(result, Exception):
+                logger.warning("Error terminating '%s' during shutdown", name, exc_info=result)
         self._processes.clear()
         self._deployments.clear()
         for path in self._temp_files.values():
             path.unlink(missing_ok=True)
         self._temp_files.clear()
+        if self._http_client is not None and not self._http_client.is_closed:
+            try:
+                await self._http_client.aclose()
+            except Exception:
+                logger.warning("Error closing HTTP client during shutdown", exc_info=True)
+            self._http_client = None
         logger.info("InMemoryRunnerBackend shut down — all processes terminated.")
 
     def _write_config(self, name: str, config: dict[str, Any]) -> Path:

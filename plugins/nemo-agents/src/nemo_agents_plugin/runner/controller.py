@@ -56,7 +56,7 @@ class AgentDeploymentController(NemoController):
         self._entities: NemoEntitiesClient | None = None
         self._controller_config: ControllerConfig | None = None
         self._starting_since: dict[str, float] = {}
-        self._interval_seconds: float = 5.0  # default; overwritten in on_startup
+        self._interval_seconds: float = 2.0  # overwritten in on_startup
 
     # ------------------------------------------------------------------
     # Narrowing properties — raise clearly if accessed before on_startup()
@@ -90,6 +90,10 @@ class AgentDeploymentController(NemoController):
 
     async def on_startup(self) -> None:
         """Initialise the entity client and runner backend from config."""
+        # Imports deferred intentionally: these modules pull in the SDK,
+        # entity-store client, and HTTP machinery.  Importing at module level
+        # would add ~1s to every `nemo` CLI invocation during plugin discovery,
+        # even when the agents controller is never started.  Do not hoist.
         from nemo_agents_plugin.config import AgentsConfig
         from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
         from nemo_platform.resources.entities import AsyncEntitiesResource
@@ -120,7 +124,7 @@ class AgentDeploymentController(NemoController):
     async def on_shutdown(self) -> None:
         """Shut down the runner backend."""
         if self._backend is not None:
-            self._backend.shutdown()
+            await self._backend.shutdown()
         logger.info("AgentDeploymentController shut down.")
 
     async def list_objects(self) -> list:
@@ -146,7 +150,7 @@ class AgentDeploymentController(NemoController):
             logger.debug("Optimistic lock conflict on '%s' — will retry next cycle.", dep.name)
 
     # ------------------------------------------------------------------
-    # Internal state-machine helpers (unchanged from original)
+    # Internal state-machine helpers
     # ------------------------------------------------------------------
 
     async def _reconcile_one(self, dep: AgentDeployment) -> None:
@@ -160,7 +164,8 @@ class AgentDeploymentController(NemoController):
             await self._delete_deployment(dep)
 
     async def _start_deployment(self, dep: AgentDeployment) -> None:
-        """pending → starting: allocate port and spawn the agent process."""
+        """pending -> starting: allocate port and spawn the agent process."""
+        t0 = time.perf_counter()
         port = self.backend.allocate_port()
         try:
             info = await self.backend.create_deployment(
@@ -175,6 +180,7 @@ class AgentDeploymentController(NemoController):
             await self._save(dep)
             return
 
+        spawn_ms = (time.perf_counter() - t0) * 1000
         dep.status = "starting"
         dep.port = info.port
         dep.pid = info.pid
@@ -183,23 +189,35 @@ class AgentDeploymentController(NemoController):
         self._starting_since[dep.name] = time.monotonic()
         await self._save(dep)
         logger.info(
-            "Deployment '%s' started (pid=%d, port=%d, log=%s).",
+            "Deployment '%s' spawned (pid=%d, port=%d, spawn=%.0fms, log=%s).",
             dep.name,
             dep.pid,
             dep.port,
+            spawn_ms,
             info.log_path or "<none>",
         )
 
     async def _check_health(self, dep: AgentDeployment) -> None:
-        """starting → running | failed: poll the health endpoint.
+        """starting -> running | failed: single-shot health check per reconcile cycle.
 
-        Process death takes precedence over a successful health check: if
-        the subprocess has already exited, surface the failure immediately
-        with the exit code in the error message, instead of letting a stale
-        ``/health`` reply mark the deployment as ``running``.
+        Checks once and returns so the reconcile loop can service other
+        deployments promptly.  The ``_starting_since`` timestamp persists
+        across cycles so the overall ``health_check_timeout_seconds`` budget
+        is enforced across many cycles.
         """
         since = self._starting_since.get(dep.name, time.monotonic())
+        timeout = self.controller_config.health_check_timeout_seconds
         elapsed = time.monotonic() - since
+        remaining = timeout - elapsed
+
+        if remaining <= 0:
+            dep.status = "failed"
+            dep.error = f"Health check timed out after {timeout}s."
+            await self.backend.delete_deployment(dep.name)
+            self._starting_since.pop(dep.name, None)
+            await self._save(dep)
+            logger.warning("Deployment '%s' health check timed out.", dep.name)
+            return
 
         info = await self.backend.get_deployment_status(dep.name)
         if info is not None and info.status == "failed":
@@ -216,23 +234,19 @@ class AgentDeploymentController(NemoController):
             return
 
         healthy = bool(dep.endpoint) and await self.backend.health_check(dep.endpoint)
+
         if healthy:
             dep.status = "running"
             self._starting_since.pop(dep.name, None)
             await self._save(dep)
-            logger.info("Deployment '%s' is running at %s.", dep.name, dep.endpoint)
-        elif elapsed > self.controller_config.health_check_timeout_seconds:
-            dep.status = "failed"
-            dep.error = f"Health check timed out after {self.controller_config.health_check_timeout_seconds}s."
-            self._starting_since.pop(dep.name, None)
-            log_path = info.log_path if info is not None else ""
-            await self.backend.delete_deployment(dep.name)
-            await self._save(dep)
-            logger.warning(
-                "Deployment '%s' health check timed out (log: %s).",
+            logger.info(
+                "Deployment '%s' is running at %s (took %.1fs).",
                 dep.name,
-                log_path or "<none>",
+                dep.endpoint,
+                time.monotonic() - since,
             )
+        else:
+            logger.debug("Deployment '%s' not healthy yet (%.1fs elapsed).", dep.name, elapsed)
 
     async def _verify_running(self, dep: AgentDeployment) -> None:
         """mark failed if the process has exited or pending if process is not found to attempt to restart."""
