@@ -268,6 +268,20 @@ def install(
         bool,
         typer.Option("--user", help="Install to user scope (default: project scope)"),
     ] = False,
+    project_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--project-root",
+            help=(
+                "Override the project root for project-scope installs. Defaults to "
+                "the nearest ancestor containing a .git directory, or the current "
+                "working directory if no Git root is found."
+            ),
+            file_okay=False,
+            dir_okay=True,
+            exists=True,
+        ),
+    ] = None,
 ) -> None:
     """Install Nemo skill files for an AI coding agent.
 
@@ -278,6 +292,7 @@ def install(
       nemo skills install --agent claude
       nemo skills install --agent claude --user
       nemo skills install --agent claude --skill inference
+      nemo skills install --agent generic --project-root path/to/agent
     """
     try:
         installer = get_installer(agent)
@@ -295,9 +310,16 @@ def install(
         )
         raise typer.Exit(code=1)
 
+    if project_root is not None and scope is not Scope.PROJECT:
+        typer.echo(
+            "Error: --project-root only applies to project-scope installs (omit --user).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
     skills = _resolve_skills(skill)
-    project_root = _find_project_root()
-    result_paths = installer.install(scope, project_root, skills)
+    resolved_root = project_root.resolve() if project_root is not None else _find_project_root()
+    result_paths = installer.install(scope, resolved_root, skills)
     typer.echo(f"Installed {len(skills)} skill(s) for {installer.display_name}:")
     for path in result_paths:
         typer.echo(f"  {path}")

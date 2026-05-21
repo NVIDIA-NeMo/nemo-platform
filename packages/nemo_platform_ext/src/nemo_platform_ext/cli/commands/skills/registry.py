@@ -21,6 +21,7 @@ import yaml
 from nemo_platform_ext.cli.commands.skills.agents.claude import ClaudeInstaller
 from nemo_platform_ext.cli.commands.skills.agents.codex import CodexInstaller
 from nemo_platform_ext.cli.commands.skills.agents.cursor import CursorInstaller
+from nemo_platform_ext.cli.commands.skills.agents.generic import GenericInstaller
 from nemo_platform_ext.cli.commands.skills.agents.opencode import OpenCodeInstaller
 from nemo_platform_ext.cli.commands.skills.base import Skill
 from nemo_platform_ext.cli.commands.skills.installer import BaseAgentInstaller
@@ -42,6 +43,7 @@ _INSTALLERS: dict[str, BaseAgentInstaller] = {
     "claude": ClaudeInstaller(),
     "cursor": CursorInstaller(),
     "codex": CodexInstaller(),
+    "generic": GenericInstaller(),
     "opencode": OpenCodeInstaller(),
 }
 
