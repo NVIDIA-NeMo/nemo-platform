@@ -128,12 +128,19 @@ def _register_local_commands(app: typer.Typer) -> None:
         ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
         base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
+        timeout: float = typer.Option(
+            300,
+            "--timeout",
+            "-t",
+            envvar="NEMO_AGENTS_INVOKE_TIMEOUT",
+            help="Request timeout in seconds for platform invocation.",
+        ),
     ) -> None:
         """Invoke an agent — locally (with --agent-config) or via the platform (with --agent or --agent-deployment)."""
         if agent_config:
             _local_invoke(agent_config, input, input_file, workspace=workspace, base_url=base_url)
         elif agent or agent_deployment:
-            _platform_invoke(base_url, workspace, agent, agent_deployment, input, input_file)
+            _platform_invoke(base_url, workspace, agent, agent_deployment, input, input_file, timeout=timeout)
         else:
             typer.echo(
                 "Error: provide --agent-config for local execution or --agent/--agent-deployment for platform invocation.",
@@ -702,6 +709,8 @@ def _platform_invoke(
     deployment: Optional[str],
     input: Optional[str],
     input_file: Optional[Path],
+    *,
+    timeout: float = 300,
 ) -> None:
     """Invoke an agent through the platform gateway."""
     if input_file:
@@ -723,11 +732,17 @@ def _platform_invoke(
     for query in queries:
         payload = {"messages": [{"role": "user", "content": query}], "stream": False}
         try:
-            timeout = float(os.environ.get("NEMO_AGENTS_INVOKE_TIMEOUT", "300"))
             with httpx.Client(timeout=timeout) as client:
                 resp = client.post(url, json=payload)
                 resp.raise_for_status()
                 typer.echo(json.dumps(resp.json(), indent=2))
+        except httpx.TimeoutException:
+            typer.echo(
+                f"Error: invoke agent timed out after {timeout:.0f}s. "
+                "Use --timeout to increase or set NEMO_AGENTS_INVOKE_TIMEOUT.",
+                err=True,
+            )
+            raise typer.Exit(code=1)
         except httpx.HTTPStatusError as exc:
             print_http_status_error(exc, action="invoke agent")
             raise typer.Exit(code=1)

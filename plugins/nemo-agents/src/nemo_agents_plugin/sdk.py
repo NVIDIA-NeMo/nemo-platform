@@ -118,7 +118,7 @@ class AgentsResource:
         agent: str | None = None,
         deployment: str | None = None,
         workspace: str = _DEFAULT_WORKSPACE,
-        timeout: int = 120,
+        timeout: int = 300,
     ) -> dict[str, Any]:
         """Send a single request to an agent via the gateway.
 
