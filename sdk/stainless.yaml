@@ -260,8 +260,8 @@ resources:
       json_score_parser: JSONScoreParser
       llm_judge_metric: LLMJudgeMetric
       llm_judge_metric_param: LLMJudgeMetricInput
+      metric: MetricOutput
       metric_ref: MetricRef
-      metric_score: MetricScore
       model: Evaluator.Model
       nemo_agent_toolkit_remote_metric: NemoAgentToolkitRemoteMetric
       nemo_agent_toolkit_remote_metric_param: NemoAgentToolkitRemoteMetricInput
@@ -288,7 +288,6 @@ resources:
       run_config: RunConfig
       run_config_online: RunConfigOnline
       run_config_online_model: RunConfigOnlineModel
-      score_stats: ScoreStats
       string_check_metric: StringCheckMetric
       string_check_metric_param: StringCheckMetricInput
       tool_call_accuracy_metric: ToolCallAccuracyMetric
@@ -1104,6 +1103,21 @@ resources:
           create: post /apis/intake/v2/workspaces/{workspace}/evaluator-results
           list: get /apis/intake/v2/workspaces/{workspace}/evaluator-results
           retrieve: get /apis/intake/v2/workspaces/{workspace}/evaluator-results/{evaluator_result_id}
+      annotations:
+        models:
+          annotation: Annotation
+          annotation_filter: AnnotationFilter
+          annotation_kind: AnnotationKind
+          annotation_param: AnnotationInput
+          annotation_sort_field: AnnotationSortField
+          annotation_update_param: AnnotationUpdate
+          annotations_page: AnnotationsPage
+        methods:
+          create: post /apis/intake/v2/workspaces/{workspace}/annotations
+          list: get /apis/intake/v2/workspaces/{workspace}/annotations
+          retrieve: get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
+          update: patch /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
+          delete: delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
       exports:
         models:
           export_config_param: ExportConfigInput
@@ -1181,6 +1195,9 @@ resources:
           evaluator_results:
             methods:
               list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results
+          annotations:
+            methods:
+              list: get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/annotations
       traces:
         models:
           trace: Trace

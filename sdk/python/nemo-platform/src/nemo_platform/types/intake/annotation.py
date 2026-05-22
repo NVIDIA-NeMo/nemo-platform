@@ -15,7 +15,40 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Dict, Optional
+from datetime import datetime
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from ..._models import BaseModel
+from .annotation_kind import AnnotationKind
+
+__all__ = ["Annotation"]
+
+
+class Annotation(BaseModel):
+    """Response model for annotation read endpoints."""
+
+    annotation_id: str
+
+    created_at: datetime
+
+    ingested_at: datetime
+
+    kind: AnnotationKind
+
+    session_id: str
+
+    workspace: str
+
+    created_by: Optional[str] = None
+
+    metadata: Optional[Dict[str, object]] = None
+
+    name: Optional[str] = None
+
+    span_id: Optional[str] = None
+
+    text: Optional[str] = None
+
+    value_numeric: Optional[float] = None
+
+    value_text: Optional[str] = None

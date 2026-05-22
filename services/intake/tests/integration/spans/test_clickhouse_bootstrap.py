@@ -22,6 +22,7 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         )
     )
     assert result.result_rows == [
+        ("ch_annotations_0001",),
         ("ch_evaluator_results_0001",),
         ("ch_spans_0002",),
     ]

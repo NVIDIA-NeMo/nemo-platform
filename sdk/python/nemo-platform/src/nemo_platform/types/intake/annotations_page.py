@@ -15,7 +15,23 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Dict, List, Optional
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from ..._models import BaseModel
+from .annotation import Annotation
+from ..shared.pagination_data import PaginationData
+
+__all__ = ["AnnotationsPage"]
+
+
+class AnnotationsPage(BaseModel):
+    data: List[Annotation]
+
+    filter: Optional[Dict[str, object]] = None
+    """Filtering information."""
+
+    pagination: Optional[PaginationData] = None
+    """Pagination information."""
+
+    sort: Optional[str] = None
+    """The field on which the results are sorted."""

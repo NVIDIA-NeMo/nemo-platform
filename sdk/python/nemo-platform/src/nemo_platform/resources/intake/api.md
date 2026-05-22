@@ -114,6 +114,30 @@ Methods:
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluator-results/{evaluator_result_id}">client.intake.evaluator_results.<a href="./src/nemo_platform/resources/intake/evaluator_results.py">retrieve</a>(evaluator_result_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/evaluator_result.py">EvaluatorResult</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluator-results">client.intake.evaluator_results.<a href="./src/nemo_platform/resources/intake/evaluator_results.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/evaluator_result_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/evaluator_result.py">SyncDefaultPagination[EvaluatorResult]</a></code>
 
+## Annotations
+
+Types:
+
+```python
+from nemo_platform.types.intake import (
+    Annotation,
+    AnnotationFilter,
+    AnnotationKind,
+    AnnotationParam,
+    AnnotationSortField,
+    AnnotationUpdateParam,
+    AnnotationsPage,
+)
+```
+
+Methods:
+
+- <code title="post /apis/intake/v2/workspaces/{workspace}/annotations">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/annotation_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/annotation.py">Annotation</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">retrieve</a>(annotation_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/annotation.py">Annotation</a></code>
+- <code title="patch /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">update</a>(annotation_id, \*, workspace, \*\*<a href="src/nemo_platform/types/intake/annotation_update_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/annotation.py">Annotation</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/annotations">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/annotation_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/annotation.py">SyncDefaultPagination[Annotation]</a></code>
+- <code title="delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">delete</a>(annotation_id, \*, workspace) -> None</code>
+
 ## Exports
 
 Types:
@@ -253,6 +277,18 @@ from nemo_platform.types.intake.spans import EvaluatorResultListResponse
 Methods:
 
 - <code title="get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/evaluator-results">client.intake.spans.evaluator_results.<a href="./src/nemo_platform/resources/intake/spans/evaluator_results.py">list</a>(span_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/spans/evaluator_result_list_response.py">EvaluatorResultListResponse</a></code>
+
+### Annotations
+
+Types:
+
+```python
+from nemo_platform.types.intake.spans import AnnotationListResponse
+```
+
+Methods:
+
+- <code title="get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/annotations">client.intake.spans.annotations.<a href="./src/nemo_platform/resources/intake/spans/annotations.py">list</a>(span_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/spans/annotation_list_response.py">AnnotationListResponse</a></code>
 
 ## Traces
 

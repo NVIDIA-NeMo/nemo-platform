@@ -17,5 +17,21 @@
 
 from __future__ import annotations
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing import Dict
+from typing_extensions import TypedDict
+
+__all__ = ["AnnotationUpdateParams"]
+
+
+class AnnotationUpdateParams(TypedDict, total=False):
+    workspace: str
+
+    metadata: Dict[str, object]
+
+    name: str
+
+    text: str
+
+    value_numeric: float
+
+    value_text: str

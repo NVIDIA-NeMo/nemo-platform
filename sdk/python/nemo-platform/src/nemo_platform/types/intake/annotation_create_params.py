@@ -17,5 +17,37 @@
 
 from __future__ import annotations
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing import Dict
+from typing_extensions import Required, TypedDict
+
+from .annotation_kind import AnnotationKind
+
+__all__ = ["AnnotationCreateParams"]
+
+
+class AnnotationCreateParams(TypedDict, total=False):
+    workspace: str
+
+    kind: Required[AnnotationKind]
+
+    session_id: Required[str]
+    """Session id this annotation belongs to.
+
+    Required even for span-targeted annotations for session-locality reads.
+    """
+
+    metadata: Dict[str, object]
+
+    name: str
+
+    span_id: str
+    """Target span id.
+
+    Optional when annotating a whole session. Loose target policy — not validated.
+    """
+
+    text: str
+
+    value_numeric: float
+
+    value_text: str

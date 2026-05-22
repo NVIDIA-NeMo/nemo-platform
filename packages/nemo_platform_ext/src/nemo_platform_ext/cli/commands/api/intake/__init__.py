@@ -4,11 +4,21 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from nemo_platform_ext.cli.commands.api.intake import apps, entries, evaluator_results, exports, ingest, spans, traces
+from nemo_platform_ext.cli.commands.api.intake import (
+    annotations,
+    apps,
+    entries,
+    evaluator_results,
+    exports,
+    ingest,
+    spans,
+    traces,
+)
 from nemo_platform_ext.cli.core.help_formatter import create_typer_app
 
 app = create_typer_app(name="intake", help="Intake operations")
 
+app.add_typer(annotations.app, name="annotations")
 app.add_typer(apps.app, name="apps")
 app.add_typer(entries.app, name="entries")
 app.add_typer(evaluator_results.app, name="evaluator-results")

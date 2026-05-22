@@ -17,5 +17,29 @@
 
 from __future__ import annotations
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing_extensions import TypedDict
+
+from .annotation_kind import AnnotationKind
+from ..shared_params.datetime_filter import DatetimeFilter
+
+__all__ = ["AnnotationFilterParam"]
+
+
+class AnnotationFilterParam(TypedDict, total=False):
+    created_at: DatetimeFilter
+    """Filter by row creation time (range supported)."""
+
+    created_by: str
+    """Filter by principal that wrote the annotation."""
+
+    kind: AnnotationKind
+    """Filter by annotation kind."""
+
+    name: str
+    """Filter by annotation name (used by `label`/`metadata`)."""
+
+    session_id: str
+    """Filter by target session id."""
+
+    span_id: str
+    """Filter by target span id."""

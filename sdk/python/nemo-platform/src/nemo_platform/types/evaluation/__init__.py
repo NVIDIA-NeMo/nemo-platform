@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from .agent import Agent as Agent
 from .model import Model as Model
+from .metric import Metric as Metric
 from .rubric import Rubric as Rubric
 from .fileset import Fileset as Fileset
 from .benchmark import Benchmark as Benchmark
@@ -37,7 +38,6 @@ from .model_param import ModelParam as ModelParam
 from .percentiles import Percentiles as Percentiles
 from .range_score import RangeScore as RangeScore
 from .dataset_rows import DatasetRows as DatasetRows
-from .metric_output import MetricOutput as MetricOutput
 from .remote_score import RemoteScore as RemoteScore
 from .rouge_metric import RougeMetric as RougeMetric
 from .rubric_param import RubricParam as RubricParam

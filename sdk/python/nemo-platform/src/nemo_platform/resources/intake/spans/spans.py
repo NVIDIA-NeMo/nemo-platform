@@ -24,6 +24,14 @@ import httpx
 from ...._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
 from ...._utils import path_template, maybe_transform
 from ...._compat import cached_property
+from .annotations import (
+    AnnotationsResource,
+    AsyncAnnotationsResource,
+    AnnotationsResourceWithRawResponse,
+    AsyncAnnotationsResourceWithRawResponse,
+    AnnotationsResourceWithStreamingResponse,
+    AsyncAnnotationsResourceWithStreamingResponse,
+)
 from ...._resource import SyncAPIResource, AsyncAPIResource
 from ...._response import (
     to_raw_response_wrapper,
@@ -53,6 +61,10 @@ class SpansResource(SyncAPIResource):
     @cached_property
     def evaluator_results(self) -> EvaluatorResultsResource:
         return EvaluatorResultsResource(self._client)
+
+    @cached_property
+    def annotations(self) -> AnnotationsResource:
+        return AnnotationsResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> SpansResourceWithRawResponse:
@@ -180,6 +192,10 @@ class AsyncSpansResource(AsyncAPIResource):
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResource:
         return AsyncEvaluatorResultsResource(self._client)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResource:
+        return AsyncAnnotationsResource(self._client)
 
     @cached_property
     def with_raw_response(self) -> AsyncSpansResourceWithRawResponse:
@@ -318,6 +334,10 @@ class SpansResourceWithRawResponse:
     def evaluator_results(self) -> EvaluatorResultsResourceWithRawResponse:
         return EvaluatorResultsResourceWithRawResponse(self._spans.evaluator_results)
 
+    @cached_property
+    def annotations(self) -> AnnotationsResourceWithRawResponse:
+        return AnnotationsResourceWithRawResponse(self._spans.annotations)
+
 
 class AsyncSpansResourceWithRawResponse:
     def __init__(self, spans: AsyncSpansResource) -> None:
@@ -333,6 +353,10 @@ class AsyncSpansResourceWithRawResponse:
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithRawResponse:
         return AsyncEvaluatorResultsResourceWithRawResponse(self._spans.evaluator_results)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResourceWithRawResponse:
+        return AsyncAnnotationsResourceWithRawResponse(self._spans.annotations)
 
 
 class SpansResourceWithStreamingResponse:
@@ -350,6 +374,10 @@ class SpansResourceWithStreamingResponse:
     def evaluator_results(self) -> EvaluatorResultsResourceWithStreamingResponse:
         return EvaluatorResultsResourceWithStreamingResponse(self._spans.evaluator_results)
 
+    @cached_property
+    def annotations(self) -> AnnotationsResourceWithStreamingResponse:
+        return AnnotationsResourceWithStreamingResponse(self._spans.annotations)
+
 
 class AsyncSpansResourceWithStreamingResponse:
     def __init__(self, spans: AsyncSpansResource) -> None:
@@ -365,3 +393,7 @@ class AsyncSpansResourceWithStreamingResponse:
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithStreamingResponse:
         return AsyncEvaluatorResultsResourceWithStreamingResponse(self._spans.evaluator_results)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResourceWithStreamingResponse:
+        return AsyncAnnotationsResourceWithStreamingResponse(self._spans.annotations)

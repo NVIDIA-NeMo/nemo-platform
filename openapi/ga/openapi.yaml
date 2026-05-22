@@ -5598,6 +5598,196 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/annotations:
+    post:
+      tags:
+      - Annotations
+      summary: Create Annotation
+      operationId: create_annotation_apis_intake_v2_workspaces__workspace__annotations_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Annotations
+      summary: List Annotations
+      operationId: list_annotations_apis_intake_v2_workspaces__workspace__annotations_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationSortField'
+          default: -created_at
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AnnotationFilter'
+        description: Filter annotations by span_id, session_id, kind, name, created_by,
+          and created_at range.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
+    get:
+      tags:
+      - Annotations
+      summary: Get Annotation
+      operationId: get_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    patch:
+      tags:
+      - Annotations
+      summary: Update Annotation
+      operationId: update_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__patch
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Annotations
+      summary: Delete Annotation
+      operationId: delete_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/apps:
     get:
       tags:
@@ -6832,6 +7022,42 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Span'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/annotations:
+    get:
+      tags:
+      - Annotations
+      summary: List Annotations For Span
+      operationId: list_annotations_for_span_apis_intake_v2_workspaces__workspace__spans__span_id__annotations_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: span_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Span Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Annotation'
+                title: Response List Annotations For Span Apis Intake V2 Workspaces  Workspace  Spans  Span
+                  Id  Annotations Get
         '422':
           description: Validation Error
           content:
@@ -10996,6 +11222,202 @@ components:
       - scores
       title: AggregatedMetricResult
       description: Result of aggregating metric scores with full statistics.
+    Annotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        kind:
+          $ref: '#/components/schemas/AnnotationKind'
+        name:
+          title: Name
+          type: string
+        value_text:
+          title: Value Text
+          type: string
+        value_numeric:
+          title: Value Numeric
+          type: number
+        text:
+          title: Text
+          type: string
+        metadata:
+          title: Metadata
+          additionalProperties: true
+          type: object
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - kind
+      - created_at
+      - ingested_at
+      title: Annotation
+      description: Response model for annotation read endpoints.
+    AnnotationFilter:
+      properties:
+        span_id:
+          description: Filter by target span id.
+          title: Span Id
+          type: string
+        session_id:
+          description: Filter by target session id.
+          title: Session Id
+          type: string
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationKind'
+          description: Filter by annotation kind.
+        name:
+          description: Filter by annotation name (used by `label`/`metadata`).
+          title: Name
+          type: string
+        created_by:
+          description: Filter by principal that wrote the annotation.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter by row creation time (range supported).
+      title: AnnotationFilter
+      type: object
+    AnnotationInput:
+      properties:
+        kind:
+          $ref: '#/components/schemas/AnnotationKind'
+        name:
+          title: Name
+          type: string
+          maxLength: 256
+        value_text:
+          title: Value Text
+          type: string
+          maxLength: 512
+          minLength: 1
+        value_numeric:
+          title: Value Numeric
+          type: number
+        text:
+          title: Text
+          type: string
+          maxLength: 10000
+          minLength: 1
+        metadata:
+          title: Metadata
+          additionalProperties: true
+          type: object
+        span_id:
+          title: Span Id
+          description: "Target span id. Optional when annotating a whole session.\
+            \ Loose target policy \u2014 not validated."
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Session id this annotation belongs to. Required even for span-targeted
+            annotations for session-locality reads.
+      additionalProperties: false
+      type: object
+      required:
+      - kind
+      - session_id
+      title: AnnotationInput
+      description: "Request body for POST /annotations.\n\nServer fills `annotation_id`,\
+        \ `created_at`, `ingested_at`, and `created_by`.\nProducer supplies the target\
+        \ (span_id and/or session_id; loose target \u2014 not\nvalidated against existing\
+        \ spans/sessions) plus kind-specific fields."
+    AnnotationKind:
+      type: string
+      enum:
+      - feedback
+      - label
+      - note
+      - metadata
+      title: AnnotationKind
+    AnnotationSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      title: AnnotationSortField
+    AnnotationUpdate:
+      properties:
+        name:
+          title: Name
+          type: string
+          maxLength: 256
+        value_text:
+          title: Value Text
+          type: string
+          maxLength: 512
+          minLength: 1
+        value_numeric:
+          title: Value Numeric
+          type: number
+        text:
+          title: Text
+          type: string
+          maxLength: 10000
+          minLength: 1
+        metadata:
+          title: Metadata
+          additionalProperties: true
+          type: object
+      additionalProperties: false
+      type: object
+      title: AnnotationUpdate
+      description: 'Request body for PATCH /annotations/{id}.
+
+
+        The kind is immutable. Value fields can be updated; the full set is
+
+        re-validated against the kind on update.'
+    AnnotationsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Annotation'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnnotationsPage
     AnswerAccuracyMetric:
       properties:
         name:

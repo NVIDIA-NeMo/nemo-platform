@@ -15,7 +15,8 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing_extensions import Literal, TypeAlias
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+__all__ = ["AnnotationKind"]
+
+AnnotationKind: TypeAlias = Literal["feedback", "label", "note", "metadata"]

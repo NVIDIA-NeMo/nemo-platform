@@ -174,9 +174,46 @@ def _create_evaluator_results_schema(client, settings: ClickHouseMigrationSettin
     )
 
 
+def _create_annotations_schema(client, settings: ClickHouseMigrationSettings) -> None:
+    # `span_id` uses an empty-string default (matches `external_parent_span_id`
+    # on `spans`) so it can participate cleanly in ORDER BY. Empty means
+    # "session-level annotation".
+    client.command(
+        f"""
+        CREATE TABLE IF NOT EXISTS {_table(settings, "annotations")}
+        (
+            annotation_id String,
+            workspace LowCardinality(String),
+            span_id String DEFAULT '',
+            session_id String,
+
+            kind Enum8(
+                'feedback' = 1,
+                'label' = 2,
+                'note' = 3,
+                'metadata' = 4
+            ),
+            name LowCardinality(Nullable(String)),
+            value_text Nullable(String),
+            value_numeric Nullable(Float64),
+            text Nullable(String) CODEC(ZSTD(3)),
+            metadata Nullable(String) CODEC(ZSTD(3)),
+
+            created_by Nullable(String),
+            created_at DateTime64(3),
+            ingested_at DateTime64(3),
+            is_deleted UInt8 DEFAULT 0
+        )
+        ENGINE = ReplacingMergeTree(ingested_at, is_deleted)
+        ORDER BY (workspace, session_id, span_id, kind, annotation_id)
+        """
+    )
+
+
 _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_spans_0002", _create_spans_schema),
     ("ch_evaluator_results_0001", _create_evaluator_results_schema),
+    ("ch_annotations_0001", _create_annotations_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

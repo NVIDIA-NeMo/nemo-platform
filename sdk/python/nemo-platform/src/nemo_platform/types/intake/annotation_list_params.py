@@ -17,5 +17,27 @@
 
 from __future__ import annotations
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing_extensions import TypedDict
+
+from .annotation_sort_field import AnnotationSortField
+from .annotation_filter_param import AnnotationFilterParam
+
+__all__ = ["AnnotationListParams"]
+
+
+class AnnotationListParams(TypedDict, total=False):
+    workspace: str
+
+    filter: AnnotationFilterParam
+    """
+    Filter annotations by span_id, session_id, kind, name, created_by, and
+    created_at range.
+    """
+
+    page: int
+    """Page number."""
+
+    page_size: int
+    """Page size."""
+
+    sort: AnnotationSortField

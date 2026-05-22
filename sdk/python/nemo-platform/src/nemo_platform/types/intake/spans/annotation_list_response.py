@@ -15,7 +15,11 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import List
+from typing_extensions import TypeAlias
 
-from .annotation_list_response import AnnotationListResponse as AnnotationListResponse
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from ..annotation import Annotation
+
+__all__ = ["AnnotationListResponse"]
+
+AnnotationListResponse: TypeAlias = List[Annotation]
