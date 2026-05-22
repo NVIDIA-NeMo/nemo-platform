@@ -6,6 +6,7 @@
   "description": "A monorepo comprising the packages for nemo studio.",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
+    "postinstall": "pnpm --filter @nemo/sdk gen:if-stale",
     "test": "pnpm run -r test",
     "test:e2e": "pnpm run -r test:e2e",
     "build": "pnpm run -r build",
