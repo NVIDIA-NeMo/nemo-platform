@@ -126,6 +126,17 @@ def test_load_skills_includes_platform_skills():
     assert {"inference"} <= skills.keys()
 
 
+def test_load_skills_includes_platform_skills_without_entry_point_metadata(monkeypatch):
+    """Bundled platform skills remain available even if entry-point metadata is absent."""
+    monkeypatch.setattr("nemo_platform_plugin.discovery.discover_entry_points", lambda _group: {})
+    monkeypatch.setattr("nemo_platform_ext.cli.commands.skills.registry._raw_entry_points", lambda _group: ())
+
+    skills = load_skills()
+
+    assert {"inference"} <= skills.keys()
+    assert skills["inference"].source_dist == "nemo-platform-ext"
+
+
 def test_load_skills_includes_example_plugin_skills(monkeypatch):
     """Adding a provider on top of the platform should expose its skills too."""
     monkeypatch.setattr(
