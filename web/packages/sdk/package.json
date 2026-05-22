@@ -6,6 +6,7 @@
   "scripts": {
     "gen": "tsx ./orval/generate.ts",
     "gen:all": "tsx ./generateAll.ts",
+    "gen:all-force": "tsx ./generateAll.ts --force",
     "gen:agents": "tsx ./orval/generate.ts agents",
     "gen:agents-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts agents",
     "gen:customizer": "tsx ./orval/generate.ts customizer",
