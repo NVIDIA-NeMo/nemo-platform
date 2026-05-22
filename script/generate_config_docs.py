@@ -9,7 +9,7 @@ Imports platform and service config classes directly; requires running under uv
 so workspace packages (nmp.common, nmp.core.*, etc.) are on the import path.
 
 Outputs:
-  - docs/set-up/config-reference.md   Markdown with YAML sections and inline comments
+  - docs/set-up/config-reference.mdx  Fern MDX with YAML sections and inline comments
 
 Usage (run from repository root):
 
@@ -410,9 +410,12 @@ def generate_yaml(entries: list[tuple[str, Any]]) -> str:
 def generate_markdown(entries: list[tuple[str, Any]]) -> str:
     """Generate full markdown document: YAML-first with comments, no tables, no class names."""
     lines: list[str] = []
+    lines.append("---")
+    lines.append('title: "NeMo Platform configuration reference"')
+    lines.append('description: ""')
+    lines.append("---")
     lines.append("(platform-config-reference)=")
     lines.append("")
-    lines.append("# NeMo Platform configuration reference")
     lines.append("")
     lines.append(
         "This document describes the structure and defaults for the global config file for the NeMo Platform. "
@@ -443,7 +446,7 @@ def main() -> int:
     parser.add_argument(
         "--markdown",
         type=Path,
-        default=REPO_ROOT / "docs" / "set-up" / "config-reference.md",
+        default=REPO_ROOT / "docs" / "set-up" / "config-reference.mdx",
         help="Output path for markdown file",
     )
     parser.add_argument(

@@ -67,8 +67,8 @@ generate-cli-commands: ## Run generation of the CLI commands
 
 .PHONY: generate-cli-reference-docs
 generate-cli-reference-docs: ## Generate the CLI reference documentation
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.md
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/_snippets/cli-summary.md
+	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.mdx
+	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/fern/snippets/_snippets/cli-summary.mdx
 
 .PHONY: generate-config-reference-docs
 generate-config-reference-docs: ## Generate the platform config reference documentation

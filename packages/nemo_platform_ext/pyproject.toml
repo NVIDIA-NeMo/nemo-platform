@@ -77,7 +77,6 @@ packages = ["src/nemo_platform_ext"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../../docs" = "nemo_platform_ext/cli/docs"
-"../../mkdocs.yml" = "nemo_platform_ext/cli/mkdocs.yml"
 
 [tool.vendor-package]
 package = "nemo_platform_ext"

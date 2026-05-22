@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Validates Fern docs configuration on pull requests.
+# See docs/fern/README.md and docs/fern/docs.yml `libraries`.
+
+name: Fern docs (check)
+
+on:
+  pull_request:
+    paths:
+      - 'docs/**'
+      - '.github/workflows/fern-docs-ci.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+
+      - name: Validate Fern configuration
+        working-directory: ./docs/fern
+        env:
+          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
+        run: npm run check
