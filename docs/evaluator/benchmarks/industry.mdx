@@ -2,9 +2,6 @@
 title: "Industry Benchmarks"
 description: ""
 ---
-import SnippetDiscoverIndustryBenchmarks from "@/snippets/evaluator/benchmarks/discover-industry-benchmarks.mdx";
-import SnippetHfSecret from "@/snippets/evaluator/benchmarks/hf-secret.mdx";
-
 <a id="eval-benchmarks-industry"></a>
 
 ## Evaluate with Published Datasets
@@ -19,7 +16,7 @@ Refer to the [Run an LLM Judge Evaluation](../tutorials/run-llm-judge-evaluation
 - **Reproducible Metrics**: Use established methodologies to calculate metrics.
 - **Community Standards**: You can compare results across different models and research groups.
 
-<SnippetDiscoverIndustryBenchmarks />
+<Markdown src="/snippets/evaluator/benchmarks/discover-industry-benchmarks.mdx" />
 ### Choosing a Benchmark Variant
 
 Many benchmarks offer multiple variants optimized for different model types:
@@ -268,7 +265,7 @@ job = client.evaluation.benchmark_jobs.create(
 </Tabs>
 <Note>
 
-<SnippetHfSecret />
+<Markdown src="/snippets/evaluator/benchmarks/hf-secret.mdx" />
 
 </Note>
 ### Results
@@ -1147,7 +1144,7 @@ Create an evaluation job with a benchmark that satisfy the required and optional
 
 For benchmarks that require a Hugging Face token or other API keys for external services, create the secret to be referenced by the job.
 
-<SnippetHfSecret />
+<Markdown src="/snippets/evaluator/benchmarks/hf-secret.mdx" />
 
 </Note>
 ```python

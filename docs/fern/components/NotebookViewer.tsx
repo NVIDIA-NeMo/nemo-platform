@@ -5,6 +5,27 @@
 
 import type { ReactNode } from "react";
 
+import distillationCustomizationJob from "./notebooks/distillation-customization-job";
+import dpoCustomizationJob from "./notebooks/dpo-customization-job";
+import embeddingCustomizationJob from "./notebooks/embedding-customization-job";
+import loraCustomizationJob from "./notebooks/lora-customization-job";
+import optimizeThroughput from "./notebooks/optimize-throughput";
+import sftCustomizationJob from "./notebooks/sft-customization-job";
+import toolCalling from "./notebooks/tool-calling";
+
+// Pages mounted from outside docs/fern/ cannot use `@/` imports (Fern's
+// bundler refuses `..` escapes), so notebook data is registered here and
+// pages look it up by name: `<NotebookViewer name="sft-customization-job" />`.
+const notebooks: Record<string, unknown> = {
+  "distillation-customization-job": distillationCustomizationJob,
+  "dpo-customization-job": dpoCustomizationJob,
+  "embedding-customization-job": embeddingCustomizationJob,
+  "lora-customization-job": loraCustomizationJob,
+  "optimize-throughput": optimizeThroughput,
+  "sft-customization-job": sftCustomizationJob,
+  "tool-calling": toolCalling,
+};
+
 /**
  * NotebookViewer - Renders Jupyter notebook content in Fern docs.
  *
@@ -71,7 +92,9 @@ export interface NotebookData {
 }
 
 export interface NotebookViewerProps {
-  /** Notebook data with cells array. If import fails, this may be undefined. */
+  /** Notebook name registered in the registry above (preferred for MDX usage). */
+  name?: string;
+  /** Notebook data with cells array. Used when no `name` is provided. */
   notebook?: NotebookData | null;
   /** Optional Colab URL for "Run in Colab" badge */
   colabUrl?: string;
@@ -372,25 +395,37 @@ function renderCell(cell: NotebookCell, index: number, showOutputs: boolean) {
 }
 
 export const NotebookViewer = ({
+  name,
   notebook,
   colabUrl,
   showOutputs = true,
 }: NotebookViewerProps) => {
-  if (notebook == null || typeof notebook !== "object") {
+  const resolved = (name != null ? (notebooks[name] as NotebookData | undefined) : notebook) ?? null;
+
+  if (name != null && notebooks[name] == null) {
     return (
       <NotebookViewerError
-        message="Notebook data is missing or invalid"
-        detail={`Received: ${typeof notebook}. Run python scripts/converters/ipynb_to_fern_json.py on your .ipynb and import the generated .ts module.`}
+        message={`Unknown notebook name: "${name}"`}
+        detail={`Registered names: ${Object.keys(notebooks).join(", ")}. Add the .ts module to fern/components/notebooks/ and register it in NotebookViewer.tsx.`}
       />
     );
   }
 
-  const cells = notebook?.cells;
+  if (resolved == null || typeof resolved !== "object") {
+    return (
+      <NotebookViewerError
+        message="Notebook data is missing or invalid"
+        detail={`Received: ${typeof resolved}. Pass either a "name" registered in NotebookViewer.tsx or a "notebook" object.`}
+      />
+    );
+  }
+
+  const cells = resolved?.cells;
   if (!Array.isArray(cells)) {
     return (
       <NotebookViewerError
         message="Notebook must have a 'cells' array"
-        detail={`Received keys: ${Object.keys(notebook).join(", ")}`}
+        detail={`Received keys: ${Object.keys(resolved).join(", ")}`}
       />
     );
   }
