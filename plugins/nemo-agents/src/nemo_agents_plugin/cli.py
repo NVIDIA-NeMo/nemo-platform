@@ -755,6 +755,13 @@ def _platform_invoke(
                     resp.raise_for_status()
                     body = resp.json()
                 typer.echo(json.dumps(body, indent=2))
+        except httpx.TimeoutException as exc:
+            typer.echo(
+                f"Error: invoke agent timed out after {timeout:.0f}s. "
+                "Use --timeout to increase or set NEMO_AGENTS_INVOKE_TIMEOUT.",
+                err=True,
+            )
+            raise typer.Exit(code=1) from exc
         except httpx.HTTPStatusError as exc:
             print_http_status_error(exc, action="invoke agent")
             raise typer.Exit(code=1)
