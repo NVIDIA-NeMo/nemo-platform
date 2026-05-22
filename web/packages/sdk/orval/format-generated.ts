@@ -8,7 +8,7 @@
  */
 
 import { execSync } from 'child_process';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -354,6 +354,104 @@ function prefixUnusedParameters(filePath: string): boolean {
   return false;
 }
 
+/**
+ * Split an orval-generated zod "tags" file (one file per OpenAPI tag, containing
+ * every operation's schemas/constants for that tag) into per-operation files,
+ * with a barrel re-export at the original path.
+ *
+ * Why: orval's zod generator inlines every $ref recursively (orval#2535), so a
+ * single tag file can be multiple megabytes. Rolldown does not tree-shake unused
+ * exports out of that file — importing one constant pulls the whole thing into
+ * the chunk. Physically splitting by operation lets the bundler include only
+ * the operation files actually referenced.
+ *
+ * Returns the number of per-operation files written, or 0 if the file did not
+ * look like a tags-mode zod output (e.g. it was already a barrel, or had no
+ * top-level `export const`).
+ */
+const SECTION_WORDS = /Query|Body|Response|Path|Params|Schema/;
+
+function findOperationRoot(exportName: string): string {
+  const camel = exportName[0].toLowerCase() + exportName.slice(1);
+  const match = camel.match(SECTION_WORDS);
+  return match ? camel.slice(0, match.index) : camel;
+}
+
+function splitZodTagFile(filePath: string): number {
+  const src = readFileSync(filePath, 'utf-8');
+
+  const exportPositions: Array<{ start: number; name: string }> = [];
+  const exportRegex = /^export const ([a-zA-Z_$][a-zA-Z0-9_$]*)/gm;
+  let match: RegExpExecArray | null;
+  while ((match = exportRegex.exec(src)) !== null) {
+    exportPositions.push({ start: match.index, name: match[1] });
+  }
+  if (exportPositions.length === 0) return 0;
+
+  const header = src.slice(0, exportPositions[0].start);
+
+  // Group export blocks by operation root, preserving source order.
+  const groups = new Map<string, string[]>();
+  const order: string[] = [];
+  for (let i = 0; i < exportPositions.length; i++) {
+    const { start, name } = exportPositions[i];
+    const end = i + 1 < exportPositions.length ? exportPositions[i + 1].start : src.length;
+    const root = findOperationRoot(name);
+    if (!groups.has(root)) {
+      groups.set(root, []);
+      order.push(root);
+    }
+    groups.get(root)!.push(src.slice(start, end));
+  }
+
+  // Skip files that contain only one operation — splitting them adds churn
+  // without helping the bundler.
+  if (order.length <= 1) return 0;
+
+  const tagName = path.basename(filePath, '.ts');
+  const outDir = path.join(path.dirname(filePath), tagName);
+  mkdirSync(outDir, { recursive: true });
+
+  for (const root of order) {
+    const contents = header + groups.get(root)!.join('');
+    writeFileSync(path.join(outDir, `${root}.ts`), contents, 'utf-8');
+  }
+
+  const barrelLines = [
+    '/**',
+    ' * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.',
+    ' * SPDX-License-Identifier: Apache-2.0',
+    ' *',
+    ' * Auto-generated barrel that re-exports per-operation zod modules.',
+    ' * Split from a single orval tag file to keep the bundler from pulling',
+    ' * the entire tag into a route chunk. Do not edit manually.',
+    ' */',
+    ...order.map((root) => `export * from './${tagName}/${root}';`),
+    '',
+  ];
+  writeFileSync(filePath, barrelLines.join('\n'), 'utf-8');
+
+  return order.length;
+}
+
+function splitZodTagFilesIn(zodDir: string): void {
+  let entries: string[];
+  try {
+    entries = readdirSync(zodDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    const fullPath = path.join(zodDir, entry);
+    if (!entry.endsWith('.ts')) continue;
+    if (!statSync(fullPath).isFile()) continue;
+    const count = splitZodTagFile(fullPath);
+    if (count > 0) {
+      console.log(`    Split ${entry} into ${count} operation files`);
+    }
+  }
+}
+
 try {
   // Step 1: Prefix unused parameters with underscore
   console.log('Prefixing unused parameters...');
@@ -368,7 +466,14 @@ try {
 
   console.log(`  Modified ${modifiedCount} file(s)`);
 
-  // Step 2: Run prettier
+  // Step 2: Split large orval-generated zod tag files into per-operation files.
+  // Each tag file (e.g. zod/evaluator.ts) gets replaced with a barrel and a
+  // sibling directory of per-operation files (zod/evaluator/<op>.ts).
+  const zodDir = path.join(generatedPath, 'zod');
+  console.log('Splitting zod tag files by operation...');
+  splitZodTagFilesIn(zodDir);
+
+  // Step 3: Run prettier
   console.log('Running prettier...');
   execSync(`prettier --write ${generatedPath}`, {
     stdio: 'inherit',
