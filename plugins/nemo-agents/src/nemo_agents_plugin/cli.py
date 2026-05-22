@@ -49,6 +49,7 @@ from nemo_agents_plugin.leaderboard.cli import register_leaderboard_commands
 from nemo_agents_plugin.usage.cli import register_usage_commands
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
+from nemo_platform_plugin.cli_progress import request_progress
 
 logger = logging.getLogger(__name__)
 
@@ -135,12 +136,26 @@ def _register_local_commands(app: typer.Typer) -> None:
             envvar="NEMO_AGENTS_INVOKE_TIMEOUT",
             help="Request timeout in seconds for platform invocation.",
         ),
+        no_progress: bool = typer.Option(
+            False,
+            "--no-progress",
+            help="Suppress the stderr spinner while waiting for the response.",
+        ),
     ) -> None:
         """Invoke an agent — locally (with --agent-config) or via the platform (with --agent or --agent-deployment)."""
         if agent_config:
             _local_invoke(agent_config, input, input_file, workspace=workspace, base_url=base_url)
         elif agent or agent_deployment:
-            _platform_invoke(base_url, workspace, agent, agent_deployment, input, input_file, timeout=timeout)
+            _platform_invoke(
+                base_url,
+                workspace,
+                agent,
+                agent_deployment,
+                input,
+                input_file,
+                timeout=timeout,
+                no_progress=no_progress,
+            )
         else:
             typer.echo(
                 "Error: provide --agent-config for local execution or --agent/--agent-deployment for platform invocation.",
@@ -711,6 +726,7 @@ def _platform_invoke(
     input_file: Optional[Path],
     *,
     timeout: float = 300,
+    no_progress: bool = False,
 ) -> None:
     """Invoke an agent through the platform gateway."""
     if input_file:
@@ -729,20 +745,16 @@ def _platform_invoke(
         path = f"/apis/agents/v2/workspaces/{workspace}/deployments/{deployment}/-/v1/chat/completions"
 
     url = base_url.rstrip("/") + path
+    target_label = agent or deployment
     for query in queries:
         payload = {"messages": [{"role": "user", "content": query}], "stream": False}
         try:
-            with httpx.Client(timeout=timeout) as client:
-                resp = client.post(url, json=payload)
-                resp.raise_for_status()
-                typer.echo(json.dumps(resp.json(), indent=2))
-        except httpx.TimeoutException:
-            typer.echo(
-                f"Error: invoke agent timed out after {timeout:.0f}s. "
-                "Use --timeout to increase or set NEMO_AGENTS_INVOKE_TIMEOUT.",
-                err=True,
-            )
-            raise typer.Exit(code=1)
+            with request_progress(f"Waiting for agent '{target_label}'...", disabled=no_progress):
+                with httpx.Client(timeout=timeout) as client:
+                    resp = client.post(url, json=payload)
+                    resp.raise_for_status()
+                    body = resp.json()
+                typer.echo(json.dumps(body, indent=2))
         except httpx.HTTPStatusError as exc:
             print_http_status_error(exc, action="invoke agent")
             raise typer.Exit(code=1)

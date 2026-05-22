@@ -146,6 +146,45 @@ def test_invoke_timeout_error_message() -> None:
     assert "--timeout" in result.stderr
 
 
+def test_platform_invoke_writes_clean_json_to_stdout() -> None:
+    """`nemo agents invoke --agent` returns JSON on stdout with no spinner bleed.
+
+    AIRCORE-574: the spinner must render only on stderr so consumers can pipe
+    stdout to `jq`. CliRunner's non-TTY stderr auto-disables the spinner, so
+    here we just verify the response JSON is intact on stdout.
+    """
+    import json as _json
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(app, ["invoke", "--agent", "calc", "--input", "ping", "--base-url", "http://test"])
+
+    assert result.exit_code == 0, result.stderr
+    parsed = _json.loads(result.stdout)
+    assert parsed["choices"][0]["message"]["content"] == "hi"
+
+
+def test_platform_invoke_accepts_no_progress_flag() -> None:
+    """`--no-progress` is wired through and doesn't break invocation."""
+    import json as _json
+
+    def handler(_req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": "hi"}}]})
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app,
+            ["invoke", "--agent", "calc", "--input", "ping", "--no-progress", "--base-url", "http://test"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert _json.loads(result.stdout)["choices"][0]["message"]["content"] == "hi"
+
+
 def test_list_connection_error_prints_request_context_and_hint() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused", request=req)
