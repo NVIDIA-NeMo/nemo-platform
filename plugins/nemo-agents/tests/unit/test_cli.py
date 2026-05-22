@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any
 from unittest.mock import patch
@@ -13,11 +14,15 @@ from nemo_agents_plugin.cli import AgentsCLI
 from typer.testing import CliRunner
 
 
-def _install_mock_transport(handler) -> AbstractContextManager[Any]:
+def _install_mock_transport(
+    handler, *, on_create: Callable[[dict[str, Any]], None] | None = None
+) -> AbstractContextManager[Any]:
     transport = httpx.MockTransport(handler)
     real_client = httpx.Client
 
     def _factory(*args, **kwargs):
+        if on_create is not None:
+            on_create(kwargs)
         kwargs["transport"] = transport
         return real_client(*args, **kwargs)
 
@@ -113,16 +118,8 @@ def test_invoke_with_custom_timeout() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"model": "test", "choices": []})
 
-    transport = httpx.MockTransport(handler)
-    real_client = httpx.Client
-
-    def _factory(*args, **kwargs):
-        captured_timeout.append(kwargs.get("timeout"))
-        kwargs["transport"] = transport
-        return real_client(*args, **kwargs)
-
     app = AgentsCLI().get_cli()
-    with patch("nemo_agents_plugin.cli.httpx.Client", _factory):
+    with _install_mock_transport(handler, on_create=lambda kw: captured_timeout.append(kw.get("timeout"))):
         result = CliRunner().invoke(
             app,
             ["invoke", "--agent", "calc", "--input", "hi", "--base-url", "http://test", "--timeout", "42"],

@@ -231,7 +231,7 @@ async def _proxy(
     # workaround; the proper upstream fix belongs in nvidia-nat-core's
     # NemoAgentWrapperFunction.convert_to_chat_response where the LLM's
     # response_metadata carries the real model name.
-    if model_name and "event-stream" not in content_type:
+    if model_name and not content_type.startswith("text/event-stream"):
         async for remaining in stream_gen:
             chunks.append(remaining)
         raw = b"".join(chunks)
@@ -243,17 +243,6 @@ async def _proxy(
         except (json.JSONDecodeError, UnicodeDecodeError):
             pass
         chunks = [raw]
-
-        async def _buffered_patched() -> AsyncIterator[bytes]:
-            for c in chunks:
-                yield c
-
-        return StreamingResponse(
-            _buffered_patched(),
-            status_code=status_code_holder[0],
-            headers={k: v for k, v in response_headers.items() if k.lower() != "content-length"},
-            media_type=content_type,
-        )
 
     return StreamingResponse(
         _buffered(),

@@ -106,7 +106,14 @@ NeMo Platform skills I can route to:
   nemo-teardown   guided shutdown
   nemo-fine-tune  fine-tuning (not yet shipped; reports that honestly)
 
-Plus plugin-owned skills (guardrails, evaluator, auditor, data-designer, anonymizer, agents-optimize, agents-secure).
+Plugin-owned skills:
+  agents-optimize   cost / latency / quality optimization for a deployed agent
+  agents-secure     safety and security audit for a deployed agent
+  nemo-evaluator    evaluation metrics, LLM-judge, benchmark jobs
+  guardrails        content-safety middleware via virtual models
+  auditor           red-team vulnerability scanning (garak)
+  data-designer     synthetic dataset generation
+  anonymizer        PII handling for datasets
 
 Which one fits what you're trying to do?
 ```
