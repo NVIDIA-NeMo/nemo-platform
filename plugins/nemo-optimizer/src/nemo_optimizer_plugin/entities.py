@@ -29,20 +29,8 @@ class Insight(NemoEntity, entity_type="insight"):
 
     agent: str = Field(description="Name of the AgentRegistration this insight is about.")
     description: str = Field(description="The problem statement: specific enough to act on.")
-    hypothesis: str = Field(
-        default="",
-        description="Analyst's reasoning for how to address the insight.",
-    )
     status: InsightStatus = Field(default=InsightStatus.OPEN)
-    impact_estimate: float | None = Field(
-        default=None,
-        description="Derived by the analyst from associated traces. Null when human-authored.",
-    )
     eval_dataset_row_refs: list[str] = Field(
         default_factory=list,
         description="Evaluator dataset row ids attached as regression tests.",
-    )
-    experiment_refs: list[str] = Field(
-        default_factory=list,
-        description="Experiment entity names attempted against this insight. Empty in M1.",
     )
