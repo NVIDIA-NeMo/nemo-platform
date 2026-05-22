@@ -106,6 +106,49 @@ def test_create_aborts_when_default_model_missing(tmp_path, placeholder: str) ->
     assert "nemo setup" in result.stderr
 
 
+def test_invoke_with_custom_timeout() -> None:
+    """--timeout is threaded through to the httpx client."""
+    captured_timeout: list[float | None] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"model": "test", "choices": []})
+
+    transport = httpx.MockTransport(handler)
+    real_client = httpx.Client
+
+    def _factory(*args, **kwargs):
+        captured_timeout.append(kwargs.get("timeout"))
+        kwargs["transport"] = transport
+        return real_client(*args, **kwargs)
+
+    app = AgentsCLI().get_cli()
+    with patch("nemo_agents_plugin.cli.httpx.Client", _factory):
+        result = CliRunner().invoke(
+            app,
+            ["invoke", "--agent", "calc", "--input", "hi", "--base-url", "http://test", "--timeout", "42"],
+        )
+
+    assert result.exit_code == 0, result.stderr
+    assert captured_timeout[0] == 42.0
+
+
+def test_invoke_timeout_error_message() -> None:
+    """Timeout errors print actionable guidance mentioning --timeout."""
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("read timed out", request=req)
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(handler):
+        result = CliRunner().invoke(
+            app, ["invoke", "--agent", "calc", "--input", "hi", "--base-url", "http://test", "--timeout", "5"]
+        )
+
+    assert result.exit_code == 1
+    assert "timed out" in result.stderr.lower()
+    assert "--timeout" in result.stderr
+
+
 def test_list_connection_error_prints_request_context_and_hint() -> None:
     def handler(req: httpx.Request) -> httpx.Response:
         raise httpx.ConnectError("connection refused", request=req)
