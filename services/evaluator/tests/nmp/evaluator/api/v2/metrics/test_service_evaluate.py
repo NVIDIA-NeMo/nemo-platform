@@ -14,8 +14,8 @@ from nemo_evaluator_sdk.values import (
     AggregatedMetricResult,
     DatasetRows,
     EvaluationResult,
+    MetricOutput,
     MetricResult,
-    MetricScore,
     Model,
     RangeScore,
     RowScore,
@@ -400,23 +400,23 @@ class TestEvaluate:
             return_value=[
                 (
                     0,
-                    MetricResult(scores=[MetricScore(name="quality", value=0.8)]),
+                    MetricResult(outputs=[MetricOutput(name="quality", value=0.8)]),
                     RowScore(
                         row_index=0,
                         item={"output": "good"},
                         sample={},
-                        metrics={"quality": [MetricScore(name="quality", value=0.8)]},
+                        metrics={"quality": [MetricOutput(name="quality", value=0.8)]},
                         requests=[],
                     ),
                 ),
                 (
                     1,
-                    MetricResult(scores=[MetricScore(name="llm-judge", value=float("nan"))]),
+                    MetricResult(outputs=[MetricOutput(name="llm-judge", value=float("nan"))]),
                     RowScore(
                         row_index=1,
                         item={"output": "bad"},
                         sample={},
-                        metrics={"llm-judge": [MetricScore(name="llm-judge", value=float("nan"))]},
+                        metrics={"llm-judge": [MetricOutput(name="llm-judge", value=float("nan"))]},
                         requests=[],
                         metric_errors={"llm-judge": "request timed out"},
                     ),
@@ -466,7 +466,7 @@ class TestEvaluateRowScoresFormat:
             row_index=0,
             item={"expected": "x", "output": "x"},
             sample={},
-            metrics={"string-check": [MetricScore(name="string-check", value=float("nan"))]},
+            metrics={"string-check": [MetricOutput(name="string-check", value=float("nan"))]},
             requests=[],
         )
 
@@ -484,7 +484,7 @@ class TestEvaluateRowScoresFormat:
             row_index=1,
             item={"expected": "x", "output": "x"},
             sample={},
-            metrics={"llm-judge": [MetricScore(name="llm-judge", value=float("nan"))]},
+            metrics={"llm-judge": [MetricOutput(name="llm-judge", value=float("nan"))]},
             requests=[],
             metric_errors={"llm-judge": "request timed out"},
         )
@@ -508,12 +508,17 @@ class TestEvaluateRowScoresFormat:
             left_template="{{expected}}",
             right_template="{{output}}",
         )
+        runtime_metric = StringCheckMetric(
+            operation="equals",
+            left_template="{{expected}}",
+            right_template="{{output}}",
+        )
         dataset = DatasetRows(rows=[{"expected": "a", "output": "a"}])
 
         mocker.patch(
             "nmp.evaluator.api.v2.metrics.manager.new_metric",
             new_callable=AsyncMock,
-            return_value=metric,
+            return_value=runtime_metric,
         )
         mocker.patch(
             "nmp.evaluator.api.v2.metrics.manager.run_generated_sample_scoring_pipeline",
@@ -521,12 +526,12 @@ class TestEvaluateRowScoresFormat:
             return_value=[
                 (
                     0,
-                    MetricResult(scores=[MetricScore(name="string-check", value=1.0)]),
+                    MetricResult(outputs=[MetricOutput(name="string-check", value=1.0)]),
                     RowScore(
                         row_index=999,  # out-of-bounds for a 1-row dataset
                         item={"expected": "a", "output": "a"},
                         sample={},
-                        metrics={"string-check": [MetricScore(name="string-check", value=1.0)]},
+                        metrics={"string-check": [MetricOutput(name="string-check", value=1.0)]},
                         requests=[],
                     ),
                 ),
@@ -544,7 +549,7 @@ class TestEvaluateRowScoresFormat:
             row_index=None,
             item={"expected": "x", "output": "x"},
             sample={},
-            metrics={"string-check": [MetricScore(name="string-check", value=1.0)]},
+            metrics={"string-check": [MetricOutput(name="string-check", value=1.0)]},
             requests=[],
         )
 
@@ -568,8 +573,8 @@ class TestFromRowScore:
             item={},
             sample={},
             metrics={
-                "precision": [MetricScore(name="precision", value=0.9)],
-                "recall": [MetricScore(name="recall", value=0.8)],
+                "precision": [MetricOutput(name="precision", value=0.9)],
+                "recall": [MetricOutput(name="recall", value=0.8)],
             },
             requests=[],
         )
@@ -585,7 +590,7 @@ class TestFromRowScore:
             row_index=0,
             item={},
             sample={},
-            metrics={"m": [MetricScore(name="m", value=float("nan"))]},
+            metrics={"m": [MetricOutput(name="m", value=float("nan"))]},
             requests=[],
         )
 
@@ -600,8 +605,8 @@ class TestFromRowScore:
             item={},
             sample={},
             metrics={
-                "pos": [MetricScore(name="pos", value=float("inf"))],
-                "neg": [MetricScore(name="neg", value=float("-inf"))],
+                "pos": [MetricOutput(name="pos", value=float("inf"))],
+                "neg": [MetricOutput(name="neg", value=float("-inf"))],
             },
             requests=[],
         )
@@ -651,7 +656,7 @@ class TestFromRowScore:
             row_index=0,
             item={},
             sample={},
-            metrics={"a": [MetricScore(name="a", value=float("nan"))]},
+            metrics={"a": [MetricOutput(name="a", value=float("nan"))]},
             requests=[],
             metric_errors={"a": "timeout", "b": "rate limited"},
         )
@@ -893,7 +898,7 @@ class TestEvaluateErrorPaths:
                     row_index=0,
                     item={"expected": "a", "output": "a"},
                     sample={},
-                    metrics={"string-check": [MetricScore(name="string-check", value=1.0)]},
+                    metrics={"string-check": [MetricOutput(name="string-check", value=1.0)]},
                     requests=[],
                 )
             ],

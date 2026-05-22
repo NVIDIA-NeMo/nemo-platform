@@ -13,7 +13,17 @@ from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.inference import InferenceFn, InferenceHookParams
 from nemo_evaluator_sdk.inference import new_hooks as _new_inference_hooks
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
-from nemo_evaluator_sdk.metrics.template_rendering import build_template_context
+from nemo_evaluator_sdk.metrics.protocol import (
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+)
+from nemo_evaluator_sdk.metrics.template_rendering import (
+    TemplateSample,
+    build_template_context,
+    sample_template_payload,
+)
 from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, detect_structured_output_mode
 from nemo_evaluator_sdk.templates import render_request
 from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
@@ -26,7 +36,7 @@ from nemo_evaluator_sdk.values.metrics import (
 )
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.params import InferenceParams, ReasoningParams
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.values.results import MetricScore
 from nemo_evaluator_sdk.values.scores import (
     JSONScoreParser,
     RangeScore,
@@ -107,9 +117,21 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         """Set the inference function to use for LLM calls."""
         self._inference_fn = inference_fn
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return list(self._parsers.keys())
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        specs: list[MetricOutputSpec] = []
+        for score in self.scores:
+            if isinstance(score, RubricScore):
+                specs.append(MetricOutputSpec.continuous_score(score.name, description=score.description))
+                specs.append(
+                    MetricOutputSpec.label(
+                        f"{score.name}.label",
+                        description=f"Selected rubric label for {score.name}",
+                    )
+                )
+            else:
+                specs.append(MetricOutputSpec.continuous_score(score.name, description=score.description))
+        return specs
 
     def _handle_none_output_error(self, response: dict) -> ValueError:
         error_message = "LLM judge returned no usable textual content for score parsing"
@@ -141,7 +163,12 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         raise error
 
     def _nan_result(self) -> MetricResult:
-        return MetricResult(scores=[MetricScore(name=name, value=float("nan")) for name in self._parsers])
+        outputs: list[MetricOutput] = []
+        for score in self.scores:
+            outputs.append(MetricOutput(name=score.name, value=float("nan")))
+            if isinstance(score, RubricScore):
+                outputs.append(MetricOutput(name=f"{score.name}.label", value=""))
+        return MetricResult(outputs=outputs)
 
     async def resolve_secrets(self, secret_resolver: Callable[[str], Awaitable[str | None]]) -> None:
         """Resolve API key secret if configured and reinitialize AsyncOpenAI client. Must be called before using the metric."""
@@ -228,8 +255,9 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
             self._parsers[score.name] = parser
             self._score_dumps[score.name] = score.model_dump(mode="json", exclude={"parser"})
 
-    def _render_request(self, item: dict, sample: dict) -> dict:
-        overlapping_keys = set(item.keys()) & set(sample.keys())
+    def _render_request(self, item: dict, sample: TemplateSample) -> dict:
+        sample_payload = sample_template_payload(sample)
+        overlapping_keys = set(item.keys()) & set(sample_payload.keys())
         if overlapping_keys:
             _logger.warning(
                 "Dataset columns %s overlap with model response keys. "
@@ -261,8 +289,10 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         del request["max_tokens"]
         return request
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
+        item = input.row.data
+        sample = input.candidate
         request = self._render_request(item, sample)
 
         try:
@@ -290,12 +320,25 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
                 "LLM judge returned invalid output, marking as NaN",
             )
 
-        result = MetricResult(scores=[])
+        result = MetricResult(outputs=[])
         for score_name, parser in self._parsers.items():
             score = parser.parse(output_text)
             _logger.debug("Parsed score %s: %s", score_name, score.value)
-            result.scores.append(score)
+            result.outputs.append(MetricOutput(name=score.name, value=score.value))
+            label = _selected_rubric_label(score)
+            if label is not None:
+                result.outputs.append(MetricOutput(name=f"{score.name}.label", value=label))
         return result
+
+
+def _selected_rubric_label(score: MetricScore) -> str | None:
+    """Return the selected rubric label recorded by the parser, if any."""
+    if not score.stats or not score.stats.rubric_distribution:
+        return None
+    for rubric_stat in score.stats.rubric_distribution:
+        if rubric_stat.count:
+            return rubric_stat.label
+    return ""
 
 
 def new_hooks(params: _LLMJudgeHookParams | None):

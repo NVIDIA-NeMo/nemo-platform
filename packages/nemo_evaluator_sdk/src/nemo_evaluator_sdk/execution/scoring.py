@@ -9,22 +9,75 @@ from typing import Any
 
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
 from nemo_evaluator_sdk.inference import requests_log_var
-from nemo_evaluator_sdk.metrics.aggregation import add_corpus_scores, aggregate_metrics
-from nemo_evaluator_sdk.metrics.base import CorpusMetric, Metric
+from nemo_evaluator_sdk.metrics.aggregation import (
+    add_corpus_scores,
+    aggregate_metrics,
+    is_aggregateable_output_spec,
+    rubric_definitions_from_metric,
+)
+from nemo_evaluator_sdk.metrics.protocol import (
+    CandidateOutput,
+    CorpusMetric,
+    DatasetRow,
+    Metric,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+    validate_metric_result,
+)
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values import EvaluationResult, MetricResult, MetricScore, RowScore
+from nemo_evaluator_sdk.values import (
+    EvaluationResult,
+    RowScore,
+)
 
 logger = getLogger(__name__)
 
 
-def nan_metric_result(score_names: str | Iterable[str]) -> MetricResult:
-    """Build the NaN score payload used for ignored scoring failures.
+_CANDIDATE_SAMPLE_FIELDS = frozenset({"output_text", "response", "trajectory"})
 
-    Accepts either a single score name (single-metric pipelines) or an
-    iterable of score names (multi-score/benchmark pipelines).
+
+def build_metric_input(row: dict[str, Any], sample: dict[str, Any], index: int | None = None) -> MetricInput:
+    """Build the metric protocol input from dataset row and generated sample payloads."""
+    output_text = sample.get("output_text")
+    metadata = {
+        key: value
+        for key, value in sample.items()
+        if key not in _CANDIDATE_SAMPLE_FIELDS or (key == "output_text" and not isinstance(output_text, str))
+    }
+    return MetricInput(
+        row=DatasetRow(row_index=index, data=row),
+        candidate=CandidateOutput(
+            output_text=output_text if isinstance(output_text, str) else None,
+            response=sample.get("response"),
+            trajectory=sample.get("trajectory"),
+            metadata=metadata,
+        ),
+    )
+
+
+def nan_metric_result(outputs: Iterable[MetricOutputSpec]) -> MetricResult:
+    """Build the NaN output payload used for ignored scoring failures.
+
+    Only aggregateable outputs receive NaN placeholders; non-score outputs are
+    not synthesized for failed rows.
     """
-    names: Iterable[str] = (score_names,) if isinstance(score_names, str) else score_names
-    return MetricResult(scores=[MetricScore(name=name, value=float("nan")) for name in names])
+    return MetricResult(
+        outputs=[
+            MetricOutput(name=output.name, value=float("nan"))
+            for output in outputs
+            if is_aggregateable_output_spec(output)
+        ]
+    )
+
+
+def corpus_output_spec(metric: Metric, fallback: list[MetricOutputSpec] | None = None) -> list[MetricOutputSpec]:
+    """Return corpus-level output specs when a metric declares them."""
+    corpus_spec = getattr(metric, "corpus_output_spec", None)
+    if callable(corpus_spec):
+        return list(corpus_spec())
+    return list(fallback if fallback is not None else metric.output_spec())
 
 
 CompletedRowEvaluation = tuple[int, MetricResult | None, RowScore]
@@ -32,7 +85,7 @@ CompletedRowEvaluation = tuple[int, MetricResult | None, RowScore]
 
 def empty_evaluation_result() -> EvaluationResult:
     """Return the canonical empty evaluation result payload."""
-    return EvaluationResult(row_scores=[], aggregate_scores=aggregate_metrics([]))
+    return EvaluationResult(row_scores=[], aggregate_scores=aggregate_metrics([], []))
 
 
 async def finalize_evaluation_result(
@@ -65,15 +118,22 @@ async def finalize_evaluation_result(
     # aggregation and corpus inputs honor ``skip_errored``.
     row_scores = [row_score for _, _, row_score in eval_results]
 
-    aggregated_result = aggregate_metrics(metric_results)
+    output_spec = metric.output_spec()
+    rubric_definitions = rubric_definitions_from_metric(metric)
+    if rubric_definitions:
+        aggregated_result = aggregate_metrics(metric_results, output_spec, rubric_definitions=rubric_definitions)
+    else:
+        aggregated_result = aggregate_metrics(metric_results, output_spec)
 
     if valid_eval_results and isinstance(metric, CorpusMetric):
         corpus_metric_result = await metric.compute_corpus_scores(
-            items=[row_score.item for _, row_score in valid_eval_results],
-            samples=[row_score.sample for _, row_score in valid_eval_results],
+            inputs=[
+                build_metric_input(row_score.item, row_score.sample, row_score.row_index)
+                for _, row_score in valid_eval_results
+            ],
         )
         if corpus_metric_result:
-            add_corpus_scores(aggregated_result, corpus_metric_result)
+            add_corpus_scores(aggregated_result, corpus_metric_result, corpus_output_spec(metric, output_spec))
 
     return EvaluationResult(
         row_scores=row_scores,
@@ -117,13 +177,16 @@ async def score_row(
     active_logger = logger or globals()["logger"]
 
     try:
-        result = await metric.compute_scores(row, sample)
+        output_spec = metric.output_spec()
+        result = validate_metric_result(
+            await metric.compute_scores(build_metric_input(row, sample, index)), output_spec
+        )
         active_logger.debug(
             "Computed metric",
             extra={
                 "item_index": index,
                 "metric_type": metric_type_name(metric),
-                "scores": [score.model_dump() for score in result.scores],
+                "outputs": [output.model_dump() for output in result.outputs],
             },
         )
         return (
@@ -133,7 +196,7 @@ async def score_row(
                 row_index=index,
                 item=row,
                 sample=sample,
-                metrics={metric_key: result.scores},
+                metrics={metric_key: result.outputs},
                 requests=[*generation_requests, *metric_requests],
             ),
         )
@@ -146,7 +209,7 @@ async def score_row(
                 metric_key=metric_key,
             ) from e
         active_logger.warning("Evaluation failed, marking as NaN", extra={"item_index": index, "error": str(e)})
-        result = nan_metric_result(metric.score_names())
+        result = nan_metric_result(metric.output_spec())
         return (
             index,
             result,
@@ -154,7 +217,7 @@ async def score_row(
                 row_index=index,
                 item=row,
                 sample=sample,
-                metrics={metric_key: result.scores},
+                metrics={metric_key: result.outputs},
                 requests=[*generation_requests, *metric_requests],
                 metric_errors={metric_key: str(e)},
             ),

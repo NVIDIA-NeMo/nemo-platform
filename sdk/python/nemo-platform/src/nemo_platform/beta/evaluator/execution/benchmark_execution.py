@@ -35,7 +35,7 @@ from nemo_platform.beta.evaluator.execution.metric_execution import (
     generate_online_sample,
     generate_online_sample_agent,
 )
-from nemo_platform.beta.evaluator.execution.scoring import nan_metric_result
+from nemo_platform.beta.evaluator.execution.scoring import build_metric_input, corpus_output_spec, nan_metric_result
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import (
     InferenceFn,
@@ -45,8 +45,18 @@ from nemo_platform.beta.evaluator.inference import (
     new_inference_client,
     requests_log_var,
 )
-from nemo_platform.beta.evaluator.metrics.aggregation import add_corpus_scores, aggregate_metrics
-from nemo_platform.beta.evaluator.metrics.base import CorpusMetric, Metric
+from nemo_platform.beta.evaluator.metrics.aggregation import (
+    add_corpus_scores,
+    aggregate_metrics,
+    rubric_definitions_from_metric,
+)
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    CorpusMetric,
+    Metric,
+    MetricOutputSpec,
+    MetricResult,
+    validate_metric_result,
+)
 from nemo_platform.beta.evaluator.resilience.api import use_resilience_session
 from nemo_platform.beta.evaluator.resilience.errors import first_failure_cause, iter_leaf_causes
 from nemo_platform.beta.evaluator.values import (
@@ -54,8 +64,6 @@ from nemo_platform.beta.evaluator.values import (
     AggregatedMetricResult,
     AggregateFieldName,
     EvaluationResult,
-    MetricResult,
-    MetricScore,
     Model,
     RowScore,
     RunConfig,
@@ -105,21 +113,16 @@ class _MetricPipeline:
 
     metric_ref: str
     metric: Metric
-    score_names: list[str]
+    output_spec: list[MetricOutputSpec]
     queue: asyncio.Queue
     results: list[MetricResult | None]
 
 
-def _normalize_metric_result(metric_result: MetricResult, expected_score_names: list[str]) -> MetricResult:
-    """Normalize score ordering and backfill missing expected scores with NaN."""
-    actual_scores = {score.name: score for score in metric_result.scores}
-    normalized: list[MetricScore] = []
-    for name in expected_score_names:
-        normalized.append(actual_scores.get(name, MetricScore(name=name, value=float("nan"))))
-    for score in metric_result.scores:
-        if score.name not in expected_score_names:
-            normalized.append(score)
-    return MetricResult(scores=normalized)
+def _normalize_metric_result(metric_result: MetricResult, expected_outputs: list[MetricOutputSpec]) -> MetricResult:
+    """Validate output names and normalize output ordering to the declared spec."""
+    validated = validate_metric_result(metric_result, expected_outputs)
+    actual_outputs = {output.name: output for output in validated.outputs}
+    return MetricResult(outputs=[actual_outputs[output.name] for output in expected_outputs])
 
 
 def _benchmark_error_from_exception(exc: BaseException) -> EvaluationError | None:
@@ -149,14 +152,14 @@ def _build_metric_pipelines(
     """
     pipelines: list[_MetricPipeline] = []
     for metric_ref, metric in metrics:
-        score_names = list(metric.score_names())
-        if not score_names:
-            raise RuntimeError(f"Metric '{metric_ref}' does not declare any score names")
+        output_spec = list(metric.output_spec())
+        if not output_spec:
+            raise RuntimeError(f"Metric '{metric_ref}' does not declare any outputs")
         pipelines.append(
             _MetricPipeline(
                 metric_ref=metric_ref,
                 metric=metric,
-                score_names=score_names,
+                output_spec=output_spec,
                 queue=asyncio.Queue(maxsize=queue_capacity),
                 results=[None] * item_count,
             )
@@ -206,7 +209,13 @@ async def _finalize_benchmark_metric_result(
     should only see successful rows so failed rows with empty samples do not
     skew corpus metrics.
     """
-    aggregated = aggregate_metrics([result for result in results if result is not None])
+    output_spec = metric.output_spec()
+    metric_results = [result for result in results if result is not None]
+    rubric_definitions = rubric_definitions_from_metric(metric)
+    if rubric_definitions:
+        aggregated = aggregate_metrics(metric_results, output_spec, rubric_definitions=rubric_definitions)
+    else:
+        aggregated = aggregate_metrics(metric_results, output_spec)
     if isinstance(metric, CorpusMetric):
         # Ignored sample-generation failures intentionally keep metric_errors
         # empty to match the previous service benchmark row artifacts, so
@@ -218,11 +227,13 @@ async def _finalize_benchmark_metric_result(
         ]
         if corpus_rows:
             corpus_result = await metric.compute_corpus_scores(
-                items=[row_score.item for row_score in corpus_rows],
-                samples=[row_score.sample for row_score in corpus_rows],
+                inputs=[
+                    build_metric_input(row_score.item, row_score.sample, row_score.row_index)
+                    for row_score in corpus_rows
+                ],
             )
             if corpus_result is not None:
-                add_corpus_scores(aggregated, corpus_result)
+                add_corpus_scores(aggregated, corpus_result, corpus_output_spec(metric, output_spec))
     return EvaluationResult(row_scores=row_scores, aggregate_scores=aggregated)
 
 
@@ -392,8 +403,10 @@ async def _metric_worker(
         requests_log_var.set(requests_log)
         try:
             metric_result = _normalize_metric_result(
-                await pipeline.metric.compute_scores(dict(event.item), dict(event.sample)),
-                pipeline.score_names,
+                await pipeline.metric.compute_scores(
+                    build_metric_input(dict(event.item), dict(event.sample), event.row_index)
+                ),
+                pipeline.output_spec,
             )
         except Exception as e:
             if not tolerate_failure:
@@ -408,7 +421,7 @@ async def _metric_worker(
                 "Evaluation failed, marking as NaN",
                 extra={"metric_ref": pipeline.metric_ref, "item_index": event.row_index, "error": error_message},
             )
-            metric_result = nan_metric_result(pipeline.score_names)
+            metric_result = nan_metric_result(pipeline.output_spec)
             # Record the swallowed metric exception on the row while keeping
             # the NaN score result. Example: if the "judge" metric raises
             # "bad output", the row gets metric_errors={"judge": "bad output"}.
@@ -420,7 +433,7 @@ async def _metric_worker(
             pipeline.queue.task_done()
 
         pipeline.results[event.row_index] = metric_result
-        row_scores[event.row_index].metrics[pipeline.metric_ref] = metric_result.scores
+        row_scores[event.row_index].metrics[pipeline.metric_ref] = metric_result.outputs
         if progress is not None:
             progress.increment_work()
 

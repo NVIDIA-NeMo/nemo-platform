@@ -7,14 +7,16 @@ import logging
 import os
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from httpx import Timeout
 from jsonpath_ng import parse as jsonpath_parse
 from jsonpath_ng.exceptions import JsonPathParserError
 from nemo_evaluator_sdk.inference import requests_log_var
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.metrics.template_rendering import (
+    TemplateSample,
     build_template_context,
     render_template_or_raise,
     template_metric_repr,
@@ -23,7 +25,6 @@ from nemo_evaluator_sdk.resilience.api import run_with_resilience
 from nemo_evaluator_sdk.resilience.classifier import endpoint_identity
 from nemo_evaluator_sdk.values.common import SecretRef
 from nemo_evaluator_sdk.values.metrics import NemoAgentToolkitRemote, Remote, _RemoteBase
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 from nemo_evaluator_sdk.values.scores import RemoteScore
 from pydantic import Field, SecretStr, field_validator
 
@@ -124,10 +125,10 @@ class _RemoteMetricBase(_RemoteBase, ABC):
 
     def _select_metric_score(self, metric_result: MetricResult) -> float:
         """Select the default score value for one-row metric results."""
-        return metric_result.scores[0].value
+        return float(metric_result.outputs[0].value)
 
     @abstractmethod
-    async def compute_scores(self, item: dict[str, Any], sample: dict[str, Any]) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output for one item/sample pair."""
         ...
 
@@ -135,9 +136,9 @@ class _RemoteMetricBase(_RemoteBase, ABC):
 class RemoteMetric(Remote, _RemoteMetricBase):
     """A metric that computes scores via a remote endpoint."""
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return [score.name for score in self.scores]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        return [MetricOutputSpec.continuous_score(score.name) for score in self.scores]
 
     @field_validator("scores")
     @classmethod
@@ -154,24 +155,28 @@ class RemoteMetric(Remote, _RemoteMetricBase):
     def _select_metric_score(self, metric_result: MetricResult) -> float:
         """Select the score value used for single-score consumers."""
         if self.metric_threshold_score:
-            score_names = [score.name for score in metric_result.scores]
-            if self.metric_threshold_score not in score_names:
+            output_names = [output.name for output in metric_result.outputs]
+            if self.metric_threshold_score not in output_names:
                 raise ValueError(
                     f"Score name '{self.metric_threshold_score}' not found in remote metric response. "
-                    f"Available scores: {score_names}"
+                    f"Available scores: {output_names}"
                 )
-            return next(score for score in metric_result.scores if score.name == self.metric_threshold_score).value
+            return float(
+                next(output for output in metric_result.outputs if output.name == self.metric_threshold_score).value
+            )
 
-        if len(metric_result.scores) == 1:
-            return metric_result.scores[0].value
+        if len(metric_result.outputs) == 1:
+            return float(metric_result.outputs[0].value)
 
         raise ValueError(
-            f"Remote metric returned multiple scores {[score.name for score in metric_result.scores]}. "
+            f"Remote metric returned multiple scores {[output.name for output in metric_result.outputs]}. "
             "Please set metric_threshold_score to specify which score to use."
         )
 
-    async def compute_scores(self, item: dict[str, Any], sample: dict[str, Any]) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output via the remote endpoint."""
+        item = input.row.data
+        sample: TemplateSample = input.candidate
         context = build_template_context(item, sample)
         rendered_args = render_template_or_raise(
             template_name="body",
@@ -181,12 +186,12 @@ class RemoteMetric(Remote, _RemoteMetricBase):
             sample=sample,
             metric_repr=template_metric_repr(self),
         )
-        payload = rendered_args if isinstance(rendered_args, dict) else {"args": rendered_args}
+        payload = cast(dict[str, Any], rendered_args) if isinstance(rendered_args, dict) else {"args": rendered_args}
         result_data = await self._post_payload(payload)
 
         try:
             _logger.debug("Remote metric result received for payload: %r", payload)
-            scores: list[MetricScore] = []
+            outputs: list[MetricOutput] = []
             for score_config in self.scores:
                 jsonpath_expr = jsonpath_parse(score_config.parser.json_path)
                 matches = jsonpath_expr.find(result_data)
@@ -196,12 +201,12 @@ class RemoteMetric(Remote, _RemoteMetricBase):
                         score_config.name,
                         score_config.parser.json_path,
                     )
-                    scores.append(MetricScore(name=score_config.name, value=float("nan")))
+                    outputs.append(MetricOutput(name=score_config.name, value=float("nan")))
                 else:
                     score_value = matches[0].value
-                    scores.append(MetricScore(name=score_config.name, value=float(score_value)))
+                    outputs.append(MetricOutput(name=score_config.name, value=float(score_value)))
 
-            return MetricResult(scores=scores)
+            return MetricResult(outputs=outputs)
         except Exception:
             _logger.exception("Error validating remote metric response")
             raise
@@ -212,12 +217,14 @@ class NemoAgentToolkitRemoteMetric(NemoAgentToolkitRemote, _RemoteMetricBase):
 
     _RESULT_SCORE_JSONPATH = jsonpath_parse("$.result.score")
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return [self.evaluator_name]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        return [MetricOutputSpec.continuous_score(self.evaluator_name)]
 
-    async def compute_scores(self, item: dict[str, Any], sample: dict[str, Any]) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute structured score output via the NeMo Agent Toolkit evaluator endpoint."""
+        item = input.row.data
+        sample: TemplateSample = input.candidate
         context = build_template_context(item, sample)
         rendered_item = render_template_or_raise(
             template_name="body.item",
@@ -240,4 +247,4 @@ class NemoAgentToolkitRemoteMetric(NemoAgentToolkitRemote, _RemoteMetricBase):
         else:
             score = float(matches[0].value)
 
-        return MetricResult(scores=[MetricScore(name=self.evaluator_name, value=score)])
+        return MetricResult(outputs=[MetricOutput(name=self.evaluator_name, value=score)])

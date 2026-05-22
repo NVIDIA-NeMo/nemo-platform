@@ -5,6 +5,7 @@ import sys
 import types
 
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.rouge import MetricResult, ROUGEMetric
 
@@ -46,7 +47,7 @@ class TestROUGEMetric:
 
     def test_score_names(self):
         metric = ROUGEMetric(reference="{{item.reference}}")
-        assert metric.score_names() == ["rouge_1_score", "rouge_2_score", "rouge_3_score", "rouge_L_score"]
+        assert output_names(metric) == ["rouge_1_score", "rouge_2_score", "rouge_3_score", "rouge_L_score"]
 
     @pytest.mark.asyncio
     async def test_compute_scores_default_candidate(self):
@@ -59,8 +60,8 @@ class TestROUGEMetric:
                 "rougeL": _FakeRougeScore(1.0),
             }
         )
-        result = await metric.compute_scores({"reference": "the cat sat"}, {"output_text": "the cat sat"})
-        assert {score.name for score in result.scores} == {
+        result = await compute_scores(metric, {"reference": "the cat sat"}, {"output_text": "the cat sat"})
+        assert {score.name for score in result.outputs} == {
             "rouge_1_score",
             "rouge_2_score",
             "rouge_3_score",
@@ -78,8 +79,8 @@ class TestROUGEMetric:
                 "rougeL": _FakeRougeScore(1.0),
             }
         )
-        result = await metric.compute_scores({"reference": "the cat sat", "pred": "the cat sat"}, {"output_text": "x"})
-        assert all(score.value == pytest.approx(1.0) for score in result.scores)
+        result = await compute_scores(metric, {"reference": "the cat sat", "pred": "the cat sat"}, {"output_text": "x"})
+        assert all(score.value == pytest.approx(1.0) for score in result.outputs)
 
     @pytest.mark.asyncio
     async def test_metric_scores(self):
@@ -92,7 +93,7 @@ class TestROUGEMetric:
                 "rougeL": _FakeRougeScore(0.0),
             }
         )
-        assert (await metric.compute_scores({"reference": "the cat"}, {"output_text": "the cat"})).scores[
+        assert (await compute_scores(metric, {"reference": "the cat"}, {"output_text": "the cat"})).outputs[
             0
         ].value == 1.0
         metric.__dict__["_scorer"] = _FakeRougeScorer(
@@ -103,9 +104,11 @@ class TestROUGEMetric:
                 "rougeL": _FakeRougeScore(0.0),
             }
         )
-        assert (await metric.compute_scores({"reference": "the cat"}, {"output_text": "a dog"})).scores[0].value == 0.0
+        assert (await compute_scores(metric, {"reference": "the cat"}, {"output_text": "a dog"})).outputs[
+            0
+        ].value == 0.0
         assert isinstance(
-            (await metric.compute_scores({"reference": "the cat"}, {"output_text": "the cat"})).scores[0].value, float
+            (await compute_scores(metric, {"reference": "the cat"}, {"output_text": "the cat"})).outputs[0].value, float
         )
 
     def test_metric_validates_rendered_types(self):
@@ -131,7 +134,8 @@ class TestROUGEMetric:
         metric = ROUGEMetric(reference="{{item.reference}}", candidate="{{sample.output_text}}")
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(
+            await compute_scores(
+                metric,
                 item={"prompt": "Summarize this"},
                 sample={"output_text": "summary"},
             )
@@ -144,7 +148,8 @@ class TestROUGEMetric:
         metric = ROUGEMetric(reference="{{item.reference}}")
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(
+            await compute_scores(
+                metric,
                 item={"reference": "Paris"},
                 sample={"some_other_field": "Paris"},
             )
@@ -208,22 +213,22 @@ class TestROUGEMetric:
         item = {"reference": "The cat sat on the mat."}
         sample = {"output_text": "The cat sat on the mat."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
         # Should return all 4 ROUGE scores
-        assert len(result.scores) == 4
-        score_names = {s.name for s in result.scores}
+        assert len(result.outputs) == 4
+        score_names = {s.name for s in result.outputs}
         assert score_names == {"rouge_1_score", "rouge_2_score", "rouge_3_score", "rouge_L_score"}
         # All scores should be high for exact match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value >= 0.9
 
     @pytest.mark.asyncio
     async def test_score_names_match_compute_scores(self):
         metric = ROUGEMetric(reference="{{item.reference}}")
-        result = await metric.compute_scores({"reference": "a"}, {"output_text": "a"})
-        assert {score.name for score in result.scores} == set(metric.score_names())
+        result = await compute_scores(metric, {"reference": "a"}, {"output_text": "a"})
+        assert {score.name for score in result.outputs} == set(output_names(metric))
 
     @pytest.mark.asyncio
     async def test_compute_scores_partial_match(self):
@@ -235,12 +240,12 @@ class TestROUGEMetric:
         item = {"reference": "The cat sat on the mat."}
         sample = {"output_text": "The dog sat on the floor."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 4
+        assert len(result.outputs) == 4
         # All scores should be between 0 and 1
-        for score in result.scores:
+        for score in result.outputs:
             assert 0.0 <= score.value <= 1.0
 
     @pytest.mark.asyncio
@@ -253,12 +258,12 @@ class TestROUGEMetric:
         item = {"reference": "hello world"}
         sample = {"output_text": "goodbye universe"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 4
+        assert len(result.outputs) == 4
         # All scores should be very low or 0 for no match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value < 0.1
 
     @pytest.mark.asyncio
@@ -272,12 +277,12 @@ class TestROUGEMetric:
         item = {"reference": "The cat sat on the mat.", "custom_output": "The cat sat on the mat."}
         sample = {"output_text": "This should be ignored."}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 4
+        assert len(result.outputs) == 4
         # All scores should be high for exact match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value >= 0.9
 
     @pytest.mark.asyncio
@@ -291,10 +296,10 @@ class TestROUGEMetric:
         item = {"reference": "cat dog"}
         sample = {"output_text": "cat bird"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         # ROUGE-1 should detect unigram overlap (cat)
-        rouge_1_score = next(s for s in result.scores if s.name == "rouge_1_score")
+        rouge_1_score = next(s for s in result.outputs if s.name == "rouge_1_score")
         assert rouge_1_score.value > 0.0
 
     @pytest.mark.asyncio
@@ -308,10 +313,10 @@ class TestROUGEMetric:
         item = {"reference": "the cat sat"}
         sample = {"output_text": "the cat slept"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         # ROUGE-2 should detect bigram overlap (the cat)
-        rouge_2_score = next(s for s in result.scores if s.name == "rouge_2_score")
+        rouge_2_score = next(s for s in result.outputs if s.name == "rouge_2_score")
         assert rouge_2_score.value > 0.0
 
     @pytest.mark.asyncio
@@ -325,8 +330,8 @@ class TestROUGEMetric:
         item = {"reference": "the quick brown fox"}
         sample = {"output_text": "the brown fox"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         # ROUGE-L should detect LCS
-        rouge_l_score = next(s for s in result.scores if s.name == "rouge_L_score")
+        rouge_l_score = next(s for s in result.outputs if s.name == "rouge_L_score")
         assert rouge_l_score.value > 0.0

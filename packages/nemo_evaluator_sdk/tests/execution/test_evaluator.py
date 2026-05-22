@@ -16,14 +16,12 @@ from nemo_evaluator_sdk.execution.config import (
     RunConfigOnlineModel,
 )
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
-from nemo_evaluator_sdk.metrics.base import Metric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     EvaluationResult,
-    MetricResult,
-    MetricScore,
 )
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
@@ -34,13 +32,12 @@ class _CustomMetric:
     def type(self) -> str:
         return MetricType.STRING_CHECK.value
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        del sample
-        score = 1.0 if item["expected"] == item["model_output"] else 0.0
-        return MetricResult(scores=[MetricScore(name="string-check", value=score)])
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        score = 1.0 if input.row.data["expected"] == input.row.data["model_output"] else 0.0
+        return MetricResult(outputs=[MetricOutput(name="string-check", value=score)])
 
-    def score_names(self) -> list[str]:
-        return ["string-check"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("string-check")]
 
 
 _DATASET = [

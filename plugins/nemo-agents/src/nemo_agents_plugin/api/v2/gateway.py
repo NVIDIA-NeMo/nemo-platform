@@ -24,6 +24,7 @@ chunk by chunk.  ``text/event-stream`` responses bypass buffering.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from typing import AsyncIterator
@@ -79,7 +80,7 @@ async def proxy_by_agent_name(
     is found.
     """
     endpoint = await _resolve_agent_endpoint(name, workspace, entity_client)
-    return await _proxy(request, endpoint, trailing_uri)
+    return await _proxy(request, endpoint, trailing_uri, model_name=name)
 
 
 @router.api_route(
@@ -115,7 +116,7 @@ async def proxy_by_deployment_name(
             detail=f"Deployment '{name}' is not running (status='{dep.status}').",
         )
 
-    return await _proxy(request, dep.endpoint, trailing_uri)
+    return await _proxy(request, dep.endpoint, trailing_uri, model_name=name)
 
 
 async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: NemoEntitiesClient) -> str:
@@ -141,7 +142,9 @@ async def _resolve_agent_endpoint(name: str, workspace: str, entity_client: Nemo
     return running[0].endpoint
 
 
-async def _proxy(request: Request, endpoint: str, trailing_uri: str) -> StreamingResponse:
+async def _proxy(
+    request: Request, endpoint: str, trailing_uri: str, *, model_name: str | None = None
+) -> StreamingResponse:
     """Forward *request* to ``{endpoint}/{trailing_uri}`` and stream the response.
 
     Error handling policy:
@@ -219,6 +222,27 @@ async def _proxy(request: Request, endpoint: str, trailing_uri: str) -> Streamin
         raise HTTPException(status_code=502, detail=f"Could not connect to agent: {exc}") from exc
 
     content_type = response_headers.get("content-type", "application/json")
+
+    # NAT's ChatResponse.from_string() defaults model to "unknown-model" when
+    # the agent wrapper doesn't supply one (the wrapper code lives in
+    # nvidia-nat-core and doesn't have access to the platform entity name).
+    # For non-streaming JSON responses, patch the model field to the
+    # agent/deployment name the client addressed.  This is a gateway-level
+    # workaround; the proper upstream fix belongs in nvidia-nat-core's
+    # NemoAgentWrapperFunction.convert_to_chat_response where the LLM's
+    # response_metadata carries the real model name.
+    if model_name and not content_type.startswith("text/event-stream"):
+        async for remaining in stream_gen:
+            chunks.append(remaining)
+        raw = b"".join(chunks)
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict) and data.get("model") == "unknown-model":
+                data["model"] = model_name
+                raw = json.dumps(data).encode()
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            pass
+        chunks = [raw]
 
     return StreamingResponse(
         _buffered(),

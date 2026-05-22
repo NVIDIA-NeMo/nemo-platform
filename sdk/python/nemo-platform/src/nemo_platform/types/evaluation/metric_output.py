@@ -15,23 +15,16 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from typing import Any
 
 from ..._models import BaseModel
-from .score_stats import ScoreStats
 
-__all__ = ["MetricScore"]
+__all__ = ["MetricOutput"]
 
 
-class MetricScore(BaseModel):
-    """A computed score for the metric"""
+class MetricOutput(BaseModel):
+    """One named value emitted by a metric."""
 
     name: str
 
-    value: float
-
-    stats: Optional[ScoreStats] = None
-    """Stats for a score.
-
-    Fields that are NaN are serialized as the string "NaN" in the API response.
-    """
+    value: Any

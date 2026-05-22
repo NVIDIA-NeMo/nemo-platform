@@ -38,7 +38,7 @@ from nemo_platform.beta.evaluator.execution.scoring import (
 from nemo_platform.beta.evaluator.execution.utils import prepare_metric_for_local_execution
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import InferenceMetricBase
-from nemo_platform.beta.evaluator.metrics.base import Metric
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricResult
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.resilience.api import run_indexed_tasks, use_resilience_session
 from nemo_platform.beta.evaluator.resilience.errors import get_evaluation_error
@@ -46,7 +46,6 @@ from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values import (
     Agent,
     EvaluationResult,
-    MetricResult,
     Model,
     RowScore,
     RunConfig,
@@ -214,7 +213,7 @@ def _merge_online_hooks(
     """Build deterministic hook lists for SDK local online generation.
 
     Online sample generation should only use run-level generation hooks.
-    Metric hooks belong to metric.compute_scores(item, sample) and must not
+    Metric hooks belong to metric.compute_scores(input) and must not
     affect the evaluated-model generation stage.
     """
 
@@ -658,7 +657,7 @@ class ComputeMetricPipeline:
 
         log.warning("Inference failed, marking as NaN", extra={"item_index": index, "error": error_message})
         sample = {"output_text": None, "response": {}, "inference_error": error_message}
-        nan_result = nan_metric_result(self.metric.score_names())
+        nan_result = nan_metric_result(self.metric.output_spec())
 
         return (
             index,
@@ -667,7 +666,7 @@ class ComputeMetricPipeline:
                 row_index=index,
                 item=row,
                 sample=sample,
-                metrics={},
+                metrics={self.metric_key: nan_result.outputs},
                 requests=generation_requests,
                 metric_errors={self.metric_key: error_message},
             ),

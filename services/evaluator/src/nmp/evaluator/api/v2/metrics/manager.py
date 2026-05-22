@@ -14,7 +14,7 @@ from nemo_evaluator_sdk.execution.metric_execution import (
 )
 from nemo_evaluator_sdk.execution.scoring import finalize_evaluation_result
 from nemo_evaluator_sdk.execution.values import EvaluationError
-from nemo_evaluator_sdk.metrics.base import SecretResolver
+from nemo_evaluator_sdk.metrics.protocol import SecretResolver
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.resilience.errors import get_evaluation_error
 from nemo_evaluator_sdk.values import (

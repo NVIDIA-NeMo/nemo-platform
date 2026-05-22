@@ -6,13 +6,14 @@
 import math
 import re
 
+from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_platform.beta.evaluator.metrics.template_rendering import (
+    TemplateSample,
     build_template_context,
     render_template_or_raise,
     template_metric_repr,
 )
 from nemo_platform.beta.evaluator.values.metrics import NumberCheck, NumberCheckOperation
-from nemo_platform.beta.evaluator.values.results import MetricResult, MetricScore
 
 __all__ = ["NumberCheckMetric", "NumberCheckOperation"]
 
@@ -35,12 +36,14 @@ def _parse_number_answer(answer: str) -> int | float:
 class NumberCheckMetric(NumberCheck):
     """Numeric-comparison metric with template-driven operands."""
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return [self.type.value]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        return [MetricOutputSpec.continuous_score(self.type.value)]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute the scores for the metric."""
+        item = input.row.data
+        sample: TemplateSample = input.candidate
         context = build_template_context(item, sample)
         metric_repr = template_metric_repr(self)
         left_value = render_template_or_raise(
@@ -65,9 +68,9 @@ class NumberCheckMetric(NumberCheck):
         # Preserve the legacy behavior: if either side fails to parse as a
         # number, return NaN instead of raising.
         if math.isnan(left_number):
-            return MetricResult(scores=[MetricScore(name=self.type.value, value=left_number)])
+            return MetricResult(outputs=[MetricOutput(name=self.type.value, value=left_number)])
         if math.isnan(right_number):
-            return MetricResult(scores=[MetricScore(name=self.type.value, value=right_number)])
+            return MetricResult(outputs=[MetricOutput(name=self.type.value, value=right_number)])
 
         # Perform the requested numeric comparison on the parsed operands.
         if self.operation in ["equals", "=="]:
@@ -89,4 +92,4 @@ class NumberCheckMetric(NumberCheck):
         else:
             raise ValueError(f"Unsupported operation: {self.operation}")
 
-        return MetricResult(scores=[MetricScore(name=self.type.value, value=1.0 if score else 0.0)])
+        return MetricResult(outputs=[MetricOutput(name=self.type.value, value=1.0 if score else 0.0)])

@@ -24,9 +24,9 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnlineModel,
 )
 from nemo_evaluator_sdk.enums import MetricType
-from nemo_evaluator_sdk.metrics.base import Metric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     InferenceParams,
     JSONScoreParser,

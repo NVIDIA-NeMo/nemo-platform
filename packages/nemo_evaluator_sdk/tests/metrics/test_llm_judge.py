@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from jsonschema.exceptions import SchemaError
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.inference import (
     AddInferenceParameter,
@@ -24,11 +25,11 @@ from nemo_evaluator_sdk.metrics.llm_judge import (
     default_judge_prompt_template_completions,
     generate_structured_output,
 )
+from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
 from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, StructuredOutputMode
 from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.params import InferenceParams
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 from nemo_evaluator_sdk.values.scores import (
     JSONScoreParser,
     RangeScore,
@@ -478,7 +479,23 @@ class TestLLMJudgeMetric:
 
     def test_score_names_match_initialized_parsers(self):
         metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
-        assert metric.score_names() == ["helpfulness"]
+        assert output_names(metric) == ["helpfulness"]
+
+    def test_rubric_output_spec_includes_numeric_score_and_label(self):
+        metric = LLMJudgeMetric(model=_make_model(), scores=[_new_rubric_score(None)])
+
+        assert output_names(metric) == ["length", "length.label"]
+
+    @pytest.mark.asyncio
+    async def test_rubric_compute_scores_emits_numeric_score_and_label(self, mocker: MockerFixture):
+        metric = LLMJudgeMetric(model=_make_model(), scores=[_new_rubric_score(None)])
+        metric.set_inference_fn(
+            mocker.AsyncMock(return_value={"choices": [{"message": {"content": '{"length":"short"}'}}]})
+        )
+
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+
+        assert [(output.name, output.value) for output in result.outputs] == [("length", 0), ("length.label", "short")]
 
     def test_unique_scores_allows_empty_scores_for_constructed_model(self):
         metric = LLMJudgeMetric.model_construct(model=_make_model(), scores=[], _fields_set={"model", "scores"})
@@ -643,12 +660,12 @@ class TestLLMJudgeMetric:
 
     def test_handle_invalid_output_returns_fallback_when_ignore_request_failure_enabled(self):
         metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()], ignore_request_failure=True)
-        fallback = MetricResult(scores=[MetricScore(name="helpfulness", value=float("nan"))])
+        fallback = MetricResult(outputs=[MetricOutput(name="helpfulness", value=float("nan"))])
         assert metric._handle_invalid_output(ValueError("boom"), fallback, "ignored") is fallback
 
     def test_handle_invalid_output_raises_when_ignore_request_failure_disabled(self):
         metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
-        fallback = MetricResult(scores=[MetricScore(name="helpfulness", value=float("nan"))])
+        fallback = MetricResult(outputs=[MetricOutput(name="helpfulness", value=float("nan"))])
         with pytest.raises(ValueError, match="boom"):
             metric._handle_invalid_output(ValueError("boom"), fallback, "ignored")
 
@@ -709,7 +726,7 @@ class TestLLMJudgeMetric:
 
         metric.set_inference_fn(inference_fn)
 
-        assert (await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})).scores[0].value == 3
+        assert (await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})).outputs[0].value == 3
         assert len(captured_requests) == 2
         first_request = captured_requests[0]
         second_request = captured_requests[1]
@@ -726,7 +743,7 @@ class TestLLMJudgeMetric:
             mocker.AsyncMock(return_value={"choices": [{"message": {"content": '{"helpfulness": 3}'}}]})
         )
 
-        assert (await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})).scores[0].value == 3
+        assert (await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})).outputs[0].value == 3
 
     @pytest.mark.asyncio
     async def test_metric_invalid_output_returns_nan_when_ignore_enabled(self, mocker: MockerFixture):
@@ -739,10 +756,10 @@ class TestLLMJudgeMetric:
             mocker.AsyncMock(return_value={"choices": [{"message": {"content": None, "reasoning_content": None}}]})
         )
 
-        result = await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "helpfulness"
-        assert math.isnan(result.scores[0].value)
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "helpfulness"
+        assert math.isnan(result.outputs[0].value)
 
     @pytest.mark.asyncio
     async def test_compute_scores_returns_nan_when_inference_failure_is_ignored(self, mocker: MockerFixture):
@@ -754,11 +771,11 @@ class TestLLMJudgeMetric:
         error = ClientInferenceError(mocker.Mock(status_code=500, response=mocker.Mock(text="boom")))
         metric.set_inference_fn(mocker.AsyncMock(side_effect=error))
 
-        result = await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
 
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "helpfulness"
-        assert math.isnan(result.scores[0].value)
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "helpfulness"
+        assert math.isnan(result.outputs[0].value)
 
     @pytest.mark.asyncio
     async def test_compute_scores_retries_with_max_completion_tokens(self, mocker: MockerFixture):
@@ -777,9 +794,9 @@ class TestLLMJudgeMetric:
 
         metric.set_inference_fn(inference_fn)
 
-        result = await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
 
-        assert result.scores[0].value == 4
+        assert result.outputs[0].value == 4
         assert "max_tokens" in captured_requests[0]
         assert "max_completion_tokens" in captured_requests[1]
 
@@ -791,7 +808,7 @@ class TestLLMJudgeMetric:
         )
 
         with pytest.raises(ValueError, match="LLM judge returned no usable textual content"):
-            await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})
+            await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
 
     @pytest.mark.asyncio
     async def test_preflight_selects_structured_output_mode_for_nim(self, mocker: MockerFixture):
@@ -864,9 +881,9 @@ class TestLLMJudgeMetric:
 
         metric.set_inference_fn(inference_fn)
 
-        result = await metric.compute_scores({"prompt": "hello"}, {"output_text": "world"})
+        result = await compute_scores(metric, {"prompt": "hello"}, {"output_text": "world"})
 
-        assert result.scores[0].value == 4
+        assert result.outputs[0].value == 4
         assert captured["default_headers"] == {"special-header": "evaluator"}
 
     def test_render_request_default_prompt_includes_rubric_details(self):
@@ -900,12 +917,13 @@ class TestLLMJudgeMetric:
         metric = LLMJudgeMetric.model_validate(llm_judge_param_dict({"ignore_request_failure": True}))
         metric.set_inference_fn(mocker.AsyncMock(return_value=_empty_judge_response()))
 
-        result = await metric.compute_scores(
-            {"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"}
+        result = await compute_scores(
+            metric, {"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"}
         )
-        assert len(result.scores) > 0
-        for score in result.scores:
-            assert math.isnan(score.value)
+        assert len(result.outputs) == 2
+        assert result.outputs[0].name == "quality"
+        assert math.isnan(result.outputs[0].value)
+        assert result.outputs[1] == MetricOutput(name="quality.label", value="")
 
     @pytest.mark.asyncio
     async def test_empty_output_raises(self, mocker: MockerFixture):
@@ -913,7 +931,7 @@ class TestLLMJudgeMetric:
         metric.set_inference_fn(mocker.AsyncMock(return_value=_empty_judge_response()))
 
         with pytest.raises(ValueError, match="LLM judge returned no usable textual content for score parsing"):
-            await metric.compute_scores({"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"})
+            await compute_scores(metric, {"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"})
 
     @pytest.mark.asyncio
     async def test_none_output_raises(self, mocker: MockerFixture):
@@ -924,7 +942,7 @@ class TestLLMJudgeMetric:
             ValueError,
             match="inference\\.extra_body\\.nvext\\.max_thinking_tokens",
         ):
-            await metric.compute_scores({"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"})
+            await compute_scores(metric, {"question": "What is AI?"}, {"output_text": "AI is artificial intelligence"})
 
 
 class TestGenerateStructuredOutput:
@@ -1268,7 +1286,7 @@ async def test_llm_judge_metric_passes_max_retries():
     item = {"question": "What is AI?"}
     sample = {"output_text": "AI is artificial intelligence"}
 
-    await metric.compute_scores(item, sample)
+    await compute_scores(metric, item, sample)
 
     # Verify max_retries was passed as 3, not None
     assert captured_max_retries == 3, f"Expected max_retries=3, got {captured_max_retries}"
@@ -1298,7 +1316,7 @@ async def test_llm_judge_compute_scores_passes_max_retries():
     item = {"question": "What is AI?"}
     sample = {"output_text": "AI is artificial intelligence"}
 
-    await metric.compute_scores(item, sample)
+    await compute_scores(metric, item, sample)
 
     # Verify max_retries was passed as 3, not None
     assert captured_max_retries == 3, f"Expected max_retries=3, got {captured_max_retries}"

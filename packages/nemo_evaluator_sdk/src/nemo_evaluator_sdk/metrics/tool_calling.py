@@ -8,13 +8,15 @@ import logging
 from collections.abc import Mapping
 from typing import ClassVar, cast
 
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.metrics.template_rendering import (
+    TemplateSample,
     build_template_context,
     render_template_or_raise,
+    sample_template_payload,
     template_metric_repr,
 )
 from nemo_evaluator_sdk.values.metrics import ToolCalling
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
 
 __all__ = ["ToolCallingMetric"]
 
@@ -41,12 +43,13 @@ class ToolCallingMetric(ToolCalling):
 
     _score_names: ClassVar[list[str]] = ["function_name_accuracy", "function_name_and_args_accuracy"]
 
-    def score_names(self) -> list[str]:
-        """Return score keys emitted by this metric."""
-        return list(self._score_names)
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
+        return [MetricOutputSpec.continuous_score(score_name) for score_name in self._score_names]
 
-    def _metric(self, item: dict, sample: dict) -> dict[str, float]:
+    def _metric(self, item: dict, sample: TemplateSample) -> dict[str, float]:
         """Compute raw tool-calling scores for one item/sample pair."""
+        sample_payload = sample_template_payload(sample)
         context = build_template_context(item, sample)
         ground_truth = render_template_or_raise(
             template_name="reference",
@@ -90,7 +93,7 @@ class ToolCallingMetric(ToolCalling):
             ) from e
 
         # Parse tool calls: check sample (online) first, then item (offline).
-        response_data = sample.get("response") or item.get("response")
+        response_data = sample_payload.get("response") or item.get("response")
         if not response_data:
             raise ValueError("No response found in sample or item - tool-calling metric requires model response data")
         if not isinstance(response_data, dict):
@@ -107,7 +110,7 @@ class ToolCallingMetric(ToolCalling):
         message = first_choice["message"]
 
         if not message.get("tool_calls"):
-            _logger.info("No tool calls found in %s", sample)
+            _logger.info("No tool calls found in %s", sample_payload)
             message["tool_calls"] = []
 
         tool_calls = message["tool_calls"]
@@ -160,7 +163,11 @@ class ToolCallingMetric(ToolCalling):
             "function_name_and_args_accuracy": fn_name_and_args_accuracy_score,
         }
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute the scores for the metric."""
+        item = input.row.data
+        sample = input.candidate
         scores = self._metric(item, sample)
-        return MetricResult(scores=[MetricScore(name=score_name, value=score) for score_name, score in scores.items()])
+        return MetricResult(
+            outputs=[MetricOutput(name=score_name, value=score) for score_name, score in scores.items()]
+        )

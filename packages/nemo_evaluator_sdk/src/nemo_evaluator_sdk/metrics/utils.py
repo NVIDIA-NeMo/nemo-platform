@@ -1,10 +1,23 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Shared helpers for working with runtime metric identifiers."""
+"""Shared helpers for runtime metrics."""
+
+import re
+import string
 
 from nemo_evaluator_sdk.enums import MetricType
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
+
+
+def normalize_text(s: str) -> str:
+    """Normalize free-form text for token/equality-based metric comparisons."""
+    if not s:
+        return ""
+    s = s.lower()
+    s = "".join(ch for ch in s if ch not in set(string.punctuation))
+    s = re.sub(r"\b(a|an|the)\b", " ", s)
+    return " ".join(s.split())
 
 
 def metric_type_name(metric: Metric) -> str:

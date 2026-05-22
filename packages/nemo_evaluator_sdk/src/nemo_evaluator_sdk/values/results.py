@@ -15,6 +15,8 @@ from typing import Any, Literal, Self
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
 
+from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
+
 ResultView = Literal["rows", "aggregate"]
 AggregateFieldName = Literal[
     # Base statistics
@@ -240,12 +242,6 @@ class MetricScore(BaseModel):
         return v
 
 
-class MetricResult(BaseModel):
-    """Evaluation results for the metric"""
-
-    scores: list[MetricScore]
-
-
 class Percentiles(BaseModel):
     """Percentile distribution of scores."""
 
@@ -364,7 +360,7 @@ class RowScore(BaseModel):
     row_index: int | None = Field(default=None, description="Stable row position used for result alignment.", ge=0)
     item: dict[str, Any] = Field(description="Input item metadata for the evaluated row.")
     sample: dict[str, Any] = Field(description="Sample output payload for the evaluated row.")
-    metrics: dict[str, list[MetricScore]] = Field(description="Metric-level row scores by metric key.")
+    metrics: dict[str, list[MetricOutput]] = Field(description="Metric-level row outputs by metric key.")
     requests: list[dict[str, Any]] = Field(description="Request details captured during evaluation.")
     metric_errors: dict[str, str] | None = Field(
         default=None,
@@ -593,8 +589,8 @@ class EvaluationResult(BaseModel):
                 if error_text := row_error_text(row_score):
                     record["error"] = error_text
                 for metric_scores in row_score.metrics.values():
-                    for score in metric_scores:
-                        record[f"score.{score.name}"] = serialize_value(score.value)
+                    for output in metric_scores:
+                        record[f"output.{output.name}"] = serialize_value(output.value)
                 records.append(record)
             return records
 
@@ -658,8 +654,8 @@ class EvaluationResult(BaseModel):
         for index, row_score in enumerate(self.row_scores[:max_rows]):
             record = summary_row_base_record(row_score, index)
             for metric_scores in row_score.metrics.values():
-                for score in metric_scores:
-                    record[f"score.{score.name}"] = serialize_value(score.value)
+                for output in metric_scores:
+                    record[f"output.{output.name}"] = serialize_value(output.value)
             preview_records.append(record)
         parts = [
             summary_header("EvaluationResult", self.row_scores, len(self.aggregate_scores.scores)),

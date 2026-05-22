@@ -11,12 +11,13 @@ import httpx
 import nemo_evaluator_sdk.metrics.remote as _sdk_remote
 from nemo_evaluator_sdk import inference
 from nemo_evaluator_sdk.resilience.api import run_with_resilience
+from nemo_evaluator_sdk.values import MetricInput, MetricResult
 
 
 def _sync_sdk_remote_bindings() -> None:
     """Mirror patchable service symbols into SDK module globals."""
     _sdk_remote.requests_log_var = inference.requests_log_var
-    _sdk_remote.httpx = httpx
+    setattr(_sdk_remote, "httpx", httpx)
     _sdk_remote.run_with_resilience = run_with_resilience
 
 
@@ -40,15 +41,15 @@ async def _post_to_remote_endpoint(
 
 
 class RemoteMetric(_sdk_remote.RemoteMetric):
-    async def compute_scores(self, item: dict[str, Any], sample: dict[str, Any]):
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         _sync_sdk_remote_bindings()
-        return await super().compute_scores(item, sample)
+        return await super().compute_scores(input)
 
 
 class NemoAgentToolkitRemoteMetric(_sdk_remote.NemoAgentToolkitRemoteMetric):
-    async def compute_scores(self, item: dict[str, Any], sample: dict[str, Any]):
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         _sync_sdk_remote_bindings()
-        return await super().compute_scores(item, sample)
+        return await super().compute_scores(input)
 
 
 __all__ = ["NemoAgentToolkitRemoteMetric", "RemoteMetric", "_post_to_remote_endpoint", "httpx", "run_with_resilience"]

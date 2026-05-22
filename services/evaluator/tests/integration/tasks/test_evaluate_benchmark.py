@@ -9,10 +9,18 @@ import pytest
 from jinja2.exceptions import UndefinedError
 from nemo_evaluator_sdk import inference
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
-from nemo_evaluator_sdk.values import MetricResult, MetricScore, Model
+from nemo_evaluator_sdk.values import MetricInput, MetricOutput, MetricOutputSpec, MetricResult, Model
 from nmp.evaluator.app.values import BenchmarkOfflineJob, BenchmarkOnlineJob
 from nmp.evaluator.tasks.evaluate_benchmark import __main__ as benchmark_task
 from pytest_mock import MockerFixture
+
+
+def _metric_result(name: str, value: float) -> MetricResult:
+    return MetricResult(outputs=[MetricOutput(name=name, value=value)])
+
+
+def _output_spec(name: str) -> list[MetricOutputSpec]:
+    return [MetricOutputSpec.continuous_score(name)]
 
 
 @pytest.fixture
@@ -113,13 +121,13 @@ async def test_evaluate_benchmark_accumulates_requests_across_metrics(tmp_path, 
         def __init__(self, metric_name: str):
             self._metric_name = metric_name
 
-        def score_names(self) -> list[str]:
-            return [self._metric_name]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec(self._metric_name)
 
-        async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
             requests_log = inference.requests_log_var.get()
-            requests_log.append({"metric": self._metric_name, "item_id": item["id"]})
-            return MetricResult(scores=[MetricScore(name=self._metric_name, value=1.0)])
+            requests_log.append({"metric": self._metric_name, "item_id": input.row.data["id"]})
+            return _metric_result(self._metric_name, 1.0)
 
     async def _fake_new_metric(metric_config, *args, **kwargs):
         return _FakeMetric(str(metric_config.type.value))
@@ -148,15 +156,15 @@ async def test_evaluate_benchmark_offline_errors_when_metric_fails(tmp_path, mon
         def __init__(self, metric_name: str):
             self._metric_name = metric_name
 
-        def score_names(self) -> list[str]:
-            return [self._metric_name]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec(self._metric_name)
 
-        async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
             requests_log = inference.requests_log_var.get()
-            requests_log.append({"metric": self._metric_name, "item_id": item["id"]})
+            requests_log.append({"metric": self._metric_name, "item_id": input.row.data["id"]})
             if self._metric_name == "string-check":
                 raise RuntimeError("boom")
-            return MetricResult(scores=[MetricScore(name=self._metric_name, value=1.0)])
+            return _metric_result(self._metric_name, 1.0)
 
     async def _fake_new_metric(metric_config, *args, **kwargs):
         return _FakeMetric(str(metric_config.type.value))
@@ -180,15 +188,15 @@ async def test_evaluate_benchmark_accumulates_requests_when_metric_fails(tmp_pat
         def __init__(self, metric_name: str):
             self._metric_name = metric_name
 
-        def score_names(self) -> list[str]:
-            return [self._metric_name]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec(self._metric_name)
 
-        async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
             requests_log = inference.requests_log_var.get()
-            requests_log.append({"metric": self._metric_name, "item_id": item["id"]})
+            requests_log.append({"metric": self._metric_name, "item_id": input.row.data["id"]})
             if self._metric_name == "string-check":
                 raise RuntimeError("boom")
-            return MetricResult(scores=[MetricScore(name=self._metric_name, value=1.0)])
+            return _metric_result(self._metric_name, 1.0)
 
     async def _fake_new_metric(metric_config, *args, **kwargs):
         return _FakeMetric(str(metric_config.type.value))
@@ -222,11 +230,12 @@ async def test_evaluate_benchmark_offline_progress_tracking_completes(
     )
 
     class _FakeMetric:
-        def score_names(self) -> list[str]:
-            return ["exact-match"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("exact-match")
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
-            return MetricResult(scores=[MetricScore(name="exact-match", value=1.0)])
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
+            return _metric_result("exact-match", 1.0)
 
     async def _fake_new_metric(*_args, **_kwargs):
         return _FakeMetric()
@@ -276,11 +285,12 @@ async def test_evaluate_benchmark_duplicate_metric_types_use_unique_metric_refs(
     )
 
     class _FakeMetric:
-        def score_names(self) -> list[str]:
-            return ["score"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("score")
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
-            return MetricResult(scores=[MetricScore(name="score", value=1.0)])
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
+            return _metric_result("score", 1.0)
 
     async def _fake_new_metric(*_args, **_kwargs):
         return _FakeMetric()
@@ -314,13 +324,13 @@ async def test_evaluate_benchmark_partial_failures_keep_nan_under_metric_score_n
     )
 
     class _FlakyMetric:
-        def score_names(self) -> list[str]:
-            return ["f1_score"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("f1_score")
 
-        async def compute_scores(self, item: dict, _sample: dict) -> MetricResult:
-            if item["id"] == 2:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            if input.row.data["id"] == 2:
                 raise RuntimeError("transient")
-            return MetricResult(scores=[MetricScore(name="f1_score", value=1.0)])
+            return _metric_result("f1_score", 1.0)
 
     async def _fake_new_metric(*_args, **_kwargs):
         return _FlakyMetric()
@@ -349,10 +359,11 @@ async def test_evaluate_benchmark_all_failures_use_declared_score_names(tmp_path
     )
 
     class _AlwaysFailMetric:
-        def score_names(self) -> list[str]:
-            return ["f1_score"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("f1_score")
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
             raise RuntimeError("transient")
 
     async def _fake_new_metric(*_args, **_kwargs):
@@ -387,11 +398,12 @@ async def test_online_benchmark_reuses_single_inference_sample_across_metrics(tm
         def __init__(self, metric_name: str):
             self._metric_name = metric_name
 
-        def score_names(self) -> list[str]:
-            return [self._metric_name]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec(self._metric_name)
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
-            return MetricResult(scores=[MetricScore(name=self._metric_name, value=1.0)])
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
+            return _metric_result(self._metric_name, 1.0)
 
     async def _fake_new_metric(metric_config, *_args, **_kwargs):
         return _FakeMetric(str(metric_config.type.value))
@@ -431,12 +443,13 @@ async def test_online_benchmark_streams_samples_to_metric_workers(tmp_path, monk
         return {"choices": [{"message": {"role": "assistant", "content": "answer"}}]}
 
     class _FakeMetric:
-        def score_names(self) -> list[str]:
-            return ["exact-match"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("exact-match")
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
             metric_started.set()
-            return MetricResult(scores=[MetricScore(name="exact-match", value=1.0)])
+            return _metric_result("exact-match", 1.0)
 
     async def _fake_new_metric(*_args, **_kwargs):
         return _FakeMetric()
@@ -457,10 +470,11 @@ async def test_evaluate_offline_benchmark_surfaces_strict_metric_error_context(t
     monkeypatch.setattr(benchmark_task, "_load_dataset_items", lambda *args, **kwargs: [{"id": 1}])
 
     class _FailingMetric:
-        def score_names(self) -> list[str]:
-            return ["exact-match"]
+        def output_spec(self) -> list[MetricOutputSpec]:
+            return _output_spec("exact-match")
 
-        async def compute_scores(self, _item: dict, _sample: dict) -> MetricResult:
+        async def compute_scores(self, input: MetricInput) -> MetricResult:
+            del input
             raise ValueError("metric exploded")
 
     async def _fake_new_metric(*_args, **_kwargs):

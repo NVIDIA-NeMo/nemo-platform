@@ -8,17 +8,27 @@ from collections.abc import Mapping
 from typing import Any
 
 from jinja2 import UndefinedError
+from nemo_platform.beta.evaluator.metrics.protocol import CandidateOutput
 from nemo_platform.beta.evaluator.templates import render_template
 from pydantic import BaseModel
 
 TemplateValue = str | dict[Any, Any] | list[Any]
+TemplateSample = dict[str, Any] | CandidateOutput
 _DICT_ATTRIBUTE_ERROR_RE = re.compile(r"^'dict object' has no attribute '(?P<name>[^']+)'$")
 _UNDEFINED_NAME_ERROR_RE = re.compile(r"^'(?P<name>[^']+)' is undefined$")
 
 
-def build_template_context(item: dict[str, Any], sample: dict[str, Any]) -> dict[str, Any]:
+def sample_template_payload(sample: TemplateSample) -> dict[str, Any]:
+    """Return a sample-shaped dictionary for template rendering helpers."""
+    if isinstance(sample, CandidateOutput):
+        return sample.as_sample()
+    return sample
+
+
+def build_template_context(item: dict[str, Any], sample: TemplateSample) -> dict[str, Any]:
     """Build the template context shared by item and sample rendering."""
-    return {**item, **sample, "item": item, "sample": sample}
+    sample_payload = sample_template_payload(sample)
+    return {**item, **sample_payload, "item": item, "sample": sample_payload}
 
 
 def template_metric_repr(metric: BaseModel | object) -> str:
@@ -56,12 +66,13 @@ def render_template_or_raise(
     template: TemplateValue,
     context: dict[str, Any],
     item: dict[str, Any],
-    sample: dict[str, Any],
+    sample: TemplateSample,
     metric_repr: str,
     item_keys_label: str = "item",
     sample_keys_label: str = "sample",
 ) -> object:
     """Render one template and raise a specific validation error on missing keys."""
+    sample_payload = sample_template_payload(sample)
     try:
         return render_template(template, context)
     except UndefinedError as exc:
@@ -69,7 +80,7 @@ def render_template_or_raise(
         base_message = (
             f"{metric_repr} could not render its '{template_name}' template for this row.\n"
             f"Available {item_keys_label} keys={sorted(item.keys())}. \n"
-            f"Available {sample_keys_label} keys={sorted(sample.keys())}.\n"
+            f"Available {sample_keys_label} keys={sorted(sample_payload.keys())}.\n"
         )
         if missing_key is not None:
             detail = f"Dataset item has missing_key='{missing_key}' but the '{template_name}' template references it.\n"
@@ -80,9 +91,9 @@ def render_template_or_raise(
         ) from exc
 
 
-def render_default_output_text_candidate_or_raise(*, sample: dict[str, Any], metric_name: str) -> object:
+def render_default_output_text_candidate_or_raise(*, sample: TemplateSample, metric_name: str) -> object:
     """Return the default output-text candidate or raise a clear guidance error."""
-    prediction = sample.get("output_text")
+    prediction = sample_template_payload(sample).get("output_text")
     if prediction is None:
         raise ValueError(
             f"{metric_name} has missing `candidate` field.\n"
@@ -99,7 +110,7 @@ def render_reference_and_candidate(
     reference_template: str,
     candidate_template: str | None,
     item: dict[str, Any],
-    sample: dict[str, Any],
+    sample: TemplateSample,
 ) -> tuple[str, str]:
     """Render reference and candidate templates, returning validated strings."""
     context = build_template_context(item, sample)

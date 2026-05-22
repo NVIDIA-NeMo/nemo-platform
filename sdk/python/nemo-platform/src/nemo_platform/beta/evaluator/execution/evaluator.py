@@ -13,7 +13,7 @@ from typing import Any, TypeGuard, overload
 
 import nemo_platform.beta.evaluator.inference as inference
 from nemo_platform.beta.evaluator.execution.metric_execution import run_sync
-from nemo_platform.beta.evaluator.metrics.base import Metric
+from nemo_platform.beta.evaluator.metrics.protocol import Metric
 from nemo_platform.beta.evaluator.values.agents import Agent
 from nemo_platform.beta.evaluator.values.datasets import DatasetInput
 from nemo_platform.beta.evaluator.values.models import Model

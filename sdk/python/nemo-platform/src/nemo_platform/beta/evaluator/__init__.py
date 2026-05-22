@@ -17,6 +17,10 @@ from nemo_platform.beta.evaluator.metrics.exact_match import ExactMatchMetric
 from nemo_platform.beta.evaluator.metrics.f1 import F1Metric
 from nemo_platform.beta.evaluator.metrics.llm_judge import LLMJudgeMetric
 from nemo_platform.beta.evaluator.metrics.number_check import NumberCheckMetric
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    Metric,
+    validate_metric_result,
+)
 from nemo_platform.beta.evaluator.metrics.remote import NemoAgentToolkitRemoteMetric, RemoteMetric
 from nemo_platform.beta.evaluator.metrics.rouge import ROUGEMetric
 from nemo_platform.beta.evaluator.metrics.string_check import StringCheckMetric
@@ -31,10 +35,21 @@ from nemo_platform.beta.evaluator.structured_output import (
 )
 from nemo_platform.beta.evaluator.values import (
     Agent,
+    BooleanValue,
+    CandidateOutput,
+    ContinuousScore,
+    DatasetRow,
     DatasetRows,
+    DiscreteScore,
     EvaluationResult,
     InferenceParams,
     JSONScoreParser,
+    Label,
+    MetricDescriptor,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
     Model,
     RangeScore,
     ReasoningParams,
@@ -69,7 +84,19 @@ __all__ = [
     "InferenceFn",
     "InferenceStructuredOutput",
     "JSONScoreParser",
+    "Metric",
+    "MetricDescriptor",
+    "MetricInput",
+    "MetricOutput",
+    "MetricOutputSpec",
+    "MetricResult",
     "LLMJudgeMetric",
+    "BooleanValue",
+    "CandidateOutput",
+    "ContinuousScore",
+    "DatasetRow",
+    "DiscreteScore",
+    "Label",
     "Model",
     "NemoAgentToolkitRemoteMetric",
     "NumberCheckMetric",
@@ -88,5 +115,6 @@ __all__ = [
     "detect_structured_output_mode",
     "load_dataset",
     "load_dataset_as_dicts",
+    "validate_metric_result",
     "version",
 ]

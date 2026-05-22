@@ -32,7 +32,7 @@ from nemo_evaluator_sdk.execution.metric_execution import (
     run_sync,
 )
 from nemo_evaluator_sdk.execution.pipeline import PipelineRuntime
-from nemo_evaluator_sdk.execution.scoring import empty_evaluation_result, finalize_evaluation_result
+from nemo_evaluator_sdk.execution.scoring import build_metric_input, empty_evaluation_result, finalize_evaluation_result
 from nemo_evaluator_sdk.execution.utils import (
     _candidate_env_names,
     _copy_metric,
@@ -40,9 +40,9 @@ from nemo_evaluator_sdk.execution.utils import (
     prepare_metric_for_local_execution,
 )
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
-from nemo_evaluator_sdk.metrics.base import Metric
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric as RuntimeLLMJudgeMetric
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.structured_output import StructuredOutputMode
 from nemo_evaluator_sdk.values.agents import Agent
@@ -58,8 +58,6 @@ from nemo_evaluator_sdk.values.params import (
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     EvaluationResult,
-    MetricResult,
-    MetricScore,
     RowScore,
 )
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
@@ -105,7 +103,11 @@ def test_format_exception_summary_falls_back_to_exception_type() -> None:
 
 
 def _make_metric_result(*scores: tuple[str, float]) -> MetricResult:
-    return MetricResult(scores=[MetricScore(name=n, value=v) for n, v in scores])
+    return MetricResult(outputs=[MetricOutput(name=n, value=v) for n, v in scores])
+
+
+def _score_spec(*names: str) -> list[MetricOutputSpec]:
+    return [MetricOutputSpec.continuous_score(name) for name in names]
 
 
 def _make_mock_metric(mocker: MockerFixture, results: list[MetricResult] | None = None) -> Mock:
@@ -123,6 +125,8 @@ def _make_mock_metric(mocker: MockerFixture, results: list[MetricResult] | None 
         default_result = _make_metric_result(("accuracy", 1.0))
         metric.compute_scores = mocker.AsyncMock(return_value=default_result)
     metric.compute_corpus_scores = mocker.AsyncMock(return_value=None)
+    metric.output_spec = mocker.Mock(return_value=_score_spec("accuracy", "score", "corpus_score"))
+    metric.corpus_output_spec = mocker.Mock(return_value=_score_spec("corpus_score"))
     return metric
 
 
@@ -163,8 +167,8 @@ class _TestMetric:
         copied.compute_corpus_scores = self.compute_corpus_scores
         return copied
 
-    def score_names(self) -> list[str]:
-        return [TEST_METRIC_KEY]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
 
 
 def _make_test_metric() -> Metric:
@@ -176,9 +180,9 @@ class _DistinctScoreNameMetric(_TestMetric):
 
     type: ClassVar[str] = "metric-a"
 
-    def score_names(self) -> list[str]:
-        """Return a score name that differs from the metric type."""
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return an output name that differs from the metric type."""
+        return [MetricOutputSpec.continuous_score("score")]
 
 
 def _make_distinct_score_name_metric() -> Metric:
@@ -219,12 +223,12 @@ class _HookedMetric(HooksBase):
     type: ClassVar[MetricType] = MetricType.STRING_CHECK
     _result: MetricResult = PrivateAttr(default_factory=lambda: _make_metric_result(("score", 1.0)))
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        del item, sample
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
         return self._result
 
-    def score_names(self) -> list[str]:
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
 
 
 class _PreparedMetric(BaseModel):
@@ -233,12 +237,12 @@ class _PreparedMetric(BaseModel):
     _events: list[tuple[str, str | None]] = PrivateAttr(default_factory=list)
     _resolved_secret: str | None = PrivateAttr(default=None)
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        del item, sample
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
         return _make_metric_result(("score", 1.0))
 
-    def score_names(self) -> list[str]:
-        return ["score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
 
     def secrets(self) -> dict[str, SecretRef]:
         return {"NVIDIA_BUILD_API_KEY": SecretRef(root="nvidia-build-api-key")}
@@ -664,7 +668,7 @@ class TestFinalizeEvaluationResult:
                     row_index=0,
                     item={"idx": 0},
                     sample={"value": "a"},
-                    metrics={"mock": success_result.scores},
+                    metrics={"mock": success_result.outputs},
                     requests=[],
                     metric_errors=None,
                 ),
@@ -686,7 +690,7 @@ class TestFinalizeEvaluationResult:
         result = await finalize_evaluation_result(metric, completed)
 
         assert [row_score.row_index for row_score in result.row_scores] == [0, 1]
-        mock_agg.assert_called_once_with([success_result])
+        mock_agg.assert_called_once_with([success_result], metric.output_spec())
         assert result.aggregate_scores is aggregate_result
 
     @pytest.mark.asyncio
@@ -711,7 +715,7 @@ class TestFinalizeEvaluationResult:
                     row_index=0,
                     item={"idx": 0},
                     sample={"value": "a"},
-                    metrics={"mock": row_result.scores},
+                    metrics={"mock": row_result.outputs},
                     requests=[],
                     metric_errors=None,
                 ),
@@ -720,8 +724,11 @@ class TestFinalizeEvaluationResult:
 
         await finalize_evaluation_result(metric, completed)
 
-        metric.compute_corpus_scores.assert_awaited_once_with(items=[{"idx": 0}], samples=[{"value": "a"}])
-        mock_add.assert_called_once_with(aggregate_result, corpus_result)
+        metric.compute_corpus_scores.assert_awaited_once()
+        assert metric.compute_corpus_scores.await_args.kwargs["inputs"] == [
+            build_metric_input({"idx": 0}, {"value": "a"}, 0)
+        ]
+        mock_add.assert_called_once_with(aggregate_result, corpus_result, metric.corpus_output_spec())
 
     @pytest.mark.asyncio
     async def test_skip_errored_excludes_nan_placeholder_from_aggregate(self, mocker: MockerFixture):
@@ -762,7 +769,7 @@ class TestFinalizeEvaluationResult:
 
         result = await finalize_evaluation_result(metric, completed, skip_errored=True)
 
-        mock_agg.assert_called_once_with([success_result])
+        mock_agg.assert_called_once_with([success_result], metric.output_spec())
         assert [rs.row_index for rs in result.row_scores] == [0, 1]
 
     @pytest.mark.asyncio
@@ -793,7 +800,7 @@ class TestFinalizeEvaluationResult:
                     row_index=0,
                     item={"idx": 0},
                     sample={"value": "a"},
-                    metrics={"mock": success_result.scores},
+                    metrics={"mock": success_result.outputs},
                     requests=[],
                     metric_errors=None,
                 ),
@@ -805,7 +812,7 @@ class TestFinalizeEvaluationResult:
                     row_index=1,
                     item={"idx": 1},
                     sample={"value": "b"},
-                    metrics={"mock": nan_result.scores},
+                    metrics={"mock": nan_result.outputs},
                     requests=[],
                     metric_errors={"mock": "ignored failure"},
                 ),
@@ -815,7 +822,10 @@ class TestFinalizeEvaluationResult:
         result = await finalize_evaluation_result(metric, completed, skip_errored=True)
 
         # Only row 0 feeds the corpus metric; row 1 is the errored/skipped row.
-        metric.compute_corpus_scores.assert_awaited_once_with(items=[{"idx": 0}], samples=[{"value": "a"}])
+        metric.compute_corpus_scores.assert_awaited_once()
+        assert metric.compute_corpus_scores.await_args.kwargs["inputs"] == [
+            build_metric_input({"idx": 0}, {"value": "a"}, 0)
+        ]
         # Both rows still surface in ``row_scores`` for reporting.
         assert [rs.row_index for rs in result.row_scores] == [0, 1]
 
@@ -837,7 +847,7 @@ class TestFinalizeEvaluationResult:
                     row_index=0,
                     item={"idx": 0},
                     sample={"value": "a"},
-                    metrics={"mock": nan_result.scores},
+                    metrics={"mock": nan_result.outputs},
                     requests=[],
                     metric_errors={"mock": "ignored failure"},
                 ),
@@ -846,7 +856,7 @@ class TestFinalizeEvaluationResult:
 
         result = await finalize_evaluation_result(metric, completed, skip_errored=True)
 
-        mock_agg.assert_called_once_with([])
+        mock_agg.assert_called_once_with([], metric.output_spec())
         metric.compute_corpus_scores.assert_not_awaited()
         mock_add.assert_not_called()
         assert [rs.row_index for rs in result.row_scores] == [0]
@@ -1192,8 +1202,9 @@ class TestPrepareMetric:
         prepared = await prepare_metric_for_local_execution(metric, RunConfig())
 
         assert prepared is not metric
-        await prepared.compute_scores({"prompt": "hello"}, {"output_text": "world"})
-        impl.compute_scores.assert_awaited_once_with({"prompt": "hello"}, {"output_text": "world"})
+        metric_input = build_metric_input({"prompt": "hello"}, {"output_text": "world"})
+        await prepared.compute_scores(metric_input)
+        impl.compute_scores.assert_awaited_once_with(metric_input)
 
     @pytest.mark.asyncio
     async def test_resolves_env_secret_before_preflight(self, monkeypatch: pytest.MonkeyPatch):
@@ -1256,9 +1267,12 @@ class TestEvaluateMetricOnline:
             inference.requests_log_var.get([]).append(generation_request)
             return {"choices": [{"message": {"content": "world"}}]}
 
-        async def _compute_scores(item: dict[str, str], sample: dict[str, str]) -> MetricResult:
-            assert item == {"prompt": "hello"}
-            assert sample == {"output_text": "world", "response": {"choices": [{"message": {"content": "world"}}]}}
+        async def _compute_scores(input: MetricInput) -> MetricResult:
+            assert input.row.data == {"prompt": "hello"}
+            assert input.candidate.as_sample() == {
+                "output_text": "world",
+                "response": {"choices": [{"message": {"content": "world"}}]},
+            }
             inference.requests_log_var.get([]).append(metric_request)
             return _make_metric_result(("score", 1.0))
 
@@ -1287,8 +1301,8 @@ class TestEvaluateMetricOnline:
         _, debug_kwargs = execution_logger.debug.call_args
         assert debug_kwargs["extra"]["item_index"] == 0
         assert debug_kwargs["extra"]["metric_type"] == MetricType.STRING_CHECK.value
-        assert debug_kwargs["extra"]["scores"][0]["name"] == "score"
-        assert debug_kwargs["extra"]["scores"][0]["value"] == 1.0
+        assert debug_kwargs["extra"]["outputs"][0]["name"] == "score"
+        assert debug_kwargs["extra"]["outputs"][0]["value"] == 1.0
 
     @pytest.mark.asyncio
     async def test_metric_failure_preserves_generation_and_metric_requests(self, mocker: MockerFixture):
@@ -1306,8 +1320,8 @@ class TestEvaluateMetricOnline:
             inference.requests_log_var.get([]).append(generation_request)
             return {"choices": [{"message": {"content": "world"}}]}
 
-        async def _compute_scores(item: dict[str, str], sample: dict[str, str]) -> MetricResult:
-            del item, sample
+        async def _compute_scores(input: MetricInput) -> MetricResult:
+            del input
             inference.requests_log_var.get([]).append(metric_request)
             raise ValueError("bad score")
 
@@ -1372,7 +1386,8 @@ class TestEvaluateMetricOnline:
         }
         assert row_score.error == f"{TEST_METRIC_KEY}: {GENERATION_FAILURE_MESSAGE}"
         assert row_score.metric_errors == {TEST_METRIC_KEY: GENERATION_FAILURE_MESSAGE}
-        assert row_score.metrics == {}
+        assert row_score.metrics[TEST_METRIC_KEY][0].name == "score"
+        assert math.isnan(row_score.metrics[TEST_METRIC_KEY][0].value)
         assert result.aggregate_scores.scores[0].count == 0
         assert result.aggregate_scores.scores[0].nan_count == 1
         execution_logger.warning.assert_any_call(
@@ -1403,7 +1418,8 @@ class TestEvaluateMetricOnline:
         )
 
         row_score = result.row_scores[0]
-        assert row_score.metrics == {}
+        assert row_score.metrics[TEST_METRIC_KEY][0].name == "score"
+        assert math.isnan(row_score.metrics[TEST_METRIC_KEY][0].value)
         assert row_score.metric_errors is not None
         error_message = row_score.metric_errors[TEST_METRIC_KEY]
         assert "'dict object' has no attribute 'missing'" in error_message
@@ -1478,7 +1494,8 @@ class TestEvaluateMetricOnline:
         )
 
         row_score = result.row_scores[0]
-        assert row_score.metrics == {}
+        assert row_score.metrics["metric-a"][0].name == "score"
+        assert math.isnan(row_score.metrics["metric-a"][0].value)
         assert row_score.metric_errors == {"metric-a": GENERATION_FAILURE_MESSAGE}
         assert result.aggregate_scores.scores[0].name == "score"
         assert result.aggregate_scores.scores[0].count == 0
@@ -1532,9 +1549,9 @@ class TestEvaluateMetricOnline:
         ) -> dict:
             return {"choices": [{"message": {"content": ""}}]}
 
-        async def _compute_scores(item: dict[str, str], sample: dict[str, str]) -> MetricResult:
-            del item
-            assert sample == {"response": {"choices": [{"message": {"content": ""}}]}}
+        async def _compute_scores(input: MetricInput) -> MetricResult:
+            assert input.row.data == {"prompt": "hello"}
+            assert input.candidate.as_sample() == {"response": {"choices": [{"message": {"content": ""}}]}}
             return _make_metric_result(("score", 1.0))
 
         metric.compute_scores = mocker.AsyncMock(side_effect=_compute_scores)

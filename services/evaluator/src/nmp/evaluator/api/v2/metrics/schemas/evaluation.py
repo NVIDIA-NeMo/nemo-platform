@@ -89,11 +89,13 @@ class MetricEvaluationRowScore(BaseModel):
         """
         if row_score.error is not None:
             return cls(index=index, row=row, scores=None, error=row_score.error)
-        scores: dict[str, float | None] = {
-            ms.name: ms.value if math.isfinite(ms.value) else None
-            for metric_scores in row_score.metrics.values()
-            for ms in metric_scores
-        }
+        scores: dict[str, float | None] = {}
+        for metric_outputs in row_score.metrics.values():
+            for output in metric_outputs:
+                if isinstance(output.value, bool):
+                    scores[output.name] = 1.0 if output.value else 0.0
+                elif isinstance(output.value, int | float):
+                    scores[output.name] = float(output.value) if math.isfinite(output.value) else None
         return cls(index=index, row=row, scores=scores, error=None)
 
 

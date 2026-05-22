@@ -21101,6 +21101,20 @@ components:
       - prompt_template
       title: MetricOnlineJob
       description: A online metric job.
+    MetricOutput:
+      properties:
+        name:
+          type: string
+          title: Name
+        value:
+          title: Value
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - value
+      title: MetricOutput
+      description: One named value emitted by a metric.
     MetricRef:
       type: string
       pattern: ^[a-z0-9_-]+/[a-z0-9_-]+$
@@ -21158,24 +21172,6 @@ components:
       - dataset
       title: MetricRetrieverJob
       description: Evaluation with a retriever-based metric.
-    MetricScore:
-      properties:
-        name:
-          type: string
-          title: Name
-        value:
-          type: number
-          title: Value
-        stats:
-          allOf:
-          - $ref: '#/components/schemas/ScoreStats'
-          description: Computed score statistics for the score.
-      type: object
-      required:
-      - name
-      - value
-      title: MetricScore
-      description: A computed score for the metric
     MetricType:
       description: The predefined metric types.
       enum:
@@ -27020,11 +27016,11 @@ components:
         metrics:
           additionalProperties:
             items:
-              $ref: '#/components/schemas/MetricScore'
+              $ref: '#/components/schemas/MetricOutput'
             type: array
           type: object
           title: Metrics
-          description: Metric-level row scores by metric key.
+          description: Metric-level row outputs by metric key.
         requests:
           items:
             additionalProperties: true
@@ -27621,77 +27617,6 @@ components:
       type: object
       title: SafeSynthesizerTiming
       description: Wall-clock durations for each pipeline stage.
-    ScoreStats:
-      properties:
-        count:
-          title: Count
-          description: The number of values used for computing the score.
-          type: integer
-        sum:
-          anyOf:
-          - type: number
-          - type: string
-          title: Sum
-          description: The sum of all values used for computing the score.
-        sum_squared:
-          anyOf:
-          - type: number
-          - type: string
-          title: Sum Squared
-          description: The sum of the square of all values used for computing the
-            score.
-        min:
-          anyOf:
-          - type: number
-          - type: string
-          title: Min
-          description: The minimum of all values used for computing the score.
-        max:
-          anyOf:
-          - type: number
-          - type: string
-          title: Max
-          description: The maximum of all values used for computing the score.
-        mean:
-          anyOf:
-          - type: number
-          - type: string
-          title: Mean
-          description: The mean of all values used for computing the score.
-        variance:
-          anyOf:
-          - type: number
-          - type: string
-          title: Variance
-          description: 'The population variance, (note: not the sample variance).'
-        stddev:
-          anyOf:
-          - type: number
-          - type: string
-          title: Stddev
-          description: 'The population standard deviation, (note: not the sample standard
-            deviation).'
-        stderr:
-          anyOf:
-          - type: number
-          - type: string
-          title: Stderr
-          description: The standard error.
-        nan_count:
-          title: Nan Count
-          description: The number of values that are not a number (NaN) and are excluded
-            from the score stats calculations.
-          type: integer
-        rubric_distribution:
-          title: Rubric Distribution
-          description: The distribution of the rubric grading criteria for the score.
-          items:
-            $ref: '#/components/schemas/RubricScoreStat'
-          type: array
-      type: object
-      title: ScoreStats
-      description: Stats for a score. Fields that are NaN are serialized as the string
-        "NaN" in the API response.
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$

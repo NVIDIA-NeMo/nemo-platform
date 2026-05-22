@@ -22,6 +22,7 @@ The mock replicates the async-context-manager chain::
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -30,7 +31,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_agents_plugin.api.v2 import gateway as gateway_module
 from nemo_agents_plugin.api.v2.dependencies import get_entity_client
-from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentStatus
 from nemo_platform_plugin.entity_client import NemoEntityNotFoundError
 
 # ---------------------------------------------------------------------------
@@ -46,7 +47,7 @@ def _make_deployment(
     name: str = "calc-dep",
     agent: str = "calc",
     workspace: str = "default",
-    status: str = "running",
+    status: DeploymentStatus = "running",
     endpoint: str = "http://localhost:9001",
 ) -> AgentDeployment:
     return AgentDeployment(name=name, workspace=workspace, agent=agent, status=status, endpoint=endpoint)
@@ -318,3 +319,100 @@ class TestProxyByAgentName:
             )
 
         assert resp.status_code == 502
+
+
+# ---------------------------------------------------------------------------
+# Model name patching — unknown-model → agent/deployment name
+# ---------------------------------------------------------------------------
+
+
+class TestModelNamePatching:
+    def test_unknown_model_replaced_by_agent_name(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """JSON responses with "unknown-model" get patched to the agent name."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("my-agent"))
+        dep = _make_deployment(agent="my-agent", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        body = json.dumps({"model": "unknown-model", "choices": [{"message": {"content": "hi"}}]}).encode()
+        httpx_mock = _make_httpx_mock(200, body, "application/json")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/my-agent/-/v1/chat/completions",
+                json={"messages": [{"role": "user", "content": "hi"}]},
+            )
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["model"] == "my-agent"
+        assert data["choices"] == [{"message": {"content": "hi"}}]
+
+    def test_malformed_json_passed_through(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Non-JSON response bodies are passed through unmodified."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        garbled = b"this is not json"
+        httpx_mock = _make_httpx_mock(200, garbled, "application/json")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        assert resp.content == garbled
+
+    def test_real_model_not_replaced(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """JSON responses with a real model name are left untouched."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        body = json.dumps({"model": "gpt-4o", "choices": []}).encode()
+        httpx_mock = _make_httpx_mock(200, body, "application/json")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["model"] == "gpt-4o"
+
+    def test_sse_stream_not_patched(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """SSE (event-stream) responses are passed through without model patching."""
+        dep = _make_deployment(status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        sse_body = b'data: {"model":"unknown-model","choices":[]}\n\n'
+        httpx_mock = _make_httpx_mock(200, sse_body, "text/event-stream")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-dep/-/v1/chat/completions",
+                json={"messages": [], "stream": True},
+            )
+
+        assert resp.status_code == 200
+        assert b"unknown-model" in resp.content
+
+    def test_deployment_name_used_for_deployment_proxy(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Deployment-name proxy path patches model to the deployment name."""
+        dep = _make_deployment(name="calc-v2", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        body = json.dumps({"model": "unknown-model", "choices": []}).encode()
+        httpx_mock = _make_httpx_mock(200, body, "application/json")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/deployments/calc-v2/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        assert resp.json()["model"] == "calc-v2"

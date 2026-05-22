@@ -5,6 +5,7 @@ import math
 from typing import Literal
 
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.number_check import NumberCheckMetric, _parse_number_answer
 from pydantic_core import ValidationError
@@ -107,8 +108,8 @@ class TestNumberCheckMetric:
             left_template="{{item.reference_answer}}",
             right_template="{{output_text}}",
         )
-        result = await metric.compute_scores({"reference_answer": "1"}, {"output_text": "1"})
-        assert {score.name for score in result.scores} == set(metric.score_names())
+        result = await compute_scores(metric, {"reference_answer": "1"}, {"output_text": "1"})
+        assert {score.name for score in result.outputs} == set(output_names(metric))
 
     def test_absolute_difference_requires_epsilon(self):
         with pytest.raises(ValueError, match="epsilon value is required with operation absolute difference"):
@@ -145,7 +146,7 @@ class TestNumberCheckMetric:
             left_template="{{item.left}}",
             right_template="{{item.right}}",
         )
-        assert (await metric.compute_scores({"left": left, "right": right}, {})).scores[0].value == (
+        assert (await compute_scores(metric, {"left": left, "right": right}, {})).outputs[0].value == (
             1.0 if expected else 0.0
         )
 
@@ -157,8 +158,8 @@ class TestNumberCheckMetric:
             right_template="{{item.right}}",
             epsilon=0.25,
         )
-        assert (await metric.compute_scores({"left": "3.0", "right": "3.1"}, {})).scores[0].value == 1.0
-        assert (await metric.compute_scores({"left": "3.0", "right": "3.4"}, {})).scores[0].value == 0.0
+        assert (await compute_scores(metric, {"left": "3.0", "right": "3.1"}, {})).outputs[0].value == 1.0
+        assert (await compute_scores(metric, {"left": "3.0", "right": "3.4"}, {})).outputs[0].value == 0.0
 
     @pytest.mark.asyncio
     async def test_absolute_difference_raises_when_epsilon_removed_after_init(self):
@@ -171,33 +172,33 @@ class TestNumberCheckMetric:
         metric.epsilon = None
 
         with pytest.raises(ValueError, match="epsilon value is required"):
-            await metric.compute_scores({"left": "3.0", "right": "3.1"}, {})
+            await compute_scores(metric, {"left": "3.0", "right": "3.1"}, {})
 
     @pytest.mark.asyncio
     async def test_nan_short_circuit(self):
         metric = NumberCheckMetric(operation="equals", left_template="{{item.left}}", right_template="{{item.right}}")
-        assert math.isnan((await metric.compute_scores({"left": "abc", "right": "1"}, {})).scores[0].value)
-        assert math.isnan((await metric.compute_scores({"left": "1", "right": "abc"}, {})).scores[0].value)
+        assert math.isnan((await compute_scores(metric, {"left": "abc", "right": "1"}, {})).outputs[0].value)
+        assert math.isnan((await compute_scores(metric, {"left": "1", "right": "abc"}, {})).outputs[0].value)
 
     @pytest.mark.asyncio
     async def test_unsupported_operation_raises(self):
         metric = NumberCheckMetric(operation="equals", left_template="{{item.left}}", right_template="{{item.right}}")
         metric.operation = "unsupported"  # ty: ignore[invalid-assignment]
         with pytest.raises(ValueError, match="Unsupported operation"):
-            await metric.compute_scores({"left": "1", "right": "1"}, {})
+            await compute_scores(metric, {"left": "1", "right": "1"}, {})
 
     @pytest.mark.asyncio
     async def test_compute_scores_and_score_names(self):
         metric = NumberCheckMetric(operation="equals", left_template="{{item.left}}", right_template="{{item.right}}")
-        result = await metric.compute_scores({"left": "1", "right": "1"}, {})
-        assert result.scores[0].name == "number-check"
-        assert metric.score_names() == ["number-check"]
+        result = await compute_scores(metric, {"left": "1", "right": "1"}, {})
+        assert result.outputs[0].name == "number-check"
+        assert output_names(metric) == ["number-check"]
 
     @pytest.mark.asyncio
     async def test_raises_clear_error_for_missing_template_field(self):
         metric = NumberCheckMetric(operation="equals", left_template="{{item.left}}", right_template="{{item.right}}")
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores({"left": "1"}, {})
+            await compute_scores(metric, {"left": "1"}, {})
         assert "could not render its 'right_template' template for this row" in str(exc_info.value)
         assert "missing_key='right'" in str(exc_info.value)
 
@@ -297,9 +298,9 @@ async def test_equals(item: dict, sample: dict, expected_score: float, desc: str
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -364,9 +365,9 @@ async def test_not_equals(item: dict, sample: dict, expected_score: float, desc:
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -436,9 +437,9 @@ async def test_gte(item: dict, sample: dict, expected_score: float, desc: str):
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -508,9 +509,9 @@ async def test_gt(item: dict, sample: dict, expected_score: float, desc: str):
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -575,9 +576,9 @@ async def test_lte(item: dict, sample: dict, expected_score: float, desc: str):
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -647,9 +648,9 @@ async def test_lt(item: dict, sample: dict, expected_score: float, desc: str):
             right_template="{{output_text | trim}}",
         )
 
-        metric_result = await metric.compute_scores(item, sample)
-        assert len(metric_result.scores) == 1
-        score = metric_result.scores[0]
+        metric_result = await compute_scores(metric, item, sample)
+        assert len(metric_result.outputs) == 1
+        score = metric_result.outputs[0]
         assert score.name == "number-check"
         if math.isnan(expected_score):
             assert math.isnan(score.value)
@@ -731,9 +732,9 @@ async def test_abs_diff(item: dict, sample: dict, expected_score: float, desc: s
         epsilon=2,
     )
 
-    metric_result = await metric.compute_scores(item, sample)
-    assert len(metric_result.scores) == 1
-    score = metric_result.scores[0]
+    metric_result = await compute_scores(metric, item, sample)
+    assert len(metric_result.outputs) == 1
+    score = metric_result.outputs[0]
     assert score.name == "number-check"
     if math.isnan(expected_score):
         assert math.isnan(score.value)
