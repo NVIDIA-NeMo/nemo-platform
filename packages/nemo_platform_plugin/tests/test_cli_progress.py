@@ -6,7 +6,7 @@ from __future__ import annotations
 import io
 
 import pytest
-from nemo_platform_plugin.cli_progress import request_progress
+from nemo_platform_plugin.cli_progress import _MinutesSecondsElapsedColumn, request_progress
 from rich.console import Console
 
 
@@ -73,3 +73,25 @@ def test_handle_update_is_safe_when_disabled() -> None:
     with request_progress("Should not appear", disabled=True, console=console) as handle:
         handle.update("This must not raise")
     assert console.export_text() == ""
+
+
+@pytest.mark.parametrize(
+    "elapsed,expected",
+    [
+        (None, "--:--"),
+        (0, "00:00"),
+        (7, "00:07"),
+        (65, "01:05"),
+        # Minutes intentionally roll past 59 rather than spilling into an hours field.
+        (3725, "62:05"),
+    ],
+)
+def test_elapsed_column_renders_minutes_seconds(elapsed: float | None, expected: str) -> None:
+    class _StubTask:
+        def __init__(self, elapsed: float | None) -> None:
+            self.elapsed = elapsed
+            self.finished = False
+            self.finished_time = None
+
+    rendered = _MinutesSecondsElapsedColumn().render(_StubTask(elapsed))  # type: ignore[arg-type]
+    assert rendered.plain == expected

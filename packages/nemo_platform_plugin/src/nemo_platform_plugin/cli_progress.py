@@ -15,12 +15,29 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import Optional
 
 from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TaskID, TextColumn, TimeElapsedColumn
+from rich.progress import Progress, SpinnerColumn, Task, TaskID, TextColumn, TimeElapsedColumn
+from rich.text import Text
 
 _OPT_OUT_ENV_VARS = ("NO_COLOR", "CI", "NEMO_NO_PROGRESS")
+
+
+class _MinutesSecondsElapsedColumn(TimeElapsedColumn):
+    """Elapsed-time column rendered as MM:SS instead of Rich's default H:MM:SS.
+
+    The leading ``0:`` hour marker visually implies hour-scale waits, which
+    these CLI requests never reach in practice. Minutes are allowed to grow
+    past 59 rather than rolling into hours.
+    """
+
+    def render(self, task: Task) -> Text:
+        elapsed = task.finished_time if task.finished else task.elapsed
+        if elapsed is None:
+            return Text("--:--", style="progress.elapsed")
+        seconds = max(0, int(elapsed))
+        minutes, secs = divmod(seconds, 60)
+        return Text(f"{minutes:02d}:{secs:02d}", style="progress.elapsed")
 
 
 def _progress_disabled(console: Console, disabled: bool) -> bool:
@@ -34,7 +51,7 @@ def _progress_disabled(console: Console, disabled: bool) -> bool:
 class _ProgressHandle:
     """Caller-facing handle for updating the spinner message mid-flight."""
 
-    def __init__(self, progress: Optional[Progress], task_id: Optional[TaskID]) -> None:
+    def __init__(self, progress: Progress | None, task_id: TaskID | None) -> None:
         self._progress = progress
         self._task_id = task_id
 
@@ -53,7 +70,7 @@ def request_progress(
     message: str,
     *,
     disabled: bool = False,
-    console: Optional[Console] = None,
+    console: Console | None = None,
 ) -> Iterator[_ProgressHandle]:
     """Render a stderr spinner with elapsed-time while the block runs.
 
@@ -76,7 +93,7 @@ def request_progress(
     with Progress(
         SpinnerColumn(),
         TextColumn("[progress.description]{task.description}"),
-        TimeElapsedColumn(),
+        _MinutesSecondsElapsedColumn(),
         console=console,
         transient=True,
     ) as progress:
