@@ -22,6 +22,7 @@ The mock replicates the async-context-manager chain::
 
 from __future__ import annotations
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -328,8 +329,6 @@ class TestProxyByAgentName:
 class TestModelNamePatching:
     def test_unknown_model_replaced_by_agent_name(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """JSON responses with "unknown-model" get patched to the agent name."""
-        import json
-
         mock_entity_client.get = AsyncMock(return_value=_make_agent("my-agent"))
         dep = _make_deployment(agent="my-agent", status="running", endpoint="http://localhost:9001")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
@@ -346,11 +345,28 @@ class TestModelNamePatching:
         assert resp.status_code == 200
         data = resp.json()
         assert data["model"] == "my-agent"
+        assert data["choices"] == [{"message": {"content": "hi"}}]
+
+    def test_malformed_json_passed_through(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """Non-JSON response bodies are passed through unmodified."""
+        mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
+        dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+
+        garbled = b"this is not json"
+        httpx_mock = _make_httpx_mock(200, garbled, "application/json")
+
+        with patch("nemo_agents_plugin.api.v2.gateway.httpx.AsyncClient", return_value=httpx_mock):
+            resp = client.post(
+                "/apis/agents/v2/workspaces/default/agents/calc/-/v1/chat/completions",
+                json={"messages": []},
+            )
+
+        assert resp.status_code == 200
+        assert resp.content == garbled
 
     def test_real_model_not_replaced(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """JSON responses with a real model name are left untouched."""
-        import json
-
         mock_entity_client.get = AsyncMock(return_value=_make_agent("calc"))
         dep = _make_deployment(agent="calc", status="running", endpoint="http://localhost:9001")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
@@ -386,8 +402,6 @@ class TestModelNamePatching:
 
     def test_deployment_name_used_for_deployment_proxy(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         """Deployment-name proxy path patches model to the deployment name."""
-        import json
-
         dep = _make_deployment(name="calc-v2", status="running", endpoint="http://localhost:9001")
         mock_entity_client.get = AsyncMock(return_value=dep)
 
