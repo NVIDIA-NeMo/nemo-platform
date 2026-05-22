@@ -85,6 +85,11 @@ def test_metric_descriptor_rejects_duplicate_outputs() -> None:
         )
 
 
+def test_metric_descriptor_rejects_empty_metric_type() -> None:
+    with pytest.raises(ValueError, match="String should have at least 1 character"):
+        MetricDescriptor(type="", outputs=[MetricOutputSpec.continuous_score("score")])
+
+
 def test_validate_metric_result_accepts_declared_outputs() -> None:
     outputs = [
         MetricOutputSpec.continuous_score("reward"),
