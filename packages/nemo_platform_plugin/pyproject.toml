@@ -1,7 +1,7 @@
 [project]
 name = "nemo-platform-plugin"
 dynamic = ["version"]
-description = "Public plugin contract for the NeMo Platform — the only package plugin authors need."
+description = "Public plugin contract for the NeMo Platform - the only package plugin authors need."
 readme = "src/nemo_platform_plugin/README.md"
 requires-python = ">=3.11,<3.14"
 classifiers = [
