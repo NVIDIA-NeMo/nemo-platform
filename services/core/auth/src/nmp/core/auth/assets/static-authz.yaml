@@ -1200,7 +1200,7 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/annotations:
       get:
         permissions:
-        - intake.annotations.read
+        - intake.annotations.list
         scopes:
         - intake:read
         - platform:read
@@ -1424,7 +1424,7 @@ authz:
     /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/annotations:
       get:
         permissions:
-        - intake.spans.read
+        - intake.annotations.list
         scopes:
         - intake:read
         - platform:read
