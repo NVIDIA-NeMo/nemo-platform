@@ -1,7 +1,10 @@
+---
+title: "Routing Targets Through the Inference Gateway"
+description: ""
+---
 <a id="auditor-targets-inference-gateway"></a>
-# Routing Targets Through the Inference Gateway
 
-`AuditTarget.options` is passed through to garak unchanged, with one exception: the plugin recognizes a `nmp_uri_spec` sentinel and resolves it to a concrete URI at run time using the {{platform_name}} Inference Gateway. This keeps target definitions portable — you store provider references instead of host-specific URLs.
+`AuditTarget.options` is passed through to garak unchanged, with one exception: the plugin recognizes a `nmp_uri_spec` sentinel and resolves it to a concrete URI at run time using the NeMo Platform Inference Gateway. This keeps target definitions portable — you store provider references instead of host-specific URLs.
 
 ## What `nmp_uri_spec` Is
 

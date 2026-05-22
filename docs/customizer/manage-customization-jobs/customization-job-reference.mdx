@@ -1,5 +1,7 @@
-# Customization Job Reference
-
+---
+title: "Customization Job Reference"
+description: ""
+---
 <a id="ft-customization-job-reference"></a>
 Use this page when you need field-level details for customization job specifications, the complete API schema, or integration options.
 
@@ -34,48 +36,54 @@ search for `CustomizationJobInput`.
 
 To enable W&B integration, add the `integrations` configuration:
 
-=== "Python"
+<Tabs>
 
-    ```python
-    job = client.customization.jobs.create(
-        name="my-job",
-        workspace="default",
-        spec={
-            "model": "default/llama-3-2-1b",
-            "dataset": "fileset://default/my-dataset",
-            "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-            "integrations": {
-                "wandb": {
-                    "project": "my-finetuning-project",
-                    "entity": "my-team",
-                    "tags": ["fine-tuning", "llama"],
-                    "api_key_secret": "my-wandb-key",
-                }
-            },
-        },
-    )
-    ```
+<Tab title="Python">
 
-=== "CLI"
-
-    ```bash
-    nemo customization jobs create my-job \
-      --workspace default \
-      --spec '{
+```python
+job = client.customization.jobs.create(
+    name="my-job",
+    workspace="default",
+    spec={
         "model": "default/llama-3-2-1b",
         "dataset": "fileset://default/my-dataset",
         "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
         "integrations": {
-          "wandb": {
-            "project": "my-finetuning-project",
-            "entity": "my-team",
-            "tags": ["fine-tuning", "llama"],
-            "api_key_secret": "my-wandb-key"
-          }
-        }
-      }'
-    ```
+            "wandb": {
+                "project": "my-finetuning-project",
+                "entity": "my-team",
+                "tags": ["fine-tuning", "llama"],
+                "api_key_secret": "my-wandb-key",
+            }
+        },
+    },
+)
+```
 
+</Tab>
+<Tab title="CLI">
+
+```bash
+nemo customization jobs create my-job \
+  --workspace default \
+  --spec '{
+    "model": "default/llama-3-2-1b",
+    "dataset": "fileset://default/my-dataset",
+    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
+    "integrations": {
+      "wandb": {
+        "project": "my-finetuning-project",
+        "entity": "my-team",
+        "tags": ["fine-tuning", "llama"],
+        "api_key_secret": "my-wandb-key"
+      }
+    }
+  }'
+```
+
+</Tab>
+
+</Tabs>
 The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`.
 Use the secret name (e.g., `"my-wandb-key"`) to resolve it from the request workspace.
 To create the secret, see [Weights & Biases Keys](../../get-started/concepts/manage-secrets.md).
@@ -98,44 +106,50 @@ To view your training metrics in W&B after the job starts, see [ft-tut-metrics-w
 
 To enable MLflow integration:
 
-=== "Python"
+<Tabs>
 
-    ```python
-    job = client.customization.jobs.create(
-        name="my-job",
-        workspace="default",
-        spec={
-            "model": "default/llama-3-2-1b",
-            "dataset": "fileset://default/my-dataset",
-            "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-            "integrations": {
-                "mlflow": {
-                    "experiment_name": "llama-finetuning",
-                    "tracking_uri": "http://mlflow.example.com:5000",
-                }
-            },
-        },
-    )
-    ```
+<Tab title="Python">
 
-=== "CLI"
-
-    ```bash
-    nemo customization jobs create my-job \
-      --workspace default \
-      --spec '{
+```python
+job = client.customization.jobs.create(
+    name="my-job",
+    workspace="default",
+    spec={
         "model": "default/llama-3-2-1b",
         "dataset": "fileset://default/my-dataset",
         "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
         "integrations": {
-          "mlflow": {
-            "experiment_name": "llama-finetuning",
-            "tracking_uri": "http://mlflow.example.com:5000"
-          }
-        }
-      }'
-    ```
+            "mlflow": {
+                "experiment_name": "llama-finetuning",
+                "tracking_uri": "http://mlflow.example.com:5000",
+            }
+        },
+    },
+)
+```
 
+</Tab>
+<Tab title="CLI">
+
+```bash
+nemo customization jobs create my-job \
+  --workspace default \
+  --spec '{
+    "model": "default/llama-3-2-1b",
+    "dataset": "fileset://default/my-dataset",
+    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
+    "integrations": {
+      "mlflow": {
+        "experiment_name": "llama-finetuning",
+        "tracking_uri": "http://mlflow.example.com:5000"
+      }
+    }
+  }'
+```
+
+</Tab>
+
+</Tabs>
 | Field | Description |
 |-------|-------------|
 | `experiment_name` | MLflow experiment name. Defaults to `output.name` if not set |

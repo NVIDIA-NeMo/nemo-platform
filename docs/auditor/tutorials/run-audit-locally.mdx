@@ -1,22 +1,27 @@
+---
+title: "Run an Audit Locally"
+description: ""
+---
 <a id="auditor-run-audit-locally"></a>
-# Run an Audit Locally
 
-This tutorial walks through running a single audit end-to-end with the {{__auditor_short_name}} plugin SDK. You will persist an audit configuration and a target, run the audit in-process, and inspect the resulting report artifacts.
+This tutorial walks through running a single audit end-to-end with the \{\{__auditor_short_name}} plugin SDK. You will persist an audit configuration and a target, run the audit in-process, and inspect the resulting report artifacts.
 
 **What you will learn:**
 
-- Initialize the {{platform_name}} SDK and reach the `client.auditor` resource.
+- Initialize the NeMo Platform SDK and reach the `client.auditor` resource.
 - Create an `AuditConfig` selecting which garak probes to run.
 - Create an `AuditTarget` pointing at a model through the Inference Gateway.
 - Execute the audit locally with `client.auditor.run(...)`.
 - Read the JSONL, HTML, and hitlog report artifacts the run produces.
 
-!!! tip
-    This tutorial takes approximately **10 minutes** to complete, plus however long garak takes to run the selected probes against your target.
+<Tip>
 
+This tutorial takes approximately **10 minutes** to complete, plus however long garak takes to run the selected probes against your target.
+
+</Tip>
 ## Prerequisites
 
-- Install and start {{platform_name}} using the [Setup guide](../../get-started/setup.md).
+- Install and start NeMo Platform using the [Setup guide](../../get-started/setup.md).
 - Install garak in a Python virtual environment so the plugin can shell out to it. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`. Override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if your install lives elsewhere.
 - Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](../targets/inference-gateway.md) for details on the `nmp_uri_spec` block used below.
 

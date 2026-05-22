@@ -1,5 +1,7 @@
-# Full CLI Reference
-
+---
+title: "Full CLI Reference"
+description: ""
+---
 Command-line interface for NeMo Platform.
 
 **Getting started:**
@@ -1084,8 +1086,8 @@ nemo files filesets list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter filesets by name, description, purpose, storage_type, created_at, and updated_at.
 * `--filter.description`
@@ -1465,8 +1467,8 @@ nemo inference deployment-configs list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter deployment configs by workspace, project, model_entity_id, name, description, created_at, and updated_at.
 * `--filter.description`
@@ -1799,8 +1801,8 @@ nemo inference deployments list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter deployments by workspace, project, status, config, model_provider_id, name, status_message, created_at, and updated_at.
 * `--filter.config`
@@ -2894,8 +2896,8 @@ nemo inference providers list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter model providers by workspace, project, status, model_deployment_id, name, description, host_url, created_at, and updated_at.
 * `--filter.description`
@@ -3467,8 +3469,8 @@ nemo jobs list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter jobs by workspace, project, name, status, source, created_at, and updated_at.
 * `--filter.name`
@@ -4093,7 +4095,7 @@ nemo models create [OPTIONS] [NAME]
 * `--base-model`: Link to another model which is used as a base for the current model
 * `--custom-fields`: Custom fields for additional metadata (JSON string)
 * `--description`: Optional description of the model
-* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format {workspace}/{fileset_name}
+* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format \{workspace}/\{fileset_name}
 * `--finetuning-type <CHOICE>`: Finetuning types. [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
 * `--model-providers`: List of ModelProvider workspace/name resource names that provide inference for this Model Entity (can be repeated)
 * `--ownership`: Ownership information for the model (JSON string)
@@ -4167,8 +4169,8 @@ nemo models list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter models by name, project, workspace, base_model, adapters, finetuning_type, prompt, lora_enabled, description, created_at, and updated_at.
 * `--filter.adapters`
@@ -4258,7 +4260,7 @@ nemo models update [OPTIONS] NAME
 * `--base-model`: Link to another model which is used as a base for the current model
 * `--custom-fields`: Custom fields for additional metadata (JSON string)
 * `--description`: Optional description of the model
-* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format {workspace}/{fileset_name}
+* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format \{workspace}/\{fileset_name}
 * `--finetuning-type <CHOICE>`: Finetuning types. [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
 * `--model-providers`: List of ModelProvider workspace/name resource names that provide inference for this Model Entity (can be repeated)
 * `--ownership`: Ownership information for the model (JSON string)
@@ -4328,7 +4330,7 @@ nemo models adapters create [OPTIONS] MODEL_NAME [NAME]
 **Options:**
 
 * `--workspace`
-* `--fileset`: Location where adapter files are stored - expected format {workspace}/{fileset_name}
+* `--fileset`: Location where adapter files are stored - expected format \{workspace}/\{fileset_name}
 * `--finetuning-type <CHOICE>`: Finetuning types.  [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
 * `--description`: Optional description of the adapter
 * `--enabled`: Whether to make this adapter available for inference post training
@@ -4802,7 +4804,7 @@ nemo workspaces list [OPTIONS]
 **Options:**
 
 * `--filter`: Query filter expression. Supports text and JSON syntaxes:
-- Text: name:"value" AND status>500 with operators : ~ > >= < <= IN NOT IN AND OR and negation prefix -
+- Text: name:"value" AND status>500 with operators : ~ > >= \< \<= IN NOT IN AND OR and negation prefix -
 - Object (JSON): `{"name":{"$like":"value"}}` with operators `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`, `$and`, `$or`, `$not`
 * `--page <INTEGER>`: Page number
 * `--page-size <INTEGER>`: Items per page
@@ -4944,7 +4946,7 @@ nemo guardrail check [OPTIONS]
 * `--messages`: A list of messages comprising the conversation so far (JSON string)
 * `--model`: The model to use for completion. Must be one of the available models.
 * `--frequency-penalty <FLOAT>`: Positive values penalize new tokens based on their existing frequency in the text.
-* `--function-call`: Deprecated in favor of tool_choice. 'none' means the model will not call a function and instead generates a message. 'auto' means the model can pick between generating a message or calling a function. Specifying a particular function via {'name': 'my_function'} forces the model to call that function. (JSON string)
+* `--function-call`: Deprecated in favor of tool_choice. 'none' means the model will not call a function and instead generates a message. 'auto' means the model can pick between generating a message or calling a function. Specifying a particular function via \{'name': 'my_function'} forces the model to call that function. (JSON string)
 * `--guardrails`: Guardrails specific options for the request. (JSON string)
 * `--ignore-eos`: Ignore the eos when running
 * `--logit-bias`: Modify the likelihood of specified tokens appearing in the completion. Maps token IDs (as strings) to bias values from -100 to 100. (JSON string)
@@ -4954,7 +4956,7 @@ nemo guardrail check [OPTIONS]
 * `--n <INTEGER>`: How many chat completion choices to generate for each input message.
 * `--presence-penalty <FLOAT>`: Positive values penalize new tokens based on whether they appear in the text so far.
 * `--reasoning-effort`: Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
-* `--response-format`: Format of the response. Use {'type': 'json_object'} for JSON mode or {'type': 'json_schema', 'json_schema': {...}} for structured outputs. (JSON string)
+* `--response-format`: Format of the response. Use \{'type': 'json_object'} for JSON mode or \{'type': 'json_schema', 'json_schema': \{...}} for structured outputs. (JSON string)
 * `--seed <INTEGER>`: If specified, attempts to sample deterministically.
 * `--stop`: Up to 4 sequences where the API will stop generating further tokens. (JSON string)
 * `--stream`: If set, partial message deltas will be sent, like in ChatGPT.
@@ -5093,8 +5095,8 @@ nemo guardrail configs list [OPTIONS]
 
 * `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
 JSON-only fields:
-  created_at: {gte: str, lte: str}
-  updated_at: {gte: str, lte: str}
+  created_at: \{gte: str, lte: str}
+  updated_at: \{gte: str, lte: str}
 
 Filter guardrail configs by name, description, project, created_at, and updated_at.
 * `--filter.description`

@@ -1,5 +1,8 @@
+---
+title: "Agent Configuration"
+description: ""
+---
 <a id="eval-metrics-agent-configuration"></a>
-# Agent Configuration
 
 Online evaluations can target an **agent** instead of a model. An agent is an HTTP endpoint that accepts a request and returns a response, optionally with a trajectory of intermediate steps. Use agents when you want to evaluate an agentic system end to end rather than a standalone LLM endpoint.
 
@@ -64,13 +67,13 @@ You control the request shape with `body` and extract values from the response w
 | `name` | Yes | string | Agent name or identifier. |
 | `format` | No | string |  `generic` (default) or `nemo_agent_toolkit`. |
 | `api_key_secret` | No | string | API key reference. See [Model API Authentication](model-configuration.md#model-api-authentication). |
-| `body` | Yes | dict | Jinja template for the request payload. Use `{%raw%}{{ prompt }}{%endraw%}`, `{%raw%}{{ messages }}{%endraw%}`, or fields from the rendered prompt context. |
+| `body` | Yes | dict | Jinja template for the request payload. Use `{{ prompt }}`, `{{ messages }}`, or fields from the rendered prompt context. |
 | `response_path` | Yes | string | [JSONPath](https://datatracker.ietf.org/doc/html/rfc9535) expression to extract the response text. |
 | `trajectory_path` | No | string | JSONPath expression to extract the trajectory. |
 
 ### Run a Generic Agent Evaluation
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import Agent, RunConfigOnline
@@ -99,7 +102,7 @@ for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
 
-{% endraw %}
+
 
 Use `evaluator.submit(...)` with the same argument shape when you want a durable remote job, but set `api_key_secret` to a platform secret name for the target workspace.
 
@@ -154,7 +157,7 @@ Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo 
 
 ### Run a NAT Agent Evaluation
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import Agent, RunConfigOnline
@@ -186,7 +189,7 @@ job.wait_until_done()
 result = job.get_result()
 ```
 
-{% endraw %}
+
 
 ## Model vs Agent: When to Use Which
 
@@ -198,9 +201,11 @@ result = job.get_result()
 | Evaluate a custom HTTP endpoint with non-standard response format | | x |
 | Use a standard chat completions API | x | |
 
-!!! info
-    Online evaluations accept **either** a model **or** an agent as the request target, never both.
+<Note>
 
+Online evaluations accept **either** a model **or** an agent as the request target, never both.
+
+</Note>
 ## Related
 
 - [Model Configuration](model-configuration.md) - Inline model targets for LLM endpoints.

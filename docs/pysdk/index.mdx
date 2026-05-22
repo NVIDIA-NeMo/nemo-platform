@@ -1,24 +1,32 @@
-<a id="nemo-ms-pysdk"></a>
-# {{platform_name}} Python SDK Reference
+---
+title: "NeMo Platform Python SDK Reference"
+description: ""
+---
+import Snippet03Usage from "@/snippets/sdk/python/overrides/nemo-platform/README/03_usage.mdx";
 
-The [{{platform_name}} Python SDK](https://pypi.org/project/nemo-platform/) is a library for building and deploying AI models, abstracting the underlying infrastructure and providing a high-level interface for the {{platform_name}} APIs.
+<a id="nemo-ms-pysdk"></a>
+
+The [NeMo Platform Python SDK](https://pypi.org/project/nemo-platform/) is a library for building and deploying AI models, abstracting the underlying infrastructure and providing a high-level interface for the NeMo Platform APIs.
 
 ## Installation
 
-Install the {{platform_name}} Python SDK using `pip`:
+Install the NeMo Platform Python SDK using `pip`:
 
 ```bash
 pip install nemo-platform
 ```
 
-!!! note "This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use."
+<Note>
+
+This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use.
+
+</Note>
     If you previously installed the `nemo-microservices` package, uninstall it first to avoid conflicts:
 
     ```bash
     pip uninstall nemo-microservices
     ```
---8<-- "sdk/python/overrides/nemo-platform/README/03_usage.md"
-
+<Snippet03Usage />
 ## Next Steps
 
 - Read more about connecting with the [client APIs](./client/index.md).

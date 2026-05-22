@@ -1,80 +1,75 @@
+---
+title: "Install NeMo Platform with Helm"
+description: ""
+---
 <a id="nemo-platform-setup"></a>
-# Install {{platform_name}} with Helm
 
-The {{platform_name}} is bundled in an all-in-one Helm chart that supports end-to-end microservice deployment. Use the following guides to build and manage a complete data flywheel with the {{platform_name}} on your Kubernetes either on-prem or in the cloud.
+The NeMo Platform is bundled in an all-in-one Helm chart that supports end-to-end microservice deployment. Use the following guides to build and manage a complete data flywheel with the NeMo Platform on your Kubernetes either on-prem or in the cloud.
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Prerequisites](prerequisites.md)**
+<Card title="Prerequisites" href="prerequisites.md">
 
-    ---
+Review the prerequisites for installing the \{\{helm_chart_short_name}}.
 
-    Review the prerequisites for installing the {{helm_chart_short_name}}.
+<small><span class="md-tag">cluster-admin</span></small>
 
-    <small><span class="md-tag">cluster-admin</span></small>
+</Card>
+<Card title="Install }" href="install.md">
 
--   **[Install }](install.md)**
+Install the NeMo Platform using the Helm chart.
 
-    ---
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
-    Install the {{platform_name}} using the Helm chart.
+</Card>
+<Card title="Database Setup" href="database-setup.md">
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
+Set up an external database for the NeMo Platform.
 
--   **[Database Setup](database-setup.md)**
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
-    ---
+</Card>
+<Card title="Ingress" href="ingress.md">
 
-    Set up an external database for the {{platform_name}}.
+Set up Ingress for the NeMo Platform.
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
--   **[Ingress](ingress.md)**
+</Card>
+<Card title="Persistent Volumes" href="persistent-volumes.md">
 
-    ---
+Set up persistent volumes for the NeMo Platform.
 
-    Set up Ingress for the {{platform_name}}.
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
+</Card>
+<Card title="File Storage" href="file-storage.md">
 
--   **[Persistent Volumes](persistent-volumes.md)**
+Configure storage options for the Files service.
 
-    ---
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
-    Set up persistent volumes for the {{platform_name}}.
+</Card>
+<Card title="Multinode Networking" href="multinode-networking.md">
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
+Configure high-performance east-west networking (EFA, InfiniBand, TCP-XO, SR-IOV) for multi-node training.
 
--   **[File Storage](file-storage.md)**
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">cloud</span></small>
 
-    ---
+</Card>
+<Card title="OpenShift" href="openshift.md">
 
-    Configure storage options for the Files service.
+Install with OpenShift-compatible configuration.
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">openshift</span></small>
 
--   **[Multinode Networking](multinode-networking.md)**
+</Card>
+<Card title="Backup and Restore" href="backup-and-restore.md">
 
-    ---
+Set up backup and restore configurations for the NeMo Platform.
 
-    Configure high-performance east-west networking (EFA, InfiniBand, TCP-XO, SR-IOV) for multi-node training.
+<small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
 
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">cloud</span></small>
+</Card>
 
--   **[OpenShift](openshift.md)**
-
-    ---
-
-    Install with OpenShift-compatible configuration.
-
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">openshift</span></small>
-
--   **[Backup and Restore](backup-and-restore.md)**
-
-    ---
-
-    Set up backup and restore configurations for the {{platform_name}}.
-
-    <small><span class="md-tag">cluster-admin</span> <span class="md-tag">on-prem</span> <span class="md-tag">cloud</span></small>
-
-</div>
+</Cards>

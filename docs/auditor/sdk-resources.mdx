@@ -1,8 +1,11 @@
+---
+title: "{{__auditor_short_name}} NeMo Platform SDK Resources"
+description: ""
+---
 <a id="auditor-nmp-sdk-resources"></a>
 
-# {{__auditor_short_name}} {{platform_name}} SDK Resources
 
-The {{__auditor_short_name}} plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
+The \{\{__auditor_short_name}} plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
 This page documents that surface: how to manage audit configurations and targets in the entity store, and how to run an audit in-process using the local execution path.
 
 The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](configs/index.md) and [audit target](targets/index.md) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
@@ -10,7 +13,7 @@ The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets
 
 ## AuditorPluginResource
 
-The `AuditorPluginResource` is the sync SDK object for working with the {{__auditor_short_name}} plugin.
+The `AuditorPluginResource` is the sync SDK object for working with the \{\{__auditor_short_name}} plugin.
 It is accessed directly from a `NeMoPlatform` instance:
 
 ```python
@@ -63,9 +66,9 @@ The work happens entirely on the host running the SDK call — there is no remot
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `config` | `AuditConfig \| str` | Yes | An inline `AuditConfig` instance or a name string referencing one in the entity store. A bare name such as `"quick-scan"` resolves against the `workspace` argument; a qualified name such as `"prod/quick-scan"` always uses the workspace prefix. |
-| `target` | `AuditTarget \| str` | Yes | An inline `AuditTarget` instance or a name string, with the same resolution rules as `config`. |
-| `workspace` | `str \| None` | No | Workspace used both as the entity-lookup fallback and as the scope for the local `JobContext`. Defaults to `"default"`. |
+| `config` | `AuditConfig \\| str` | Yes | An inline `AuditConfig` instance or a name string referencing one in the entity store. A bare name such as `"quick-scan"` resolves against the `workspace` argument; a qualified name such as `"prod/quick-scan"` always uses the workspace prefix. |
+| `target` | `AuditTarget \\| str` | Yes | An inline `AuditTarget` instance or a name string, with the same resolution rules as `config`. |
+| `workspace` | `str \\| None` | No | Workspace used both as the entity-lookup fallback and as the scope for the local `JobContext`. Defaults to `"default"`. |
 
 ### `run()` return value
 

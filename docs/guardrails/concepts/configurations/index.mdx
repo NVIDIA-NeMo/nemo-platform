@@ -1,6 +1,9 @@
-<!-- @nemo-nb: process -->
+---
+title: "Guardrail Configurations"
+description: ""
+---
+
 <a id="guardrails-configurations"></a>
-# Guardrail Configurations
 
 Guardrail configurations define the safety policies that protect your LLM interactions. A configuration specifies which safety checks (rails) to apply, the models to use, and the prompts to use for the safety checks.
 
@@ -20,24 +23,22 @@ A guardrail configuration also supports general options such as instructions and
 
 ## In This Section
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Configuration Structure](configuration-structure.md)**
+<Card title="Configuration Structure" href="configuration-structure.md">
 
-    ---
+Learn about models, prompts, and rails that make up a configuration.
 
-    Learn about models, prompts, and rails that make up a configuration.
+</Card>
+<Card title="Manage Configurations" href="manage-configs.md">
 
--   **[Manage Configurations](manage-configs.md)**
+Create, list, retrieve, update, and delete guardrail configurations.
 
-    ---
+</Card>
+<Card title="Default Configurations" href="default-configs.md">
 
-    Create, list, retrieve, update, and delete guardrail configurations.
+Built-in configurations available in the `system` workspace: `default`, `content-safety`, and `self-check`.
 
--   **[Default Configurations](default-configs.md)**
+</Card>
 
-    ---
-
-    Built-in configurations available in the `system` workspace: `default`, `content-safety`, and `self-check`.
-
-</div>
+</Cards>

@@ -1,5 +1,7 @@
-# API Scopes
-
+---
+title: "API Scopes"
+description: ""
+---
 API scopes are token-level access restrictions that sit on top of role-based permissions. They control which parts of the API a token can access, independent of the user's role.
 
 For role-based permissions, see [Roles & Permissions](roles-and-permissions.md). For the RBAC model, see [Authorization Concepts](../concepts.md).
@@ -36,9 +38,11 @@ Each API has a read and write scope. A token with an API-specific scope can only
 | Safe Synthesizer | `safe-synthesizer:read` | `safe-synthesizer:write` | `/apis/safe-synthesizer/` |
 | Secrets | `secrets:read` | `secrets:write` | `/apis/secrets/` |
 
-!!! note
-    The `entities:read` and `entities:write` scopes are for internal service-to-service usage. The generic entities API is not accessible to regular users — only PlatformAdmin and service principals can access it. Users interact with entities through feature-specific APIs (Models, Evaluation, etc.) which use their own scopes.
+<Note>
 
+The `entities:read` and `entities:write` scopes are for internal service-to-service usage. The generic entities API is not accessible to regular users — only PlatformAdmin and service principals can access it. Users interact with entities through feature-specific APIs (Models, Evaluation, etc.) which use their own scopes.
+
+</Note>
 ### Platform Scopes
 
 The `platform:*` scopes act as catch-alls that grant access to **all** APIs:
@@ -87,7 +91,7 @@ This enables least-privilege tokens: an Editor can create a read-only token (`pl
 
 Scopes must be registered in your IdP as custom API scopes. The CLI requests them during the OAuth flow, and the IdP includes granted scopes in the access token.
 
-If your IdP prefixes scopes (e.g., Azure AD uses `api://client-id/platform:read`), configure `scope_prefix` in the {{platform_name}} OIDC settings so the platform strips the prefix before authorization:
+If your IdP prefixes scopes (e.g., Azure AD uses `api://client-id/platform:read`), configure `scope_prefix` in the NeMo Platform OIDC settings so the platform strips the prefix before authorization:
 
 ```yaml
 auth:

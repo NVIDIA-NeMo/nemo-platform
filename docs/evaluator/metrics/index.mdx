@@ -1,5 +1,8 @@
+---
+title: "Evaluation Metrics"
+description: ""
+---
 <a id="eval-metrics-index"></a>
-# Evaluation Metrics
 
 Metrics define how to score the outputs of your models, agents, or pipelines.
 
@@ -11,7 +14,11 @@ A metric is a scoring definition that evaluates model or agent outputs. In the E
 - **Outputs**: Row-level scores and aggregate statistics.
 - **Execution**: Metric objects run with `dataset`, optional runtime configuration, and an optional model or agent target.
 
-!!! note "Terminology on this page:"
+<Note>
+
+Terminology on this page:
+
+</Note>
     - **Metric definition**: The reusable scoring configuration.
     - **Metric type**: The metric family (for example exact-match, BLEU, LLM-as-a-judge).
     - **Metric score**: The numeric or rubric output produced at evaluation time.
@@ -34,7 +41,7 @@ A metric is a scoring definition that evaluates model or agent outputs. In the E
 
 Minimal sync evaluation with a built-in metric:
 
-{% raw %}
+
 ```python
 import os
 
@@ -60,7 +67,7 @@ result = evaluator.run(
 
 print(result.aggregate_scores)
 ```
-{% endraw %}
+
 
 ## Execution Modes
 
@@ -84,7 +91,7 @@ See [Model Configuration](model-configuration.md) and [Agent Configuration](agen
 
 ## Built-in vs. Custom Metrics
 
-- **Built-in metrics**: Ready-to-use metrics provided by {{platform_name}} (for example `exact-match`, `bleu`, `rouge`).
+- **Built-in metrics**: Ready-to-use metrics provided by NeMo Platform (for example `exact-match`, `bleu`, `rouge`).
 - **Custom metrics**: Metrics you define for domain-specific evaluation needs.
 
 To configure inline metric objects, see [Manage Metrics](manage-metrics.md).
@@ -122,57 +129,52 @@ dataset = "my-workspace/my-dataset#subdir/path/*.jsonl"
 
 Use the metric-type pages below to create and configure custom metrics.
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[LLM-as-a-Judge](llm-as-a-judge.md)**
+<Card title="LLM-as-a-Judge" href="llm-as-a-judge.md">
 
-    ---
+Use another LLM to evaluate outputs with flexible scoring criteria. Define custom rubrics or numerical ranges.
 
-    Use another LLM to evaluate outputs with flexible scoring criteria. Define custom rubrics or numerical ranges.
+<small><span class="md-tag">custom-scoring</span> <span class="md-tag">rubrics</span></small>
 
-    <small><span class="md-tag">custom-scoring</span> <span class="md-tag">rubrics</span></small>
+</Card>
+<Card title="Agentic Metrics" href="agentic.md">
 
--   **[Agentic Metrics](agentic.md)**
+Evaluate agent workflows including tool calling accuracy, goal completion, and topic adherence.
 
-    ---
+<small><span class="md-tag">RAGAS</span> <span class="md-tag">tool-calling</span></small>
 
-    Evaluate agent workflows including tool calling accuracy, goal completion, and topic adherence.
+</Card>
+<Card title="RAG Metrics" href="rag.md">
 
-    <small><span class="md-tag">RAGAS</span> <span class="md-tag">tool-calling</span></small>
+Evaluate RAG pipelines for retrieval quality and answer generation using RAGAS metrics.
 
--   **[RAG Metrics](rag.md)**
+<small><span class="md-tag">faithfulness</span> <span class="md-tag">relevancy</span></small>
 
-    ---
+</Card>
+<Card title="Similarity Metrics" href="similarity.md">
 
-    Evaluate RAG pipelines for retrieval quality and answer generation using RAGAS metrics.
+Create metrics for text similarity, exact matching, and standard NLP evaluations using Jinja2 templating.
 
-    <small><span class="md-tag">faithfulness</span> <span class="md-tag">relevancy</span></small>
+<small><span class="md-tag">F1</span> <span class="md-tag">ROUGE</span> <span class="md-tag">BLEU</span></small>
 
--   **[Similarity Metrics](similarity.md)**
+</Card>
+<Card title="Bring Your Own Metric" href="remote.md">
 
-    ---
+Integrate custom evaluation endpoints for domain-specific scoring.
 
-    Create metrics for text similarity, exact matching, and standard NLP evaluations using Jinja2 templating.
+<small><span class="md-tag">remote</span> <span class="md-tag">custom</span></small>
 
-    <small><span class="md-tag">F1</span> <span class="md-tag">ROUGE</span> <span class="md-tag">BLEU</span></small>
+</Card>
+<Card title="Agent Configuration" href="agent-configuration.md">
 
--   **[Bring Your Own Metric](remote.md)**
+Configure agent endpoints (generic or NeMo Agent Toolkit) as targets for online evaluation jobs.
 
-    ---
+<small><span class="md-tag">agent</span> <span class="md-tag">NAT</span></small>
 
-    Integrate custom evaluation endpoints for domain-specific scoring.
+</Card>
 
-    <small><span class="md-tag">remote</span> <span class="md-tag">custom</span></small>
-
--   **[Agent Configuration](agent-configuration.md)**
-
-    ---
-
-    Configure agent endpoints (generic or NeMo Agent Toolkit) as targets for online evaluation jobs.
-
-    <small><span class="md-tag">agent</span> <span class="md-tag">NAT</span></small>
-
-</div>
+</Cards>
 
 ## Understanding Scores
 

@@ -1,15 +1,16 @@
+---
+title: "Import and Fine-Tune Private HuggingFace Models"
+description: ""
+---
+import SnippetPrereqs from "@/snippets/_snippets/tutorials/prereqs.mdx";
 
 <a id="ft-tut-private-reg"></a>
-# Import and Fine-Tune Private HuggingFace Models
 
 Use this tutorial to learn how to import a private HuggingFace model into NeMo Customizer, fine-tune it with LoRA, and deploy it for inference.
 
 ## Prerequisites
 
---8<-- "_snippets/tutorials/prereqs.md"
-
---8<-- "_snippets/customizer-prereqs.md"
-
+<SnippetPrereqs />
 ### Tutorial-Specific Prerequisites
 
 - Access to Data Store and Deployment Manager service
@@ -19,42 +20,44 @@ Use this tutorial to learn how to import a private HuggingFace model into NeMo C
 - Sufficient storage space for the model files (typically 5-50GB depending on model size)
 - At least 8GB GPU memory for smaller models, more for larger models
 
-!!! note
-    Verify that all required services are running and accessible before proceeding. You can check service health using the health endpoints documented in each service's API specification.
+<Note>
 
+Verify that all required services are running and accessible before proceeding. You can check service health using the health endpoints documented in each service's API specification.
+
+</Note>
 ### Known Issues
 
-!!! warning
-    **Conv1D Model Architecture Limitation**: Models that use `Conv1D` layers are not compatible with NeMo Customizer AutoModel LoRA.
+<Warning>
 
-    **Error signature**: `AttributeError: 'Conv1D' object has no attribute 'config'`
+**Conv1D Model Architecture Limitation**: Models that use `Conv1D` layers are not compatible with NeMo Customizer AutoModel LoRA.
 
-    **Affected models include:**
+**Error signature**: `AttributeError: 'Conv1D' object has no attribute 'config'`
 
-    - `microsoft/DialoGPT-*` series
-    - `openai-gpt` models
-    - Some older `gpt2` variants
-    - Other models with Conv1D-based architectures
+**Affected models include:**
 
-    **Root cause**: These models use Conv1D layers that lack the linear layers expected by NeMo's LoRA transformation utilities.
+- `microsoft/DialoGPT-*` series
+- `openai-gpt` models
+- Some older `gpt2` variants
+- Other models with Conv1D-based architectures
 
-    **Solution**: Use modern transformer architectures instead:
+**Root cause**: These models use Conv1D layers that lack the linear layers expected by NeMo's LoRA transformation utilities.
 
-    - ✅ **Recommended**: Llama models (3.1, 3.2, 3.3 series)
-    - ✅ **Recommended**: Nemotron models
-    - ✅ **Recommended**: Phi models
-    - ✅ **Alternative**: Gemma models (used in this tutorial)
+**Solution**: Use modern transformer architectures instead:
 
-    For a complete list of tested models, see the [Model Catalog](../models/index.md).
+- ✅ **Recommended**: Llama models (3.1, 3.2, 3.3 series)
+- ✅ **Recommended**: Nemotron models
+- ✅ **Recommended**: Phi models
+- ✅ **Alternative**: Gemma models (used in this tutorial)
 
+For a complete list of tested models, see the [Model Catalog](../models/index.md).
+
+</Warning>
 ---
 
 ## Download Model From HuggingFace Hub
 
 1. Authenticate to HuggingFace using `hf auth login`.
 2. Download the model.
-
-    --8<-- "_snippets/input/common.sh"
 
 ---
 
@@ -64,234 +67,254 @@ Next, create a model repository in the NeMo Data Store and upload the downloaded
 
 ### Create Namespace and Model Repository
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-    --8<-- "_snippets/input/common.py"
+</Tab>
+<Tab title="cURL">
 
-=== "cURL"
+```bash
+# Set environment variables - Update these to match your deployment
+export NAMESPACE="my-org"
+export MODEL_NAME="gemma-2-2b-it"
+export MODEL_VERSION="$(date +%Y%m%d-%H%M%S)" # Unique version for this run
+export NEMO_BASE_URL="http://nemo.test"
+export DATASTORE_URL="http://data-store.test"
+export REPO_ID="${NAMESPACE}/${MODEL_NAME}"
+export DATASET_NAME="${MODEL_NAME}-training-data"
 
-    ```bash
-    # Set environment variables - Update these to match your deployment
-    export NAMESPACE="my-org"
-    export MODEL_NAME="gemma-2-2b-it"
-    export MODEL_VERSION="$(date +%Y%m%d-%H%M%S)" # Unique version for this run
-    export NEMO_BASE_URL="http://nemo.test"
-    export DATASTORE_URL="http://data-store.test"
-    export REPO_ID="${NAMESPACE}/${MODEL_NAME}"
-    export DATASET_NAME="${MODEL_NAME}-training-data"
+# Create namespace
+curl -X POST "${DATASTORE_URL}/v1/datastore/namespaces" \
+-H 'Content-Type: application/json' \
+-d '{"namespace": "'${NAMESPACE}'"}'
 
-    # Create namespace
-    curl -X POST "${DATASTORE_URL}/v1/datastore/namespaces" \
-    -H 'Content-Type: application/json' \
-    -d '{"namespace": "'${NAMESPACE}'"}'
+# Create model repository in datastore
+curl -X POST "${DATASTORE_URL}/v1/hf/api/repos/create" \
+-H 'Content-Type: application/json' \
+-d '{
+"organization": "'${NAMESPACE}'",
+"name": "'${MODEL_NAME}'",
+"type": "model"
+}'
+```
 
-    # Create model repository in datastore
-    curl -X POST "${DATASTORE_URL}/v1/hf/api/repos/create" \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "organization": "'${NAMESPACE}'",
-    "name": "'${MODEL_NAME}'",
-    "type": "model"
-    }'
-    ```
+</Tab>
 
+</Tabs>
 ### Upload Model Files to Data Store
 
 Upload the downloaded model files to the Data Store repository:
-
---8<-- "_snippets/input/common.py"
 
 ## Create Model Entity in Entity Store
 
 After uploading the model files to the Data Store, create a model entity in the Entity Store to register the model with its metadata and specifications for use in customization jobs.
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
-    # Create model entity in Entity Store
-    curl -X POST "${NEMO_BASE_URL}/v1/models" \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "name": "'${MODEL_NAME}'",
-    "namespace": "'${NAMESPACE}'",
-    "description": "Private '${MODEL_NAME}' model imported for customization",
-    "artifact": {
-    "files_url": "hf://models/'${REPO_ID}'",
-    "backend_engine": "hugging_face",
-    "status": "upload_completed"
-    },
-    "spec": {
-    "num_parameters": 200000000,
-    "context_size": 1024,
-    "is_chat": true,
-    "num_virtual_tokens": -1
-    },
-    "peft": {
-    "finetuning_type": "all_weights"
-    }
-    }' | jq .
-    ```
+```bash
+# Create model entity in Entity Store
+curl -X POST "${NEMO_BASE_URL}/v1/models" \
+-H 'Content-Type: application/json' \
+-d '{
+"name": "'${MODEL_NAME}'",
+"namespace": "'${NAMESPACE}'",
+"description": "Private '${MODEL_NAME}' model imported for customization",
+"artifact": {
+"files_url": "hf://models/'${REPO_ID}'",
+"backend_engine": "hugging_face",
+"status": "upload_completed"
+},
+"spec": {
+"num_parameters": 200000000,
+"context_size": 1024,
+"is_chat": true,
+"num_virtual_tokens": -1
+},
+"peft": {
+"finetuning_type": "all_weights"
+}
+}' | jq .
+```
 
+</Tab>
+
+</Tabs>
 ## Deploy the Base Model
 
 Deploy the base model for inference with LoRA adapter support enabled, allowing it to load fine-tuned adapters from customization jobs.
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
-    curl "${NEMO_BASE_URL}/v1/deployment/configs" \
-    -X POST \
-    -H 'Content-Type: application/json' \
-    --data-binary '{
-    "model": "'${MODEL_NAME}'",
-    "name": "'${MODEL_NAME}'-deployment-config",
-    "namespace": "'${NAMESPACE}'",
-    "nim_deployment": {
-    "additional_envs": {
-    "NIM_FT_MODEL": "",
-    "NIM_GUIDED_DECODING_BACKEND": "outlines",
-    "NIM_JSONL_LOGGING": "0",
-    "NIM_MODEL_NAME": "/model-store",
-    "NIM_PEFT_REFRESH_INTERVAL": "30",
-    "NIM_PEFT_SOURCE": "http://nemo-entity-store:8000",
-    "UVICORN_LOG_LEVEL": "DEBUG",
-    "VLLM_NVEXT_LOG_LEVEL": "DEBUG"
-    },
-    "gpu": 1,
-    "image_name": "nvcr.io/nim/nvidia/llm-nim",
-    "image_tag": "1.13.1",
-    "disable_lora_support": false
-    }
-    }' | jq .
+```bash
+curl "${NEMO_BASE_URL}/v1/deployment/configs" \
+-X POST \
+-H 'Content-Type: application/json' \
+--data-binary '{
+"model": "'${MODEL_NAME}'",
+"name": "'${MODEL_NAME}'-deployment-config",
+"namespace": "'${NAMESPACE}'",
+"nim_deployment": {
+"additional_envs": {
+"NIM_FT_MODEL": "",
+"NIM_GUIDED_DECODING_BACKEND": "outlines",
+"NIM_JSONL_LOGGING": "0",
+"NIM_MODEL_NAME": "/model-store",
+"NIM_PEFT_REFRESH_INTERVAL": "30",
+"NIM_PEFT_SOURCE": "http://nemo-entity-store:8000",
+"UVICORN_LOG_LEVEL": "DEBUG",
+"VLLM_NVEXT_LOG_LEVEL": "DEBUG"
+},
+"gpu": 1,
+"image_name": "nvcr.io/nim/nvidia/llm-nim",
+"image_tag": "1.13.1",
+"disable_lora_support": false
+}
+}' | jq .
 
 
-    curl "${NEMO_BASE_URL}/v1/deployment/model-deployments" \
-    -X POST \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "name": "'${MODEL_NAME}'-deployment",
-    "namespace": "'${NAMESPACE}'",
-    "config": "'${NAMESPACE}'/'${MODEL_NAME}'-deployment-config"
-    }' | jq .
+curl "${NEMO_BASE_URL}/v1/deployment/model-deployments" \
+-X POST \
+-H 'Content-Type: application/json' \
+-d '{
+"name": "'${MODEL_NAME}'-deployment",
+"namespace": "'${NAMESPACE}'",
+"config": "'${NAMESPACE}'/'${MODEL_NAME}'-deployment-config"
+}' | jq .
 
-    ```
+```
 
+</Tab>
+
+</Tabs>
 ## Create Customization Target
 
 Create a customization target that references the uploaded model in the Data Store.
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
+```bash
 
-    # Create customization target
-    curl -X POST \
-    "${NEMO_BASE_URL}/v1/customization/targets" \
-    -H 'accept: application/json' \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "name": "'${MODEL_NAME}'@v'${MODEL_VERSION}'",
-    "namespace": "'${NAMESPACE}'",
-    "description": "Customization target for '${MODEL_NAME}'",
-    "enabled": true,
-    "model_uri": "hf://'${NAMESPACE}'/'${MODEL_NAME}'",
-    "num_parameters": 200000000,
-    "precision": "bf16-mixed"
-    }' | jq .
-    ```
+# Create customization target
+curl -X POST \
+"${NEMO_BASE_URL}/v1/customization/targets" \
+-H 'accept: application/json' \
+-H 'Content-Type: application/json' \
+-d '{
+"name": "'${MODEL_NAME}'@v'${MODEL_VERSION}'",
+"namespace": "'${NAMESPACE}'",
+"description": "Customization target for '${MODEL_NAME}'",
+"enabled": true,
+"model_uri": "hf://'${NAMESPACE}'/'${MODEL_NAME}'",
+"num_parameters": 200000000,
+"precision": "bf16-mixed"
+}' | jq .
+```
 
+</Tab>
+
+</Tabs>
 Wait for the model to be downloaded and ready:
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "CLI"
+</Tab>
+<Tab title="CLI">
 
-    ```bash
-    # Check target status with comprehensive handling
-    while true; do
-    RESPONSE=$(curl -s -X GET \
-    "${NEMO_BASE_URL}/v1/customization/targets/${NAMESPACE}/${MODEL_NAME}@v${MODEL_VERSION}" \
-    -H 'accept: application/json')
+```bash
+# Check target status with comprehensive handling
+while true; do
+RESPONSE=$(curl -s -X GET \
+"${NEMO_BASE_URL}/v1/customization/targets/${NAMESPACE}/${MODEL_NAME}@v${MODEL_VERSION}" \
+-H 'accept: application/json')
 
-    STATUS=$(echo "$RESPONSE" | jq -r '.status')
-    echo "Target status: $STATUS"
+STATUS=$(echo "$RESPONSE" | jq -r '.status')
+echo "Target status: $STATUS"
 
-    if [ "$STATUS" = "ready" ]; then
-    echo "Model is ready for customization!"
-    break
-    elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ] || [ "$STATUS" = "unknown" ] || [ "$STATUS" = "delete_failed" ]; then
-    echo "Model download failed with status: $STATUS"
-    echo "Contact your administrator for assistance."
-    break
-    elif [ "$STATUS" = "created" ] || [ "$STATUS" = "pending" ] || [ "$STATUS" = "downloading" ]; then
-    echo "Model is still being prepared, waiting..."
-    elif [ "$STATUS" = "deleted" ] || [ "$STATUS" = "deleting" ]; then
-    echo "Model is being deleted (status: $STATUS)"
-    echo "This target cannot be used for customization."
-    break
-    else
-    echo "Unknown status: $STATUS"
-    fi
+if [ "$STATUS" = "ready" ]; then
+echo "Model is ready for customization!"
+break
+elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ] || [ "$STATUS" = "unknown" ] || [ "$STATUS" = "delete_failed" ]; then
+echo "Model download failed with status: $STATUS"
+echo "Contact your administrator for assistance."
+break
+elif [ "$STATUS" = "created" ] || [ "$STATUS" = "pending" ] || [ "$STATUS" = "downloading" ]; then
+echo "Model is still being prepared, waiting..."
+elif [ "$STATUS" = "deleted" ] || [ "$STATUS" = "deleting" ]; then
+echo "Model is being deleted (status: $STATUS)"
+echo "This target cannot be used for customization."
+break
+else
+echo "Unknown status: $STATUS"
+fi
 
-    sleep 30
-    done
+sleep 30
+done
 
-    ```
+```
 
+</Tab>
+
+</Tabs>
 ## Create Customization Configuration
 
 Create a configuration for LoRA fine-tuning:
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
-    # Create customization configuration
-    curl -X POST \
-    "${NEMO_BASE_URL}/v1/customization/configs" \
-    -H 'accept: application/json' \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "name": "'${MODEL_NAME}'-lora-config@v'${MODEL_VERSION}'",
-    "namespace": "'${NAMESPACE}'",
-    "target": "'${NAMESPACE}'/'${MODEL_NAME}'@v'${MODEL_VERSION}'",
-    "description": "LoRA configuration for '${MODEL_NAME}'",
-    "training_options": [
-    {
-    "training_type": "sft",
-    "finetuning_type": "lora",
-    "num_gpus": 1,
-    "num_nodes": 1,
-    "tensor_parallel_size": 1,
-    "pipeline_parallel_size": 1,
-    "micro_batch_size": 1
-    }
-    ],
-    "training_precision": "bf16-mixed",
-    "max_seq_length": 1024,
-    "prompt_template": "{prompt} {completion}"
-    }' | jq .
-    ```
+```bash
+# Create customization configuration
+curl -X POST \
+"${NEMO_BASE_URL}/v1/customization/configs" \
+-H 'accept: application/json' \
+-H 'Content-Type: application/json' \
+-d '{
+"name": "'${MODEL_NAME}'-lora-config@v'${MODEL_VERSION}'",
+"namespace": "'${NAMESPACE}'",
+"target": "'${NAMESPACE}'/'${MODEL_NAME}'@v'${MODEL_VERSION}'",
+"description": "LoRA configuration for '${MODEL_NAME}'",
+"training_options": [
+{
+"training_type": "sft",
+"finetuning_type": "lora",
+"num_gpus": 1,
+"num_nodes": 1,
+"tensor_parallel_size": 1,
+"pipeline_parallel_size": 1,
+"micro_batch_size": 1
+}
+],
+"training_precision": "bf16-mixed",
+"max_seq_length": 1024,
+"prompt_template": "{prompt} {completion}"
+}' | jq .
+```
 
+</Tab>
+
+</Tabs>
 ---
 
 ## Prepare Training and Validation Datasets
@@ -510,44 +533,48 @@ print(f"Created dataset entity: {dataset.namespace}/{dataset.name}")
 
 Start the LoRA fine-tuning job. The job will create an output artifact with the name specified in `output`, which you'll use later to access your fine-tuned model for inference.
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/common.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
-    # Create job and capture job ID
-    RESPONSE=$(curl -s -X POST \
-    "${NEMO_BASE_URL}/v1/customization/jobs" \
-    -H 'accept: application/json' \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "name": "'${MODEL_NAME}'-lora-job",
-    "config": "'${NAMESPACE}'/'${MODEL_NAME}'-lora-config@v'${MODEL_VERSION}'",
-    "dataset": "'${NAMESPACE}'/'${DATASET_NAME}'",
-    "output": {"name": "'${NAMESPACE}'/'${MODEL_NAME}'-lora@v'${MODEL_VERSION}'"},
-    "description": "LoRA fine-tuning job for '${MODEL_NAME}'",
-    "training": {
-    "type": "sft",
-    "peft": {
-    "type": "lora",
-    "rank": 16,
-    "alpha": 32,
-    "dropout": 0.01
-    },
-    "epochs": 3,
-    "batch_size": 8,
-    "learning_rate": 5e-5
-    }
-    }')
+```bash
+# Create job and capture job ID
+RESPONSE=$(curl -s -X POST \
+"${NEMO_BASE_URL}/v1/customization/jobs" \
+-H 'accept: application/json' \
+-H 'Content-Type: application/json' \
+-d '{
+"name": "'${MODEL_NAME}'-lora-job",
+"config": "'${NAMESPACE}'/'${MODEL_NAME}'-lora-config@v'${MODEL_VERSION}'",
+"dataset": "'${NAMESPACE}'/'${DATASET_NAME}'",
+"output": {"name": "'${NAMESPACE}'/'${MODEL_NAME}'-lora@v'${MODEL_VERSION}'"},
+"description": "LoRA fine-tuning job for '${MODEL_NAME}'",
+"training": {
+"type": "sft",
+"peft": {
+"type": "lora",
+"rank": 16,
+"alpha": 32,
+"dropout": 0.01
+},
+"epochs": 3,
+"batch_size": 8,
+"learning_rate": 5e-5
+}
+}')
 
-    JOB_ID=$(echo "$RESPONSE" | jq -r '.id')
-    OUTPUT_NAME=$(echo "$RESPONSE" | jq -r '.spec.output.name')
-    echo "Started job with ID: $JOB_ID"
-    echo "Output name: $OUTPUT_NAME"
-    ```
+JOB_ID=$(echo "$RESPONSE" | jq -r '.id')
+OUTPUT_NAME=$(echo "$RESPONSE" | jq -r '.spec.output.name')
+echo "Started job with ID: $JOB_ID"
+echo "Output name: $OUTPUT_NAME"
+```
 
+</Tab>
+
+</Tabs>
 Copy the following values from the response:
 
 - `id` (Job ID)
@@ -557,173 +584,187 @@ We'll need them later to monitor the job's status and access the fine-tuned mode
 
 Check job progress:
 
-=== "Python SDK"
+<Tabs>
 
-    --8<-- "_snippets/input/job-monitoring.py"
+<Tab title="Python SDK">
 
-=== "cURL"
+</Tab>
+<Tab title="cURL">
 
-    ```bash
-    # Monitor job status with comprehensive handling
-    while true; do
-    RESPONSE=$(curl -s -X GET \
-    "${NEMO_BASE_URL}/v1/customization/jobs/${JOB_ID}" \
-    -H 'accept: application/json')
+```bash
+# Monitor job status with comprehensive handling
+while true; do
+RESPONSE=$(curl -s -X GET \
+"${NEMO_BASE_URL}/v1/customization/jobs/${JOB_ID}" \
+-H 'accept: application/json')
 
-    STATUS=$(echo "$RESPONSE" | jq -r '.status')
-    echo "Job status: $STATUS"
+STATUS=$(echo "$RESPONSE" | jq -r '.status')
+echo "Job status: $STATUS"
 
-    if [ "$STATUS" = "completed" ]; then
-    echo "Training completed successfully!"
-    break
-    elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ]; then
-    echo "Training finished with status: $STATUS"
-    if [ "$STATUS" = "failed" ]; then
-    echo "Check the job logs for error details."
-    fi
-    break
-    elif [ "$STATUS" = "created" ] || [ "$STATUS" = "pending" ]; then
-    echo "Job is queued and waiting to start..."
-    elif [ "$STATUS" = "running" ]; then
-    echo "Training is in progress..."
-    # Optionally show progress if available
-    PROGRESS=$(echo "$RESPONSE" | jq -r '.status_details.percentage_done // "N/A"')
-    if [ "$PROGRESS" != "N/A" ] && [ "$PROGRESS" != "null" ]; then
-    echo "Progress: ${PROGRESS}%"
-    fi
-    elif [ "$STATUS" = "cancelling" ]; then
-    echo "Job is being cancelled..."
-    elif [ "$STATUS" = "ready" ] || [ "$STATUS" = "unknown" ]; then
-    echo "Job finished with status: $STATUS"
-    break
-    else
-    echo "Unknown status: $STATUS"
-    fi
+if [ "$STATUS" = "completed" ]; then
+echo "Training completed successfully!"
+break
+elif [ "$STATUS" = "failed" ] || [ "$STATUS" = "cancelled" ]; then
+echo "Training finished with status: $STATUS"
+if [ "$STATUS" = "failed" ]; then
+echo "Check the job logs for error details."
+fi
+break
+elif [ "$STATUS" = "created" ] || [ "$STATUS" = "pending" ]; then
+echo "Job is queued and waiting to start..."
+elif [ "$STATUS" = "running" ]; then
+echo "Training is in progress..."
+# Optionally show progress if available
+PROGRESS=$(echo "$RESPONSE" | jq -r '.status_details.percentage_done // "N/A"')
+if [ "$PROGRESS" != "N/A" ] && [ "$PROGRESS" != "null" ]; then
+echo "Progress: ${PROGRESS}%"
+fi
+elif [ "$STATUS" = "cancelling" ]; then
+echo "Job is being cancelled..."
+elif [ "$STATUS" = "ready" ] || [ "$STATUS" = "unknown" ]; then
+echo "Job finished with status: $STATUS"
+break
+else
+echo "Unknown status: $STATUS"
+fi
 
-    sleep 60 # Wait 1 minute before checking again
-    done
-    ```
+sleep 60 # Wait 1 minute before checking again
+done
+```
 
+</Tab>
+
+</Tabs>
 ---
 
 ## Test the Deployed Model
 
 After the customization job has been completed, you can use the `output.name` to access the fine-tuned model and evaluate its performance. The base model NIM deployment you created earlier will automatically load the LoRA adapter when you specify the LoRA model ID in your inference requests.
 
-!!! note
-    The inference endpoints use the `inference_base_url` configured during client initialization (typically the NIM proxy URL). The base model deployment must be running before you can test inference with LoRA adapters.
+<Note>
 
-!!! tip
-    If you included a WandB API key, you can view your training results at [wandb.ai](https://wandb.ai/home) under the `nvidia-nemo-customizer` project.
+The inference endpoints use the `inference_base_url` configured during client initialization (typically the NIM proxy URL). The base model deployment must be running before you can test inference with LoRA adapters.
 
-=== "Python SDK"
+</Note>
+<Tip>
 
-    ```python
-    base_model_id = f"{NAMESPACE}/{MODEL_NAME}"
+If you included a WandB API key, you can view your training results at [wandb.ai](https://wandb.ai/home) under the `nvidia-nemo-customizer` project.
 
-    # Option 1: If you still have the job object from creation
-    # lora_model_id = job.spec.output.name
+</Tip>
+<Tabs>
 
-    # Option 2: Construct from job parameters (use this if running in a new session)
-    lora_model_id = f"{NAMESPACE}/{MODEL_NAME}-lora@v{MODEL_VERSION}"
+<Tab title="Python SDK">
 
-    # First, check if the models are available for inference
-    # Note: The base model deployment must be running and registered with the NIM proxy
-    try:
-    # List models from the entity store (shows all registered models)
-    models_response = client.models.list()
-    available_models = models_response.data
+```python
+base_model_id = f"{NAMESPACE}/{MODEL_NAME}"
 
-    print("Registered models:")
-    for model in available_models:
-    print(f" - {model.id}")
+# Option 1: If you still have the job object from creation
+# lora_model_id = job.spec.output.name
 
-    # Test base model
-    print(f"\nTesting base model: {base_model_id}")
-    base_response = client.chat.completions.create(
-    model=base_model_id,
-    messages=[
-    {
-    "role": "user",
-    "content": "Hello, can you help me?"
-    }
-    ],
-    max_tokens=100,
-    temperature=0.7
-    )
+# Option 2: Construct from job parameters (use this if running in a new session)
+lora_model_id = f"{NAMESPACE}/{MODEL_NAME}-lora@v{MODEL_VERSION}"
 
-    print("Base model response:")
-    print(base_response.choices[0].message.content)
+# First, check if the models are available for inference
+# Note: The base model deployment must be running and registered with the NIM proxy
+try:
+# List models from the entity store (shows all registered models)
+models_response = client.models.list()
+available_models = models_response.data
 
-    # Test LoRA-adapted model (if available)
-    print(f"\nTesting LoRA-adapted model: {lora_model_id}")
-    lora_response = client.chat.completions.create(
-    model=lora_model_id,
-    messages=[
-    {
-    "role": "user",
-    "content": "Hello, can you help me?"
-    }
-    ],
-    max_tokens=100,
-    temperature=0.7
-    )
+print("Registered models:")
+for model in available_models:
+print(f" - {model.id}")
 
-    print("LoRA-adapted model response:")
-    print(lora_response.choices[0].message.content)
+# Test base model
+print(f"\nTesting base model: {base_model_id}")
+base_response = client.chat.completions.create(
+model=base_model_id,
+messages=[
+{
+"role": "user",
+"content": "Hello, can you help me?"
+}
+],
+max_tokens=100,
+temperature=0.7
+)
 
-    except Exception as e:
-    print(f"Error testing model: {e}")
-    ```
+print("Base model response:")
+print(base_response.choices[0].message.content)
 
-=== "cURL"
+# Test LoRA-adapted model (if available)
+print(f"\nTesting LoRA-adapted model: {lora_model_id}")
+lora_response = client.chat.completions.create(
+model=lora_model_id,
+messages=[
+{
+"role": "user",
+"content": "Hello, can you help me?"
+}
+],
+max_tokens=100,
+temperature=0.7
+)
 
-    ```bash
-    # Set the NIM proxy URL
-    export NIM_PROXY_URL="http://nim.test"
+print("LoRA-adapted model response:")
+print(lora_response.choices[0].message.content)
 
-    # Option 1: If you captured OUTPUT_MODEL from job creation (from earlier in tutorial)
-    # export OUTPUT_MODEL="<value from job creation response>"
+except Exception as e:
+print(f"Error testing model: {e}")
+```
 
-    # Option 2: Construct from environment variables (use this if running in a new session)
-    export LORA_MODEL_ID="${NAMESPACE}/${MODEL_NAME}-lora@v${MODEL_VERSION}"
+</Tab>
+<Tab title="cURL">
 
-    # Test model availability
-    curl -X GET "${NIM_PROXY_URL}/models" | jq
+```bash
+# Set the NIM proxy URL
+export NIM_PROXY_URL="http://nim.test"
 
-    # Test inference against the base model
-    curl -X POST "${NIM_PROXY_URL}/v1/chat/completions" \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "model": "'${NAMESPACE}'/'${MODEL_NAME}'",
-    "messages": [
-    {"role": "user", "content": "Hello! How are you?"},
-    {"role": "assistant", "content": "Hi! I am quite well, how can I help you today?"},
-    {"role": "user", "content": "Can you write me a song?"}
-    ],
-    "top_p": 1,
-    "n": 1,
-    "max_tokens": 50,
-    "frequency_penalty": 1.0
-    }'
+# Option 1: If you captured OUTPUT_MODEL from job creation (from earlier in tutorial)
+# export OUTPUT_MODEL="<value from job creation response>"
 
-    # Test inference against a LoRA-adapted model (after customization completes)
-    curl -X POST "${NIM_PROXY_URL}/v1/chat/completions" \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "model": "'${LORA_MODEL_ID}'",
-    "messages": [
-    {"role": "user", "content": "Hello! How are you?"},
-    {"role": "assistant", "content": "Hi! I am quite well, how can I help you today?"},
-    {"role": "user", "content": "Can you write me a song?"}
-    ],
-    "top_p": 1,
-    "n": 1,
-    "max_tokens": 50,
-    "frequency_penalty": 1.0
-    }'
-    ```
+# Option 2: Construct from environment variables (use this if running in a new session)
+export LORA_MODEL_ID="${NAMESPACE}/${MODEL_NAME}-lora@v${MODEL_VERSION}"
 
+# Test model availability
+curl -X GET "${NIM_PROXY_URL}/models" | jq
+
+# Test inference against the base model
+curl -X POST "${NIM_PROXY_URL}/v1/chat/completions" \
+-H 'Content-Type: application/json' \
+-d '{
+"model": "'${NAMESPACE}'/'${MODEL_NAME}'",
+"messages": [
+{"role": "user", "content": "Hello! How are you?"},
+{"role": "assistant", "content": "Hi! I am quite well, how can I help you today?"},
+{"role": "user", "content": "Can you write me a song?"}
+],
+"top_p": 1,
+"n": 1,
+"max_tokens": 50,
+"frequency_penalty": 1.0
+}'
+
+# Test inference against a LoRA-adapted model (after customization completes)
+curl -X POST "${NIM_PROXY_URL}/v1/chat/completions" \
+-H 'Content-Type: application/json' \
+-d '{
+"model": "'${LORA_MODEL_ID}'",
+"messages": [
+{"role": "user", "content": "Hello! How are you?"},
+{"role": "assistant", "content": "Hi! I am quite well, how can I help you today?"},
+{"role": "user", "content": "Can you write me a song?"}
+],
+"top_p": 1,
+"n": 1,
+"max_tokens": 50,
+"frequency_penalty": 1.0
+}'
+```
+
+</Tab>
+
+</Tabs>
 ## Next Steps
 
 Learn how to [check customization job metrics](metrics.md) to monitor the training progress and performance of your fine-tuned model.

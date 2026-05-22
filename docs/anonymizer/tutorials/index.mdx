@@ -1,5 +1,8 @@
+---
+title: "Tutorials"
+description: ""
+---
 <a id="anonymizer-tutorials"></a>
-# Tutorials
 
 These tutorials cover the two user-facing surfaces of the Anonymizer plugin: the streaming `preview` workflow for iteration, and the `run` job for full datasets.
 
@@ -9,7 +12,7 @@ Anonymizer separates **configuration** (what to detect and how to replace it) fr
 
 **Part 1: Build the config (library)**
 
-Use [`anonymizer.config`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) to define the rewrite or replacement strategy and detection options. This code is identical whether you run Anonymizer standalone or through the {{platform_name}} service.
+Use [`anonymizer.config`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) to define the rewrite or replacement strategy and detection options. This code is identical whether you run Anonymizer standalone or through the NeMo Platform service.
 
 ```python
 from anonymizer.config.anonymizer_config import AnonymizerConfig
@@ -66,13 +69,13 @@ preview = anonymizer.preview(PreviewRequest(
 
 ## Service-Specific Considerations
 
-When using Anonymizer as a {{platform_name}} service:
+When using Anonymizer as a NeMo Platform service:
 
 | Feature        | Difference                                              | Details                                                                                |
 |----------------|---------------------------------------------------------|----------------------------------------------------------------------------------------|
 | **Inference**  | Routes through the Inference Gateway                    | Configure providers once and reference them by name from `model_configs`.              |
 | **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
-| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in {{platform_name}} job storage. |
+| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in NeMo Platform job storage. |
 
 ## Prerequisites
 
@@ -84,22 +87,21 @@ Before starting these tutorials, complete the [Quick Start](../quickstart.md) to
 
 ## Tutorials
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Preview a Config](preview.md)**
+<Card title="Preview a Config" href="preview.md">
 
-    ---
+Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview run` / `preview submit`, and the NDJSON frame stream.
 
-    Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview run` / `preview submit`, and the NDJSON frame stream.
+<small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
 
-    <small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
+</Card>
+<Card title="Run an Anonymizer Job" href="run.md">
 
--   **[Run an Anonymizer Job](run.md)**
+Run the full pipeline locally with `nemo anonymizer run run` or submit it to the Jobs worker with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
 
-    ---
+<small><span class="md-tag">intermediate</span> <span class="md-tag">anonymizer</span></small>
 
-    Run the full pipeline locally with `nemo anonymizer run run` or submit it to the Jobs worker with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
+</Card>
 
-    <small><span class="md-tag">intermediate</span> <span class="md-tag">anonymizer</span></small>
-
-</div>
+</Cards>

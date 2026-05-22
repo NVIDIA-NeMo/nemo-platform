@@ -1,12 +1,17 @@
+---
+title: "Model Catalog"
+description: ""
+---
 <a id="ft-model-catalog"></a>
-# Model Catalog
 
-Explore the model families and sizes supported by {{ncm_long_name}}.
+Explore the model families and sizes supported by NVIDIA NeMo Customizer.
 
-!!! note
-    For information on setting up model entities for customization, see the [Manage Model Entities](../manage-model-entities/index.md) guide.
-    For fine-tuning and deployment tutorials, see the [Tutorials](../tutorials/index.md) guide.
+<Note>
 
+For information on setting up model entities for customization, see the [Manage Model Entities](../manage-model-entities/index.md) guide.
+For fine-tuning and deployment tutorials, see the [Tutorials](../tutorials/index.md) guide.
+
+</Note>
 ## Before You Start
 
 If downloading models hosted on Hugging Face, create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](../manage-model-entities/index.md) for setup instructions.
@@ -16,55 +21,49 @@ If downloading models hosted on Hugging Face, create a secret with your HuggingF
 <a id="ft-models"></a>
 ## Model Families
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Llama Models](llama.md)**
+<Card title="Llama Models" href="llama.md">
 
-    ---
+View the available Llama models from Meta, ranging from 8 billion to 70 billion parameters.
 
-    View the available Llama models from Meta, ranging from 8 billion to 70 billion parameters.
+</Card>
+<Card title="Llama Nemotron Models" href="llama-nemotron.md">
 
--   **[Llama Nemotron Models](llama-nemotron.md)**
+View the available Llama Nemotron models from NVIDIA, including Nano and Super variants for efficient and advanced instruction tuning.
 
-    ---
+</Card>
+<Card title="Phi Models" href="phi.md">
 
-    View the available Llama Nemotron models from NVIDIA, including Nano and Super variants for efficient and advanced instruction tuning.
+View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
 
--   **[Phi Models](phi.md)**
+</Card>
+<Card title="Embedding Models" href="embedding.md">
 
-    ---
+View the available embedding models optimized for retrieval and question-answering tasks.
 
-    View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
+</Card>
+<Card title="GPT-OSS Models" href="gpt-oss.md">
 
--   **[Embedding Models](embedding.md)**
+View the available GPT-OSS models supported for customization.
 
-    ---
+</Card>
+<Card title="Qwen Models" href="qwen.md">
 
-    View the available embedding models optimized for retrieval and question-answering tasks.
+View the available Qwen models from Alibaba Cloud, including compact variants for efficient customization.
 
--   **[GPT-OSS Models](gpt-oss.md)**
+</Card>
+<Card title="Mistral Models" href="mistral.md">
 
-    ---
+View the available Mistral models, including Mistral and Ministral variants for instruction-following and reasoning tasks.
 
-    View the available GPT-OSS models supported for customization.
+</Card>
 
--   **[Qwen Models](qwen.md)**
-
-    ---
-
-    View the available Qwen models from Alibaba Cloud, including compact variants for efficient customization.
-
--   **[Mistral Models](mistral.md)**
-
-    ---
-
-    View the available Mistral models, including Mistral and Ministral variants for instruction-following and reasoning tasks.
-
-</div>
+</Cards>
 
 ## Tested Models
 
-The following table lists models that NVIDIA tested and their available features. While {{ncm_short_name}} works with all LLM NIM microservices, the table lists the models that NVIDIA tested. Models available for fine-tuning with {{ncm_short_name}} are not limited to those listed.
+The following table lists models that NVIDIA tested and their available features. While NeMo Customizer works with all LLM NIM microservices, the table lists the models that NVIDIA tested. Models available for fine-tuning with NeMo Customizer are not limited to those listed.
 
 For detailed technical specifications of each model such as architecture, parameters, and token limits, refer to the [model family](#model-families) pages.
 

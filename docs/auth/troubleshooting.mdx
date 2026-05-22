@@ -1,5 +1,7 @@
-# Troubleshooting
-
+---
+title: "Troubleshooting"
+description: ""
+---
 When something goes wrong with authentication or authorization, start here. Problems are organized by symptom.
 
 ## "I Get 401 Unauthorized on Every Request"
@@ -81,7 +83,7 @@ The requested scope is not configured or admin consent has not been granted.
 
 ### "Device flow not enabled" or "Public client flows not allowed"
 
-Your IdP doesn't have device flow enabled for the {{platform_name}} application.
+Your IdP doesn't have device flow enabled for the NeMo Platform application.
 
 **Fix**:
 
@@ -91,7 +93,7 @@ Your IdP doesn't have device flow enabled for the {{platform_name}} application.
 
 ### Client ID Mismatch
 
-The `client_id` in {{platform_name}} config doesn't match the application in your IdP.
+The `client_id` in NeMo Platform config doesn't match the application in your IdP.
 
 **Fix**: Verify `auth.oidc.client_id` matches the client ID in your IdP exactly.
 

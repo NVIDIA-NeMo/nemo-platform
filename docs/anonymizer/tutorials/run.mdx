@@ -1,7 +1,10 @@
+---
+title: "Run an Anonymizer Job"
+description: ""
+---
 <a id="anonymizer-tutorials-run"></a>
-# Run an Anonymizer Job
 
-This tutorial walks through the `anonymizer.run` job: defining a run spec, executing it locally or on the {{platform_name}} Jobs worker, and loading the parquet artifacts it produces.
+This tutorial walks through the `anonymizer.run` job: defining a run spec, executing it locally or on the NeMo Platform Jobs worker, and loading the parquet artifacts it produces.
 
 For detection, rewrite, and replacement strategy details, see the [open-source library documentation](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).
 
@@ -20,7 +23,7 @@ There are three run commands:
 | Command                       | Where it runs                                | Local paths | `model_configs` required | Artifacts                                              |
 |-------------------------------|----------------------------------------------|-------------|--------------------------|--------------------------------------------------------|
 | `nemo anonymizer run run`     | Local CLI process via generated `is_local` path | Allowed     | Optional                 | Written under `persistent/results/artifacts` locally   |
-| `nemo anonymizer run submit`  | {{platform_name}} Jobs worker                | Rejected    | Required                 | Stored in {{platform_name}} job artifact storage; pull with `download_artifacts()` |
+| `nemo anonymizer run submit`  | NeMo Platform Jobs worker                | Rejected    | Required                 | Stored in NeMo Platform job artifact storage; pull with `download_artifacts()` |
 | `nemo anonymizer run explain` | Local schema introspection                   | n/a         | n/a                      | Prints job key, submit endpoint, and input/spec schemas |
 
 Job artifacts (under the `artifacts/` directory):
@@ -82,7 +85,7 @@ spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none
 
 ## Step 3: Run the Job
 
-Choose one execution path. Option A runs in the local CLI process. Option B submits the same request to the {{platform_name}} Jobs worker.
+Choose one execution path. Option A runs in the local CLI process. Option B submits the same request to the NeMo Platform Jobs worker.
 
 ### Option A: Run Locally
 
@@ -108,7 +111,7 @@ Use that path in the next step.
 
 ### Option B: Submit to the Jobs Worker
 
-To execute the same spec on the {{platform_name}} Jobs worker instead of in the CLI process, use `run submit`:
+To execute the same spec on the NeMo Platform Jobs worker instead of in the CLI process, use `run submit`:
 
 ```bash
 nemo anonymizer run submit \

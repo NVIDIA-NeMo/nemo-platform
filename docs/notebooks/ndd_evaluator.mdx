@@ -1,5 +1,7 @@
-# Emergency Triage LLM Evaluation
-
+---
+title: "Emergency Triage LLM Evaluation"
+description: ""
+---
 **Problem:** Accurately labeling Emergency Severity Index (ESI) levels from nurse triage notes is critical for clinical research and model development, but real-world data is often sensitive and access is restricted. Additionally, obtaining high-quality human annotations is costly and slow, making it difficult to build large, diverse datasets for robust evaluation.
 
 **Opportunity:** Synthetic data generation offers a scalable, privacy-preserving alternative. By simulating realistic triage notes and ESI labels, we can create rich datasets without exposing patient information or relying on scarce human annotators. This enables rapid iteration, benchmarking, and model improvement in a domain where data scarcity is a major bottleneck.
@@ -37,7 +39,7 @@ Tip: Run the cells in order. You can re-run preview/generation to explore differ
 
 ## **Step 1**: 🎨 NeMo Data Designer
 
-First, create a client for interacting with {{platform_name}}.
+First, create a client for interacting with NeMo Platform.
 
 ```python
 import os
@@ -52,7 +54,7 @@ client = NeMoPlatform(base_url=BASE_URL, workspace=WORKSPACE)
 ```
 
 Create a Secret and Model Provider to use models hosted on `build.nvidia.com`.
-Note: these resources may already exist if you are running {{platform_name}} Quickstart.
+Note: these resources may already exist if you are running NeMo Platform Quickstart.
 
 ```python
 SECRET_NAME = "nvidia-build-api-key"
@@ -224,7 +226,7 @@ config_builder.add_column(
 ## 🦜 LLM-generated columns
 
 ```python
-{% raw %}
+
 # LLM-generated triage note
 config_builder.add_column(
     dd.LLMTextColumnConfig(
@@ -247,13 +249,13 @@ config_builder.add_column(
         model_alias=MODEL_ALIAS_GENERATOR,
     )
 )
-{% endraw %}
+
 ```
 
 ## ⚖️ LLM-as-a-Judge Evaluation Step
 
 ```python
-{% raw %}
+
 # Rubric: clinical coherence
 clinical_coherence_rubric = dd.Score(
  name="Clinical Coherence",
@@ -302,7 +304,7 @@ config_builder.add_column(
  scores=[clinical_coherence_rubric, esi_level_complexity_rubric],
  )
 )
-{% endraw %}
+
 ```
 
 ### 🧪 Generate & Preview
@@ -490,7 +492,7 @@ for level, df in df_complexities.items():
 This section defines the evaluation configuration used to assess model performance on triage note classification using a custom evaluator.
 
 ```python
-{% raw %}
+
 EVALUATOR_CONFIG = {
     "prompt_template": {
         "messages": [
@@ -515,7 +517,7 @@ EVALUATOR_CONFIG = {
     }
 }
 
-{% endraw %}
+
 ```
 
 ## 🔍 Model evaluation loop and configuration
@@ -529,7 +531,7 @@ The models evaluated are:
 For *each* complexity level, the accuracy score for each model is printed, allowing for side-by-side evaluation of how each model performs at every complexity.
 
 ```python
-{% raw %}
+
 import time
 import pandas as pd
 from typing import Any
@@ -637,7 +639,7 @@ for complexity in COMPLEXITIES:
  results_dict[spec['name']][complexity.capitalize()] = 100 * accuracy # Store as percentage
  print(f" --> DONE: {spec['name']}, {complexity.capitalize()} (Accuracy: {100*accuracy:.2f}%)\n")
 
-{% endraw %}
+
 ```
 
 ```python

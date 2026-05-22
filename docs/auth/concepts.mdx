@@ -1,6 +1,8 @@
-# Authorization Concepts
-
-{{platform_name}} uses **workspace-scoped RBAC**: resources live in workspaces, users get roles (Viewer, Editor, Admin) per workspace, and a policy engine evaluates every request against role bindings and token scopes.
+---
+title: "Authorization Concepts"
+description: ""
+---
+NeMo Platform uses **workspace-scoped RBAC**: resources live in workspaces, users get roles (Viewer, Editor, Admin) per workspace, and a policy engine evaluates every request against role bindings and token scopes.
 
 For the security architecture and trust boundaries, see [Security Model](security-model.md). For hands-on setup, see [Managing Access](authorization/managing-access.md).
 
@@ -144,7 +146,7 @@ Creating a workspace is a special operation:
 
 ### Default Workspaces
 
-{{platform_name}} automatically provisions role bindings for the wildcard principal `*` on certain workspaces:
+NeMo Platform automatically provisions role bindings for the wildcard principal `*` on certain workspaces:
 
 - **`default`**: All authenticated users have **Editor** role, allowing everyone to create and manage resources immediately
 - **`system`**: All authenticated users have **Viewer** role, providing read-only access to system-level resources

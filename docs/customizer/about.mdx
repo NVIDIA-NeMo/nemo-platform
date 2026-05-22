@@ -1,7 +1,10 @@
+---
+title: "Customization Concepts"
+description: ""
+---
 <a id="nemo-ms-about-concepts-customization"></a>
-# Customization Concepts
 
-This page provides an overview of the customization concepts for the {{platform_name}}.
+This page provides an overview of the customization concepts for the NeMo Platform.
 
 ## Supervised Fine-Tuning
 
@@ -58,7 +61,7 @@ flowchart TD
  style M fill:#90EE90
 ```
 
-{{ncm_short_name}} supports supervised fine-tuning (SFT) with the PEFT method of Low-Rank Adaptation (LoRA).
+NeMo Customizer supports supervised fine-tuning (SFT) with the PEFT method of Low-Rank Adaptation (LoRA).
 
 Fine-tuning with LoRA is the recommended starting point for most use cases.
 
@@ -74,7 +77,7 @@ In comparison to full fine-tuning of a base model, Low-Rank Adaptation (LoRA) ha
 LoRA high level architecture:
 
 ```mermaid
-{% raw %}
+
 ---
 caption: Low Rank Adaptation (LoRA)
 ---
@@ -92,7 +95,7 @@ flowchart LR
  class Input,API input
  class FW,RD,CM neural
  class Add add
-{% endraw %}
+
 ```
 
 During LoRA training:
@@ -117,7 +120,7 @@ Additional Resources:
 
 ## Training with Your Own Data
 
-Use {{ncm_short_name}} to train custom models on your own data. The workflow can be carried out as follows:
+Use NeMo Customizer to train custom models on your own data. The workflow can be carried out as follows:
 - Upload a dataset
 - Train a custom model
 - Perform inference with the trained model
@@ -126,23 +129,27 @@ Use {{ncm_short_name}} to train custom models on your own data. The workflow can
 
 Long samples in the dataset are truncated during training if the total token length exceeds the context supported by the model.
 
-!!! note
-    Refer to the model's documentation to see the maximum supported sequence length.
+<Note>
 
+Refer to the model's documentation to see the maximum supported sequence length.
+
+</Note>
 | Dataset Type | Token Counting | Length Management |
 |--------------|----------------|-------------------|
-| Prompt Completion | • Total = prompt + completion tokens | • Truncates prompt tokens to fit limits<br>• Filters out entries that still exceed maximum length |
-| Conversational | • Total = conversation turns + template tokens<br>• Templates are model-specific | • Truncates tokens beyond maximum limit<br>• Preserves template formatting |
+| Prompt Completion | • Total = prompt + completion tokens | • Truncates prompt tokens to fit limits<br />• Filters out entries that still exceed maximum length |
+| Conversational | • Total = conversation turns + template tokens<br />• Templates are model-specific | • Truncates tokens beyond maximum limit<br />• Preserves template formatting |
 
 ### Prompt Completion Datasets
 
 Below are some examples of how you might format your dataset to perform a handful of different tasks.
 
-!!! note
-    When testing models trained with prompt/completion datasets, use the `/v1/completions` endpoint instead of `/v1/chat/completions`.
+<Note>
 
-    For details, refer to the [Dataset Formatting tutorial](tutorials/format-training-dataset.md#format-a-prompt-completion-dataset).
+When testing models trained with prompt/completion datasets, use the `/v1/completions` endpoint instead of `/v1/chat/completions`.
 
+For details, refer to the [Dataset Formatting tutorial](tutorials/format-training-dataset.md#format-a-prompt-completion-dataset).
+
+</Note>
 #### Document Classification
 
 Classify a document into predefined categories. Each training example consists of:
@@ -208,7 +215,7 @@ Hyperparameters are configuration settings used to control the training process.
 
 ## Parallelism
 
-{{platform_name}} Customizer supports various distributed training parallelization methods, which can be mixed together.
+NeMo Platform Customizer supports various distributed training parallelization methods, which can be mixed together.
 
 ### Tensor Parallelism
 
@@ -216,9 +223,11 @@ Hyperparameters are configuration settings used to control the training process.
 
 TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](manage-customization-jobs/hyperparameters.md).
 
-!!! note
-    As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma support tensor parallelism greater than 1 through the multi-GPU LoRA patch. Previous releases only supported `TP=1` for these models.
+<Note>
 
+As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma support tensor parallelism greater than 1 through the multi-GPU LoRA patch. Previous releases only supported `TP=1` for these models.
+
+</Note>
 ### Pipeline Parallelism
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
@@ -265,9 +274,11 @@ When enabled, the `batch_size` and number of training steps update so that each 
 
 - Chat prompt templates do not have support for sequence packing.
 
-!!! note
-    If `training.sequence_packing` is enabled when using a model that does not support sequence packing, the fine-tuning will proceed _without_ sequence packing and a warning will be returned in the API response.
+<Note>
 
+If `training.sequence_packing` is enabled when using a model that does not support sequence packing, the fine-tuning will proceed _without_ sequence packing and a warning will be returned in the API response.
+
+</Note>
 ### Example of using in the API
 
 Example of creating a customization job with sequence packing enabled:

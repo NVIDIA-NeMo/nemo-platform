@@ -1,5 +1,8 @@
+---
+title: "Agentic Benchmarks"
+description: ""
+---
 <a id="eval-benchmarks-agentic"></a>
-# Agentic Benchmarks
 
 Evaluate agent tool-calling capabilities using industry-standard benchmarks.
 
@@ -54,47 +57,55 @@ benchmark_params = {
 }
 ```
 
-=== "Job"
+<Tabs>
 
-    ```python
-    from nemo_platform.types.evaluation import SystemBenchmarkOnlineJobParam
+<Tab title="Job">
 
-    job = client.evaluation.benchmark_jobs.create(
-        spec=SystemBenchmarkOnlineJobParam(
-            benchmark="system/bfclv3-live-simple",
-            model={
-                "url": "<your-nim-endpoint>/v1",
-                "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
-            },
-            benchmark_params={},
-        )
+```python
+from nemo_platform.types.evaluation import SystemBenchmarkOnlineJobParam
+
+job = client.evaluation.benchmark_jobs.create(
+    spec=SystemBenchmarkOnlineJobParam(
+        benchmark="system/bfclv3-live-simple",
+        model={
+            "url": "<your-nim-endpoint>/v1",
+            "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
+        },
+        benchmark_params={},
     )
-    ```
-=== "Result"
+)
+```
 
-    Accuracy of tool call predictions
+</Tab>
+<Tab title="Result">
 
-    - Score name: tool-calling-accuracy
-    - Value range: 0.0–1.0
+Accuracy of tool call predictions
 
-    ```json
+- Score name: tool-calling-accuracy
+- Value range: 0.0–1.0
+
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "name": "tool-calling-accuracy",
-          "score_type": "range",
-          "count": 1,
-          "nan_count": 0,
-          "sum": 1.0,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0,
-          "std_dev": 0.0,
-          "variance": 0.0
-        }
-      ]
+      "name": "tool-calling-accuracy",
+      "score_type": "range",
+      "count": 1,
+      "nan_count": 0,
+      "sum": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0,
+      "std_dev": 0.0,
+      "variance": 0.0
     }
-    ```
+  ]
+}
+```
+
+</Tab>
+
+</Tabs>
 ---
 
 ## Job Management
@@ -103,9 +114,11 @@ After creating a job, navigate to [Benchmark Job Management](job-management.md) 
 
 ---
 
-!!! info
+<Note>
 
-    - [Agent Configuration](../metrics/agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation and benchmark jobs
-    - [Agentic Evaluation Metrics](../metrics/agentic.md) - Detailed metric documentation for evaluating agentic workflows
-    - [Managing Secrets](../../get-started/concepts/manage-secrets.md) - Store API keys for external APIs
-    - [Evaluation Results](results.md) - Understanding and downloading results
+- [Agent Configuration](../metrics/agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation and benchmark jobs
+- [Agentic Evaluation Metrics](../metrics/agentic.md) - Detailed metric documentation for evaluating agentic workflows
+- [Managing Secrets](../../get-started/concepts/manage-secrets.md) - Store API keys for external APIs
+- [Evaluation Results](results.md) - Understanding and downloading results
+
+</Note>

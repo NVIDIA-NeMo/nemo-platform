@@ -1,5 +1,8 @@
+---
+title: "Preview a Config"
+description: ""
+---
 <a id="anonymizer-tutorials-preview"></a>
-# Preview a Config
 
 This tutorial walks through the `anonymizer.preview` flow: defining a request, streaming a small anonymized sample, and inspecting the resulting frames.
 
@@ -103,20 +106,22 @@ preview.display_record(0)  # render record 0 with entity highlights in a noteboo
 
 `AnonymizerResource.preview` calls the plugin service, so the same constraints as `preview submit` apply: use a fileset or `http(s)` source, and include `model_configs`.
 
-??? "Async client"
-    `AsyncAnonymizerResource.preview` has the same signature and return type:
+<Accordion title="Async client">
 
-    ```python
-    import os
-    from nemo_platform import AsyncNeMoPlatform
+`AsyncAnonymizerResource.preview` has the same signature and return type:
 
-    async_sdk = AsyncNeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace=WORKSPACE,
-    )
-    preview = await async_sdk.anonymizer.preview(request)
-    ```
+```python
+import os
+from nemo_platform import AsyncNeMoPlatform
 
+async_sdk = AsyncNeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+preview = await async_sdk.anonymizer.preview(request)
+```
+
+</Accordion>
 ## Step 3: Persist Preview Records
 
 `AnonymizerPreviewResult.dataset` and `trace_dataset` are pandas DataFrames, so save them with standard pandas methods:
@@ -126,9 +131,11 @@ preview.dataset.to_csv("anonymized-preview.csv", index=False)
 preview.dataset.to_parquet("anonymized-preview.parquet", index=False)
 ```
 
-??? "More about preview results"
-    `AnonymizerPreviewResult` stores everything in memory; nothing is persisted to disk by default. The `dataset` field is a regular pandas DataFrame and can be saved with `to_csv` or `to_parquet`.
+<Accordion title="More about preview results">
 
+`AnonymizerPreviewResult` stores everything in memory; nothing is persisted to disk by default. The `dataset` field is a regular pandas DataFrame and can be saved with `to_csv` or `to_parquet`.
+
+</Accordion>
 ## Step 4: Run from the CLI (Alternative)
 
 The CLI accepts the same request shape as a YAML spec file. Use `preview run` for local execution (allows local paths, model configs optional) or `preview submit` for the plugin service path (same as `sdk.anonymizer.preview`).

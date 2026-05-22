@@ -1,5 +1,8 @@
+---
+title: "Metric Results"
+description: ""
+---
 <a id="eval-metric-results"></a>
-# Metric Results
 
 When a metric job completes, the platform automatically creates a **metric job result** — a persistent, queryable entity that captures the outcome of that run. Each result is created exactly once per completed job and shares the job's name.
 
@@ -12,7 +15,7 @@ An `EvaluationResult` contains:
 
 ## Get Results from a Local Run
 
-{% raw %}
+
 ```python
 import os
 
@@ -36,11 +39,11 @@ result = evaluator.run(
     ],
 )
 ```
-{% endraw %}
+
 
 ## Get Results from a Submitted Job
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
@@ -58,7 +61,7 @@ job = evaluator.submit(
 job.wait_until_done()
 ```
 
-{% endraw %}
+
 
 ### Get Results in Memory
 

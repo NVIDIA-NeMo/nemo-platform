@@ -1,5 +1,7 @@
-# Secure Agents
-
+---
+title: "Secure Agents"
+description: ""
+---
 <a id="agents-security"></a>
 
 Use the agent security workflow to check a deployed agent for guardrail
@@ -54,82 +56,89 @@ There are two steps: create the guarded VirtualModel, then update the agent's
 
 ### 1. Create a Guarded VirtualModel
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo inference virtual-models create guarded-agent-model \
-      --workspace default \
-      --models '[{"model":"default/<main-model-entity>","backend_format":"OPENAI_CHAT"}]' \
-      --request-middleware '[{
-        "name":"nemo-guardrails",
-        "config_type":"guardrail_config",
-        "config_id":"default/<guardrail-config>"
-      }]' \
-      --response-middleware '[{
-        "name":"nemo-guardrails",
-        "config_type":"guardrail_config",
-        "config_id":"default/<guardrail-config>"
-      }]'
-    ```
+<Tab title="CLI">
 
-    Wire the same `<guardrail-config>` on both `--request-middleware` (for
-    input rails) and `--response-middleware` (for output rails). Omit a side
-    if the config defines no flows for it. For the full middleware schema,
-    entity-backed vs inline configs, and caching behavior, refer to
-    [Guardrails Architecture](../guardrails/concepts/architecture.md).
+```bash
+nemo inference virtual-models create guarded-agent-model \
+  --workspace default \
+  --models '[{"model":"default/<main-model-entity>","backend_format":"OPENAI_CHAT"}]' \
+  --request-middleware '[{
+    "name":"nemo-guardrails",
+    "config_type":"guardrail_config",
+    "config_id":"default/<guardrail-config>"
+  }]' \
+  --response-middleware '[{
+    "name":"nemo-guardrails",
+    "config_type":"guardrail_config",
+    "config_id":"default/<guardrail-config>"
+  }]'
+```
 
-=== "Skill"
+Wire the same `<guardrail-config>` on both `--request-middleware` (for
+input rails) and `--response-middleware` (for output rails). Omit a side
+if the config defines no flows for it. For the full middleware schema,
+entity-backed vs inline configs, and caching behavior, refer to
+[Guardrails Architecture](../guardrails/concepts/architecture.md).
 
-    Ask your coding agent:
+</Tab>
+<Tab title="Skill">
 
-    > Secure my deployed agent.
+Ask your coding agent:
 
-    The `agents-secure` skill picks a deployed agent, checks guardrail
-    coverage, samples recent telemetry, and writes suggestions to the
-    `nemo-agent-security` fileset.
+> Secure my deployed agent.
 
-    Verify the skill is installed:
+The `agents-secure` skill picks a deployed agent, checks guardrail
+coverage, samples recent telemetry, and writes suggestions to the
+`nemo-agent-security` fileset.
 
-    ```bash
-    nemo skills show agents-secure
-    ```
+Verify the skill is installed:
 
-    What it does under the hood:
+```bash
+nemo skills show agents-secure
+```
 
-    - Lists deployed agents and prompts you to choose one.
-    - Inspects each LLM's `base_url`. If it does not route through a
-      guardrails virtual model, suggests creating one with a content-safety,
-      topic-control, or safety-guard backend.
-    - Names the recommended guardrails catalog model and walks you through
-      creating the guarded virtual model.
-    - Persists suggestions to the `nemo-agent-security` fileset.
+What it does under the hood:
 
-=== "Python SDK"
+- Lists deployed agents and prompts you to choose one.
+- Inspects each LLM's `base_url`. If it does not route through a
+  guardrails virtual model, suggests creating one with a content-safety,
+  topic-control, or safety-guard backend.
+- Names the recommended guardrails catalog model and walks you through
+  creating the guarded virtual model.
+- Persists suggestions to the `nemo-agent-security` fileset.
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+</Tab>
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    guardrail_mw = {
-        "name": "nemo-guardrails",
-        "config_type": "guardrail_config",
-        "config_id": "default/<guardrail-config>",
-    }
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-    client.inference.virtual_models.create(
-        name="guarded-agent-model",
-        workspace="default",
-        models=[{"model": "default/<main-model-entity>", "backend_format": "OPENAI_CHAT"}],
-        request_middleware=[guardrail_mw],
-        response_middleware=[guardrail_mw],
-    )
-    ```
+guardrail_mw = {
+    "name": "nemo-guardrails",
+    "config_type": "guardrail_config",
+    "config_id": "default/<guardrail-config>",
+}
 
+client.inference.virtual_models.create(
+    name="guarded-agent-model",
+    workspace="default",
+    models=[{"model": "default/<main-model-entity>", "backend_format": "OPENAI_CHAT"}],
+    request_middleware=[guardrail_mw],
+    response_middleware=[guardrail_mw],
+)
+```
+
+</Tab>
+
+</Tabs>
 ### 2. Point the Agent at the Guarded VirtualModel
 
 In the agent's workflow YAML, set `model_name` on the relevant `llms` entry to
@@ -166,55 +175,62 @@ For leaked secrets, rotate the credential before doing any other cleanup. For
 PII in trace data, redact or regenerate affected traces before using them for
 evaluation or optimization.
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo files list nemo-agent-telemetry
-    ```
+<Tab title="CLI">
 
-    Inspect the most recent trace files manually, or use the security skill
-    to do this for you. Cap the data you download — telemetry can be large.
+```bash
+nemo files list nemo-agent-telemetry
+```
 
-=== "Skill"
+Inspect the most recent trace files manually, or use the security skill
+to do this for you. Cap the data you download — telemetry can be large.
 
-    Ask your coding agent:
+</Tab>
+<Tab title="Skill">
 
-    > Scan recent telemetry for my agent for PII and leaked secrets.
+Ask your coding agent:
 
-    The `agents-secure` skill caps downloaded telemetry at 1 GB and walks the
-    most recent traces first. Verify it is installed:
+> Scan recent telemetry for my agent for PII and leaked secrets.
 
-    ```bash
-    nemo skills show agents-secure
-    ```
+The `agents-secure` skill caps downloaded telemetry at 1 GB and walks the
+most recent traces first. Verify it is installed:
 
-    What it does under the hood:
+```bash
+nemo skills show agents-secure
+```
 
-    - Samples recent files from `nemo-agent-telemetry` until the 1 GB cap.
-    - Runs a high-confidence regex pass for PII and leaked credentials.
-    - Writes findings with masked previews and follow-up actions to
-      `nemo-agent-security/security_suggestions.jsonl`.
-    - Optionally suggests a higher-recall GLiNER or NemoGuard scan on a
-      subset of traces when regex coverage is not enough.
+What it does under the hood:
 
-=== "Python SDK"
+- Samples recent files from `nemo-agent-telemetry` until the 1 GB cap.
+- Runs a high-confidence regex pass for PII and leaked credentials.
+- Writes findings with masked previews and follow-up actions to
+  `nemo-agent-security/security_suggestions.jsonl`.
+- Optionally suggests a higher-recall GLiNER or NemoGuard scan on a
+  subset of traces when regex coverage is not enough.
 
-    The skill drives this workflow directly. To inspect what was written,
-    list and download files from the security fileset:
+</Tab>
+<Tab title="Python SDK">
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+The skill drives this workflow directly. To inspect what was written,
+list and download files from the security fileset:
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    for f in client.files.list(fileset="nemo-agent-security"):
-        print(f.remote_path)
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
+for f in client.files.list(fileset="nemo-agent-security"):
+    print(f.remote_path)
+```
+
+</Tab>
+
+</Tabs>
 ## Review Results
 
 Use the Files service to inspect saved suggestions:

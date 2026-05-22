@@ -1,25 +1,33 @@
+---
+title: "Understanding NeMo Customizer: Models, Training, and Resources"
+description: ""
+---
+import SnippetPrereqs from "@/snippets/_snippets/tutorials/prereqs.mdx";
+import SnippetCustomizerPrereqs from "@/snippets/customizer/tutorials/_snippets/customizer-prereqs.mdx";
+
 <a id="ft-tut-understand-models"></a>
-# Understanding NeMo Customizer: Models, Training, and Resources
 
 Learn the fundamentals of how NeMo Customizer works to make informed decisions about your fine-tuning projects. This tutorial covers how models are organized, how adapters attach to base models, training types and GPU requirements, and how to choose the right approach for your use case.
 
 Understanding these basics will help you navigate the fine-tuning process more effectively and avoid common issues. If you're ready to start fine-tuning immediately, you can jump to [SFT Customization Job](sft-customization-job.ipynb) after completing this tutorial.
 
-!!! note "The time to complete this tutorial is approximately 15 minutes."
+<Note>
+
+The time to complete this tutorial is approximately 15 minutes.
+
+</Note>
     This tutorial focuses on understanding and discovery—no actual training jobs are created.
 ## Prerequisites
 
---8<-- "_snippets/tutorials/prereqs.md"
-
---8<-- "customizer/tutorials/_snippets/customizer-prereqs.md"
-
+<SnippetPrereqs />
+<SnippetCustomizerPrereqs />
 ---
 
 ## Core Concepts
 
 ### What is a Model Entity?
 
-A **Model Entity** represents a model registered in the {{platform_name}}. It contains:
+A **Model Entity** represents a model registered in the NeMo Platform. It contains:
 
 1. **FileSet Reference**: Points to the model checkpoint files (weights, config, tokenizer)
 2. **Model Spec**: Auto-populated metadata about the model architecture (layers, parameters, etc.)
@@ -50,7 +58,7 @@ A **FileSet** is a collection of files stored in the platform's file service. Fo
 ## The Customization Workflow
 
 ```mermaid
-{% raw %}
+
 flowchart LR
  A[1. Create FileSet<br/>with model files] --> B[2. Create Model Entity<br/>pointing to FileSet]
  B --> C[3. Create Customization Job<br/>referencing Model Entity]
@@ -58,7 +66,7 @@ flowchart LR
  D -->{{ LoRA }} E[Adapter created and<br/>attached to Model Entity]
  D -->|Full SFT| F[New Model Entity<br/>with customized weights]
  E --> G[Auto-deploy to NIM<br/>if enabled]
-{% endraw %}
+
 ```
 
 ### Step-by-Step Breakdown
@@ -240,14 +248,16 @@ Customization jobs consume disk space on the platform's shared persistent volume
 | LoRA | ~1.5× base model size | Stores base model + small adapter weights |
 | Full SFT | ~3× base model size | Stores base model + full checkpoint + output model |
 
-!!! info
-    These estimates cover model weights only and do not include training dataset size.
-    If the platform disk fills during a job, the job fails with an I/O
-    error and the job service may return a ``500`` status when you retrieve logs.
+<Note>
 
-    Ensure your platform's shared persistent volume has at least **3× the base model size**
-    of free space before starting a full SFT job, or **1.5×** for LoRA jobs.
+These estimates cover model weights only and do not include training dataset size.
+If the platform disk fills during a job, the job fails with an I/O
+error and the job service may return a ``500`` status when you retrieve logs.
 
+Ensure your platform's shared persistent volume has at least **3× the base model size**
+of free space before starting a full SFT job, or **1.5×** for LoRA jobs.
+
+</Note>
 For troubleshooting disk-related failures, see [customizer](../../troubleshooting/customizer.md).
 
 ### Parallelism Parameters Explained
@@ -264,30 +274,34 @@ Parallelism is configured via `training.parallelism`. These parameters control h
 
 `data_parallel_size` is automatically derived as `total_gpus / (TP × PP × CP)` and is not set directly.
 
-!!! info
-    **Recommended parallelism for Experts (MoE) Models**:
+<Note>
 
-    The `expert_parallel_size` parameter is used to parallelize a Mixture of Experts (MoE) model's experts across GPUs. For non-MoE models, this parameter is ignored. A model's model card will indicate if it is a Mixture of Experts model and specifies its number of experts.
+**Recommended parallelism for Experts (MoE) Models**:
 
-    The number of experts in the model must be divisible by `expert_parallel_size`. For example, if a model has 8 experts, setting `expert_parallel_size=4` results in each GPU processing 2 experts.
+The `expert_parallel_size` parameter is used to parallelize a Mixture of Experts (MoE) model's experts across GPUs. For non-MoE models, this parameter is ignored. A model's model card will indicate if it is a Mixture of Experts model and specifies its number of experts.
 
-    Also, the value of `expert_parallel_size` must evenly divide the derived `data_parallel_size`, which is automatically calculated as `data_parallel_size = total GPUs / (tensor_parallel_size × pipeline_parallel_size × context_parallel_size)`.
+The number of experts in the model must be divisible by `expert_parallel_size`. For example, if a model has 8 experts, setting `expert_parallel_size=4` results in each GPU processing 2 experts.
 
-    For example, with 8 total GPUs, `tensor_parallel_size=2`, and `pipeline_parallel_size=1`:
-    - Derived `data_parallel_size = 8 / (2 × 1 × 1) = 4`
-    - Valid `expert_parallel_size` values: `1`, `2`, or `4` (must evenly divide 4)
-    - Invalid `expert_parallel_size` value: `3` (does not evenly divide 4)
+Also, the value of `expert_parallel_size` must evenly divide the derived `data_parallel_size`, which is automatically calculated as `data_parallel_size = total GPUs / (tensor_parallel_size × pipeline_parallel_size × context_parallel_size)`.
 
+For example, with 8 total GPUs, `tensor_parallel_size=2`, and `pipeline_parallel_size=1`:
+- Derived `data_parallel_size = 8 / (2 × 1 × 1) = 4`
+- Valid `expert_parallel_size` values: `1`, `2`, or `4` (must evenly divide 4)
+- Invalid `expert_parallel_size` value: `3` (does not evenly divide 4)
+
+</Note>
 ### Resource Allocation Rules
 
 Training configurations must satisfy mathematical constraints to work properly:
 
-!!! info
-    **GPU Allocation Rule**: The total number of GPUs (`num_gpus_per_node x num_nodes`) must be a multiple of:
-    `tensor_parallel_size × pipeline_parallel_size × context_parallel_size`
+<Note>
 
-    If this constraint isn't met, your training job will fail with a validation error.
+**GPU Allocation Rule**: The total number of GPUs (`num_gpus_per_node x num_nodes`) must be a multiple of:
+`tensor_parallel_size × pipeline_parallel_size × context_parallel_size`
 
+If this constraint isn't met, your training job will fail with a validation error.
+
+</Note>
 **Example Calculations**:
 
 - 8 GPUs with `tensor_parallel_size=4, pipeline_parallel_size=2` ✅ Valid (8 = 4 × 2 × 1)
@@ -300,7 +314,7 @@ Training configurations must satisfy mathematical constraints to work properly:
 ### Decision Framework
 
 ```mermaid
-{% raw %}
+
 flowchart TD
  A[What's your goal?] --> B{Need maximum<br/>performance?}
  B -->{{ Yes }} C{Have 4+ GPUs?}
@@ -316,7 +330,7 @@ flowchart TD
  E --> I[New Model Entity<br/>with full weights]
  G --> J[Multiple adapters<br/>on same Model Entity]
  H --> J
-{% endraw %}
+
 ```
 
 ### When to Use LoRA
@@ -388,33 +402,30 @@ For detailed guidance, see [Import HuggingFace Model](import-hf-model.md).
 
 Now that you understand how Model Entities and Adapters work, you're ready to proceed:
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Format Training Dataset](format-training-dataset.md)**
+<Card title="Format Training Dataset" href="format-training-dataset.md">
 
-    ---
+Learn how to prepare your data for fine-tuning.
 
-    Learn how to prepare your data for fine-tuning.
+</Card>
+<Card title="Start a LoRA Job" href="lora-customization-job.ipynb">
 
--   **[Start a LoRA Job](lora-customization-job.ipynb)**
+Create a parameter-efficient LoRA adapter.
 
-    ---
+</Card>
+<Card title="Start a Full SFT Job" href="sft-customization-job.ipynb">
 
-    Create a parameter-efficient LoRA adapter.
+Use full supervised fine-tuning for maximum performance.
 
--   **[Start a Full SFT Job](sft-customization-job.ipynb)**
+</Card>
+<Card title="Import Custom Models" href="import-hf-model.md">
 
-    ---
+Import and fine-tune private HuggingFace models.
 
-    Use full supervised fine-tuning for maximum performance.
+</Card>
 
--   **[Import Custom Models](import-hf-model.md)**
-
-    ---
-
-    Import and fine-tune private HuggingFace models.
-
-</div>
+</Cards>
 
 ---
 

@@ -27,7 +27,9 @@ try {
   process.exit(2);
 }
 
-const ROOTS = ["versions"];
+// docs/fern/ layout — walk parent (docs/) but skip docs/fern.
+const ROOTS = [".."];
+const SKIP_DIRS = new Set(["fern", "node_modules", ".git"]);
 
 async function* walk(dir) {
   let entries;
@@ -37,6 +39,7 @@ async function* walk(dir) {
     return;
   }
   for (const entry of entries) {
+    if (SKIP_DIRS.has(entry.name)) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
       yield* walk(path);

@@ -1,7 +1,10 @@
+---
+title: "Manage Jobs"
+description: ""
+---
 <a id="nemo-ms-deploy-infrastructure-core-jobs"></a>
-# Manage Jobs
 
-This section describes how to configure jobs in {{platform_name}}. The Jobs service is responsible for scheduling batch jobs, collecting telemetry and managing job results.
+This section describes how to configure jobs in NeMo Platform. The Jobs service is responsible for scheduling batch jobs, collecting telemetry and managing job results.
 
 ## Execution Profiles
 
@@ -13,7 +16,7 @@ An execution profile is defined by the following attributes:
 - A compute provider (e.g. `cpu` or `gpu`)
 - An [execution backend](#execution-backends) (e.g. `docker`, `kubernetes_job`, `volcano_job`)
 
-By default, the {{platform_name}} defines a default CPU and default GPU provider to launch CPU and GPU bound jobs.
+By default, the NeMo Platform defines a default CPU and default GPU provider to launch CPU and GPU bound jobs.
 
 You can configure multiple execution profiles to suit the shape of your compute environment. For example, if you have a compute environment with heterogeneous infrastructure (e.g., two types of GPU hardware such as A100 and H200), you can define a list of execution profiles as follows:
 
@@ -49,7 +52,7 @@ For full configuration details, see the [platform configuration reference](confi
 
 ### Default Execution Profiles
 
-The {{platform_name}} defines a default execution profile for each execution backend depending on the platform's control plane. The default execution profile is used when no specific execution profile is specified for a job.
+The NeMo Platform defines a default execution profile for each execution backend depending on the platform's control plane. The default execution profile is used when no specific execution profile is specified for a job.
 
 - Default CPU Execution Profile (`cpu`): The default execution profile for CPU based jobs.
 - Default GPU Execution Profile (`gpu`): The default execution profile for GPU based jobs.
@@ -87,9 +90,9 @@ jobs:
 
 ## Execution Backends
 
-Execution backends are the containerized job execution systems that {{platform_name}} jobs are scheduled to run on. Each execution backend is responsible for launching and managing the job containers, and the Jobs service communicates with the execution backend to schedule and manage jobs.
+Execution backends are the containerized job execution systems that NeMo Platform jobs are scheduled to run on. Each execution backend is responsible for launching and managing the job containers, and the Jobs service communicates with the execution backend to schedule and manage jobs.
 
-{{platform_name}} currently supports the following execution backends:
+NeMo Platform currently supports the following execution backends:
 
 - Docker (`docker`)
 - Kubernetes Jobs (`kubernetes_job`)
@@ -97,11 +100,15 @@ Execution backends are the containerized job execution systems that {{platform_n
 
 ### Docker
 
-The {{platform_name}} supports Docker as an execution backend for CPU and GPU based jobs. When the shared GPU pool is configured (see below), Docker will use only the configured GPU devices and will not over-schedule jobs if there are not currently enough GPUs available.
+The NeMo Platform supports Docker as an execution backend for CPU and GPU based jobs. When the shared GPU pool is configured (see below), Docker will use only the configured GPU devices and will not over-schedule jobs if there are not currently enough GPUs available.
 
-**Note:** The {{platform_name}} supports Docker-based job execution by default when running the {{platform_name}} in quickstart mode, which requires no configuration.
+**Note:** The NeMo Platform supports Docker-based job execution by default when running the NeMo Platform in quickstart mode, which requires no configuration.
 
-!!! tip "If you are running GPU jobs with Docker, see [GPU Configuration](../get-started/setup.md) for information on configuring the shared GPU pool. This configuration is shared between the jobs and models services to prevent GPU resource conflicts."
+<Tip>
+
+If you are running GPU jobs with Docker, see [GPU Configuration](../get-started/setup.md) for information on configuring the shared GPU pool. This configuration is shared between the jobs and models services to prevent GPU resource conflicts.
+
+</Tip>
 
 ```yaml
 jobs:
@@ -125,7 +132,7 @@ jobs:
 
 ### Kubernetes Jobs
 
-The {{platform_name}} supports Kubernetes Jobs as an execution backend for CPU and GPU based jobs.
+The NeMo Platform supports Kubernetes Jobs as an execution backend for CPU and GPU based jobs.
 
 ```yaml
 jobs:
@@ -204,7 +211,7 @@ See the [KAI Scheduler documentation](https://github.com/kai-scheduler/KAI-Sched
 
 ### Volcano Jobs
 
-The {{platform_name}} supports Volcano Jobs as an execution backend for launching distributed GPU jobs.
+The NeMo Platform supports Volcano Jobs as an execution backend for launching distributed GPU jobs.
 
 Volcano Jobs are configured using the same configuration as Kubernetes Jobs, but with the following additional configuration:
 

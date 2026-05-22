@@ -1,5 +1,8 @@
+---
+title: "Manage Metrics"
+description: ""
+---
 <a id="eval-metrics-manage-metrics"></a>
-# Manage Metrics
 
 Instantiate the metric class you want to run and pass it with `dataset` and optional configuration to `evaluator.run(...)` or `evaluator.submit(...)`.
 
@@ -23,7 +26,7 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 
 Metric objects are normal Python objects from `nemo_evaluator_sdk.metrics.*`. Keep them close to the evaluation code so the definition, dataset fields, and execution request stay in sync.
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
 
@@ -43,7 +46,7 @@ result = evaluator.run(
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
-{% endraw %}
+
 
 Use `run` for fast local execution while developing a metric. Use `submit` for durable remote execution through the platform job service.
 
@@ -51,7 +54,7 @@ Use `run` for fast local execution while developing a metric. Use `submit` for d
 
 Because metrics are inline objects, reuse is usually just a Python helper function or module-level factory.
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import F1Metric
 
@@ -65,7 +68,7 @@ def answer_f1_metric() -> F1Metric:
 
 metric = answer_f1_metric()
 ```
-{% endraw %}
+
 
 ## Choose Metric Classes
 
@@ -92,7 +95,7 @@ For online evaluations, provide a model or agent target and use the online param
 
 ## Submit a Durable Job
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
 
@@ -110,7 +113,7 @@ job = evaluator.submit(
 job.wait_until_done()
 result = job.get_result()
 ```
-{% endraw %}
+
 
 ## Related Topics
 

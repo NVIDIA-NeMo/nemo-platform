@@ -1,9 +1,12 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
-<a id="guardrails-content-safety"></a>
-# Improving Content Safety with NemoGuard NIMs
+---
+title: "Improving Content Safety with NemoGuard NIMs"
+description: ""
+---
 
-Learn how to use {{platform_name}} to apply content safety checks to user inputs and LLM outputs with the NVIDIA Nemotron Content Safety NIM. Content safety checks detect and block harmful, abusive, or policy-violating content before it reaches users.
+
+<a id="guardrails-content-safety"></a>
+
+Learn how to use NeMo Platform to apply content safety checks to user inputs and LLM outputs with the NVIDIA Nemotron Content Safety NIM. Content safety checks detect and block harmful, abusive, or policy-violating content before it reaches users.
 
 For the content safety checks, this tutorial uses the [Llama-3.1-Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) NIM, which is trained to classify input or output content as safe or unsafe.
 
@@ -13,8 +16,8 @@ For the main model, this tutorial uses the [Llama-3.1-8B-Instruct](https://build
 
 Before you begin:
 
-- You have access to a running {{platform_name}}.
-- `NMP_BASE_URL` is set to the {{platform_name}} base URL.
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
 - A `ModelProvider` is configured with an LLM provider. Follow [Setup](../../get-started/setup.md) if you haven't done this yet.
 
 This tutorial uses the following NIMs, available on `build.nvidia.com`:
@@ -57,7 +60,7 @@ This config executes content safety checks on both user inputs and model outputs
 Using Model Entity references (`workspace/name` format), the plugin resolves task model endpoints through IGW's route table.
 
 ```python
-{% raw %}
+
 guardrails_config = {
     "models": [
         {
@@ -102,7 +105,7 @@ try:
     )
 except ConflictError:
     print("Config content-safety-config already exists, continuing...")
-{% endraw %}
+
 ```
 
 ---
@@ -170,27 +173,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "I'm sorry, I can't respond to that."
-          },
-          "finish_reason": "content_filter"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, I can't respond to that."
+      },
+      "finish_reason": "content_filter"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 The `Nemotron-Safety-Guard-8B-v3` and `Llama-3.1-8B-Instruct` NIMs both support multiple languages. For the full list, refer to the model cards:
 
 - [Nemotron-Safety-Guard-8B-v3](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3/modelcard)
@@ -213,27 +216,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "I'm sorry, I can't respond to that."
-          },
-          "finish_reason": "content_filter"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, I can't respond to that."
+      },
+      "finish_reason": "content_filter"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 ---
 
 ## Step 5: Verify Allowed Content
@@ -250,27 +253,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "The capital of France is Paris."
-          },
-          "finish_reason": "stop"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "The capital of France is Paris."
+      },
+      "finish_reason": "stop"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 Send a safe request in French and confirm you receive an allowed response.
 
 ```python
@@ -283,27 +286,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "La capitale de la France est Paris."
-          },
-          "finish_reason": "stop"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "La capitale de la France est Paris."
+      },
+      "finish_reason": "stop"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 ---
 
 ## Cleanup

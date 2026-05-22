@@ -1,17 +1,21 @@
 ---
 description: Scan and audit large language models for jailbreaks, prompt injection, encoding bypasses, and other safety failures using {{__auditor_short_name}}, powered by garak.
 ---
+import { Button } from "@/components/Button";
 
 <a id="about-auditor"></a>
-# About Auditing Models
 
-!!! important "{{__auditor_long_name}} is released with _early access_ availability and is subject to limited support and potential API changes in future releases."
+<Warning>
 
-{{__auditor_long_name}} audits LLMs by probing them with adversarial prompts and detecting failures such as jailbreaks, prompt injection, encoding bypasses, and unsafe output generation.
-It is powered by [garak](https://github.com/NVIDIA/garak), NVIDIA's open-source LLM vulnerability scanner, and integrates with {{platform_name}} so audits can target any model reachable through the Inference Gateway.
+\{\{__auditor_long_name}} is released with _early access_ availability and is subject to limited support and potential API changes in future releases.
 
-[**Tutorials**](tutorials/index.md){ .md-button }
-[**SDK Resources**](sdk-resources.md){ .md-button }
+</Warning>
+
+\{\{__auditor_long_name}} audits LLMs by probing them with adversarial prompts and detecting failures such as jailbreaks, prompt injection, encoding bypasses, and unsafe output generation.
+It is powered by [garak](https://github.com/NVIDIA/garak), NVIDIA's open-source LLM vulnerability scanner, and integrates with NeMo Platform so audits can target any model reachable through the Inference Gateway.
+
+<Button href="tutorials/index.md" variant="secondary">**Tutorials**</Button>
+<Button href="sdk-resources.md" variant="secondary">**SDK Resources**</Button>
 
 ---
 
@@ -29,7 +33,7 @@ The plugin exposes both [synchronous and asynchronous](sdk-resources.md) Python 
 
 ## Setup
 
-Before you can run audits, you need a working {{platform_name}} install with the auditor plugin enabled and a garak interpreter on disk.
+Before you can run audits, you need a working NeMo Platform install with the auditor plugin enabled and a garak interpreter on disk.
 
 - Follow [Setup](../get-started/setup.md) to install the platform and start local services.
 - Install garak in a Python virtual environment. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`; override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if you installed it elsewhere.
@@ -39,60 +43,54 @@ Before you can run audits, you need a working {{platform_name}} install with the
 
 ## Task Guides
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Audit Targets](targets/index.md)**
+<Card title="Audit Targets" href="targets/index.md">
 
-    ---
+Define the model under test — generator type, model identifier, and inference endpoint.
 
-    Define the model under test — generator type, model identifier, and inference endpoint.
+</Card>
+<Card title="Audit Configurations" href="configs/index.md">
 
--   **[Audit Configurations](configs/index.md)**
+Choose probes, detectors, and reporting settings for the audit.
 
-    ---
+</Card>
+<Card title="Run an Audit Locally" href="tutorials/run-audit-locally.md">
 
-    Choose probes, detectors, and reporting settings for the audit.
+End-to-end walkthrough: create entities, run the audit in-process, read the report artifacts.
 
--   **[Run an Audit Locally](tutorials/run-audit-locally.md)**
+</Card>
+<Card title="SDK Resources" href="sdk-resources.md">
 
-    ---
+Reference for the `client.auditor` SDK surface: `configs`, `targets`, and `run()`.
 
-    End-to-end walkthrough: create entities, run the audit in-process, read the report artifacts.
+</Card>
 
--   **[SDK Resources](sdk-resources.md)**
-
-    ---
-
-    Reference for the `client.auditor` SDK surface: `configs`, `targets`, and `run()`.
-
-</div>
+</Cards>
 
 ## References
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Configuration Schema](configs/schema.md)**
+<Card title="Configuration Schema" href="configs/schema.md">
 
-    ---
+Field reference for `AuditConfig` and its `system`, `run`, `plugins`, and `reporting` sub-models.
 
-    Field reference for `AuditConfig` and its `system`, `run`, `plugins`, and `reporting` sub-models.
+</Card>
+<Card title="Target Schema" href="targets/schema.md">
 
--   **[Target Schema](targets/schema.md)**
+Field reference for `AuditTarget` (`type`, `model`, `options`).
 
-    ---
+</Card>
+<Card title="Selecting Probes" href="configs/probes.md">
 
-    Field reference for `AuditTarget` (`type`, `model`, `options`).
+`probe_spec`, `probe_tags`, and `detector_spec` syntax with worked examples.
 
--   **[Selecting Probes](configs/probes.md)**
+</Card>
+<Card title="Inference Gateway" href="targets/inference-gateway.md">
 
-    ---
+How `nmp_uri_spec` resolves a target's URI through a NeMo Platform provider.
 
-    `probe_spec`, `probe_tags`, and `detector_spec` syntax with worked examples.
+</Card>
 
--   **[Inference Gateway](targets/inference-gateway.md)**
-
-    ---
-
-    How `nmp_uri_spec` resolves a target's URI through a {{platform_name}} provider.
-
-</div>
+</Cards>

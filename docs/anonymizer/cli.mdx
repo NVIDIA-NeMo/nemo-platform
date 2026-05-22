@@ -1,5 +1,8 @@
+---
+title: "CLI Reference"
+description: ""
+---
 <a id="anonymizer-cli"></a>
-# CLI Reference
 
 This reference covers the `nemo anonymizer` commands exposed by the Anonymizer plugin. For end-to-end walkthroughs, see the [tutorials](tutorials/index.md).
 
@@ -11,7 +14,7 @@ This reference covers the `nemo anonymizer` commands exposed by the Anonymizer p
 | `nemo anonymizer preview run`    | Generated from `NemoFunction`   | Local streaming preview.                                     |
 | `nemo anonymizer preview submit` | Generated from `NemoFunction`   | Remote streaming preview against the plugin service.         |
 | `nemo anonymizer run run`        | Generated from `NemoJob`        | Local job execution in the CLI process.                      |
-| `nemo anonymizer run submit`     | Generated from `NemoJob`        | Submit an `anonymizer.run` job to the {{platform_name}} Jobs worker. |
+| `nemo anonymizer run submit`     | Generated from `NemoJob`        | Submit an `anonymizer.run` job to the NeMo Platform Jobs worker. |
 | `nemo anonymizer run explain`    | Generated from `NemoJob`        | Print the job key, submit endpoint, and JSON schemas.        |
 
 ## `nemo anonymizer validate`
@@ -49,7 +52,7 @@ nemo anonymizer preview submit \
 | Flag             | Description                                                                                       |
 |------------------|---------------------------------------------------------------------------------------------------|
 | `--spec-file`    | Path to the `PreviewRequest` YAML.                                                                |
-| `--workspace`    | {{platform_name}} workspace. Used to resolve fileset references and Inference Gateway providers.   |
+| `--workspace`    | NeMo Platform workspace. Used to resolve fileset references and Inference Gateway providers.   |
 | `--base-url`     | Override the platform base URL (typically auto-populated from the CLI config).                    |
 
 ### Preview source kinds

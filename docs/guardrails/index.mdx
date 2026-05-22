@@ -1,7 +1,10 @@
+---
+title: "About Guardrails"
+description: ""
+---
 <a id="nemo-ms-guardrails"></a>
-# About Guardrails
 
-Use {{ngm_short_name}} to apply safety checks and content moderation to large language model (LLM) applications. Guardrails runs as an Inference Gateway (IGW) middleware plugin that evaluates user inputs and model outputs against configurable guardrail policies. It supports dedicated task models (such as content safety or topic control) and integrates directly into the inference pipeline through VirtualModels.
+Use NeMo Guardrails to apply safety checks and content moderation to large language model (LLM) applications. Guardrails runs as an Inference Gateway (IGW) middleware plugin that evaluates user inputs and model outputs against configurable guardrail policies. It supports dedicated task models (such as content safety or topic control) and integrates directly into the inference pipeline through VirtualModels.
 
 Guardrail configurations define which checks run, which models perform the checks, and how blocked content is handled. You wire a guardrail configuration onto a VirtualModel, and every inference request to that VirtualModel flows through the safety checks automatically — using the standard IGW OpenAI-compatible endpoint.
 
@@ -18,7 +21,7 @@ Guardrail configurations define which checks run, which models perform the check
 
 ## Tutorials
 
-These tutorials walk you through common guardrail tasks using {{ngm_short_name}}.
+These tutorials walk you through common guardrail tasks using NeMo Guardrails.
 
 - **[Deploy NemoGuard NIMs](tutorials/deploy-nemoguard-nims.md)** — Deploy NemoGuard NIMs in your environment.
 - **[Content Safety](tutorials/content-safety.md)** — Detect and block harmful content with NemoGuard NIMs.

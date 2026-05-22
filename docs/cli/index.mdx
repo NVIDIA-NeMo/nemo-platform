@@ -1,7 +1,12 @@
-<a id="nemo-ms-cli"></a>
-# {{platform_name}} CLI
+---
+title: "NeMo Platform CLI"
+description: ""
+---
+import SnippetCliSummary from "@/snippets/_snippets/cli-summary.mdx";
 
-The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {{platform_name}}. It provides a unified interface for managing models, running jobs, deploying inference endpoints, and working with a local setup.
+<a id="nemo-ms-cli"></a>
+
+The NeMo Platform CLI (`nemo`) is a command-line tool for interacting with NeMo Platform. It provides a unified interface for managing models, running jobs, deploying inference endpoints, and working with a local setup.
 
 ## Key Capabilities
 
@@ -13,7 +18,11 @@ The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {
 
 ## Installation
 
-!!! note "This package downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use."
+<Note>
+
+This package downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use.
+
+</Note>
     If you previously installed the `nemo-microservices` package, uninstall it first to avoid conflicts:
 
     pip uninstall nemo-microservices
@@ -29,7 +38,11 @@ Or with uv:
 uv pip install nemo-platform
 ```
 
-!!! warning "When installed in a virtual environment, the `nemo` command is only available when the environment is activated."
+<Warning>
+
+When installed in a virtual environment, the `nemo` command is only available when the environment is activated.
+
+</Warning>
 
 ### Verify Installation
 
@@ -66,8 +79,7 @@ The CLI follows a consistent pattern:
 nemo [GLOBAL OPTIONS] <command> [<subcommand>...] [OPTIONS]
 ```
 
---8<-- "_snippets/cli-summary.md"
-
+<SnippetCliSummary />
 ## Common Workflows
 
 ### Exploring Commands

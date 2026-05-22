@@ -1,5 +1,11 @@
+---
+title: "Checking Your Customization Job Metrics"
+description: ""
+---
+import SnippetPrereqs from "@/snippets/_snippets/tutorials/prereqs.mdx";
+import SnippetCustomizerPrereqs from "@/snippets/customizer/tutorials/_snippets/customizer-prereqs.mdx";
+
 <a id="fine-tune-metrics"></a>
-# Checking Your Customization Job Metrics
 
 After completing a customization job, you can monitor its performance through training and validation metrics. You can access these metrics in three ways:
 
@@ -7,14 +13,16 @@ After completing a customization job, you can monitor its performance through tr
 2. Through MLflow (optional)
 3. Using Weights & Biases (optional)
 
-!!! note "The time to complete this tutorial is approximately 10 minutes."
+<Note>
+
+The time to complete this tutorial is approximately 10 minutes.
+
+</Note>
 
 ## Prerequisites
 
---8<-- "_snippets/tutorials/prereqs.md"
-
---8<-- "customizer/tutorials/_snippets/customizer-prereqs.md"
-
+<SnippetPrereqs />
+<SnippetCustomizerPrereqs />
 ### Tutorial-Specific Prerequisites
 
 - Completed customization job with a valid ID
@@ -74,7 +82,11 @@ If your deployment has MLflow tracking enabled:
 3. Find the run using your customization job ID
 4. View detailed metrics, including training and validation loss curves, under the "Metrics" tab
 
-!!! note "MLflow integration is configured at the cluster level. Contact your administrator if you need access to the MLflow UI or if MLflow tracking is not enabled for your deployment."
+<Note>
+
+MLflow integration is configured at the cluster level. Contact your administrator if you need access to the MLflow UI or if MLflow tracking is not enabled for your deployment.
+
+</Note>
 
 <a id="ft-tut-metrics-wandb"></a>
 ### Using Weights & Biases
@@ -128,5 +140,8 @@ To create the secret, see [Weights & Biases Keys](../../get-started/concepts/man
 Then view your results at [wandb.ai](https://wandb.ai/home) under your project.
 ![W&B charts example](../_images/wandb_charts_example.png)
 
-!!! note
-    The W&B integration is optional and must be configured when [creating the customization job](../manage-customization-jobs/create-job.md). When enabled, training metrics are sent to W&B using your API key. While we encrypt your API key and don't log it internally, please review W&B's terms of service before use.
+<Note>
+
+The W&B integration is optional and must be configured when [creating the customization job](../manage-customization-jobs/create-job.md). When enabled, training metrics are sent to W&B using your API key. While we encrypt your API key and don't log it internally, please review W&B's terms of service before use.
+
+</Note>

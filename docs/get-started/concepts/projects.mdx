@@ -1,5 +1,10 @@
+---
+title: "Projects"
+description: ""
+---
+import SnippetNamingRules from "@/snippets/_snippets/naming-rules.mdx";
+
 <a id="entities-projects-overview"></a>
-# Projects
 
 Projects are optional organizational tags within a workspace. They let you group related resources—such as datasets, customization jobs, and evaluation results—without creating separate access boundaries. Anyone with access to the workspace can see all its projects.
 
@@ -20,142 +25,172 @@ Think of workspaces as filing cabinets (separate, locked) and projects as labels
 
 To create a project, provide a `name` and optionally a `description`. The `name` must be unique within the workspace.
 
---8<-- "_snippets/naming-rules.md"
-
+<SnippetNamingRules />
 Once created, a project cannot be renamed.
 
 
-=== "Python SDK"
+<Tabs>
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    project = client.projects.create(
-        workspace="ml-team",
-        name="llama-finetune-v2",
-        description="Fine-tuning experiment for customer support",
-    )
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-=== "CLI"
+project = client.projects.create(
+    workspace="ml-team",
+    name="llama-finetune-v2",
+    description="Fine-tuning experiment for customer support",
+)
+```
 
-    ```bash
-    nemo projects create \
-        --workspace ml-team \
-        --name llama-finetune-v2 \
-        --description "Fine-tuning experiment for customer support"
-    ```
+</Tab>
+<Tab title="CLI">
 
+```bash
+nemo projects create \
+    --workspace ml-team \
+    --name llama-finetune-v2 \
+    --description "Fine-tuning experiment for customer support"
+```
+
+</Tab>
+
+</Tabs>
 ## List Projects
 
 To list projects in a workspace, call the list endpoint. The response includes pagination metadata.
 
 
-=== "Python SDK"
+<Tabs>
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    response = client.projects.list(workspace="ml-team")
-    for project in response.data:
-        print(f"{project.name}: {project.description}")
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-=== "CLI"
+response = client.projects.list(workspace="ml-team")
+for project in response.data:
+    print(f"{project.name}: {project.description}")
+```
 
-    ```bash
-    nemo projects list --workspace ml-team
-    ```
+</Tab>
+<Tab title="CLI">
 
+```bash
+nemo projects list --workspace ml-team
+```
+
+</Tab>
+
+</Tabs>
 ## Get a Project
 
 To retrieve a specific project by its `name`:
 
 
-=== "Python SDK"
+<Tabs>
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    project = client.projects.retrieve("llama-finetune-v2", workspace="ml-team")
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-=== "CLI"
+project = client.projects.retrieve("llama-finetune-v2", workspace="ml-team")
+```
 
-    ```bash
-    nemo projects get llama-finetune-v2 --workspace ml-team
-    ```
+</Tab>
+<Tab title="CLI">
 
+```bash
+nemo projects get llama-finetune-v2 --workspace ml-team
+```
+
+</Tab>
+
+</Tabs>
 ## Update a Project
 
 To update a project, only the `description` field can be modified. The `name` cannot be changed after creation.
 
 
-=== "Python SDK"
+<Tabs>
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    project = client.projects.update(
-        "llama-finetune-v2",
-        workspace="ml-team",
-        description="Updated: Fine-tuning experiment for customer support chatbot",
-    )
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-=== "CLI"
+project = client.projects.update(
+    "llama-finetune-v2",
+    workspace="ml-team",
+    description="Updated: Fine-tuning experiment for customer support chatbot",
+)
+```
 
-    ```bash
-    nemo projects update llama-finetune-v2 \
-        --workspace ml-team \
-        --description "Updated: Fine-tuning experiment for customer support chatbot"
-    ```
+</Tab>
+<Tab title="CLI">
 
+```bash
+nemo projects update llama-finetune-v2 \
+    --workspace ml-team \
+    --description "Updated: Fine-tuning experiment for customer support chatbot"
+```
+
+</Tab>
+
+</Tabs>
 ## Delete a Project
 
 To delete a project:
 
 
-=== "Python SDK"
+<Tabs>
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    client.projects.delete("llama-finetune-v2", workspace="ml-team")
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-=== "CLI"
+client.projects.delete("llama-finetune-v2", workspace="ml-team")
+```
 
-    ```bash
-    nemo projects delete llama-finetune-v2 --workspace ml-team
-    ```
+</Tab>
+<Tab title="CLI">
+
+```bash
+nemo projects delete llama-finetune-v2 --workspace ml-team
+```
+
+</Tab>
+
+</Tabs>

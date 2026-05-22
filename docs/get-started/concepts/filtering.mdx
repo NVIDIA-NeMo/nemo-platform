@@ -1,7 +1,10 @@
+---
+title: "Filtering"
+description: ""
+---
 <a id="filtering"></a>
-# Filtering
 
-Most list endpoints in {{platform_name}} accept a `filter` parameter for narrowing results. Filter values can be expressed as dot flags (CLI only), bracket notation (URLs), text syntax (compact, URL-aware callers), or JSON (SDKs and programmatic builders).
+Most list endpoints in NeMo Platform accept a `filter` parameter for narrowing results. Filter values can be expressed as dot flags (CLI only), bracket notation (URLs), text syntax (compact, URL-aware callers), or JSON (SDKs and programmatic builders).
 
 Prefer the form that's most natural for the caller:
 
@@ -40,9 +43,11 @@ When no operator is specified, the default is `$eq`:
 ?filter[name]=mmlu # equivalent to filter[name][$eq]=mmlu
 ```
 
-!!! note
-    On datetime fields, bare bracket values also default to `$eq` — `?filter[created_at]=2025-01-01` matches only rows whose timestamp equals `2025-01-01` exactly, which is rarely what you want. Use an explicit comparison operator (`$gte`, `$lte`, `$gt`, `$lt`) for datetime fields.
+<Note>
 
+On datetime fields, bare bracket values also default to `$eq` — `?filter[created_at]=2025-01-01` matches only rows whose timestamp equals `2025-01-01` exactly, which is rarely what you want. Use an explicit comparison operator (`$gte`, `$lte`, `$gt`, `$lt`) for datetime fields.
+
+</Note>
 ### Text syntax
 
 A compact, human-readable query string. Handy for CLI and SDK string filters; in URLs you need to URL-encode spaces and quotes, so bracket notation is usually easier there.

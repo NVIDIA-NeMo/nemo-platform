@@ -1,9 +1,12 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
-<a id="guardrails-injection-detection"></a>
-# Detecting Injection Attacks with Guardrails
+---
+title: "Detecting Injection Attacks with Guardrails"
+description: ""
+---
 
-Detect potential exploitation attempts (such as code injection, cross-site scripting, SQL injection, and template injection) using {{platform_name}}.
+
+<a id="guardrails-injection-detection"></a>
+
+Detect potential exploitation attempts (such as code injection, cross-site scripting, SQL injection, and template injection) using NeMo Platform.
 
 ## About Injection Detection
 
@@ -15,7 +18,7 @@ YARA rules are familiar to many security teams and are easy to audit.
 
 The second part of injection detection is choosing an action when a rule is triggered.
 You can choose to _reject_ the response and return a refusal such as:
-"I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of {detections}."
+"I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of \{detections}."
 Rejecting the output is the safest action and most appropriate for production deployments.
 As an alternative, you can _omit_ the triggering text (masks the offending content).
 
@@ -31,8 +34,8 @@ For the main model, this tutorial uses the [Llama-3.1-8B-Instruct](https://build
 
 Before you begin:
 
-- You have access to a running {{platform_name}}.
-- `NMP_BASE_URL` is set to the {{platform_name}} base URL.
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
 - A `ModelProvider` is configured with an LLM provider. Follow [Setup](../../get-started/setup.md) if you haven't done this yet.
 
 This tutorial uses the following NIM, available on `build.nvidia.com`:
@@ -99,30 +102,36 @@ The `rails.config.injection_detection` field configures how to apply the injecti
 
 Create a VirtualModel that routes inference through the guardrails middleware. Since injection detection uses output rails only, only `response_middleware` is needed.
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo inference virtual-models create guarded-injection-detect \
-      --default-model-entity default/meta-llama-3-1-8b-instruct \
-      --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/injection-detection-config"}]'
-    ```
+<Tab title="CLI">
 
-=== "Python SDK"
+```bash
+nemo inference virtual-models create guarded-injection-detect \
+  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/injection-detection-config"}]'
+```
 
-    ```python
-    client.inference.virtual_models.create(
-        name="guarded-injection-detect",
-        default_model_entity="default/meta-llama-3-1-8b-instruct",
-        response_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "default/injection-detection-config",
-            }
-        ],
-    )
-    ```
+</Tab>
+<Tab title="Python SDK">
 
+```python
+client.inference.virtual_models.create(
+    name="guarded-injection-detect",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/injection-detection-config",
+        }
+    ],
+)
+```
+
+</Tab>
+
+</Tabs>
 ---
 
 ## Step 4: Verify Blocked Content
@@ -146,27 +155,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of code."
-          },
-          "finish_reason": "content_filter"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of code."
+      },
+      "finish_reason": "content_filter"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 ---
 
 ## Step 5: Verify Allowed Content
@@ -188,27 +197,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "Cape Hatteras National Seashore protects barrier islands, beaches, and lighthouses along North Carolina's Outer Banks."
-          },
-          "finish_reason": "stop"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Cape Hatteras National Seashore protects barrier islands, beaches, and lighthouses along North Carolina's Outer Banks."
+      },
+      "finish_reason": "stop"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 ---
 
 ## Optional: Specify Inline Rules
@@ -264,27 +273,27 @@ response = oai_client.chat.completions.create(
 print(response.model_dump_json(indent=2))
 ```
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
+```json
+{
+  "id": "chatcmpl-9b2c6b21-7f5f-4a3c-9c77-2a4b2e4b6b2a",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
     {
-      "id": "chatcmpl-9b2c6b21-7f5f-4a3c-9c77-2a4b2e4b6b2a",
-      "object": "chat.completion",
-      "model": "meta/llama-3.1-8b-instruct",
-      "choices": [
-        {
-          "index": 0,
-          "message": {
-            "role": "assistant",
-            "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of reject_ethernet."
-          },
-          "finish_reason": "content_filter"
-        }
-      ]
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of reject_ethernet."
+      },
+      "finish_reason": "content_filter"
     }
-    ```
+  ]
+}
+```
 
+</Accordion>
 ---
 
 ## Cleanup

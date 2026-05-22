@@ -1,15 +1,18 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: skip-test -->
+---
+title: "Safe Synthesizer Jobs"
+description: ""
+---
+
+
 <a id="about-jobs"></a>
-# Safe Synthesizer Jobs
 
-{{nss_short_name}} jobs orchestrate the complete pipeline from data preparation through synthesis to evaluation. Understanding the job lifecycle and configuration options is essential for effective use of the platform.
+NeMo Safe Synthesizer jobs orchestrate the complete pipeline from data preparation through synthesis to evaluation. Understanding the job lifecycle and configuration options is essential for effective use of the platform.
 
-<!-- TODO: Link to generic {{platform_name}} jobs documentation when available for common job management concepts -->
+
 
 ## Job Lifecycle
 
-A {{nss_short_name}} job progresses through several states:
+A NeMo Safe Synthesizer job progresses through several states:
 
 ### Job States
 
@@ -186,7 +189,7 @@ for log in job.fetch_logs():
 
 ### Docker Compose Deployments
 
-When running {{nss_short_name}} using Docker Compose, view container logs directly:
+When running NeMo Safe Synthesizer using Docker Compose, view container logs directly:
 
 ```bash
 # View safe-synthesizer service logs
@@ -302,6 +305,6 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 ## Related Topics
 
-- [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with {{nss_short_name}} jobs
+- [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with NeMo Safe Synthesizer jobs
 - [index](../tutorials/index.md): More hands-on tutorials
 - [reference](reference.md): Full parameter reference

@@ -1,16 +1,18 @@
-# Create Job
-
+---
+title: "Create Job"
+description: ""
+---
 <a id="ft-create-customization-job"></a>
 ## Prerequisites
 
 Before you can create a customization job, make sure that you have:
 
-- Obtained the base URL of your {{platform_name}}.
+- Obtained the base URL of your NeMo Platform.
 - Created a [FileSet and Model Entity](../manage-model-entities/index.md) for your base model.
 - [Uploaded a dataset](../../get-started/concepts/manage-files.md) as a FileSet.
 - Determined the [training configuration](hyperparameters.md) you want to use for the customization job.
 - Verified that the platform has sufficient storage for the job. Full SFT jobs require approximately 3× the base model size in free disk space; LoRA jobs require approximately 1.5×. See [ft-tut-understand-models](../tutorials/understand-configurations-and-models.md) for details. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall for LoRA.
-- Set the `NMP_BASE_URL` environment variable to your {{platform_name}} endpoint.
+- Set the `NMP_BASE_URL` environment variable to your NeMo Platform endpoint.
 
 ```bash
 export NMP_BASE_URL="https://your-nemo-platform-url"
@@ -60,43 +62,44 @@ print(f"Created job: {job.name}")
 print(f"Job status: {job.status}")
 ```
 
-??? "Example Response"
-    :icon: code-square
-    :open:
+<Accordion title="Example Response">
 
-    ```json
-    {
-      "name": "my-lora-job",
-      "workspace": "default",
-      "id": "job-abc123def456",
-      "status": "created",
-      "spec": {
-        "model": "default/llama-3-2-1b",
-        "dataset": "fileset://default/my-training-dataset",
-        "training": {
-          "type": "sft",
-          "peft": {
-            "type": "lora",
-            "rank": 8,
-            "alpha": 32,
-            "dropout": 0.0
-          },
-          "batch_size": 32,
-          "epochs": 3,
-          "learning_rate": 0.0001,
-          "max_seq_length": 2048
-        },
-        "output": {
-          "name": "my-custom-model",
-          "type": "adapter",
-          "fileset": "my-custom-model-a1b2c3d4e5f6"
-        }
+:open:
+
+```json
+{
+  "name": "my-lora-job",
+  "workspace": "default",
+  "id": "job-abc123def456",
+  "status": "created",
+  "spec": {
+    "model": "default/llama-3-2-1b",
+    "dataset": "fileset://default/my-training-dataset",
+    "training": {
+      "type": "sft",
+      "peft": {
+        "type": "lora",
+        "rank": 8,
+        "alpha": 32,
+        "dropout": 0.0
       },
-      "created_at": "2026-02-09T10:30:00.000Z",
-      "updated_at": "2026-02-09T10:30:00.000Z"
+      "batch_size": 32,
+      "epochs": 3,
+      "learning_rate": 0.0001,
+      "max_seq_length": 2048
+    },
+    "output": {
+      "name": "my-custom-model",
+      "type": "adapter",
+      "fileset": "my-custom-model-a1b2c3d4e5f6"
     }
-    ```
+  },
+  "created_at": "2026-02-09T10:30:00.000Z",
+  "updated_at": "2026-02-09T10:30:00.000Z"
+}
+```
 
+</Accordion>
 ---
 
 ### Knowledge Distillation Example
@@ -126,9 +129,11 @@ job = client.customization.jobs.create(
 )
 ```
 
-!!! note
-    See [Knowledge Distillation constraints](hyperparameters.md) for requirements on model compatibility, tokenizer, and GPU memory.
+<Note>
 
+See [Knowledge Distillation constraints](hyperparameters.md) for requirements on model compatibility, tokenizer, and GPU memory.
+
+</Note>
 ---
 
 ## Job Configuration Reference

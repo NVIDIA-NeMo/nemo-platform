@@ -1,5 +1,8 @@
+---
+title: "Agentic Evaluation Metrics"
+description: ""
+---
 <a id="eval-metrics-agentic"></a>
-# Agentic Evaluation Metrics
 
 Evaluate agent-based and multi-step reasoning models using metrics powered by [RAGAS](https://github.com/explodinggradients/ragas). These metrics assess tool calling accuracy, goal completion, topic adherence, and answer correctness in agentic workflows.
 
@@ -48,9 +51,11 @@ Online target generation first calls a model or agent target, then evaluates the
 - Use `RunConfigOnlineModel` for model targets and `RunConfigOnline` for agent targets.
 - Include a `prompt_template` when the dataset row must be transformed into a model or agent request.
 
-!!! note
-    **Response Usage**: In online target generation, the generated response is used as the metric response. A dataset `response` column is optional and is superseded by the generated response for that run.
+<Note>
 
+**Response Usage**: In online target generation, the generated response is used as the metric response. A dataset `response` column is optional and is superseded by the generated response for that run.
+
+</Note>
 ---
 
 ## Overview
@@ -66,9 +71,11 @@ Agentic metrics evaluate different aspects of agent behavior:
 | [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `run` + `submit` |
 | [**Trajectory Evaluation**](#trajectory-evaluation) | Evaluates decision-making across action sequence | Yes | Not exposed as a typed plugin SDK metric |
 
-!!! note
-    Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
+<Note>
 
+Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
+
+</Note>
 ## Prerequisites
 
 Before running agentic evaluations:
@@ -138,9 +145,11 @@ Use `dataset=[...]` for inline rows. For offline scoring options, use `config=Ru
 
 Evaluates whether the agent invoked the correct tools with the correct arguments. This metric **does not require a judge LLM**.
 
-!!! note
-    **Online/offline support**: Tool Call Accuracy supports scoring existing tool calls directly. It can also score tool calls produced during online target generation when the target response includes the required tool-call fields.
+<Note>
 
+**Online/offline support**: Tool Call Accuracy supports scoring existing tool calls directly. It can also score tool calls produced during online target generation when the target response includes the required tool-call fields.
+
+</Note>
 #### Data Format
 
 ```json
@@ -182,101 +191,110 @@ Evaluates whether the agent invoked the correct tools with the correct arguments
 }
 ```
 
-=== "Run Locally"
+<Tabs>
 
-    ```python
-    from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
-    metric = ToolCallAccuracyMetric()
+<Tab title="Run Locally">
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "What's the weather in Paris?", "type": "human"},
-                    {
-                        "content": "Let me check.",
-                        "type": "ai",
-                        "tool_calls": [{"name": "weather_api", "args": {"city": "Paris"}}],
-                    },
-                    {"content": "Sunny, 22°C", "type": "tool"},
-                    {"content": "It's sunny and 22°C in Paris.", "type": "ai"},
-                ],
-                "reference_tool_calls": [
-                    {"name": "weather_api", "args": {"city": "Paris"}}
-                ],
-            }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
+```python
+from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
+metric = ToolCallAccuracyMetric()
 
-=== "Submit Job"
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "What's the weather in Paris?", "type": "human"},
+                {
+                    "content": "Let me check.",
+                    "type": "ai",
+                    "tool_calls": [{"name": "weather_api", "args": {"city": "Paris"}}],
+                },
+                {"content": "Sunny, 22°C", "type": "tool"},
+                {"content": "It's sunny and 22°C in Paris.", "type": "ai"},
+            ],
+            "reference_tool_calls": [
+                {"name": "weather_api", "args": {"city": "Paris"}}
+            ],
+        }
+    ],
+)
+print(result.aggregate_scores)
+```
 
-    ```python
-    from nemo_evaluator_sdk import RunConfig
-    from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
-    metric = ToolCallAccuracyMetric()
+</Tab>
+<Tab title="Submit Job">
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "What's the weather in Paris?", "type": "human"},
-                    {
-                        "content": "Let me check.",
-                        "type": "ai",
-                        "tool_calls": [{"name": "weather_api", "args": {"city": "Paris"}}],
-                    },
-                    {"content": "Sunny, 22°C", "type": "tool"},
-                    {"content": "It's sunny and 22°C in Paris.", "type": "ai"},
-                ],
-                "reference_tool_calls": [
-                    {"name": "weather_api", "args": {"city": "Paris"}}
-                ],
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
+```python
+from nemo_evaluator_sdk import RunConfig
+from nemo_evaluator_sdk.metrics.ragas import ToolCallAccuracyMetric
+metric = ToolCallAccuracyMetric()
 
-=== "Result"
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "What's the weather in Paris?", "type": "human"},
+                {
+                    "content": "Let me check.",
+                    "type": "ai",
+                    "tool_calls": [{"name": "weather_api", "args": {"city": "Paris"}}],
+                },
+                {"content": "Sunny, 22°C", "type": "tool"},
+                {"content": "It's sunny and 22°C in Paris.", "type": "ai"},
+            ],
+            "reference_tool_calls": [
+                {"name": "weather_api", "args": {"city": "Paris"}}
+            ],
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
 
-    ```json
+</Tab>
+<Tab title="Result">
+
+```json
+{
+  "aggregate_scores": [
     {
-      "aggregate_scores": [
-        {
-          "name": "tool_call_accuracy",
-          "count": 1,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0
-        }
-      ],
-      "row_scores": [
-        {
-          "index": 0,
-          "scores": {
-            "tool_call_accuracy": 1.0
-          }
-        }
-      ]
+      "name": "tool_call_accuracy",
+      "count": 1,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
     }
-    ```
+  ],
+  "row_scores": [
+    {
+      "index": 0,
+      "scores": {
+        "tool_call_accuracy": 1.0
+      }
+    }
+  ]
+}
+```
 
+</Tab>
+
+</Tabs>
 ---
 
 ### Tool Calling (Template)
 
 A template-based metric for evaluating tool/function call accuracy. Unlike the RAGAS Tool Call Accuracy metric, this metric uses configurable templates and produces multiple scores.
 
-!!! note
-    **Online/offline support**: Tool Calling supports scoring existing tool-call outputs directly. Use online target generation when you want the model or agent target to produce the response first.
+<Note>
 
+**Online/offline support**: Tool Calling supports scoring existing tool-call outputs directly. Use online target generation when you want the model or agent target to produce the response first.
+
+</Note>
 #### Scores Produced
 
 - `function_name_accuracy` - Accuracy of function names only
@@ -339,139 +357,144 @@ Data must use OpenAI-compliant tool calling format:
 }
 ```
 
-!!! note
-    - Function names with dots (`.`) must be replaced with underscores (`_`).
-    - Comparison is case-sensitive.
-    - Order of tool calls is ignored, which supports parallel tool calling.
+<Note>
 
-=== "Run Locally"
+- Function names with dots (`.`) must be replaced with underscores (`_`).
+- Comparison is case-sensitive.
+- Order of tool calls is ignored, which supports parallel tool calling.
 
-    {% raw %}
-    ```python
+</Note>
+<Tabs>
+
+<Tab title="Run Locally">
+
+```python
 
 
-    from nemo_evaluator_sdk import ToolCallingMetric
-    metric = ToolCallingMetric(reference="{{item.tool_calls}}")
+from nemo_evaluator_sdk import ToolCallingMetric
+metric = ToolCallingMetric(reference="{{item.tool_calls}}")
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "messages": [
-                    {"role": "user", "content": "Book a table for 2 at 7pm."},
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "messages": [
+                {"role": "user", "content": "Book a table for 2 at 7pm."},
+                {
+                    "role": "assistant",
+                    "content": "Booking...",
+                    "tool_calls": [
+                        {
+                            "function": {
+                                "name": "book_table",
+                                "arguments": {"people": 2, "time": "7pm"},
+                            }
+                        }
+                    ],
+                },
+            ],
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "book_table",
+                        "arguments": {"people": 2, "time": "7pm"},
+                    }
+                }
+            ],
+            "response": {
+                "choices": [
                     {
-                        "role": "assistant",
-                        "content": "Booking...",
-                        "tool_calls": [
-                            {
-                                "function": {
-                                    "name": "book_table",
-                                    "arguments": {"people": 2, "time": "7pm"},
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "book_table",
+                                        "arguments": '{"people": 2, "time": "7pm"}',
+                                    }
                                 }
-                            }
-                        ],
-                    },
-                ],
-                "tool_calls": [
-                    {
-                        "function": {
-                            "name": "book_table",
-                            "arguments": {"people": 2, "time": "7pm"},
+                            ]
                         }
                     }
-                ],
-                "response": {
-                    "choices": [
-                        {
-                            "message": {
-                                "tool_calls": [
-                                    {
-                                        "function": {
-                                            "name": "book_table",
-                                            "arguments": '{"people": 2, "time": "7pm"}',
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                },
-            }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
-    {% endraw %}
-
-=== "Submit Job"
-
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import RunConfig, ToolCallingMetric
-
-    metric = ToolCallingMetric(reference="{{item.tool_calls}}")
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "tool_calls": [
-                    {
-                        "function": {
-                            "name": "book_table",
-                            "arguments": {"people": 2, "time": "7pm"},
-                        }
-                    }
-                ],
-                "response": {
-                    "choices": [
-                        {
-                            "message": {
-                                "tool_calls": [
-                                    {
-                                        "function": {
-                                            "name": "book_table",
-                                            "arguments": '{"people": 2, "time": "7pm"}',
-                                        }
-                                    }
-                                ]
-                            }
-                        }
-                    ]
-                },
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
-    {% endraw %}
-
-=== "Result"
-
-    ```json
-    {
-      "aggregate_scores": [
-        {
-          "name": "function_name_accuracy",
-          "count": 1,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0
-        },
-        {
-          "name": "function_name_and_args_accuracy",
-          "count": 1,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0
+                ]
+            },
         }
-      ]
-    }
-    ```
+    ],
+)
+print(result.aggregate_scores)
+```
 
+</Tab>
+<Tab title="Submit Job">
+
+```python
+from nemo_evaluator_sdk import RunConfig, ToolCallingMetric
+
+metric = ToolCallingMetric(reference="{{item.tool_calls}}")
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "tool_calls": [
+                {
+                    "function": {
+                        "name": "book_table",
+                        "arguments": {"people": 2, "time": "7pm"},
+                    }
+                }
+            ],
+            "response": {
+                "choices": [
+                    {
+                        "message": {
+                            "tool_calls": [
+                                {
+                                    "function": {
+                                        "name": "book_table",
+                                        "arguments": '{"people": 2, "time": "7pm"}',
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                ]
+            },
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
+
+</Tab>
+<Tab title="Result">
+
+```json
+{
+  "aggregate_scores": [
+    {
+      "name": "function_name_accuracy",
+      "count": 1,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    },
+    {
+      "name": "function_name_and_args_accuracy",
+      "count": 1,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
+    }
+  ]
+}
+```
+
+</Tab>
+
+</Tabs>
 ---
 
 ### Topic Adherence
@@ -506,140 +529,146 @@ Measures how well the agent maintained focus on assigned topics throughout a con
 |-----------|------|---------|-------------|
 | `metric_mode` | string | `"f1"` | Scoring mode: `"f1"`, `"precision"`, or `"recall"` |
 
-=== "Run Locally"
+<Tabs>
 
-    ```python
-    from nemo_evaluator_sdk import Model
-    from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
+<Tab title="Run Locally">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "Tell me about healthy eating", "type": "human"},
-                    {
-                        "content": "Eating fruits and vegetables is essential for good health.",
-                        "type": "ai",
-                    },
-                ],
-                "reference_topics": ["health", "nutrition", "diet"],
-            }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
 
-=== "Submit Job"
-
-    ```python
-    from nemo_evaluator_sdk import RunConfig, Model
-    from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
-
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "Tell me about healthy eating", "type": "human"},
-                    {
-                        "content": "Eating fruits and vegetables is essential for good health.",
-                        "type": "ai",
-                    },
-                ],
-                "reference_topics": ["health", "nutrition", "diet"],
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
-
-=== "Online Target Generation"
-
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
-    from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
-
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    target_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="nvidia/llama-3.3-nemotron-super-49b-v1",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
-
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "Tell me about healthy eating",
-                "reference_topics": ["health", "nutrition", "diet"],
-            }
-        ],
-        config=RunConfigOnlineModel(
-            parallelism=4,
-            inference=InferenceParams(temperature=0.7, max_tokens=1024),
-        ),
-        target=target_model,
-        prompt_template={
-            "messages": [
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "Tell me about healthy eating", "type": "human"},
                 {
-                    "role": "user",
-                    "content": "{{item.user_input}}",
-                }
-            ]
-        },
-    )
-    print(result.aggregate_scores)
-    ```
-    {% endraw %}
+                    "content": "Eating fruits and vegetables is essential for good health.",
+                    "type": "ai",
+                },
+            ],
+            "reference_topics": ["health", "nutrition", "diet"],
+        }
+    ],
+)
+print(result.aggregate_scores)
+```
 
-=== "Result"
+</Tab>
+<Tab title="Submit Job">
 
-    ```json
+```python
+from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
+
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "Tell me about healthy eating", "type": "human"},
+                {
+                    "content": "Eating fruits and vegetables is essential for good health.",
+                    "type": "ai",
+                },
+            ],
+            "reference_topics": ["health", "nutrition", "diet"],
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
+
+</Tab>
+<Tab title="Online Target Generation">
+
+```python
+from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
+from nemo_evaluator_sdk.metrics.ragas import TopicAdherenceMetric
+
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+target_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="nvidia/llama-3.3-nemotron-super-49b-v1",
+    api_key_secret="nvidia-api-key",
+)
+metric = TopicAdherenceMetric(metric_mode="f1", judge_model=judge_model)
+
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "Tell me about healthy eating",
+            "reference_topics": ["health", "nutrition", "diet"],
+        }
+    ],
+    config=RunConfigOnlineModel(
+        parallelism=4,
+        inference=InferenceParams(temperature=0.7, max_tokens=1024),
+    ),
+    target=target_model,
+    prompt_template={
+        "messages": [
+            {
+                "role": "user",
+                "content": "{{item.user_input}}",
+            }
+        ]
+    },
+)
+print(result.aggregate_scores)
+```
+
+</Tab>
+<Tab title="Result">
+
+```json
+{
+  "aggregate_scores": [
     {
-      "aggregate_scores": [
-        {
-          "name": "topic_adherence(mode=f1)",
-          "count": 1,
-          "mean": 0.85,
-          "min": 0.85,
-          "max": 0.85
-        }
-      ],
-      "row_scores": [
-        {
-          "index": 0,
-          "scores": {
-            "topic_adherence(mode=f1)": 0.85
-          }
-        }
-      ]
+      "name": "topic_adherence(mode=f1)",
+      "count": 1,
+      "mean": 0.85,
+      "min": 0.85,
+      "max": 0.85
     }
-    ```
+  ],
+  "row_scores": [
+    {
+      "index": 0,
+      "scores": {
+        "topic_adherence(mode=f1)": 0.85
+      }
+    }
+  ]
+}
+```
 
+</Tab>
+
+</Tabs>
 ---
 
 ### Agent Goal Accuracy
@@ -688,107 +717,114 @@ Compare the agent's outcome against a known reference:
 |-----------|------|---------|-------------|
 | `use_reference` | boolean | `True` | Whether to compare against a reference outcome |
 
-=== "Run Locally"
+<Tabs>
 
-    ```python
-    from nemo_evaluator_sdk import Model
-    from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+<Tab title="Run Locally">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "Book a table at a restaurant for 8pm", "type": "human"},
-                    {
-                        "content": "I'll search for restaurants.",
-                        "type": "ai",
-                        "tool_calls": [{"name": "restaurant_search", "args": {}}],
-                    },
-                    {"content": "Found: Italian Place", "type": "tool"},
-                    {
-                        "content": "Your table at Italian Place is booked for 8pm.",
-                        "type": "ai",
-                    },
-                ],
-                "reference": "Successfully booked a table at a restaurant for 8pm",
-            }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
-=== "Submit Job"
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "Book a table at a restaurant for 8pm", "type": "human"},
+                {
+                    "content": "I'll search for restaurants.",
+                    "type": "ai",
+                    "tool_calls": [{"name": "restaurant_search", "args": {}}],
+                },
+                {"content": "Found: Italian Place", "type": "tool"},
+                {
+                    "content": "Your table at Italian Place is booked for 8pm.",
+                    "type": "ai",
+                },
+            ],
+            "reference": "Successfully booked a table at a restaurant for 8pm",
+        }
+    ],
+)
+print(result.aggregate_scores)
+```
 
-    ```python
-    from nemo_evaluator_sdk import RunConfig, Model
-    from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+</Tab>
+<Tab title="Submit Job">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {"content": "Book a table at a restaurant for 8pm", "type": "human"},
-                    {
-                        "content": "I'll search for restaurants.",
-                        "type": "ai",
-                        "tool_calls": [{"name": "restaurant_search", "args": {}}],
-                    },
-                    {"content": "Found: Italian Place", "type": "tool"},
-                    {
-                        "content": "Your table at Italian Place is booked for 8pm.",
-                        "type": "ai",
-                    },
-                ],
-                "reference": "Successfully booked a table at a restaurant for 8pm",
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AgentGoalAccuracyMetric(use_reference=True, judge_model=judge_model)
 
-=== "Result"
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {"content": "Book a table at a restaurant for 8pm", "type": "human"},
+                {
+                    "content": "I'll search for restaurants.",
+                    "type": "ai",
+                    "tool_calls": [{"name": "restaurant_search", "args": {}}],
+                },
+                {"content": "Found: Italian Place", "type": "tool"},
+                {
+                    "content": "Your table at Italian Place is booked for 8pm.",
+                    "type": "ai",
+                },
+            ],
+            "reference": "Successfully booked a table at a restaurant for 8pm",
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
 
-    ```json
+</Tab>
+<Tab title="Result">
+
+```json
+{
+  "aggregate_scores": [
     {
-      "aggregate_scores": [
-        {
-          "name": "agent_goal_accuracy",
-          "count": 1,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0
-        }
-      ],
-      "row_scores": [
-        {
-          "index": 0,
-          "scores": {
-            "agent_goal_accuracy": 1.0
-          }
-        }
-      ]
+      "name": "agent_goal_accuracy",
+      "count": 1,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
     }
-    ```
+  ],
+  "row_scores": [
+    {
+      "index": 0,
+      "scores": {
+        "agent_goal_accuracy": 1.0
+      }
+    }
+  ]
+}
+```
 
+</Tab>
+
+</Tabs>
 #### Without Reference
 
 The judge LLM infers the goal from the conversation context:
@@ -828,99 +864,105 @@ The judge LLM infers the goal from the conversation context:
 }
 ```
 
-=== "Run Locally"
+<Tabs>
 
-    ```python
-    from nemo_evaluator_sdk import Model
-    from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+<Tab title="Run Locally">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {
-                        "content": "Set a reminder for my dentist appointment tomorrow at 2pm",
-                        "type": "human",
-                    },
-                    {
-                        "content": "I'll set that reminder for you.",
-                        "type": "ai",
-                        "tool_calls": [
-                            {
-                                "name": "set_reminder",
-                                "args": {
-                                    "title": "Dentist appointment",
-                                    "date": "tomorrow",
-                                    "time": "2pm",
-                                },
-                            }
-                        ],
-                    },
-                    {"content": "Reminder set successfully.", "type": "tool"},
-                    {"content": "Your reminder has been set.", "type": "ai"},
-                ],
-            }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
-=== "Submit Job"
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {
+                    "content": "Set a reminder for my dentist appointment tomorrow at 2pm",
+                    "type": "human",
+                },
+                {
+                    "content": "I'll set that reminder for you.",
+                    "type": "ai",
+                    "tool_calls": [
+                        {
+                            "name": "set_reminder",
+                            "args": {
+                                "title": "Dentist appointment",
+                                "date": "tomorrow",
+                                "time": "2pm",
+                            },
+                        }
+                    ],
+                },
+                {"content": "Reminder set successfully.", "type": "tool"},
+                {"content": "Your reminder has been set.", "type": "ai"},
+            ],
+        }
+    ],
+)
+print(result.aggregate_scores)
+```
 
-    ```python
-    from nemo_evaluator_sdk import RunConfig, Model
-    from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
+</Tab>
+<Tab title="Submit Job">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk.metrics.ragas import AgentGoalAccuracyMetric
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": [
-                    {
-                        "content": "Set a reminder for my dentist appointment tomorrow at 2pm",
-                        "type": "human",
-                    },
-                    {
-                        "content": "I'll set that reminder for you.",
-                        "type": "ai",
-                        "tool_calls": [
-                            {
-                                "name": "set_reminder",
-                                "args": {
-                                    "title": "Dentist appointment",
-                                    "date": "tomorrow",
-                                    "time": "2pm",
-                                },
-                            }
-                        ],
-                    },
-                    {"content": "Reminder set successfully.", "type": "tool"},
-                    {"content": "Your reminder has been set.", "type": "ai"},
-                ],
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AgentGoalAccuracyMetric(use_reference=False, judge_model=judge_model)
 
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": [
+                {
+                    "content": "Set a reminder for my dentist appointment tomorrow at 2pm",
+                    "type": "human",
+                },
+                {
+                    "content": "I'll set that reminder for you.",
+                    "type": "ai",
+                    "tool_calls": [
+                        {
+                            "name": "set_reminder",
+                            "args": {
+                                "title": "Dentist appointment",
+                                "date": "tomorrow",
+                                "time": "2pm",
+                            },
+                        }
+                    ],
+                },
+                {"content": "Reminder set successfully.", "type": "tool"},
+                {"content": "Your reminder has been set.", "type": "ai"},
+            ],
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
+
+</Tab>
+
+</Tabs>
 ---
 
 ### Answer Accuracy
@@ -937,144 +979,152 @@ Evaluates the factual correctness of an agent's answer by comparing it against a
 }
 ```
 
-=== "Run Locally"
+<Tabs>
 
-    ```python
-    from nemo_evaluator_sdk import Model
-    from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+<Tab title="Run Locally">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AnswerAccuracyMetric(judge_model=judge_model)
+```python
+from nemo_evaluator_sdk import Model
+from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AnswerAccuracyMetric(judge_model=judge_model)
+
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "response": "The capital of France is Paris.",
+            "reference": "Paris",
+        }
+    ],
+)
+print(result.aggregate_scores)
+```
+
+</Tab>
+<Tab title="Submit Job">
+
+```python
+from nemo_evaluator_sdk import RunConfig, Model
+from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+metric = AnswerAccuracyMetric(judge_model=judge_model)
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "response": "The capital of France is Paris.",
+            "reference": "Paris",
+        }
+    ],
+    config=RunConfig(parallelism=4),
+)
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
+
+</Tab>
+<Tab title="Online Target Generation">
+
+```python
+from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
+from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+
+judge_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="meta/llama-3.1-70b-instruct",
+    api_key_secret="nvidia-api-key",
+)
+target_model = Model(
+    url="https://integrate.api.nvidia.com/v1/chat/completions",
+    name="nvidia/llama-3.3-nemotron-super-49b-v1",
+    api_key_secret="nvidia-api-key",
+)
+metric = AnswerAccuracyMetric(judge_model=judge_model)
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "reference": "Paris",
+        }
+    ],
+    config=RunConfigOnlineModel(
+        parallelism=4,
+        inference=InferenceParams(temperature=0.7, max_tokens=1024),
+    ),
+    target=target_model,
+    prompt_template={
+        "messages": [
             {
-                "user_input": "What is the capital of France?",
-                "response": "The capital of France is Paris.",
-                "reference": "Paris",
+                "role": "user",
+                "content": "{{item.user_input}}",
             }
-        ],
-    )
-    print(result.aggregate_scores)
-    ```
+        ]
+    },
+)
 
-=== "Submit Job"
+job.wait_until_done()
+result = job.get_result()
+print(result.aggregate_scores)
+```
 
-    ```python
-    from nemo_evaluator_sdk import RunConfig, Model
-    from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
+</Tab>
+<Tab title="Result">
 
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AnswerAccuracyMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "response": "The capital of France is Paris.",
-                "reference": "Paris",
-            }
-        ],
-        config=RunConfig(parallelism=4),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
-
-=== "Online Target Generation"
-
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import RunConfigOnlineModel, InferenceParams, Model
-    from nemo_evaluator_sdk.metrics.ragas import AnswerAccuracyMetric
-
-    judge_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="meta/llama-3.1-70b-instruct",
-        api_key_secret="nvidia-api-key",
-    )
-    target_model = Model(
-        url="https://integrate.api.nvidia.com/v1/chat/completions",
-        name="nvidia/llama-3.3-nemotron-super-49b-v1",
-        api_key_secret="nvidia-api-key",
-    )
-    metric = AnswerAccuracyMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "reference": "Paris",
-            }
-        ],
-        config=RunConfigOnlineModel(
-            parallelism=4,
-            inference=InferenceParams(temperature=0.7, max_tokens=1024),
-        ),
-        target=target_model,
-        prompt_template={
-            "messages": [
-                {
-                    "role": "user",
-                    "content": "{{item.user_input}}",
-                }
-            ]
-        },
-    )
-
-    job.wait_until_done()
-    result = job.get_result()
-    print(result.aggregate_scores)
-    ```
-    {% endraw %}
-
-=== "Result"
-
-    ```json
+```json
+{
+  "aggregate_scores": [
     {
-      "aggregate_scores": [
-        {
-          "name": "nv_accuracy",
-          "count": 1,
-          "mean": 1.0,
-          "min": 1.0,
-          "max": 1.0
-        }
-      ],
-      "row_scores": [
-        {
-          "index": 0,
-          "scores": {
-            "nv_accuracy": 1.0
-          }
-        }
-      ]
+      "name": "nv_accuracy",
+      "count": 1,
+      "mean": 1.0,
+      "min": 1.0,
+      "max": 1.0
     }
-    ```
+  ],
+  "row_scores": [
+    {
+      "index": 0,
+      "scores": {
+        "nv_accuracy": 1.0
+      }
+    }
+  ]
+}
+```
 
+</Tab>
+
+</Tabs>
 ---
 
 ### Trajectory Evaluation
 
 Evaluates the agent's decision-making process by analyzing the entire sequence of actions (trajectory) taken to accomplish a goal. This **system metric** assesses whether the agent chose appropriate tools in the correct order.
 
-!!! info
-    **NAT Format Requirement**: This metric supports the NVIDIA Agent Toolkit format with `intermediate_steps` containing detailed event traces.
+<Note>
 
-    **Current plugin SDK support**: The current plugin SDK does not expose a typed trajectory-evaluation metric class. Use the data-format details below when preparing datasets for environments where the system metric is enabled, but do not use the old generated evaluator job APIs for plugin SDK execution.
+**NAT Format Requirement**: This metric supports the NVIDIA Agent Toolkit format with `intermediate_steps` containing detailed event traces.
 
+**Current plugin SDK support**: The current plugin SDK does not expose a typed trajectory-evaluation metric class. Use the data-format details below when preparing datasets for environments where the system metric is enabled, but do not use the old generated evaluator job APIs for plugin SDK execution.
+
+</Note>
 #### Data Format
 
 Each data entry must follow the [NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/index.html) format:
@@ -1144,9 +1194,11 @@ judge_model = Model(
 )
 ```
 
-!!! info
-    **Recommended model size**: Use a 70B+ parameter model as the judge for reliable results. Smaller models may fail to follow the required output schema, causing parsing errors.
+<Note>
 
+**Recommended model size**: Use a 70B+ parameter model as the judge for reliable results. Smaller models may fail to follow the required output schema, causing parsing errors.
+
+</Note>
 ### Using Reasoning Models
 
 For models that support extended reasoning, such as `nvidia/llama-3.3-nemotron-super-49b-v1`, add system prompt and reasoning parameters to online model generation:
@@ -1227,9 +1279,12 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 5. **NaN troubleshooting for judge-based metrics**: If you see `nan_count > 0` with `mean = null`, check judge model authentication first (API key secret, endpoint access, and model permissions). See [Model API Authentication](model-configuration.md#model-api-authentication) for `api_key_secret` behavior. Some RAGAS metrics are known to convert auth failures into `NaN` scores instead of raising a hard error.
 
-!!! info
-    - [Agent Configuration](agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation jobs
-    - [Agentic Benchmarks](../benchmarks/agentic.md) - BFCL benchmark for tool-calling evaluation
-    - [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
-    - [Evaluation Results](results.md) - Understanding results
-    - [RAG Metrics](rag.md) - RAGAS metrics for RAG pipelines
+<Note>
+
+- [Agent Configuration](agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation jobs
+- [Agentic Benchmarks](../benchmarks/agentic.md) - BFCL benchmark for tool-calling evaluation
+- [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
+- [Evaluation Results](results.md) - Understanding results
+- [RAG Metrics](rag.md) - RAGAS metrics for RAG pipelines
+
+</Note>

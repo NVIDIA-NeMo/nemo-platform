@@ -1,5 +1,7 @@
-# Optimize Agents
-
+---
+title: "Optimize Agents"
+description: ""
+---
 <a id="agents-optimization"></a>
 
 Use the Agent Optimizer to analyze a deployed agent and act on improvement
@@ -82,93 +84,100 @@ quality.
 Run `nemo models list` first and replace the placeholders below with model
 entity names from your workspace that use the `OPENAI_CHAT` backend format.
 
-=== "CLI"
+<Tabs>
 
-    The command below creates a virtual model that sends 80% of traffic to the
-    strong model and 20% to the weak one.
+<Tab title="CLI">
 
-    ```bash
-    nemo inference virtual-models create routed-agent-model \
-      --workspace default \
-      --models '[
-        {"model":"default/<strong-model-entity>","backend_format":"OPENAI_CHAT"},
-        {"model":"default/<weak-model-entity>","backend_format":"OPENAI_CHAT"}
-      ]' \
-      --request-middleware '[{
-        "name":"nemo-switchyard",
-        "config_type":"random_routing",
-        "config":{
-          "strong":{"model":"default/<strong-model-entity>"},
-          "weak":{"model":"default/<weak-model-entity>"},
-          "strong_probability":0.8,
-          "enable_stats":false
-        }
-      }]'
-    ```
+The command below creates a virtual model that sends 80% of traffic to the
+strong model and 20% to the weak one.
 
-    Before wiring the virtual model to an agent, smoke-test the route by
-    making several minimal chat-completions calls and checking the returned
-    model name. The observed split should roughly match `strong_probability`.
+```bash
+nemo inference virtual-models create routed-agent-model \
+  --workspace default \
+  --models '[
+    {"model":"default/<strong-model-entity>","backend_format":"OPENAI_CHAT"},
+    {"model":"default/<weak-model-entity>","backend_format":"OPENAI_CHAT"}
+  ]' \
+  --request-middleware '[{
+    "name":"nemo-switchyard",
+    "config_type":"random_routing",
+    "config":{
+      "strong":{"model":"default/<strong-model-entity>"},
+      "weak":{"model":"default/<weak-model-entity>"},
+      "strong_probability":0.8,
+      "enable_stats":false
+    }
+  }]'
+```
 
-=== "Skill"
+Before wiring the virtual model to an agent, smoke-test the route by
+making several minimal chat-completions calls and checking the returned
+model name. The observed split should roughly match `strong_probability`.
 
-    Ask your coding agent:
+</Tab>
+<Tab title="Skill">
 
-    > Optimize my deployed agent.
+Ask your coding agent:
 
-    The `agents-optimize` skill picks a deployed agent, establishes an
-    evaluation baseline, runs the analysis steps below, and surfaces
-    suggestions for you to apply.
+> Optimize my deployed agent.
 
-    Verify the skill is installed:
+The `agents-optimize` skill picks a deployed agent, establishes an
+evaluation baseline, runs the analysis steps below, and surfaces
+suggestions for you to apply.
 
-    ```bash
-    nemo skills show agents-optimize
-    ```
+Verify the skill is installed:
 
-    What it does under the hood:
+```bash
+nemo skills show agents-optimize
+```
 
-    - Lists deployed agents and prompts you to choose one.
-    - Inspects the agent's `llms[*].model_name` and looks for cheaper compatible
-      models in the workspace catalog.
-    - Creates a Switchyard `random_routing` virtual model with an 80% strong /
-      20% weak split and smoke-tests the route before wiring it to a sibling
-      agent.
-    - Suggests skill optimization, prompt tuning, and new-model evaluations
-      where the agent qualifies.
-    - Persists suggestions to the `nemo-agent-optimizer` fileset.
+What it does under the hood:
 
-=== "Python SDK"
+- Lists deployed agents and prompts you to choose one.
+- Inspects the agent's `llms[*].model_name` and looks for cheaper compatible
+  models in the workspace catalog.
+- Creates a Switchyard `random_routing` virtual model with an 80% strong /
+  20% weak split and smoke-tests the route before wiring it to a sibling
+  agent.
+- Suggests skill optimization, prompt tuning, and new-model evaluations
+  where the agent qualifies.
+- Persists suggestions to the `nemo-agent-optimizer` fileset.
 
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
+</Tab>
+<Tab title="Python SDK">
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    client.inference.virtual_models.create(
-        name="routed-agent-model",
-        workspace="default",
-        models=[
-            {"model": "default/<strong-model-entity>", "backend_format": "OPENAI_CHAT"},
-            {"model": "default/<weak-model-entity>", "backend_format": "OPENAI_CHAT"},
-        ],
-        request_middleware=[{
-            "name": "nemo-switchyard",
-            "config_type": "random_routing",
-            "config": {
-                "strong": {"model": "default/<strong-model-entity>"},
-                "weak": {"model": "default/<weak-model-entity>"},
-                "strong_probability": 0.8,
-                "enable_stats": False,
-            },
-        }],
-    )
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
+client.inference.virtual_models.create(
+    name="routed-agent-model",
+    workspace="default",
+    models=[
+        {"model": "default/<strong-model-entity>", "backend_format": "OPENAI_CHAT"},
+        {"model": "default/<weak-model-entity>", "backend_format": "OPENAI_CHAT"},
+    ],
+    request_middleware=[{
+        "name": "nemo-switchyard",
+        "config_type": "random_routing",
+        "config": {
+            "strong": {"model": "default/<strong-model-entity>"},
+            "weak": {"model": "default/<weak-model-entity>"},
+            "strong_probability": 0.8,
+            "enable_stats": False,
+        },
+    }],
+)
+```
+
+</Tab>
+
+</Tabs>
 ## Optimize Skills
 
 Skill optimization applies when the agent depends on local skill files and has
@@ -176,51 +185,58 @@ an evaluation suite. The loop runs evaluations, analyzes failures, lets the
 coding agent edit only the configured skills directory, reruns verification,
 and keeps the change only when the evaluation result improves.
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo agents optimize-skills --config .agent-improver.yml
-    ```
+<Tab title="CLI">
 
-    Use `--open-pr` when you want the loop to prepare a reviewable branch.
+```bash
+nemo agents optimize-skills --config .agent-improver.yml
+```
 
-    A sample `.agent-improver.yml` is in
-    `plugins/nemo-agents/examples/agent-improver.example.yml`.
+Use `--open-pr` when you want the loop to prepare a reviewable branch.
 
-=== "Skill"
+A sample `.agent-improver.yml` is in
+`plugins/nemo-agents/examples/agent-improver.example.yml`.
 
-    Ask your coding agent:
+</Tab>
+<Tab title="Skill">
 
-    > Optimize the skills used by my agent and keep the changes that improve evaluation scores.
+Ask your coding agent:
 
-    The `agents-optimize` skill drives the skill-optimization loop when the
-    selected agent has skills and an evaluation suite. Verify it is installed:
+> Optimize the skills used by my agent and keep the changes that improve evaluation scores.
 
-    ```bash
-    nemo skills show agents-optimize
-    ```
+The `agents-optimize` skill drives the skill-optimization loop when the
+selected agent has skills and an evaluation suite. Verify it is installed:
 
-    What it does under the hood:
+```bash
+nemo skills show agents-optimize
+```
 
-    - Confirms the agent uses skills (a `--skills-path`, a `.agent-improver.yml`,
-      or skill files referenced from the config).
-    - Runs `nemo agents optimize-skills` against the configured skills directory.
-    - Re-runs evaluation and keeps the change only when scores improve.
-    - Persists outcomes to the `nemo-agent-optimizer` fileset.
+What it does under the hood:
 
-=== "Python SDK"
+- Confirms the agent uses skills (a `--skills-path`, a `.agent-improver.yml`,
+  or skill files referenced from the config).
+- Runs `nemo agents optimize-skills` against the configured skills directory.
+- Re-runs evaluation and keeps the change only when scores improve.
+- Persists outcomes to the `nemo-agent-optimizer` fileset.
 
-    ```python
-    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
-    from nemo_platform_plugin.scheduler import NemoJobScheduler
+</Tab>
+<Tab title="Python SDK">
 
-    NemoJobScheduler().run_local(
-        OptimizeSkillsJob,
-        {"config": ".agent-improver.yml"},
-        workspace="default",
-    )
-    ```
+```python
+from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+from nemo_platform_plugin.scheduler import NemoJobScheduler
 
+NemoJobScheduler().run_local(
+    OptimizeSkillsJob,
+    {"config": ".agent-improver.yml"},
+    workspace="default",
+)
+```
+
+</Tab>
+
+</Tabs>
 ## Inspect Saved Results
 
 Use the Files service to inspect what the optimizer saved:
@@ -253,66 +269,73 @@ YAML and want to run `nat optimize` through the Agents plugin.
 
 For the ReAct example:
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo agents optimize run \
-      --optimize-config plugins/nemo-agents/examples/react-agent/react-optimize.yml \
-      --agent react-agent
-    ```
+<Tab title="CLI">
 
-=== "Skill"
+```bash
+nemo agents optimize run \
+  --optimize-config plugins/nemo-agents/examples/react-agent/react-optimize.yml \
+  --agent react-agent
+```
 
-    Ask your coding agent:
+</Tab>
+<Tab title="Skill">
 
-    > Run prompt tuning on my deployed agent against this optimization config.
+Ask your coding agent:
 
-    The `agents-optimize` skill suggests `nemo agents optimize run` when the
-    agent has an optimization config and a baseline dataset. Verify it is
-    installed:
+> Run prompt tuning on my deployed agent against this optimization config.
 
-    ```bash
-    nemo skills show agents-optimize
-    ```
+The `agents-optimize` skill suggests `nemo agents optimize run` when the
+agent has an optimization config and a baseline dataset. Verify it is
+installed:
 
-    What it does under the hood:
+```bash
+nemo skills show agents-optimize
+```
 
-    - Confirms the agent has a NAT optimization YAML.
-    - Runs `nemo agents optimize run` (or `submit` for platform jobs).
-    - Compares results against the evaluation baseline and surfaces deltas
-      for review.
+What it does under the hood:
 
-=== "Python SDK"
+- Confirms the agent has a NAT optimization YAML.
+- Runs `nemo agents optimize run` (or `submit` for platform jobs).
+- Compares results against the evaluation baseline and surfaces deltas
+  for review.
 
-    ```python
-    import os
-    from pathlib import Path
+</Tab>
+<Tab title="Python SDK">
 
-    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
-    from nemo_platform import NeMoPlatform
-    from nemo_platform_plugin.scheduler import NemoJobScheduler
+```python
+import os
+from pathlib import Path
 
-    WORKSPACE = "default"
-    optimize_config = Path("plugins/nemo-agents/examples/react-agent/react-optimize.yml")
+from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
+from nemo_platform import NeMoPlatform
+from nemo_platform_plugin.scheduler import NemoJobScheduler
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace=WORKSPACE,
-    )
+WORKSPACE = "default"
+optimize_config = Path("plugins/nemo-agents/examples/react-agent/react-optimize.yml")
 
-    result = NemoJobScheduler().run_local(
-        OptimizeAgentJob,
-        {
-            "optimize_config": str(optimize_config),
-            "agent": "react-agent",
-            "workspace": WORKSPACE,
-        },
-        workspace=WORKSPACE,
-        sdk=client,
-    )
-    print(result)
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
 
+result = NemoJobScheduler().run_local(
+    OptimizeAgentJob,
+    {
+        "optimize_config": str(optimize_config),
+        "agent": "react-agent",
+        "workspace": WORKSPACE,
+    },
+    workspace=WORKSPACE,
+    sdk=client,
+)
+print(result)
+```
+
+</Tab>
+
+</Tabs>
 When `--agent` is a platform-managed agent name, the job fetches the stored
 agent config, merges it with the optimization config, injects the Inference
 Gateway URL, and runs trials locally. When `--agent` is a raw HTTP endpoint,

@@ -1,11 +1,18 @@
+---
+title: "Install {{helm_chart_short_name}}"
+description: ""
+---
 <a id="install"></a>
-# Install {{helm_chart_short_name}}
 
-!!! tip "Note: This setup is the full enterprise platform, meant for advanced use. If you're just getting started, check out [setting up a local instance of the platform](../../get-started/setup.md) instead — it's faster and easier to explore the basics."
+<Tip>
 
-To deploy the {{platform_name}}, follow these steps after completing the [Prerequisites](./prerequisites.md).
+Note: This setup is the full enterprise platform, meant for advanced use. If you're just getting started, check out [setting up a local instance of the platform](../../get-started/setup.md) instead — it's faster and easier to explore the basics.
 
-1. Add the {{helm_chart_short_name}} to your local Helm repositories.
+</Tip>
+
+To deploy the NeMo Platform, follow these steps after completing the [Prerequisites](./prerequisites.md).
+
+1. Add the \{\{helm_chart_short_name}} to your local Helm repositories.
 
  ```sh
  helm repo add nmp https://helm.ngc.nvidia.com/nvidia/nemo-microservices \
@@ -16,7 +23,7 @@ To deploy the {{platform_name}}, follow these steps after completing the [Prereq
  helm repo update
  ```
 
-2. Review the default values in the [{{helm_chart_short_name}} reference](../../helm/index.md). To override the default values, create a custom values file. Review the following while creating your custom values file.
+2. Review the default values in the [\{\{helm_chart_short_name}} reference](../../helm/index.md). To override the default values, create a custom values file. Review the following while creating your custom values file.
 
  - To configure an external database, see [Database Setup](./database-setup.md).
  - To configure persistent volumes for jobs and files storage, see [Persistent Volumes](./persistent-volumes.md).
@@ -28,12 +35,12 @@ To deploy the {{platform_name}}, follow these steps after completing the [Prereq
 3. Install the Volcano scheduler before installing the chart. This is required for customization jobs that leverage multiple nodes.
 
  ```sh
-{% raw %}
+
  kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v{{volcano_version}}/installer/volcano-development.yaml
-{% endraw %}
+
  ```
 
- After applying, wait for the Volcano admission webhook to finish initializing before proceeding. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, all pod creation — including the {{platform_name}} Helm install — will fail with a certificate error.
+ After applying, wait for the Volcano admission webhook to finish initializing before proceeding. The webhook registers immediately with `failurePolicy: Fail`, but TLS certificate generation runs asynchronously. If you proceed before the webhook is ready, all pod creation — including the NeMo Platform Helm install — will fail with a certificate error.
 
  ```sh
  kubectl wait --for=condition=complete job/volcano-admission-init -n volcano-system --timeout=120s
@@ -72,7 +79,11 @@ To uninstall the deployment, use the following command:
 helm uninstall nemo-platform
 ```
 
-!!! note "`helm uninstall` intentionally does **not** remove all resources:"
+<Note>
+
+`helm uninstall` intentionally does **not** remove all resources:
+
+</Note>
     - **PVCs** are preserved to prevent accidental data loss. Delete them manually if no longer needed.
     - **CRDs** are not removed by Helm design ([upstream issue](https://github.com/helm/helm/issues/4840)) to avoid destroying custom resources across the cluster.
     - **Completed jobs, secrets, and the namespace** may also remain.
@@ -86,7 +97,11 @@ kubectl delete namespace <namespace>
 kubectl delete crd <crd_name>
 ```
 
-!!! warning "Deleting CRDs removes all custom resources of those types cluster-wide. Only do this if no other workloads depend on them."
+<Warning>
+
+Deleting CRDs removes all custom resources of those types cluster-wide. Only do this if no other workloads depend on them.
+
+</Warning>
 
 ## Troubleshooting
 

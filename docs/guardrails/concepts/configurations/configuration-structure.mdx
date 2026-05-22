@@ -1,6 +1,9 @@
-<!-- @nemo-nb: process -->
+---
+title: "Configuration Structure"
+description: ""
+---
+
 <a id="guardrails-configuration-structure"></a>
-# Configuration Structure
 
 A guardrail configuration contains several properties that customize how the service interacts with models and applies safety checks. This page describes the core components (models, prompts, and rails) as well as advanced options for tracing, passthrough, and other behaviors.
 
@@ -16,7 +19,7 @@ A model configuration defines the LLM to use for a specific task. It consists of
 - `mode`: The completion mode. Allowed values are `"chat"` (default) or `"text"`.
 - `cache`: Cache configuration for this model. Primarily used for content safety models to cache repeated checks. Contains `enabled` (default: `false`), `maxsize` (default: `50000`), and `stats` sub-fields.
 - `parameters`: Additional properties to configure interacting with the model. The following fields are supported for all model types:
-  - `base_url`: The URL to use for inference with this model. When using models deployed through the Inference Gateway, {{ngm_short_name}} automatically resolves the URL through IGW's route table. You do not need to explicitly set a Base URL for your model.
+  - `base_url`: The URL to use for inference with this model. When using models deployed through the Inference Gateway, NeMo Guardrails automatically resolves the URL through IGW's route table. You do not need to explicitly set a Base URL for your model.
   - `default_headers`: Custom HTTP headers to include in requests to this model. Each key-value pair represents a header name (key) and its default value (value).
 
 Under the IGW plugin architecture, the main model is owned by IGW and specified through the VirtualModel's `default_model_entity`. Guardrail configurations should omit the `type: "main"` model entry — the plugin injects the per-request main model at runtime, and self-check rails reuse that per-request main model for evaluation.
@@ -46,7 +49,11 @@ models = [
 ]
 ```
 
-!!! tip "Model Entities are automatically created when you:"
+<Tip>
+
+Model Entities are automatically created when you:
+
+</Tip>
     - Create a Model Provider pointing to an external API (refer to [Add External Providers](../../../run-inference/about.md#add-external-providers))
 
     Use `client.models.list()` to retrieve available Model Entities in your workspace.
@@ -79,7 +86,7 @@ A prompt is used by the model during a task to evaluate a message. It consists o
 
 - `task`: The task to apply the prompt to.
 - `content`: The content of the prompt. Mutually exclusive with `messages`.
-  - Prompts that require a dynamic input variable(s) use Jinja2 templating. For example, the `{%raw%}{{ user_input }}{%endraw%}` variable is replaced with the end user's input at runtime.
+  - Prompts that require a dynamic input variable(s) use Jinja2 templating. For example, the `{{ user_input }}` variable is replaced with the end user's input at runtime.
 - `messages`: A list of messages for chat-model prompts. Mutually exclusive with `content`. Each message has `type` (such as `"system"` or `"user"`) and `content` fields.
 - `output_parser`: Name of output parser to process the model's response.
 - `max_tokens`: Maximum number of tokens the model can generate.
@@ -88,7 +95,11 @@ A prompt is used by the model during a task to evaluate a message. It consists o
 - `mode`: The prompting mode for this prompt. Defaults to the top-level `prompting_mode` value (typically `"standard"`).
 - `stop`: A list of stop tokens for models that support this feature.
 
-!!! note "Self-check prompts with reasoning models"
+<Note>
+
+Self-check prompts with reasoning models
+
+</Note>
     Self-check rails use the main model and expect it to answer `Yes` to block or `No` to allow. Reasoning models may use part of the completion budget for reasoning before they emit the final verdict. By default, self-check requests set `max_tokens: 3`, which can stop a reasoning model before it reaches `Yes` or `No`. A truncated or unparseable self-check answer will block the message. For production safety checks, prefer content-safety rails with a dedicated safety model. If you use self-check rails, prefer a non-reasoning main model when available.
 
     If you must use a reasoning model for `self_check_input` or `self_check_output`, set `max_tokens` high enough for both the model's reasoning and the final `Yes` or `No` verdict:
@@ -127,10 +138,10 @@ The following dynamic variables can be used in the prompt content:
 
 | Variable | Description |
 |----------|-------------|
-| `{%raw%}{{ user_input }}{%endraw%}` | The end user's input message |
-| `{%raw%}{{ bot_response }}{%endraw%}` | The LLM-generated response |
-| `{%raw%}{{ context }}{%endraw%}` | Additional context provided in the request |
-| `{%raw%}{{ relevant_chunks }}{%endraw%}` | Retrieved chunks in RAG deployments |
+| `{{ user_input }}` | The end user's input message |
+| `{{ bot_response }}` | The LLM-generated response |
+| `{{ context }}` | Additional context provided in the request |
+| `{{ relevant_chunks }}` | Retrieved chunks in RAG deployments |
 
 ---
 
@@ -248,7 +259,11 @@ The guardrail configuration supports additional top-level fields for fine-tuning
 | `tracing.enable_content_capture` | boolean | `false` | Include prompt/response content in traces |
 | `passthrough` | boolean | `false` | When `true`, bypass all rails and forward the request directly to the model |
 
-!!! warning "Enabling `tracing.enable_content_capture` causes prompts and responses (including user, assistant, and tool message content) to be included in telemetry events. This can expose PII and sensitive data in your telemetry backend."
+<Warning>
+
+Enabling `tracing.enable_content_capture` causes prompts and responses (including user, assistant, and tool message content) to be included in telemetry events. This can expose PII and sensitive data in your telemetry backend.
+
+</Warning>
 
 ---
 

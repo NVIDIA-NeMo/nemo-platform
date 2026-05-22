@@ -1,7 +1,11 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Seeding with External Datasets"
+description: ""
+---
+import SnippetPreviewResults from "@/snippets/data-designer/_snippets/preview-results.mdx";
+import SnippetJobResults from "@/snippets/data-designer/_snippets/job-results.mdx";
+
 <a id="data-designer-tutorials-seeding"></a>
-# Seeding with External Datasets
 
 This tutorial demonstrates how to use external datasets as seed data for synthetic data generation in Data Designer.
 
@@ -17,9 +21,11 @@ Seed source support depends on where the workload executes:
 | **HuggingFace** | Supported | Supported | Publicly available datasets or private HuggingFace datasets. |
 | **Files API Filesets** | Supported when NeMo Services access is configured | Supported | Shared seed data stored through the Files API. |
 
-!!! note
-    `run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
+<Note>
 
+`run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
+
+</Note>
 ### HuggingFace Datasets
 
 Use `HuggingFaceSeedSource` to load data from HuggingFace:
@@ -135,7 +141,7 @@ config_builder.with_seed_dataset(
 
 Add columns that reference and extend the seed data:
 
-{% raw %}
+
 ```python
 # Patient details
 config_builder.add_column(
@@ -241,7 +247,7 @@ Respond with only the notes, no other text.
     )
 )
 ```
-{% endraw %}
+
 
 **Note:** The `diagnosis` and `patient_summary` variables come from the seed dataset columns.
 
@@ -302,8 +308,7 @@ print(df.head())
 preview.analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/preview-results.md"
-
+<SnippetPreviewResults />
 ### Generating the Full Dataset
 
 When you're satisfied with the preview, submit a larger generation job:
@@ -327,8 +332,7 @@ analysis = results.load_analysis()
 analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/job-results.md"
-
+<SnippetJobResults />
 ## How Seeding Works
 
 When you configure a seed dataset:

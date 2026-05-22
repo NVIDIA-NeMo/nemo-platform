@@ -1,13 +1,15 @@
-# Azure AD (Entra ID) Setup
-
-Complete walkthrough for connecting {{platform_name}} to Azure AD (Entra ID), from app registration to first successful login.
+---
+title: "Azure AD (Entra ID) Setup"
+description: ""
+---
+Complete walkthrough for connecting NeMo Platform to Azure AD (Entra ID), from app registration to first successful login.
 
 **Prerequisites**: Access to Azure Portal with permission to create app registrations. Familiarity with [OIDC Setup](../oidc.md).
 
 ## App Registration
 
 1. In Azure Portal, go to **Azure Active Directory** → **App registrations** → **New registration**.
-2. Name the application (e.g., "{{platform_name}}").
+2. Name the application (e.g., "NeMo Platform").
 3. Set **Supported account types** to your tenant configuration.
 4. No redirect URI is needed for device flow, but setting one is good practice.
 5. Note the **Application (client) ID** and **Directory (tenant) ID**.
@@ -23,8 +25,8 @@ Complete walkthrough for connecting {{platform_name}} to Azure AD (Entra ID), fr
 1. Go to **Expose an API**.
 2. Set the **Application ID URI** (e.g., `api://<client-id>`).
 3. Add scopes:
- - `platform:read` — "Read access to {{platform_name}} platform resources"
- - `platform:write` — "Write access to {{platform_name}} platform resources"
+ - `platform:read` — "Read access to NeMo Platform platform resources"
+ - `platform:write` — "Write access to NeMo Platform platform resources"
 4. Go to **API permissions** → **Add a permission** → **My APIs** → select your app → add the scopes.
 5. Click **Grant admin consent** for the scopes.
 
@@ -34,7 +36,7 @@ Complete walkthrough for connecting {{platform_name}} to Azure AD (Entra ID), fr
 2. Select **Security groups** (or the group types your organization uses).
 3. For the **Access token**, select **Group ID**.
 
-## {{platform_name}} Configuration
+## NeMo Platform Configuration
 
 ```yaml
 auth:

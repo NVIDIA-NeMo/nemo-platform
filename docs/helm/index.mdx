@@ -1,14 +1,25 @@
---8<-- "helm/_snippets/helm-values.css"
+---
+title: "NeMo Platform Helm Chart"
+description: ""
+---
+```
+/* SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved. */
+/* SPDX-License-Identifier: Apache-2.0 */
 
-# {{platform_name}} Helm Chart
-
+<style>
+/* Line wrapping for Helm values.yaml code block */
+.helm-values-yaml pre {
+    white-space: pre-wrap !important;
+    word-wrap: break-word !important;
+    overflow-wrap: break-word !important;
+}
+</style>
+```
 ![Type: application](https://img.shields.io/badge/Type-application-informational?style=flat-square)
 
-For deployment guide, see [Admin Setup](../set-up/index.md) in the {{platform_name}} documentation.
+For deployment guide, see [Admin Setup](../set-up/index.md) in the NeMo Platform documentation.
 
 ## Values
 
-The following is the complete `values.yaml` file for the {{platform_name}} Helm Chart.
+The following is the complete `values.yaml` file for the NeMo Platform Helm Chart.
 All configuration options are documented inline with comments.
-
---8<-- "_values.yaml"

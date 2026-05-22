@@ -1,9 +1,16 @@
+---
+title: "Guardrail Tutorials"
+description: ""
+---
 <a id="guardrails-tutorials"></a>
-# Guardrail Tutorials
 
 Use the following tutorials to learn how to accomplish common guardrail tasks using the NeMo Guardrails API.
 
-!!! tip "Before starting a tutorial, complete [Setup](../../get-started/setup.md) to configure a `ModelProvider` and discover models. The tutorials assume you have models available in the `default` workspace."
+<Tip>
+
+Before starting a tutorial, complete [Setup](../../get-started/setup.md) to configure a `ModelProvider` and discover models. The tutorials assume you have models available in the `default` workspace.
+
+</Tip>
 
 Once a `ModelProvider` is configured, use Model Entity references (`workspace/name` format) as the `model` in your guardrail configurations. The guardrails plugin resolves task model endpoints through IGW's route table. Refer to [Model Routing](../concepts/inference.md#guardrails-model-routing) for more details.
 
@@ -20,46 +27,42 @@ guardrails_config = {
 }
 ```
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Deploy NemoGuard NIMs](deploy-nemoguard-nims.md)**
+<Card title="Deploy NemoGuard NIMs" href="deploy-nemoguard-nims.md">
 
-    ---
+Deploy NemoGuard NIMs in your environment
 
-    Deploy NemoGuard NIMs in your environment
+<small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
 
-    <small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
+</Card>
+<Card title="Improving Content Safety with NemoGuard NIMs" href="content-safety.md">
 
--   **[Improving Content Safety with NemoGuard NIMs](content-safety.md)**
+Use Content Safety checks to detect and block harmful content
 
-    ---
+<small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
 
-    Use Content Safety checks to detect and block harmful content
+</Card>
+<Card title="Running Rails in Parallel" href="parallel-rails.md">
 
-    <small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
+Configure parallel rails for input and output guardrails.
 
--   **[Running Rails in Parallel](parallel-rails.md)**
+<small><span class="md-tag">nemo-guardrails</span></small>
 
-    ---
+</Card>
+<Card title="Adding Safety Checks to Multimodal Data" href="multimodal-data.md">
 
-    Configure parallel rails for input and output guardrails.
+Safety checks for multimodal data with NeMo Guardrails API.
 
-    <small><span class="md-tag">nemo-guardrails</span></small>
+<small><span class="md-tag">nemo-guardrails</span></small>
 
--   **[Adding Safety Checks to Multimodal Data](multimodal-data.md)**
+</Card>
+<Card title="Detecting Injection Attacks" href="injection-detection.md">
 
-    ---
+Configure checks for SQL, XSS, template, and code injection.
 
-    Safety checks for multimodal data with NeMo Guardrails API.
+<small><span class="md-tag">nemo-guardrails</span></small>
 
-    <small><span class="md-tag">nemo-guardrails</span></small>
+</Card>
 
--   **[Detecting Injection Attacks](injection-detection.md)**
-
-    ---
-
-    Configure checks for SQL, XSS, template, and code injection.
-
-    <small><span class="md-tag">nemo-guardrails</span></small>
-
-</div>
+</Cards>

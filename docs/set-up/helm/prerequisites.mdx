@@ -1,13 +1,16 @@
+---
+title: "Prerequisites"
+description: ""
+---
 <a id="install-prerequisites"></a>
-# Prerequisites
 
-Before installing the {{helm_chart_short_name}}, review requirements and create necessary secrets using your NGC API key.
+Before installing the \{\{helm_chart_short_name}}, review requirements and create necessary secrets using your NGC API key.
 
 ---
 
 ## Review Requirements
 
-To check the hardware and software specifications required for installing the {{helm_chart_short_name}}, review [](../../requirements.md).
+To check the hardware and software specifications required for installing the \{\{helm_chart_short_name}}, review [](../../requirements.md).
 
 For storage and persistent volume configuration (including ReadWriteMany and StorageClass configuration), see [](persistent-volumes.md).
 
@@ -16,14 +19,15 @@ For storage and persistent volume configuration (including ReadWriteMany and Sto
 <a id="nemo-ms-ngc-catalog-secrets"></a>
 ## Create NGC API Key and Secrets
 
-You need to have an NGC account, create an NGC API key, and create secrets using the key to access and download the {{helm_chart_short_name}} and Docker images.
+You need to have an NGC account, create an NGC API key, and create secrets using the key to access and download the \{\{helm_chart_short_name}} and Docker images.
 
 To learn more about using Helm charts in the NGC Catalog console in general, refer to the [Helm Charts](https://docs.nvidia.com/ngc/gpu-cloud/ngc-catalog-user-guide/index.html#helm-charts) section in the _NGC Catalog User Guide_.
 
 1. Create an NGC API key following the instructions at [Generating NGC API Keys](https://docs.nvidia.com/ngc/latest/ngc-private-registry-user-guide.html#generating-ngc-api-keys).
 
- !!! tip
+ <Tip>
 
+ </Tip>
  While creating the key, make sure that you include the following permissions at a minimum:
 
  - NGC Catalog
@@ -62,4 +66,4 @@ To learn more about using Helm charts in the NGC Catalog console in general, ref
  --namespace <namespace-to-install-nemo-microservices>
  ```
 
-For more information about various secrets you might need to create and set up through the {{helm_chart_short_name}} depending on your use case, refer to [](../../get-started/concepts/manage-secrets.md).
+For more information about various secrets you might need to create and set up through the \{\{helm_chart_short_name}} depending on your use case, refer to [](../../get-started/concepts/manage-secrets.md).

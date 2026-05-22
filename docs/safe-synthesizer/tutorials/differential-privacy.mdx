@@ -1,7 +1,10 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Differential Privacy Tutorial"
+description: ""
+---
+
+
 <a id="tutorial-differential-privacy"></a>
-# Differential Privacy Tutorial
 
 Learn how to apply differential privacy to achieve the maximum level of privacy with mathematical guarantees. This tutorial explores the privacy-utility tradeoff and demonstrates how to configure differential privacy parameters for optimal results.
 
@@ -46,7 +49,7 @@ Differential privacy (DP) provides mathematical guarantees that synthetic data d
 
 ### Record-Level vs Group-Level Privacy
 
-By default, {{nss_short_name}} uses **record-level** differential privacy, which protects individual records. For datasets where multiple records belong to the same entity (e.g., a patient with multiple visits), you can use **group-level** privacy by setting `group_training_examples_by` to the column that identifies each entity. See [Group-Level Privacy](#group-level-privacy) in the Advanced Configuration section for a code example.
+By default, NeMo Safe Synthesizer uses **record-level** differential privacy, which protects individual records. For datasets where multiple records belong to the same entity (e.g., a patient with multiple visits), you can use **group-level** privacy by setting `group_training_examples_by` to the column that identifies each entity. See [Group-Level Privacy](#group-level-privacy) in the Advanced Configuration section for a code example.
 
 **When to use group-level privacy:**
 - Multiple records per person/entity in your dataset
@@ -57,7 +60,7 @@ By default, {{nss_short_name}} uses **record-level** differential privacy, which
 
 ## Setup
 
-Install the {{platform_name}} SDK with Safe Synthesizer support:
+Install the NeMo Platform SDK with Safe Synthesizer support:
 
 ```shell
 if command -v uv &> /dev/null; then
@@ -381,7 +384,7 @@ check_data_requirements(len(df))
 **Guidelines:**
 - **10,000+ records**: Ideal for differential privacy
 - **5,000-10,000 records**: May work, use higher epsilon
-- **< 5,000 records**: Consider quality trade-offs carefully
+- **\< 5,000 records**: Consider quality trade-offs carefully
 
 ### Choosing Epsilon
 

@@ -1,7 +1,10 @@
+---
+title: "Data Designer"
+description: ""
+---
 <a id="data-designer"></a>
-# Data Designer
 
-Data Designer on {{platform_name}} enables high-quality synthetic data generation through the NeMo Data Designer plugin. You can execute workloads locally from the CLI, submit them to a running NeMo Services cluster, or call the Data Designer API from the SDK.
+Data Designer on NeMo Platform enables high-quality synthetic data generation through the NeMo Data Designer plugin. You can execute workloads locally from the CLI, submit them to a running NeMo Services cluster, or call the Data Designer API from the SDK.
 
 ## Overview
 
@@ -13,10 +16,12 @@ The plugin is built on the open-source [NVIDIA NeMo Data Designer library](https
 
 Data Designer separates **configuration** from **execution**.
 
-!!! note
-    The code snippets below are for conceptual demonstration purposes only.
-    For runnable examples, see the [tutorials](tutorials/index.md).
+<Note>
 
+The code snippets below are for conceptual demonstration purposes only.
+For runnable examples, see the [tutorials](tutorials/index.md).
+
+</Note>
 ### 1. Build Configurations
 
 Use `data_designer.config` to define the dataset you want to generate:
@@ -72,36 +77,32 @@ These integrations are required for `submit` and SDK execution. They are optiona
 
 ## Next Steps
 
-<div class="grid cards" markdown>
+<Cards>
 
--   **[Execution Modes](execution-modes.md)**
+<Card title="Execution Modes" href="execution-modes.md">
 
-    ---
+Understand local execution, NeMo Services execution, and NeMo resources.
 
-    Understand local execution, NeMo Services execution, and NeMo resources.
+</Card>
+<Card title="CLI" href="cli.md">
 
--   **[CLI](cli.md)**
+Run previews and create datasets with `nemo data-designer`.
 
-    ---
+</Card>
+<Card title="Tutorials" href="tutorials/index.md">
 
-    Run previews and create datasets with `nemo data-designer`.
+Learn through examples: basics, seeding, and more.
 
--   **[Tutorials](tutorials/index.md)**
+</Card>
+<Card title="Migration Guide" href="migration.md">
 
-    ---
+Move configurations between local CLI and NeMo Services execution.
 
-    Learn through examples: basics, seeding, and more.
+</Card>
+<Card title="Library Documentation" href="https://nvidia-nemo.github.io/DataDesigner/0.5.7/">
 
--   **[Migration Guide](migration.md)**
+Comprehensive guides on column types, constraints, and advanced features.
 
-    ---
+</Card>
 
-    Move configurations between local CLI and NeMo Services execution.
-
--   **[Library Documentation](https://nvidia-nemo.github.io/DataDesigner/0.5.7/)**
-
-    ---
-
-    Comprehensive guides on column types, constraints, and advanced features.
-
-</div>
+</Cards>

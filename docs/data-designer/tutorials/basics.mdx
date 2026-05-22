@@ -1,7 +1,11 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "The Basics"
+description: ""
+---
+import SnippetPreviewResults from "@/snippets/data-designer/_snippets/preview-results.mdx";
+import SnippetJobResults from "@/snippets/data-designer/_snippets/job-results.mdx";
+
 <a id="data-designer-tutorials-basics"></a>
-# The Basics
 
 This tutorial demonstrates the fundamentals of Data Designer by generating a product review dataset.
 
@@ -15,9 +19,11 @@ Ensure you have completed the [tutorials prerequisites](index.md#prerequisites).
 
 Use the `data_designer.config` package to define your dataset schema. This configuration code is the same across the plugin execution modes.
 
-!!! tip
-    Build the configuration once, then choose whether to execute with CLI `run`, CLI `submit`, or the SDK.
+<Tip>
 
+Build the configuration once, then choose whether to execute with CLI `run`, CLI `submit`, or the SDK.
+
+</Tip>
 ### Define Models
 
 Start by defining the models you want to use:
@@ -46,7 +52,7 @@ config_builder = dd.DataDesignerConfigBuilder(model_configs)
 
 Define the columns for your dataset. The [library documentation](https://nvidia-nemo.github.io/DataDesigner/0.5.7/notebooks/1-the-basics/) explains these column types in detail.
 
-{% raw %}
+
 ```python
 # Product category sampler
 config_builder.add_column(
@@ -184,7 +190,7 @@ config_builder.add_column(
     )
 )
 ```
-{% endraw %}
+
 
 ## Part 2: Execute
 
@@ -255,8 +261,7 @@ print(df.head())
 preview.analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/preview-results.md"
-
+<SnippetPreviewResults />
 **Iterate:** Adjust column configurations, prompts, or parameters in your `config_builder`, then run `preview` again until you're satisfied with the results.
 
 ### Scaling Up with Jobs
@@ -282,8 +287,7 @@ analysis = results.load_analysis()
 analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/job-results.md"
-
+<SnippetJobResults />
 ## What Happens Under the Hood
 
 When you use CLI `run`:

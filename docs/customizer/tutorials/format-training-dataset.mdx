@@ -1,5 +1,10 @@
+---
+title: "Format Training Dataset"
+description: ""
+---
+import SnippetPrereqs from "@/snippets/_snippets/tutorials/prereqs.mdx";
+
 <a id="fine-tune-format-training-dataset"></a>
-# Format Training Dataset
 
 Learn how to format a training dataset to work with the model type you want to train, such as a **chat** or **completion** model.
 
@@ -10,30 +15,29 @@ Customizer expects _all_ datasets to use JSONL format, where each line in the da
 
 ## Prerequisites
 
---8<-- "_snippets/tutorials/prereqs.md"
-
---8<-- "_snippets/customizer-prereqs.md"
-
+<SnippetPrereqs />
 <a id="dataset-best-practices"></a>
 ## Dataset Best Practices
 
 Before formatting your dataset, follow these principles to ensure high-quality training:
 
-!!! tip
-    **Quality Principles:**
+<Tip>
 
-    - **Quality > Quantity:** 100 high-quality examples beat 1,000 poor ones
-    - **Diversity:** Cover different scenarios, edge cases, and variations
-    - **Consistency:** Maintain uniform format, tone, and style across examples
-    - **Balance:** Include both common and rare cases relevant to your use case
-    - **Validation split:** Reserve 10-20% for validation to detect overfitting
+**Quality Principles:**
 
-    **Recommended dataset sizes:**
+- **Quality > Quantity:** 100 high-quality examples beat 1,000 poor ones
+- **Diversity:** Cover different scenarios, edge cases, and variations
+- **Consistency:** Maintain uniform format, tone, and style across examples
+- **Balance:** Include both common and rare cases relevant to your use case
+- **Validation split:** Reserve 10-20% for validation to detect overfitting
 
-    - **Minimum:** 50-100 examples for simple tasks
-    - **Typical:** 500-2,000 examples for most use cases
-    - **Large scale:** 10,000+ for complex domains with high variation
+**Recommended dataset sizes:**
 
+- **Minimum:** 50-100 examples for simple tasks
+- **Typical:** 500-2,000 examples for most use cases
+- **Large scale:** 10,000+ for complex domains with high variation
+
+</Tip>
 ### Data Quality Checklist
 
 Before uploading your dataset, verify:
@@ -84,19 +88,18 @@ A conversational dataset contains a sequence of `messages` that represent intera
 - A `role` field to categorize the message text. Options include `system`, `user`, and `assistant`.
 - A `content` field for the actual body of information communicated by that role.
 
-!!! tip
-    For best training results, the `assistant` role should be the last message in each training example.
+<Tip>
 
+For best training results, the `assistant` role should be the last message in each training example.
+
+</Tip>
 Example entry formatted for JSONL dataset file:
 
---8<-- "_snippets/output/chat-basic-format-example.jsonl"
+<Accordion title="Expanded JSON example">
 
-??? "Expanded JSON example"
+For illustrative purposes only, we show an example entry as multi-line JSON.
 
-    For illustrative purposes only, we show an example entry as multi-line JSON.
-
-    --8<-- "_snippets/output/chat-expanded-format-example.json"
-
+</Accordion>
 <a id="ft-tut-format-dataset-reasoning-considerations"></a>
 ### Reasoning Considerations
 
@@ -105,20 +108,23 @@ Some models (such as [Llama Nemotron](../models/llama-nemotron.md)) support a **
 - **Training data without reasoning:** Use `detailed thinking off` in the system message.
 - **Training data with reasoning:** Use `detailed thinking on` in the system message.
 
-!!! note
-    If you have an existing system message that must be preserved, prepend `detailed thinking on` or `detailed thinking off` to the beginning of your system message.
+<Note>
 
-    For example, if your original system message is `You are a helpful assistant.`, you should use `detailed thinking on\nYou are a helpful assistant.` or `detailed thinking off\nYou are a helpful assistant.`
+If you have an existing system message that must be preserved, prepend `detailed thinking on` or `detailed thinking off` to the beginning of your system message.
 
+For example, if your original system message is `You are a helpful assistant.`, you should use `detailed thinking on\nYou are a helpful assistant.` or `detailed thinking off\nYou are a helpful assistant.`
 
-=== "Detailed Thinking Off"
+</Note>
+<Tabs>
 
-    --8<-- "_snippets/output/chat-thinking-off-example.jsonl"
+<Tab title="Detailed Thinking Off">
 
-=== "Detailed Thinking On"
+</Tab>
+<Tab title="Detailed Thinking On">
 
-    --8<-- "_snippets/output/chat-thinking-on-example.jsonl"
+</Tab>
 
+</Tabs>
 You can adjust the system message for each training example to match the style of your data and the behavior you want the model to learn.
 
 #### Schema with Tool Calling
@@ -136,14 +142,11 @@ To train a model with tool calling capabilities, use the conversational dataset 
 
 Every sample must be a single line as in this example below.
 
---8<-- "_snippets/output/chat-tool-calling-basic-example.jsonl"
+<Accordion title="Expanded JSON example">
 
-??? "Expanded JSON example"
+For illustrative purposes only, we show an example entry as multi-line JSON.
 
-    For illustrative purposes only, we show an example entry as multi-line JSON.
-
-    --8<-- "_snippets/output/chat-tool-calling-expanded-example.json"
-
+</Accordion>
 ##### Shared Tools
 
 When your dataset uses the same set of tools across all examples, you can streamline your configuration by omitting the `tools` field from individual dataset entries. Instead, specify these tools once in the `dataset_parameters` section during job creation.
@@ -225,9 +228,11 @@ if model.spec:
 
 To run inference with a chat model, you first need to deploy the model, then use the Inference Gateway to send requests.
 
-!!! note
-    Before running inference, ensure your model is deployed. See [about](../../run-inference/about.md) for details on creating a ModelDeploymentConfig and ModelDeployment.
+<Note>
 
+Before running inference, ensure your model is deployed. See [about](../../run-inference/about.md) for details on creating a ModelDeploymentConfig and ModelDeployment.
+
+</Note>
 ```python
 import os
 from nemo_platform import NeMoPlatform
@@ -276,15 +281,15 @@ Prompt completion datasets have a simple schema. Each datum has:
 - A `prompt` field for the body of information provided by the user.
 - A `completion` field for output of the model.
 
---8<-- "_snippets/output/completion-format-example.jsonl"
-
 ### Prompt the Model
 
 To run inference with a completion model, use the Inference Gateway to send requests to the `/completions` endpoint.
 
-!!! note
-    Before running inference, ensure your model is deployed. See [about](../../run-inference/about.md) for details on creating a ModelDeploymentConfig and ModelDeployment.
+<Note>
 
+Before running inference, ensure your model is deployed. See [about](../../run-inference/about.md) for details on creating a ModelDeploymentConfig and ModelDeployment.
+
+</Note>
 ```python
 import os
 from nemo_platform import NeMoPlatform

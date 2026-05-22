@@ -1,5 +1,8 @@
+---
+title: "Dataset Format Requirements"
+description: ""
+---
 <a id="customizer-data-format"></a>
-# Dataset Format Requirements
 
 Use the following guidelines to prepare your training dataset for the supported models.
 
@@ -177,9 +180,9 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 #### Example Dataset Entry
 
 ```
-{
+\{
  "prompt": [
- {
+ \{
  "role": "user",
  "content": "Can you write some code in python to fetch folders based on path from a Site in Sharepoint?"
  }
@@ -201,7 +204,7 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 #### Example Dataset Entry
 
 ```
-{
+\{
  "prompt": "your string",
  "completion": "your expected response"
 }
@@ -221,11 +224,11 @@ Each line in your JSONL file must contain a JSON object with these required fiel
 #### Example Dataset Entry
 
 ```
-{
+\{
  "system": "you are a robot",
  "conversations": [
- {"from": "User", "value": "Choose a number that is greater than 0 and less than 2\n"},
- {"from": "Assistant", "value": "1"}
+ \{"from": "User", "value": "Choose a number that is greater than 0 and less than 2\n"},
+ \{"from": "Assistant", "value": "1"}
  ]
 }
 ```

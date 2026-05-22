@@ -1,5 +1,7 @@
-# Using Authentication
-
+---
+title: "Using Authentication"
+description: ""
+---
 How to log in, make authenticated API calls, and manage tokens with the CLI and SDK.
 
 **Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](oidc.md).
@@ -48,9 +50,11 @@ See [API Scopes](../authorization/api-scopes.md) for the full list of available 
 
 For CI pipelines, use the password grant to obtain a token without a browser: `nemo auth login --username <user> --password <pass>` (or set `NMP_OIDC_USERNAME` / `NMP_OIDC_PASSWORD` environment variables). If your CI system can obtain tokens directly (e.g., workload identity federation), pass the token via `access_token` as shown in [Make API Calls](#make-api-calls) below.
 
-!!! warning
-    Password grant sends credentials directly to the IdP and **bypasses MFA**. Many production IdPs disable it. Use a dedicated service account with minimal scopes where possible.
+<Warning>
 
+Password grant sends credentials directly to the IdP and **bypasses MFA**. Many production IdPs disable it. Use a dedicated service account with minimal scopes where possible.
+
+</Warning>
 ## Make API Calls
 
 ### Python SDK
@@ -149,14 +153,16 @@ users:
 
 The OIDC token endpoint is **not** stored — it is discovered at runtime from your cluster's `/apis/auth/discovery` endpoint. This keeps the config portable across environments.
 
-!!! warning
-    **Token storage security** — Access and refresh tokens are stored in plaintext. Protect this file:
+<Warning>
 
-    - **File permissions**: Ensure `0600` (owner read/write only). The CLI sets this by default — verify after manual edits: `chmod 600 ~/.config/nmp/config.yaml`.
-    - **Shared directories**: Do not store in cloud-synced folders (Dropbox, OneDrive, Google Drive) or shared home directories.
-    - **Refresh token rotation**: Configure your IdP to rotate refresh tokens on each use. A stolen refresh token becomes invalid after the legitimate client uses it once.
-    - **Logout when done**: Run `nemo auth logout` on shared or temporary machines.
+**Token storage security** — Access and refresh tokens are stored in plaintext. Protect this file:
 
+- **File permissions**: Ensure `0600` (owner read/write only). The CLI sets this by default — verify after manual edits: `chmod 600 ~/.config/nmp/config.yaml`.
+- **Shared directories**: Do not store in cloud-synced folders (Dropbox, OneDrive, Google Drive) or shared home directories.
+- **Refresh token rotation**: Configure your IdP to rotate refresh tokens on each use. A stolen refresh token becomes invalid after the legitimate client uses it once.
+- **Logout when done**: Run `nemo auth logout` on shared or temporary machines.
+
+</Warning>
 ## Related
 
 - [OIDC Setup](oidc.md) — Configure your identity provider.

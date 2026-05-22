@@ -1,9 +1,12 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
-<a id="guardrails-tutorials-parallel-rails"></a>
-# Executing Input and Output Rails in Parallel
+---
+title: "Executing Input and Output Rails in Parallel"
+description: ""
+---
 
-Run input and output rails in parallel to improve the response time of guardrail checks. This tutorial shows how to enable parallel rails using the {{platform_name}} Python SDK.
+
+<a id="guardrails-tutorials-parallel-rails"></a>
+
+Run input and output rails in parallel to improve the response time of guardrail checks. This tutorial shows how to enable parallel rails using the NeMo Platform Python SDK.
 
 ## When to Use Parallel Rails Execution
 
@@ -13,7 +16,11 @@ Parallel execution is most effective for the following:
 - Independent input or output rails without shared state dependencies.
 - Production environments where response latency affects user experience and business metrics.
 
-!!! note "Input rail mutations can lead to erroneous results during parallel execution because of race conditions that arise from the execution order and timing of parallel operations. This can result in output divergence compared to sequential execution. For such cases, use sequential mode."
+<Note>
+
+Input rail mutations can lead to erroneous results during parallel execution because of race conditions that arise from the execution order and timing of parallel operations. This can result in output divergence compared to sequential execution. For such cases, use sequential mode.
+
+</Note>
 
 ## When Not to Use Parallel Rails Execution
 
@@ -28,8 +35,8 @@ Sequential execution is recommended for the following:
 
 Before you begin:
 
-- You have access to a running {{platform_name}}.
-- `NMP_BASE_URL` is set to the {{platform_name}} base URL.
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
 - A `ModelProvider` is configured with an LLM provider. Follow [Setup](../../get-started/setup.md) if you haven't done this yet.
 
 This tutorial uses the following NIMs, available on `build.nvidia.com`:
@@ -63,7 +70,7 @@ Create a configuration that enables parallel execution for input rails. This exa
 You can customize the topic safety check prompt based on your specific use case and allowed topics. The prompt is used as the system prompt for the topic control model to determine if the user message is on-topic or off-topic.
 
 ```python
-{% raw %}
+
 guardrails_config = {
     "models": [
         {
@@ -121,7 +128,7 @@ try:
     )
 except ConflictError:
     print(f"Config {config_name} already exists, continuing...")
-{% endraw %}
+
 ```
 
 ---
@@ -130,38 +137,44 @@ except ConflictError:
 
 Create a VirtualModel that routes inference through the guardrails middleware. The guardrails configuration is applied as both request and response middleware.
 
-=== "CLI"
+<Tabs>
 
-    ```bash
-    nemo inference virtual-models create guarded-parallel-rails \
-      --default-model-entity default/meta-llama-3-1-8b-instruct \
-      --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]' \
-      --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]'
-    ```
+<Tab title="CLI">
 
-=== "Python SDK"
+```bash
+nemo inference virtual-models create guarded-parallel-rails \
+  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]' \
+  --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/parallel-rails-config"}]'
+```
 
-    ```python
-    client.inference.virtual_models.create(
-        name="guarded-parallel-rails",
-        default_model_entity="default/meta-llama-3-1-8b-instruct",
-        request_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "default/parallel-rails-config",
-            }
-        ],
-        response_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "default/parallel-rails-config",
-            }
-        ],
-    )
-    ```
+</Tab>
+<Tab title="Python SDK">
 
+```python
+client.inference.virtual_models.create(
+    name="guarded-parallel-rails",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    request_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/parallel-rails-config",
+        }
+    ],
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/parallel-rails-config",
+        }
+    ],
+)
+```
+
+</Tab>
+
+</Tabs>
 ---
 
 ## Step 4: Run Chat Completions via Guardrails
@@ -215,39 +228,39 @@ print(response.model_dump_json(indent=2))
 
 Inspect `guardrails_data.log.activated_rails` in the response — it's a list, with one entry per rail that ran. Each entry carries the rail's `name`, `type`, the `decisions` it made, and a `stop` flag indicating whether the rail terminated the request.
 
-??? "Example Response"
-    :icon: code-square
+<Accordion title="Example Response">
 
-    ```json
-    {
-      "guardrails_data": {
-        "config_ids": [
-          "default/parallel-rails-config"
-        ],
-        "log": {
-          "activated_rails": [
-            {
-              "name": "content safety check input $model=content_safety",
-              "type": "input",
-              "decisions": [
-                "continue"
-              ],
-              "stop": false
-            },
-            {
-              "name": "topic safety check input $model=topic_control",
-              "type": "input",
-              "decisions": [
-                "continue"
-              ],
-              "stop": false
-            }
-          ]
+```json
+{
+  "guardrails_data": {
+    "config_ids": [
+      "default/parallel-rails-config"
+    ],
+    "log": {
+      "activated_rails": [
+        {
+          "name": "content safety check input $model=content_safety",
+          "type": "input",
+          "decisions": [
+            "continue"
+          ],
+          "stop": false
+        },
+        {
+          "name": "topic safety check input $model=topic_control",
+          "type": "input",
+          "decisions": [
+            "continue"
+          ],
+          "stop": false
         }
-      }
+      ]
     }
-    ```
+  }
+}
+```
 
+</Accordion>
 ---
 
 ## Cleanup
