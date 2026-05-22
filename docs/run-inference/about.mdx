@@ -2,9 +2,6 @@
 title: "About Models and Inference"
 description: ""
 ---
-import SnippetNvidiaBuildModelProvider from "@/snippets/_snippets/nvidia-build-model-provider.mdx";
-import SnippetCliSdkSetup from "@/snippets/_snippets/tutorials/cli-sdk-setup.mdx";
-
 <a id="run-inference-about"></a>
 
 The NeMo Platform provides APIs for registering external model providers and routing inference requests through a unified gateway.
@@ -46,7 +43,7 @@ flowchart LR
  GW --> Client
 ```
 
-<SnippetNvidiaBuildModelProvider />
+<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 <a id="add-external-providers"></a>
 
 ### Add External Providers
@@ -249,7 +246,7 @@ without hand-assembling the path. Add `--provider <name>` or
 
 Set up the CLI or Python SDK first:
 
-<SnippetCliSdkSetup />
+<Markdown src="/snippets/_snippets/tutorials/cli-sdk-setup.mdx" />
 The SDK provides convenience methods for OpenAI compatibility:
 
 ```python

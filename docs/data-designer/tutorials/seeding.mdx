@@ -2,9 +2,6 @@
 title: "Seeding with External Datasets"
 description: ""
 ---
-import SnippetPreviewResults from "@/snippets/data-designer/_snippets/preview-results.mdx";
-import SnippetJobResults from "@/snippets/data-designer/_snippets/job-results.mdx";
-
 <a id="data-designer-tutorials-seeding"></a>
 
 This tutorial demonstrates how to use external datasets as seed data for synthetic data generation in Data Designer.
@@ -308,7 +305,7 @@ print(df.head())
 preview.analysis.to_report()
 ```
 
-<SnippetPreviewResults />
+<Markdown src="/snippets/data-designer/_snippets/preview-results.mdx" />
 ### Generating the Full Dataset
 
 When you're satisfied with the preview, submit a larger generation job:
@@ -332,7 +329,7 @@ analysis = results.load_analysis()
 analysis.to_report()
 ```
 
-<SnippetJobResults />
+<Markdown src="/snippets/data-designer/_snippets/job-results.mdx" />
 ## How Seeding Works
 
 When you configure a seed dataset:

@@ -2,8 +2,6 @@
 title: "Quick Start"
 description: ""
 ---
-import SnippetNvidiaBuildModelProvider from "@/snippets/_snippets/nvidia-build-model-provider.mdx";
-
 <a id="anonymizer-quickstart"></a>
 
 This guide walks through previewing and running an Anonymizer job on NeMo Platform.
@@ -43,7 +41,7 @@ Anonymizer routes inference through the [Inference Gateway service](../run-infer
 
 `nemo setup` walks you through creating a provider secret and registering an Inference Gateway provider as part of the install flow. If you skipped that step or want to add another provider, re-run `nemo setup` — see the [Setup guide](../get-started/setup.md) for details.
 
-<SnippetNvidiaBuildModelProvider />
+<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ## Step 4: Upload an Input Fileset
 
 Create a small CSV containing PII and upload it to a fileset:

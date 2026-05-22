@@ -27,12 +27,13 @@ that MDX imports). Re-run whenever the source `.ipynb` changes.
 
 ### MDX usage
 
-```mdx
-import { NotebookViewer } from "@/components/NotebookViewer";
-import notebook from "@/components/notebooks/sft-customization-job";
+After writing the `.ts` module, register it in `fern/components/NotebookViewer.tsx`
+(import + entry in the `notebooks` map). Pages outside `docs/fern/` can't use
+`@/` imports, so the registry pattern is required.
 
+```mdx
 <NotebookViewer
-  notebook={notebook}
-  colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/Platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb"
+  name="sft-customization-job"
+  colabUrl="https://colab.research.google.com/github/NVIDIA-NeMo/nemo-platform/blob/main/docs/customizer/tutorials/sft-customization-job.ipynb"
 />
 ```

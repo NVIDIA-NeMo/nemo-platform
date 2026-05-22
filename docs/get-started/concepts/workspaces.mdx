@@ -2,8 +2,6 @@
 title: "Workspaces"
 description: ""
 ---
-import SnippetNamingRules from "@/snippets/_snippets/naming-rules.mdx";
-
 <a id="workspaces"></a>
 
 Workspaces are the fundamental organizational and authorization boundary in NeMo Platform. All platform resources—models, datasets, customization jobs, evaluation results, and more—must belong to a workspace.
@@ -23,7 +21,7 @@ The platform automatically creates two built-in workspaces during initialization
 
 To create a workspace, provide a `name` and optionally a `description`. The `name` must be unique within your deployment.
 
-<SnippetNamingRules />
+<Markdown src="/snippets/_snippets/naming-rules.mdx" />
 Once created, a workspace cannot be renamed—choose the `name` carefully. The `description` is a free-form text field to help identify the workspace's purpose.
 
 The system also generates a unique `id` (UUID) for internal use, but the `name` is the primary identifier used in API paths and SDK calls.

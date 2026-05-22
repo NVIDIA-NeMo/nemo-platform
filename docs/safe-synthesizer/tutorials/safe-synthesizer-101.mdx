@@ -2,8 +2,6 @@
 title: "Safe Synthesizer 101"
 description: ""
 ---
-import SnippetNvidiaBuildModelProvider from "@/snippets/_snippets/nvidia-build-model-provider.mdx";
-
 <a id="tutorial-safe-synthesizer-101"></a>
 
 Learn the fundamentals of NeMo Safe Synthesizer by creating your first Safe Synthesizer job using provided defaults. In this tutorial, you'll upload sample customer data, replace personally identifiable information, fine-tune a model, generate synthetic records, and review the evaluation report.
@@ -116,7 +114,7 @@ Before running jobs, set up column classification for accurate PII detection.
 Column classification uses an LLM to automatically detect column types and improve PII detection accuracy. Without this setup, you may see classification errors and reduced detection quality.
 
 </Tip>
-<SnippetNvidiaBuildModelProvider />
+<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ```python
 # Use the pre-configured NVIDIA Build model provider
 # This provider is set up automatically during platform deployment

@@ -2,8 +2,6 @@
 title: "Evaluation Benchmarks"
 description: ""
 ---
-import SnippetDiscoverIndustryBenchmarks from "@/snippets/evaluator/benchmarks/discover-industry-benchmarks.mdx";
-
 <a id="eval-benchmarks-index"></a>
 
 A benchmark is a reusable evaluation suite: one or more metrics paired with a dataset. Instead of redefining metrics and data inputs for every run, you define the benchmark once and run it repeatedly.
@@ -29,7 +27,7 @@ Custom benchmarks are valuable for domain-specific evaluation where standard ben
 | [**Industry Benchmarks**](industry.md) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
 | [**Custom Benchmarks**](custom.md) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
 
-<SnippetDiscoverIndustryBenchmarks />
+<Markdown src="/snippets/evaluator/benchmarks/discover-industry-benchmarks.mdx" />
 ## Create Custom Benchmarks
 
 Create a custom benchmark by combining metrics with your dataset. Before creating a benchmark, you will need to [create the metrics](../metrics/index.md) that define how to score your model's outputs.
