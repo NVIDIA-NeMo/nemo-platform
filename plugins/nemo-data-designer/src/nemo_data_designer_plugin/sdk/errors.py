@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
+
 import httpx
 from data_designer.errors import DataDesignerError
 
@@ -46,10 +48,9 @@ def extract_http_error_info(exc: httpx.HTTPStatusError) -> tuple[int, str]:
         pass
 
     detail = response.text
-    try:
+    body = None
+    with suppress(Exception):
         body = response.json()
-    except Exception:
-        body = None
     if isinstance(body, dict) and isinstance(body.get("detail"), str):
         detail = body["detail"]
 
