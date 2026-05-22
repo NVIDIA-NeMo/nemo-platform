@@ -9,6 +9,7 @@ from typing import ClassVar
 import anyio
 import anyio.from_thread
 import anyio.to_thread
+import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
 from data_designer_nemo.context import create_data_designer_context
@@ -16,7 +17,6 @@ from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
 from data_designer_nemo.model_configs import get_model_configs
 from fastapi import HTTPException, status
 from nemo_data_designer_plugin.config import get_config
-from nemo_data_designer_plugin.config_builder import config_builder_from_config
 from nemo_data_designer_plugin.functions._types import (
     LogFrame,
     PreviewSpec,
@@ -67,7 +67,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
 
         from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 
-        config_builder = config_builder_from_config(spec.config)
+        config_builder = dd.DataDesignerConfigBuilder.from_config(spec.config.to_dict())
 
         async def _worker() -> None:
             try:
