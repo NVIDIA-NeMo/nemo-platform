@@ -357,7 +357,9 @@ def _discover_skill_providers() -> dict[str, SkillProvider]:
     if "platform" not in candidates_by_name:
         from nemo_platform.skills import skills_dir
 
-        candidates_by_name["platform"].append(SkillProvider(name="platform", path=skills_dir(), dist_name="nemo-platform"))
+        candidates_by_name["platform"].append(
+            SkillProvider(name="platform", path=skills_dir(), dist_name="nemo-platform-ext")
+        )
 
     return {name: _join_same_name_candidates(name, candidates) for name, candidates in candidates_by_name.items()}
 

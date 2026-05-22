@@ -134,7 +134,7 @@ def test_load_skills_includes_platform_skills_without_entry_point_metadata(monke
     skills = load_skills()
 
     assert {"inference"} <= skills.keys()
-    assert skills["inference"].source_dist == "nemo-platform"
+    assert skills["inference"].source_dist == "nemo-platform-ext"
 
 
 def test_load_skills_includes_example_plugin_skills(monkeypatch):
