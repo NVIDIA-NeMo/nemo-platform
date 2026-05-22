@@ -10,14 +10,16 @@ from collections.abc import AsyncGenerator, Generator
 from contextlib import asynccontextmanager, contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import AsyncMock, Mock, patch
 from urllib.parse import unquote, urlparse
 
+import click.testing
 import data_designer.config as dd
 import duckdb
 import pandas as pd
 import typer
+import typer.testing
 from data_designer.engine.resources.seed_reader import SeedReader
 from data_designer_nemo.nemotron_personas import get_file_path_for_locale, get_resource_name_for_locale
 from nemo_data_designer_plugin.cli.main import DataDesignerCLI
@@ -252,7 +254,7 @@ def make_dd_client(client_context: ClientContext) -> DataDesignerResource:
     return DataDesignerResource(client_context.sdk)
 
 
-def make_data_designer_cli_app() -> typer.Typer:
+def _make_data_designer_cli_app() -> typer.Typer:
     cli = DataDesignerCLI()
     app = cli.get_cli()
     add_function_commands(app, {"preview": PreviewFunction}, cli=cli)
@@ -273,17 +275,34 @@ class DataDesignerCLIState:
         return self.async_sdk
 
 
-def make_data_designer_cli_state(
+def _make_data_designer_cli_state(
     client_context: ClientContext,
     *,
     output_format: str | None = None,
 ) -> DataDesignerCLIState:
+    # Mirrors what `nemo --output-format json` would do at the top-level callback.
+    # The plugin's test app doesn't mount the real top-level callback, so we set this directly.
     overrides = {"output_format": output_format} if output_format is not None else {}
     return DataDesignerCLIState(
         sdk=client_context.sdk,
         async_sdk=client_context.async_sdk,
         overrides=overrides,
     )
+
+
+def invoke_cli(
+    command: list[str],
+    client_context: ClientContext | None = None,
+    output_format: Literal["json"] | None = None,
+) -> click.testing.Result:
+    runner = typer.testing.CliRunner()
+    app = _make_data_designer_cli_app()
+
+    cli_state = None
+    if client_context is not None:
+        cli_state = _make_data_designer_cli_state(client_context, output_format=output_format)
+
+    return runner.invoke(app, command, obj=cli_state)
 
 
 def write_config_file(tmp_path: Path, source: str, *, name: str = "data_designer_config.py") -> Path:
@@ -405,7 +424,10 @@ async def task_context(
                 workspace="default",
                 name=job_name,
                 source="data-designer",
-                spec={},
+                # Store the canonical DataDesignerStepConfig as the job's spec so that
+                # downstream Data Designer routes (e.g. ``GET /jobs/create/{name}``,
+                # which deserializes the stored spec back through the schema) succeed.
+                spec=step_config,
                 platform_spec=job_config_dict,
             )
             job_ctx = JobContext(

@@ -72,10 +72,10 @@ def test_preview_result_display_record_matches_upstream_display_cycle(
     trace.attrs["original_text_column"] = "body"
     result = AnonymizerPreviewResult(dataset=pd.DataFrame(), trace_dataset=trace)
 
-    def fake_render_record_html(row, record_index: int | None, original_text_column: str | None) -> str:
+    def fake_render_record_html(row, record_index: int | None, resolved_text_column: str | None) -> str:
         captured["row"] = row
         captured["record_index"] = record_index
-        captured["original_text_column"] = original_text_column
+        captured["resolved_text_column"] = resolved_text_column
         return "<div>ok</div>"
 
     monkeypatch.setattr(display_module, "render_record_html", fake_render_record_html)
@@ -83,5 +83,5 @@ def test_preview_result_display_record_matches_upstream_display_cycle(
     result.display_record()
 
     assert captured["record_index"] == 0
-    assert captured["original_text_column"] == "body"
+    assert captured["resolved_text_column"] == "body"
     assert result._display_cycle_index == 1

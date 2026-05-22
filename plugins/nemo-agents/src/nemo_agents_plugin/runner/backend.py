@@ -97,9 +97,9 @@ class RunnerBackend(ABC):
         ...
 
     @abstractmethod
-    def shutdown(self) -> None:
+    async def shutdown(self) -> None:
         """Terminate all managed processes and release resources.
 
-        Called synchronously during service shutdown.  Must be idempotent.
+        Called during service shutdown.  Must be idempotent.
         """
         ...

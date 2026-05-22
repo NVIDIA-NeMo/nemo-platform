@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field, model_validator
 class ControllerConfig(BaseModel):
     """Configuration for the AgentDeploymentController reconcile loop."""
 
-    interval_seconds: int = Field(default=5, description="Reconciliation loop interval in seconds.")
+    interval_seconds: int = Field(default=2, description="Reconciliation loop interval in seconds.")
     health_check_timeout_seconds: int = Field(
         default=120, description="Maximum time to wait for agent health check to succeed."
     )

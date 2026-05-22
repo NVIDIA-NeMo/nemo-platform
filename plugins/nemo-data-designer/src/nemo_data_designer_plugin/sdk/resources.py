@@ -33,6 +33,7 @@ from nemo_data_designer_plugin.sdk.errors import (
     DataDesignerClientError,
     DataDesignerConfigValidationError,
     DataDesignerPreviewError,
+    extract_http_error_info,
 )
 from nemo_data_designer_plugin.sdk.job_resources import AsyncDataDesignerJobResource, DataDesignerJobResource
 from nemo_data_designer_plugin.sdk.logging import with_logging
@@ -505,20 +506,10 @@ def _get_config_for_api_call(config_builder: dd.DataDesignerConfigBuilder) -> dd
 
 def _get_error(e: BaseException) -> DataDesignerClientError:
     if isinstance(e, httpx.HTTPStatusError):
-        try:
-            e.response.read()
-        except Exception:
-            pass
-
-        detail = e.response.text
-        try:
-            detail_json = e.response.json()
-            detail = detail_json.get("detail", detail)
-        except Exception:
-            pass
-        if e.response.status_code == 422:
-            return DataDesignerConfigValidationError(f"‼️ Config validation failed!\n{detail}")
-        return DataDesignerClientError(f"‼️ Something went wrong!\n{detail}")
+        status_code, detail = extract_http_error_info(e)
+        if status_code == 422:
+            return DataDesignerConfigValidationError(f"‼️ Config validation failed!\n{detail}", status_code=status_code)
+        return DataDesignerClientError(f"‼️ Something went wrong!\n{detail}", status_code=status_code)
     return DataDesignerClientError(f"‼️ Something went wrong!\n{e}")
 
 

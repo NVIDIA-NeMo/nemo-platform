@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Literal
 
+from data_designer.config.utils.constants import NEMOTRON_PERSONAS_DATASET_SIZES
 from nemo_platform import ConflictError, NeMoPlatform
 from nemo_platform.types.files import NGCStorageConfigParam
 
@@ -14,7 +15,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class FilesetAsset:
     locale: str
-    version: str = "0.0.1"
     filename: str = ""
 
     def __post_init__(self):
@@ -24,18 +24,7 @@ class FilesetAsset:
             self.filename = f"{self.locale}.parquet"
 
 
-_FILESET_ASSETS = [
-    FilesetAsset(locale="en_IN", version="0.0.2"),
-    FilesetAsset(locale="en_SG", version="0.0.1"),
-    FilesetAsset(locale="en_US", version="0.0.2"),
-    FilesetAsset(locale="fr_FR", version="0.0.1"),
-    FilesetAsset(locale="hi_Deva_IN", version="0.0.2"),
-    FilesetAsset(locale="hi_Latn_IN", version="0.0.2"),
-    FilesetAsset(locale="ja_JP", version="0.0.2"),
-    FilesetAsset(locale="pt_BR", version="0.0.1"),
-]
-
-SUPPORTED_LOCALES = {asset.locale: asset for asset in _FILESET_ASSETS}
+SUPPORTED_LOCALES = {locale: FilesetAsset(locale=locale) for locale in NEMOTRON_PERSONAS_DATASET_SIZES.keys()}
 
 NGC_ORG = "nvidia"
 NGC_TEAM = "nemotron-personas"
@@ -113,7 +102,6 @@ def _create_fileset(sdk: NeMoPlatform, locale: str, api_key_secret: str) -> None
 
 def _get_storage_config_for_locale(locale: str, api_key_secret: str) -> NGCStorageConfigParam:
     resource_name = get_resource_name_for_locale(locale)
-    version = SUPPORTED_LOCALES[locale].version
 
     return NGCStorageConfigParam(
         api_key_secret=api_key_secret,
@@ -121,5 +109,4 @@ def _get_storage_config_for_locale(locale: str, api_key_secret: str) -> NGCStora
         team=NGC_TEAM,
         target=resource_name,
         target_type="resource",
-        version=version,
     )
