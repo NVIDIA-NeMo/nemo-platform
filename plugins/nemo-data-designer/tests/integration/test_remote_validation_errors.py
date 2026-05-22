@@ -7,6 +7,8 @@ import pandas as pd
 import pytest
 from nemo_data_designer_plugin.sdk.errors import DataDesignerClientError, DataDesignerConfigValidationError
 
+pytestmark = pytest.mark.integration
+
 
 def _assert_error(
     dd_client,
@@ -40,7 +42,6 @@ def _builder_with_llm_column(model_config: dd.ModelConfig) -> dd.DataDesignerCon
     return builder
 
 
-@pytest.mark.integration
 def test_unknown_provider_in_request() -> None:
     unknown_provider = "some-unknown-provider"
     bad_model_config = u.make_model_config(provider=unknown_provider)
@@ -51,7 +52,6 @@ def test_unknown_provider_in_request() -> None:
         _assert_error(dd_client, builder, ["Cannot access provider", unknown_provider])
 
 
-@pytest.mark.integration
 def test_model_config_without_explicit_provider_is_rejected() -> None:
     alias = "no-provider-specified"
     bad_model_config = dd.ModelConfig(alias=alias, model="some-model")
@@ -62,7 +62,6 @@ def test_model_config_without_explicit_provider_is_rejected() -> None:
         _assert_error(dd_client, builder, ["does not have an explicit provider defined", alias])
 
 
-@pytest.mark.integration
 def test_malformed_provider_reference_is_rejected() -> None:
     alias = "too-many-slashes"
     malformed_provider_name = "foo/bar/baz"
@@ -74,7 +73,6 @@ def test_malformed_provider_reference_is_rejected() -> None:
         _assert_error(dd_client, builder, ["Malformed model provider", alias, malformed_provider_name])
 
 
-@pytest.mark.integration
 def test_invalid_models_provided() -> None:
     disallowed_model = "this-model-is-not-allowed"
     bad_model_config = u.make_model_config(provider=u.RESTRICTED_PROVIDER_NAME, model=disallowed_model)
@@ -88,7 +86,6 @@ def test_invalid_models_provided() -> None:
         _assert_error(dd_client, builder, [disallowed_model, "not enabled for provider", u.RESTRICTED_PROVIDER_NAME])
 
 
-@pytest.mark.integration
 def test_unrecognized_model_alias() -> None:
     model_alias = "unknown-model-alias"
 
@@ -113,7 +110,6 @@ def test_unrecognized_model_alias() -> None:
         _assert_error(dd_client, builder, ["Unrecognized", model_alias])
 
 
-@pytest.mark.integration
 def test_mcp_tools_not_allowed() -> None:
     provider = u.OPEN_PROVIDER_NAME
     model_config = u.make_model_config(provider=provider)
@@ -132,7 +128,6 @@ def test_mcp_tools_not_allowed() -> None:
         _assert_error(dd_client, builder, ["Tool configs are not supported"])
 
 
-@pytest.mark.integration
 def test_seed_dataset_bad_token() -> None:
     bad_token_secret = "unrecognized-secret-ref"
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
@@ -149,7 +144,6 @@ def test_seed_dataset_bad_token() -> None:
         _assert_error(dd_client, builder, [bad_token_secret])
 
 
-@pytest.mark.integration
 def test_nemotron_personas_dataset_failure() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.add_column(
@@ -166,7 +160,6 @@ def test_nemotron_personas_dataset_failure() -> None:
         _assert_error(dd_client, builder, ["Nemotron personas filesets"], DataDesignerClientError)
 
 
-@pytest.mark.integration
 def test_server_side_unsupported_seed_type_validation() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))

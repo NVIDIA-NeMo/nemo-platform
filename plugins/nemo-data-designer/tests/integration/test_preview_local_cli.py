@@ -9,8 +9,9 @@ import pytest
 from data_designer.cli.utils.sample_records_pager import PAGER_FILENAME
 from data_designer.config.analysis.dataset_profiler import DatasetProfilerResults
 
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
+
 def test_preview_run_saves_expected_artifacts(tmp_path: Path) -> None:
     config_path = _write_sampler_config(tmp_path)
     artifact_path = tmp_path / "preview-artifacts"
@@ -40,7 +41,6 @@ def test_preview_run_saves_expected_artifacts(tmp_path: Path) -> None:
     assert (results_dir / "sample_records" / PAGER_FILENAME).exists()
 
 
-@pytest.mark.integration
 def test_preview_run_supports_local_file_seed_source(tmp_path: Path) -> None:
     seed_path = tmp_path / "seed.parquet"
     u.SEED_DATA.to_parquet(seed_path, index=False)
@@ -80,7 +80,6 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     assert set(dataset["full_name"].tolist()) == u.FULL_NAMES
 
 
-@pytest.mark.integration
 def test_preview_run_rejects_dataframe_seed_with_clear_error(tmp_path: Path) -> None:
     config_path = u.write_config_file(
         tmp_path,
@@ -113,7 +112,6 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     assert "No such file" not in message
 
 
-@pytest.mark.integration
 def test_create_run_reports_artifacts_and_dataset_path(tmp_path: Path) -> None:
     config_path = _write_sampler_config(tmp_path)
 

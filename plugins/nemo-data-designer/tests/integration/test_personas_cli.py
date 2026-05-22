@@ -11,6 +11,8 @@ from nemo_data_designer_plugin.cli import personas as personas_module
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.files import NGCStorageConfig
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def mock_ngc_client() -> Generator[dict[str, Mock]]:
@@ -44,7 +46,6 @@ def cli_sdk(monkeypatch: pytest.MonkeyPatch, sdk: NeMoPlatform) -> NeMoPlatform:
     return sdk
 
 
-@pytest.mark.integration
 def test_personas_download_is_wired_properly() -> None:
     result = u.invoke_cli(["personas", "download", "--help"])
 
@@ -53,7 +54,6 @@ def test_personas_download_is_wired_properly() -> None:
     assert "data-designer download personas" not in result.output
 
 
-@pytest.mark.integration
 def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeMoPlatform) -> None:
     result = u.invoke_cli(
         [
@@ -75,7 +75,6 @@ def test_make_fileset_creates_requested_locale_with_existing_secret(cli_sdk: NeM
     assert fileset.storage.api_key_secret == "system/ngc-api-key"
 
 
-@pytest.mark.integration
 def test_make_fileset_creates_secret_from_env_then_fileset(
     monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
@@ -103,7 +102,6 @@ def test_make_fileset_creates_secret_from_env_then_fileset(
     assert fileset.storage.api_key_secret == "system/my-ngc-key"
 
 
-@pytest.mark.integration
 def test_make_fileset_missing_env_var() -> None:
     result = u.invoke_cli(
         [
@@ -123,7 +121,6 @@ def test_make_fileset_missing_env_var() -> None:
     assert "not set or is empty" in result.output
 
 
-@pytest.mark.integration
 def test_make_fileset_unknown_locale() -> None:
     result = u.invoke_cli(
         [
@@ -141,7 +138,6 @@ def test_make_fileset_unknown_locale() -> None:
     assert "de_DE" in result.output
 
 
-@pytest.mark.integration
 def test_make_fileset_bare_secret_name() -> None:
     result = u.invoke_cli(
         [
@@ -158,7 +154,6 @@ def test_make_fileset_bare_secret_name() -> None:
     assert "WORKSPACE/NAME" in result.output
 
 
-@pytest.mark.integration
 def test_make_fileset_create_secret_conflict_does_not_create_fileset(
     monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:
@@ -184,7 +179,6 @@ def test_make_fileset_create_secret_conflict_does_not_create_fileset(
     assert filesets.data == []
 
 
-@pytest.mark.integration
 def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     monkeypatch: pytest.MonkeyPatch, cli_sdk: NeMoPlatform
 ) -> None:

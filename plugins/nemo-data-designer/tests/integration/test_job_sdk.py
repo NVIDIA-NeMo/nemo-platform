@@ -36,6 +36,8 @@ from nemo_data_designer_plugin.sdk.job_resources import (
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.resources import AsyncDataDesignerResource, DataDesignerResource
 
+pytestmark = pytest.mark.integration
+
 _JOB_NAME = "data-designer-abc123"
 
 
@@ -97,7 +99,6 @@ def _no_pause() -> Generator[None]:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_get_job_resource_returns_job_for_real_job() -> None:
     async with _completed_job() as ctx:
@@ -110,7 +111,6 @@ async def test_get_job_resource_returns_job_for_real_job() -> None:
         assert job["name"] == _JOB_NAME
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_get_job_resource_async_returns_job_for_real_job() -> None:
     async with _completed_job() as ctx:
@@ -128,7 +128,6 @@ async def test_get_job_resource_async_returns_job_for_real_job() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_check_if_complete_returns_true_for_completed_status() -> None:
     async with _pending_job() as ctx:
@@ -137,7 +136,6 @@ async def test_check_if_complete_returns_true_for_completed_status() -> None:
             assert job_resource.check_if_complete() is True
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("simulated_status", "expected_log_fragment"),
@@ -168,7 +166,6 @@ async def test_check_if_complete_returns_false_with_friendly_message_for_non_com
     )
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.parametrize("simulated_status", ["active", "created", "pending", "error", "cancelled", "frobnicated"])
 async def test_check_if_complete_raises_when_requested(simulated_status: str) -> None:
@@ -185,7 +182,6 @@ async def test_check_if_complete_raises_when_requested(simulated_status: str) ->
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_wait_until_done_logs_success_when_status_completes(caplog: pytest.LogCaptureFixture) -> None:
     async with _completed_job() as ctx:
@@ -196,7 +192,6 @@ async def test_wait_until_done_logs_success_when_status_completes(caplog: pytest
     assert any("completed successfully" in record.message for record in caplog.records)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_wait_until_done_async_logs_success_when_status_completes(caplog: pytest.LogCaptureFixture) -> None:
     async with _completed_job() as ctx:
@@ -208,7 +203,6 @@ async def test_wait_until_done_async_logs_success_when_status_completes(caplog: 
     assert any("completed successfully" in record.message for record in caplog.records)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_wait_until_done_logs_terminal_failure_for_cancelled_status(
     caplog: pytest.LogCaptureFixture,
@@ -239,7 +233,6 @@ async def test_wait_until_done_logs_terminal_failure_for_cancelled_status(
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_download_artifacts_extracts_dataset_and_loads_analysis(tmp_path: Path) -> None:
     async with _completed_job() as ctx:
@@ -259,7 +252,6 @@ async def test_download_artifacts_extracts_dataset_and_loads_analysis(tmp_path: 
     assert analysis.num_records == 3
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_download_artifacts_async_extracts_dataset_and_loads_analysis(tmp_path: Path) -> None:
     async with _completed_job() as ctx:
@@ -272,7 +264,6 @@ async def test_download_artifacts_async_extracts_dataset_and_loads_analysis(tmp_
     assert results.load_analysis().num_records == 3
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_processor_dataset_raises_for_unknown_processor(tmp_path: Path) -> None:
     async with _completed_job() as ctx:
@@ -289,7 +280,6 @@ async def test_load_processor_dataset_raises_for_unknown_processor(tmp_path: Pat
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_analysis_returns_profiler_results_for_completed_status() -> None:
     async with _completed_job() as ctx:
@@ -301,7 +291,6 @@ async def test_load_analysis_returns_profiler_results_for_completed_status() -> 
     assert analysis.num_records == 3
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_analysis_raises_when_status_is_unknown() -> None:
     async with _pending_job() as ctx:
@@ -312,7 +301,6 @@ async def test_load_analysis_raises_when_status_is_unknown() -> None:
                 job_resource.load_analysis()
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_analysis_when_active_uses_completed_result_if_available(
     caplog: pytest.LogCaptureFixture,
@@ -330,7 +318,6 @@ async def test_load_analysis_when_active_uses_completed_result_if_available(
     assert any("still cooking" in record.message.lower() for record in caplog.records)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_analysis_when_terminally_incomplete_warns_and_returns_partial(
     caplog: pytest.LogCaptureFixture,
@@ -345,7 +332,6 @@ async def test_load_analysis_when_terminally_incomplete_warns_and_returns_partia
     assert any("error" in record.message and "analysis" in record.message for record in caplog.records)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_load_analysis_raises_friendly_error_when_active_but_result_missing() -> None:
     """An ``active`` job whose analysis result hasn't been written yet returns a 404 from the

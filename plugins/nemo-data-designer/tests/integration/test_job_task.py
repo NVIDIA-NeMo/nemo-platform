@@ -35,6 +35,8 @@ from nemo_data_designer_plugin.jobs.task_results import ANALYSIS_RESULT_NAME, AR
 from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.resources import DataDesignerResource
 
+pytestmark = pytest.mark.integration
+
 
 def _load_results(ctx: u.CreateJobTestContext, job_name: str, tmp_path: Path) -> DataDesignerJobResults:
     """Read back a completed task's results through the high-level SDK.
@@ -63,7 +65,6 @@ def _failing_result_manager() -> Generator[None]:
         yield
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_task(tmp_path: Path) -> None:
     test_value = "test-value"
@@ -99,7 +100,6 @@ async def test_task(tmp_path: Path) -> None:
         assert analysis.num_records == 42
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 @pytest.mark.skip(
     reason="Batch-completion artifact saves are not yet available through the high-level library interfaces"
@@ -137,7 +137,6 @@ async def test_save_partial_dataset_on_failure(_failing_result_manager: None, tm
 
 # TODO: once we restore batch-completion artifact saves, we can drop this test
 # and include the log-related assertion in that test instead (immediately above)
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_exiting_with_error() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
@@ -160,7 +159,6 @@ async def test_exiting_with_error() -> None:
             assert any("Yuck" in message for message in log_messages)
 
 
-@pytest.mark.integration
 @pytest.mark.asyncio
 async def test_seed_dataset(tmp_path: Path) -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])

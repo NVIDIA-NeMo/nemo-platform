@@ -13,8 +13,9 @@ from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.config import get_config
 from nemo_data_designer_plugin.sdk.errors import DataDesignerConfigValidationError, DataDesignerPreviewError
 
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
+
 def test_request_too_many_records() -> None:
     too_many_records = get_config().preview_num_records.max + 1
 
@@ -36,7 +37,6 @@ def test_request_too_many_records() -> None:
     assert "Max num records" in str(exc_info.value)
 
 
-@pytest.mark.integration
 def test_happy_path_preview() -> None:
     column_name = "column-name"
     value = "a"
@@ -67,7 +67,6 @@ def test_happy_path_preview() -> None:
     assert_message_with(log_messages, fuzzy="Preview generation in progress")
 
 
-@pytest.mark.integration
 def test_hf_seed_dataset() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.with_seed_dataset(
@@ -87,7 +86,6 @@ def test_hf_seed_dataset() -> None:
     assert set(preview_results.dataset["full_name"].values) == u.FULL_NAMES
 
 
-@pytest.mark.integration
 def test_fileset_file_seed_dataset_plugin() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.with_seed_dataset(FilesetFileSeedSource(path=u.FILESET_FILE_SEED_SOURCE_PATH))  # ty: ignore[invalid-argument-type]
@@ -104,7 +102,6 @@ def test_fileset_file_seed_dataset_plugin() -> None:
     assert set(preview_results.dataset["full_name"].values) == u.FULL_NAMES
 
 
-@pytest.mark.integration
 def test_nemotron_personas_dataset() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.add_column(
@@ -137,7 +134,6 @@ def test_nemotron_personas_dataset() -> None:
     assert all(25 <= age <= 45 for age in demo_ages)
 
 
-@pytest.mark.integration
 def test_preview_with_schema_transform_processor() -> None:
     column_name = "school_subject"
     processor_name = "chat_format"
@@ -175,7 +171,6 @@ def test_preview_with_schema_transform_processor() -> None:
     assert "messages" in processor_records[0]
 
 
-@pytest.mark.integration
 def test_preview_surfaces_worker_error_through_sdk(monkeypatch: pytest.MonkeyPatch) -> None:
     """When the preview worker thread raises, the function emits a ``LogFrame`` and an
     ``Error`` frame instead of ``Done``; the SDK's ``_PreviewFrameCollector`` translates

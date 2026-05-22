@@ -5,8 +5,9 @@ import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
 import pytest
 
+pytestmark = pytest.mark.integration
 
-@pytest.mark.integration
+
 def test_get_default_model_providers_returns_registered_providers() -> None:
     """The SDK exposes IGW-registered providers as Data Designer ModelProviders."""
 
@@ -25,7 +26,6 @@ def test_get_default_model_providers_returns_registered_providers() -> None:
         assert provider.endpoint, f"Provider {provider.name!r} has no endpoint"
 
 
-@pytest.mark.integration
 def test_get_default_model_providers_returns_empty_list_when_none_registered() -> None:
     """No registered providers means the SDK returns an empty list (not None, not an error)."""
 
