@@ -8,7 +8,6 @@ from data_designer.logging import _make_json_formatter
 from data_designer_nemo.context import create_data_designer_context
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
 from nemo_data_designer_plugin._data_designer import create_data_designer
-from nemo_data_designer_plugin.config_builder import config_builder_from_config
 from nemo_data_designer_plugin.jobs.result_manager import DataDesignerResultManager
 from nemo_data_designer_plugin.jobs.spec import DataDesignerStepConfig
 from nemo_platform import NeMoPlatform
@@ -72,7 +71,7 @@ def _run_step_config(
 
     dd_ctx = create_data_designer_context(is_local, sdk, workspace)
 
-    config_builder = config_builder_from_config(step_config.job_config.config)
+    config_builder = dd.DataDesignerConfigBuilder.from_config(step_config.job_config.config.to_dict())
 
     artifact_path = ctx.storage.ephemeral
 

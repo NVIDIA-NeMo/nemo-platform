@@ -17,7 +17,7 @@ The sampling unit determines the smallest possible time interval between consecu
 Attributes:
     start (required): Earliest possible datetime for the sampling range (inclusive). Must be a valid
         datetime string parseable by pandas.to_datetime().
-    end (required): Latest possible datetime for the sampling range (inclusive). Must be a valid
+    end (required): Exclusive upper bound for the sampling range. Must be a valid
         datetime string parseable by pandas.to_datetime().
     unit: Time unit for sampling granularity. Options:
         - "Y": Years
@@ -30,7 +30,7 @@ Attributes:
 export interface DatetimeSamplerParams {
   /** Earliest possible datetime for sampling range, inclusive. */
   start: string;
-  /** Latest possible datetime for sampling range, inclusive. */
+  /** Exclusive upper bound for datetime sampling range. */
   end: string;
   /** Sampling units, e.g. the smallest possible time interval between samples. */
   unit?: DatetimeSamplerParamsUnit;

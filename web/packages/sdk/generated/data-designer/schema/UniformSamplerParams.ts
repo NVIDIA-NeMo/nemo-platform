@@ -16,14 +16,14 @@ equally likely, such as random percentages, proportions, or unbiased measurement
 
 Attributes:
     low (required): Lower bound of the uniform distribution (inclusive). Can be any real number.
-    high (required): Upper bound of the uniform distribution (inclusive). Must be greater than `low`.
+    high (required): Upper bound of the uniform distribution. Must be greater than `low`.
     decimal_places: Optional number of decimal places to round sampled values to. If None,
         values are not rounded and may have many decimal places.
  */
 export interface UniformSamplerParams {
   /** Lower bound of the uniform distribution, inclusive. */
   low: number;
-  /** Upper bound of the uniform distribution, inclusive. */
+  /** Upper bound of the uniform distribution. */
   high: number;
   /** Number of decimal places to round the sampled values to. */
   decimal_places?: number;

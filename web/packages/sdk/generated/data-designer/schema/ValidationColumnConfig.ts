@@ -29,7 +29,7 @@ Attributes:
           DataFrame with target columns and must return a DataFrame with validation results.
         - "local_callable": Call a local Python function with the data. Only supported
           when running DataDesigner locally.
-        - "remote": Send data to a remote HTTP endpoint for validation. Useful for
+        - "remote": Send data to a remote HTTP endpoint for validation.
     validator_params (required): Parameters specific to the validator type. Type varies by validator:
         - CodeValidatorParams: Specifies code language (python or SQL dialect like
           "sql:postgres", "sql:mysql").

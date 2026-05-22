@@ -23,6 +23,14 @@ def mock_ngc_client() -> Generator[dict[str, Mock]]:
         mock_client = Mock()
         mock_resource_api = Mock()
 
+        # The NGC backend resolves "latest" by calling `list_versions(...)`
+        # and reading `.versionId` off the first entry, so the mock must yield
+        # a fresh iterator of version-shaped objects on every call (each backend
+        # instance re-resolves and consumes the iterator once).
+        mock_version = Mock()
+        mock_version.versionId = "0.0.2"
+        mock_resource_api.list_versions.side_effect = lambda *_a, **_kw: iter([mock_version])
+
         mock_client_cls.return_value = mock_client
         mock_resource_api_cls.return_value = mock_resource_api
 
@@ -204,5 +212,65 @@ def test_make_fileset_create_secret_internal_error_surfaces_clearly(
     assert result.exit_code == 1
     assert "Failed to create secret" in result.output
     assert "secrets backend exploded" in result.output
+    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
+    assert filesets.data == []
+
+
+def test_make_fileset_is_idempotent_when_fileset_already_exists(cli_sdk: NeMoPlatform) -> None:
+    # First invocation creates the fileset.
+    first = u.invoke_cli(
+        [
+            "personas",
+            "make-fileset",
+            "--locale",
+            "en_US",
+            "--api-key-secret",
+            "system/ngc-api-key",
+        ]
+    )
+    assert first.exit_code == 0, first.output
+    assert "Created fileset" in first.output
+
+    # Second invocation against the same locale should succeed and report the
+    # already-exists path without creating a duplicate fileset.
+    second = u.invoke_cli(
+        [
+            "personas",
+            "make-fileset",
+            "--locale",
+            "en_US",
+            "--api-key-secret",
+            "system/ngc-api-key",
+        ]
+    )
+
+    assert second.exit_code == 0, second.output
+    assert "already exists" in second.output
+
+    filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
+    assert [fileset.name for fileset in filesets.data] == [get_resource_name_for_locale("en_US")]
+
+
+def test_make_fileset_create_fileset_internal_error_surfaces_clearly(cli_sdk: NeMoPlatform) -> None:
+    error_message = "kaboom-fileset-error"
+
+    def _boom(*args: object, **kwargs: object) -> None:
+        raise RuntimeError(error_message)
+
+    with patch.object(cli_sdk.files.filesets, "create", side_effect=_boom):
+        result = u.invoke_cli(
+            [
+                "personas",
+                "make-fileset",
+                "--locale",
+                "en_US",
+                "--api-key-secret",
+                "system/ngc-api-key",
+            ]
+        )
+
+    assert result.exit_code == 1
+    assert "Failed to create fileset" in result.output
+    assert error_message in result.output
     filesets = cli_sdk.files.filesets.list(workspace=WORKSPACE)
     assert filesets.data == []

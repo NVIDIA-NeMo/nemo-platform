@@ -16,6 +16,7 @@ Pin the contracts callers depend on:
 
 from __future__ import annotations
 
+import time
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -35,6 +36,7 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
     """
     ctrl = AgentDeploymentController()
     backend = MagicMock()
+    backend.delete_deployment = AsyncMock()
     # Bypass on_startup() — wire stubs directly.
     ctrl._backend = backend
     ctrl._entities = MagicMock()
@@ -112,7 +114,7 @@ async def test_check_health_marks_failed_when_subprocess_exited() -> None:
         status="starting",
         endpoint="http://127.0.0.1:49200",
     )
-    ctrl._starting_since["dep-1"] = 0.0  # arbitrary
+    ctrl._starting_since["dep-1"] = time.monotonic()
 
     await ctrl._check_health(dep)
 
@@ -136,7 +138,7 @@ async def test_check_health_marks_running_when_healthy() -> None:
         status="starting",
         endpoint="http://127.0.0.1:49200",
     )
-    ctrl._starting_since["dep-1"] = 0.0
+    ctrl._starting_since["dep-1"] = time.monotonic()
 
     await ctrl._check_health(dep)
 

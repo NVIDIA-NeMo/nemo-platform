@@ -508,7 +508,7 @@
         {
           "package": {
             "name": "data-designer",
-            "version": "0.5.7",
+            "version": "0.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -518,7 +518,7 @@
         {
           "package": {
             "name": "data-designer-config",
-            "version": "0.5.7",
+            "version": "0.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -528,7 +528,7 @@
         {
           "package": {
             "name": "data-designer-engine",
-            "version": "0.5.7",
+            "version": "0.6.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1289,179 +1289,6 @@
             "version": "1.5.3",
             "ecosystem": "PyPI"
           },
-          "vulnerabilities": [
-            {
-              "modified": "2026-05-20T09:19:02Z",
-              "published": "2024-05-17T19:15:07Z",
-              "schema_version": "1.7.5",
-              "id": "PYSEC-2024-277",
-              "aliases": [
-                "CVE-2024-34997"
-              ],
-              "details": "joblib v1.4.2 was discovered to contain a deserialization vulnerability via the component joblib.numpy_pickle::NumpyArrayWrapper().read_array(). NOTE: this is disputed by the supplier because NumpyArrayWrapper is only used during caching of trusted content.",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:N/AC:H/PR:L/UI:N/S:U/C:H/I:H/A:H"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "joblib",
-                    "purl": "pkg:pypi/joblib"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {}
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.10.0",
-                    "0.10.2",
-                    "0.10.3",
-                    "0.11",
-                    "0.11a3",
-                    "0.12.0",
-                    "0.12.1",
-                    "0.12.2",
-                    "0.12.3",
-                    "0.12.4",
-                    "0.12.5",
-                    "0.13.0",
-                    "0.13.1",
-                    "0.13.2",
-                    "0.14.0",
-                    "0.14.1",
-                    "0.15.0",
-                    "0.15.1",
-                    "0.16.0",
-                    "0.17.0",
-                    "0.1a",
-                    "0.1a.dev",
-                    "0.2a.dev",
-                    "0.3.1a.dev",
-                    "0.3.2.dev",
-                    "0.3.2a.dev",
-                    "0.3.2b.dev",
-                    "0.3.2c.dev",
-                    "0.3.2d",
-                    "0.3.2d.dev",
-                    "0.3.2e.dev",
-                    "0.3.2f",
-                    "0.3.2f.dev",
-                    "0.3.2g.dev",
-                    "0.3.3a.dev",
-                    "0.3.3b.dev",
-                    "0.3.3c.dev",
-                    "0.3.4.dev",
-                    "0.3.5.dev",
-                    "0.3.6.dev",
-                    "0.3.7.dev",
-                    "0.3a.dev",
-                    "0.4.0.dev",
-                    "0.4.1.dev",
-                    "0.4.2.dev",
-                    "0.4.3.dev",
-                    "0.4.4.dev",
-                    "0.4.5.dev",
-                    "0.4.6.dev",
-                    "0.5.0.dev",
-                    "0.5.0a.dev",
-                    "0.5.1.dev",
-                    "0.5.2.dev",
-                    "0.5.3.dev",
-                    "0.5.4.dev",
-                    "0.5.5.dev",
-                    "0.5.6.dev",
-                    "0.5.7",
-                    "0.5.7.dev",
-                    "0.5.7a",
-                    "0.5.7a.dev",
-                    "0.5.7b.dev",
-                    "0.6.0",
-                    "0.6.0a",
-                    "0.6.0b",
-                    "0.6.0b2",
-                    "0.6.0b3",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3",
-                    "0.6.4",
-                    "0.6.5",
-                    "0.7.0a",
-                    "0.7.0b",
-                    "0.7.0c",
-                    "0.7.0d",
-                    "0.7.1",
-                    "0.8.0",
-                    "0.8.0a",
-                    "0.8.0a2",
-                    "0.8.0a3",
-                    "0.8.1",
-                    "0.8.2",
-                    "0.8.3",
-                    "0.8.3-r1",
-                    "0.8.4",
-                    "0.9.0b2",
-                    "0.9.0b3",
-                    "0.9.0b4",
-                    "0.9.1",
-                    "0.9.2",
-                    "0.9.3",
-                    "0.9.4",
-                    "1.0.0",
-                    "1.0.1",
-                    "1.1.0",
-                    "1.1.0a0",
-                    "1.1.1",
-                    "1.2.0",
-                    "1.3.0",
-                    "1.3.1",
-                    "1.3.2",
-                    "1.4.0",
-                    "1.4.2",
-                    "1.5.0",
-                    "1.5.1",
-                    "1.5.2",
-                    "1.5.3"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/joblib/PYSEC-2024-277.yaml"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "REPORT",
-                  "url": "https://github.com/joblib/joblib/issues/1582"
-                },
-                {
-                  "type": "REPORT",
-                  "url": "https://github.com/joblib/joblib/issues/977"
-                }
-              ]
-            }
-          ],
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2024-277"
-              ],
-              "aliases": [
-                "CVE-2024-34997",
-                "PYSEC-2024-277"
-              ],
-              "max_severity": "7.5"
-            }
-          ],
           "licenses": [
             "BSD-3-Clause"
           ]
@@ -1632,181 +1459,6 @@
             "version": "0.3.27",
             "ecosystem": "PyPI"
           },
-          "vulnerabilities": [
-            {
-              "modified": "2026-05-20T09:19:03Z",
-              "published": "2024-03-01T12:15:48Z",
-              "schema_version": "1.7.5",
-              "id": "PYSEC-2024-278",
-              "aliases": [
-                "CVE-2024-2057"
-              ],
-              "details": "A vulnerability was found in LangChain langchain_community 0.0.26. It has been classified as critical. Affected is the function load_local in the library libs/community/langchain_community/retrievers/tfidf.py of the component TFIDFRetriever. The manipulation leads to server-side request forgery. It is possible to launch the attack remotely. The exploit has been disclosed to the public and may be used. Upgrading to version 0.0.27 is able to address this issue. It is recommended to upgrade the affected component. The identifier of this vulnerability is VDB-255372.",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "langchain-community",
-                    "purl": "pkg:pypi/langchain-community"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {}
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.0.1",
-                    "0.0.10",
-                    "0.0.11",
-                    "0.0.12",
-                    "0.0.13",
-                    "0.0.14",
-                    "0.0.15",
-                    "0.0.16",
-                    "0.0.17",
-                    "0.0.18",
-                    "0.0.19",
-                    "0.0.1rc1",
-                    "0.0.1rc2",
-                    "0.0.2",
-                    "0.0.20",
-                    "0.0.21",
-                    "0.0.22",
-                    "0.0.23",
-                    "0.0.24",
-                    "0.0.25",
-                    "0.0.26",
-                    "0.0.27",
-                    "0.0.28",
-                    "0.0.29",
-                    "0.0.3",
-                    "0.0.30",
-                    "0.0.31",
-                    "0.0.32",
-                    "0.0.33",
-                    "0.0.34",
-                    "0.0.35",
-                    "0.0.36",
-                    "0.0.37",
-                    "0.0.38",
-                    "0.0.4",
-                    "0.0.5",
-                    "0.0.6",
-                    "0.0.7",
-                    "0.0.8",
-                    "0.0.9",
-                    "0.2.0",
-                    "0.2.0rc1",
-                    "0.2.1",
-                    "0.2.10",
-                    "0.2.11",
-                    "0.2.12",
-                    "0.2.13",
-                    "0.2.14",
-                    "0.2.15",
-                    "0.2.16",
-                    "0.2.17",
-                    "0.2.18",
-                    "0.2.19",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.2.4",
-                    "0.2.5",
-                    "0.2.6",
-                    "0.2.7",
-                    "0.2.9",
-                    "0.3.0",
-                    "0.3.0.dev1",
-                    "0.3.0.dev2",
-                    "0.3.1",
-                    "0.3.10",
-                    "0.3.11",
-                    "0.3.12",
-                    "0.3.13",
-                    "0.3.14",
-                    "0.3.15",
-                    "0.3.16",
-                    "0.3.17",
-                    "0.3.17rc1",
-                    "0.3.18",
-                    "0.3.19",
-                    "0.3.2",
-                    "0.3.20",
-                    "0.3.21",
-                    "0.3.22",
-                    "0.3.23",
-                    "0.3.24",
-                    "0.3.25",
-                    "0.3.26",
-                    "0.3.27",
-                    "0.3.28",
-                    "0.3.29",
-                    "0.3.3",
-                    "0.3.30",
-                    "0.3.31",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.3.7",
-                    "0.3.8",
-                    "0.3.9",
-                    "0.4",
-                    "0.4.1",
-                    "1.0.0a1"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/langchain-community/PYSEC-2024-278.yaml"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/bayuncao/vul-cve-16/tree/main/PoC.pkl"
-                },
-                {
-                  "type": "REPORT",
-                  "url": "https://vuldb.com/?ctiid.255372"
-                },
-                {
-                  "type": "REPORT",
-                  "url": "https://vuldb.com/?id.255372"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://github.com/langchain-ai/langchain/pull/18695"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/bayuncao/vul-cve-16"
-                }
-              ]
-            }
-          ],
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2024-278"
-              ],
-              "aliases": [
-                "CVE-2024-2057",
-                "PYSEC-2024-278"
-              ],
-              "max_severity": "9.8"
-            }
-          ],
           "licenses": [
             "MIT"
           ]
@@ -2164,7 +1816,7 @@
         {
           "package": {
             "name": "nemo-anonymizer",
-            "version": "0.1.1",
+            "version": "0.2.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2237,134 +1889,6 @@
             "version": "3.9.4",
             "ecosystem": "PyPI"
           },
-          "vulnerabilities": [
-            {
-              "modified": "2026-05-20T09:19:09Z",
-              "published": "2026-03-09T20:16:05Z",
-              "schema_version": "1.7.5",
-              "id": "PYSEC-2026-97",
-              "aliases": [
-                "CVE-2026-0846",
-                "GHSA-h8wq-7xc4-p3qx"
-              ],
-              "details": "A vulnerability in the `filestring()` function of the `nltk.util` module in nltk version 3.9.2 allows arbitrary file read due to improper validation of input paths. The function directly opens files specified by user input without sanitization, enabling attackers to access sensitive system files by providing absolute paths or traversal paths. This vulnerability can be exploited locally or remotely, particularly in scenarios where the function is used in web APIs or other interfaces that accept user-supplied input.",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:N/A:N"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "nltk",
-                    "purl": "pkg:pypi/nltk"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {}
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.8",
-                    "0.9",
-                    "0.9.3",
-                    "0.9.4",
-                    "0.9.5",
-                    "0.9.6",
-                    "0.9.7",
-                    "0.9.8",
-                    "0.9.9",
-                    "2.0.1",
-                    "2.0.1rc1",
-                    "2.0.1rc2-git",
-                    "2.0.1rc3",
-                    "2.0.1rc4",
-                    "2.0.2",
-                    "2.0.3",
-                    "2.0.4",
-                    "2.0.5",
-                    "2.0b4",
-                    "2.0b5",
-                    "2.0b6",
-                    "2.0b7",
-                    "2.0b8",
-                    "2.0b9",
-                    "3.0.0",
-                    "3.0.0b1",
-                    "3.0.0b2",
-                    "3.0.1",
-                    "3.0.2",
-                    "3.0.3",
-                    "3.0.4",
-                    "3.0.5",
-                    "3.1",
-                    "3.2",
-                    "3.2.1",
-                    "3.2.2",
-                    "3.2.3",
-                    "3.2.4",
-                    "3.2.5",
-                    "3.3",
-                    "3.4",
-                    "3.4.1",
-                    "3.4.2",
-                    "3.4.3",
-                    "3.4.4",
-                    "3.4.5",
-                    "3.5",
-                    "3.5b1",
-                    "3.6",
-                    "3.6.1",
-                    "3.6.2",
-                    "3.6.3",
-                    "3.6.4",
-                    "3.6.5",
-                    "3.6.6",
-                    "3.6.7",
-                    "3.7",
-                    "3.8",
-                    "3.8.1",
-                    "3.9",
-                    "3.9.1",
-                    "3.9.2",
-                    "3.9.3",
-                    "3.9.4",
-                    "3.9b1"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/nltk/PYSEC-2026-97.yaml"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "EVIDENCE",
-                  "url": "https://huntr.com/bounties/007b84f8-418e-4300-99d0-bf504c2f97eb"
-                }
-              ]
-            }
-          ],
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2026-97"
-              ],
-              "aliases": [
-                "CVE-2026-0846",
-                "GHSA-h8wq-7xc4-p3qx",
-                "PYSEC-2026-97"
-              ],
-              "max_severity": "7.5"
-            }
-          ],
           "licenses": [
             "Apache-2.0"
           ]
@@ -2392,7 +1916,7 @@
         {
           "package": {
             "name": "nvidia-nat-atif",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2402,7 +1926,7 @@
         {
           "package": {
             "name": "nvidia-nat-config-optimizer",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2412,7 +1936,7 @@
         {
           "package": {
             "name": "nvidia-nat-core",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2422,7 +1946,7 @@
         {
           "package": {
             "name": "nvidia-nat-eval",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2432,7 +1956,7 @@
         {
           "package": {
             "name": "nvidia-nat-langchain",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2442,7 +1966,7 @@
         {
           "package": {
             "name": "nvidia-nat-opentelemetry",
-            "version": "1.7.0rc1",
+            "version": "1.7.0rc3",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3150,129 +2674,6 @@
             "version": "2.12.1",
             "ecosystem": "PyPI"
           },
-          "vulnerabilities": [
-            {
-              "modified": "2026-05-20T09:19:15Z",
-              "published": "2025-07-31T21:15:27Z",
-              "schema_version": "1.7.5",
-              "id": "PYSEC-2025-183",
-              "aliases": [
-                "CVE-2025-45768"
-              ],
-              "details": "pyjwt v2.10.1 was discovered to contain weak encryption. NOTE: this is disputed by the Supplier because the key length is chosen by the application that uses the library (admittedly, library users may benefit from a minimum value and a mechanism for opting in to strict enforcement).",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:N/AC:H/PR:N/UI:N/S:U/C:L/I:L/A:H"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "pyjwt",
-                    "purl": "pkg:pypi/pyjwt"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {}
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.1.6",
-                    "0.1.7",
-                    "0.1.8",
-                    "0.1.9",
-                    "0.2.0",
-                    "0.2.1",
-                    "0.2.3",
-                    "0.3.0",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.4.0",
-                    "0.4.1",
-                    "0.4.2",
-                    "0.4.3",
-                    "1.0.0",
-                    "1.0.1",
-                    "1.1.0",
-                    "1.3.0",
-                    "1.4.0",
-                    "1.4.1",
-                    "1.4.2",
-                    "1.5.0",
-                    "1.5.1",
-                    "1.5.2",
-                    "1.5.3",
-                    "1.6.0",
-                    "1.6.1",
-                    "1.6.3",
-                    "1.6.4",
-                    "1.7.0",
-                    "1.7.1",
-                    "2.0.0",
-                    "2.0.0a1",
-                    "2.0.0a2",
-                    "2.0.1",
-                    "2.1.0",
-                    "2.10.0",
-                    "2.10.1",
-                    "2.11.0",
-                    "2.12.0",
-                    "2.12.1",
-                    "2.2.0",
-                    "2.3.0",
-                    "2.4.0",
-                    "2.5.0",
-                    "2.6.0",
-                    "2.7.0",
-                    "2.8.0",
-                    "2.9.0"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/pyjwt/PYSEC-2025-183.yaml"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/jpadilla"
-                },
-                {
-                  "type": "REPORT",
-                  "url": "https://gist.github.com/ZupeiNie/6f65e564f2067b876321d3dfdbb76569"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/jpadilla/pyjwt"
-                }
-              ]
-            }
-          ],
-          "groups": [
-            {
-              "ids": [
-                "PYSEC-2025-183"
-              ],
-              "aliases": [
-                "CVE-2025-45768",
-                "PYSEC-2025-183"
-              ],
-              "max_severity": "7.0"
-            }
-          ],
           "licenses": [
             "MIT"
           ]
@@ -4641,162 +4042,7 @@
           },
           "vulnerabilities": [
             {
-              "modified": "2026-05-20T09:19:23Z",
-              "published": "2024-10-09T18:15:09Z",
-              "schema_version": "1.7.5",
-              "id": "PYSEC-2024-311",
-              "aliases": [
-                "CVE-2024-47813",
-                "GHSA-7qmx-3fpx-r45m",
-                "RUSTSEC-2024-0439"
-              ],
-              "details": "Wasmtime is an open source runtime for WebAssembly. Under certain concurrent event orderings, a `wasmtime::Engine`'s internal type registry was susceptible to double-unregistration bugs due to a race condition, leading to panics and potentially type registry corruption. That registry corruption could, following an additional and particular sequence of concurrent events, lead to violations of WebAssembly's control-flow integrity (CFI) and type safety. Users that do not use `wasmtime::Engine` across multiple threads are not affected. Users that only create new modules across threads over time are additionally not affected. Reproducing this bug requires creating and dropping multiple type instances (such as `wasmtime::FuncType` or `wasmtime::ArrayType`) concurrently on multiple threads, where all types are associated with the same `wasmtime::Engine`. **Wasm guests cannot trigger this bug.** See the \"References\" section below for a list of Wasmtime types-related APIs that are affected. Wasmtime maintains an internal registry of types within a `wasmtime::Engine` and an engine is shareable across threads. Types can be created and referenced through creation of a `wasmtime::Module`, creation of `wasmtime::FuncType`, or a number of other APIs where the host creates a function (see \"References\" below). Each of these cases interacts with an engine to deduplicate type information and manage type indices that are used to implement type checks in WebAssembly's `call_indirect` function, for example. This bug is a race condition in this management where the internal type registry could be corrupted to trigger an assert or contain invalid state. Wasmtime's internal representation of a type has individual types (e.g. one-per-host-function) maintain a registration count of how many time it's been used. Types additionally have state within an engine behind a read-write lock such as lookup/deduplication information. The race here is a time-of-check versus time-of-use (TOCTOU) bug where one thread atomically decrements a type entry's registration count, observes zero registrations, and then acquires a lock in order to unregister that entry. However, between when this first thread observed the zero-registration count and when it acquires that lock, another thread could perform the following sequence of events: re-register another copy of the type, which deduplicates to that same entry, resurrecting it and incrementing its registration count; then drop the type and decrement its registration count; observe that the registration count is now zero; acquire the type registry lock; and finally unregister the type. Now, when the original thread finally acquires the lock and unregisters the entry, it is the second time this entry has been unregistered. This bug was originally introduced in Wasmtime 19's development of the WebAssembly GC proposal. This bug affects users who are not using the GC proposal, however, and affects Wasmtime in its default configuration even when the GC proposal is disabled. Wasmtime users using 19.0.0 and after are all affected by this issue. We have released the following Wasmtime versions, all of which have a fix for this bug: * 21.0.2 * 22.0.1 * 23.0.3 * 24.0.1 * 25.0.2. If your application creates and drops Wasmtime types on multiple threads concurrently, there are no known workarounds. Users are encouraged to upgrade to a patched release.",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:L/AC:H/PR:H/UI:R/S:U/C:N/I:L/A:L"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "wasmtime",
-                    "purl": "pkg:pypi/wasmtime"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {},
-                        {}
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.0.1",
-                    "0.0.2",
-                    "0.11.0",
-                    "0.12.0",
-                    "0.15.0",
-                    "0.15.1",
-                    "0.16.0",
-                    "0.16.1",
-                    "0.17.0",
-                    "0.18.0",
-                    "0.18.1",
-                    "0.18.2",
-                    "0.19.0",
-                    "0.20.0",
-                    "0.21.0",
-                    "0.22.0",
-                    "0.23.0",
-                    "0.24.0",
-                    "0.25.0",
-                    "0.26.0",
-                    "0.27.0",
-                    "0.28.0",
-                    "0.28.1",
-                    "0.29.0",
-                    "0.30.0",
-                    "0.31.0",
-                    "0.32.0",
-                    "0.33.0",
-                    "0.34.0",
-                    "0.35.0",
-                    "0.36.0",
-                    "0.37.0",
-                    "0.38.0",
-                    "0.39.1",
-                    "0.40.0",
-                    "0.9.0",
-                    "1.0.0",
-                    "1.0.1",
-                    "10.0.0",
-                    "10.0.1",
-                    "11.0.0",
-                    "12.0.0",
-                    "13.0.0",
-                    "13.0.1",
-                    "13.0.2",
-                    "14.0.0",
-                    "15.0.0",
-                    "16.0.0",
-                    "17.0.0",
-                    "17.0.1",
-                    "18.0.0",
-                    "18.0.2",
-                    "19.0.0",
-                    "2.0.0",
-                    "20.0.0",
-                    "21.0.0",
-                    "22.0.0",
-                    "23.0.0",
-                    "24.0.0",
-                    "25.0.0",
-                    "27.0.0",
-                    "27.0.1",
-                    "27.0.2",
-                    "28.0.0",
-                    "29.0.0",
-                    "3.0.0",
-                    "30.0.0",
-                    "31.0.0",
-                    "32.0.0",
-                    "33.0.0",
-                    "34.0.0",
-                    "35.0.0",
-                    "36.0.0",
-                    "37.0.0",
-                    "38.0.0",
-                    "39.0.0",
-                    "4.0.0",
-                    "40.0.0",
-                    "41.0.0",
-                    "42.0.0",
-                    "43.0.0",
-                    "44.0.0",
-                    "5.0.0",
-                    "6.0.0",
-                    "7.0.0",
-                    "8.0.0",
-                    "8.0.1",
-                    "9.0.0"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/wasmtime/PYSEC-2024-311.yaml"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "ADVISORY",
-                  "url": "https://github.com/bytecodealliance/wasmtime/security/advisories/GHSA-7qmx-3fpx-r45m"
-                },
-                {
-                  "type": "FIX",
-                  "url": "https://github.com/bytecodealliance/wasmtime/pull/7969"
-                }
-              ]
-            },
-            {
-              "modified": "2026-05-20T09:19:23Z",
+              "modified": "2026-05-21T15:00:24Z",
               "published": "2026-04-09T19:16:24Z",
               "schema_version": "1.7.5",
               "id": "PYSEC-2026-151",
@@ -4826,7 +4072,9 @@
                         {
                           "introduced": "0"
                         },
-                        {}
+                        {
+                          "last_affected": "43.0.0"
+                        }
                       ]
                     }
                   ],
@@ -4912,7 +4160,6 @@
                     "41.0.0",
                     "42.0.0",
                     "43.0.0",
-                    "44.0.0",
                     "5.0.0",
                     "6.0.0",
                     "7.0.0",
@@ -4934,18 +4181,6 @@
             }
           ],
           "groups": [
-            {
-              "ids": [
-                "PYSEC-2024-311"
-              ],
-              "aliases": [
-                "CVE-2024-47813",
-                "GHSA-7qmx-3fpx-r45m",
-                "PYSEC-2024-311",
-                "RUSTSEC-2024-0439"
-              ],
-              "max_severity": "2.9"
-            },
             {
               "ids": [
                 "PYSEC-2026-151"

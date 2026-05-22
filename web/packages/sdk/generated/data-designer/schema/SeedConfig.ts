@@ -20,7 +20,7 @@ import type { SamplingStrategy } from './SamplingStrategy';
 /**
  * Configuration for sampling data from a seed dataset.
 
-Args:
+Attributes:
     source: A SeedSource defining where the seed data exists
     sampling_strategy: Strategy for how to sample rows from the dataset.
         - ORDERED: Read rows sequentially in their original order.
