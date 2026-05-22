@@ -609,6 +609,9 @@ extra-paths = [
   # nemo-evaluator plugin is not a workspace member; add its src so ty can
   # resolve nemo_evaluator imports when checking plugin test files.
   "plugins/nemo-evaluator/src",
+  # nemo-insights plugin: add its src so ty can resolve nemo_insights_plugin
+  # imports from plugin test files.
+  "plugins/nemo-insights/src",
   # Agentic-use tests place both tests/agentic-use and tests/agentic-use/shared
   # on sys.path in tests/conftest.py.
   "tests/agentic-use",
