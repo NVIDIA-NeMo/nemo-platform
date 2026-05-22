@@ -18,7 +18,10 @@ Attributes:
     model: Model identifier (e.g., from build.nvidia.com or other providers).
     inference_parameters: Inference parameters for the model (temperature, top_p, max_tokens, etc.).
         The generation_type is determined by the type of inference_parameters.
-    provider: Optional model provider name if using custom providers.
+    provider: Name of the model provider. Required in a future release. Leaving
+        ``provider`` unset (or ``None``) currently routes through the registry's
+        implicit default and is **deprecated**; specify ``provider=`` explicitly.
+        See issue #589.
     skip_health_check: Whether to skip the health check for this model. Defaults to False.
  */
 export interface ModelConfig {

@@ -30,7 +30,7 @@ import type { ValidationColumnConfig } from './ValidationColumnConfig';
  * Configuration for NeMo Data Designer.
 
 This class defines the main configuration structure for NeMo Data Designer,
-which orchestrates the generation of synthetic data.
+which the engine consumes when generating synthetic data.
 
 Attributes:
     columns: Required list of column configurations defining how each column
@@ -42,6 +42,7 @@ Attributes:
     seed_config: Optional seed dataset settings to use for generation.
     constraints: Optional list of column constraints.
     profilers: Optional list of column profilers for analyzing generated data characteristics.
+    processors: Optional list of processor configurations for post-generation transformations.
  */
 export interface DataDesignerConfig {
   /** @minItems 1 */
