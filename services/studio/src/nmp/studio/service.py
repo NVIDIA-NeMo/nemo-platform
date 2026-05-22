@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
+from nmp.studio.api.v1.web_search import endpoints as web_search_endpoints
 from nmp.studio.config import StudioConfig
 from nmp.studio.static_files import SPAStaticFiles
 from starlette.responses import Response
@@ -69,9 +70,17 @@ class StudioService(Service[StudioConfig]):
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the studio service.
 
-        The studio service doesn't expose API routers - it serves static files.
+        The studio service serves static UI assets via `configure_app` and also exposes
+        a small set of API endpoints (e.g., web search) used by the Studio frontend.
         """
-        return []
+        return [
+            RouterConfig(
+                web_search_endpoints.router,
+                prefix="/v1",
+                tag=web_search_endpoints.API_TAG,
+                description="Web search endpoints backing the AssistantChat web_search tool.",
+            ),
+        ]
 
     def configure_app(self, app: FastAPI) -> None:
         """Configure the platform app with static file mounting.

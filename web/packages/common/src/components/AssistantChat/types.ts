@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadMessageLike } from '@assistant-ui/react';
+import type { AssistantChatTool } from '@nemo/common/src/components/AssistantChat/tools/types';
 import type { PromptData } from '@nemo/sdk/generated/platform/schema';
-import type { ChatCompletionTool } from 'openai/resources/index.mjs';
 
 export interface AssistantChatProps {
   /**
@@ -24,12 +24,16 @@ export interface AssistantChatProps {
    */
   promptData?: PromptData;
   /**
-   * Optional OpenAI-compatible tools for the request.
+   * Optional tools for the request. OpenAI-compatible tool definitions are forwarded
+   * verbatim. Studio tools are executable client-side tools that are shown in the
+   * composer tool menu and executed when enabled.
    */
-  tools?: ChatCompletionTool[];
+  tools?: readonly AssistantChatTool[];
   /**
-   * Display name used in the composer placeholder.
+   * Tool names enabled by default when the thread mounts. Users can flip the rest via the
+   * composer options menu. Defaults to none enabled.
    */
+  defaultEnabledTools?: readonly string[];
   assistantName?: string;
   placeholder?: string;
   disabled?: boolean;

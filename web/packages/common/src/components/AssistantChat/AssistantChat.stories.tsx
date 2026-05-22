@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadMessageLike } from '@assistant-ui/react';
+import { AssistantChat, DEFAULT_STUDIO_TOOLS } from '@nemo/common/src/components/AssistantChat';
 import { TooltipProvider } from '@nvidia/foundations-react-core';
 import type { Meta, StoryObj } from '@storybook/react';
 import { http, HttpResponse } from 'msw';
 import type { ChatCompletionChunk } from 'openai/resources/index.mjs';
-
-import { AssistantChat } from './index';
 
 const STORY_INFERENCE_BASE_PATH = '/storybook-inference/v1';
 const STORY_COMPLETIONS_API = `${STORY_INFERENCE_BASE_PATH}/chat/completions`;
@@ -190,5 +189,37 @@ export const HangingExampleResponse: Story = {
     msw: {
       handlers: [makeIndexedExampleResponseHandler({ delayMs: 500, hang: true })],
     },
+  },
+};
+
+const webSearchMessages: readonly ThreadMessageLike[] = [
+  {
+    role: 'user',
+    content: [{ type: 'text', text: 'What is the current GPU lineup for NVIDIA datacenter?' }],
+  },
+  {
+    role: 'assistant',
+    content: [
+      {
+        type: 'tool-call',
+        toolCallId: 'call_search_1',
+        toolName: 'web_search',
+        argsText: JSON.stringify({ query: 'NVIDIA datacenter GPU lineup' }),
+        result: {
+          query: 'NVIDIA datacenter GPU lineup',
+          results: [],
+          note: 'Web search backend is not configured in this build. The frontend tool is wired end-to-end; once a Playwright-backed `/web-search` endpoint is available, swap the default provider for one that calls it.',
+        },
+      },
+    ],
+    status: { type: 'complete', reason: 'stop' },
+  },
+];
+
+export const ToolCallWebSearchStub: Story = {
+  args: {
+    initialMessages: webSearchMessages,
+    tools: DEFAULT_STUDIO_TOOLS,
+    defaultEnabledTools: ['web_search'],
   },
 };

@@ -1,10 +1,16 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { AssistantChat, type AssistantChatProps } from '@nemo/common/src/components/AssistantChat';
+import {
+  AssistantChat,
+  DEFAULT_STUDIO_TOOLS,
+  getAssistantChatToolName,
+  type AssistantChatProps,
+} from '@nemo/common/src/components/AssistantChat';
+import type { AssistantChatTool } from '@nemo/common/src/components/AssistantChat/tools/types';
 import type { ModelChatStatus } from '@nemo/common/src/utils/models';
 import { handleGenericError } from '@studio/util/logger';
-import type { FC } from 'react';
+import { type FC, useMemo } from 'react';
 
 interface ModelChatProps extends Pick<
   AssistantChatProps,
@@ -20,6 +26,7 @@ interface ModelChatProps extends Pick<
   | 'initialMessages'
   | 'emptyState'
   | 'onError'
+  | 'defaultEnabledTools'
 > {
   /**
    * When provided, ModelChat derives default `disabled` state and a
@@ -44,6 +51,15 @@ const STATUS_EMPTY_STATE: Record<
   },
 };
 
+const mergeModelChatTools = (
+  tools: readonly AssistantChatTool[] | undefined
+): readonly AssistantChatTool[] => {
+  if (!tools?.length) return DEFAULT_STUDIO_TOOLS;
+
+  const callerToolNames = new Set(tools.map(getAssistantChatToolName));
+  return [...tools, ...DEFAULT_STUDIO_TOOLS.filter((tool) => !callerToolNames.has(tool.name))];
+};
+
 export const ModelChat: FC<ModelChatProps> = ({
   model,
   modelChatStatus,
@@ -51,6 +67,7 @@ export const ModelChat: FC<ModelChatProps> = ({
   assistantName,
   emptyState,
   onError,
+  tools,
   ...rest
 }) => {
   const resolvedDisabled = disabled ?? (modelChatStatus ? modelChatStatus !== 'enabled' : false);
@@ -59,6 +76,7 @@ export const ModelChat: FC<ModelChatProps> = ({
       ? STATUS_EMPTY_STATE[modelChatStatus]
       : undefined;
   const resolvedEmptyState = emptyState ?? statusDerivedEmptyState;
+  const resolvedTools = useMemo(() => mergeModelChatTools(tools), [tools]);
 
   return (
     <AssistantChat
@@ -67,6 +85,7 @@ export const ModelChat: FC<ModelChatProps> = ({
       disabled={resolvedDisabled}
       emptyState={resolvedEmptyState}
       onError={onError ?? handleGenericError}
+      tools={resolvedTools}
       {...rest}
     />
   );

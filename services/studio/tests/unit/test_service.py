@@ -51,11 +51,11 @@ class TestStudioService:
         service = StudioService()
         assert service.description == "Serves the NeMo Studio web application"
 
-    def test_get_routers_returns_empty_list(self):
-        """Test that the service returns no API routers (it serves static files)."""
+    def test_get_routers_includes_web_search(self):
+        """Studio exposes the /v1/web-search router used by the AssistantChat web_search tool."""
         service = StudioService()
         routers = service.get_routers()
-        assert routers == []
+        assert [(rc.prefix, rc.tag) for rc in routers] == [("/v1", "Web Search")]
 
     def test_module_name(self):
         """Test that the service has the correct module name."""

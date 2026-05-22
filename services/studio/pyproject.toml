@@ -9,6 +9,9 @@ dependencies = [
   "fastapi[standard]>=0.115.4",
   "uvicorn[standard]>=0.12.0",
   "nmp-common",
+  # Web search (DuckDuckGo HTML endpoint)
+  "httpx>=0.27.0",
+  "beautifulsoup4>=4.12.0",
 ]
 
 [project.scripts]

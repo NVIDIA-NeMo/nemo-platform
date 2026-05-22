@@ -13,6 +13,10 @@ vi.mock('@nemo/common/src/hooks/useChatCompletion', () => ({
   }),
 }));
 
+vi.mock('react-oidc-context', () => ({
+  useAuth: () => ({ user: undefined }),
+}));
+
 describe('ModelChat', () => {
   const modelName = getEntityReference(entityStoreBaseModel1);
 
