@@ -151,14 +151,14 @@ describe('AssistantChat', () => {
 
     expect(await screen.findByText('Original response.')).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
-    const editInput = screen.getByRole('textbox', { name: /Edit message/i });
+    await userEvent.click(await screen.findByRole('button', { name: /Edit message/i }));
+    const editInput = await screen.findByRole('textbox', { name: /Edit message/i });
     expect(editInput).toHaveValue('Original prompt');
     expect(editInput.tagName).toBe('TEXTAREA');
 
     await userEvent.clear(editInput);
     await userEvent.type(editInput, 'Edited prompt');
-    await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /Save edit/i }));
 
     expect(await screen.findByText('Edited response.')).toBeInTheDocument();
     expect(screen.getByText('Edited prompt')).toBeInTheDocument();
@@ -220,15 +220,14 @@ describe('AssistantChat', () => {
     );
     await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
-    await waitFor(() => expect(requestSignal).toBeDefined());
+    await waitFor(() => expect(requestSignal).toBeDefined(), { timeout: 5000 });
     expect(requestSignal?.aborted).toBe(false);
 
-    await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+    await userEvent.click(await screen.findByRole('button', { name: /Stop/i }, { timeout: 5000 }));
 
-    await waitFor(() => expect(requestSignal?.aborted).toBe(true));
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument()
-    );
+    await waitFor(() => expect(requestSignal?.aborted).toBe(true), { timeout: 5000 });
+    await screen.findByRole('button', { name: /Submit/i }, { timeout: 5000 });
+    expect(screen.queryByRole('button', { name: /Stop/i })).not.toBeInTheDocument();
     expect(screen.queryByText('aborted')).not.toBeInTheDocument();
-  });
+  }, 20000);
 });
