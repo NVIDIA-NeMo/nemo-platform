@@ -88,6 +88,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 TASKS_DIR = Path(__file__).resolve().parent
 SHARED_DIR = TASKS_DIR / "shared"
 CODEX_AGENT_SCRIPT_TEMPLATE_PATH = TASKS_DIR / "scripts" / "codex_agent_runner.sh"
+NAT_TRACE_EXPORT_SCRIPT_CONTAINER_PATH = "/app/tests/agentic-use/scripts/nat_trace_export.py"
 
 DEFAULT_TIMEOUT = int(os.environ.get("NAT_TIMEOUT", "600"))
 DEFAULT_JOBS_DIR = REPO_ROOT / "nat-jobs"
@@ -127,7 +128,9 @@ _CANDIDATE_PARAM_KEYS = _CANDIDATE_PARAM_STRING_KEYS | _CANDIDATE_PARAM_NUMBER_K
 
 
 def _coerce_candidate_number_param(key: str, value: object) -> int | float:
-    if type(value) in (int, float):
+    if isinstance(value, bool):
+        raise ValueError(f"--candidate-params key {key!r} must be numeric")
+    if isinstance(value, int | float):
         return value
     if isinstance(value, str):
         try:
@@ -528,6 +531,21 @@ def _build_workflow_agent_cmd(workflow_container: str, instruction_container: st
               2>&1 | tee /tmp/nat_agent.log
             EXIT=${{PIPESTATUS[0]}}
             cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+            if [ -f /logs/agent/intermediate_steps.jsonl ]; then
+              /app/.venv/bin/python {NAT_TRACE_EXPORT_SCRIPT_CONTAINER_PATH} convert-jsonl \\
+                --input /logs/agent/intermediate_steps.jsonl \\
+                --output /logs/agent/trajectory.json \\
+                >> /tmp/nat_agent.log 2>&1
+              CONVERT_EXIT=$?
+              cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+              if [ $EXIT -eq 0 ] && [ $CONVERT_EXIT -ne 0 ]; then
+                exit $CONVERT_EXIT
+              fi
+            elif [ $EXIT -eq 0 ]; then
+              echo "NAT telemetry exporter did not create /logs/agent/intermediate_steps.jsonl" | tee -a /tmp/nat_agent.log
+              cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+              exit 1
+            fi
             exit $EXIT
         """),
     ]
@@ -544,9 +562,9 @@ def _build_aut_agent_cmd(instruction_container: str) -> list[str]:
     3. Optionally seeding inference providers + secrets so AUT configs that
        resolve models via the platform's inference gateway can run inside an
        ephemeral test container with no pre-existing entities.
-    4. Deploying the AUT, waiting for ``/health`` readiness, and POSTing the
-       task instruction to ``/generate`` (with ``/generate/full`` as a
-       schema/path-compat fallback).
+    4. Deploying the AUT, waiting for ``/health`` readiness, and invoking the
+       task instruction through an artifact-capture helper that prefers NAT's
+       ``/generate/atif`` endpoint and falls back to legacy generate routes.
     5. Collecting diagnostics (deployment list/get, NeMo Platform API logs, NAT
        subprocess logs) into ``/logs/agent/`` on failure.
 
@@ -673,52 +691,12 @@ def _build_aut_agent_cmd(instruction_container: str) -> list[str]:
               exit 1
             fi
             set +e
-            DEP_ENDPOINT="$dep_endpoint" /app/.venv/bin/python - <<'PY' 2>&1 | tee /tmp/nat_agent.log
-import json
-import os
-import urllib.error
-import urllib.request
-import time
-
-instruction = open("{instruction_container}", "r", encoding="utf-8").read()
-payload = json.dumps({{"input_message": instruction}}).encode("utf-8")
-base_endpoint = os.environ["DEP_ENDPOINT"].rstrip("/")
-invoke_timeout = int(os.environ.get("AUT_INVOKE_HTTP_TIMEOUT", "600"))
-last_error: Exception | None = None
-for suffix in ("/generate", "/generate/full"):
-    endpoint = f"{{base_endpoint}}{{suffix}}"
-    request = urllib.request.Request(
-        endpoint,
-        data=payload,
-        headers={{"Content-Type": "application/json"}},
-        method="POST",
-    )
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(request, timeout=invoke_timeout) as response:
-                print(response.read().decode("utf-8"))
-            last_error = None
-            break
-        except urllib.error.HTTPError as err:
-            # Keep trying endpoint variants for schema/path compatibility.
-            last_error = err
-            if err.code in {{404, 422}}:
-                break
-            raise
-        except urllib.error.URLError as err:
-            # Endpoint can flap briefly after /health returns ready.
-            last_error = err
-            if attempt < 2:
-                time.sleep(1.0)
-                continue
-            raise
-    if last_error is None:
-        break
-else:
-    if last_error is not None:
-        raise last_error
-    raise RuntimeError("AUT invocation failed: no endpoint variants succeeded")
-PY
+            /app/.venv/bin/python {NAT_TRACE_EXPORT_SCRIPT_CONTAINER_PATH} invoke-aut \
+              --endpoint "$dep_endpoint" \
+              --instruction {instruction_container} \
+              --output-dir /logs/agent \
+              --timeout "${{AUT_INVOKE_HTTP_TIMEOUT:-600}}" \
+              2>&1 | tee /tmp/nat_agent.log
             rc=${{PIPESTATUS[0]}}
             set -e
             if [ $rc -ne 0 ]; then
@@ -750,6 +728,8 @@ def _build_claude_code_agent_cmd(instruction_container: str, agent_params: dict[
               model_args=(--model "${{AGENT_MODEL}}")
             fi
             extra_args=({extra_args})
+            export CLAUDE_CONFIG_DIR=/logs/agent/sessions
+            mkdir -p "$CLAUDE_CONFIG_DIR"
             set +e
             claude -p "$(cat {instruction_container})" \
               "${{model_args[@]}}" \
@@ -760,6 +740,16 @@ def _build_claude_code_agent_cmd(instruction_container: str, agent_params: dict[
             set -e
             cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
             cp /tmp/nat_agent.stderr /logs/agent/nat_agent.stderr 2>/dev/null || true
+            if [ $rc -eq 0 ]; then
+              /app/.venv/bin/python {NAT_TRACE_EXPORT_SCRIPT_CONTAINER_PATH} convert-claude-session \
+                --projects-dir /logs/agent/sessions/projects \
+                --output /logs/agent/trajectory.json \
+                --instruction {instruction_container} \
+                --final-message /logs/agent/nat_agent.log \
+                >> /tmp/nat_agent.log 2>&1
+              rc=$?
+              cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+            fi
             exit $rc
         """),
     ]
@@ -824,7 +814,7 @@ def _build_cursor_agent_cmd(instruction_container: str, agent_params: dict[str, 
             set +e
             cursor-agent \
               --print \
-              --output-format json \
+              --output-format stream-json \
               --trust \
               --workspace /app \
               "${{model_args[@]}}" \
@@ -835,7 +825,16 @@ def _build_cursor_agent_cmd(instruction_container: str, agent_params: dict[str, 
             set -e
             cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
             cp /tmp/nat_agent.stderr /logs/agent/nat_agent.stderr 2>/dev/null || true
-            cp /tmp/nat_agent.log /logs/agent/final_message.json 2>/dev/null || true
+            if [ $rc -eq 0 ]; then
+              /app/.venv/bin/python {NAT_TRACE_EXPORT_SCRIPT_CONTAINER_PATH} convert-cursor-jsonl \
+                --input /logs/agent/nat_agent.log \
+                --output /logs/agent/trajectory.json \
+                --instruction {instruction_container} \
+                --final-message /logs/agent/final_message.json \
+                >> /tmp/nat_agent.log 2>&1
+              rc=$?
+              cp /tmp/nat_agent.log /logs/agent/nat_agent.log 2>/dev/null || true
+            fi
             exit $rc
         """),
     ]
@@ -1082,7 +1081,6 @@ def _prepare_workflow_for_runtime(
     with existing task files, we rewrite that shape at runtime.
     """
     text = workflow_path.read_text()
-    original_text = text
     # Ensure MCP server URL follows runner's effective base URL.
     text = text.replace("http://localhost:8080", nmp_base_url)
     if nat_model:
@@ -1098,9 +1096,27 @@ def _prepare_workflow_for_runtime(
         if "\nfunction_groups:\n" not in text and "\nfunctions:\n" in text:
             text = text.replace("\nfunctions:\n", "\nfunction_groups:\n", 1)
 
-    if text == original_text:
-        return workflow_path
+    config = yaml.safe_load(text)
+    if not isinstance(config, dict):
+        raise ValueError(f"Workflow config must be a mapping: {workflow_path}")
+    general = config.setdefault("general", {})
+    if not isinstance(general, dict):
+        raise ValueError(f"Workflow general config must be a mapping: {workflow_path}")
+    telemetry = general.setdefault("telemetry", {})
+    if not isinstance(telemetry, dict):
+        raise ValueError(f"Workflow telemetry config must be a mapping: {workflow_path}")
+    tracing = telemetry.setdefault("tracing", {})
+    if not isinstance(tracing, dict):
+        raise ValueError(f"Workflow telemetry tracing config must be a mapping: {workflow_path}")
+    tracing["agentic_use_file_trace"] = {
+        "_type": "file",
+        "output_path": "/logs/agent/intermediate_steps.jsonl",
+        "project": "agentic-use",
+        "mode": "overwrite",
+        "cleanup_on_init": True,
+    }
 
+    text = yaml.dump(config, default_flow_style=False, sort_keys=False)
     rewritten = output_dir / "workflow.runtime.yml"
     rewritten.write_text(text)
     return rewritten

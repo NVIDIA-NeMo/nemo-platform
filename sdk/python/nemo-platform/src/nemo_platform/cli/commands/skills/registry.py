@@ -337,21 +337,29 @@ def _discover_skill_providers() -> dict[str, SkillProvider]:
     from ``nemo_platform_plugin.discovery.discover_entry_points`` and used to filter
     candidates before resolution.
     """
+    candidates_by_name: dict[str, list[SkillProvider]] = defaultdict(list)
+
     try:
         from nemo_platform_plugin.discovery import discover_entry_points
     except ImportError:
-        return {}
+        logger.warning("nemo-platform-plugin is unavailable; loading only bundled platform skills", exc_info=True)
+    else:
+        allowed_names = set(discover_entry_points("nemo.skills").keys())
+        for ep in _raw_entry_points("nemo.skills"):
+            if ep.name not in allowed_names:
+                continue
+            skills_root = _resolve_provider_candidate(ep)
+            if skills_root is None:
+                continue
+            dist_name = ep.dist.name if ep.dist is not None else None
+            candidates_by_name[ep.name].append(SkillProvider(name=ep.name, path=skills_root, dist_name=dist_name))
 
-    allowed_names = set(discover_entry_points("nemo.skills").keys())
-    candidates_by_name: dict[str, list[SkillProvider]] = defaultdict(list)
-    for ep in _raw_entry_points("nemo.skills"):
-        if ep.name not in allowed_names:
-            continue
-        skills_root = _resolve_provider_candidate(ep)
-        if skills_root is None:
-            continue
-        dist_name = ep.dist.name if ep.dist is not None else None
-        candidates_by_name[ep.name].append(SkillProvider(name=ep.name, path=skills_root, dist_name=dist_name))
+    if "platform" not in candidates_by_name:
+        from nemo_platform.skills import skills_dir
+
+        candidates_by_name["platform"].append(
+            SkillProvider(name="platform", path=skills_dir(), dist_name="nemo-platform-ext")
+        )
 
     return {name: _join_same_name_candidates(name, candidates) for name, candidates in candidates_by_name.items()}
 

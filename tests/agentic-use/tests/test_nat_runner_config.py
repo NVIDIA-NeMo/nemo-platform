@@ -5,6 +5,8 @@
 
 import json
 import subprocess
+import sys
+from importlib import util
 from pathlib import Path
 from typing import cast
 
@@ -19,13 +21,49 @@ from nat_runner import (
     _build_claude_code_agent_cmd,
     _build_codex_agent_cmd,
     _build_cursor_agent_cmd,
+    _build_workflow_agent_cmd,
     _extract_usage_metrics,
     _normalize_secret,
     _prepare_aut_config_for_runtime,
+    _prepare_workflow_for_runtime,
     run_agent_phase,
     run_task,
     run_verify_phase,
 )
+
+SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+TRACE_FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures" / "trace_outputs"
+
+spec = util.spec_from_file_location("nat_trace_export", SCRIPTS_DIR / "nat_trace_export.py")
+assert spec is not None
+assert spec.loader is not None
+nat_trace_export = util.module_from_spec(spec)
+sys.modules[spec.name] = nat_trace_export
+spec.loader.exec_module(nat_trace_export)
+
+
+def _run_trace_export_cli(monkeypatch: pytest.MonkeyPatch, args: list[str]) -> None:
+    monkeypatch.setattr(sys, "argv", ["nat_trace_export.py", *args])
+    assert nat_trace_export.main() == 0
+
+
+def _load_valid_atif(path: Path) -> dict[str, object]:
+    from nat.atif import ATIFTrajectory
+
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    ATIFTrajectory.model_validate(payload)
+    assert isinstance(payload, dict)
+    return cast(dict[str, object], payload)
+
+
+def _trajectory_steps(trajectory: dict[str, object]) -> list[dict[str, object]]:
+    steps = trajectory["steps"]
+    assert isinstance(steps, list)
+    return cast(list[dict[str, object]], steps)
+
+
+def _trajectory_tool_steps(trajectory: dict[str, object]) -> list[dict[str, object]]:
+    return [step for step in _trajectory_steps(trajectory) if step.get("tool_calls")]
 
 
 @pytest.fixture()
@@ -260,6 +298,11 @@ class TestAgentBackends:
         assert "--output-format json" in script
         assert "--permission-mode bypassPermissions" in script
         assert "--max-budget-usd 1.5" in script
+        assert "CLAUDE_CONFIG_DIR=/logs/agent/sessions" in script
+        assert "nat_trace_export.py convert-claude-session" in script
+        assert "--projects-dir /logs/agent/sessions/projects" in script
+        assert "--output /logs/agent/trajectory.json" in script
+        assert "--instruction /tmp/instruction.md" in script
 
     def test_build_aut_agent_cmd_recreates_existing_agent_when_config_is_present(self) -> None:
         cmd = _build_aut_agent_cmd("/tmp/instruction.md")
@@ -269,6 +312,92 @@ class TestAgentBackends:
         assert 'nemo agents undeploy --agent "${AUT_AGENT_NAME}"' in script
         assert 'nemo agents delete "${AUT_AGENT_NAME}"' in script
         assert 'nemo agents create --name "${AUT_AGENT_NAME}" --agent-config "${EFFECTIVE_AUT_AGENT_CONFIG}"' in script
+
+    def test_build_aut_agent_cmd_exports_atif_trace_artifacts(self) -> None:
+        cmd = _build_aut_agent_cmd("/tmp/instruction.md")
+        script = cmd[2]
+
+        assert cmd[:2] == ["bash", "-c"]
+        assert "nat_trace_export.py invoke-aut" in script
+        assert '--endpoint "$dep_endpoint"' in script
+        assert "--instruction /tmp/instruction.md" in script
+        assert "--output-dir /logs/agent" in script
+        assert "/generate/full" not in script
+
+    def test_build_workflow_agent_cmd_exports_atif_trace_artifacts(self) -> None:
+        cmd = _build_workflow_agent_cmd("/tmp/nat_workflow.yml", "/tmp/instruction.md")
+        script = cmd[2]
+
+        assert cmd[:2] == ["bash", "-c"]
+        assert "/app/.venv/bin/nat run" in script
+        assert "--config_file /tmp/nat_workflow.yml" in script
+        assert '--input "$(cat /tmp/instruction.md)"' in script
+        assert "nat_trace_export.py convert-jsonl" in script
+        assert "--input /logs/agent/intermediate_steps.jsonl" in script
+        assert "--output /logs/agent/trajectory.json" in script
+        assert "NAT telemetry exporter did not create /logs/agent/intermediate_steps.jsonl" in script
+
+    def test_prepare_workflow_for_runtime_injects_file_telemetry(self, tmp_path: Path) -> None:
+        workflow = tmp_path / "workflow.yml"
+        workflow.write_text(
+            """
+llms:
+  agent:
+    _type: openai
+    base_url: http://localhost:8080/v1
+    model_name: nvidia/llama-3.1-nemotron-70b-instruct
+workflow:
+  _type: react_agent
+  llm_name: agent
+""".strip(),
+            encoding="utf-8",
+        )
+
+        runtime_workflow = _prepare_workflow_for_runtime(
+            workflow,
+            tmp_path,
+            nmp_base_url="http://platform:8080",
+            nat_model="custom-model",
+        )
+        config = yaml.safe_load(runtime_workflow.read_text(encoding="utf-8"))
+
+        trace_config = config["general"]["telemetry"]["tracing"]["agentic_use_file_trace"]
+        assert config["llms"]["agent"]["base_url"] == "http://platform:8080/v1"
+        assert config["llms"]["agent"]["model_name"] == "custom-model"
+        assert trace_config == {
+            "_type": "file",
+            "output_path": "/logs/agent/intermediate_steps.jsonl",
+            "project": "agentic-use",
+            "mode": "overwrite",
+            "cleanup_on_init": True,
+        }
+
+    def test_nat_trace_export_assembles_atif_stream(self) -> None:
+        events = [
+            {
+                "step_id": 1,
+                "source": "user",
+                "message": "Do the thing.",
+            },
+            {
+                "step_id": 2,
+                "source": "agent",
+                "message": "Done.",
+            },
+            {"output": "final answer"},
+            {
+                "schema_version": "ATIF-v1.7",
+                "session_id": "session-1",
+                "agent": {"name": "nat-agent", "version": "0.0.0"},
+            },
+        ]
+
+        trajectory, final_result = nat_trace_export._assemble_atif_stream(events)
+
+        assert final_result == {"output": "final answer"}
+        assert trajectory is not None
+        assert trajectory["session_id"] == "session-1"
+        assert len(trajectory["steps"]) == 2
 
     def test_build_aut_agent_cmd_keeps_diagnostics_best_effort(self) -> None:
         cmd = _build_aut_agent_cmd("/tmp/instruction.md")
@@ -302,6 +431,10 @@ class TestAgentBackends:
         assert "codex_structured_prompt.md" not in script
         assert "output_files" not in script
         assert "final_message.txt" in script
+        assert "nat_trace_export.py convert-codex-jsonl" in script
+        assert "--input /logs/agent/nat_agent.log" in script
+        assert "--output /logs/agent/trajectory.json" in script
+        assert "--final-message /logs/agent/final_message.txt" in script
         assert "--dangerously-bypass-approvals-and-sandbox" not in script
         assert "--json" in script
         assert "AGENT_MODEL" in script
@@ -327,11 +460,16 @@ class TestAgentBackends:
         assert cmd[:2] == ["bash", "-c"]
         assert "cursor-agent" in script
         assert "--print" in script
-        assert "--output-format json" in script
+        assert "--output-format stream-json" in script
+        assert "--output-format json" not in script
         assert "--force" not in script
         assert "--sandbox enabled" in script
         assert "--mode plan" in script
         assert "--workspace /app" in script
+        assert "nat_trace_export.py convert-cursor-jsonl" in script
+        assert "--input /logs/agent/nat_agent.log" in script
+        assert "--output /logs/agent/trajectory.json" in script
+        assert "--final-message /logs/agent/final_message.json" in script
         assert "AGENT_MODEL" in script
         assert "CURSOR_MODEL" not in script
         assert "/tmp/instruction.md" in script
@@ -424,11 +562,10 @@ class TestAgentBackends:
         monkeypatch.setenv("INFERENCE_NVIDIA_API_KEY", "inference-secret")
         captured_env: dict[str, str] = {}
 
-        def fake_docker_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
-            env = kwargs["env"]
-            assert isinstance(env, dict)
-            captured_env.update(cast(dict[str, str], env))
-            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        def fake_docker_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            env = cast(dict[str, str], kwargs["env"])
+            captured_env.update(env)
+            return subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(nat_runner, "_docker_run", fake_docker_run)
 
@@ -476,11 +613,10 @@ class TestAgentBackends:
         workspace_dir = tmp_path / "workspace"
         captured_mounts: list[tuple[str, str]] = []
 
-        def fake_docker_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
-            mounts = kwargs["mounts"]
-            assert isinstance(mounts, list)
-            captured_mounts.extend(cast(list[tuple[str, str]], mounts))
-            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        def fake_docker_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            mounts = cast(list[tuple[str, str]], kwargs["mounts"])
+            captured_mounts.extend(mounts)
+            return subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(nat_runner, "_docker_run", fake_docker_run)
 
@@ -657,11 +793,10 @@ class TestAgentBackends:
         monkeypatch.setenv("NVIDIA_INFERENCE_API_KEY", " none ")
         captured_env: dict[str, str] = {}
 
-        def fake_docker_run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
-            env = kwargs["env"]
-            assert isinstance(env, dict)
-            captured_env.update(cast(dict[str, str], env))
-            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+        def fake_docker_run(*_args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            env = cast(dict[str, str], kwargs["env"])
+            captured_env.update(env)
+            return subprocess.CompletedProcess(args=["docker"], returncode=0, stdout="", stderr="")
 
         monkeypatch.setattr(nat_runner, "_docker_run", fake_docker_run)
 
@@ -690,6 +825,119 @@ class TestAgentBackends:
         assert "OPENAI_API_KEY" not in captured_env
         assert "CURSOR_API_KEY" not in captured_env
         assert "INFERENCE_NVIDIA_API_KEY" not in captured_env
+
+
+class TestTraceExportCliFixtures:
+    """Exercise checked-in trace examples through the converter CLI surface."""
+
+    def test_convert_nat_intermediate_steps_fixture(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        output_path = tmp_path / "trajectory.json"
+
+        _run_trace_export_cli(
+            monkeypatch,
+            [
+                "convert-jsonl",
+                "--input",
+                str(TRACE_FIXTURES_DIR / "nat_intermediate_steps.jsonl"),
+                "--output",
+                str(output_path),
+                "--session-id",
+                "nat-fixture-session",
+            ],
+        )
+
+        trajectory = _load_valid_atif(output_path)
+        assert trajectory["session_id"] == "nat-fixture-session"
+        assert [step["source"] for step in _trajectory_steps(trajectory)] == ["user", "agent"]
+
+    def test_convert_claude_session_fixture(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        instruction_path = tmp_path / "instruction.md"
+        final_message_path = tmp_path / "final_message.json"
+        output_path = tmp_path / "trajectory.json"
+        instruction_path.write_text("Run the failing command.", encoding="utf-8")
+        final_message_path.write_text(json.dumps({"result": "The command failed."}), encoding="utf-8")
+
+        _run_trace_export_cli(
+            monkeypatch,
+            [
+                "convert-claude-session",
+                "--projects-dir",
+                str(TRACE_FIXTURES_DIR / "claude" / "projects"),
+                "--output",
+                str(output_path),
+                "--instruction",
+                str(instruction_path),
+                "--final-message",
+                str(final_message_path),
+            ],
+        )
+
+        trajectory = _load_valid_atif(output_path)
+        tool_steps = _trajectory_tool_steps(trajectory)
+        assert trajectory["agent"] == {"name": "claude-code", "version": "0.0.0"}
+        assert _trajectory_steps(trajectory)[0]["message"] == "Run the failing command."
+        assert cast(list[dict[str, object]], tool_steps[0]["tool_calls"])[0]["function_name"] == "Bash"
+        assert "exit code 1" in str(cast(dict[str, object], tool_steps[0]["observation"])["results"])
+
+    def test_convert_codex_jsonl_fixture(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        instruction_path = tmp_path / "instruction.md"
+        final_message_path = tmp_path / "final_message.txt"
+        output_path = tmp_path / "trajectory.json"
+        instruction_path.write_text("Inspect the repo.", encoding="utf-8")
+        final_message_path.write_text("Finished inspection.\n", encoding="utf-8")
+
+        _run_trace_export_cli(
+            monkeypatch,
+            [
+                "convert-codex-jsonl",
+                "--input",
+                str(TRACE_FIXTURES_DIR / "codex_exec.jsonl"),
+                "--output",
+                str(output_path),
+                "--instruction",
+                str(instruction_path),
+                "--final-message",
+                str(final_message_path),
+            ],
+        )
+
+        trajectory = _load_valid_atif(output_path)
+        tool_steps = _trajectory_tool_steps(trajectory)
+        assert trajectory["agent"] == {"name": "codex", "version": "0.0.0"}
+        assert _trajectory_steps(trajectory)[-1]["message"] == "Finished inspection."
+        assert cast(list[dict[str, object]], tool_steps[0]["tool_calls"])[0]["function_name"] == "shell"
+        assert "Evaluator" in str(cast(dict[str, object], tool_steps[0]["observation"])["results"])
+
+    def test_convert_cursor_stream_fixture(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+        instruction_path = tmp_path / "instruction.md"
+        final_message_path = tmp_path / "final_message.json"
+        output_path = tmp_path / "trajectory.json"
+        instruction_path.write_text("List files.", encoding="utf-8")
+
+        _run_trace_export_cli(
+            monkeypatch,
+            [
+                "convert-cursor-jsonl",
+                "--input",
+                str(TRACE_FIXTURES_DIR / "cursor_stream.jsonl"),
+                "--output",
+                str(output_path),
+                "--instruction",
+                str(instruction_path),
+                "--final-message",
+                str(final_message_path),
+            ],
+        )
+
+        trajectory = _load_valid_atif(output_path)
+        final_message = json.loads(final_message_path.read_text(encoding="utf-8"))
+        tool_steps = _trajectory_tool_steps(trajectory)
+        tool_call = cast(list[dict[str, object]], tool_steps[0]["tool_calls"])[0]
+        assert trajectory["agent"] == {"name": "cursor-agent", "version": "0.0.0"}
+        assert final_message == {"result": "Done listing files."}
+        assert tool_call["tool_call_id"] == "cursor-call-1"
+        assert cast(dict[str, object], tool_call["arguments"])["command"] == "ls"
+        assert "README.md" in str(cast(dict[str, object], tool_steps[0]["observation"])["results"])
 
 
 class TestAgentLogWorkflowErrors:
