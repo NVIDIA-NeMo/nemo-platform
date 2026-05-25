@@ -22,10 +22,11 @@ Phase 1 wires :meth:`NemoJobScheduler.run_local`, :meth:`submit_remote`, and
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import httpx
 import pytest
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
@@ -721,7 +722,7 @@ class TestCompileMarker:
                     spec=_DummySpec(),
                     entity_client=None,
                     job_name=None,
-                    async_sdk=None,
+                    async_sdk=cast(AsyncNeMoPlatform, None),
                 )
             )
 
