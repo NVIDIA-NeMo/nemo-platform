@@ -25,7 +25,6 @@ permissions:
 
 env:
   PAGES_BRANCH: gh-pages
-  DOCS_PREVIEW_BASE_URL: https://jubilant-adventure-g4rv38m.pages.github.io
 
 jobs:
   build:
@@ -235,16 +234,24 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Resolve GitHub Pages URL
+        id: pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PAGES_URL=$(gh api "repos/${GITHUB_REPOSITORY}/pages" --jq .html_url)
+          echo "url=${PAGES_URL%/}/" >> "$GITHUB_OUTPUT"
+
       - name: Deploy PR preview
         env:
-          PAGES_URL: ${{ env.DOCS_PREVIEW_BASE_URL }}/
+          PAGES_URL: ${{ steps.pages.outputs.url }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: make -C docs deploy-pr-preview PR_NUMBER="${PR_NUMBER}" PR_PREVIEW_SITE_URL="${PAGES_URL}pr-preview/pr-${PR_NUMBER}/"
 
       - name: Add PR preview comment
         uses: actions/github-script@v7
         env:
-          PREVIEW_URL: ${{ env.DOCS_PREVIEW_BASE_URL }}/pr-preview/pr-${{ github.event.pull_request.number }}/pr-${{ github.event.pull_request.number }}/
+          PREVIEW_URL: ${{ steps.pages.outputs.url }}pr-preview/pr-${{ github.event.pull_request.number }}/pr-${{ github.event.pull_request.number }}/
         with:
           script: |
             const marker = '<!-- docs-preview-url -->';
