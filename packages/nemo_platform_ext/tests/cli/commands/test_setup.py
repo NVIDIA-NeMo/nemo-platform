@@ -2307,7 +2307,7 @@ class TestRenderOnboardingCard:
         panel = mock_console.print.call_args_list[0].args[0]
         content = panel.renderable
         assert "What can I do with NeMo Platform?" in content
-        assert "docs.nvidia.com/nemo/platform" in content
+        assert "nvidia-nemo.github.io/nemo-platform" in content
 
     def test_unknown_value_is_silently_skipped(self):
         with patch(f"{SETUP_MOD}.console") as mock_console:
