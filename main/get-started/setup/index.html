@@ -5000,9 +5000,9 @@
 <p>An asynchronous client is also available. See the <a href="../../pysdk/">SDK reference</a> for details.</p>
 <h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <h3 id="platform-wont-start">Platform won't start<a class="headerlink" href="#platform-wont-start" title="Permanent link">&para;</a></h3>
-<p>Check <code>.nemo-services.log</code> in the directory where you ran <code>nemo setup</code>. The most common cause is port 8080 already in use.</p>
+<p>Check <code>~/.local/state/nmp/instances/&lt;scope&gt;/services.log</code> in the directory where you ran <code>nemo setup</code>. The most common cause is port 8080 already in use.</p>
 <h3 id="studio-returns-404-or-unavailable">Studio returns 404 or unavailable<a class="headerlink" href="#studio-returns-404-or-unavailable" title="Permanent link">&para;</a></h3>
-<p>Studio requires the FastAPI web assets built by <code>make bootstrap-studio</code>. If <code>make bootstrap</code> warned that Studio asset bootstrap did not complete, install Node.js with pnpm using <code>pnpm env use --global 22.18.0</code>, then rerun <code>make bootstrap-studio</code> from the repository root.</p>
+<p>Studio requires the FastAPI web assets built by <code>make bootstrap-studio</code>. If <code>make bootstrap</code> warned that Studio asset bootstrap did not complete, install Node.js with pnpm using <code>pnpm env use --global 22.18.0</code>, then rerun <code>make bootstrap-studio</code> and <code>nemo services restart</code> from the repository root.</p>
 <h3 id="no-models-discovered">No models discovered<a class="headerlink" href="#no-models-discovered" title="Permanent link">&para;</a></h3>
 <p>The provider may still be syncing. Wait 30 seconds and run <code>nemo models list</code>. If still empty, verify your API key is valid and the provider endpoint is reachable.</p>
 <h3 id="platform-not-reachable-error">"Platform not reachable" error<a class="headerlink" href="#platform-not-reachable-error" title="Permanent link">&para;</a></h3>
@@ -5016,7 +5016,7 @@
 <p><code>nemo setup</code> is idempotent. Existing secrets, providers, and agent deployments are detected and skipped. Run it again to add a second provider or re-attempt a stage that failed.</p>
 <h3 id="managing-services">Managing services<a class="headerlink" href="#managing-services" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8080/health/ready<span class="w">   </span><span class="c1"># check if running</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>cat<span class="w"> </span>.nemo-services.log<span class="w">                 </span><span class="c1"># view service output</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>cat<span class="w"> </span>~/.local/state/nmp/instances/&lt;scope&gt;/services.log<span class="w">                 </span><span class="c1"># view service output</span>
 </span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>pkill<span class="w"> </span>-f<span class="w"> </span><span class="s2">&quot;nemo services run&quot;</span><span class="w">           </span><span class="c1"># stop all services</span>
 </span></code></pre></div>
 
