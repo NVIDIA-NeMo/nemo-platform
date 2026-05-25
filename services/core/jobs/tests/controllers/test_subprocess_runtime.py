@@ -46,7 +46,7 @@ def test_inject_secret_env_vars():
     }
 
     response = MagicMock()
-    response.read.return_value = json.dumps({"data": "secret-value"}).encode("utf-8")
+    response.read.return_value = json.dumps({"value": "secret-value"}).encode("utf-8")
     response.__enter__.return_value = response
     response.__exit__.return_value = None
 
@@ -58,6 +58,21 @@ def test_inject_secret_env_vars():
     assert request.full_url == "http://secrets.example/apis/secrets/v2/workspaces/default/secrets/hf-token/access"
     assert request.get_header("X-nmp-principal-id") == "service:jobs"
     assert request.get_header("X-nmp-principal-on-behalf-of") == "creator@example.com"
+
+
+def test_inject_secret_env_vars_rejects_missing_value_field():
+    env = {
+        NEMO_JOB_SECRETS_ENVVAR: "HF_TOKEN=default/hf-token",
+        "NMP_SECRETS_URL": "http://secrets.example",
+    }
+    response = MagicMock()
+    response.read.return_value = json.dumps({"data": "secret-value"}).encode("utf-8")
+    response.__enter__.return_value = response
+    response.__exit__.return_value = None
+
+    with patch("nmp.core.jobs.controllers.backends.subprocess_runtime.urlopen", return_value=response):
+        with pytest.raises(RuntimeError, match="missing string value field"):
+            inject_secret_env_vars(env.copy())
 
 
 def test_inject_secret_env_vars_rejects_non_http_secrets_url():
