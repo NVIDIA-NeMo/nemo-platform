@@ -19,7 +19,7 @@ Docker Compose, Helm, Kubernetes, and OpenShift deployment paths are not part of
 
 | Area | Supported | Notes |
 |------|-----------|-------|
-| Package installation | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install nemo-platform`. |
+| Package installation | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install nemo-platform[services]`. |
 | Shell | Bash or zsh | Used by the installer, setup commands, and documented examples. |
 | Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI and generated documentation. |
 

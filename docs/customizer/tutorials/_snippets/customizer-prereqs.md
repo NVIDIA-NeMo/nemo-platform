@@ -6,7 +6,7 @@
     Before starting, make sure you have:
 
     - {{platform_name}} installed and deployed (see [Setup](../../get-started/setup.md))
-    - The `nemo-platform` Python SDK installed (`pip install nemo-platform`)
+    - The `nemo-platform` Python SDK installed (`pip install nemo-platform[services]`)
     - (Optional) Weights & Biases account and API key for enhanced visualization
 
     **Set up environment variables:**

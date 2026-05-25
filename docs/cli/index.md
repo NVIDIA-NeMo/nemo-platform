@@ -20,13 +20,13 @@ The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {
 ### Install in a Virtual Environment
 
 ```bash
-pip install nemo-platform
+pip install nemo-platform[services]
 ```
 
 Or with uv:
 
 ```bash
-uv pip install nemo-platform
+uv pip install nemo-platform[services]
 ```
 
 !!! warning "When installed in a virtual environment, the `nemo` command is only available when the environment is activated."
@@ -95,7 +95,7 @@ nemo setup
 curl -s http://localhost:8080/health/ready
 
 # View service logs
-cat .nemo-services.log
+cat ~/.local/state/nmp/instances/<scope>/services.log
 
 # Stop services
 pkill -f "nemo services run"

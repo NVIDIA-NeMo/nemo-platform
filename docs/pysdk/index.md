@@ -8,7 +8,7 @@ The [{{platform_name}} Python SDK](https://pypi.org/project/nemo-platform/) is a
 Install the {{platform_name}} Python SDK using `pip`:
 
 ```bash
-pip install nemo-platform
+pip install nemo-platform[services]
 ```
 
 !!! note "This project will download and install additional third-party open source software projects. Review the license terms of these open source projects before use."

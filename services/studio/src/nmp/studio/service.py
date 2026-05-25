@@ -256,9 +256,10 @@ class StudioService(Service[StudioConfig]):
       <p>The platform is running, but Studio cannot be served because the built web assets were not found.</p>
       <p>Requested path: <code>{escape(route)}</code></p>
       <p>Expected assets at: <code>{escape(str(static_path))}</code></p>
-      <p>Install Node.js matching <code>web/package.json</code> with pnpm, and rebuild Studio:</p>
+      <p>Install Node.js matching <code>web/package.json</code> with pnpm, rebuild Studio, and restart services:</p>
       <pre>pnpm env use --global 22.18.0
-make bootstrap-studio</pre>
+make bootstrap-studio
+nemo services restart</pre>
     </main>
   </body>
 </html>

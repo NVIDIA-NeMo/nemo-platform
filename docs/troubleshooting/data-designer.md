@@ -27,11 +27,11 @@ nemo setup
 
 ## Check Service Logs
 
-Local setup writes service output to `.nemo-services.log` in the directory where services were started.
+Local setup writes service output to `~/.local/state/nmp/instances/<scope>/services.log` in the directory where services were started.
 
 ```bash
-tail -n 200 .nemo-services.log
-tail -f .nemo-services.log
+tail -n 200 ~/.local/state/nmp/instances/<scope>/services.log
+tail -f ~/.local/state/nmp/instances/<scope>/services.log
 ```
 
 Look for startup errors, provider authentication failures, port conflicts, or Data Designer request failures.

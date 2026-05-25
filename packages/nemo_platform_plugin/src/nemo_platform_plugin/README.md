@@ -33,11 +33,11 @@ Every surface class requires a non-empty `name: ClassVar[str]`. Checked at class
 
 ## Next steps
 
-- [QUICKSTART.md](docs/QUICKSTART.md) — build your first plugin end-to-end
-- [SERVICE.md](docs/SERVICE.md) — HTTP routes, CRUD patterns, testing
-- [JOB.md](docs/JOB.md) — jobs, CLI commands, auto-generated job commands
-- [CONTROLLER.md](docs/CONTROLLER.md) — reconcile loops, state machines, service principal
-- [CONFIG.md](docs/CONFIG.md) — typed configuration, env vars, YAML, test overrides
-- [ENTITY.md](docs/ENTITY.md) — entity store, CRUD client, pagination, optimistic locking
-- [INFERENCE_MIDDLEWARE.md](docs/INFERENCE_MIDDLEWARE.md) — inference request/response middleware, typed bodies, and response annotations
-- [ARCHITECTURE.md](docs/ARCHITECTURE.md) — discovery, startup, all surfaces, SDK surface
+- [QUICKSTART.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/QUICKSTART.md) — build your first plugin end-to-end
+- [SERVICE.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/SERVICE.md) — HTTP routes, CRUD patterns, testing
+- [JOB.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/JOB.md) — jobs, CLI commands, auto-generated job commands
+- [CONTROLLER.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/CONTROLLER.md) — reconcile loops, state machines, service principal
+- [CONFIG.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/CONFIG.md) — typed configuration, env vars, YAML, test overrides
+- [ENTITY.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/ENTITY.md) — entity store, CRUD client, pagination, optimistic locking
+- [INFERENCE_MIDDLEWARE.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/INFERENCE_MIDDLEWARE.md) — inference request/response middleware, typed bodies, and response annotations
+- [ARCHITECTURE.md](https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/ARCHITECTURE.md) — discovery, startup, all surfaces, SDK surface

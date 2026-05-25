@@ -172,11 +172,11 @@ An asynchronous client is also available. See the [SDK reference](../pysdk/index
 
 ### Platform won't start
 
-Check `.nemo-services.log` in the directory where you ran `nemo setup`. The most common cause is port 8080 already in use.
+Check `~/.local/state/nmp/instances/<scope>/services.log` in the directory where you ran `nemo setup`. The most common cause is port 8080 already in use.
 
 ### Studio returns 404 or unavailable
 
-Studio requires the FastAPI web assets built by `make bootstrap-studio`. If `make bootstrap` warned that Studio asset bootstrap did not complete, install Node.js with pnpm using `pnpm env use --global 22.18.0`, then rerun `make bootstrap-studio` from the repository root.
+Studio requires the FastAPI web assets built by `make bootstrap-studio`. If `make bootstrap` warned that Studio asset bootstrap did not complete, install Node.js with pnpm using `pnpm env use --global 22.18.0`, then rerun `make bootstrap-studio` and `nemo services restart` from the repository root.
 
 ### No models discovered
 
@@ -204,6 +204,6 @@ nemo services run
 
 ```bash
 curl -s http://localhost:8080/health/ready   # check if running
-cat .nemo-services.log                 # view service output
+cat ~/.local/state/nmp/instances/<scope>/services.log                 # view service output
 pkill -f "nemo services run"           # stop all services
 ```

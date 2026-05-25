@@ -10,7 +10,7 @@ Before starting any tutorial, ensure you have:
 - [{{nss_short_name}} deployed](../getting-started.md) using Docker Compose or Helm
 - Python environment with `nemo-platform` SDK installed:
  ```bash
- pip install nemo-platform[safe-synthesizer]
+ pip install nemo-platform[services]
  ```
 - Jupyter environment for running tutorial notebooks
 

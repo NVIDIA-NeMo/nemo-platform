@@ -101,7 +101,7 @@ Every skill ships with the following YAML frontmatter at the top of `SKILL.md`. 
 
 Library-prefix naming (`nemo-*`) is required for user-invocable skills (skills install into shared agent catalogs alongside skills from other plugins; the prefix prevents collisions). It's optional for internal helpers.
 
-**Canonical location:** `packages/nemo_platform_ext/src/nemo_platform_ext/skills/<name>/`. Skills there ship with `pip install nemo-platform`.
+**Canonical location:** `packages/nemo_platform_ext/src/nemo_platform_ext/skills/<name>/`. Skills there ship with `pip install nemo-platform[services]`.
 
 ---
 

@@ -1,7 +1,7 @@
 <!-- @nemo-nb: process -->
 <!-- @nemo-nb: download -->
 <!-- @nemo-nb: skip-test -->
-<!-- TODO: Contains %%bash cell that runs `pip install nemo-platform` and `nemo setup` — incompatible with sandboxed test execution. Refactor to use SDK directly. -->
+<!-- TODO: Contains %%bash cell that runs `pip install nemo-platform[services]` and `nemo setup` — incompatible with sandboxed test execution. Refactor to use SDK directly. -->
 <!--
 ```python
 # @nemo-nb: hide
@@ -41,7 +41,7 @@ This tutorial shows you how to build, validate, and iterate on LLM judge metrics
 1. Install and start {{platform_name}} using the [Setup guide](../../get-started/setup.md).
 
 ```bash
-! pip install nemo-platform
+! pip install nemo-platform[services]
 ! nemo setup
 ```
 

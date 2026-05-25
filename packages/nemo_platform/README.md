@@ -1,6 +1,6 @@
 # nemo-platform
 
-Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform`, this is the wheel they get.
+Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[services]`, this is the wheel they get.
 
 The wheel bundles the SDK, shared runtime packages, default first-party plugins, and services directly from source via hatch force-include. As sub-packages are published independently to PyPI, they'll be removed from the bundle and added as normal dependencies instead.
 
@@ -121,7 +121,7 @@ To publish a bundled package independently:
 2. Add it as a normal dependency in `[project.dependencies]` (or in the appropriate optional group)
 3. Run `make vendor` to regenerate the dependency groups
 
-The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform` continues to work.
+The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[services]` continues to work.
 
 ## Other vendoring (`make vendor`)
 
