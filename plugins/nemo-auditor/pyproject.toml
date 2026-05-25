@@ -9,8 +9,8 @@ dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
     "pydantic>=2.10.6",
-    "pyyaml>=6.0",
-    "typer>=0.12.5",
+    "pyyaml>=6.0.2",
+    "typer>=0.20.0",
 ]
 
 [project.entry-points."nemo.services"]

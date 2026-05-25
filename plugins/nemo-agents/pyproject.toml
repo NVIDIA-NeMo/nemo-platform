@@ -9,11 +9,9 @@ dependencies = [
     "nmp-common",
     "nemo-agents-example-calculator",
     "nvidia-nat-core>=1.7.0,<1.8",
-    "nvidia-nat-atif>=1.7.0,<1.8",
-    "nvidia-nat-opentelemetry>=1.7.0,<1.8",
     "nvidia-nat-langchain>=1.7.0,<1.8",
-    "nvidia-nat-eval>=1.7.0,<1.8",
     "nvidia-nat-config-optimizer>=1.7.0,<1.8",
+    # ASTD-164: tight pins avoid pip ResolutionTooDeep via aioboto3/langchain-aws.
     "langchain-aws==1.1.0",
     "boto3>=1.40.46,<1.40.62",
     "botocore>=1.40.46,<1.40.62",

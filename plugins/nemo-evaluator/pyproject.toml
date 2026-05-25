@@ -10,7 +10,7 @@ dependencies = [
     "nemo-platform",
     "nmp-evaluator",
     "pydantic>=2.10.6",
-    "typer>=0.12.5",
+    "typer>=0.20.0",
 ]
 
 [project.entry-points."nemo.services"]

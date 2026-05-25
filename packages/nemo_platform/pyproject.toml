@@ -298,10 +298,7 @@ nemo-agents-plugin = [
   "nmp-common",
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.7.0,<1.8",
-  "nvidia-nat-atif>=1.7.0,<1.8",
-  "nvidia-nat-opentelemetry>=1.7.0,<1.8",
   "nvidia-nat-langchain>=1.7.0,<1.8",
-  "nvidia-nat-eval>=1.7.0,<1.8",
   "nvidia-nat-config-optimizer>=1.7.0,<1.8",
   "langchain-aws==1.1.0",
   "boto3>=1.40.46,<1.40.62",
@@ -322,7 +319,7 @@ nemo-anonymizer-plugin = [
   "httpx>=0.27",
   "fastapi",
   "pandas",
-  "pyyaml>=6.0",
+  "pyyaml>=6.0.2",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -331,8 +328,8 @@ nemo-auditor-plugin = [
   "httpx>=0.27",
   "nemo-platform-plugin",
   "pydantic>=2.10.6",
-  "pyyaml>=6.0",
-  "typer>=0.12.5",
+  "pyyaml>=6.0.2",
+  "typer>=0.20.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -344,7 +341,6 @@ nemo-data-designer-plugin = [
   "httpx>=0.27",
   "fastapi",
   "pandas",
-  "duckdb",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -353,7 +349,7 @@ nemo-evaluator-plugin = [
   "nemo-platform-plugin",
   "nmp-evaluator",
   "pydantic>=2.10.6",
-  "typer>=0.12.5",
+  "typer>=0.20.0",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
