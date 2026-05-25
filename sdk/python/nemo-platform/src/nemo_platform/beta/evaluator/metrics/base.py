@@ -9,7 +9,8 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
 from typing import Any, Literal, Protocol, cast
 
-from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricOutputSpec, MetricTypeName
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricOutputSpec, MetricTypeName, MetricWithSecrets
+from nemo_platform.beta.evaluator.values.common import SecretRef
 from pydantic import BaseModel, ConfigDict, Field, SerializeAsAny, field_serializer, field_validator, model_validator
 
 
@@ -98,6 +99,7 @@ class MetricBundle(BaseModel):
     metric_type: MetricTypeName
     metadata: MetricMetadata = Field(default_factory=MetricMetadata)
     outputs: list[BundledMetricOutputSpec] = Field(min_length=1)
+    secrets: dict[str, SecretRef] = Field(default_factory=dict)
     payload: SerializeAsAny[MetricBundlePayload]
     digest: str
 
@@ -174,3 +176,10 @@ def metric_metadata(metric: Metric) -> MetricMetadata:
         raise MetricBundlingError("metric labels must be a mapping when provided")
     labels = dict(raw_labels)
     return MetricMetadata(description=description, labels=labels)
+
+
+def metric_secrets(metric: Metric) -> dict[str, SecretRef]:
+    """Capture secret environment mappings needed to execute one metric."""
+    if not isinstance(metric, MetricWithSecrets):
+        return {}
+    return metric.secrets()

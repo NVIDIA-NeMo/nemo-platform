@@ -19,6 +19,7 @@ from nemo_evaluator_sdk.metrics.base import (
     MetricBundler,
     MetricBundlingError,
     metric_metadata,
+    metric_secrets,
     register_metric_bundle_payload,
     register_metric_bundler,
     validate_metric_type,
@@ -87,6 +88,7 @@ class CloudpickleMetricBundler(MetricBundler):
             metric_type=validate_metric_type(metric),
             metadata=metric_metadata(metric),
             outputs=[BundledMetricOutputSpec.from_output_spec(output) for output in metric.output_spec()],
+            secrets=metric_secrets(metric),
             payload=CloudpickleMetricPayload.from_blob(blob),
             digest=digest,
         )

@@ -242,6 +242,51 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
     assert config["prompt_template"] == {"question": "{{item.question}}"}
 
 
+async def test_evaluate_job_compile_injects_metric_and_target_secrets() -> None:
+    secret_ref = SecretRef(root="NVIDIA_BUILD_API_KEY")
+    spec = EvaluateSpec.model_validate(
+        {
+            **_exact_match_spec(),
+            "metric": _bundle_payload(
+                LLMJudgeMetric(
+                    model=Model(
+                        url="https://integrate.api.nvidia.com/v1/chat/completions",
+                        name="nvidia/nemotron-3-super-120b-a12b",
+                        api_key_secret=secret_ref,
+                    ),
+                    scores=[
+                        RangeScore(
+                            name="quality",
+                            minimum=1,
+                            maximum=5,
+                            parser=JSONScoreParser(json_path="quality"),
+                        ),
+                    ],
+                )
+            ),
+            "target": Model(
+                url="https://integrate.api.nvidia.com/v1/chat/completions",
+                name="nvidia/nemotron-3-super-120b-a12b",
+                api_key_secret=secret_ref,
+            ),
+            "params": RunConfigOnlineModel(parallelism=3),
+            "prompt_template": "Question: {{item.question}}",
+        }
+    )
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=object(),
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
+    assert secrets == {"NVIDIA_BUILD_API_KEY": "NVIDIA_BUILD_API_KEY"}
+
+
 class TestEvaluateSpec:
     """Validation coverage for evaluator job specs."""
 

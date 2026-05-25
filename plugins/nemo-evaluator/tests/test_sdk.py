@@ -160,7 +160,7 @@ def test_resolve_workspace_requires_explicit_or_default_workspace() -> None:
 def test_bundle_metrics_for_spec_rejects_non_metric_object() -> None:
     """Metrics must satisfy the runtime Metric protocol before plugin execution."""
     with pytest.raises(MetricBundlingError, match="Metric protocol"):
-        bundle_metrics_for_spec(object(), metric_bundler=CloudpickleMetricBundler())  # type: ignore[arg-type]
+        bundle_metrics_for_spec(object(), metric_bundler=CloudpickleMetricBundler())
 
 
 def test_build_evaluate_spec_requires_metric_bundler() -> None:

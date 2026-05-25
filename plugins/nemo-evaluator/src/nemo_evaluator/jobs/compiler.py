@@ -6,11 +6,13 @@
 from __future__ import annotations
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
+from nemo_evaluator_sdk.metrics.base import MetricBundle
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     EnvironmentVariable,
+    EnvironmentVariableFromSecret,
     PlatformJobSpec,
     PlatformJobStep,
 )
@@ -80,6 +82,41 @@ def _fileset_download_step(dataset: FilesetRef) -> PlatformJobStep:
     )
 
 
+def _metric_bundles(spec: EvaluateSpec) -> list[MetricBundle]:
+    if isinstance(spec.metric, list):
+        return spec.metric
+    return [spec.metric]
+
+
+def _add_secret_ref(secret_refs: dict[str, str], env_name: str, secret_name: str) -> None:
+    existing = secret_refs.get(env_name)
+    if existing is not None and existing != secret_name:
+        raise ValueError(f"conflicting secret references for environment variable {env_name!r}")
+    secret_refs[env_name] = secret_name
+
+
+def _secret_environment(spec: EvaluateSpec) -> list[EnvironmentVariable]:
+    environment = [
+        EnvironmentVariable(
+            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+            value=DEFAULT_JOB_STORAGE_PATH,
+        )
+    ]
+    secret_refs: dict[str, str] = {}
+    for bundle in _metric_bundles(spec):
+        for env_name, secret_ref in bundle.secrets.items():
+            _add_secret_ref(secret_refs, env_name, secret_ref.root)
+
+    if isinstance(spec.target, Model | Agent) and spec.target.api_key_secret is not None and spec.target.api_key_env:
+        _add_secret_ref(secret_refs, spec.target.api_key_env, spec.target.api_key_secret.root)
+
+    environment.extend(
+        EnvironmentVariable(name=env_name, from_secret=EnvironmentVariableFromSecret(name=secret_name))
+        for env_name, secret_name in sorted(secret_refs.items())
+    )
+    return environment
+
+
 def _evaluate_step(spec: EvaluateSpec, profile: str | None) -> PlatformJobStep:
     return PlatformJobStep(
         name=EVALUATE_STEP_NAME,
@@ -93,10 +130,5 @@ def _evaluate_step(spec: EvaluateSpec, profile: str | None) -> PlatformJobStep:
             ),
         ),
         config=spec.model_dump(mode="json"),
-        environment=[
-            EnvironmentVariable(
-                name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-                value=DEFAULT_JOB_STORAGE_PATH,
-            )
-        ],
+        environment=_secret_environment(spec),
     )
