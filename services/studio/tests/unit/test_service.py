@@ -314,6 +314,7 @@ class TestStaticFilesPath:
         assert response.status_code == 503
         assert "make bootstrap-studio" in response.text
         assert "pnpm env use --global 22.18.0" in response.text
+        assert "nemo services restart" in response.text
         assert "web/package.json" in response.text
         assert str(missing_static) in response.text
 
@@ -333,6 +334,7 @@ class TestStaticFilesPath:
         assert response.status_code == 503
         assert "make bootstrap-studio" in response.text
         assert "pnpm env use --global 22.18.0" in response.text
+        assert "nemo services restart" in response.text
         assert str(incomplete_static) in response.text
 
     def test_missing_static_files_route_handles_nested_studio_paths(

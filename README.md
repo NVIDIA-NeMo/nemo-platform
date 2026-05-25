@@ -67,7 +67,7 @@ nemo services run
 <details>
 <summary>Studio (web UI) bootstrap troubleshooting</summary>
 
-If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.18.x with `pnpm env use --global 22.18.0`, then run `make bootstrap-studio` from the repo root.
+If `make bootstrap` reports that Studio asset bootstrap did not complete, the API still runs but the web UI is unavailable until the bundle is built. Install Node 22.18.x with `pnpm env use --global 22.18.0`, then run `make bootstrap-studio` from the repo root. If the platform is already running, also run `nemo services restart` so the live process picks up the new assets.
 
 </details>
 

@@ -176,7 +176,7 @@ Check `.nemo-services.log` in the directory where you ran `nemo setup`. The most
 
 ### Studio returns 404 or unavailable
 
-Studio requires the FastAPI web assets built by `make bootstrap-studio`. If `make bootstrap` warned that Studio asset bootstrap did not complete, install Node.js with pnpm using `pnpm env use --global 22.18.0`, then rerun `make bootstrap-studio` from the repository root.
+Studio requires the FastAPI web assets built by `make bootstrap-studio`. If `make bootstrap` warned that Studio asset bootstrap did not complete, install Node.js with pnpm using `pnpm env use --global 22.18.0`, rerun `make bootstrap-studio` from the repository root, then run `nemo services restart`.
 
 ### No models discovered
 
