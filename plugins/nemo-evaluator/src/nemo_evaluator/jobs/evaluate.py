@@ -10,8 +10,12 @@ from collections.abc import Sequence
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 from nemo_evaluator.jobs.utils import remote_compile_metric, resolve_run_dataset, resolve_submit_dataset
+from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator_sdk import Evaluator
+from nemo_evaluator_sdk.execution._protocols import JobParamsConfigurableMetric
 from nemo_evaluator_sdk.execution.config import normalize_params
+from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_evaluator_sdk.metrics.protocol import MetricWithModels
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -68,6 +72,20 @@ class EvaluateJob(NemoJob):
     spec_schema: ClassVar[type[BaseModel] | None] = EvaluateSpec
     job_collection_path: ClassVar[str | None] = "/evaluate/jobs"
 
+    @staticmethod
+    async def _resolve_metric_models(
+        metric: MetricsUnion | Sequence[MetricsUnion],
+        resolver: PlatformModelResolver,
+        params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
+    ) -> None:
+        """Resolve ModelRef fields on metric configs before local SDK execution."""
+        metrics = metric if isinstance(metric, Sequence) else (metric,)
+        for item in metrics:
+            if isinstance(item, JobParamsConfigurableMetric):
+                item.apply_evaluation_job_params(params)
+            if isinstance(item, MetricWithModels):
+                await item.resolve_models(resolver)
+
     @classmethod
     async def compile(
         cls,
@@ -82,13 +100,18 @@ class EvaluateJob(NemoJob):
     ) -> PlatformJobSpec:
         """Compile canonical spec using the evaluator service metric job compiler."""
         del workspace, entity_client, job_name, profile, options
-        canonical_spec = spec if isinstance(spec, EvaluateSpec) else EvaluateSpec.model_validate(spec.model_dump())
+        canonical_spec = (
+            spec.model_copy(deep=True)
+            if isinstance(spec, EvaluateSpec)
+            else EvaluateSpec.model_validate(spec.model_dump())
+        )
 
         from nmp.evaluator.app.jobs.metrics import compile_metric_job
         from nmp.evaluator.app.values import MetricOfflineJob, MetricOnlineAgentJob, MetricOnlineJob
 
         dataset, dataset_ref = await resolve_submit_dataset(cast(AsyncNeMoPlatform, async_sdk), canonical_spec.dataset)
         params = normalize_params(canonical_spec.params, canonical_spec.target)
+        await cls._resolve_metric_models(canonical_spec.metric, PlatformModelResolver(async_sdk), params)
         metric = remote_compile_metric(canonical_spec.metric)
         if isinstance(canonical_spec.target, Model):
             if canonical_spec.prompt_template is None:
@@ -131,6 +154,10 @@ class EvaluateJob(NemoJob):
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()
+        platform_sdk = async_sdk or sdk
+        params = normalize_params(spec.params, spec.target)
+        if platform_sdk is not None:
+            run_sync(lambda: self._resolve_metric_models(spec.metric, PlatformModelResolver(platform_sdk), params))
         dataset = resolve_run_dataset(
             spec.dataset,
             ctx=ctx,
@@ -139,7 +166,7 @@ class EvaluateJob(NemoJob):
         )
         common_kwargs: dict[str, Any] = {
             "dataset": dataset,
-            "config": spec.params,
+            "config": params,
             "target": spec.target,
             "prompt_template": spec.prompt_template,
         }

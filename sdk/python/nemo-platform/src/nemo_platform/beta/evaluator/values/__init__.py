@@ -48,7 +48,7 @@ from nemo_platform.beta.evaluator.values.metrics import (
     ToolCalling,
     TopicAdherence,
 )
-from nemo_platform.beta.evaluator.values.models import Model, ReasoningParams
+from nemo_platform.beta.evaluator.values.models import Model, ModelRef, ReasoningParams
 from nemo_platform.beta.evaluator.values.params import (
     InferenceParams,
     RunConfig,
@@ -116,6 +116,7 @@ __all__ = [
     "MetricResult",
     "MetricScore",
     "Model",
+    "ModelRef",
     "DatasetInput",
     "EvaluationResult",
     "Percentiles",
