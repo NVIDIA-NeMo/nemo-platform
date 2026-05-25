@@ -68,6 +68,13 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MOCK_CHAT_PATH = "/v1/chat/completions"
 
+DEFAULT_WORKSPACE = "default"
+"""Workspace seeded by :func:`~nmp.testing.client.create_test_client` at
+module-fixture setup. Exposed on the harness as :attr:`IGWPluginHarness.workspace`
+so test bodies can read it without hardcoding ``"default"`` — when the
+fixture migrates to per-test workspaces (Option B in AIRCORE-585), only
+the harness internals change and existing test bodies keep working."""
+
 
 @dataclass
 class IGWPluginHarness:
@@ -103,12 +110,24 @@ class IGWPluginHarness:
     :meth:`mock_chat_completions` and assert via :meth:`assert_call_count`
     and friends rather than touching this directly."""
 
+    workspace: str
+    """Workspace seeded by the module-scoped app context. Reach for this
+    instead of a literal ``"default"`` so test bodies stay portable if
+    the fixture later issues a per-test workspace (Option B)."""
+
     _registry: MiddlewareRegistry
     _model_cache: ModelCache
     _vm_cache: VirtualModelCache
     _cache_accessor: InferenceMiddlewareCacheAccessorImpl
     _virtual_models: list[tuple[str, str]]
     """``(workspace, name)`` of VMs created by this harness — torn down on cleanup."""
+    _providers: list[tuple[str, str]]
+    """``(workspace, name)`` of providers created via :meth:`add_provider` —
+    deleted from the entity store on cleanup so a stale row can't re-enter
+    the model cache on the next test in a module-scoped fixture."""
+    _secrets: list[tuple[str, str]]
+    """``(workspace, name)`` of secrets created via :meth:`create_secret` —
+    deleted on cleanup in dependency order after providers."""
 
     # ------------------------------------------------------------------
     # Builder
@@ -120,6 +139,7 @@ class IGWPluginHarness:
         *,
         client_context: ClientContext,
         mock_nim: HTTPServer,
+        workspace: str = DEFAULT_WORKSPACE,
         **extra_fields: Any,
     ) -> "IGWPluginHarness":
         """Construct a harness around an already-running IGW + Models app.
@@ -147,25 +167,88 @@ class IGWPluginHarness:
             entity_client=client_context.entity_client,
             mock_nim=mock_nim,
             handler=handler,
+            workspace=workspace,
             _registry=registry,
             _model_cache=model_cache,
             _vm_cache=vm_cache,
             _cache_accessor=cache_accessor,
             _virtual_models=[],
+            _providers=[],
+            _secrets=[],
             **extra_fields,
         )
 
     def _cleanup(self) -> None:
-        """Evict VMs created by this harness from runtime state."""
+        """Delete this test's entities from the entity store and runtime state.
+
+        Order matters: VMs first (they reference provider-derived model
+        entities via ``default_model_entity``), then providers (they
+        reference secrets via ``api_key_secret_name``), then secrets.
+        Each step is ``try/except``-guarded with ``logger.warning`` so a
+        single delete failure can't mask the test's own failure.
+
+        Module-scoped fixtures rely on this to keep the entity store
+        clean between tests; a stray provider row would otherwise
+        re-enter ``ModelCache`` on the next ``refresh_model_cache`` and
+        trigger plugin ``notify_upserted`` callbacks on a dead VM. The
+        runtime caches are still rebuilt after entity deletion so a
+        plugin observing the registry between tests doesn't see ghost
+        VMs.
+        """
+        for workspace, name in reversed(self._virtual_models):
+            try:
+                self.sdk.inference.virtual_models.delete(name=name, workspace=workspace)
+            except Exception:
+                logger.warning(
+                    "Failed to delete VirtualModel %r in workspace %r during harness cleanup",
+                    name,
+                    workspace,
+                    exc_info=True,
+                )
+
+        for workspace, name in reversed(self._providers):
+            try:
+                self.sdk.inference.providers.delete(name=name, workspace=workspace)
+            except Exception:
+                logger.warning(
+                    "Failed to delete ModelProvider %r in workspace %r during harness cleanup",
+                    name,
+                    workspace,
+                    exc_info=True,
+                )
+
+        for workspace, name in reversed(self._secrets):
+            try:
+                self.sdk.secrets.delete(name=name, workspace=workspace)
+            except Exception:
+                logger.warning(
+                    "Failed to delete Secret %r in workspace %r during harness cleanup",
+                    name,
+                    workspace,
+                    exc_info=True,
+                )
+
+        # Rebuild caches so they reflect the post-delete entity store
+        # state. The middleware registry's per-VM factories are removed
+        # via evict; the VM cache rebuild drops the same set.
         for key in self._virtual_models:
             self._registry.evict(key)
-
         removed = set(self._virtual_models)
         if removed:
             self._vm_cache.rebuild(
                 [vm for vm in self._vm_cache.virtual_model_map.values() if (vm.workspace, vm.name) not in removed]
             )
+        # Drop provider rows from the model cache too — without this,
+        # the next ``add_provider`` fast-path would see stale
+        # ``ModelProviderInfo`` entries from the deleted providers (and
+        # the rebuilt entity map would still resolve through them).
+        for workspace, name in self._providers:
+            self._model_cache.workspace_name_provider_map.pop((workspace, name), None)
+        self._model_cache.rebuild_model_entity_map()
+
         self._virtual_models.clear()
+        self._providers.clear()
+        self._secrets.clear()
 
     # ------------------------------------------------------------------
     # Public conveniences
@@ -353,8 +436,42 @@ class IGWPluginHarness:
             yield plugin
 
     # ------------------------------------------------------------------
-    # Provider / VirtualModel creation (refresh hidden)
+    # Secret / Provider / VirtualModel creation (refresh hidden)
     # ------------------------------------------------------------------
+
+    def create_secret(
+        self,
+        *,
+        workspace: str,
+        name: str,
+        value: str,
+        description: str | None = None,
+    ) -> str:
+        """Create a Secret via the SDK and track it for harness cleanup.
+
+        Prefer this over a direct ``self.sdk.secrets.create(...)`` call —
+        only harness-mediated entities are tracked, and a secret created
+        directly will leak across tests when the fixture is module-scoped
+        (and may then keep a deleted provider's ``api_key_secret_name``
+        reference alive on the next ``refresh_model_cache``).
+
+        Args:
+            workspace: Workspace the secret lives in.
+            name: Secret name. Must be unique within the workspace.
+            value: Secret payload (returned by the secrets SDK as
+                ``secret_value`` during model-cache refresh).
+            description: Optional human-readable description.
+
+        Returns:
+            *name* unchanged — useful when chaining into
+            :meth:`add_provider` (``api_key_secret_name=harness.create_secret(...)``).
+        """
+        kwargs: dict[str, Any] = {"workspace": workspace, "name": name, "value": value}
+        if description is not None:
+            kwargs["description"] = description
+        self.sdk.secrets.create(**kwargs)
+        self._secrets.append((workspace, name))
+        return name
 
     def add_provider(
         self,
@@ -425,6 +542,11 @@ class IGWPluginHarness:
             enabled_models=list(enabled_models) if enabled_models is not None else omit,
             api_key_secret_name=api_key_secret_name if api_key_secret_name is not None else omit,
         )
+        # Track immediately after ``create`` succeeds so a later raise from
+        # ``update_status`` or ``retrieve`` still leaves the provider
+        # eligible for teardown — module-scoped fixtures rely on every
+        # row being deleted between tests, even partial-failure rows.
+        self._providers.append((workspace, provider_name))
 
         # served_models persisted via update_status (the create path
         # doesn't accept them) so they survive future cache refreshes.

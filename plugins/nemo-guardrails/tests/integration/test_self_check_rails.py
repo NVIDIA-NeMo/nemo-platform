@@ -15,7 +15,6 @@ from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness, IGWPl
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
 from .utils import (
-    DEFAULT_WORKSPACE,
     GUARDRAILS_PLUGIN_NAME,
     RailType,
     make_guardrail_config,
@@ -159,25 +158,25 @@ class TestSelfCheck:
                 responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
             )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(rail_types=[RailType.INPUT], main_base_url=harness.nim_base_url),
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
@@ -238,25 +237,25 @@ class TestSelfCheck:
             responses=[ChatCompletion(body=chat_completion(content=self_check_response))],
         )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(rail_types=[RailType.OUTPUT], main_base_url=harness.nim_base_url),
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 response_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
@@ -328,13 +327,13 @@ class TestSelfCheck:
                 responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
             )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(
                 rail_types=[RailType.INPUT, RailType.OUTPUT],
@@ -343,14 +342,14 @@ class TestSelfCheck:
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
                 response_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
@@ -428,30 +427,30 @@ class TestSelfCheck:
             ],
         )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(rail_types=[RailType.INPUT], main_base_url=None),
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
