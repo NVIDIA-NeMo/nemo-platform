@@ -234,6 +234,31 @@ describe('reduceSpansToRuns', () => {
     expect(run.completionTokens).toBe(2);
   });
 
+  it('extracts usage and assistant text from a non-streaming WORKFLOW_END output dict', () => {
+    const nonStreamedOutput: unknown = {
+      id: 'da8486b9-87cd-45f2-9b18-c1f2f5ff219a',
+      object: 'chat.completion',
+      model: 'unknown-model',
+      choices: [
+        { finish_reason: 'stop', index: 0, message: { role: 'assistant', content: '42.0' } },
+      ],
+      usage: { prompt_tokens: 5, completion_tokens: 1, total_tokens: 6 },
+    };
+    const spans: TelemetrySpan[] = [
+      span({ __runId: 'r', event_type: 'WORKFLOW_START', event_timestamp: SECONDS }),
+      span({
+        __runId: 'r',
+        event_type: 'WORKFLOW_END',
+        event_timestamp: SECONDS + 1,
+        data: { output: nonStreamedOutput },
+      }),
+    ];
+    const [run] = reduceSpansToRuns(spans);
+    expect(run.promptTokens).toBe(5);
+    expect(run.completionTokens).toBe(1);
+    expect(run.outputPreview).toBe('42.0');
+  });
+
   it('walks parent_id → UUID → workflow_run_id when path runId is missing', () => {
     const spans: TelemetrySpan[] = [
       span({
