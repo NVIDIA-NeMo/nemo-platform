@@ -94,22 +94,36 @@ const truncate = (text: string): string =>
 const getRunId = (span: TelemetrySpan): string | undefined =>
   span.payload.metadata?.provided_metadata?.workflow_run_id;
 
-// Plain string or OpenAI streaming chunk array.
+const asChunkList = (output: unknown): unknown[] => {
+  if (Array.isArray(output)) return output;
+  if (typeof output === 'object' && output !== null) return [output];
+  return [];
+};
+
+const choiceText = (choice: unknown): string => {
+  if (typeof choice !== 'object' || choice === null) return '';
+  const c = choice as Record<string, unknown>;
+  const delta = c['delta'];
+  if (typeof delta === 'object' && delta !== null) {
+    const content = (delta as Record<string, unknown>)['content'];
+    if (typeof content === 'string') return content;
+  }
+  const message = c['message'];
+  if (typeof message === 'object' && message !== null) {
+    const content = (message as Record<string, unknown>)['content'];
+    if (typeof content === 'string') return content;
+  }
+  return '';
+};
+
 const extractOutputText = (output: unknown): string => {
   if (typeof output === 'string') return output;
-  if (!Array.isArray(output)) return '';
-  return output
+  return asChunkList(output)
     .flatMap((chunk) => {
       if (typeof chunk !== 'object' || chunk === null) return [];
       const choices = (chunk as Record<string, unknown>)['choices'];
       if (!Array.isArray(choices)) return [];
-      return choices.flatMap((choice) => {
-        if (typeof choice !== 'object' || choice === null) return [];
-        const delta = (choice as Record<string, unknown>)['delta'];
-        if (typeof delta !== 'object' || delta === null) return [];
-        const content = (delta as Record<string, unknown>)['content'];
-        return typeof content === 'string' ? [content] : [];
-      });
+      return choices.map(choiceText).filter((text) => text.length > 0);
     })
     .join('');
 };
@@ -123,8 +137,7 @@ interface UsageAcc {
 // Tolerates both `prompt_tokens`/`completion_tokens` and Anthropic-style
 // `input_tokens`/`output_tokens` aliases.
 const collectChunkUsage = (output: unknown, acc: UsageAcc): void => {
-  if (!Array.isArray(output)) return;
-  for (const chunk of output) {
+  for (const chunk of asChunkList(output)) {
     if (typeof chunk !== 'object' || chunk === null) continue;
     const usage = (chunk as Record<string, unknown>)['usage'];
     if (typeof usage !== 'object' || usage === null) continue;
