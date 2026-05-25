@@ -220,7 +220,7 @@ def main(
     """
     Command-line interface for NeMo Platform.
 
-    :books: Documentation: https://docs.nvidia.com/nemo/microservices/latest/about/index.html
+    :books: Documentation: https://nvidia-nemo.github.io/nemo-platform/main/
 
     [green]Getting started:[/]
     - Browse documentation with [cyan]`nemo docs --list`[/]
