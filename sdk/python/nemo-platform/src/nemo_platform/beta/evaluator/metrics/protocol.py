@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Awaitable, Callable
-from typing import Annotated, Any, Protocol, runtime_checkable
+from typing import Any, Protocol, Annotated, runtime_checkable
+
+from pydantic import Field, BaseModel, RootModel, ConfigDict, StringConstraints, field_validator, field_serializer
 
 from nemo_platform.beta.evaluator.values.common import SecretRef
-from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, field_serializer, field_validator
+from nemo_platform.beta.evaluator.values.models import ModelRef
+from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
 
-SecretResolver = Callable[[str], Awaitable[str | None]]
 MetricTypeName = Annotated[str, StringConstraints(min_length=1)]
 
 
@@ -200,6 +201,22 @@ class MetricWithSecrets(Protocol):
 
     async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve secrets before the metric is used for evaluation."""
+        ...
+
+
+@runtime_checkable
+class MetricWithModels(Protocol):
+    """Protocol for metrics that require model resolution."""
+
+    def model_refs(self) -> dict[str, ModelRef]:
+        """Return metric field names mapped to model references.
+
+        Example: ``{"model": ModelRef("workspace/model")}``.
+        """
+        ...
+
+    async def resolve_models(self, model_resolver: ModelResolver) -> None:
+        """Resolve model references before the metric is used for evaluation."""
         ...
 
 

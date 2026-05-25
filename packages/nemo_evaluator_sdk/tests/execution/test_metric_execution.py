@@ -16,6 +16,8 @@ import pyarrow as pa
 import pytest
 from nemo_evaluator_sdk.datasets.loader import normalize_dataset, rows_from_dataset
 from nemo_evaluator_sdk.enums import AgentFormat, MetricType, ModelFormat
+from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
+from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.execution.metric_execution import (
     ComputeMetricPipeline,
     _default_online_request_template,
@@ -33,17 +35,12 @@ from nemo_evaluator_sdk.execution.metric_execution import (
 )
 from nemo_evaluator_sdk.execution.pipeline import PipelineRuntime
 from nemo_evaluator_sdk.execution.scoring import build_metric_input, empty_evaluation_result, finalize_evaluation_result
-from nemo_evaluator_sdk.execution.utils import (
-    _candidate_env_names,
-    _copy_metric,
-    _resolve_secret_from_env,
-    prepare_metric_for_local_execution,
-)
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric as RuntimeLLMJudgeMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
+from nemo_evaluator_sdk.resolvers import LocalSecretResolver, _candidate_env_names
 from nemo_evaluator_sdk.structured_output import StructuredOutputMode
 from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.common import SecretRef
@@ -871,10 +868,6 @@ class TestEvaluateMetric:
     ):
         caplog.set_level(logging.WARNING, logger="nemo_evaluator_sdk.execution.metric_execution")
         metric = _make_mock_metric(mocker)
-        mock_prepare = mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.prepare_metric_for_local_execution",
-            new_callable=AsyncMock,
-        )
 
         result = await evaluate_metric(
             metric=metric,
@@ -883,7 +876,6 @@ class TestEvaluateMetric:
 
         assert result == empty_evaluation_result()
         assert "No rows found in dataset, returning empty evaluation result" in caplog.text
-        mock_prepare.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_skips_prompt_inference_for_nonempty_offline_evaluation(self, mocker: MockerFixture):
@@ -904,11 +896,6 @@ class TestEvaluateMetric:
             )
         ]
         expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
-        mock_prepare = mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.prepare_metric_for_local_execution",
-            new_callable=AsyncMock,
-            return_value=metric,
-        )
         mock_merge_hooks = mocker.patch(
             "nemo_evaluator_sdk.execution.metric_execution._merge_online_hooks",
             return_value=([], []),
@@ -934,7 +921,6 @@ class TestEvaluateMetric:
         )
 
         assert result is expected
-        mock_prepare.assert_awaited_once_with(metric, params)
         mock_merge_hooks.assert_called_once_with(
             params=params,
             target=None,
@@ -951,11 +937,6 @@ class TestEvaluateMetric:
     @pytest.mark.asyncio
     async def test_reraises_untyped_pipeline_failures(self, mocker: MockerFixture):
         metric = _make_mock_metric(mocker)
-        mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.prepare_metric_for_local_execution",
-            new_callable=AsyncMock,
-            return_value=metric,
-        )
         mocker.patch(
             "nemo_evaluator_sdk.execution.metric_execution.run_generated_sample_scoring_pipeline",
             new_callable=AsyncMock,
@@ -974,11 +955,6 @@ class TestEvaluateMetric:
         metric = _make_mock_metric(mocker)
         agent = _make_agent()
         expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
-        mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.prepare_metric_for_local_execution",
-            new_callable=AsyncMock,
-            return_value=metric,
-        )
         mock_run_pipeline = mocker.patch(
             "nemo_evaluator_sdk.execution.metric_execution.run_generated_sample_scoring_pipeline",
             new_callable=AsyncMock,
@@ -1173,52 +1149,6 @@ class TestRunGeneratedSampleScoringPipeline:
             await run_generated_sample_scoring_pipeline(pipeline)
 
 
-class TestCopyMetric:
-    def test_returns_model_copy_for_pydantic_models(self):
-        metric = _PreparedMetric()
-
-        copied = _copy_metric(metric)
-
-        assert copied is not metric
-        assert isinstance(copied, _PreparedMetric)
-        assert copied._events == []
-        copied._events.append(("test", None))
-        assert metric._events == []
-
-    def test_raises_when_deepcopy_fails(self, mocker: MockerFixture):
-        metric = _make_test_metric()
-        mocker.patch("nemo_evaluator_sdk.execution.utils.copy.deepcopy", side_effect=RuntimeError("bad copy"))
-
-        with pytest.raises(TypeError, match="Cannot copy metric"):
-            _copy_metric(metric)
-
-
-class TestPrepareMetric:
-    @pytest.mark.asyncio
-    async def test_preserves_call_assertions_after_copy(self):
-        impl = _TestMetric()
-        metric = cast(Metric, impl)
-
-        prepared = await prepare_metric_for_local_execution(metric, RunConfig())
-
-        assert prepared is not metric
-        metric_input = build_metric_input({"prompt": "hello"}, {"output_text": "world"})
-        await prepared.compute_scores(metric_input)
-        impl.compute_scores.assert_awaited_once_with(metric_input)
-
-    @pytest.mark.asyncio
-    async def test_resolves_env_secret_before_preflight(self, monkeypatch: pytest.MonkeyPatch):
-        metric = _PreparedMetric()
-        monkeypatch.setenv("nvidia_build_api_key", "secret-value")
-
-        prepared = await prepare_metric_for_local_execution(metric, RunConfig())
-
-        assert prepared is not metric
-        assert isinstance(prepared, _PreparedMetric)
-        assert metric._events == []
-        assert prepared._events == [("resolve", "secret-value"), ("preflight", "secret-value")]
-
-
 class TestSecretResolution:
     def test_candidate_env_names_include_normalized_secret_name(self):
         assert _candidate_env_names("nvidia-build-api-key") == [
@@ -1242,11 +1172,11 @@ class TestSecretResolution:
     async def test_resolve_secret_from_env_supports_prefixed_digit_variant(self, monkeypatch: pytest.MonkeyPatch):
         monkeypatch.setenv("_123_secret_key", "secret-value")
 
-        assert await _resolve_secret_from_env("123-secret/key") == "secret-value"
+        assert await LocalSecretResolver().resolve_secret(SecretRef(root="123-secret/key")) == "secret-value"
 
     @pytest.mark.asyncio
     async def test_resolve_secret_from_env_returns_none_when_missing(self):
-        assert await _resolve_secret_from_env("missing-secret") is None
+        assert await LocalSecretResolver().resolve_secret(SecretRef(root="missing-secret")) is None
 
 
 class TestEvaluateMetricOnline:
@@ -1622,11 +1552,6 @@ class TestEvaluateMetricOnline:
     async def test_agent_evaluation_requires_prompt_template(self, mocker: MockerFixture):
         metric = _make_test_metric()
         mocker.patch(
-            "nemo_evaluator_sdk.execution.metric_execution.prepare_metric_for_local_execution",
-            new_callable=AsyncMock,
-            return_value=metric,
-        )
-        mocker.patch(
             "nemo_evaluator_sdk.execution.metric_execution.run_generated_sample_scoring_pipeline",
             new_callable=AsyncMock,
         )
@@ -1805,12 +1730,14 @@ class TestEvaluateMetricOnline:
             side_effect=fake_generation_inference,
         )
 
-        result = await evaluate_metric(
-            metric,
-            rows=[{"prompt": "What is the capital of France?"}],
-            target=candidate_model,
-            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
-            params=RunConfig(parallelism=1),
+        result = await LocalBackend().evaluate(
+            metric=metric,
+            request=EvaluationRequest(
+                dataset=[{"prompt": "What is the capital of France?"}],
+                target=candidate_model,
+                prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+                params=RunConfig(parallelism=1),
+            ),
         )
 
         assert captured_generation_requests == [
@@ -1893,12 +1820,14 @@ class TestEvaluateMetricOnline:
             side_effect=fake_generation_inference,
         )
 
-        result = await evaluate_metric(
-            metric,
-            rows=[{"prompt": "What is the capital of France?"}],
-            target=candidate_model,
-            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
-            params=RunConfig(parallelism=1),
+        result = await LocalBackend().evaluate(
+            metric=metric,
+            request=EvaluationRequest(
+                dataset=[{"prompt": "What is the capital of France?"}],
+                target=candidate_model,
+                prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+                params=RunConfig(parallelism=1),
+            ),
         )
 
         detect_mode.assert_awaited_once()

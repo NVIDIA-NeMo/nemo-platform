@@ -13,9 +13,10 @@ from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.benchmark_execution import evaluate_benchmark as sdk_evaluate_benchmark
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.execution.metric_execution import _merge_online_hooks, evaluate_metric
-from nemo_evaluator_sdk.execution.utils import prepare_metric_for_local_execution, unique_metric_keys
+from nemo_evaluator_sdk.execution.utils import prepare_metric_for_execution, unique_metric_keys
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
+from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult, namespace_result
 from nemo_evaluator_sdk.values.results import EvaluationResult
 
@@ -24,6 +25,11 @@ log = getLogger(__name__)
 
 class LocalBackend:
     """Local backend that executes metrics in-process."""
+
+    def __init__(self) -> None:
+        """Create a local backend with local resolver defaults."""
+        self.secret_resolver = LocalSecretResolver()
+        self.model_resolver = LocalModelResolver()
 
     async def _evaluate_one(
         self,
@@ -44,8 +50,15 @@ class LocalBackend:
         Returns:
             A namespaced single-metric evaluation result.
         """
+        prepared_metric = await prepare_metric_for_execution(
+            metric,
+            params=request.params,
+            model_resolver=self.model_resolver,
+            secret_resolver=self.secret_resolver,
+        )
+
         result = await evaluate_metric(
-            metric=metric,
+            metric=prepared_metric,
             target=request.target,
             rows=rows,
             prompt_template=request.prompt_template,
@@ -107,7 +120,15 @@ class LocalBackend:
             request.params.limit_samples if request.params else None,
         )
         metric_keys = unique_metric_keys(metrics)
-        prepared_metrics = [await prepare_metric_for_local_execution(metric, request.params) for metric in metrics]
+        prepared_metrics = [
+            await prepare_metric_for_execution(
+                metric,
+                params=request.params,
+                model_resolver=self.model_resolver,
+                secret_resolver=self.secret_resolver,
+            )
+            for metric in metrics
+        ]
         metrics_built: list[tuple[str, Metric]] = list(zip(metric_keys, prepared_metrics, strict=True))
         if request.target is not None:
             preprocess_hooks, postprocess_hooks = _merge_online_hooks(
