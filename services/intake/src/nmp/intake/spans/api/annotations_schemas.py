@@ -51,11 +51,13 @@ class _AnnotationFieldsMixin(BaseModel):
             _forbid(self, "feedback", ("value_numeric", "text", "metadata", "name"))
 
         elif self.kind == AnnotationKind.LABEL:
-            if self.value_text is None and self.value_numeric is None:
-                raise ValueError("kind=label requires `value_text` or `value_numeric`")
-            if self.value_numeric is not None and self.name is None:
+            has_text = self.value_text is not None
+            has_numeric = self.value_numeric is not None
+            if has_text == has_numeric:
+                raise ValueError("kind=label requires exactly one of `value_text` or `value_numeric`")
+            if has_numeric and self.name is None:
                 raise ValueError("kind=label with `value_numeric` requires `name`")
-            _forbid(self, "label", ("text",))
+            _forbid(self, "label", ("text", "metadata"))
 
         elif self.kind == AnnotationKind.NOTE:
             if not self.text:
@@ -103,6 +105,14 @@ class AnnotationUpdate(BaseModel):
     value_numeric: float | None = None
     text: str | None = Field(default=None, min_length=1, max_length=10_000)
     metadata: dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> Self:
+        if all(value is None for value in (self.name, self.value_text, self.value_numeric, self.text, self.metadata)):
+            raise ValueError(
+                "PATCH body must set at least one of `name`, `value_text`, `value_numeric`, `text`, or `metadata`"
+            )
+        return self
 
 
 class Annotation(BaseModel):

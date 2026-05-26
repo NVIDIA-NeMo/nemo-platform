@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
@@ -102,13 +103,29 @@ class AnnotationsRepository:
     async def soft_delete_annotation(self, *, annotation: Annotation) -> None:
         """Tombstone the annotation_id by writing a new row with is_deleted=1.
 
-        The repository writes new versions with the same dedup key so the
-        ReplacingMergeTree promotes the deletion on next merge. `FINAL`
-        reads filter out tombstoned rows.
+        The tombstone uses a fresh `ingested_at` so the ReplacingMergeTree
+        version column strictly exceeds the live row and the deletion wins
+        on next merge. `FINAL` reads filter out tombstoned rows.
         """
 
-        rows = [dict_to_row(_annotation_to_row(annotation, is_deleted=True), ANNOTATION_COLUMNS)]
+        row = _annotation_to_row(annotation, is_deleted=True)
+        row["ingested_at"] = datetime.now(timezone.utc)
+        rows = [dict_to_row(row, ANNOTATION_COLUMNS)]
         await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
+
+    async def list_annotations_for_span(self, *, workspace: str, span_id: str) -> list[Annotation]:
+        result = await self._client.query(
+            f"""
+            SELECT *
+            FROM {self._client.table("annotations")} FINAL
+            WHERE workspace = %(workspace)s
+              AND span_id = %(span_id)s
+              AND is_deleted = 0
+            ORDER BY created_at ASC, annotation_id ASC
+            """,
+            parameters={"workspace": workspace, "span_id": span_id},
+        )
+        return [_row_to_annotation(row) for row in result_rows(result)]
 
 
 def _annotation_where(filters: AnnotationListFilter) -> tuple[str, dict[str, Any]]:

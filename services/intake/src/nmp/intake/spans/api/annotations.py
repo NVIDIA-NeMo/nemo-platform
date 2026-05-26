@@ -110,6 +110,7 @@ async def list_annotations(
     response_model=Annotation,
     response_model_exclude_none=True,
     tags=[API_TAG],
+    responses={404: {"description": "Annotation not found"}},
 )
 async def get_annotation(
     workspace: str,
@@ -131,6 +132,7 @@ async def get_annotation(
     response_model=Annotation,
     response_model_exclude_none=True,
     tags=[API_TAG],
+    responses={404: {"description": "Annotation not found"}},
 )
 async def update_annotation(
     workspace: str,
@@ -155,7 +157,15 @@ async def update_annotation(
             # ``include_context=False`` strips ValueError objects that aren't JSON-serializable.
             detail=exc.errors(include_context=False),
         ) from None
-    updated = await service.update_annotation(merged)
+    try:
+        updated = await service.update_annotation(merged)
+    except AnnotationNotFoundError:
+        # Concurrent delete raced the patch: the row vanished between the read above
+        # and the save inside the service. Surface as 404 rather than 500.
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Annotation {workspace}/{annotation_id} not found",
+        ) from None
     return Annotation.from_domain(updated)
 
 
@@ -163,6 +173,7 @@ async def update_annotation(
     "/v2/workspaces/{workspace}/annotations/{annotation_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     tags=[API_TAG],
+    responses={404: {"description": "Annotation not found"}},
 )
 async def delete_annotation(
     workspace: str,
@@ -189,13 +200,8 @@ async def list_annotations_for_span(
     span_id: str,
     service: SpansServiceDep,
 ) -> list[Annotation]:
-    result = await service.list_annotations(
-        filters=AnnotationListFilter(workspace=workspace, span_id=span_id),
-        page=1,
-        page_size=1000,
-        sort=AnnotationSortField.CREATED_AT_ASC.value,
-    )
-    return [Annotation.from_domain(item) for item in result.data]
+    annotations = await service.list_annotations_for_span(workspace=workspace, span_id=span_id)
+    return [Annotation.from_domain(item) for item in annotations]
 
 
 def _resolve_created_by(auth_client: AuthClient) -> str | None:

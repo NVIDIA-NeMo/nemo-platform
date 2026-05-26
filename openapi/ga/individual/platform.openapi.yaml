@@ -5718,6 +5718,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Annotation'
+        '404':
+          description: Annotation not found
         '422':
           description: Validation Error
           content:
@@ -5755,6 +5757,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Annotation'
+        '404':
+          description: Annotation not found
         '422':
           description: Validation Error
           content:
@@ -5782,6 +5786,8 @@ paths:
       responses:
         '204':
           description: Successful Response
+        '404':
+          description: Annotation not found
         '422':
           description: Validation Error
           content:
