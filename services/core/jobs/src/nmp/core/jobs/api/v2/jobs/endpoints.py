@@ -50,7 +50,7 @@ from nmp.core.jobs.app.providers import CPUExecutionProvider, SubprocessExecutio
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
 )
-from nmp.core.jobs.config import profiles
+from nmp.core.jobs.config import config, profiles
 from nmp.core.jobs.entities import PlatformJobStep, PlatformJobTask
 from pydantic import ValidationError
 from starlette.responses import FileResponse
@@ -126,19 +126,8 @@ def translate_cpu_container_steps_to_subprocess(
 
 
 def configured_subprocess_translation_profiles() -> set[str]:
-    """Return subprocess profiles that should accept CPU container jobs.
-
-    TEMP: Reads from the merged ``profiles`` list rather than the raw
-    ``config.executors`` so the runtime-default subprocess profile (the only
-    officially supported execution path right now — see
-    ``get_default_executor_profiles_for_runtime``) is also considered for
-    CPU-step translation. Without this, any deployment that does not declare
-    an explicit ``jobs.executors`` entry — i.e. every documented bootstrap
-    path — would dispatch ``cpu/default`` steps to the broken Docker /
-    Kubernetes backends. Restore the original ``config.executors`` source
-    once Docker / Kubernetes job execution is functional again.
-    """
-    return {profile.profile for profile in profiles if profile.provider == "subprocess"}
+    """Return explicitly configured subprocess profiles that should accept CPU container jobs."""
+    return {profile.profile for profile in config.executors if profile.provider == "subprocess"}
 
 
 # Execution Profiles Endpoint

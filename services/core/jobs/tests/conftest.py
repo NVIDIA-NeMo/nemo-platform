@@ -43,6 +43,7 @@ from nmp.core.jobs.app.schemas import (
 from nmp.core.jobs.app.test_helpers import TestConstants
 from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry
+from nmp.core.jobs.controllers.backends.subprocess import SubprocessJobBackend
 from nmp.core.jobs.controllers.backends.test import (
     MockDockerCPUJobBackend,
     MockDockerGPUJobBackend,
@@ -384,8 +385,19 @@ executor_defaults:
       volume_name: test_jobs_storage
 
 jobs:
-  # Executor profiles configuration
+  # Executor profiles configuration. The subprocess/default entry mirrors what
+  # ships in `packages/nmp_platform/config/local.yaml` and opts the documented
+  # `cpu/default` plugin steps into the cpu→subprocess translation in the Jobs
+  # API (see `translate_cpu_container_steps_to_subprocess`). Tests that submit
+  # jobs through the core /apis/jobs/v2/workspaces/{ws}/jobs endpoint with a
+  # `cpu/default` step will get rewritten to `subprocess/default` before
+  # validation, matching production deployment behavior.
   executors:
+    - provider: subprocess
+      profile: default
+      backend: subprocess
+      config:
+        working_directory: /tmp/nmp-subprocess-jobs
     - provider: cpu
       profile: default
       backend: docker
@@ -451,12 +463,17 @@ def backend_registry(mock_nmp_client, job_config_with_many_profiles) -> BackendR
     return BackendRegistry.from_config(
         nmp_sdk=mock_nmp_client,
         profiles=job_config_with_many_profiles.executors,
-        # Mock the backends
+        # Mock the backends. Register the real SubprocessJobBackend to satisfy
+        # the subprocess/default executor that ships in
+        # `job_config_with_many_profiles` (added so test_client picks up the
+        # subprocess profile and the cpu→subprocess translation in the Jobs
+        # API fires consistently with production deployments).
         backends={
             BackendKey("cpu", "docker"): MockDockerCPUJobBackend,
             BackendKey("gpu", "docker"): MockDockerGPUJobBackend,
             BackendKey("cpu", "kubernetes_job"): MockKubernetesCPUJobBackend,
             BackendKey("gpu", "kubernetes_job"): MockKubernetesGPUJobBackend,
+            BackendKey("subprocess", "subprocess"): SubprocessJobBackend,
         },
     )
 
