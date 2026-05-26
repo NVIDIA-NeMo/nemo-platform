@@ -343,7 +343,7 @@ describe('CombinedAgentsTable', () => {
 
       const errorToast = await screen.findByTestId('mock-toast-error');
       expect(errorToast).toHaveTextContent(
-        'Agent has active deployments. Please delete all deployments before deleting.'
+        'Agent has active deployments. Please delete all deployments before deleting agent.'
       );
       // The generic fallback toast should not appear.
       expect(screen.queryByText(/Something went wrong\. Please try again\./i)).toBeNull();
