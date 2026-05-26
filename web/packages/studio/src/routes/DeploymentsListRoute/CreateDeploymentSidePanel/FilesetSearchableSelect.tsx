@@ -3,6 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   ControlledSearchableSelect,
   type SelectItemOption,
@@ -39,9 +40,9 @@ export function FilesetSearchableSelect<T extends FieldValues>({
   const [search, setSearch] = useState('');
   const filter = useMemo<FilesListFilesetsParams['filter'] | undefined>(() => {
     if (!search) return undefined;
-    // `$like` enables substring search; the generated `name?: string` type doesn't expose
-    // the operator object form so we cast — same pattern as CustomModelsDataView.
-    return { name: { $like: `%${search}%` } } as unknown as FilesListFilesetsParams['filter'];
+    return withOperators<FilesListFilesetsParams['filter']>({
+      name: { $like: `%${search}%` },
+    });
   }, [search]);
 
   const {

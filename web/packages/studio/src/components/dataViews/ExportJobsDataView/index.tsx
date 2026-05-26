@@ -31,7 +31,7 @@ export const ExportJobsDataView = () => {
   const { getQueryParam, setQueryParam } = useQueryParams();
   const exportJobId = getQueryParam(QUERY_PARAMETERS.exportJobId);
 
-  const dataViewState = useStudioDataViewState({
+  const dataViewState = useStudioDataViewState<ExportJobFilter>({
     defaultSort: { id: 'created_at', desc: true },
   });
 
@@ -49,9 +49,9 @@ export const ExportJobsDataView = () => {
       page_size: dataViewState.pagination.state.pageSize,
       sort: getSortParam(dataViewState.sorting.state) as ExportJobSortField,
       filter: {
-        ...(dataViewState.apiFilter.filter as ExportJobFilter | undefined),
+        ...dataViewState.apiFilter.filter,
         ...(dataViewState.apiFilter.searchText ? { id: dataViewState.apiFilter.searchText } : {}),
-      } as ExportJobFilter | undefined,
+      },
     },
     {
       query: {
