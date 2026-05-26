@@ -4902,7 +4902,7 @@ requires-dist = [
     { name = "pyyaml", marker = "extra == 'nmp-common'", specifier = ">=6.0.2" },
     { name = "sqlalchemy", marker = "extra == 'nmp-common'", specifier = ">=2.0.0" },
     { name = "structlog", marker = "extra == 'nmp-common'", specifier = ">=24.1.0" },
-    { name = "typer", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.20.0" },
+    { name = "typer", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.20.0,<0.26" },
 ]
 provides-extras = ["test", "data-designer-nemo", "nmp-common", "nemo-platform-plugin"]
 
@@ -6027,7 +6027,7 @@ requires-dist = [
     { name = "tenacity", marker = "extra == 'services'", specifier = ">=8.5.0" },
     { name = "typer", marker = "extra == 'nemo-auditor-plugin'", specifier = ">=0.20.0" },
     { name = "typer", marker = "extra == 'nemo-evaluator-plugin'", specifier = ">=0.20.0" },
-    { name = "typer", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.20.0" },
+    { name = "typer", marker = "extra == 'nemo-platform-plugin'", specifier = ">=0.20.0,<0.26" },
     { name = "typer", marker = "extra == 'nemo-platform-sdk'", specifier = ">=0.20.0" },
     { name = "typer", marker = "extra == 'plugins'", specifier = ">=0.20.0" },
     { name = "typer", marker = "extra == 'services'", specifier = ">=0.20.0" },
@@ -6191,7 +6191,7 @@ requires-dist = [
     { name = "requests", marker = "extra == 'nemo-platform-sdk'", specifier = ">=2.31.0" },
     { name = "rich", marker = "extra == 'nemo-platform-sdk'", specifier = ">=13.7.1" },
     { name = "sniffio", marker = "extra == 'nemo-platform-sdk'" },
-    { name = "typer", specifier = ">=0.20.0" },
+    { name = "typer", specifier = ">=0.20.0,<0.26" },
     { name = "typer", marker = "extra == 'nemo-platform-sdk'", specifier = ">=0.20.0" },
     { name = "typing-extensions", marker = "extra == 'nemo-platform-sdk'", specifier = ">=4.14,<5" },
 ]
