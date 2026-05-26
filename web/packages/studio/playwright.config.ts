@@ -30,7 +30,10 @@ export default defineConfig({
     trace: process.env.RECORD ? 'on' : 'on-first-retry',
 
     /* Record video on failure for debugging. See https://playwright.dev/docs/videos */
-    video: process.env.RECORD ? 'on' : 'retain-on-failure',
+    video: {
+      mode: process.env.RECORD ? 'on' : 'retain-on-failure',
+      size: DESKTOP_VIEWPORT_SIZE,
+    },
   },
 
   /* Configure projects for major browsers */
