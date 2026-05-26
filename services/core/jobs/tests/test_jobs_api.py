@@ -25,12 +25,16 @@ from nmp.core.jobs.api.v2.jobs.schemas import (
     PlatformJobStepsListFilter,
 )
 from nmp.core.jobs.app.dispatcher import JobDispatcher
-from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider
+from nmp.core.jobs.app.providers import ContainerSpec, GPUExecutionProvider, SubprocessExecutionProvider
 from nmp.core.jobs.app.schemas import (
     PlatformJobSpec,
     PlatformJobStepSpec,
 )
 from nmp.core.jobs.app.test_helpers import TestConstants
+from nmp.core.jobs.controllers.backends.docker import (
+    DockerJobExecutionProfile,
+    DockerJobExecutionProfileConfig,
+)
 from pydantic import ValidationError
 from starlette.datastructures import QueryParams
 
@@ -48,6 +52,25 @@ def to_sdk_create_params(request: CreatePlatformJobRequest) -> Dict[str, Any]:
     return data
 
 
+def expected_translated_executor_dump() -> Dict[str, Any]:
+    """Return the expected persisted executor for ``TestConstants.TEST_EXECUTOR``.
+
+    The Jobs API rewrites ``cpu/<profile>`` steps into ``subprocess/<profile>``
+    steps before persistence (see
+    ``translate_cpu_container_steps_to_subprocess`` in
+    ``services/core/jobs/src/nmp/core/jobs/api/v2/jobs/endpoints.py``), so the
+    round-trip representation of a step submitted with ``TestConstants.TEST_EXECUTOR``
+    is the translated subprocess executor — with ``command`` set to
+    ``container.entrypoint + container.command``.
+    """
+    container = TestConstants.TEST_EXECUTOR.container
+    return SubprocessExecutionProvider(
+        provider="subprocess",
+        profile=TestConstants.TEST_EXECUTOR.profile,
+        command=[*container.entrypoint, *container.command],
+    ).model_dump()
+
+
 @pytest.mark.asyncio
 async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
     job = await test_sdk.jobs.create(
@@ -62,7 +85,17 @@ async def test_create_job_using_sdk(test_sdk: AsyncNeMoPlatform):
                     "executor": {
                         "provider": "cpu",
                         "profile": "default",
-                        "container": {"image": "test-image"},
+                        # entrypoint+command are required so the cpu→subprocess
+                        # translation hop in the Jobs API (see
+                        # `translate_cpu_container_steps_to_subprocess`) can
+                        # produce a non-empty subprocess command. Real plugin
+                        # compilers always set both; mirroring that here keeps
+                        # the SDK round-trip path realistic.
+                        "container": {
+                            "image": "test-image",
+                            "entrypoint": ["python", "-m"],
+                            "command": ["nmp.testing.fake_task"],
+                        },
                     },
                 }
             ]
@@ -228,7 +261,27 @@ async def test_create_job_gpu_fail_fast_when_docker_no_gpus(test_client: AsyncCl
     mock_platform_config.runtime = Runtime.DOCKER
     mock_platform_config.docker.get_reserved_gpu_ids.return_value = []
 
-    with patch("nmp.common.jobs.docker.get_platform_config", return_value=mock_platform_config):
+    # The platform's runtime defaults are forced to subprocess-only while the
+    # Docker job backend is broken (see
+    # `services/core/jobs/src/nmp/core/jobs/controllers/backends/config.py`).
+    # That means `gpu/default/docker` no longer appears in the merged
+    # `profiles` list at all, so without registering one explicitly the
+    # request would 422 on profile-existence ("execution profile 'gpu/default'
+    # does not exist") before ever reaching the GPU/Docker fast-fail guard
+    # this test is exercising. Register a gpu/default/docker executor for
+    # the duration of the test so we still validate the guard's behavior.
+    from nmp.core.jobs.api.v2.jobs import endpoints as endpoints_module
+
+    gpu_profile = DockerJobExecutionProfile(
+        provider="gpu",
+        profile="default",
+        backend="docker",
+        config=DockerJobExecutionProfileConfig(),
+    )
+    with (
+        patch("nmp.common.jobs.docker.get_platform_config", return_value=mock_platform_config),
+        patch.object(endpoints_module, "profiles", [*endpoints_module.profiles, gpu_profile]),
+    ):
         response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs", json=req.model_dump())
 
     assert response.status_code == 422
@@ -367,7 +420,7 @@ async def test_job_lifecycle_single_step(test_client: AsyncClient):
     # Assert that the platform_spec is created correctly
     assert len(get_data["platform_spec"]["steps"]) == 1
     assert get_data["platform_spec"]["steps"][0]["name"] == "step1"
-    assert get_data["platform_spec"]["steps"][0]["executor"] == TestConstants.TEST_EXECUTOR.model_dump()
+    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_translated_executor_dump()
     assert get_data["platform_spec"]["steps"][0]["config"] == {}
 
     # list all steps (scoped to this job name — list_steps injects filter.job = name)
@@ -526,10 +579,10 @@ async def test_job_lifecycle_multi_step(test_client: AsyncClient):
     # Assert that the platform_spec is created correctly
     assert len(get_data["platform_spec"]["steps"]) == 2
     assert get_data["platform_spec"]["steps"][0]["name"] == "step1"
-    assert get_data["platform_spec"]["steps"][0]["executor"] == TestConstants.TEST_EXECUTOR.model_dump()
+    assert get_data["platform_spec"]["steps"][0]["executor"] == expected_translated_executor_dump()
     assert get_data["platform_spec"]["steps"][0]["config"] == {}
     assert get_data["platform_spec"]["steps"][1]["name"] == "step2"
-    assert get_data["platform_spec"]["steps"][1]["executor"] == TestConstants.TEST_EXECUTOR.model_dump()
+    assert get_data["platform_spec"]["steps"][1]["executor"] == expected_translated_executor_dump()
     assert get_data["platform_spec"]["steps"][1]["config"] == {}
 
     # Assert from the api that the first step is created correctly
