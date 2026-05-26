@@ -22,11 +22,6 @@ export interface FileContentPreviewProps {
   error: Error | null;
   content?: string;
   file: FileListItem;
-  /**
-   * Hide the CodeEditor copy button. Useful when the host already renders
-   * its own file action affordances (e.g. DatasetFilePreviewContent's header).
-   */
-  hideCopyButton?: boolean;
 }
 
 export const FileContentPreview: FC<FileContentPreviewProps> = ({
@@ -34,7 +29,6 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   error,
   content,
   file,
-  hideCopyButton = false,
 }) => {
   const [parseError, setParseError] = useState<string | undefined>(undefined);
   const [csvData, setCsvData] = useState<{
@@ -126,7 +120,6 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
           content={content}
           contentType={jsonContentType}
           readOnly
-          hideCopyButton={hideCopyButton}
           className="h-full min-h-0"
         />
       </div>
@@ -160,7 +153,6 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
         content={content}
         contentType={ContentType.TEXT}
         readOnly
-        hideCopyButton={hideCopyButton}
         className="h-full min-h-0"
       />
     </div>

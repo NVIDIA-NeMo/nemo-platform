@@ -4,30 +4,14 @@
 import { FileContentPreview } from '@nemo/common/src/components/FileContentPreview/index';
 import { render, screen } from '@testing-library/react';
 
-// Mock CodeEditor: avoids ToastProvider requirement and lets us assert
-// branch dispatch (contentType, hideCopyButton, content) directly.
 vi.mock('@nemo/common/src/components/CodeEditor', () => ({
-  CodeEditor: ({
-    content,
-    contentType,
-    hideCopyButton,
-  }: {
-    content: string;
-    contentType: string;
-    hideCopyButton?: boolean;
-  }) => (
-    <div
-      data-testid="code-editor"
-      data-content-type={contentType}
-      data-hide-copy-button={hideCopyButton ? 'true' : 'false'}
-    >
+  CodeEditor: ({ content, contentType }: { content: string; contentType: string }) => (
+    <div data-testid="code-editor" data-content-type={contentType}>
       {content}
     </div>
   ),
 }));
 
-// Mock MarkdownContent so we can assert the markdown branch without exercising
-// the real react-markdown pipeline.
 vi.mock('@nemo/common/src/components/MarkdownContent', () => ({
   MarkdownContent: ({ content }: { content: string }) => (
     <div data-testid="markdown-content">{content}</div>
@@ -194,33 +178,6 @@ describe('FileContentPreview', () => {
       const editor = screen.getByTestId('code-editor');
       expect(editor).toHaveAttribute('data-content-type', 'text');
       expect(editor).toHaveTextContent('This is plain text content');
-    });
-  });
-
-  describe('hideCopyButton prop', () => {
-    it('forwards hideCopyButton=true to CodeEditor', () => {
-      render(
-        <FileContentPreview
-          file={{ path: 'data.json' }}
-          isLoading={false}
-          error={null}
-          content="{}"
-          hideCopyButton
-        />
-      );
-      expect(screen.getByTestId('code-editor')).toHaveAttribute('data-hide-copy-button', 'true');
-    });
-
-    it('defaults hideCopyButton to false', () => {
-      render(
-        <FileContentPreview
-          file={{ path: 'data.json' }}
-          isLoading={false}
-          error={null}
-          content="{}"
-        />
-      );
-      expect(screen.getByTestId('code-editor')).toHaveAttribute('data-hide-copy-button', 'false');
     });
   });
 });
