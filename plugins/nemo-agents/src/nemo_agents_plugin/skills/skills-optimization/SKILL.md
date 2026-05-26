@@ -16,29 +16,28 @@ already has an eval suite (Harbor `task.toml` or NAT `workflow.yml` tasks):
 | `nemo agents analyze` | Cluster failures, surface regressions, generate hypotheses |
 | `nemo agents optimize-skills` | Full loop: run evals → analyze → have Claude edit skills → verify → keep or discard |
 
-All three accept `--config <path.yml>` (file form) and individual `--flag`
-overrides (CLI flags win when explicitly set). Same Pydantic schema works
-with the auto-injected platform-job subcommands (`evaluate-suite run`
-/ `analyze run` / `optimize-skills run`, plus `submit` / `explain`)
-for cluster dispatch.
+All three are NemoJob groups with `run` / `submit` / `explain` verbs. The
+spec is supplied via `--spec-file <path.yml>` (YAML or JSON file) or
+`--spec '{...}'` (JSON inline). When both are given, `--spec-file` wins.
 
 ## When to recommend each command
 
-- "How are my agent's evals doing?" → `evaluate-suite` (collect data) then `analyze` (interpret it).
-- "Why did these evals fail?" / "What's slow?" → `analyze` on an existing batch directory.
-- "Improve / optimize / fix my agent" → `optimize-skills` (only after confirming a `.agent-improver.yml` exists or asking the user for `--evals` / `--agent` / `--skills-path`).
+- "How are my agent's evals doing?" → `evaluate-suite run` (collect data) then `analyze run` (interpret it).
+- "Why did these evals fail?" / "What's slow?" → `analyze run` on an existing batch directory.
+- "Improve / optimize / fix my agent" → `optimize-skills run` (only after confirming a `.agent-improver.yml` exists or asking the user for the `evals` / `agent` / `skills_path` values).
 
 ## Self-referential example: improve NeMo itself
 
 The Platform repo ships a canonical `.agent-improver.yml` at its root. Running
-`nemo agents optimize-skills --config .agent-improver.yml` from the repo
-root improves the skills under `.agents/skills/` based on the `tests/agentic-use/`
-Harbor evals. This supplants the older standalone tools/self_improve/ package.
+`nemo agents optimize-skills run --spec-file .agent-improver.yml` from the
+repo root improves the skills under `.agents/skills/` based on the
+`tests/agentic-use/` Harbor evals. This supplants the older standalone
+tools/self_improve/ package.
 
 ```bash
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 When the user wants to improve **another** agent, they copy
@@ -56,7 +55,7 @@ repo, retarget the paths, and run the same command.
 
   ```bash
   tmux new -s improve
-  nemo agents optimize-skills --config .agent-improver.yml
+  nemo agents optimize-skills run --spec-file .agent-improver.yml
   # detach: Ctrl-B D
   # reattach: tmux attach -t improve
   ```
@@ -64,18 +63,18 @@ repo, retarget the paths, and run the same command.
 - **Variance:** the default verdict is single-trial. Cold-cache effects on
   containerized agentic runs commonly produce 20-40% wallclock variance
   trial-to-trial, so single-trial verdicts can commit noise as
-  "improvement". For verdicts you can trust, recommend `--repeats 3` (or
-  set `repeats: 3` in the YAML). Median aggregation + majority-vote pass/fail.
+  "improvement". For verdicts you can trust, set `repeats: 3` in the YAML.
+  Median aggregation + majority-vote pass/fail.
 
 - **The eval directory is immutable.** The loop's post-edit guard reverts
-  any change inside the `--evals` path. If the user asks to "fix the eval",
+  any change inside the `evals` path. If the user asks to "fix the eval",
   redirect them: the loop improves the **agent**, not the **evals**. Eval
   authoring is a separate workflow.
 
 - **`open_pr` is opt-in.** Default behaviour is "verified diff producer" —
   the loop produces a local branch with a clear diff for human review.
-  Recommend `--open-pr` only when the user explicitly wants automation
-  end-to-end. With `--open-pr`, the loop detects `gh` (GitHub) or `glab`
+  Recommend `open_pr: true` only when the user explicitly wants automation
+  end-to-end. With `open_pr: true`, the loop detects `gh` (GitHub) or `glab`
   (GitLab) and dispatches accordingly.
 
 ## Prerequisites — check / surface in the order most likely to fail
@@ -85,8 +84,8 @@ repo, retarget the paths, and run the same command.
 3. `ANTHROPIC_API_KEY` and `ANTHROPIC_BASE_URL` exported.
 4. Eval directory exists with at least one task containing `task.toml` or
    `workflow.yml` plus `instruction.md` and `tests/test_outputs.py`.
-5. For `optimize-skills`: the directory at `--skills-path` exists inside
-   `--agent`.
+5. For `optimize-skills`: the directory at `skills_path` exists inside
+   `agent`.
 
 The plugin's preflight checks fail fast with actionable error messages, so
 reading the first error in any failure is usually enough.
@@ -105,7 +104,7 @@ reading the first error in any failure is usually enough.
   improvement; discarded on regress/neutral)
 - `iterations[].mr_url`: set when `open_pr=True` and PR/MR creation succeeded
 
-`evaluate-suite` writes `report.md`, `report.csv`, `report.json`, and
+`evaluate-suite run` writes `report.md`, `report.csv`, `report.json`, and
 `baselines.json` to the batch directory. Per-eval trial data lands at
 `<batch_dir>/<eval-name>__trials.json` when `repeats > 1`.
 
@@ -113,27 +112,35 @@ reading the first error in any failure is usually enough.
 
 ```bash
 # Run a single eval to debug
-nemo agents evaluate-suite --evals tests/agentic-use \
-  --agent . --filter auth-authorization-cli --jobs 1
+nemo agents evaluate-suite run --spec '{
+  "evals": "tests/agentic-use",
+  "agent": ".",
+  "filter_glob": "auth-authorization-cli",
+  "concurrency": 1
+}'
 
-# Run the full suite with variance reduction
-nemo agents evaluate-suite --config .agent-improver.yml --repeats 3
+# Run the full suite with variance reduction — set `repeats: 3` in
+# .agent-improver.yml, then:
+nemo agents evaluate-suite run --spec-file .agent-improver.yml
 
 # Analyze a previous batch
-nemo agents analyze --batch ./runs/batch-2026-04-30__09-10-42 --format md
+nemo agents analyze run --spec '{
+  "batch": "./runs/batch-2026-04-30__09-10-42",
+  "format": "md"
+}'
 
-# One iteration of the loop, scoped to one eval
-nemo agents optimize-skills --config .agent-improver.yml \
-  --filter entities-basic-cli-easy --iterations 1
+# Scope to one eval — edit `filter_glob` / `iterations` in the YAML
+# (or copy and edit a copy), then:
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 
-# Full loop with auto-PR
-nemo agents optimize-skills --config .agent-improver.yml --open-pr
+# Full loop with auto-PR — set `open_pr: true` in the YAML, then:
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 ## Don't do
 
-- Don't suggest editing files under the `--evals` directory. Strategies are
-  scoped to write only under `--skills-path`; eval files are reverted.
+- Don't suggest editing files under the `evals` directory. Strategies are
+  scoped to write only under `skills_path`; eval files are reverted.
 - Don't recommend `optimize-skills` without confirming the agent has skills
   to improve. If the agent is stateless / has no skill files, the loop has
   no writable surface.

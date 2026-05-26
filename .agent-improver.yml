@@ -16,11 +16,10 @@
 # Usage (from the repo root):
 #   export ANTHROPIC_API_KEY='<your-key>'
 #   export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
-#   nemo agents optimize-skills --config .agent-improver.yml
+#   nemo agents optimize-skills run --spec-file .agent-improver.yml
 #
-# Single-eval debug run:
-#   nemo agents optimize-skills --config .agent-improver.yml \
-#     --filter auth-authorization-cli --iterations 1
+# Single-eval debug run — edit `filter_glob` and `iterations` in this file,
+# or copy it and pass the copy via --spec-file.
 #
 # Use as a template for any other agent: copy this file into your agent's
 # repo, retarget --evals at your eval suite, and point --skills-path at where

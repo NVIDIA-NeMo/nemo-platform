@@ -3,12 +3,11 @@
 # Copy this file into your own agent's repo as ``.agent-improver.yml``,
 # retarget the paths, and run:
 #
-#   nemo agents optimize-skills --config .agent-improver.yml
-#
-# CLI flags override file values (Optional[T]; only non-None overrides
-# apply). The same YAML schema also works with the platform-job form:
-#
 #   nemo agents optimize-skills run --spec-file .agent-improver.yml
+#
+# To submit to a cluster instead of running locally:
+#
+#   nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
 
 # ---------------------------------------------------------------------------
 # Agent + evals
