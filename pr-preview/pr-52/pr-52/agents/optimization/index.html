@@ -4710,9 +4710,10 @@ and keeps the change only when the evaluation result improves.</p>
 <div class="tabbed-set tabbed-alternate" data-tabs="2:3"><input checked="checked" id="cli_1" name="__tabbed_2" type="radio" /><input id="skill_1" name="__tabbed_2" type="radio" /><input id="python-sdk_1" name="__tabbed_2" type="radio" /><div class="tabbed-labels"><label for="cli_1">CLI</label><label for="skill_1">Skill</label><label for="python-sdk_1">Python SDK</label></div>
 <div class="tabbed-content">
 <div class="tabbed-block">
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nemo<span class="w"> </span>agents<span class="w"> </span>optimize-skills<span class="w"> </span>--config<span class="w"> </span>.agent-improver.yml
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>nemo<span class="w"> </span>agents<span class="w"> </span>optimize-skills<span class="w"> </span>run<span class="w"> </span>--spec-file<span class="w"> </span>.agent-improver.yml
 </span></code></pre></div>
-<p>Use <code>--open-pr</code> when you want the loop to prepare a reviewable branch.</p>
+<p>Set <code>open_pr: true</code> in the YAML when you want the loop to prepare a
+reviewable branch.</p>
 <p>A sample <code>.agent-improver.yml</code> is in
 <code>plugins/nemo-agents/examples/agent-improver.example.yml</code>.</p>
 </div>
@@ -4738,11 +4739,15 @@ selected agent has skills and an evaluation suite. Verify it is installed:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_agents_plugin.jobs.optimize_skills</span><span class="w"> </span><span class="kn">import</span> <span class="n">OptimizeSkillsJob</span>
 </span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_platform_plugin.scheduler</span><span class="w"> </span><span class="kn">import</span> <span class="n">NemoJobScheduler</span>
 </span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>
-</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">NemoJobScheduler</span><span class="p">()</span><span class="o">.</span><span class="n">run_local</span><span class="p">(</span>
-</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">OptimizeSkillsJob</span><span class="p">,</span>
-</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>    <span class="p">{</span><span class="s2">&quot;config&quot;</span><span class="p">:</span> <span class="s2">&quot;.agent-improver.yml&quot;</span><span class="p">},</span>
-</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
-</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="p">)</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="kn">import</span><span class="w"> </span><span class="nn">yaml</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">yaml</span><span class="o">.</span><span class="n">safe_load</span><span class="p">(</span><span class="n">Path</span><span class="p">(</span><span class="s2">&quot;.agent-improver.yml&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">NemoJobScheduler</span><span class="p">()</span><span class="o">.</span><span class="n">run_local</span><span class="p">(</span>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>    <span class="n">OptimizeSkillsJob</span><span class="p">,</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">spec</span><span class="p">,</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="n">workspace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="p">)</span>
 </span></code></pre></div>
 </div>
 </div>
