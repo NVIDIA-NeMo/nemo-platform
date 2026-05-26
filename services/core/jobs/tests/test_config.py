@@ -372,7 +372,7 @@ def test_merged_profiles():
     # construction once Docker / Kubernetes job execution is functional
     # again.
     k8s_storage = KubernetesJobStorageConfig(pvc_name="default-pvc")
-    default_executors: list = [
+    default_executors = [
         KubernetesJobExecutionProfile(
             provider="cpu",
             profile="default",
