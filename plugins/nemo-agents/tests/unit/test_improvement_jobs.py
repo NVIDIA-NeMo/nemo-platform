@@ -99,7 +99,7 @@ async def test_evaluate_suite_compile_produces_single_subprocess_step() -> None:
 async def test_evaluate_suite_compile_url_workspace_overrides_spec_workspace() -> None:
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
 
-    spec = EvaluateSuiteConfig(evals="/abs/evals", agent="/abs/agent")
+    spec = EvaluateSuiteConfig(evals="/abs/evals", agent="/abs/agent", output="/abs/out")
     platform_spec = await EvaluateSuiteJob.compile(
         workspace="staging",
         spec=spec,
@@ -115,7 +115,7 @@ async def test_evaluate_suite_compile_url_workspace_overrides_spec_workspace() -
 async def test_evaluate_suite_compile_rejects_relative_paths() -> None:
     from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
 
-    spec = EvaluateSuiteConfig(evals="./my-evals", agent="/abs/agent")
+    spec = EvaluateSuiteConfig(evals="./my-evals", agent="/abs/agent", output="/abs/out")
     with pytest.raises(PlatformJobCompilationError, match="'evals' must be an absolute path"):
         await EvaluateSuiteJob.compile(
             workspace="default",
@@ -124,6 +124,58 @@ async def test_evaluate_suite_compile_rejects_relative_paths() -> None:
             job_name=None,
             async_sdk=MagicMock(),
         )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_suite_compile_rejects_none_agent() -> None:
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
+
+    spec = EvaluateSuiteConfig(evals="/abs/evals", output="/abs/out")  # agent defaults to None
+    with pytest.raises(PlatformJobCompilationError, match="'agent' is required"):
+        await EvaluateSuiteJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_suite_compile_rejects_none_output() -> None:
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
+
+    spec = EvaluateSuiteConfig(evals="/abs/evals", agent="/abs/agent")  # output defaults to None
+    with pytest.raises(PlatformJobCompilationError, match="'output' is required"):
+        await EvaluateSuiteJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_evaluate_suite_compile_injects_anthropic_secret_when_set() -> None:
+    from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteConfig, EvaluateSuiteJob
+
+    spec = EvaluateSuiteConfig(
+        evals="/abs/evals",
+        agent="/abs/agent",
+        output="/abs/out",
+        anthropic_api_key_secret="anthropic-api-key",
+    )
+    platform_spec = await EvaluateSuiteJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=MagicMock(),
+        job_name=None,
+        async_sdk=MagicMock(),
+    )
+    step = next(iter(platform_spec["steps"]))
+    env = {e["name"]: e for e in step["environment"]}
+    assert env["ANTHROPIC_API_KEY"]["from_secret"]["name"] == "anthropic-api-key"
 
 
 @pytest.mark.asyncio

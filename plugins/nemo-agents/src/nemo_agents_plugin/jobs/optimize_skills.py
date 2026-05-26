@@ -147,13 +147,17 @@ class OptimizeSkillsJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.coding_agents.claude import ClaudeCodingAgent
         from nemo_agents_plugin.improvement.loop import run_analyze_only, run_loop
         from nemo_agents_plugin.improvement.models import _serialize
 
-        del ctx  # framework-injected for future fileset writes; not consumed yet
+        # ``ctx`` is signature-typed so the framework's DI populates it on the
+        # submit path; the friendly CLI in ``cli.py`` calls ``run(spec)`` directly
+        # without one.  Today the body doesn't consume it — fileset-write helpers
+        # that need ``ctx.storage`` land in a follow-up.
+        del ctx
 
         cfg = OptimizeSkillsConfig.model_validate(config)
         agent_root = Path(cfg.agent).resolve()

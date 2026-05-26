@@ -67,6 +67,15 @@ class EvaluateSuiteConfig(BaseModel):
     output: str | None = Field(default=None, description="Output dir for batch artifacts.")
     filter_glob: str | None = Field(default=None, description="Glob filter on eval names.")
     repeats: int = Field(default=1, ge=1, description="Trials per eval (median aggregation when >1).")
+    anthropic_api_key_secret: str | None = Field(
+        default=None,
+        description=(
+            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so "
+            "the Harbor eval tasks' LLM-judge calls reach Anthropic.  Local (in-process) runs "
+            "read ``ANTHROPIC_API_KEY`` from the calling shell as before."
+        ),
+    )
 
 
 class EvaluateSuiteJob(NemoJob):
@@ -96,6 +105,7 @@ class EvaluateSuiteJob(NemoJob):
         """
         from nemo_platform_plugin.jobs.api_factory import (
             EnvironmentVariable,
+            EnvironmentVariableFromSecret,
             PlatformJobStep,
             SubprocessExecutionProviderSpec,
         )
@@ -106,8 +116,19 @@ class EvaluateSuiteJob(NemoJob):
 
         # Subprocess work dir is /tmp/nmp-subprocess-jobs/.../task-..., not the
         # caller's cwd.  Relative paths silently fail at preflight or stash
-        # outputs in the ephemeral work dir.
+        # outputs in the ephemeral work dir; None defaults fall back to
+        # ``Path.cwd()`` inside run() — same hazard.  Require both up front.
         _require_absolute(spec.evals, "evals")
+        if spec.agent is None:
+            raise PlatformJobCompilationError(
+                "'agent' is required when submitting (defaults to Path.cwd() in run(), "
+                "which inside the subprocess executor is the empty task scratch dir)."
+            )
+        if spec.output is None:
+            raise PlatformJobCompilationError(
+                "'output' is required when submitting (defaults to Path.cwd()/runs/... in "
+                "run(), writing artifacts to the ephemeral subprocess scratch dir)."
+            )
         _require_absolute(spec.agent, "agent")
         _require_absolute(spec.output, "output")
 
@@ -118,6 +139,21 @@ class EvaluateSuiteJob(NemoJob):
         spec_dict = spec.model_dump(mode="json")
         spec_dict["workspace"] = workspace
 
+        environment: list[EnvironmentVariable] = [
+            EnvironmentVariable(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=DEFAULT_JOB_STORAGE_PATH),
+        ]
+        if spec.anthropic_api_key_secret:
+            # The subprocess backend's sanitized environment does not inherit
+            # ANTHROPIC_API_KEY from the platform process.  Harbor eval tasks
+            # call Anthropic for LLM-judge scoring, so inject from a Secret
+            # to keep submitted jobs functional.
+            environment.append(
+                EnvironmentVariable(
+                    name="ANTHROPIC_API_KEY",
+                    from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
+                )
+            )
+
         return PlatformJobSpec(
             steps=[
                 PlatformJobStep(
@@ -127,21 +163,21 @@ class EvaluateSuiteJob(NemoJob):
                         command=["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"],
                     ),
                     config=spec_dict,
-                    environment=[
-                        EnvironmentVariable(
-                            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-                            value=DEFAULT_JOB_STORAGE_PATH,
-                        ),
-                    ],
+                    environment=environment,
                 ),
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.runners.detect import detect_runner, get_runner
 
-        del ctx  # framework-injected for future fileset writes; not consumed yet
+        # ``ctx`` is signature-typed so the framework's DI populates it on the
+        # submit path; the friendly CLI in ``cli.py`` calls ``run(spec)`` directly
+        # without one (and ``EvaluateSuiteJob`` is also constructed from tests
+        # and other in-process callers).  Today the body doesn't consume it —
+        # fileset-write helpers that need ``ctx.storage`` land in a follow-up.
+        del ctx
 
         cfg = EvaluateSuiteConfig.model_validate(config)
         evals_dir = Path(cfg.evals).resolve()
