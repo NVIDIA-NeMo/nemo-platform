@@ -25,7 +25,11 @@ dependencies = [
     "pydantic>=2.10.3",
     "pydantic-settings>=2.8.1",
     "pyyaml>=6.0.2",
-    "typer>=0.20.0",
+    # Upper bound: typer 0.26.x has a regression where Click sentinel defaults
+    # for boolean options surface as `AttributeError: 'Sentinel' object has no
+    # attribute 'strip'` from `BoolParamType.str_to_bool`, breaking commands
+    # like `nemo services run`. Drop the upper bound once typer ships a fix.
+    "typer>=0.20.0,<0.26",
 ]
 license = "Apache-2.0"
 
