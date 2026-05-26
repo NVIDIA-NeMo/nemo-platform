@@ -7,6 +7,9 @@ dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
     "nemoguardrails[tracing]==0.21.0",
+    # Workaround: nemoguardrails 0.21.0 imports `dataclasses_json` but doesn't declare it
+    # as a dependency.
+    "dataclasses-json>=0.6.7",
 ]
 
 [project.entry-points."nemo.inference_middleware"]
