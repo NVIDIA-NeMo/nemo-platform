@@ -33,7 +33,7 @@ from nemo_platform.types.evaluation import (
     JsonScoreParser,
     LLMJudgeMetric,
     LLMJudgeMetricParam,
-    MetricOutput,
+    Metric,
     MetricRef,
     Model,
     NeMoAgentToolkitRemoteMetric,

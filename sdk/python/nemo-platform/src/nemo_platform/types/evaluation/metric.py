@@ -15,16 +15,14 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Any
-
 from ..._models import BaseModel
 
-__all__ = ["MetricOutput"]
+__all__ = ["Metric"]
 
 
-class MetricOutput(BaseModel):
+class Metric(BaseModel):
     """One named value emitted by a metric."""
 
     name: str
 
-    value: Any
+    value: object
