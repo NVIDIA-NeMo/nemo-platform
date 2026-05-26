@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { SidePanel } from '@nvidia/foundations-react-core';
+import { DatasetFilePreviewHeader } from '@studio/components/DatasetFilePreviewPanel/components/DatasetFilePreviewHeader';
 import { DatasetFilePreviewContent } from '@studio/components/DatasetFilePreviewPanel/DatasetFilePreviewContent';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import type { FC } from 'react';
@@ -43,7 +45,17 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
   open,
   onCloseClick,
   onOutsideClick,
-  ...contentProps
+  datasetWorkspace,
+  datasetName,
+  filePath,
+  onDatasetClick,
+  onFolderClick,
+  onDeleteSuccess,
+  onRenameSuccess,
+  file: externalFile,
+  fileContent,
+  isLoading,
+  error,
 }) => {
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) onCloseClick();
@@ -56,6 +68,16 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
       onCloseClick();
     }
   };
+
+  const { data: allFilesResponse } = useFilesListFilesetFiles(
+    datasetWorkspace,
+    datasetName,
+    undefined,
+    { query: { enabled: !externalFile && open } }
+  );
+  const file =
+    externalFile ??
+    (allFilesResponse?.data?.find((f) => f.path === filePath) as FileSystemFile | undefined);
 
   return (
     <SidePanel
@@ -70,6 +92,18 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
         e.preventDefault();
         handleOutside();
       }}
+      slotHeading={
+        <DatasetFilePreviewHeader
+          datasetWorkspace={datasetWorkspace}
+          datasetName={datasetName}
+          filePath={filePath}
+          file={file}
+          onDatasetClick={onDatasetClick}
+          onFolderClick={onFolderClick}
+          onDeleteSuccess={onDeleteSuccess}
+          onRenameSuccess={onRenameSuccess}
+        />
+      }
       attributes={{
         SidePanelHeading: { className: 'font-normal' },
       }}
@@ -77,7 +111,21 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
       modal
       className="max-w-[960px] w-full"
     >
-      <DatasetFilePreviewContent {...contentProps} enabled={open} />
+      <DatasetFilePreviewContent
+        datasetWorkspace={datasetWorkspace}
+        datasetName={datasetName}
+        filePath={filePath}
+        file={file}
+        fileContent={fileContent}
+        isLoading={isLoading}
+        error={error}
+        onDatasetClick={onDatasetClick}
+        onFolderClick={onFolderClick}
+        onDeleteSuccess={onDeleteSuccess}
+        onRenameSuccess={onRenameSuccess}
+        enabled={open}
+        hideHeader
+      />
     </SidePanel>
   );
 };
