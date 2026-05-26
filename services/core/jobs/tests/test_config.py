@@ -30,7 +30,6 @@ from nmp.core.jobs.controllers.backends.kubernetes import (
     KubernetesJobExecutionProfile,
     KubernetesJobExecutionProfileConfig,
     KubernetesJobStorageConfig,
-    VolcanoJobExecutionProfile,
     VolcanoJobExecutionProfileConfig,
 )
 from nmp.core.jobs.controllers.backends.registry import BackendKey, BackendRegistry
@@ -305,16 +304,12 @@ def test_job_execution_profile_config_accepts_non_reserved_env_vars():
     assert config.env == {"HOME": "/tmp"}
 
 
-def test_default_profiles_for_docker_runtime_are_subprocess_only():
-    # TEMP: Docker job backend is currently broken (missing nmp-cpu-tasks image).
-    # `get_default_executor_profiles_for_runtime` is forced to subprocess-only
-    # regardless of the runtime; deployers that have a working Docker setup
-    # must register cpu/gpu profiles explicitly via `jobs.executors`. Restore
-    # the previous Docker-default assertions once the image-based execution
-    # path is functional again.
+def test_default_profiles_include_subprocess_for_docker_runtime():
     profiles = get_default_executor_profiles_for_runtime(Runtime.DOCKER, DefaultExecutionProfileConfig())
 
-    assert [(p.provider, p.profile, p.backend) for p in profiles] == [("subprocess", "default", "subprocess")]
+    assert ("cpu", "default", "docker") in [(p.provider, p.profile, p.backend) for p in profiles]
+    assert ("gpu", "default", "docker") in [(p.provider, p.profile, p.backend) for p in profiles]
+    assert ("subprocess", "default", "subprocess") in [(p.provider, p.profile, p.backend) for p in profiles]
 
 
 def test_default_profiles_include_subprocess_for_none_runtime():
@@ -348,55 +343,32 @@ def test_subprocess_execution_profile_defaults_provider_to_subprocess():
     assert profile.backend == "subprocess"
 
 
-def test_default_profiles_for_kubernetes_runtime_are_subprocess_only():
-    # TEMP: Kubernetes job backend is currently broken alongside Docker (same
-    # image-pull plumbing outage). `get_default_executor_profiles_for_runtime`
-    # is forced to subprocess-only regardless of the runtime; Kubernetes
-    # deployers that have a working setup must register cpu/gpu/gpu_distributed
-    # profiles explicitly via `jobs.executors`. Restore the previous
-    # "subprocess excluded under Kubernetes" assertion once the image-based
-    # execution path is functional again.
+def test_default_profiles_exclude_subprocess_for_kubernetes_runtime():
     profiles = get_default_executor_profiles_for_runtime(Runtime.KUBERNETES, DefaultExecutionProfileConfig())
 
-    assert [(p.provider, p.profile, p.backend) for p in profiles] == [("subprocess", "default", "subprocess")]
+    assert ("subprocess", "default", "subprocess") not in [(p.provider, p.profile, p.backend) for p in profiles]
 
 
 def test_merged_profiles():
-    # NOTE: This test exercises `merge_executor_profiles` directly. It used to
-    # build its `default_executors` input by calling
-    # `get_default_executor_profiles_for_runtime` for KUBERNETES and slicing
-    # the trailing subprocess profile out of a DOCKER call, but that helper
-    # has been temporarily forced to subprocess-only (see comment in
-    # `controllers/backends/config.py`), so we now construct the
-    # representative defaults list explicitly. Restore the helper-driven
-    # construction once Docker / Kubernetes job execution is functional
-    # again.
-    k8s_storage = KubernetesJobStorageConfig(pvc_name="default-pvc")
     default_executors = [
-        KubernetesJobExecutionProfile(
-            provider="cpu",
-            profile="default",
-            backend="kubernetes_job",
-            config=KubernetesJobExecutionProfileConfig(storage=k8s_storage),
+        *get_default_executor_profiles_for_runtime(
+            runtime=Runtime.KUBERNETES,
+            defaults=DefaultExecutionProfileConfig(
+                kubernetes_job=KubernetesJobExecutionProfileConfig(
+                    storage=KubernetesJobStorageConfig(
+                        pvc_name="default-pvc",
+                    ),
+                ),
+                volcano_job=VolcanoJobExecutionProfileConfig(
+                    storage=KubernetesJobStorageConfig(
+                        pvc_name="default-pvc",
+                    ),
+                ),
+            ),
         ),
-        KubernetesJobExecutionProfile(
-            provider="gpu",
-            profile="default",
-            backend="kubernetes_job",
-            config=KubernetesJobExecutionProfileConfig(storage=k8s_storage),
-        ),
-        VolcanoJobExecutionProfile(
-            provider="gpu_distributed",
-            profile="default",
-            backend="volcano_job",
-            config=VolcanoJobExecutionProfileConfig(storage=k8s_storage),
-        ),
-        SubprocessJobExecutionProfile(
-            provider="subprocess",
-            profile="default",
-            backend="subprocess",
-            config=SubprocessJobExecutionProfileConfig(),
-        ),
+        *get_default_executor_profiles_for_runtime(runtime=Runtime.DOCKER, defaults=DefaultExecutionProfileConfig())[
+            2:
+        ],
     ]
 
     assert len(default_executors) == 4

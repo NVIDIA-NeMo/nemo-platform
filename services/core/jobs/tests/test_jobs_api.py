@@ -31,10 +31,6 @@ from nmp.core.jobs.app.schemas import (
     PlatformJobStepSpec,
 )
 from nmp.core.jobs.app.test_helpers import TestConstants
-from nmp.core.jobs.controllers.backends.docker import (
-    DockerJobExecutionProfile,
-    DockerJobExecutionProfileConfig,
-)
 from pydantic import ValidationError
 from starlette.datastructures import QueryParams
 
@@ -261,27 +257,7 @@ async def test_create_job_gpu_fail_fast_when_docker_no_gpus(test_client: AsyncCl
     mock_platform_config.runtime = Runtime.DOCKER
     mock_platform_config.docker.get_reserved_gpu_ids.return_value = []
 
-    # The platform's runtime defaults are forced to subprocess-only while the
-    # Docker job backend is broken (see
-    # `services/core/jobs/src/nmp/core/jobs/controllers/backends/config.py`).
-    # That means `gpu/default/docker` no longer appears in the merged
-    # `profiles` list at all, so without registering one explicitly the
-    # request would 422 on profile-existence ("execution profile 'gpu/default'
-    # does not exist") before ever reaching the GPU/Docker fast-fail guard
-    # this test is exercising. Register a gpu/default/docker executor for
-    # the duration of the test so we still validate the guard's behavior.
-    from nmp.core.jobs.api.v2.jobs import endpoints as endpoints_module
-
-    gpu_profile = DockerJobExecutionProfile(
-        provider="gpu",
-        profile="default",
-        backend="docker",
-        config=DockerJobExecutionProfileConfig(),
-    )
-    with (
-        patch("nmp.common.jobs.docker.get_platform_config", return_value=mock_platform_config),
-        patch.object(endpoints_module, "profiles", [*endpoints_module.profiles, gpu_profile]),
-    ):
+    with patch("nmp.common.jobs.docker.get_platform_config", return_value=mock_platform_config):
         response = await test_client.post("/apis/jobs/v2/workspaces/default/jobs", json=req.model_dump())
 
     assert response.status_code == 422
