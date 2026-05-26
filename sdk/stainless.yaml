@@ -260,8 +260,8 @@ resources:
       json_score_parser: JSONScoreParser
       llm_judge_metric: LLMJudgeMetric
       llm_judge_metric_param: LLMJudgeMetricInput
+      metric: MetricOutput
       metric_ref: MetricRef
-      metric_score: MetricScore
       model: Evaluator.Model
       nemo_agent_toolkit_remote_metric: NemoAgentToolkitRemoteMetric
       nemo_agent_toolkit_remote_metric_param: NemoAgentToolkitRemoteMetricInput
@@ -288,7 +288,6 @@ resources:
       run_config: RunConfig
       run_config_online: RunConfigOnline
       run_config_online_model: RunConfigOnlineModel
-      score_stats: ScoreStats
       string_check_metric: StringCheckMetric
       string_check_metric_param: StringCheckMetricInput
       tool_call_accuracy_metric: ToolCallAccuracyMetric
