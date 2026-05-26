@@ -77,7 +77,7 @@ def create_test_job(sdk, workspace: str, job_id: str):
                         "profile": "default",
                         "container": {
                             "image": "test:latest",
-                            "entrypoint": "entrypoint",
+                            "entrypoint": ["entrypoint"],
                             "command": ["command"],
                         },
                     },

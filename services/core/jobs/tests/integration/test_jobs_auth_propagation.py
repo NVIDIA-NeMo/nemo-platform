@@ -65,7 +65,7 @@ class TestJobCreationWithAuth:
                             "profile": "default",
                             "container": {
                                 "image": "busybox:latest",
-                                "entrypoint": "entrypoint",
+                                "entrypoint": ["entrypoint"],
                                 "command": ["command"],
                             },
                         },

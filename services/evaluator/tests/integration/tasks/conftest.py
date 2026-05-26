@@ -65,6 +65,7 @@ class JobContext:
                             "profile": "default",
                             "container": {
                                 "image": "test:latest",
+                                "entrypoint": ["entrypoint"],
                                 "command": ["command"],
                             },
                         },
