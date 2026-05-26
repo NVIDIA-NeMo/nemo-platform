@@ -316,3 +316,99 @@ class TestHelpText:
     def test_install_help(self):
         result = runner.invoke(app, "skills install --help")
         assert_exit_code(result, 0)
+
+    def test_new_help(self):
+        result = runner.invoke(app, "skills new --help")
+        assert_exit_code(result, 0)
+
+
+class TestNew:
+    def test_new_scaffolds_skill_directory(self, tmp_path: Path):
+        result = runner.invoke(app, f"skills new my-skill --dir {tmp_path}")
+        assert_exit_code(result, 0)
+        skill_root = tmp_path / "my-skill"
+        assert (skill_root / "SKILL.md").is_file()
+        assert (skill_root / "tests.json").is_file()
+        assert (skill_root / "references").is_dir()
+        assert (skill_root / "references" / ".gitkeep").is_file()
+
+    def test_new_seeds_frontmatter(self, tmp_path: Path):
+        result = runner.invoke(app, f"skills new my-skill --dir {tmp_path}")
+        assert_exit_code(result, 0)
+        skill_md = (tmp_path / "my-skill" / "SKILL.md").read_text()
+        assert "name: my-skill" in skill_md
+        # All required frontmatter fields per the skill spec.
+        for field in ("description:", "triggers:", "not-for:", "compatibility:", "maturity:", "license:"):
+            assert field in skill_md, f"missing required frontmatter field: {field}"
+
+    def test_new_seeds_description_override(self, tmp_path: Path):
+        result = runner.invoke(app, f'skills new my-skill --dir {tmp_path} --description "Does the thing"')
+        assert_exit_code(result, 0)
+        skill_md = (tmp_path / "my-skill" / "SKILL.md").read_text()
+        # JSON-encoded for YAML safety; the description content must still be visible.
+        assert '"Does the thing"' in skill_md
+
+    def test_new_escapes_special_characters_in_description(self, tmp_path: Path):
+        """Colons, quotes, and other YAML-significant characters must not break the frontmatter."""
+        import yaml
+
+        tricky = 'A "tricky" desc: with colons'
+        result = runner.invoke(
+            app,
+            ["skills", "new", "my-skill", "--dir", str(tmp_path), "--description", tricky],
+        )
+        assert_exit_code(result, 0)
+        skill_md = (tmp_path / "my-skill" / "SKILL.md").read_text()
+        # The frontmatter must parse cleanly and round-trip the description.
+        _, frontmatter, _ = skill_md.split("---", 2)
+        meta = yaml.safe_load(frontmatter)
+        assert meta["description"] == tricky
+
+    def test_new_accepts_single_character_name(self, tmp_path: Path):
+        result = runner.invoke(app, f"skills new a --dir {tmp_path}")
+        assert_exit_code(result, 0)
+        assert (tmp_path / "a" / "SKILL.md").is_file()
+
+    def test_new_tests_json_has_four_modes(self, tmp_path: Path):
+        import json
+
+        result = runner.invoke(app, f"skills new my-skill --dir {tmp_path}")
+        assert_exit_code(result, 0)
+        tests = json.loads((tmp_path / "my-skill" / "tests.json").read_text())
+        assert tests["skill"] == "my-skill"
+        by_type: dict[str, int] = {}
+        for test in tests["tests"]:
+            by_type[test["type"]] = by_type.get(test["type"], 0) + 1
+        # NV-BASE four-mode coverage: 3 of each.
+        assert by_type == {"explicit": 3, "implicit": 3, "contextual": 3, "negative-control": 3}
+        # Positive vs negative semantics match the skill-test.py harness: explicit and
+        # implicit assert the skill DOES fire (expected_skill); contextual and
+        # negative-control assert it does NOT fire (expected_skill_not).
+        for test in tests["tests"]:
+            if test["type"] in ("explicit", "implicit"):
+                assert "expected_skill" in test, test
+                assert "expected_skill_not" not in test, test
+            else:
+                assert "expected_skill_not" in test, test
+                assert "expected_skill" not in test, test
+
+    def test_new_refuses_existing_directory(self, tmp_path: Path):
+        (tmp_path / "my-skill").mkdir()
+        result = runner.invoke(app, f"skills new my-skill --dir {tmp_path}")
+        assert_exit_code(result, 1)
+        assert "already exists" in result.output
+
+    def test_new_rejects_invalid_names(self, tmp_path: Path):
+        # Leading-dash names ("-skill") get caught by typer's option parser
+        # before our validator sees them; that's fine — the user never gets a
+        # broken skill regardless of which layer rejects.
+        for bad_name in ("MySkill", "my_skill", "1skill", "skill-"):
+            result = runner.invoke(app, f"skills new {bad_name} --dir {tmp_path}")
+            assert_exit_code(result, 1)
+            assert "Invalid skill name" in result.output
+
+    def test_new_defaults_to_current_directory(self, tmp_path: Path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        result = runner.invoke(app, "skills new my-skill")
+        assert_exit_code(result, 0)
+        assert (tmp_path / "my-skill" / "SKILL.md").is_file()

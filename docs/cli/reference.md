@@ -337,6 +337,7 @@ nemo skills [OPTIONS] COMMAND [ARGS]...
 * `list`: List available skills.
 * `show`: Print skill content to stdout.
 * `install`: Install Nemo skill files for an AI coding agent.
+* `new`: Scaffold a new skill that follows the platform's skill spec.
 
 #### nemo skills list
 
@@ -436,6 +437,44 @@ nemo skills install [OPTIONS]
 * `--agent, -a`: Agent to install for (required). Supported: claude, codex, cursor, opencode
 * `--skill, -s`: Install specific skill(s) only. Can be repeated.
 * `--user`: Install to user scope (default: project scope)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo skills new
+
+Scaffold a new skill that follows the platform's skill spec.
+
+Creates ``<dir>/<name>/`` containing:
+
+- ``SKILL.md`` with all required frontmatter fields preset to TODOs.
+- ``tests.json`` with twelve four-mode placeholders (3 explicit,
+  3 implicit, 3 contextual, 3 negative-control) the author fills in.
+- ``references/`` directory (with ``.gitkeep``) for supporting docs.
+
+**Examples:**
+
+```shell
+nemo skills new my-skill
+nemo skills new my-skill --description "Does the thing"
+nemo skills new my-skill --dir packages/nemo_platform_ext/src/nemo_platform_ext/skills
+```
+
+**Usage:**
+
+```shell
+nemo skills new [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Skill name in lowercase kebab-case (e.g. 'my-skill')
+
+**Options:**
+
+* `--description, -d`: One-line description seeded into the SKILL.md frontmatter. [default: TODO: one-line description (what the skill does + when to use it).]
+* `--dir <PATH>`: Parent directory the skill folder will be created under. Defaults to the current working directory. [default: .]
 
 **Help:**
 
