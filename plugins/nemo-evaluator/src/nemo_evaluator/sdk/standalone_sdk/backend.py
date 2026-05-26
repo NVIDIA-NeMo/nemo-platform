@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.sdk.types import ExecutionMode
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
+from nemo_evaluator_sdk.metrics.bundles import MetricBundler
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import EvaluationResult
@@ -30,6 +31,7 @@ class NMPBackend:
 
     resource: Evaluator
     execution_mode: ExecutionMode = "local"
+    metric_bundler: MetricBundler | None = None
 
     def evaluate(
         self,
@@ -40,7 +42,11 @@ class NMPBackend:
         """Evaluate one metric through local or remote evaluator plugin execution."""
         _reject_unsupported_hooks(request)
         if self.execution_mode == "remote":
-            return self.resource._executor.evaluate_remote(metric=metric, request=request)
+            return self.resource._executor.evaluate_remote(
+                metric=metric,
+                request=request,
+                metric_bundler=self.metric_bundler,
+            )
         return self.resource._executor.evaluate(
             metric=metric,
             dataset=request.dataset,
@@ -61,7 +67,10 @@ class NMPBackend:
         _reject_unsupported_hooks(request)
         if self.execution_mode == "remote":
             raise NotImplementedError("Remote evaluation of benchmarks is not implemented yet.")
-        return self.resource._executor.evaluate_benchmark(metrics=metrics, request=request)
+        return self.resource._executor.evaluate_benchmark(
+            metrics=metrics,
+            request=request,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -72,6 +81,7 @@ class AsyncNMPBackend:
 
     resource: AsyncEvaluator
     execution_mode: ExecutionMode = "local"
+    metric_bundler: MetricBundler | None = None
 
     async def evaluate(
         self,
@@ -82,7 +92,11 @@ class AsyncNMPBackend:
         """Evaluate one metric through local or remote evaluator plugin execution."""
         _reject_unsupported_hooks(request)
         if self.execution_mode == "remote":
-            return await self.resource._executor.evaluate_remote(metric=metric, request=request)
+            return await self.resource._executor.evaluate_remote(
+                metric=metric,
+                request=request,
+                metric_bundler=self.metric_bundler,
+            )
         return await self.resource._executor.evaluate(
             metric=metric,
             dataset=request.dataset,
@@ -103,4 +117,7 @@ class AsyncNMPBackend:
         _reject_unsupported_hooks(request)
         if self.execution_mode == "remote":
             raise NotImplementedError("Remote evaluation of benchmarks is not implemented yet.")
-        return await self.resource._executor.evaluate_benchmark(metrics=metrics, request=request)
+        return await self.resource._executor.evaluate_benchmark(
+            metrics=metrics,
+            request=request,
+        )

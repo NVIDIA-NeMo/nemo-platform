@@ -24,6 +24,7 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.metrics.bundles import MetricBundler
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -84,6 +85,7 @@ class Evaluator:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundler: MetricBundler | None = None,
     ) -> EvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
         return self._executor.submit(
@@ -93,6 +95,7 @@ class Evaluator:
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
+            metric_bundler=metric_bundler,
         )
 
     def run(
@@ -189,6 +192,7 @@ class AsyncEvaluator:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundler: MetricBundler | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
         return await self._executor.submit(
@@ -198,6 +202,7 @@ class AsyncEvaluator:
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
+            metric_bundler=metric_bundler,
         )
 
 

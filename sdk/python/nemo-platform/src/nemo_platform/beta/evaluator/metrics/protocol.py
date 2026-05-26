@@ -6,13 +6,14 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Protocol, runtime_checkable
+from typing import Annotated, Any, Protocol, runtime_checkable
 
 from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
 from nemo_platform.beta.evaluator.values.common import SecretRef
 from nemo_platform.beta.evaluator.values.models import ModelRef
-from pydantic import BaseModel, ConfigDict, Field, RootModel, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, StringConstraints, field_serializer, field_validator
 
+MetricTypeName = Annotated[str, StringConstraints(min_length=1)]
 
 class DatasetRow(BaseModel):
     """Original dataset row plus optional stable row identity."""
@@ -125,15 +126,8 @@ class MetricDescriptor(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    type: str
+    type: MetricTypeName
     outputs: list[MetricOutputSpec] = Field(min_length=1)
-
-    @field_validator("type")
-    @classmethod
-    def _type_must_not_be_empty(cls, value: str) -> str:
-        if not value:
-            raise ValueError("metric type must not be empty")
-        return value
 
     @field_validator("outputs")
     @classmethod
@@ -173,7 +167,7 @@ class Metric(Protocol):
     """Shared row-scoring primitive for SDK runtime metrics."""
 
     @property
-    def type(self) -> str:
+    def type(self) -> MetricTypeName:
         """Return the public metric key/type identifier."""
         ...
 

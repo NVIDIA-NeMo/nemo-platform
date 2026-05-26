@@ -8,16 +8,45 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
-from nemo_evaluator.jobs.evaluate import DEFAULT_FILE_NAME, DEFAULT_RESULT_NAME, EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import (
+    AGGREGATE_SCORES_RESULT_NAME,
+    ARTIFACTS_RESULT_NAME,
+    DEFAULT_FILE_NAME,
+    DEFAULT_RESULT_NAME,
+    ROW_SCORES_RESULT_NAME,
+    EvaluateJob,
+    EvaluateSpec,
+)
 from nemo_evaluator.resolvers import PlatformModelResolver
+from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
 from nemo_evaluator_sdk.enums import AgentFormat
+from nemo_evaluator_sdk.metrics.bundles import (
+    BundledMetricOutputSpec,
+    MetricBundle,
+    MetricBundlePayload,
+    MetricBundler,
+    register_metric_bundle_payload,
+    register_metric_bundler,
+)
+from nemo_evaluator_sdk.metrics.cloudpickle import CloudpickleMetricBundler
+from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
-from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
-from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.values import (
+    Agent,
+    AggregatedMetricResult,
+    EvaluationResult,
+    Model,
+    RunConfig,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+    SecretRef,
+)
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
@@ -33,11 +62,7 @@ from typer.testing import CliRunner
 
 def _exact_match_spec() -> dict:
     return {
-        "metric": {
-            "type": "exact-match",
-            "reference": "{{item.expected}}",
-            "candidate": "{{item.model_output}}",
-        },
+        "metrics": [_bundle_payload(ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"))],
         "dataset": [
             {"expected": "blue", "model_output": "Blue"},
             {"expected": "Jupiter", "model_output": "Saturn"},
@@ -46,16 +71,15 @@ def _exact_match_spec() -> dict:
     }
 
 
+def _bundle_payload(metric) -> dict[str, Any]:
+    return CloudpickleMetricBundler().bundle(metric).model_dump(mode="json")
+
+
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     step = job_spec.steps[0]
     container = cast(Any, step.executor).container
-    assert container.entrypoint == ["python", "-m", "nmp.evaluator.tasks.evaluate_metric"]
-    command = container.command
-    assert command is not None
-    assert command == [
-        "--progress-tracking-url",
-        "${NMP_JOBS_URL}/apis/jobs/v2/workspaces/${NEMO_JOB_WORKSPACE}/jobs/${NEMO_JOB_ID}/status-details",
-    ]
+    assert container.entrypoint == ["python", "-m"]
+    assert container.command == ["nemo_evaluator.tasks.evaluate"]
 
 
 def _load_cli_run_payload(output: str) -> dict[str, Any]:
@@ -75,6 +99,11 @@ def _make_job_context(tmp_path: Path) -> JobContext:
     )
 
 
+def _empty_evaluation_result() -> EvaluationResult:
+    """Return an SDK result object suitable for runner delegation tests."""
+    return EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
+
+
 def _assert_saved_result_artifact(
     run_result: dict[str, Any], ctx: JobContext, result_payload: dict[str, object]
 ) -> None:
@@ -87,12 +116,49 @@ def _assert_saved_result_artifact(
     assert json.loads(result_path.read_text(encoding="utf-8")) == result_payload
     artifact_path = Path(run_result["artifact"]["artifact_url"].removeprefix("file://"))
     assert json.loads(artifact_path.read_text(encoding="utf-8")) == result_payload
+    assert (ctx.storage.persistent / "results" / AGGREGATE_SCORES_RESULT_NAME).exists()
+    assert (ctx.storage.persistent / "results" / ROW_SCORES_RESULT_NAME).exists()
+    assert (ctx.storage.persistent / "results" / ARTIFACTS_RESULT_NAME).is_dir()
 
 
 def _load_artifact_payload(run_result: dict[str, Any]) -> dict[str, Any]:
     """Load a local artifact payload from a scheduler or CLI run result."""
     artifact_path = Path(run_result["artifact"]["artifact_url"].removeprefix("file://"))
     return cast(dict[str, Any], json.loads(artifact_path.read_text(encoding="utf-8")))
+
+
+class _StaticMetric:
+    def __init__(self, metric_type: str) -> None:
+        self._metric_type = metric_type
+
+    @property
+    def type(self) -> str:
+        return self._metric_type
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
+
+
+class _StaticMetricPayload(MetricBundlePayload):
+    @property
+    def kind(self) -> Literal["test-static"]:
+        return "test-static"
+
+
+class _StaticMetricBundler(MetricBundler):
+    def bundle(self, metric: Metric) -> MetricBundle:
+        raise NotImplementedError("test bundler only exercises execution-side unbundling")
+
+    def unbundle(self, metric: MetricBundle) -> Metric:
+        return _StaticMetric(metric.metric_type)
+
+
+register_metric_bundle_payload("test-static", _StaticMetricPayload)
+register_metric_bundler("test-static", _StaticMetricBundler)
 
 
 class _FakeModels:
@@ -192,6 +258,28 @@ async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
     assert model.host_url == "http://nim.example.test:8000"
 
 
+def test_evaluate_job_hydrates_mixed_bundle_kinds_by_payload_kind() -> None:
+    """Execution-side hydration dispatches per bundle instead of assuming one bundler."""
+    cloudpickle_bundle = CloudpickleMetricBundler().bundle(
+        ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    )
+    static_bundle = MetricBundle(
+        metric_type="test-static",
+        outputs=[
+            BundledMetricOutputSpec(
+                name="score",
+                value_json_schema={"type": "number"},
+            )
+        ],
+        payload=_StaticMetricPayload(),
+        digest="test-static-digest",
+    )
+
+    metrics = EvaluateJob._hydrate_metrics([cloudpickle_bundle, static_bundle])
+
+    assert [metric.type for metric in metrics] == ["exact-match", "test-static"]
+
+
 def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
     tmp_path: Path,
     mocker: MockerFixture,
@@ -209,7 +297,7 @@ def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
     ctx = _make_job_context(tmp_path)
     run_result = EvaluateJob().run(
         {
-            "metric": _llm_judge_ref_metric().model_dump(mode="json"),
+            "metrics": [_bundle_payload(_llm_judge_ref_metric())],
             "dataset": [{"output_text": "hello"}],
         },
         ctx=ctx,
@@ -233,20 +321,21 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     job_spec = PlatformJobSpec.model_validate(compiled)
     assert len(job_spec.steps) == 1
     step = job_spec.steps[0]
-    assert step.name == "evaluation"
+    assert step.name == "evaluate"
     _assert_metric_step_entrypoint(job_spec)
     assert step.config is not None
     config = cast(dict[str, Any], step.config)
-    assert config["metric"]["type"] == "exact-match"
-    assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
+    assert config["metrics"][0]["bundle_kind"] == "metric-bundle"
+    assert config["metrics"][0]["metric_type"] == "exact-match"
+    assert config["dataset"] == _exact_match_spec()["dataset"]
 
 
-async def test_evaluate_job_compile_resolves_metric_model_refs_before_remote_job() -> None:
+async def test_evaluate_job_compile_preserves_bundled_metric_model_refs_for_runtime_resolution() -> None:
     compiled = await EvaluateJob.compile(
         workspace="default",
         spec=EvaluateSpec.model_validate(
             {
-                "metric": _llm_judge_ref_metric().model_dump(mode="json"),
+                "metrics": [_bundle_payload(_llm_judge_ref_metric())],
                 "dataset": [{"output_text": "hello"}],
             }
         ),
@@ -257,9 +346,11 @@ async def test_evaluate_job_compile_resolves_metric_model_refs_before_remote_job
 
     job_spec = PlatformJobSpec.model_validate(compiled)
     config = cast(dict[str, Any], job_spec.steps[0].config)
-    assert config["metric"]["model"]["name"] == "judge"
-    assert config["metric"]["model"]["url"] == "https://igw.example.test/v1/chat/completions"
-    assert config["metric"]["model"]["host_url"] == "http://nim.example.test:8000"
+    metric_bundle = MetricBundle.model_validate(config["metrics"][0])
+    metric = CloudpickleMetricBundler().unbundle(metric_bundle)
+    assert isinstance(metric, LLMJudgeMetric)
+    assert isinstance(metric.model, ModelRef)
+    assert metric.model.root == "default/judge"
 
 
 async def test_evaluate_job_compile_produces_online_model_job() -> None:
@@ -284,7 +375,7 @@ async def test_evaluate_job_compile_produces_online_model_job() -> None:
     step = job_spec.steps[0]
     config = cast(dict[str, Any], step.config)
     _assert_metric_step_entrypoint(job_spec)
-    assert config["model"]["name"] == "test-model"
+    assert config["target"]["name"] == "test-model"
     assert config["prompt_template"] == "Question: {{item.question}}"
     assert config["params"]["parallelism"] == 3
 
@@ -316,8 +407,55 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
     step = job_spec.steps[0]
     config = cast(dict[str, Any], step.config)
     _assert_metric_step_entrypoint(job_spec)
-    assert config["agent"]["name"] == "test-agent"
+    assert config["target"]["name"] == "test-agent"
     assert config["prompt_template"] == {"question": "{{item.question}}"}
+
+
+async def test_evaluate_job_compile_injects_metric_and_target_secrets() -> None:
+    secret_ref = SecretRef(root="NVIDIA_BUILD_API_KEY")
+    spec = EvaluateSpec.model_validate(
+            {
+                **_exact_match_spec(),
+                "metrics": [
+                    _bundle_payload(
+                        LLMJudgeMetric(
+                            model=Model(
+                                url="https://integrate.api.nvidia.com/v1/chat/completions",
+                                name="nvidia/nemotron-3-super-120b-a12b",
+                                api_key_secret=secret_ref,
+                            ),
+                            scores=[
+                                RangeScore(
+                                    name="quality",
+                                    minimum=1,
+                                    maximum=5,
+                                    parser=JSONScoreParser(json_path="quality"),
+                                ),
+                            ],
+                        )
+                    )
+                ],
+            "target": Model(
+                url="https://integrate.api.nvidia.com/v1/chat/completions",
+                name="nvidia/nemotron-3-super-120b-a12b",
+                api_key_secret=secret_ref,
+            ),
+            "params": RunConfigOnlineModel(parallelism=3),
+            "prompt_template": "Question: {{item.question}}",
+        }
+    )
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=object(),
+    )
+
+    step = PlatformJobSpec.model_validate(compiled).steps[0]
+    secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
+    assert secrets == {"NVIDIA_BUILD_API_KEY": "NVIDIA_BUILD_API_KEY"}
 
 
 class TestEvaluateSpec:
@@ -332,7 +470,7 @@ class TestEvaluateSpec:
                 }
             )
 
-    def test_rejects_legacy_metrics_field(self) -> None:
+    def test_rejects_legacy_metric_config(self) -> None:
         with pytest.raises(ValueError, match="metrics|Extra inputs are not permitted"):
             EvaluateSpec.model_validate(
                 {
@@ -345,44 +483,50 @@ class TestEvaluateSpec:
                 }
             )
 
+    def test_rejects_singular_metric_field(self) -> None:
+        with pytest.raises(ValueError, match="metrics|Extra inputs are not permitted"):
+            EvaluateSpec.model_validate(
+                {
+                    "metric": _exact_match_spec()["metrics"][0],
+                    "dataset": _exact_match_spec()["dataset"],
+                }
+            )
+
     def test_accepts_metrics_sequence(self) -> None:
         spec = EvaluateSpec.model_validate(
             {
                 **_exact_match_spec(),
-                "metric": [
-                    _exact_match_spec()["metric"],
-                    {
-                        "type": "f1",
-                        "reference": "{{item.expected}}",
-                        "candidate": "{{item.model_output}}",
-                    },
+                "metrics": [
+                    _exact_match_spec()["metrics"][0],
+                    _bundle_payload(F1Metric(reference="{{item.expected}}", candidate="{{item.model_output}}")),
                 ],
             }
         )
 
-        assert isinstance(spec.metric, list)
-        assert [metric.type.value for metric in spec.metric] == ["exact-match", "f1"]
+        assert [metric.metric_type for metric in spec.metrics] == ["exact-match", "f1"]
 
     def test_accepts_uppercase_api_key_secret_refs_for_llm_judge_and_target(self) -> None:
         spec = EvaluateSpec.model_validate(
             {
-                "metric": {
-                    "type": "llm-judge",
-                    "model": {
-                        "url": "https://integrate.api.nvidia.com/v1/chat/completions",
-                        "name": "nvidia/nemotron-3-super-120b-a12b",
-                        "api_key_secret": "NVIDIA_BUILD_API_KEY",
-                        "format": "nim",
-                    },
-                    "scores": [
-                        {
-                            "name": "quality",
-                            "minimum": 1,
-                            "maximum": 5,
-                            "parser": {"type": "json", "json_path": "quality"},
-                        },
-                    ],
-                },
+                "metrics": [
+                    _bundle_payload(
+                        LLMJudgeMetric(
+                            model=Model(
+                                url="https://integrate.api.nvidia.com/v1/chat/completions",
+                                name="nvidia/nemotron-3-super-120b-a12b",
+                                api_key_secret=SecretRef(root="NVIDIA_BUILD_API_KEY"),
+                            ),
+                            scores=[
+                                RangeScore(
+                                    name="quality",
+                                    minimum=1,
+                                    maximum=5,
+                                    parser=JSONScoreParser(json_path="quality"),
+                                ),
+                            ],
+                        )
+                    )
+                ],
                 "dataset": [{"prompt": "Hello", "model_output": "Hi"}],
                 "target": {
                     "url": "https://integrate.api.nvidia.com/v1/chat/completions",
@@ -393,12 +537,9 @@ class TestEvaluateSpec:
             }
         )
 
-        assert isinstance(spec.metric, LLMJudgeMetric)
-        assert isinstance(spec.metric.model, Model)
         assert isinstance(spec.target, Model)
-        assert spec.metric.model.api_key_secret is not None
         assert spec.target.api_key_secret is not None
-        assert spec.metric.model.api_key_secret.root == "NVIDIA_BUILD_API_KEY"
+        assert spec.metrics[0].metric_type == "llm-judge"
         assert spec.target.api_key_secret.root == "NVIDIA_BUILD_API_KEY"
 
     def test_rejects_extra_fields(self) -> None:
@@ -437,7 +578,7 @@ class TestEvaluateJobCompile:
         class EquivalentSpec(BaseModel):
             """Spec shape used to verify compile canonicalizes BaseModel inputs."""
 
-            metric: dict[str, object]
+            metrics: list[dict[str, object]]
             dataset: list[dict[str, object]]
             params: dict[str, object] | None = None
 
@@ -452,33 +593,32 @@ class TestEvaluateJobCompile:
         job_spec = PlatformJobSpec.model_validate(compiled)
         step = job_spec.steps[0]
         config = cast(dict[str, Any], step.config)
-        assert config["metric"]["type"] == "exact-match"
-        assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
+        assert config["metrics"][0]["bundle_kind"] == "metric-bundle"
+        assert config["metrics"][0]["metric_type"] == "exact-match"
+        assert config["dataset"] == _exact_match_spec()["dataset"]
         assert config["params"]["parallelism"] == 2
 
-    async def test_rejects_remote_compile_for_metrics_sequence(self) -> None:
+    async def test_accepts_metrics_sequence(self) -> None:
         spec = EvaluateSpec.model_validate(
             {
                 **_exact_match_spec(),
-                "metric": [
-                    _exact_match_spec()["metric"],
-                    {
-                        "type": "f1",
-                        "reference": "{{item.expected}}",
-                        "candidate": "{{item.model_output}}",
-                    },
+                "metrics": [
+                    _exact_match_spec()["metrics"][0],
+                    _bundle_payload(F1Metric(reference="{{item.expected}}", candidate="{{item.model_output}}")),
                 ],
             }
         )
 
-        with pytest.raises(NotImplementedError, match="Remote benchmark.*not implemented"):
-            await EvaluateJob.compile(
-                workspace="default",
-                spec=spec,
-                entity_client=object(),
-                job_name=None,
-                async_sdk=object(),
-            )
+        compiled = await EvaluateJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=object(),
+            job_name=None,
+            async_sdk=object(),
+        )
+
+        config = cast(dict[str, Any], PlatformJobSpec.model_validate(compiled).steps[0].config)
+        assert [metric["metric_type"] for metric in config["metrics"]] == ["exact-match", "f1"]
 
     @pytest.mark.parametrize(
         ("target", "expected_message"),
@@ -567,49 +707,25 @@ class TestEvaluateJobCompile:
                 async_sdk=object(),
             )
 
-    async def test_fileset_ref_dataset_validates_and_compiles_with_download_step(self, mocker: MockerFixture) -> None:
+    async def test_fileset_ref_dataset_compiles_into_bundle_native_step(self) -> None:
         dataset = FilesetRef(root="default/helpsteer2#validation/*.jsonl")
-        dataset_exists = mocker.patch(
-            "nemo_evaluator.jobs.utils.dataset_exists",
-            new=mocker.AsyncMock(return_value=True),
-            create=True,
-        )
-        async_sdk = object()
 
         compiled = await EvaluateJob.compile(
             workspace="default",
             spec=EvaluateSpec.model_validate({**_exact_match_spec(), "dataset": dataset}),
             entity_client=object(),
             job_name=None,
-            async_sdk=async_sdk,
+            async_sdk=object(),
         )
 
         job_spec = PlatformJobSpec.model_validate(compiled)
-        assert [step.name for step in job_spec.steps] == ["dataset-download", "evaluation"]
+        assert [step.name for step in job_spec.steps] == ["dataset-download", "evaluate"]
+        download_step = job_spec.steps[0]
+        download_container = cast(Any, download_step.executor).container
+        assert download_container.entrypoint == ["python", "-m", "nmp.evaluator.tasks.download_fileset"]
+        assert download_container.command[-2:] == ["--dataset", dataset.model_dump_json()]
         config = cast(dict[str, Any], job_spec.steps[1].config)
         assert config["dataset"] == dataset.root
-        assert config["dataset_ref"] == dataset.root
-        dataset_exists.assert_awaited_once_with(async_sdk, dataset)
-
-    async def test_fileset_ref_dataset_compile_raises_when_dataset_does_not_exist(self, mocker: MockerFixture) -> None:
-        dataset = FilesetRef(root="default/missing")
-        dataset_exists = mocker.patch(
-            "nemo_evaluator.jobs.utils.dataset_exists",
-            new=mocker.AsyncMock(return_value=False),
-            create=True,
-        )
-        async_sdk = object()
-
-        with pytest.raises(ValueError, match="FilesetRef dataset does not exist: default/missing"):
-            await EvaluateJob.compile(
-                workspace="default",
-                spec=EvaluateSpec.model_validate({**_exact_match_spec(), "dataset": dataset}),
-                entity_client=object(),
-                job_name=None,
-                async_sdk=async_sdk,
-            )
-
-        dataset_exists.assert_awaited_once_with(async_sdk, dataset)
 
 
 class TestEvaluateJobRun:
@@ -648,9 +764,8 @@ class TestEvaluateJobRun:
         tmp_path: Path,
         mocker: MockerFixture,
     ) -> None:
-        result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -672,35 +787,24 @@ class TestEvaluateJobRun:
         assert "result" not in run_result
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         evaluator_cls.assert_called_once_with()
-        evaluator.run_sync.assert_called_once_with(
-            metrics=expected_spec.metric,
-            dataset=expected_spec.dataset,
-            config=expected_config,
-            target=expected_spec.target,
-            prompt_template=expected_spec.prompt_template,
-        )
-        result.model_dump.assert_called_once_with(mode="json")
+        call_kwargs = evaluator.run_sync.call_args.kwargs
+        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert call_kwargs["dataset"] == expected_spec.dataset
+        assert call_kwargs["config"] == expected_config
+        assert call_kwargs["target"] == expected_spec.target
+        assert call_kwargs["prompt_template"] == expected_spec.prompt_template
 
     def test_delegates_metrics_sequence_to_sdk_evaluator(self, tmp_path: Path, mocker: MockerFixture) -> None:
-        result_payload = {
-            "row_scores": [],
-            "aggregate_scores": {"scores": []},
-            "per_metric": {},
-        }
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
         config = {
             **_exact_match_spec(),
-            "metric": [
-                _exact_match_spec()["metric"],
-                {
-                    "type": "f1",
-                    "reference": "{{item.expected}}",
-                    "candidate": "{{item.model_output}}",
-                },
+            "metrics": [
+                _exact_match_spec()["metrics"][0],
+                _bundle_payload(F1Metric(reference="{{item.expected}}", candidate="{{item.model_output}}")),
             ],
         }
         expected_spec = EvaluateSpec.model_validate(config)
@@ -715,21 +819,18 @@ class TestEvaluateJobRun:
         assert "result" not in run_result
         _assert_saved_result_artifact(run_result, ctx, result_payload)
         evaluator_cls.assert_called_once_with()
-        evaluator.run_sync.assert_called_once_with(
-            metrics=expected_spec.metric,
-            dataset=expected_spec.dataset,
-            config=expected_spec.params,
-            target=expected_spec.target,
-            prompt_template=expected_spec.prompt_template,
-        )
-        result.model_dump.assert_called_once_with(mode="json")
+        call_kwargs = evaluator.run_sync.call_args.kwargs
+        assert [metric.type.value for metric in call_kwargs["metrics"]] == ["exact-match", "f1"]
+        assert call_kwargs["dataset"] == expected_spec.dataset
+        assert call_kwargs["config"] == expected_spec.params
+        assert call_kwargs["target"] == expected_spec.target
+        assert call_kwargs["prompt_template"] == expected_spec.prompt_template
 
     def test_downloads_fileset_ref_dataset_and_passes_path_to_sdk_evaluator(
         self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
-        result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -754,21 +855,18 @@ class TestEvaluateJobRun:
             destination=str(ctx.storage.persistent / "dataset"),
         )
         download_dataset_sync.assert_not_called()
-        evaluator.run_sync.assert_called_once_with(
-            metrics=EvaluateSpec.model_validate(config).metric,
-            dataset=downloaded_path,
-            config=EvaluateSpec.model_validate(config).params,
-            target=None,
-            prompt_template=None,
-        )
-        result.model_dump.assert_called_once_with(mode="json")
+        call_kwargs = evaluator.run_sync.call_args.kwargs
+        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert call_kwargs["dataset"] == downloaded_path
+        assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
+        assert call_kwargs["target"] is None
+        assert call_kwargs["prompt_template"] is None
 
     def test_downloads_fileset_ref_dataset_with_sync_sdk_and_passes_path_to_sdk_evaluator(
         self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
-        result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _empty_evaluation_result()
+        result_payload = result.model_dump(mode="json")
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -793,11 +891,24 @@ class TestEvaluateJobRun:
             dataset=dataset,
             destination=str(ctx.storage.persistent / "dataset"),
         )
-        evaluator.run_sync.assert_called_once_with(
-            metrics=EvaluateSpec.model_validate(config).metric,
-            dataset=downloaded_path,
-            config=EvaluateSpec.model_validate(config).params,
-            target=None,
-            prompt_template=None,
-        )
-        result.model_dump.assert_called_once_with(mode="json")
+        call_kwargs = evaluator.run_sync.call_args.kwargs
+        assert isinstance(call_kwargs["metrics"], ExactMatchMetric)
+        assert call_kwargs["dataset"] == downloaded_path
+        assert call_kwargs["config"] == EvaluateSpec.model_validate(config).params
+        assert call_kwargs["target"] is None
+        assert call_kwargs["prompt_template"] is None
+
+
+class TestEvaluateTask:
+    """Coverage for the compiled container task entrypoint."""
+
+    def test_main_dispatches_evaluate_job_with_task_sdk(self, mocker: MockerFixture) -> None:
+        sdk = object()
+        get_task_sdk = mocker.patch("nemo_evaluator.tasks.evaluate.get_task_sdk", return_value=sdk)
+        run_task = mocker.patch("nemo_evaluator.tasks.evaluate.run_task", return_value=0)
+
+        exit_code = evaluate_task_main()
+
+        assert exit_code == 0
+        get_task_sdk.assert_called_once_with("evaluator")
+        run_task.assert_called_once_with(EvaluateJob, sdk=sdk)
