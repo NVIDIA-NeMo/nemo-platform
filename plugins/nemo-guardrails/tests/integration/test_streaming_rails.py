@@ -124,7 +124,10 @@ class TestStreaming:
         an SSE stream.
         """
         harness = igw_loopback_harness()
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="gr-main")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="gr-main",
+            workspace=harness.workspace,
+        )
 
         self_check_response = (
             self._unsafe_input_self_check_response()
@@ -217,7 +220,10 @@ class TestStreaming:
         token is forwarded, so the caller sees only the error token.
         """
         harness = igw_loopback_harness()
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="gr-main")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="gr-main",
+            workspace=harness.workspace,
+        )
 
         self_check_response = (
             self._unsafe_output_self_check_response()

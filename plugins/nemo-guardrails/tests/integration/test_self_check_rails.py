@@ -140,7 +140,7 @@ class TestSelfCheck:
         :meth:`test_resolver_fills_main_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = make_guardrails_test_data_names()
+        test_data_names = make_guardrails_test_data_names(workspace=harness.workspace)
 
         self_check_response = (
             self._unsafe_input_self_check_response()
@@ -221,7 +221,7 @@ class TestSelfCheck:
         lives in :meth:`test_resolver_fills_main_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = make_guardrails_test_data_names()
+        test_data_names = make_guardrails_test_data_names(workspace=harness.workspace)
         self_check_response = (
             self._unsafe_output_self_check_response()
             if expected_blocked_response
@@ -305,7 +305,7 @@ class TestSelfCheck:
         reaches the caller intact.
         """
         harness = igw_plugin_harness
-        test_data_names = make_guardrails_test_data_names()
+        test_data_names = make_guardrails_test_data_names(workspace=harness.workspace)
 
         input_verdict = (
             self._unsafe_input_self_check_response() if input_blocked else self._safe_input_self_check_response()
@@ -414,7 +414,10 @@ class TestSelfCheck:
         covered by :meth:`test_input_rail` / :meth:`test_output_rail`.
         """
         harness = igw_loopback_harness()
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="gr-main")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="gr-main",
+            workspace=harness.workspace,
+        )
 
         # The rail call (resolver-filled URL → IGW loopback → passthrough VM
         # proxy) and the backend completion both hit the same socket since

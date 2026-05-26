@@ -39,9 +39,20 @@ class TopicControlTestDataNames:
     topic_control_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> TopicControlTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    topic_control_model = make_served_model(test_id=base_test_data_names.test_id, prefix="tc-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> TopicControlTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    topic_control_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="tc-model",
+        workspace=workspace,
+    )
 
     return TopicControlTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -151,7 +162,7 @@ class TestTopicControl:
         return {"models": models, "rails": rails, "prompts": prompts}
 
     def _setup_entity_backed_vm(self, harness: IGWLoopbackHarness) -> TopicControlTestDataNames:
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         harness.add_provider(
             workspace=harness.workspace,

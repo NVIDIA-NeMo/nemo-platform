@@ -38,9 +38,20 @@ class MultimodalTestDataNames:
     vision_model_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> MultimodalTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    vision_model = make_served_model(test_id=base_test_data_names.test_id, prefix="vision-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> MultimodalTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    vision_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="vision-model",
+        workspace=workspace,
+    )
 
     return MultimodalTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -141,7 +152,7 @@ class TestMultimodalContentSafety:
         }
 
     def _setup_entity_backed_vm(self, harness: IGWLoopbackHarness) -> MultimodalTestDataNames:
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         harness.add_provider(
             workspace=harness.workspace,

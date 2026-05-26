@@ -38,7 +38,6 @@ would still rebuild the ASGI stack from scratch). See the testing
 README for the required pytest command line.
 """
 
-import warnings
 from collections.abc import Callable, Generator
 from contextlib import ExitStack, contextmanager
 from typing import cast
@@ -48,6 +47,18 @@ from fastapi import FastAPI
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness, IGWPluginHarness
 from nmp.testing.client import ClientContext, ServiceFactory, create_test_client
 from pytest_httpserver import HTTPServer
+
+
+def _app_from(client_context: ClientContext) -> FastAPI:
+    """Narrow ``client_context.test_client.app`` from ``ASGIApp`` to :class:`FastAPI`.
+
+    :class:`TestClient` types ``app`` as a bare ``ASGIApp`` callable;
+    every caller in this module needs to reach ``app.state`` or
+    ``app.dependency_overrides``, so the cast is unavoidable. Centralised
+    here so the assumption is documented once and the per-site noise is
+    a single function call.
+    """
+    return cast(FastAPI, client_context.test_client.app)
 
 
 def _enable_post_response_task_tracking(client_context: ClientContext) -> None:
@@ -64,8 +75,7 @@ def _enable_post_response_task_tracking(client_context: ClientContext) -> None:
     list would pin completed tasks in memory and ``aflush_post_response``
     would re-await them on the next test.
     """
-    app = cast(FastAPI, client_context.test_client.app)
-    app.state.pending_post_response_tasks = []
+    _app_from(client_context).state.pending_post_response_tasks = []
 
 
 @contextmanager
@@ -204,8 +214,7 @@ def _igw_loopback_context(
     """
     from nmp.core.inference_gateway.testing._loopback import serve_app_in_thread
 
-    app = cast(FastAPI, _igw_app_context.test_client.app)
-    with serve_app_in_thread(app) as loopback_base_url:
+    with serve_app_in_thread(_app_from(_igw_app_context)) as loopback_base_url:
         yield loopback_base_url
 
 
@@ -275,8 +284,9 @@ def _build_loopback_harness(
 ) -> Generator[IGWLoopbackHarness, None, None]:
     """Per-test setup/teardown for the loopback harness.
 
-    On top of :func:`_per_test_plugin_setup`'s pre-test resets,
-    additionally installs the two loopback-only patches scoped to this
+    Performs the same pre-test work as :func:`_per_test_plugin_setup`
+    (re-initialising ``app.state.pending_post_response_tasks``), and on
+    top of that installs the two loopback-only patches scoped to this
     test:
 
     * ``per_request_http_client`` as the :func:`global_http_client`
@@ -296,21 +306,25 @@ def _build_loopback_harness(
     keeps running (idle) but its loop sees no traffic from plain
     tests.
 
-    *extra_services* is accepted for source compatibility with the
-    previous factory signature but is **ignored** — the module-scoped
-    app is already built with its full service list before this
-    function runs. A :class:`DeprecationWarning` is emitted when extras
-    are passed so callers don't silently lose route mounts that
-    they expected the factory to wire up.
+    Raises:
+        TypeError: If *extra_services* is non-empty. Mounting extra
+            services per-call is incompatible with the module-scoped
+            app context (built before this function runs); a
+            :class:`DeprecationWarning` would be too quiet because
+            pytest swallows it by default and a developer copying the
+            previous ``igw_loopback_harness(GuardrailsService)``
+            pattern would see their routes silently missing. Override
+            the ``_igw_extra_services`` module fixture in the plugin's
+            ``conftest.py`` to mount additional services for the whole
+            module.
     """
     if extra_services:
         names = ", ".join(getattr(s, "__name__", repr(s)) for s in extra_services)
-        warnings.warn(
-            f"igw_loopback_harness({names}) — extra service args are ignored "
-            "under module-scoped fixtures. Override the `_igw_extra_services` "
-            "module fixture in your conftest to mount additional services.",
-            DeprecationWarning,
-            stacklevel=3,
+        raise TypeError(
+            f"igw_loopback_harness({names}) — extra service args are no longer "
+            "accepted under module-scoped fixtures. Override the "
+            "`_igw_extra_services` module fixture in your conftest to mount "
+            "additional services for the whole module."
         )
     from nmp.core.inference_gateway.api.dependencies import global_http_client
     from nmp.core.inference_gateway.testing._loopback import (
@@ -320,7 +334,7 @@ def _build_loopback_harness(
 
     _enable_post_response_task_tracking(client_context)
 
-    app = cast(FastAPI, client_context.test_client.app)
+    app = _app_from(client_context)
 
     with ExitStack() as stack:
         previous_override = app.dependency_overrides.get(global_http_client)
@@ -360,11 +374,12 @@ def igw_loopback_harness(
     Call with no arguments for the default IGW + Models app:
     ``harness = igw_loopback_harness()``.
 
-    Extra service classes are accepted for source compatibility with
-    the previous fixture signature but are no longer wired in — the
-    module-scoped app is already built with a fixed service list. If
-    a test needs additional services, file an issue or extend
-    :func:`_igw_app_context` rather than passing them here.
+    Passing extra service classes (``igw_loopback_harness(GuardrailsService)``)
+    raises :class:`TypeError` — the module-scoped app is already built
+    with a fixed service list by the time the factory runs. Mount extra
+    services for the whole module by overriding the
+    ``_igw_extra_services`` module fixture in the plugin's
+    ``conftest.py``.
     """
     with ExitStack() as stack:
 

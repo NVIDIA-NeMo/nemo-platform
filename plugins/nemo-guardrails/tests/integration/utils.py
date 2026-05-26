@@ -15,10 +15,13 @@ from nemo_platform.types.inference.middleware_call_param import MiddlewareCallPa
 from nmp.testing.utils import short_unique_name
 
 DEFAULT_WORKSPACE = "default"
-"""Default workspace used by the IGW plugin harness today (Option A in
-AIRCORE-585). Helper builders default ``workspace`` to this so existing
-callers don't have to thread it; pass ``harness.workspace`` from test
-bodies if Option B (per-test workspace) is ever adopted."""
+"""Default workspace seeded by the module-scoped IGW fixture today
+(Option A in AIRCORE-585). Helper builders default ``workspace`` to
+this so a caller that doesn't yet have a harness on hand (e.g. a
+parametrise-time builder) keeps working; production test bodies
+thread ``harness.workspace`` through every helper they call so a
+future Option B (per-test workspace) flip is a one-line change in
+the fixture."""
 
 GUARDRAILS_PLUGIN_NAME = "nemo-guardrails"
 
@@ -56,10 +59,12 @@ def make_guardrails_test_data_names(
 ) -> GuardrailsTestDataNames:
     """Build a set of unique names + entity refs for one test.
 
-    ``workspace`` is threaded into ``main_model_entity_ref`` so test
-    bodies can pass ``harness.workspace`` and stay correct if Option B
-    (per-test workspace) is adopted later. Default preserves Option A
-    behavior — no caller churn required today.
+    Callers should pass ``workspace=harness.workspace`` so
+    ``main_model_entity_ref`` lines up with whatever workspace the
+    harness is actually using. Defaulting to :data:`DEFAULT_WORKSPACE`
+    is a safety net for parametrise-time builders that don't have a
+    harness yet; production test bodies always thread the harness
+    workspace.
     """
     test_id = short_unique_name("test")
     main_model = make_served_model(test_id=test_id, prefix=main_model_prefix, workspace=workspace)

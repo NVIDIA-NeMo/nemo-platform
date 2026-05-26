@@ -284,6 +284,45 @@ shared SDK (custom connection pools, background tasks, on-disk
 caches), close those in `on_shutdown` as you normally would. Only the
 shared SDK's close is intercepted.
 
+## Limitations under module scope
+
+A few patterns that worked under the previous function-scoped
+fixture quietly stop working — or stop working *correctly* — when the
+ASGI stack is module-scoped. Avoid these:
+
+* **Function-scoped autouse `monkeypatch` fixtures that need to
+  affect service startup.** The module-scoped `_igw_app_context`
+  builds the FastAPI app — including every service's `on_startup` —
+  before any function-scoped fixture runs, so a `monkeypatch.setenv`
+  in a per-test autouse fixture lands after the service has already
+  observed the env var. If you need a value in place before service
+  startup, set it at conftest import time
+  (`os.environ.setdefault(...)` at module level) or in a
+  `scope="module", autouse=True` fixture that depends on
+  `_igw_app_context` indirectly (so pytest orders it after the env
+  var is set but before the harness is built). The `nemo-guardrails`
+  conftest's `HF_HUB_OFFLINE` setup is the worked example.
+* **Direct `harness.sdk.<entity>.create(...)` calls.** Anything
+  created outside the harness's track-and-delete methods leaks across
+  tests in the module. See [Entity teardown across tests](#entity-teardown-across-tests).
+* **Per-test extra services to `igw_loopback_harness`.** Previously
+  `harness = igw_loopback_harness(GuardrailsService)` would mount
+  extras per call; that now raises `TypeError` because the
+  module-scoped app is already built. Override the
+  `_igw_extra_services` module fixture in your conftest instead.
+* **Plugins registered persistently at app startup** (via the
+  `nemo.inference_middleware` entry-point group) won't receive
+  `on_virtual_model_destroyed`-style callbacks on test teardown —
+  only `registry.evict(...)` runs. Plugins that need cleanup
+  notifications between tests should be registered per-test via
+  `harness.use_plugin(...)` / `harness.load_plugin(...)` so the
+  plugin instance itself is discarded with the test.
+* **Module-shared state in plugin instances under `load_plugin`.**
+  `load_plugin` instantiates a fresh plugin class per test, so
+  *instance* state is per-test, but class-level state (singletons,
+  caches stored on the class) is shared across the module. Keep
+  caches on the instance.
+
 ## File layout
 
 ```

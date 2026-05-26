@@ -88,9 +88,20 @@ class ContentSafetyTestDataNames:
     content_safety_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> ContentSafetyTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    content_safety_model = make_served_model(test_id=base_test_data_names.test_id, prefix="cs-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> ContentSafetyTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    content_safety_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="cs-model",
+        workspace=workspace,
+    )
 
     return ContentSafetyTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -236,7 +247,7 @@ class TestContentSafety:
         :meth:`test_resolver_fills_content_safety_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         user_input = self.UNSAFE_USER_INPUT if expect_blocked else self.USER_INPUT
         content_safety_response = (
@@ -341,7 +352,7 @@ class TestContentSafety:
         :meth:`test_resolver_fills_content_safety_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
         content_safety_response = (
             self._unsafe_output_content_safety_response()
             if expect_blocked
@@ -437,7 +448,7 @@ class TestContentSafety:
         reaches the caller intact.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         input_verdict = (
             self._unsafe_input_content_safety_response()
@@ -558,7 +569,7 @@ class TestContentSafety:
         covered by :meth:`test_input_rail` / :meth:`test_output_rail`.
         """
         harness = igw_loopback_harness()
-        test_data_names = _make_test_data_names(main_model_prefix="gr-main")
+        test_data_names = _make_test_data_names(main_model_prefix="gr-main", workspace=harness.workspace)
 
         harness.mock_chat_completions(
             test_data_names.content_safety_model_served_name,

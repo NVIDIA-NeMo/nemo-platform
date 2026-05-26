@@ -41,10 +41,25 @@ class ParallelRailsTestDataNames:
     topic_control_model_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> ParallelRailsTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    content_safety_model = make_served_model(test_id=base_test_data_names.test_id, prefix="cs-model")
-    topic_control_model = make_served_model(test_id=base_test_data_names.test_id, prefix="tc-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> ParallelRailsTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    content_safety_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="cs-model",
+        workspace=workspace,
+    )
+    topic_control_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="tc-model",
+        workspace=workspace,
+    )
 
     return ParallelRailsTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -183,7 +198,7 @@ class TestParallelRails:
         *,
         parallel: bool,
     ) -> ParallelRailsTestDataNames:
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         harness.add_provider(
             workspace=harness.workspace,

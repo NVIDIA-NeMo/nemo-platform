@@ -98,7 +98,10 @@ class TestInjectionDetection:
         *,
         config_data: dict[str, Any],
     ) -> GuardrailsTestDataNames:
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="main-model")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="main-model",
+            workspace=harness.workspace,
+        )
 
         harness.add_provider(
             workspace=harness.workspace,

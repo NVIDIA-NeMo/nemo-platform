@@ -194,6 +194,36 @@ class IGWPluginHarness:
         runtime caches are still rebuilt after entity deletion so a
         plugin observing the registry between tests doesn't see ghost
         VMs.
+
+        **Scope of guaranteed cleanup.**
+
+        * **Plugins loaded via** :meth:`use_plugin` / :meth:`load_plugin`
+          (the supported pattern for per-test plugin registration) are
+          already removed from the registry by the time ``_cleanup``
+          runs — the test body's ``with`` block exits before fixture
+          teardown — so the plugin instance is unreachable and its
+          internal per-VM state goes with it.
+        * **Plugins registered persistently at app startup** (via
+          :func:`load_middleware_plugins` and the
+          ``nemo.inference_middleware`` entry-point group) survive the
+          whole module. ``_cleanup`` calls ``registry.evict(key)`` for
+          each tracked VM but does **not** call
+          ``registry.notify_destroyed(vm)`` — the
+          ``on_virtual_model_destroyed`` hook only fires from inside
+          :func:`refresh_virtual_model_cache`. Any per-VM state such a
+          plugin tracks (warmed caches, indexes, etc.) leaks across
+          tests in the module. Persistent plugins that need cleanup
+          notifications should subscribe to their own cache invalidation
+          path rather than depend on this teardown.
+        * ``registry.broken_vms`` (set on resolve failure) and
+          :attr:`VirtualModelCache.config_ref_versions` are not pruned
+          here; they self-heal on the next
+          :func:`refresh_virtual_model_cache` triggered by
+          :meth:`add_virtual_model` / :meth:`refresh_caches`. Tests that
+          neither create a VM nor call ``refresh_caches`` after a
+          previous test's failures may observe stale entries; in
+          practice every test that exercises the registry creates a
+          fresh VM and the next refresh cleans up.
         """
         for workspace, name in reversed(self._virtual_models):
             try:
