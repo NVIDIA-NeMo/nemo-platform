@@ -5,11 +5,9 @@ import logging
 
 from nmp.common.config import Runtime
 from nmp.core.jobs.app.profiles import ExecutionProfileT
-from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfile, DockerJobExecutionProfileConfig
+from nmp.core.jobs.controllers.backends.docker import DockerJobExecutionProfileConfig
 from nmp.core.jobs.controllers.backends.kubernetes import (
-    KubernetesJobExecutionProfile,
     KubernetesJobExecutionProfileConfig,
-    VolcanoJobExecutionProfile,
     VolcanoJobExecutionProfileConfig,
 )
 from nmp.core.jobs.controllers.backends.subprocess import (
@@ -44,65 +42,27 @@ class DefaultExecutionProfileConfig(BaseModel):
 def get_default_executor_profiles_for_runtime(runtime: Runtime, defaults: DefaultExecutionProfileConfig) -> list:
     """Returns a list of default executor profiles based on the deployment runtime."""
 
-    logger.debug("Getting default executors for runtime: %s", runtime)
-    executors = []
-    if runtime == Runtime.DOCKER:
-        executors.extend(
-            [
-                DockerJobExecutionProfile(
-                    provider="cpu",
-                    profile="default",
-                    backend="docker",
-                    config=defaults.docker,
-                ),
-                DockerJobExecutionProfile(
-                    provider="gpu",
-                    profile="default",
-                    backend="docker",
-                    config=defaults.docker,
-                ),
-            ]
+    # TEMP: The Docker and Kubernetes job backends are not currently functional —
+    # the `nmp-cpu-tasks` image (and the broader image-pull plumbing for both
+    # backends) is missing, so any default that registers a `cpu/default` or
+    # `gpu/default` profile against those backends produces ImageNotFound /
+    # ImagePullBackOff at dispatch time. Subprocess is the only officially
+    # supported execution path right now, so we return only the subprocess
+    # profile regardless of the configured `platform.runtime`. Deployers that
+    # have a working Docker or Kubernetes setup can still register backend
+    # profiles explicitly via `jobs.executors`; `merge_executor_profiles`
+    # treats those as overrides on top of this default. Restore the
+    # runtime-aware branches once Docker / Kubernetes job execution is
+    # functional again.
+    logger.debug("Getting default executors for runtime: %s (forced subprocess-only)", runtime)
+    return [
+        SubprocessJobExecutionProfile(
+            provider="subprocess",
+            profile="default",
+            backend="subprocess",
+            config=defaults.subprocess,
         )
-    elif runtime == Runtime.KUBERNETES:
-        executors.extend(
-            [
-                KubernetesJobExecutionProfile(
-                    provider="cpu",
-                    profile="default",
-                    backend="kubernetes_job",
-                    config=defaults.kubernetes_job,
-                ),
-                KubernetesJobExecutionProfile(
-                    provider="gpu",
-                    profile="default",
-                    backend="kubernetes_job",
-                    config=defaults.kubernetes_job,
-                ),
-                VolcanoJobExecutionProfile(
-                    provider="gpu_distributed",
-                    profile="default",
-                    backend="volcano_job",
-                    config=defaults.volcano_job,
-                ),
-            ]
-        )
-
-    # Subprocess execution is available for single-host runtimes only. Kubernetes deployments must opt in
-    # explicitly so subprocess profiles do not appear on distributed service pods by default.
-    if runtime != Runtime.KUBERNETES:
-        executors.append(
-            SubprocessJobExecutionProfile(
-                provider="subprocess",
-                profile="default",
-                backend="subprocess",
-                config=defaults.subprocess,
-            )
-        )
-
-    if not executors:
-        logger.warning(f"No default executors defined for runtime type: {runtime}")
-
-    return executors
+    ]
 
 
 def merge_executor_profiles(
