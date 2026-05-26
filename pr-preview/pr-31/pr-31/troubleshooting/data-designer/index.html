@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://jubilant-adventure-g4rv38m.pages.github.io/pr-preview/pr-31/pr-31/troubleshooting/data-designer/">
+        <link rel="canonical" href="https://nvidia-nemo.github.io/nemo-platform/pr-preview/pr-31/pr-31/troubleshooting/data-designer/">
       
       
         <link rel="prev" href="../">
@@ -4511,9 +4511,9 @@
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>nemo<span class="w"> </span>setup
 </span></code></pre></div>
 <h2 id="check-service-logs">Check Service Logs<a class="headerlink" href="#check-service-logs" title="Permanent link">&para;</a></h2>
-<p>Local setup writes service output to <code>.nemo-services.log</code> in the directory where services were started.</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">200</span><span class="w"> </span>.nemo-services.log
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>tail<span class="w"> </span>-f<span class="w"> </span>.nemo-services.log
+<p>Local setup writes service output to <code>~/.local/state/nmp/instances/&lt;scope&gt;/services.log</code> in the directory where services were started.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>tail<span class="w"> </span>-n<span class="w"> </span><span class="m">200</span><span class="w"> </span>~/.local/state/nmp/instances/&lt;scope&gt;/services.log
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>tail<span class="w"> </span>-f<span class="w"> </span>~/.local/state/nmp/instances/&lt;scope&gt;/services.log
 </span></code></pre></div>
 <p>Look for startup errors, provider authentication failures, port conflicts, or Data Designer request failures.</p>
 <h2 id="common-issues">Common Issues<a class="headerlink" href="#common-issues" title="Permanent link">&para;</a></h2>
