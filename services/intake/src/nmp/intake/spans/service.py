@@ -154,27 +154,8 @@ class IntakeSpansService:
     ) -> PaginatedResult[Annotation]:
         return await self._annotations.list_annotations(filters=filters, page=page, page_size=page_size, sort=sort)
 
-    async def update_annotation(self, annotation: Annotation) -> Annotation:
-        """Overwrite an annotation by writing a new ingested_at version.
-
-        Re-checks existence inside the service to close the window where a
-        concurrent delete races a patch — without this, the new row would
-        resurrect a tombstoned annotation.
-        """
-
-        existing = await self._annotations.get_annotation(
-            workspace=annotation.workspace, annotation_id=annotation.annotation_id
-        )
-        if existing is None:
-            raise AnnotationNotFoundError(annotation.workspace, annotation.annotation_id)
-        await self._annotations.save_annotations([annotation])
-        return annotation
-
     async def delete_annotation(self, *, workspace: str, annotation_id: str) -> None:
         existing = await self._annotations.get_annotation(workspace=workspace, annotation_id=annotation_id)
         if existing is None:
             raise AnnotationNotFoundError(workspace, annotation_id)
         await self._annotations.soft_delete_annotation(annotation=existing)
-
-    async def list_annotations_for_span(self, *, workspace: str, span_id: str) -> list[Annotation]:
-        return await self._annotations.list_annotations_for_span(workspace=workspace, span_id=span_id)

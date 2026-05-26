@@ -17,37 +17,106 @@
 
 from __future__ import annotations
 
-from typing import Dict
-from typing_extensions import Required, TypedDict
+from typing import Dict, Union
+from typing_extensions import Literal, Required, TypeAlias, TypedDict
 
-from .annotation_kind import AnnotationKind
+__all__ = [
+    "AnnotationCreateParams",
+    "FeedbackAnnotationParam",
+    "NoteAnnotationParam",
+    "MetadataAnnotationParam",
+    "LabelAnnotationParam",
+]
 
-__all__ = ["AnnotationCreateParams"]
 
-
-class AnnotationCreateParams(TypedDict, total=False):
+class FeedbackAnnotationParam(TypedDict, total=False):
     workspace: str
 
-    kind: Required[AnnotationKind]
+    kind: Required[Literal["feedback"]]
+    """Discriminator. Always `feedback` for this variant."""
 
     session_id: Required[str]
-    """Session id this annotation belongs to.
+    """Id of the session this annotation belongs to. Always required."""
 
-    Required even for span-targeted annotations for session-locality reads.
-    """
-
-    metadata: Dict[str, object]
-
-    name: str
+    value: Required[Literal["positive", "negative"]]
+    """Sentiment of the feedback."""
 
     span_id: str
-    """Target span id.
+    """Id of the span this annotation applies to.
 
-    Optional when annotating a whole session. Loose target policy — not validated.
+    Omit to annotate the whole session instead of a specific span.
     """
 
-    text: str
 
-    value_numeric: float
+class NoteAnnotationParam(TypedDict, total=False):
+    workspace: str
 
-    value_text: str
+    kind: Required[Literal["note"]]
+    """Discriminator. Always `note` for this variant."""
+
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
+
+    text: Required[str]
+    """The note content. 1 to 10,000 characters."""
+
+    span_id: str
+    """Id of the span this annotation applies to.
+
+    Omit to annotate the whole session instead of a specific span.
+    """
+
+
+class MetadataAnnotationParam(TypedDict, total=False):
+    workspace: str
+
+    kind: Required[Literal["metadata"]]
+    """Discriminator. Always `metadata` for this variant."""
+
+    metadata: Required[Dict[str, object]]
+    """Arbitrary key/value pairs. Must contain at least one entry."""
+
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
+
+    span_id: str
+    """Id of the span this annotation applies to.
+
+    Omit to annotate the whole session instead of a specific span.
+    """
+
+
+class LabelAnnotationParam(TypedDict, total=False):
+    workspace: str
+
+    kind: Required[Literal["label"]]
+    """Discriminator. Always `label` for this variant."""
+
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
+
+    value: Required[Union[str, float]]
+    """The label's value.
+
+    Must be a string when `value_type=text` and a number when `value_type=numeric`.
+    """
+
+    value_type: Required[Literal["text", "numeric"]]
+    """Whether `value` should be interpreted as text (`text`) or a number (`numeric`)."""
+
+    name: str
+    """Name identifying what the label measures (e.g., `severity`, `helpfulness`).
+
+    Optional for text labels; required for numeric labels.
+    """
+
+    span_id: str
+    """Id of the span this annotation applies to.
+
+    Omit to annotate the whole session instead of a specific span.
+    """
+
+
+AnnotationCreateParams: TypeAlias = Union[
+    FeedbackAnnotationParam, NoteAnnotationParam, MetadataAnnotationParam, LabelAnnotationParam
+]

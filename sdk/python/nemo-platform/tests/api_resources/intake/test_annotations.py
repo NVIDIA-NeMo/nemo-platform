@@ -38,36 +38,166 @@ class TestAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_method_create(self, client: NeMoPlatform) -> None:
+    def test_method_create_overload_1(self, client: NeMoPlatform) -> None:
         annotation = client.intake.annotations.create(
             workspace="workspace",
             kind="feedback",
             session_id="session_id",
+            value="positive",
         )
         assert_matches_type(Annotation, annotation, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
+    def test_method_create_with_all_params_overload_1(self, client: NeMoPlatform) -> None:
         annotation = client.intake.annotations.create(
             workspace="workspace",
             kind="feedback",
             session_id="session_id",
-            metadata={"foo": "bar"},
-            name="name",
+            value="positive",
             span_id="span_id",
-            text="x",
-            value_numeric=0,
-            value_text="x",
         )
         assert_matches_type(Annotation, annotation, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_raw_response_create(self, client: NeMoPlatform) -> None:
+    def test_raw_response_create_overload_1(self, client: NeMoPlatform) -> None:
         response = client.intake.annotations.with_raw_response.create(
             workspace="workspace",
             kind="feedback",
+            session_id="session_id",
+            value="positive",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_create_overload_1(self, client: NeMoPlatform) -> None:
+        with client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="feedback",
+            session_id="session_id",
+            value="positive",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_create_overload_1(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="feedback",
+                session_id="session_id",
+                value="positive",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_overload_2(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_with_all_params_overload_2(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_create_overload_2(self, client: NeMoPlatform) -> None:
+        response = client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_create_overload_2(self, client: NeMoPlatform) -> None:
+        with client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_create_overload_2(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="note",
+                session_id="session_id",
+                text="x",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_overload_3(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
+            session_id="session_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_with_all_params_overload_3(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
+            session_id="session_id",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_create_overload_3(self, client: NeMoPlatform) -> None:
+        response = client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
             session_id="session_id",
         )
 
@@ -78,10 +208,11 @@ class TestAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_streaming_response_create(self, client: NeMoPlatform) -> None:
+    def test_streaming_response_create_overload_3(self, client: NeMoPlatform) -> None:
         with client.intake.annotations.with_streaming_response.create(
             workspace="workspace",
-            kind="feedback",
+            kind="metadata",
+            metadata={"foo": "bar"},
             session_id="session_id",
         ) as response:
             assert not response.is_closed
@@ -94,12 +225,85 @@ class TestAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_path_params_create(self, client: NeMoPlatform) -> None:
+    def test_path_params_create_overload_3(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             client.intake.annotations.with_raw_response.create(
                 workspace="",
-                kind="feedback",
+                kind="metadata",
+                metadata={"foo": "bar"},
                 session_id="session_id",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_overload_4(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_method_create_with_all_params_overload_4(self, client: NeMoPlatform) -> None:
+        annotation = client.intake.annotations.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+            name="name",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_raw_response_create_overload_4(self, client: NeMoPlatform) -> None:
+        response = client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_streaming_response_create_overload_4(self, client: NeMoPlatform) -> None:
+        with client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    def test_path_params_create_overload_4(self, client: NeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="label",
+                session_id="session_id",
+                value="string",
+                value_type="text",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -156,72 +360,6 @@ class TestAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    def test_method_update(self, client: NeMoPlatform) -> None:
-        annotation = client.intake.annotations.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        )
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    def test_method_update_with_all_params(self, client: NeMoPlatform) -> None:
-        annotation = client.intake.annotations.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-            metadata={"foo": "bar"},
-            name="name",
-            text="x",
-            value_numeric=0,
-            value_text="x",
-        )
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    def test_raw_response_update(self, client: NeMoPlatform) -> None:
-        response = client.intake.annotations.with_raw_response.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        )
-
-        assert response.is_closed is True
-        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        annotation = response.parse()
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    def test_streaming_response_update(self, client: NeMoPlatform) -> None:
-        with client.intake.annotations.with_streaming_response.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        ) as response:
-            assert not response.is_closed
-            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-
-            annotation = response.parse()
-            assert_matches_type(Annotation, annotation, path=["response"])
-
-        assert cast(Any, response.is_closed) is True
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    def test_path_params_update(self, client: NeMoPlatform) -> None:
-        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.intake.annotations.with_raw_response.update(
-                annotation_id="annotation_id",
-                workspace="",
-            )
-
-        with pytest.raises(ValueError, match=r"Expected a non-empty value for `annotation_id` but received ''"):
-            client.intake.annotations.with_raw_response.update(
-                annotation_id="",
-                workspace="workspace",
-            )
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
     def test_method_list(self, client: NeMoPlatform) -> None:
         annotation = client.intake.annotations.list(
             workspace="workspace",
@@ -243,6 +381,11 @@ class TestAnnotations:
                 "name": "name",
                 "session_id": "session_id",
                 "span_id": "span_id",
+                "value_numeric": {
+                    "gte": 0,
+                    "lte": 0,
+                },
+                "value_text": "value_text",
             },
             page=1,
             page_size=1,
@@ -344,36 +487,166 @@ class TestAsyncAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_method_create_overload_1(self, async_client: AsyncNeMoPlatform) -> None:
         annotation = await async_client.intake.annotations.create(
             workspace="workspace",
             kind="feedback",
             session_id="session_id",
+            value="positive",
         )
         assert_matches_type(Annotation, annotation, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_method_create_with_all_params_overload_1(self, async_client: AsyncNeMoPlatform) -> None:
         annotation = await async_client.intake.annotations.create(
             workspace="workspace",
             kind="feedback",
             session_id="session_id",
-            metadata={"foo": "bar"},
-            name="name",
+            value="positive",
             span_id="span_id",
-            text="x",
-            value_numeric=0,
-            value_text="x",
         )
         assert_matches_type(Annotation, annotation, path=["response"])
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_raw_response_create_overload_1(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.intake.annotations.with_raw_response.create(
             workspace="workspace",
             kind="feedback",
+            session_id="session_id",
+            value="positive",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = await response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_create_overload_1(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="feedback",
+            session_id="session_id",
+            value="positive",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = await response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_create_overload_1(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="feedback",
+                session_id="session_id",
+                value="positive",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_overload_2(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_with_all_params_overload_2(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_create_overload_2(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = await response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_create_overload_2(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="note",
+            session_id="session_id",
+            text="x",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = await response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_create_overload_2(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="note",
+                session_id="session_id",
+                text="x",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_overload_3(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
+            session_id="session_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_with_all_params_overload_3(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
+            session_id="session_id",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_create_overload_3(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="metadata",
+            metadata={"foo": "bar"},
             session_id="session_id",
         )
 
@@ -384,10 +657,11 @@ class TestAsyncAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_streaming_response_create_overload_3(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.intake.annotations.with_streaming_response.create(
             workspace="workspace",
-            kind="feedback",
+            kind="metadata",
+            metadata={"foo": "bar"},
             session_id="session_id",
         ) as response:
             assert not response.is_closed
@@ -400,12 +674,85 @@ class TestAsyncAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_path_params_create(self, async_client: AsyncNeMoPlatform) -> None:
+    async def test_path_params_create_overload_3(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             await async_client.intake.annotations.with_raw_response.create(
                 workspace="",
-                kind="feedback",
+                kind="metadata",
+                metadata={"foo": "bar"},
                 session_id="session_id",
+            )
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_overload_4(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_method_create_with_all_params_overload_4(self, async_client: AsyncNeMoPlatform) -> None:
+        annotation = await async_client.intake.annotations.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+            name="name",
+            span_id="span_id",
+        )
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_raw_response_create_overload_4(self, async_client: AsyncNeMoPlatform) -> None:
+        response = await async_client.intake.annotations.with_raw_response.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        )
+
+        assert response.is_closed is True
+        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+        annotation = await response.parse()
+        assert_matches_type(Annotation, annotation, path=["response"])
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_streaming_response_create_overload_4(self, async_client: AsyncNeMoPlatform) -> None:
+        async with async_client.intake.annotations.with_streaming_response.create(
+            workspace="workspace",
+            kind="label",
+            session_id="session_id",
+            value="string",
+            value_type="text",
+        ) as response:
+            assert not response.is_closed
+            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
+
+            annotation = await response.parse()
+            assert_matches_type(Annotation, annotation, path=["response"])
+
+        assert cast(Any, response.is_closed) is True
+
+    @pytest.mark.skip(reason="Mock server tests are disabled")
+    @parametrize
+    async def test_path_params_create_overload_4(self, async_client: AsyncNeMoPlatform) -> None:
+        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
+            await async_client.intake.annotations.with_raw_response.create(
+                workspace="",
+                kind="label",
+                session_id="session_id",
+                value="string",
+                value_type="text",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -462,72 +809,6 @@ class TestAsyncAnnotations:
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
-    async def test_method_update(self, async_client: AsyncNeMoPlatform) -> None:
-        annotation = await async_client.intake.annotations.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        )
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    async def test_method_update_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        annotation = await async_client.intake.annotations.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-            metadata={"foo": "bar"},
-            name="name",
-            text="x",
-            value_numeric=0,
-            value_text="x",
-        )
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    async def test_raw_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.intake.annotations.with_raw_response.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        )
-
-        assert response.is_closed is True
-        assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-        annotation = await response.parse()
-        assert_matches_type(Annotation, annotation, path=["response"])
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    async def test_streaming_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.intake.annotations.with_streaming_response.update(
-            annotation_id="annotation_id",
-            workspace="workspace",
-        ) as response:
-            assert not response.is_closed
-            assert response.http_request.headers.get("X-Stainless-Lang") == "python"
-
-            annotation = await response.parse()
-            assert_matches_type(Annotation, annotation, path=["response"])
-
-        assert cast(Any, response.is_closed) is True
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
-    async def test_path_params_update(self, async_client: AsyncNeMoPlatform) -> None:
-        with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.intake.annotations.with_raw_response.update(
-                annotation_id="annotation_id",
-                workspace="",
-            )
-
-        with pytest.raises(ValueError, match=r"Expected a non-empty value for `annotation_id` but received ''"):
-            await async_client.intake.annotations.with_raw_response.update(
-                annotation_id="",
-                workspace="workspace",
-            )
-
-    @pytest.mark.skip(reason="Mock server tests are disabled")
-    @parametrize
     async def test_method_list(self, async_client: AsyncNeMoPlatform) -> None:
         annotation = await async_client.intake.annotations.list(
             workspace="workspace",
@@ -549,6 +830,11 @@ class TestAsyncAnnotations:
                 "name": "name",
                 "session_id": "session_id",
                 "span_id": "span_id",
+                "value_numeric": {
+                    "gte": 0,
+                    "lte": 0,
+                },
+                "value_text": "value_text",
             },
             page=1,
             page_size=1,

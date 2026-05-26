@@ -15,6 +15,38 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
+from datetime import datetime
+from typing_extensions import Literal
 
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from ..._models import BaseModel
+
+__all__ = ["FeedbackAnnotation"]
+
+
+class FeedbackAnnotation(BaseModel):
+    """Thumbs-up / thumbs-down feedback on a span or session."""
+
+    annotation_id: str
+
+    created_at: datetime
+
+    ingested_at: datetime
+
+    kind: Literal["feedback"]
+    """Discriminator. Always `feedback` for this variant."""
+
+    session_id: str
+
+    value: Literal["positive", "negative"]
+    """Sentiment of the feedback."""
+
+    workspace: str
+
+    created_by: Optional[str] = None
+
+    span_id: Optional[str] = None
+    """
+    Id of the span this annotation applies to, or omitted for session-level
+    annotations.
+    """

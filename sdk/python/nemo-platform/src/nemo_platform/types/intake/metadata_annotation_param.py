@@ -17,4 +17,26 @@
 
 from __future__ import annotations
 
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing import Dict
+from typing_extensions import Literal, Required, TypedDict
+
+__all__ = ["MetadataAnnotationParam"]
+
+
+class MetadataAnnotationParam(TypedDict, total=False):
+    """Structured key/value metadata attached to a span or session."""
+
+    kind: Required[Literal["metadata"]]
+    """Discriminator. Always `metadata` for this variant."""
+
+    metadata: Required[Dict[str, object]]
+    """Arbitrary key/value pairs. Must contain at least one entry."""
+
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
+
+    span_id: str
+    """Id of the span this annotation applies to.
+
+    Omit to annotate the whole session instead of a specific span.
+    """

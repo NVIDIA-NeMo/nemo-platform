@@ -17,4 +17,18 @@
 
 from __future__ import annotations
 
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing_extensions import Annotated, TypedDict
+
+from ..._utils import PropertyInfo
+
+__all__ = ["NumericFilterParam"]
+
+
+class NumericFilterParam(TypedDict, total=False):
+    """Range filter for numeric annotation values."""
+
+    gte: Annotated[float, PropertyInfo(alias="$gte")]
+    """Include only values greater than or equal to this number."""
+
+    lte: Annotated[float, PropertyInfo(alias="$lte")]
+    """Include only values less than or equal to this number."""

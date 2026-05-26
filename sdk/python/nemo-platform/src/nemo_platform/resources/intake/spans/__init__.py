@@ -23,14 +23,6 @@ from .spans import (
     SpansResourceWithStreamingResponse,
     AsyncSpansResourceWithStreamingResponse,
 )
-from .annotations import (
-    AnnotationsResource,
-    AsyncAnnotationsResource,
-    AnnotationsResourceWithRawResponse,
-    AsyncAnnotationsResourceWithRawResponse,
-    AnnotationsResourceWithStreamingResponse,
-    AsyncAnnotationsResourceWithStreamingResponse,
-)
 from .evaluator_results import (
     EvaluatorResultsResource,
     AsyncEvaluatorResultsResource,
@@ -47,12 +39,6 @@ __all__ = [
     "AsyncEvaluatorResultsResourceWithRawResponse",
     "EvaluatorResultsResourceWithStreamingResponse",
     "AsyncEvaluatorResultsResourceWithStreamingResponse",
-    "AnnotationsResource",
-    "AsyncAnnotationsResource",
-    "AnnotationsResourceWithRawResponse",
-    "AsyncAnnotationsResourceWithRawResponse",
-    "AnnotationsResourceWithStreamingResponse",
-    "AsyncAnnotationsResourceWithStreamingResponse",
     "SpansResource",
     "AsyncSpansResource",
     "SpansResourceWithRawResponse",

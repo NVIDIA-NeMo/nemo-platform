@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing_extensions import TypedDict
 
 from .annotation_kind import AnnotationKind
+from .numeric_filter_param import NumericFilterParam
 from ..shared_params.datetime_filter import DatetimeFilter
 
 __all__ = ["AnnotationFilterParam"]
@@ -27,19 +28,35 @@ __all__ = ["AnnotationFilterParam"]
 
 class AnnotationFilterParam(TypedDict, total=False):
     created_at: DatetimeFilter
-    """Filter by row creation time (range supported)."""
+    """Return only annotations created within the given time range."""
 
     created_by: str
-    """Filter by principal that wrote the annotation."""
+    """Return only annotations created by this user."""
 
     kind: AnnotationKind
-    """Filter by annotation kind."""
+    """
+    Return only annotations of this kind (`feedback`, `note`, `label`, or
+    `metadata`).
+    """
 
     name: str
-    """Filter by annotation name (used by `label`/`metadata`)."""
+    """
+    Return only `label` annotations with this `name` (e.g., `severity`,
+    `helpfulness`).
+    """
 
     session_id: str
-    """Filter by target session id."""
+    """Return only annotations attached to this session."""
 
     span_id: str
-    """Filter by target span id."""
+    """Return only annotations attached to this span."""
+
+    value_numeric: NumericFilterParam
+    """Range filter for numeric annotation values."""
+
+    value_text: str
+    """Return only annotations with this text value.
+
+    For `feedback` annotations this is `positive` or `negative`; for `label`
+    annotations with `value_type=text` this is the label's value.
+    """

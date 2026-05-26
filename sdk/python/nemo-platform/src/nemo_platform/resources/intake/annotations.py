@@ -17,12 +17,13 @@
 
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict, Union, cast
+from typing_extensions import Literal, overload
 
 import httpx
 
 from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, omit, not_given
-from ..._utils import path_template, maybe_transform, async_maybe_transform
+from ..._utils import path_template, required_args, maybe_transform, async_maybe_transform
 from ..._compat import cached_property
 from ..._resource import SyncAPIResource, AsyncAPIResource
 from ..._response import (
@@ -33,15 +34,8 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.intake import (
-    AnnotationKind,
-    AnnotationSortField,
-    annotation_list_params,
-    annotation_create_params,
-    annotation_update_params,
-)
+from ...types.intake import AnnotationSortField, annotation_list_params, annotation_create_params
 from ...types.intake.annotation import Annotation
-from ...types.intake.annotation_kind import AnnotationKind
 from ...types.intake.annotation_sort_field import AnnotationSortField
 from ...types.intake.annotation_filter_param import AnnotationFilterParam
 from ..._exceptions import ConflictError
@@ -69,18 +63,15 @@ class AnnotationsResource(SyncAPIResource):
         """
         return AnnotationsResourceWithStreamingResponse(self)
 
+    @overload
     def create(
         self,
         *,
         workspace: str | None = None,
-        kind: AnnotationKind,
+        kind: Literal["feedback"],
         session_id: str,
-        metadata: Dict[str, object] | Omit = omit,
-        name: str | Omit = omit,
+        value: Literal["positive", "negative"],
         span_id: str | Omit = omit,
-        text: str | Omit = omit,
-        value_numeric: float | Omit = omit,
-        value_text: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -92,17 +83,16 @@ class AnnotationsResource(SyncAPIResource):
         """Create Annotation
 
         Args:
-          session_id: Session id this annotation belongs to.
+          kind: Discriminator.
 
-        Required even for span-targeted
-              annotations for session-locality reads.
+        Always `feedback` for this variant.
 
-          span_id: Target span id. Optional when annotating a whole session. Loose target policy —
-              not validated.
+          session_id: Id of the session this annotation belongs to. Always required.
 
+          value: Sentiment of the feedback.
 
-          exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
-
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
 
           extra_headers: Send extra headers
 
@@ -112,30 +102,192 @@ class AnnotationsResource(SyncAPIResource):
 
           timeout: Override the client-level default timeout for this request, in seconds
         """
+        ...
+
+    @overload
+    def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["note"],
+        session_id: str,
+        text: str,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `note` for this variant.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          text: The note content. 1 to 10,000 characters.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @overload
+    def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["metadata"],
+        metadata: Dict[str, object],
+        session_id: str,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `metadata` for this variant.
+
+          metadata: Arbitrary key/value pairs. Must contain at least one entry.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @overload
+    def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["label"],
+        session_id: str,
+        value: Union[str, float],
+        value_type: Literal["text", "numeric"],
+        name: str | Omit = omit,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `label` for this variant.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          value: The label's value. Must be a string when `value_type=text` and a number when
+              `value_type=numeric`.
+
+          value_type: Whether `value` should be interpreted as text (`text`) or a number (`numeric`).
+
+          name: Name identifying what the label measures (e.g., `severity`, `helpfulness`).
+              Optional for text labels; required for numeric labels.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @required_args(
+        ["kind", "session_id", "value"],
+        ["kind", "session_id", "text"],
+        ["kind", "metadata", "session_id"],
+        ["kind", "session_id", "value", "value_type"],
+    )
+    def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["feedback"] | Literal["note"] | Literal["metadata"] | Literal["label"],
+        session_id: str,
+        value: Literal["positive", "negative"] | Union[str, float] | Omit = omit,
+        span_id: str | Omit = omit,
+        text: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        value_type: Literal["text", "numeric"] | Omit = omit,
+        name: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
         try:
             if workspace is None:
                 workspace = self._client._get_workspace_path_param()
             if not workspace:
                 raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
-            return self._post(
-                path_template("/apis/intake/v2/workspaces/{workspace}/annotations", workspace=workspace),
-                body=maybe_transform(
-                    {
-                        "kind": kind,
-                        "session_id": session_id,
-                        "metadata": metadata,
-                        "name": name,
-                        "span_id": span_id,
-                        "text": text,
-                        "value_numeric": value_numeric,
-                        "value_text": value_text,
-                    },
-                    annotation_create_params.AnnotationCreateParams,
+            return cast(
+                Annotation,
+                self._post(
+                    path_template("/apis/intake/v2/workspaces/{workspace}/annotations", workspace=workspace),
+                    body=maybe_transform(
+                        {
+                            "kind": kind,
+                            "session_id": session_id,
+                            "value": value,
+                            "span_id": span_id,
+                            "text": text,
+                            "metadata": metadata,
+                            "value_type": value_type,
+                            "name": name,
+                        },
+                        annotation_create_params.AnnotationCreateParams,
+                    ),
+                    options=make_request_options(
+                        extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                    ),
+                    cast_to=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
                 ),
-                options=make_request_options(
-                    extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-                ),
-                cast_to=Annotation,
             )
         except ConflictError:
             if not exist_ok:
@@ -172,73 +324,19 @@ class AnnotationsResource(SyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
         if not annotation_id:
             raise ValueError(f"Expected a non-empty value for `annotation_id` but received {annotation_id!r}")
-        return self._get(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
-                workspace=workspace,
-                annotation_id=annotation_id,
+        return cast(
+            Annotation,
+            self._get(
+                path_template(
+                    "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
+                    workspace=workspace,
+                    annotation_id=annotation_id,
+                ),
+                options=make_request_options(
+                    extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                ),
+                cast_to=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
             ),
-            options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-            ),
-            cast_to=Annotation,
-        )
-
-    def update(
-        self,
-        annotation_id: str,
-        *,
-        workspace: str | None = None,
-        metadata: Dict[str, object] | Omit = omit,
-        name: str | Omit = omit,
-        text: str | Omit = omit,
-        value_numeric: float | Omit = omit,
-        value_text: str | Omit = omit,
-        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
-        # The extra values given here take precedence over values defined on the client or passed to this method.
-        extra_headers: Headers | None = None,
-        extra_query: Query | None = None,
-        extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> Annotation:
-        """
-        Update Annotation
-
-        Args:
-          extra_headers: Send extra headers
-
-          extra_query: Add additional query parameters to the request
-
-          extra_body: Add additional JSON properties to the request
-
-          timeout: Override the client-level default timeout for this request, in seconds
-        """
-        if workspace is None:
-            workspace = self._client._get_workspace_path_param()
-        if not workspace:
-            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
-        if not annotation_id:
-            raise ValueError(f"Expected a non-empty value for `annotation_id` but received {annotation_id!r}")
-        return self._patch(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
-                workspace=workspace,
-                annotation_id=annotation_id,
-            ),
-            body=maybe_transform(
-                {
-                    "metadata": metadata,
-                    "name": name,
-                    "text": text,
-                    "value_numeric": value_numeric,
-                    "value_text": value_text,
-                },
-                annotation_update_params.AnnotationUpdateParams,
-            ),
-            options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-            ),
-            cast_to=Annotation,
         )
 
     def list(
@@ -297,7 +395,7 @@ class AnnotationsResource(SyncAPIResource):
                     annotation_list_params.AnnotationListParams,
                 ),
             ),
-            model=Annotation,
+            model=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
         )
 
     def delete(
@@ -364,18 +462,15 @@ class AsyncAnnotationsResource(AsyncAPIResource):
         """
         return AsyncAnnotationsResourceWithStreamingResponse(self)
 
+    @overload
     async def create(
         self,
         *,
         workspace: str | None = None,
-        kind: AnnotationKind,
+        kind: Literal["feedback"],
         session_id: str,
-        metadata: Dict[str, object] | Omit = omit,
-        name: str | Omit = omit,
+        value: Literal["positive", "negative"],
         span_id: str | Omit = omit,
-        text: str | Omit = omit,
-        value_numeric: float | Omit = omit,
-        value_text: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         exist_ok: bool = False,
@@ -387,17 +482,16 @@ class AsyncAnnotationsResource(AsyncAPIResource):
         """Create Annotation
 
         Args:
-          session_id: Session id this annotation belongs to.
+          kind: Discriminator.
 
-        Required even for span-targeted
-              annotations for session-locality reads.
+        Always `feedback` for this variant.
 
-          span_id: Target span id. Optional when annotating a whole session. Loose target policy —
-              not validated.
+          session_id: Id of the session this annotation belongs to. Always required.
 
+          value: Sentiment of the feedback.
 
-          exist_ok: Do not raise an error if the resource already exists. Returns the existing resource.
-
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
 
           extra_headers: Send extra headers
 
@@ -407,30 +501,192 @@ class AsyncAnnotationsResource(AsyncAPIResource):
 
           timeout: Override the client-level default timeout for this request, in seconds
         """
+        ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["note"],
+        session_id: str,
+        text: str,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `note` for this variant.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          text: The note content. 1 to 10,000 characters.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["metadata"],
+        metadata: Dict[str, object],
+        session_id: str,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `metadata` for this variant.
+
+          metadata: Arbitrary key/value pairs. Must contain at least one entry.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @overload
+    async def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["label"],
+        session_id: str,
+        value: Union[str, float],
+        value_type: Literal["text", "numeric"],
+        name: str | Omit = omit,
+        span_id: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
+        """Create Annotation
+
+        Args:
+          kind: Discriminator.
+
+        Always `label` for this variant.
+
+          session_id: Id of the session this annotation belongs to. Always required.
+
+          value: The label's value. Must be a string when `value_type=text` and a number when
+              `value_type=numeric`.
+
+          value_type: Whether `value` should be interpreted as text (`text`) or a number (`numeric`).
+
+          name: Name identifying what the label measures (e.g., `severity`, `helpfulness`).
+              Optional for text labels; required for numeric labels.
+
+          span_id: Id of the span this annotation applies to. Omit to annotate the whole session
+              instead of a specific span.
+
+          extra_headers: Send extra headers
+
+          extra_query: Add additional query parameters to the request
+
+          extra_body: Add additional JSON properties to the request
+
+          timeout: Override the client-level default timeout for this request, in seconds
+        """
+        ...
+
+    @required_args(
+        ["kind", "session_id", "value"],
+        ["kind", "session_id", "text"],
+        ["kind", "metadata", "session_id"],
+        ["kind", "session_id", "value", "value_type"],
+    )
+    async def create(
+        self,
+        *,
+        workspace: str | None = None,
+        kind: Literal["feedback"] | Literal["note"] | Literal["metadata"] | Literal["label"],
+        session_id: str,
+        value: Literal["positive", "negative"] | Union[str, float] | Omit = omit,
+        span_id: str | Omit = omit,
+        text: str | Omit = omit,
+        metadata: Dict[str, object] | Omit = omit,
+        value_type: Literal["text", "numeric"] | Omit = omit,
+        name: str | Omit = omit,
+        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
+        # The extra values given here take precedence over values defined on the client or passed to this method.
+        exist_ok: bool = False,
+        extra_headers: Headers | None = None,
+        extra_query: Query | None = None,
+        extra_body: Body | None = None,
+        timeout: float | httpx.Timeout | None | NotGiven = not_given,
+    ) -> Annotation:
         try:
             if workspace is None:
                 workspace = self._client._get_workspace_path_param()
             if not workspace:
                 raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
-            return await self._post(
-                path_template("/apis/intake/v2/workspaces/{workspace}/annotations", workspace=workspace),
-                body=await async_maybe_transform(
-                    {
-                        "kind": kind,
-                        "session_id": session_id,
-                        "metadata": metadata,
-                        "name": name,
-                        "span_id": span_id,
-                        "text": text,
-                        "value_numeric": value_numeric,
-                        "value_text": value_text,
-                    },
-                    annotation_create_params.AnnotationCreateParams,
+            return cast(
+                Annotation,
+                await self._post(
+                    path_template("/apis/intake/v2/workspaces/{workspace}/annotations", workspace=workspace),
+                    body=await async_maybe_transform(
+                        {
+                            "kind": kind,
+                            "session_id": session_id,
+                            "value": value,
+                            "span_id": span_id,
+                            "text": text,
+                            "metadata": metadata,
+                            "value_type": value_type,
+                            "name": name,
+                        },
+                        annotation_create_params.AnnotationCreateParams,
+                    ),
+                    options=make_request_options(
+                        extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                    ),
+                    cast_to=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
                 ),
-                options=make_request_options(
-                    extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-                ),
-                cast_to=Annotation,
             )
         except ConflictError:
             if not exist_ok:
@@ -467,73 +723,19 @@ class AsyncAnnotationsResource(AsyncAPIResource):
             raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
         if not annotation_id:
             raise ValueError(f"Expected a non-empty value for `annotation_id` but received {annotation_id!r}")
-        return await self._get(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
-                workspace=workspace,
-                annotation_id=annotation_id,
+        return cast(
+            Annotation,
+            await self._get(
+                path_template(
+                    "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
+                    workspace=workspace,
+                    annotation_id=annotation_id,
+                ),
+                options=make_request_options(
+                    extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
+                ),
+                cast_to=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
             ),
-            options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-            ),
-            cast_to=Annotation,
-        )
-
-    async def update(
-        self,
-        annotation_id: str,
-        *,
-        workspace: str | None = None,
-        metadata: Dict[str, object] | Omit = omit,
-        name: str | Omit = omit,
-        text: str | Omit = omit,
-        value_numeric: float | Omit = omit,
-        value_text: str | Omit = omit,
-        # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
-        # The extra values given here take precedence over values defined on the client or passed to this method.
-        extra_headers: Headers | None = None,
-        extra_query: Query | None = None,
-        extra_body: Body | None = None,
-        timeout: float | httpx.Timeout | None | NotGiven = not_given,
-    ) -> Annotation:
-        """
-        Update Annotation
-
-        Args:
-          extra_headers: Send extra headers
-
-          extra_query: Add additional query parameters to the request
-
-          extra_body: Add additional JSON properties to the request
-
-          timeout: Override the client-level default timeout for this request, in seconds
-        """
-        if workspace is None:
-            workspace = self._client._get_workspace_path_param()
-        if not workspace:
-            raise ValueError(f"Expected a non-empty value for `workspace` but received {workspace!r}")
-        if not annotation_id:
-            raise ValueError(f"Expected a non-empty value for `annotation_id` but received {annotation_id!r}")
-        return await self._patch(
-            path_template(
-                "/apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}",
-                workspace=workspace,
-                annotation_id=annotation_id,
-            ),
-            body=await async_maybe_transform(
-                {
-                    "metadata": metadata,
-                    "name": name,
-                    "text": text,
-                    "value_numeric": value_numeric,
-                    "value_text": value_text,
-                },
-                annotation_update_params.AnnotationUpdateParams,
-            ),
-            options=make_request_options(
-                extra_headers=extra_headers, extra_query=extra_query, extra_body=extra_body, timeout=timeout
-            ),
-            cast_to=Annotation,
         )
 
     def list(
@@ -592,7 +794,7 @@ class AsyncAnnotationsResource(AsyncAPIResource):
                     annotation_list_params.AnnotationListParams,
                 ),
             ),
-            model=Annotation,
+            model=cast(Any, Annotation),  # Union types cannot be passed in as arguments in the type system
         )
 
     async def delete(
@@ -649,9 +851,6 @@ class AnnotationsResourceWithRawResponse:
         self.retrieve = to_raw_response_wrapper(
             annotations.retrieve,
         )
-        self.update = to_raw_response_wrapper(
-            annotations.update,
-        )
         self.list = to_raw_response_wrapper(
             annotations.list,
         )
@@ -669,9 +868,6 @@ class AsyncAnnotationsResourceWithRawResponse:
         )
         self.retrieve = async_to_raw_response_wrapper(
             annotations.retrieve,
-        )
-        self.update = async_to_raw_response_wrapper(
-            annotations.update,
         )
         self.list = async_to_raw_response_wrapper(
             annotations.list,
@@ -691,9 +887,6 @@ class AnnotationsResourceWithStreamingResponse:
         self.retrieve = to_streamed_response_wrapper(
             annotations.retrieve,
         )
-        self.update = to_streamed_response_wrapper(
-            annotations.update,
-        )
         self.list = to_streamed_response_wrapper(
             annotations.list,
         )
@@ -711,9 +904,6 @@ class AsyncAnnotationsResourceWithStreamingResponse:
         )
         self.retrieve = async_to_streamed_response_wrapper(
             annotations.retrieve,
-        )
-        self.update = async_to_streamed_response_wrapper(
-            annotations.update,
         )
         self.list = async_to_streamed_response_wrapper(
             annotations.list,

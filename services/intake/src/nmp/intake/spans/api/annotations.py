@@ -19,19 +19,20 @@ from nmp.intake.spans.api.annotations_schemas import (
     AnnotationFilter,
     AnnotationInput,
     AnnotationSortField,
-    AnnotationUpdate,
+    annotation_from_domain,
+    annotation_input_to_domain_fields,
 )
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access, validate_list_query_params
 from nmp.intake.spans.api.query_filters import (
     filter_comparisons,
     require_datetime_value,
     require_enum_value,
+    require_float_value,
     require_string_value,
 )
 from nmp.intake.spans.domain import Annotation as DomainAnnotation
 from nmp.intake.spans.domain import AnnotationKind, AnnotationListFilter
 from nmp.intake.spans.service import AnnotationNotFoundError
-from pydantic import ValidationError
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Annotations"
@@ -51,23 +52,17 @@ async def create_annotation(
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> Annotation:
     now = datetime.now(timezone.utc)
+    fields = annotation_input_to_domain_fields(body.root)
     domain_annotation = DomainAnnotation(
         annotation_id=f"ann-{uuid4().hex}",
         workspace=workspace,
-        span_id=body.span_id,
-        session_id=body.session_id,
-        kind=body.kind,
-        name=body.name,
-        value_text=body.value_text,
-        value_numeric=body.value_numeric,
-        text=body.text,
-        metadata=body.metadata,
         created_by=_resolve_created_by(auth_client),
         created_at=now,
         ingested_at=now,
+        **fields,
     )
     saved = await service.create_annotation(domain_annotation)
-    return Annotation.from_domain(saved)
+    return annotation_from_domain(saved)
 
 
 @router.get(
@@ -96,7 +91,7 @@ async def list_annotations(
         page_size=page_size,
         sort=sort.value,
     )
-    rows = [Annotation.from_domain(item) for item in result.data]
+    rows = [annotation_from_domain(item) for item in result.data]
     return Page[Annotation](
         data=rows,
         pagination=result.pagination,
@@ -124,49 +119,7 @@ async def get_annotation(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Annotation {workspace}/{annotation_id} not found",
         ) from None
-    return Annotation.from_domain(annotation)
-
-
-@router.patch(
-    "/v2/workspaces/{workspace}/annotations/{annotation_id}",
-    response_model=Annotation,
-    response_model_exclude_none=True,
-    tags=[API_TAG],
-    responses={404: {"description": "Annotation not found"}},
-)
-async def update_annotation(
-    workspace: str,
-    annotation_id: str,
-    body: AnnotationUpdate,
-    service: SpansServiceDep,
-) -> Annotation:
-    try:
-        existing = await service.get_annotation(workspace=workspace, annotation_id=annotation_id)
-    except AnnotationNotFoundError:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Annotation {workspace}/{annotation_id} not found",
-        ) from None
-
-    # Merge update onto existing, then re-validate against the kind.
-    try:
-        merged = _merge_update(existing, body)
-    except ValidationError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            # ``include_context=False`` strips ValueError objects that aren't JSON-serializable.
-            detail=exc.errors(include_context=False),
-        ) from None
-    try:
-        updated = await service.update_annotation(merged)
-    except AnnotationNotFoundError:
-        # Concurrent delete raced the patch: the row vanished between the read above
-        # and the save inside the service. Surface as 404 rather than 500.
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Annotation {workspace}/{annotation_id} not found",
-        ) from None
-    return Annotation.from_domain(updated)
+    return annotation_from_domain(annotation)
 
 
 @router.delete(
@@ -189,21 +142,6 @@ async def delete_annotation(
         ) from None
 
 
-@router.get(
-    "/v2/workspaces/{workspace}/spans/{span_id}/annotations",
-    response_model=list[Annotation],
-    response_model_exclude_none=True,
-    tags=[API_TAG],
-)
-async def list_annotations_for_span(
-    workspace: str,
-    span_id: str,
-    service: SpansServiceDep,
-) -> list[Annotation]:
-    annotations = await service.list_annotations_for_span(workspace=workspace, span_id=span_id)
-    return [Annotation.from_domain(item) for item in annotations]
-
-
 def _resolve_created_by(auth_client: AuthClient) -> str | None:
     if not getattr(auth_client, "auth_enabled", False):
         return None
@@ -222,6 +160,12 @@ def _annotation_filter(workspace: str, parsed: ParsedFilter) -> AnnotationListFi
             filters.kind = require_enum_value(comparison, AnnotationKind)
         elif comparison.field == "name":
             filters.name = require_string_value(comparison)
+        elif comparison.field == "value_text":
+            filters.value_text = require_string_value(comparison)
+        elif comparison.field == "value_numeric" and comparison.operator == FilterOperator.GTE:
+            filters.value_numeric_gte = require_float_value(comparison)
+        elif comparison.field == "value_numeric" and comparison.operator == FilterOperator.LTE:
+            filters.value_numeric_lte = require_float_value(comparison)
         elif comparison.field == "created_by":
             filters.created_by = require_string_value(comparison)
         elif comparison.field == "created_at" and comparison.operator == FilterOperator.GTE:
@@ -234,47 +178,3 @@ def _annotation_filter(workspace: str, parsed: ParsedFilter) -> AnnotationListFi
                 detail=f"Unsupported annotation filter: {comparison.field} {comparison.operator.value}",
             )
     return filters
-
-
-def _merge_update(existing: DomainAnnotation, body: AnnotationUpdate) -> DomainAnnotation:
-    """Apply a PATCH body to an existing annotation, preserving identity + kind.
-
-    Only the value fields are updatable; kind, target, and authorship are immutable.
-    The merged annotation is re-validated by AnnotationInput's kind-aware validator
-    via a roundtrip through Pydantic so the patched row stays well-formed.
-    """
-
-    from nmp.intake.spans.api.annotations_schemas import _AnnotationFieldsMixin
-
-    merged_name = body.name if body.name is not None else existing.name
-    merged_value_text = body.value_text if body.value_text is not None else existing.value_text
-    merged_value_numeric = body.value_numeric if body.value_numeric is not None else existing.value_numeric
-    merged_text = body.text if body.text is not None else existing.text
-    merged_metadata = body.metadata if body.metadata is not None else existing.metadata
-
-    # Re-validate the merged result against the kind so PATCH can't produce an invalid row.
-    _AnnotationFieldsMixin(
-        kind=existing.kind,
-        name=merged_name,
-        value_text=merged_value_text,
-        value_numeric=merged_value_numeric,
-        text=merged_text,
-        metadata=merged_metadata,
-    )
-
-    now = datetime.now(timezone.utc)
-    return DomainAnnotation(
-        annotation_id=existing.annotation_id,
-        workspace=existing.workspace,
-        span_id=existing.span_id,
-        session_id=existing.session_id,
-        kind=existing.kind,
-        name=merged_name,
-        value_text=merged_value_text,
-        value_numeric=merged_value_numeric,
-        text=merged_text,
-        metadata=merged_metadata,
-        created_by=existing.created_by,
-        created_at=existing.created_at,
-        ingested_at=now,
-    )

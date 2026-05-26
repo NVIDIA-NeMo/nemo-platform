@@ -17,21 +17,25 @@
 
 from __future__ import annotations
 
-from typing import Dict
-from typing_extensions import TypedDict
+from typing_extensions import Literal, Required, TypedDict
 
-__all__ = ["AnnotationUpdateParams"]
+__all__ = ["FeedbackAnnotationParam"]
 
 
-class AnnotationUpdateParams(TypedDict, total=False):
-    workspace: str
+class FeedbackAnnotationParam(TypedDict, total=False):
+    """Thumbs-up / thumbs-down feedback on a span or session."""
 
-    metadata: Dict[str, object]
+    kind: Required[Literal["feedback"]]
+    """Discriminator. Always `feedback` for this variant."""
 
-    name: str
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
 
-    text: str
+    value: Required[Literal["positive", "negative"]]
+    """Sentiment of the feedback."""
 
-    value_numeric: float
+    span_id: str
+    """Id of the span this annotation applies to.
 
-    value_text: str
+    Omit to annotate the whole session instead of a specific span.
+    """

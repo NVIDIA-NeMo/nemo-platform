@@ -17,4 +17,16 @@
 
 from __future__ import annotations
 
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing import Union
+from typing_extensions import TypeAlias
+
+from .note_annotation_param import NoteAnnotationParam
+from .label_annotation_param import LabelAnnotationParam
+from .feedback_annotation_param import FeedbackAnnotationParam
+from .metadata_annotation_param import MetadataAnnotationParam
+
+__all__ = ["AnnotationParam"]
+
+AnnotationParam: TypeAlias = Union[
+    FeedbackAnnotationParam, NoteAnnotationParam, MetadataAnnotationParam, LabelAnnotationParam
+]

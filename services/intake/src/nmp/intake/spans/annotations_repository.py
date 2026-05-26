@@ -113,20 +113,6 @@ class AnnotationsRepository:
         rows = [dict_to_row(row, ANNOTATION_COLUMNS)]
         await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
 
-    async def list_annotations_for_span(self, *, workspace: str, span_id: str) -> list[Annotation]:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("annotations")} FINAL
-            WHERE workspace = %(workspace)s
-              AND span_id = %(span_id)s
-              AND is_deleted = 0
-            ORDER BY created_at ASC, annotation_id ASC
-            """,
-            parameters={"workspace": workspace, "span_id": span_id},
-        )
-        return [_row_to_annotation(row) for row in result_rows(result)]
-
 
 def _annotation_where(filters: AnnotationListFilter) -> tuple[str, dict[str, Any]]:
     clauses = ["workspace = %(workspace)s", "is_deleted = 0"]
@@ -143,6 +129,15 @@ def _annotation_where(filters: AnnotationListFilter) -> tuple[str, dict[str, Any
     if filters.name is not None:
         clauses.append("name = %(name)s")
         parameters["name"] = filters.name
+    if filters.value_text is not None:
+        clauses.append("value_text = %(value_text)s")
+        parameters["value_text"] = filters.value_text
+    if filters.value_numeric_gte is not None:
+        clauses.append("value_numeric >= %(value_numeric_gte)s")
+        parameters["value_numeric_gte"] = filters.value_numeric_gte
+    if filters.value_numeric_lte is not None:
+        clauses.append("value_numeric <= %(value_numeric_lte)s")
+        parameters["value_numeric_lte"] = filters.value_numeric_lte
     if filters.created_by is not None:
         clauses.append("created_by = %(created_by)s")
         parameters["created_by"] = filters.created_by

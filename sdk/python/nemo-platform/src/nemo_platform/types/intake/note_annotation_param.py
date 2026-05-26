@@ -17,4 +17,25 @@
 
 from __future__ import annotations
 
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from typing_extensions import Literal, Required, TypedDict
+
+__all__ = ["NoteAnnotationParam"]
+
+
+class NoteAnnotationParam(TypedDict, total=False):
+    """Free-text note attached to a span or session."""
+
+    kind: Required[Literal["note"]]
+    """Discriminator. Always `note` for this variant."""
+
+    session_id: Required[str]
+    """Id of the session this annotation belongs to. Always required."""
+
+    text: Required[str]
+    """The note content. 1 to 10,000 characters."""
+
+    span_id: str
+    """Id of the span this annotation applies to.
+
+    Omit to annotate the whole session instead of a specific span.
+    """

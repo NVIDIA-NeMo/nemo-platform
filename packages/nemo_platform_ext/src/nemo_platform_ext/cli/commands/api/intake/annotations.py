@@ -34,28 +34,15 @@ def create_annotations(
     name: Annotated[str | None, typer.Argument()] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     kind: Annotated[
-        Literal["feedback", "label", "note", "metadata"] | None, typer.Option("--kind", help="(required)")
+        Literal["feedback", "note", "metadata", "label"] | None, typer.Option("--kind", help="(required)")
     ] = None,
-    session_id: Annotated[
-        str | None, typer.Option("--session-id", help="Session id this annotation belongs to. (required)")
-    ] = None,
-    metadata: Annotated[str | None, typer.Option("--metadata", help="JSON string")] = None,
-    span_id: Annotated[
-        str | None,
-        typer.Option(
-            "--span-id",
-            help="Target span id. Optional when annotating a whole session. Loose target policy — not validated.",
-        ),
-    ] = None,
+    session_id: Annotated[str | None, typer.Option("--session-id", help="(required)")] = None,
+    value: Annotated[Literal["positive", "negative"] | str | float | None, typer.Option("--value")] = None,
+    span_id: Annotated[str | None, typer.Option("--span-id")] = None,
     text: Annotated[str | None, typer.Option("--text")] = None,
-    value_numeric: Annotated[float | None, typer.Option("--value-numeric")] = None,
-    value_text: Annotated[str | None, typer.Option("--value-text")] = None,
-    exist_ok: Annotated[
-        bool | None,
-        typer.Option(
-            "--exist-ok", help="Do not raise an error if the resource already exists. Returns the existing resource."
-        ),
-    ] = None,
+    metadata: Annotated[str | None, typer.Option("--metadata", help="JSON string")] = None,
+    value_type: Annotated[Literal["text", "numeric"] | None, typer.Option("--value-type")] = None,
+    exist_ok: Annotated[bool | None, typer.Option("--exist-ok")] = None,
     input_file: Annotated[
         str | None,
         typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
@@ -66,7 +53,7 @@ def create_annotations(
     ] = None,
     output_format: EntityOutputFormatOption = None,
 ) -> None:
-    """Create Annotation
+    """Create annotations.
 
     [bold red]Required fields:[/] kind, session_id
 
@@ -89,18 +76,18 @@ def create_annotations(
         input_payload["kind"] = kind
     if session_id is not None:
         input_payload["session_id"] = session_id
-    if metadata is not None:
-        input_payload["metadata"] = read_payload("metadata", metadata)
-    if name is not None:
-        input_payload["name"] = name
+    if value is not None:
+        input_payload["value"] = value
     if span_id is not None:
         input_payload["span_id"] = span_id
     if text is not None:
         input_payload["text"] = text
-    if value_numeric is not None:
-        input_payload["value_numeric"] = value_numeric
-    if value_text is not None:
-        input_payload["value_text"] = value_text
+    if metadata is not None:
+        input_payload["metadata"] = read_payload("metadata", metadata)
+    if value_type is not None:
+        input_payload["value_type"] = value_type
+    if name is not None:
+        input_payload["name"] = name
     if exist_ok is not None:
         input_payload["exist_ok"] = exist_ok
     # Validate required fields are present after merging
@@ -110,7 +97,7 @@ def create_annotations(
         "intake annotations create",
         {
             "kind": "(required)",
-            "session_id": "Session id this annotation belongs to. (required)",
+            "session_id": "(required)",
         },
     )
 
@@ -164,7 +151,7 @@ def list_annotations(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  created_at: {gte: str, lte: str}\n\nFilter annotations by span_id, session_id, kind, name, created_by, and created_at range.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  created_at: {gte: str, lte: str}\n  value_numeric: {gte: float, lte: float}\n\nFilter annotations by span_id, session_id, kind, name, created_by, and created_at range.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
@@ -177,6 +164,9 @@ def list_annotations(
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
     ] = None,
     filter_span_id: Annotated[str | None, typer.Option("--filter.span-id", rich_help_panel="Filter Options")] = None,
+    filter_value_text: Annotated[
+        str | None, typer.Option("--filter.value-text", rich_help_panel="Filter Options")
+    ] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
     sort: Annotated[Literal["created_at", "-created_at"] | None, typer.Option("--sort")] = None,
@@ -208,6 +198,7 @@ def list_annotations(
             name=filter_name,
             session_id=filter_session_id,
             span_id=filter_span_id,
+            value_text=filter_value_text,
         ),
         page=page,
         page_size=page_size,
@@ -263,76 +254,6 @@ def retrieve_annotations(
 
     client = state.get_client()
     result = client.intake.annotations.retrieve(annotation_id, **kwargs)
-
-    format_output(
-        result,
-        is_list=False,
-        output_format=output_format,
-        no_truncate=state.get_no_truncate(),
-        timestamp_format=state.get_timestamp_format(),
-    )
-
-
-@app.command("update")
-@collect_warnings
-@handle_errors
-def update_annotations(
-    ctx: typer.Context,
-    annotation_id: Annotated[str, typer.Argument()],
-    name: Annotated[str, typer.Argument()],
-    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    metadata: Annotated[str | None, typer.Option("--metadata", help="JSON string")] = None,
-    text: Annotated[str | None, typer.Option("--text")] = None,
-    value_numeric: Annotated[float | None, typer.Option("--value-numeric")] = None,
-    value_text: Annotated[str | None, typer.Option("--value-text")] = None,
-    input_file: Annotated[
-        str | None,
-        typer.Option("--input-file", help="Path to JSON file (use '-' for stdin)", rich_help_panel="Input Options"),
-    ] = None,
-    input_data: Annotated[
-        str | None,
-        typer.Option("--input-data", help="Input data for the request (JSON or YAML)", rich_help_panel="Input Options"),
-    ] = None,
-    output_format: EntityOutputFormatOption = None,
-) -> None:
-    """Update Annotation
-
-    [green]Examples:[/]
-    nemo intake annotations update <annotation_id> <name> --input-file config.json
-    nemo intake annotations update <annotation_id> <name> --input-data '{"field": "value"}'
-    echo '{"json": "data"}' | nemo intake annotations update <annotation_id> <name> --input-file -
-    nemo intake annotations update <annotation_id> <name> --<option> "value"
-    """
-    # Read base input (optional if all fields provided via flags)
-    if input_file or input_data:
-        input_payload = read_data_input_with_flags(input_file=input_file, input_data=input_data)
-    else:
-        input_payload = {}
-
-    # Apply CLI flag overrides (flags take precedence)
-    if workspace is not None:
-        input_payload["workspace"] = workspace
-    if metadata is not None:
-        input_payload["metadata"] = read_payload("metadata", metadata)
-    if name is not None:
-        input_payload["name"] = name
-    if text is not None:
-        input_payload["text"] = text
-    if value_numeric is not None:
-        input_payload["value_numeric"] = value_numeric
-    if value_text is not None:
-        input_payload["value_text"] = value_text
-
-    all_kwargs = {"annotation_id": annotation_id, **input_payload}
-
-    state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
-
-    if handle_code_generation(["intake", "annotations"], "update", all_kwargs, output_format, state):
-        return
-
-    client = state.get_client()
-    result = client.intake.annotations.update(**all_kwargs)
 
     format_output(
         result,

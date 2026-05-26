@@ -229,6 +229,9 @@ class AnnotationListFilter(BaseModel):
     session_id: str | None = None
     kind: AnnotationKind | None = None
     name: str | None = None
+    value_text: str | None = None
+    value_numeric_gte: float | None = None
+    value_numeric_lte: float | None = None
     created_by: str | None = None
     created_at_gte: datetime | None = None
     created_at_lte: datetime | None = None

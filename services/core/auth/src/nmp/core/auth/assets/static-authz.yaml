@@ -181,8 +181,6 @@ authz:
           description: "List intake annotations"
         read:
           description: "Read intake annotations"
-        update:
-          description: "Update intake annotations"
         delete:
           description: "Delete intake annotations"
       events:
@@ -416,7 +414,6 @@ authz:
       - inference.virtual-models.update
       - intake.annotations.create
       - intake.annotations.delete
-      - intake.annotations.update
       - intake.apps.create
       - intake.apps.delete
       - intake.apps.update
@@ -1223,12 +1220,6 @@ authz:
         scopes:
         - intake:read
         - platform:read
-      patch:
-        permissions:
-        - intake.annotations.update
-        scopes:
-        - intake:write
-        - platform:write
     /apis/intake/v2/workspaces/{workspace}/apps:
       get:
         permissions:
@@ -1418,13 +1409,6 @@ authz:
       get:
         permissions:
         - intake.spans.read
-        scopes:
-        - intake:read
-        - platform:read
-    /apis/intake/v2/workspaces/{workspace}/spans/{span_id}/annotations:
-      get:
-        permissions:
-        - intake.annotations.list
         scopes:
         - intake:read
         - platform:read

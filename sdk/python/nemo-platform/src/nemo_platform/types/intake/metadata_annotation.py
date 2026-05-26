@@ -15,11 +15,38 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import List
-from typing_extensions import TypeAlias
+from typing import Dict, Optional
+from datetime import datetime
+from typing_extensions import Literal
 
-from ..annotation import Annotation
+from ..._models import BaseModel
 
-__all__ = ["AnnotationListResponse"]
+__all__ = ["MetadataAnnotation"]
 
-AnnotationListResponse: TypeAlias = List[Annotation]
+
+class MetadataAnnotation(BaseModel):
+    """Structured key/value metadata attached to a span or session."""
+
+    annotation_id: str
+
+    created_at: datetime
+
+    ingested_at: datetime
+
+    kind: Literal["metadata"]
+    """Discriminator. Always `metadata` for this variant."""
+
+    metadata: Dict[str, object]
+    """The metadata key/value pairs."""
+
+    session_id: str
+
+    workspace: str
+
+    created_by: Optional[str] = None
+
+    span_id: Optional[str] = None
+    """
+    Id of the span this annotation applies to, or omitted for session-level
+    annotations.
+    """
