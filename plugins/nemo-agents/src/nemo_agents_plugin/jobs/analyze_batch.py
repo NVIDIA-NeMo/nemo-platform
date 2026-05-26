@@ -29,8 +29,9 @@ class AnalyzeBatchJob(NemoJob):
     """Analyze a batch of eval-suite results — mechanical clustering + LLM hypotheses."""
 
     name: ClassVar[str] = "analyze"
-    description: ClassVar[str] = "Analyze a batch — platform-job form. Daily use: `nemo agents analyze`."
+    description: ClassVar[str] = "Analyze a batch. Use `nemo agents analyze run`."
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = AnalyzeBatchConfig
 
     def run(self, config: dict) -> dict:
         from nemo_agents_plugin.improvement.analysis.llm import generate_gap_analysis

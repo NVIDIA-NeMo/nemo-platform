@@ -11,7 +11,7 @@ plugin commands; the canonical NeMo self-improvement config lives at
 `.agent-improver.yml` in the repo root and is invoked as:
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 **New here?** Read [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the
@@ -26,26 +26,27 @@ asks to "improve the agent" / "run agent evals" / etc.
 
 ## CLI surface
 
-Three new subcommands extend `nemo agents`. Each has two forms:
+Three new auto-injected job subcommands extend `nemo agents`. Use `run`
+for local execution, `submit` for cluster dispatch, and `explain` for
+schema inspection.
 
-### Friendly form (daily use)
-
-Flag-based, with optional `--config <path.yml>` for repeatable / multi-parameter setups:
+`run` accepts generated field flags and `--spec-file <path.yml>` for
+repeatable / multi-parameter setups:
 
 ```bash
 # Quick: all flags
-nemo agents evaluate-suite \
-    --evals ./my-evals --agent . --jobs 4 --filter "auth-*"
+nemo agents evaluate-suite run \
+    --evals ./my-evals --agent . --concurrency 4 --filter-glob "auth-*"
 
-nemo agents analyze --batch ./runs/batch-2026-04-28 --format md
+nemo agents analyze run --batch ./runs/batch-2026-04-28
 
-nemo agents optimize-skills \
+nemo agents optimize-skills run \
     --evals ./my-evals --agent . --skills-path .agents/skills \
     --iterations 3 --repeats 3
 
-# Or: stash params in a config file (CLI flags override file values)
-nemo agents optimize-skills --config ./.agent-improver.yml
-nemo agents optimize-skills --config ./.agent-improver.yml --iterations 10  # override
+# Or: stash params in a config file (field flags override file values)
+nemo agents optimize-skills run --spec-file ./.agent-improver.yml
+nemo agents optimize-skills run --spec-file ./.agent-improver.yml --iterations 10
 ```
 
 Example `.agent-improver.yml`:
@@ -67,17 +68,14 @@ full_verification: false
 open_pr: false          # set true to auto-open a GitLab MR via glab
 ```
 
-### Platform-job form (auto-injected, for cluster dispatch)
-
-Same underlying job, but invoked with `--spec` / `--spec-file`. Useful when submitting via the platform scheduler rather than running locally:
+Cluster dispatch uses the same config schema via `submit`:
 
 ```bash
-nemo agents optimize-skills run --spec-file ./.agent-improver.yml
 nemo agents optimize-skills submit --spec-file ./.agent-improver.yml --cluster <url>
 nemo agents optimize-skills explain
 ```
 
-The friendly and platform-job forms share the same Pydantic config schema, so the same YAML works for both.
+The same YAML works for `run` and `submit`.
 
 ## Layout
 

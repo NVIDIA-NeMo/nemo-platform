@@ -17,7 +17,7 @@ evaluation result before promotion.
 | Suggestion type | Signal | Result |
 |-----------------|--------|--------|
 | Model optimization | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model |
-| Skill optimization | The agent uses skills and has an evaluation suite | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
+| Skill optimization | The agent uses skills and has an evaluation suite | Suggests running `nemo agents optimize-skills run` to improve skill files and keep changes that pass evaluation |
 | Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize run` for NAT prompt or parameter tuning |
 | New model scan | Difference between the current model list and the previous optimizer snapshot | Suggests evaluating or auditing newly available models |
 
@@ -179,10 +179,11 @@ and keeps the change only when the evaluation result improves.
 === "CLI"
 
     ```bash
-    nemo agents optimize-skills --config .agent-improver.yml
+    nemo agents optimize-skills run --spec-file .agent-improver.yml
     ```
 
-    Use `--open-pr` when you want the loop to prepare a reviewable branch.
+    Set `open_pr: true` in `.agent-improver.yml` when you want the loop to
+    prepare a reviewable branch automatically.
 
     A sample `.agent-improver.yml` is in
     `plugins/nemo-agents/examples/agent-improver.example.yml`.
@@ -204,7 +205,7 @@ and keeps the change only when the evaluation result improves.
 
     - Confirms the agent uses skills (a `--skills-path`, a `.agent-improver.yml`,
       or skill files referenced from the config).
-    - Runs `nemo agents optimize-skills` against the configured skills directory.
+    - Runs `nemo agents optimize-skills run` against the configured skills directory.
     - Re-runs evaluation and keeps the change only when scores improve.
     - Persists outcomes to the `nemo-agent-optimizer` fileset.
 
@@ -216,7 +217,7 @@ and keeps the change only when the evaluation result improves.
 
     NemoJobScheduler().run_local(
         OptimizeSkillsJob,
-        {"config": ".agent-improver.yml"},
+        {"evals": "./tests/agentic", "agent": ".", "skills_path": ".agents/skills"},
         workspace="default",
     )
     ```

@@ -6,9 +6,6 @@
 Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. POC: invoke as
 
     nemo agents evaluate-suite run --spec '{"evals": "./my-evals", "concurrency": 4}'
-
-The richer flag-based form (``nemo agents evaluate-suite --evals ... --agent ...``)
-is added directly to the CLI in ``cli.py``.
 """
 
 from __future__ import annotations
@@ -42,9 +39,10 @@ class EvaluateSuiteJob(NemoJob):
 
     name: ClassVar[str] = "evaluate-suite"
     description: ClassVar[str] = (
-        "Run a directory of containerized eval tasks (Harbor or NAT) — platform-job form. Daily use: `nemo agents evaluate-suite`."
+        "Run a directory of containerized eval tasks (Harbor or NAT). Use `nemo agents evaluate-suite run`."
     )
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteConfig
 
     def run(self, config: dict) -> dict:
         from nemo_agents_plugin.improvement import preflight

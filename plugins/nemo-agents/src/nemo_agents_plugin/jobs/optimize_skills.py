@@ -52,8 +52,9 @@ class OptimizeSkillsJob(NemoJob):
     """Run the optimize-skills loop end-to-end."""
 
     name: ClassVar[str] = "optimize-skills"
-    description: ClassVar[str] = "Optimize-skills loop — platform-job form. Daily use: `nemo agents optimize-skills`."
+    description: ClassVar[str] = "Optimize-skills loop. Use `nemo agents optimize-skills run`."
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = OptimizeSkillsConfig
 
     def run(self, config: dict) -> dict:
         from nemo_agents_plugin.improvement import preflight

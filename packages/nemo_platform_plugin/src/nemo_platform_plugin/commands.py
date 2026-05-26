@@ -17,15 +17,15 @@ Two parallel helpers, one per primitive:
 :func:`add_job_commands` is the bridge between the ``nemo.jobs`` and
 ``nemo.cli`` surfaces. The platform calls it at startup for each plugin that
 has registered both a CLI group and jobs, injecting a generated **sub-group**
-for every job into the plugin's :class:`typer.Typer` group. Each sub-group
-exposes three verbs — ``run``, ``submit``, ``explain`` — matching
-:class:`~nemo_platform_plugin.scheduler.NemoJobScheduler`.
+for every job into the plugin's :class:`typer.Typer` group.
+Each generated sub-group exposes three verbs — ``run``, ``submit``,
+``explain`` — matching :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler`.
 
 Plugin authors do **not** call this themselves — it is called automatically
 by the platform's CLI loader. The result is that each job becomes available
 as::
 
-    nemo <plugin> <job-name> run      [--config ...] [--config-file ...]
+    nemo <plugin> <job-name> run      [--spec ...] [--spec-file ...]
     nemo <plugin> <job-name> submit   [--profile ...] [--cluster ...] [-o ...]
     nemo <plugin> <job-name> explain  [--profile ...] [--cluster ...]
 
@@ -43,8 +43,8 @@ Generated command interface
 ---------------------------
 
 ``run``
-    Execute the job in-process. Accepts ``--config <json>`` (default ``{}``)
-    and ``--config-file <path>`` (takes precedence over ``--config``). The
+    Execute the job in-process. Accepts ``--spec <json>`` (default ``{}``)
+    and ``--spec-file <path>`` (takes precedence over ``--spec``). The
     scheduler validates against :attr:`~nemo_platform_plugin.job.NemoJob.spec_schema`
     / :attr:`~nemo_platform_plugin.job.NemoJob.input_spec_schema` when declared.
 
@@ -68,7 +68,7 @@ Given::
 
 The platform generates::
 
-    $ nemo example say-hello run --config '{"name": "Claude"}'
+    $ nemo example say-hello run --spec '{"name": "Claude"}'
     {
       "result": "Hello, Claude!"
     }

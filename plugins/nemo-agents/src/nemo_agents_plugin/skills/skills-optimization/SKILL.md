@@ -12,33 +12,32 @@ already has an eval suite (Harbor `task.toml` or NAT `workflow.yml` tasks):
 
 | Command | Purpose |
 |---------|---------|
-| `nemo agents evaluate-suite` | Run a directory of containerized eval tasks against the agent |
-| `nemo agents analyze` | Cluster failures, surface regressions, generate hypotheses |
-| `nemo agents optimize-skills` | Full loop: run evals → analyze → have Claude edit skills → verify → keep or discard |
+| `nemo agents evaluate-suite run` | Run a directory of containerized eval tasks against the agent |
+| `nemo agents analyze run` | Cluster failures, surface regressions, generate hypotheses |
+| `nemo agents optimize-skills run` | Full loop: run evals → analyze → have Claude edit skills → verify → keep or discard |
 
-All three accept `--config <path.yml>` (file form) and individual `--flag`
-overrides (CLI flags win when explicitly set). Same Pydantic schema works
-with the auto-injected platform-job subcommands (`evaluate-suite run`
-/ `analyze run` / `optimize-skills run`, plus `submit` / `explain`)
-for cluster dispatch.
+All three are auto-injected job commands. Use `run` for local execution,
+`--spec-file <path.yml>` for YAML/JSON config files, and generated
+per-field flags under `run` for overrides. Use `submit` / `explain` for
+cluster dispatch and schema inspection.
 
 ## When to recommend each command
 
-- "How are my agent's evals doing?" → `evaluate-suite` (collect data) then `analyze` (interpret it).
-- "Why did these evals fail?" / "What's slow?" → `analyze` on an existing batch directory.
-- "Improve / optimize / fix my agent" → `optimize-skills` (only after confirming a `.agent-improver.yml` exists or asking the user for `--evals` / `--agent` / `--skills-path`).
+- "How are my agent's evals doing?" → `evaluate-suite run` (collect data) then `analyze run` (interpret it).
+- "Why did these evals fail?" / "What's slow?" → `analyze run` on an existing batch directory.
+- "Improve / optimize / fix my agent" → `optimize-skills run` (only after confirming a `.agent-improver.yml` exists or asking the user for `--evals` / `--agent` / `--skills-path`).
 
 ## Self-referential example: improve NeMo itself
 
 The Platform repo ships a canonical `.agent-improver.yml` at its root. Running
-`nemo agents optimize-skills --config .agent-improver.yml` from the repo
+`nemo agents optimize-skills run --spec-file .agent-improver.yml` from the repo
 root improves the skills under `.agents/skills/` based on the `tests/agentic-use/`
 Harbor evals. This supplants the older standalone tools/self_improve/ package.
 
 ```bash
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 When the user wants to improve **another** agent, they copy
@@ -56,7 +55,7 @@ repo, retarget the paths, and run the same command.
 
   ```bash
   tmux new -s improve
-  nemo agents optimize-skills --config .agent-improver.yml
+  nemo agents optimize-skills run --spec-file .agent-improver.yml
   # detach: Ctrl-B D
   # reattach: tmux attach -t improve
   ```
@@ -64,7 +63,7 @@ repo, retarget the paths, and run the same command.
 - **Variance:** the default verdict is single-trial. Cold-cache effects on
   containerized agentic runs commonly produce 20-40% wallclock variance
   trial-to-trial, so single-trial verdicts can commit noise as
-  "improvement". For verdicts you can trust, recommend `--repeats 3` (or
+  "improvement". For verdicts you can trust, recommend `--repeats 3` on `run` (or
   set `repeats: 3` in the YAML). Median aggregation + majority-vote pass/fail.
 
 - **The eval directory is immutable.** The loop's post-edit guard reverts
@@ -74,7 +73,7 @@ repo, retarget the paths, and run the same command.
 
 - **`open_pr` is opt-in.** Default behaviour is "verified diff producer" —
   the loop produces a local branch with a clear diff for human review.
-  Recommend `--open-pr` only when the user explicitly wants automation
+  Recommend `--open-pr` on `run` only when the user explicitly wants automation
   end-to-end. With `--open-pr`, the loop detects `gh` (GitHub) or `glab`
   (GitLab) and dispatches accordingly.
 
@@ -113,21 +112,21 @@ reading the first error in any failure is usually enough.
 
 ```bash
 # Run a single eval to debug
-nemo agents evaluate-suite --evals tests/agentic-use \
-  --agent . --filter auth-authorization-cli --jobs 1
+nemo agents evaluate-suite run --evals tests/agentic-use \
+  --agent . --filter-glob auth-authorization-cli --concurrency 1
 
 # Run the full suite with variance reduction
-nemo agents evaluate-suite --config .agent-improver.yml --repeats 3
+nemo agents evaluate-suite run --spec-file .agent-improver.yml --repeats 3
 
 # Analyze a previous batch
-nemo agents analyze --batch ./runs/batch-2026-04-30__09-10-42 --format md
+nemo agents analyze run --batch ./runs/batch-2026-04-30__09-10-42
 
 # One iteration of the loop, scoped to one eval
-nemo agents optimize-skills --config .agent-improver.yml \
-  --filter entities-basic-cli-easy --iterations 1
+nemo agents optimize-skills run --spec-file .agent-improver.yml \
+  --filter-glob entities-basic-cli-easy --iterations 1
 
 # Full loop with auto-PR
-nemo agents optimize-skills --config .agent-improver.yml --open-pr
+nemo agents optimize-skills run --spec-file .agent-improver.yml --open-pr
 ```
 
 ## Don't do

@@ -78,13 +78,13 @@ This is pure config inspection — no telemetry download required.
 
 If the agent uses skills (its repo has a `--skills-path`, or
 `.agent-improver.yml` is present, or its config references skill files) **and**
-`nemo agents optimize-skills` has not been run since the last optimizer
+`nemo agents optimize-skills run` has not been run since the last optimizer
 snapshot, suggest running it.
 
 Suggested actions:
 
-- `nemo agents optimize-skills --config .agent-improver.yml`
-  (or `--evals … --agent … --skills-path …` if no config file exists)
+- `nemo agents optimize-skills run --spec-file .agent-improver.yml`
+  (or `run --evals … --agent … --skills-path …` if no config file exists)
 - After it returns, apply the resulting skill diff to the agent and redeploy.
 
 See **the `nemo-agent-skills-optimization` skill** for the full optimize-skills loop
@@ -208,7 +208,7 @@ survives across reads.
 | `type` value | Meaning |
 |--------------|---------|
 | `model_optimization` | Switchyard routing split or smaller-model fit |
-| `skill_optimization` | `nemo agents optimize-skills` is recommended |
+| `skill_optimization` | `nemo agents optimize-skills run` is recommended |
 | `prompt_optimization` | `nemo agents optimize` is recommended |
 | `new_model_scan` | New model appeared since last snapshot |
 
@@ -314,8 +314,8 @@ nemo models list --filter.name nemotron   # find Nemotron candidates
 # Optimization commands (see also: nemo-agent-skills-optimization skill)
 nemo agents evaluate run --agent <name> --eval-config <yaml>
 nemo agents optimize run --agent <name> --optimize-config <yaml>
-nemo agents optimize-skills --config .agent-improver.yml
-nemo agents evaluate-suite --evals <dir> --agent <name>
+nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents evaluate-suite run --evals <dir> --agent <name>
 
 # Files service
 nemo files list <fileset>
@@ -339,7 +339,7 @@ nemo audit jobs create <job-name> --spec '{"config": "default/<config>", "target
 - **New model diff**: set subtraction between current model list and prior
   snapshot model list. Pure computation.
 - **Skill / prompt optimization gating**: check whether
-  `iterations[].timestamp` from a prior `nemo agents optimize-skills` /
+  `iterations[].timestamp` from a prior `nemo agents optimize-skills run` /
   `nemo agents optimize` run is newer than the last snapshot.
 
 **Requires execution:**

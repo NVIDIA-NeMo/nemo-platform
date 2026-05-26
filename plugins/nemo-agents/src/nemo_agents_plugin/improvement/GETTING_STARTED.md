@@ -57,7 +57,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents evaluate-suite --config .agent-improver.yml
+nemo agents evaluate-suite run --spec-file .agent-improver.yml
 ```
 
 Output lands in `./runs/batch-<timestamp>/` with `report.md` / `report.csv`
@@ -67,7 +67,7 @@ data is also written to `<batch_dir>/<eval-name>__trials.json`.
 ### 3. Inspect the results
 
 ```bash
-nemo agents analyze --batch ./runs/batch-<timestamp> --format md
+nemo agents analyze run --batch ./runs/batch-<timestamp>
 ```
 
 You'll get a markdown report with:
@@ -79,7 +79,7 @@ You'll get a markdown report with:
 For just the mechanical pass (no LLM, no API key needed):
 
 ```bash
-nemo agents analyze --batch ./runs/batch-<timestamp> --mechanical-only
+nemo agents analyze run --batch ./runs/batch-<timestamp> --mechanical-only
 ```
 
 ### 4. Run the optimize-skills loop
@@ -89,7 +89,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 The loop strips `CLAUDE_CODE_*` env markers when spawning `claude --print`,
@@ -127,7 +127,7 @@ NeMo Platform ships a working `.agent-improver.yml` at the repo root. Run from t
 repo root:
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 This is also the cheapest way to validate the workflow end-to-end on a
@@ -136,14 +136,14 @@ real agent.
 ### Scope to a single eval (debug / fast iteration)
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml \
-  --filter my-task-1 --iterations 1
+nemo agents optimize-skills run --spec-file .agent-improver.yml \
+  --filter-glob my-task-1 --iterations 1
 ```
 
 ### Use an existing batch as the baseline (skip the initial run)
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml \
+nemo agents optimize-skills run --spec-file .agent-improver.yml \
   --initial-batch ./runs/batch-2026-04-30__09-10-42
 ```
 
@@ -155,7 +155,7 @@ trial-to-trial). Recommended `repeats: 3` in the YAML or `--repeats 3`
 on the CLI:
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml --repeats 3
+nemo agents optimize-skills run --spec-file .agent-improver.yml --repeats 3
 ```
 
 Median across trials for duration / tokens / tool-calls; majority vote
@@ -164,7 +164,7 @@ for pass/fail with ties going to FAIL (conservative).
 ### Open a PR/MR automatically on improvement
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml --open-pr
+nemo agents optimize-skills run --spec-file .agent-improver.yml --open-pr
 ```
 
 The loop detects `gh` (GitHub remote) or `glab` (GitLab remote)
@@ -242,20 +242,14 @@ implementation, gated on plumbing ``workspace`` / ``agent_name`` /
 
 ## Related plugin commands (auto-injected)
 
-The improvement workflow commands all have an auto-injected job form
-for cluster dispatch via the platform scheduler. Same Pydantic schema,
-just different invocation:
+The improvement workflow commands are auto-injected job commands. Use
+`run` for local execution, `submit` for cluster dispatch, and `explain`
+for schema inspection:
 
 ```bash
-# Friendly form (daily use)
-nemo agents optimize-skills --config .agent-improver.yml
-
-# Platform-job form (cluster dispatch)
 nemo agents optimize-skills run --spec-file .agent-improver.yml
 nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
 nemo agents optimize-skills explain
 ```
 
-The friendly form is what users type day-to-day. The `run` / `submit` /
-`explain` subcommands are the platform-dispatch counterparts, served
-by the auto-injection machinery.
+The bare command root prints help; it does not run the job.

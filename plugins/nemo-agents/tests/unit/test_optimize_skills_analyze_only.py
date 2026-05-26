@@ -228,35 +228,41 @@ def test_optimize_skills_job_analyze_only_requires_initial_batch() -> None:
         OptimizeSkillsJob().run(cfg)
 
 
-def test_cli_analyze_only_requires_initial_batch_flag() -> None:
-    """The CLI handler rejects --analyze-only without --initial-batch."""
+def test_injected_optimize_skills_root_rejects_config_file(tmp_path: Path) -> None:
+    """The installed job CLI requires a verb; root-level --config is unsupported."""
     from nemo_agents_plugin.cli import AgentsCLI
-    from typer.testing import CliRunner
-
-    app = AgentsCLI().get_cli()
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "optimize-skills",
-            "--evals",
-            "/tmp/x",
-            "--analyze-only",
-        ],
-    )
-    assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output
-
-
-def test_cli_analyze_only_from_config_file_requires_initial_batch(tmp_path: Path) -> None:
-    """analyze_only=true in a --config YAML must also be guarded (not just the CLI flag)."""
-    from nemo_agents_plugin.cli import AgentsCLI
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+    from nemo_platform_plugin.commands import add_job_commands
     from typer.testing import CliRunner
 
     config = tmp_path / "config.yml"
-    config.write_text("analyze_only: true\nevals: /tmp/x\n")
+    config.write_text("analyze_only: true\nevals: /tmp/x\nagent: /tmp/x\n")
 
-    app = AgentsCLI().get_cli()
+    cli = AgentsCLI()
+    app = cli.get_cli()
+    add_job_commands(app, {"agents.optimize-skills": OptimizeSkillsJob}, cli=cli)
+
     result = CliRunner().invoke(app, ["optimize-skills", "--config", str(config)])
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+
+
+def test_injected_optimize_skills_run_accepts_spec_file(tmp_path: Path) -> None:
+    """The installed job CLI accepts config files through the run verb."""
+    from nemo_agents_plugin.cli import AgentsCLI
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
+    from nemo_platform_plugin.commands import add_job_commands
+    from typer.testing import CliRunner
+
+    config = tmp_path / "config.yml"
+    config.write_text("analyze_only: true\nevals: /tmp/x\nagent: /tmp/x\n")
+
+    cli = AgentsCLI()
+    app = cli.get_cli()
+    add_job_commands(app, {"agents.optimize-skills": OptimizeSkillsJob}, cli=cli)
+
+    result = CliRunner().invoke(app, ["optimize-skills", "run", "--spec-file", str(config)])
     assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output
+    assert "No such option" not in result.output
+    assert result.exception is not None
+    assert "initial_batch" in str(result.exception)
