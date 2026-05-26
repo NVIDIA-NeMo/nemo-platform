@@ -4,6 +4,15 @@
 """OptimizeSkillsJob — the optimize-skills loop.
 
 Registered under ``nemo.jobs`` as ``agents.optimize-skills``.
+
+Two invocation paths share the same ``run(config)`` body:
+
+* ``nemo agents optimize-skills run --spec '{...}'`` — local, in-process, no
+  platform job row (good for offline iteration / no platform required).
+* ``nemo agents optimize-skills submit --spec '{...}'`` — POSTs to the
+  platform; the jobs controller dispatches a subprocess on the same host that
+  runs the platform and the result lands in ``nemo jobs list`` / Studio's
+  Jobs view.
 """
 
 from __future__ import annotations
@@ -14,6 +23,7 @@ from pathlib import Path
 from typing import ClassVar, Literal
 
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -54,6 +64,42 @@ class OptimizeSkillsJob(NemoJob):
     name: ClassVar[str] = "optimize-skills"
     description: ClassVar[str] = "Optimize an agent's skills against eval failures via a coding agent (Claude)."
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = OptimizeSkillsConfig
+
+    @classmethod
+    async def compile(  # type: ignore[override]
+        cls,
+        *,
+        workspace: str,
+        spec: OptimizeSkillsConfig,
+        entity_client: object,
+        job_name: str | None,
+        async_sdk: object,
+        profile: str | None = None,
+        options: dict | None = None,
+    ) -> PlatformJobSpec:
+        """Single-step PlatformJobSpec running ``nemo_agents_plugin.tasks.optimize_skills``.
+
+        Dispatched by the platform's host-subprocess executor — same machine as the
+        platform (and the user's docker daemon / Claude CLI).  No dedicated container image.
+        """
+        from nemo_platform_plugin.jobs.api_factory import (
+            PlatformJobStep,
+            SubprocessExecutionProviderSpec,
+        )
+
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="optimize-skills",
+                    executor=SubprocessExecutionProviderSpec(
+                        provider="subprocess",
+                        command=["python", "-m", "nemo_agents_plugin.tasks.optimize_skills"],
+                    ),
+                    config=spec.model_dump(mode="json"),
+                ),
+            ],
+        )
 
     def run(self, config: dict) -> dict:
         from nemo_agents_plugin.improvement import preflight

@@ -38,6 +38,8 @@ class AgentsService(NemoService):
             gateway,
         )
         from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
+        from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+        from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 
         _prefix = "/v2/workspaces/{workspace}"
         return [
@@ -56,6 +58,18 @@ class AgentsService(NemoService):
                 add_job_routes(EvaluateAgentJob),
                 tag="Agents",
                 description="Submit and track agent evaluation jobs",
+                prefix=_prefix,
+            ),
+            RouterSpec(
+                add_job_routes(EvaluateSuiteJob, service_name="nemo-agents-plugin-evaluate-suite"),
+                tag="Agents",
+                description="Submit and track evaluate-suite jobs (Harbor / NAT eval runner).",
+                prefix=_prefix,
+            ),
+            RouterSpec(
+                add_job_routes(OptimizeSkillsJob, service_name="nemo-agents-plugin-optimize-skills"),
+                tag="Agents",
+                description="Submit and track optimize-skills jobs (skills-improvement loop).",
                 prefix=_prefix,
             ),
         ]

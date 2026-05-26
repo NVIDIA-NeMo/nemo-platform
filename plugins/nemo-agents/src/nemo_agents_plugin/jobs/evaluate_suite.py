@@ -5,7 +5,14 @@
 
 Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. Invoke as
 
-    nemo agents evaluate-suite run --spec '{"evals": "./my-evals", "concurrency": 4}'
+Two invocation paths share the same ``run(config)`` body:
+
+* ``nemo agents evaluate-suite run --spec '{...}'`` — local, in-process, no
+  platform job row (good for offline iteration / no platform required).
+* ``nemo agents evaluate-suite submit --spec '{...}'`` — POSTs to the
+  platform; the jobs controller dispatches a subprocess on the same host that
+  runs the platform (today: the user's laptop) and the result lands in
+  ``nemo jobs list`` / Studio's Jobs view.
 
 or, preferred for repeatable runs, with a YAML spec file:
 
@@ -21,6 +28,7 @@ from pathlib import Path
 from typing import ClassVar, Literal
 
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -44,6 +52,42 @@ class EvaluateSuiteJob(NemoJob):
     name: ClassVar[str] = "evaluate-suite"
     description: ClassVar[str] = "Run a directory of containerized eval tasks (Harbor or NAT) against an agent."
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteConfig
+
+    @classmethod
+    async def compile(  # type: ignore[override]
+        cls,
+        *,
+        workspace: str,
+        spec: EvaluateSuiteConfig,
+        entity_client: object,
+        job_name: str | None,
+        async_sdk: object,
+        profile: str | None = None,
+        options: dict | None = None,
+    ) -> PlatformJobSpec:
+        """Single-step PlatformJobSpec running ``nemo_agents_plugin.tasks.evaluate_suite``.
+
+        Dispatched by the platform's host-subprocess executor — same machine as the
+        platform (and the user's docker daemon).  No dedicated container image.
+        """
+        from nemo_platform_plugin.jobs.api_factory import (
+            PlatformJobStep,
+            SubprocessExecutionProviderSpec,
+        )
+
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="evaluate-suite",
+                    executor=SubprocessExecutionProviderSpec(
+                        provider="subprocess",
+                        command=["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"],
+                    ),
+                    config=spec.model_dump(mode="json"),
+                ),
+            ],
+        )
 
     def run(self, config: dict) -> dict:
         from nemo_agents_plugin.improvement import preflight
