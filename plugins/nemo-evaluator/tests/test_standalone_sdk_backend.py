@@ -107,7 +107,11 @@ class TestNMPBackend:
         result = NMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
 
         assert result is expected
-        remote_evaluate.assert_called_once_with(metric=metric, request=request)
+        remote_evaluate.assert_called_once_with(
+            metric=metric,
+            request=request,
+            metric_payload_bundler=None,
+        )
         local_evaluate.assert_not_called()
 
     def test_evaluate_benchmark_local_delegates_to_resource_executor(self, mocker: MockerFixture) -> None:
@@ -127,7 +131,10 @@ class TestNMPBackend:
         result = NMPBackend(resource).evaluate_benchmark(metrics=metrics, request=request)
 
         assert result is expected
-        evaluate_benchmark.assert_called_once_with(metrics=metrics, request=request)
+        evaluate_benchmark.assert_called_once_with(
+            metrics=metrics,
+            request=request,
+        )
 
     def test_evaluate_benchmark_remote_raises_without_local_run(self, mocker: MockerFixture) -> None:
         resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
@@ -206,7 +213,11 @@ class TestAsyncNMPBackend:
         result = await AsyncNMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
 
         assert result is expected
-        remote_evaluate.assert_awaited_once_with(metric=metric, request=request)
+        remote_evaluate.assert_awaited_once_with(
+            metric=metric,
+            request=request,
+            metric_payload_bundler=None,
+        )
         local_evaluate.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -227,7 +238,10 @@ class TestAsyncNMPBackend:
         result = await AsyncNMPBackend(resource).evaluate_benchmark(metrics=metrics, request=request)
 
         assert result is expected
-        evaluate_benchmark.assert_awaited_once_with(metrics=metrics, request=request)
+        evaluate_benchmark.assert_awaited_once_with(
+            metrics=metrics,
+            request=request,
+        )
 
     @pytest.mark.asyncio
     async def test_evaluate_benchmark_remote_raises_without_local_run(self, mocker: MockerFixture) -> None:

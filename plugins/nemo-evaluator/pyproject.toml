@@ -5,6 +5,7 @@ description = "Evaluator plugin scaffold for NeMo Platform."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "cloudpickle>=3.1.1",
     "nemo-evaluator-sdk",
     "nemo-platform-plugin",
     "nemo-platform",

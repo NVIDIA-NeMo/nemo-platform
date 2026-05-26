@@ -345,6 +345,7 @@ nemo-data-designer-plugin = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-evaluator-plugin = [
+  "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nmp-evaluator",
