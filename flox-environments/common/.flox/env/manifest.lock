@@ -1,0 +1,715 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.11.0",
+    "install": {
+      "diffutils": {
+        "pkg-path": "diffutils"
+      },
+      "findutils": {
+        "pkg-path": "findutils"
+      },
+      "gnumake": {
+        "pkg-path": "gnumake"
+      },
+      "gnutar": {
+        "pkg-path": "gnutar"
+      },
+      "gum": {
+        "pkg-path": "gum"
+      }
+    },
+    "vars": {
+      "ALIGN": "center",
+      "BORDER": "double",
+      "BORDER_FOREGROUND": "514",
+      "FOREGROUND": "514",
+      "GUM_LOG_MESSAGE_FOREGROUND": "514",
+      "MARGIN": "1 2",
+      "PADDING": "1 2",
+      "WIDTH": "50"
+    },
+    "profile": {},
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/v6f7v4qrrzhicaks66wn8nndwb7yyg8c-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:13:14.183845Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/wbb3pzx0mg0a7ksjvc44kd5w3mzynnlz-diffutils-3.12-info",
+        "out": "/nix/store/37rdk8zsdbqcp73l3nrmwilwb2ixkacv-diffutils-3.12"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/7kp4z354654mvw5brn01k26r4kg2di8j-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:44:08.714303Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/rl95zx5xc6jx0ziigcgygj3zd9fwj77x-diffutils-3.12-info",
+        "out": "/nix/store/l2vdh6xnh51cqav31cwsdwr3c91i2gbl-diffutils-3.12"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/30bnz6x9r7kb9xis2fc1h40722c4rbzl-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:13:06.454423Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/wdcs87himpz57ml1n2911lslj2adnfwn-diffutils-3.12-info",
+        "out": "/nix/store/i8ix8mqzcllzigx9dy046axn3g0w08cp-diffutils-3.12"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "diffutils",
+      "broken": false,
+      "derivation": "/nix/store/hr30bp0br6nigp0zv5jmf9l4g3xsms2q-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:47:04.831269Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "3.12",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/6mkh4xmxcqcmkx5dddiw9zr57bkw9qvv-diffutils-3.12-info",
+        "out": "/nix/store/ww555mznia5v7sz2w85lblg4amvhkhv1-diffutils-3.12"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/pc4qv6aafrlh0vwjj2ijjvji29a41bv5-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:13:14.539586Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/34l83gpv8481k0wzmmi9cxh9flbmhsg4-findutils-4.10.0-info",
+        "locate": "/nix/store/mwx56wc51wvky0a78fizs90y7s7mg2ia-findutils-4.10.0-locate",
+        "out": "/nix/store/3wz2j41nnr1badij6fcnip5vgrfpdd82-findutils-4.10.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/rka0crnhr888cfy9ilwmdy2b7zkb2iwl-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:44:09.323083Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/168irs0ni0r9iynjv0q05s72ad276hjc-findutils-4.10.0-info",
+        "locate": "/nix/store/1ycgnkm4c43vggyw76qc0jvrz4yvaddn-findutils-4.10.0-locate",
+        "out": "/nix/store/gbd7xfq2d1wbrwr2i045mvc8fkkw7i1g-findutils-4.10.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/35mvgcjz9nyhzxvccn3n8kja41qrd1cj-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:13:06.878500Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/hhaq2vnq3wzpw4advdsczn886rsbm5k0-findutils-4.10.0-info",
+        "locate": "/nix/store/zrkbiybizlzyyimlwkvfg9qrcqjrn7jk-findutils-4.10.0-locate",
+        "out": "/nix/store/ix0a9p3m012l4d59w3g1lfsdx2azdn08-findutils-4.10.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "findutils",
+      "broken": false,
+      "derivation": "/nix/store/nv9vbwdbppdb9zvv78m9a99vga207ykq-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:47:05.468459Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.10.0",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/mc65clwg5q361fa9614ryvmhl3yqradh-findutils-4.10.0-info",
+        "locate": "/nix/store/fcid2ld7f37q6h1rknkrv80302is8c0y-findutils-4.10.0-locate",
+        "out": "/nix/store/c1cjgg6p8m8fssivzrc2p13mwwml3p3v-findutils-4.10.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/sywyz1ykchhvm940gw5zka1rssbvd7fr-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:13:14.970249Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/sl2ygvgjg4ml8dhyfxj5kh84x2bs1mhc-gnumake-4.4.1-doc",
+        "info": "/nix/store/6dbp1ysgxsrrn7xgjgf523faqrm605a5-gnumake-4.4.1-info",
+        "man": "/nix/store/wdm9prq35jlgwq6rjyhqxy4jzy833sfr-gnumake-4.4.1-man",
+        "out": "/nix/store/8wwiw8pwyhrkzyq28hqzxfl4z84lks81-gnumake-4.4.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/myv1y9k84cp6x7ys0p2cxg8avsahs9c5-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:44:10.507898Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/mdv67w2xvchbs76zjdzppdkk64z5avki-gnumake-4.4.1-debug",
+        "doc": "/nix/store/bybbj9avk3g107mwhgvkzkpm6mkbl8gv-gnumake-4.4.1-doc",
+        "info": "/nix/store/bxdqxx2q13sj15ss8z5l33jd31x55j5l-gnumake-4.4.1-info",
+        "man": "/nix/store/dg3aa71vii59scbfhi02cdxnps64x6ql-gnumake-4.4.1-man",
+        "out": "/nix/store/9ngw1ippk25jjj5fjxv36xbp6iq7rxdx-gnumake-4.4.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/d58x5la2wv5jy7xm5x90ca0hb59sv922-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:13:07.326509Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/s9y438l347nky6rkl1wfk2y3b0d9i636-gnumake-4.4.1-doc",
+        "info": "/nix/store/apljbm6plyajbfrnwif0a2d4nx6w0cpf-gnumake-4.4.1-info",
+        "man": "/nix/store/m2ba4bwmfgh994xbg1iqm6zj1mdrq8h7-gnumake-4.4.1-man",
+        "out": "/nix/store/60y2hs45l18g56ykw9789b5vhhi2ls5q-gnumake-4.4.1"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/071w65kmbjhwpx84fcg8xl2adw38321p-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:47:06.754965Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/q683z843wi7xs96pngh1kinnx88vn2if-gnumake-4.4.1-debug",
+        "doc": "/nix/store/wxg27bzsljjw4k72m9b2v6a0fx5a68s0-gnumake-4.4.1-doc",
+        "info": "/nix/store/03d41qgjsrhcr3fzq2z99ry07rahnj0v-gnumake-4.4.1-info",
+        "man": "/nix/store/bmvqa5ym318mymhxlwwmxq8wxal958p4-gnumake-4.4.1-man",
+        "out": "/nix/store/d3bwqm6bymhy3pdgbvf7vxjqfp31m3j1-gnumake-4.4.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/kgn5s9g8931mp6zr2405xf56ac67g8nd-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:13:14.978577Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/lfn1823f7k3iaar3088ag3vkk3g8mf46-gnutar-1.35-info",
+        "out": "/nix/store/3aikbnf5fq99gvw1wb242wrjnbj7fcr9-gnutar-1.35"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/0ziszqicmni1vpc6jbjc5wb0r6i0q96n-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:44:10.521978Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/isnpsk3kgnlfv3gs1j9vn75cx6pw015a-gnutar-1.35-info",
+        "out": "/nix/store/lg4p75b1g1ncr0xf20qpyc96pikpg1sp-gnutar-1.35"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/97d4fnlvxj5j9jvk2m2cm17f16lnkv95-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:13:07.335236Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/5hp160w6ljh6psaqqbdjasni456g0bf8-gnutar-1.35-info",
+        "out": "/nix/store/9z132234zlrg0fgmsychpi86a762mmwi-gnutar-1.35"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/jzkck68swh3lzwj2hjw4sxwrhvgrpjn6-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:47:06.770538Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
+        "out",
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/mrvcwlivqq2nr2anqq9ap4wdhflk52lm-gnutar-1.35-info",
+        "out": "/nix/store/55nbxpjrgrrsplq739z1z8n05h16cgsq-gnutar-1.35"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/jsk66asqq2wnckkllv9sm1y94mxl0asm-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:13:15.222283Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/6jb5frkadampkcmbjynch118cc4smzfj-gum-0.17.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/2nqf2anq5klv1xf66jgz1gm8xrdid4ax-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T03:44:10.917697Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8p8fi8pl4lb776q2gnby3rd3mcbj5grh-gum-0.17.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/ib5kcnql661slkgn223m5c17g6b9ala3-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:13:07.576990Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/n20dhdnibsqb890jvwhyw4xd3qqkazly-gum-0.17.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/isk54hr8s4cw8z3yiksk07yi1bzfmamh-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "567a49d1913ce81ac6e9582e3553dd90a955875f",
+      "rev_count": 1017464,
+      "rev_date": "2026-06-16T02:33:49Z",
+      "scrape_date": "2026-06-17T04:47:07.206266Z",
+      "stabilities": [
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/2ii7sbkq44zrkv4iv6g7bqi47m4ch28b-gum-0.17.0"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    }
+  ]
+}

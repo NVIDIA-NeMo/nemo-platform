@@ -1,0 +1,21 @@
+schema-version = "1.11.0"
+
+[install]
+# Utilities
+gnumake.pkg-path = "gnumake"
+gnutar.pkg-path = "gnutar"
+gum.pkg-path = "gum"
+findutils.pkg-path = "findutils"
+diffutils.pkg-path = "diffutils"
+
+[vars]
+GUM_LOG_MESSAGE_FOREGROUND="514"
+FOREGROUND="514"
+BORDER_FOREGROUND="514"
+BORDER="double"
+ALIGN="center"
+WIDTH="50"
+MARGIN="1 2"
+PADDING="1 2"
+
+[profile]

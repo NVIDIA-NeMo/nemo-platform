@@ -19,6 +19,24 @@ cd nemo-platform
 
 Install the local prerequisites first, then run the bootstrap targets from the repository root.
 
+#### Full Developer Environment with Flox
+
+For a complete contributor environment, including Python tooling and TypeScript
+dependencies, install [Flox](https://flox.dev/docs/install-flox/install) and
+activate the repository environment:
+
+```bash
+# macOS with Homebrew; see the Flox installation guide for other platforms.
+brew install flox
+
+flox activate
+```
+
+The first activation installs the pinned Python and Node.js toolchains,
+synchronizes Python dependencies, and installs the pnpm workspace dependencies.
+It also installs the repository's pre-commit hook when needed. Leave the
+environment with `flox deactivate` when you are done.
+
 #### Python Environment Setup
 
 This project uses [uv](https://github.com/astral-sh/uv) for dependency management of the Python environment.

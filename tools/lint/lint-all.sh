@@ -6,6 +6,7 @@ PROJECT_ROOT="${CI_PROJECT_DIR:-$(cd "${SCRIPT_DIR}/../.." && pwd)}"
 cd "${PROJECT_ROOT}" || exit 1
 
 declare -a scripts=(
+  "check-uv-version:tools/lint/check-uv-version.sh"
   "lint-licenses:tools/lint/lint-licenses.sh"
   "lint-openapi:tools/lint/lint-openapi.sh"
   "lint-config-reference-docs:tools/lint/lint-config-reference-docs.sh"

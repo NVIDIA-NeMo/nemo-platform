@@ -1,0 +1,151 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.11.0",
+    "install": {
+      "uv": {
+        "pkg-path": "uv",
+        "pkg-group": "uv",
+        "version": ">=0.9.14,<0.10.0"
+      }
+    },
+    "vars": {
+      "UV_CACHE_DIR": "${FLOX_ENV_CACHE}/uv-cache",
+      "UV_MANAGED_PYTHON": "1",
+      "UV_PYTHON": "3.13",
+      "UV_PYTHON_INSTALL_DIR": "${FLOX_ENV_CACHE}/python",
+      "UV_VENV_SEED": "1"
+    },
+    "hook": {
+      "on-activate": "  set -euo pipefail\n\n  echo \"Python Setup... Starting\"\n  uv sync --frozen --all-packages\n  echo \"Python Setup... Complete\"\n"
+    },
+    "profile": {
+      "bash": "  source .venv/bin/activate\n",
+      "zsh": "  source .venv/bin/activate\n",
+      "fish": "  set -gx VIRTUAL_ENV \"$PWD/.venv\"\n  set -gx PATH \"$VIRTUAL_ENV/bin\" $PATH\n"
+    },
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/v9837hla896n3pjv9hmx3ii4sk30p0r9-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T04:38:13.753987Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/rnci0wgac6r47gr09bhb6x5fyc507i43-uv-0.9.28"
+      },
+      "system": "aarch64-darwin",
+      "group": "uv",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/dlp3p1pzksliq0pli84ff5ifbvh13211-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:08:27.505844Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/r6g6avldk8dlj30dmk2p2971akkmw9h3-uv-0.9.28"
+      },
+      "system": "aarch64-linux",
+      "group": "uv",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/1dxxxb7ia28b4fcvn00vvc2xmal3kamm-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T05:35:52.717277Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/vrzvbvds4vvj5989w838m562vavqzd4w-uv-0.9.28"
+      },
+      "system": "x86_64-darwin",
+      "group": "uv",
+      "priority": 5
+    },
+    {
+      "attr_path": "uv",
+      "broken": false,
+      "derivation": "/nix/store/b88x7x44g3gj9mfw2ql683lfcxqjil95-uv-0.9.28.drv",
+      "description": "Extremely fast Python package installer and resolver, written in Rust",
+      "install_id": "uv",
+      "license": "[ Apache-2.0, MIT ]",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "name": "uv-0.9.28",
+      "pname": "uv",
+      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
+      "rev_count": 940249,
+      "rev_date": "2026-02-04T09:32:58Z",
+      "scrape_date": "2026-02-06T06:09:00.313627Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.9.28",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jddcqyx0099mynb7gxr0dd66hkpqqs2r-uv-0.9.28"
+      },
+      "system": "x86_64-linux",
+      "group": "uv",
+      "priority": 5
+    }
+  ]
+}

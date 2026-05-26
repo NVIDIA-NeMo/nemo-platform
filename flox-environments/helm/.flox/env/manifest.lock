@@ -1,0 +1,301 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.13.0",
+    "install": {
+      "helm-docs": {
+        "pkg-path": "helm-docs",
+        "pkg-group": "helm-docs",
+        "version": "1.14.2"
+      },
+      "kubeconform": {
+        "pkg-path": "kubeconform",
+        "pkg-group": "kubeconform",
+        "version": "0.6.7"
+      },
+      "kubernetes-helm": {
+        "pkg-path": "kubernetes-helm",
+        "pkg-group": "kubernetes-helm",
+        "version": "4.2.3"
+      }
+    },
+    "hook": {},
+    "profile": {},
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-linux"
+      ]
+    }
+  },
+  "packages": [
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/gbxz6zs7rv9qynjlq5z993cx97js8x5i-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:13:10.955708Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/i6nz37y0ghagc34nlpfngq71fn6z3rs2-helm-docs-1.14.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/29i243jas4fqcpm8wdhbw4hvnyf4yp6h-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:41.686139Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/bgaaxnb9i8fzvkvl6ggddngc0v41wwny-helm-docs-1.14.2"
+      },
+      "system": "aarch64-linux",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/7hxy923h5639mxb0lb05asr77arvwyjb-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:45.057500Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/63l33x2rrpzdx0fg7yg776ajm6ilmgx7-helm-docs-1.14.2"
+      },
+      "system": "x86_64-linux",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/9s4snw6sv1rxkppb2vh77mfx8y8w3dk0-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T04:19:29.834897Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/39nyhvxm0fj2bqpy1hb0wp1mj6drgw6k-kubeconform-0.6.7"
+      },
+      "system": "aarch64-darwin",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/lq4z544sl9s1g771v8si3pa54zk39x4h-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T04:37:22.795766Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dl336sgplkl83x7hgq9vchnwia92rllx-kubeconform-0.6.7"
+      },
+      "system": "aarch64-linux",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/7sn96dgwl0lkghawlg88557cr9nr88y4-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T05:15:57.921277Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8cmvaf9s4h36rz1464kwwn5a9pifgf56-kubeconform-0.6.7"
+      },
+      "system": "x86_64-linux",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/8fnhgk1cylc66jpbkpkhi1b8l763zz61-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T04:54:14.871348Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jg1p2gzhrgg5d0wfdv45j1144q3ms3i2-kubernetes-helm-4.2.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "kubernetes-helm",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/zpbg9qqi19k2pcp06yfkmv76a1yb2j0x-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:24:45.679341Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0fmrj3fq2j2l95cj12pw1bkni4nihwsl-kubernetes-helm-4.2.3"
+      },
+      "system": "aarch64-linux",
+      "group": "kubernetes-helm",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/4nb9airy740jinzgf83vpk7gp13vjmii-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:59:04.143872Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7vgl8w4ma0pl7f32n0rjgnmj6xalmiac-kubernetes-helm-4.2.3"
+      },
+      "system": "x86_64-linux",
+      "group": "kubernetes-helm",
+      "priority": 5
+    }
+  ]
+}

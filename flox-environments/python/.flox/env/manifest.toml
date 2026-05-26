@@ -1,0 +1,32 @@
+schema-version = "1.11.0"
+
+[install]
+uv = { pkg-path = "uv", version = ">=0.9.14,<0.10.0", pkg-group = "uv" }
+
+[vars]
+UV_VENV_SEED="1"
+UV_MANAGED_PYTHON="1"
+UV_PYTHON="3.13"
+UV_CACHE_DIR="${FLOX_ENV_CACHE}/uv-cache"
+UV_PYTHON_INSTALL_DIR="${FLOX_ENV_CACHE}/python"
+
+[hook]
+on-activate = '''
+  set -euo pipefail
+
+  echo "Python Setup... Starting"
+  uv sync --frozen --all-packages
+  echo "Python Setup... Complete"
+'''
+
+[profile]
+bash = '''
+  source .venv/bin/activate
+'''
+zsh = '''
+  source .venv/bin/activate
+'''
+fish = '''
+  set -gx VIRTUAL_ENV "$PWD/.venv"
+  set -gx PATH "$VIRTUAL_ENV/bin" $PATH
+'''

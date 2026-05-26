@@ -1,0 +1,283 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.13.0",
+    "install": {
+      "actionlint": {
+        "pkg-path": "actionlint",
+        "pkg-group": "actionlint",
+        "version": "1.7.12"
+      },
+      "shellcheck": {
+        "pkg-path": "shellcheck",
+        "pkg-group": "actionlint",
+        "version": "0.11.0"
+      }
+    },
+    "hook": {},
+    "profile": {},
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/f6xz9pw6zvga7r04isc4xf54y8g4sq5z-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:54.694474Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9qj0ikkqv66k52xs8fywmnzyg8zn2svm-actionlint-1.7.12"
+      },
+      "system": "aarch64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/pih7r5p4pify73ap7r0g4s7aqv5q01d2-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:21.154073Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/31js4yryr1yjq4waygdlv2k5w5ks0s0n-actionlint-1.7.12"
+      },
+      "system": "aarch64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/63nf20xl5rcbm5mxf2pbfkdk90lcc4qi-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:08:59.948591Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/w4rjv0ikr5r5x54w758c8ck2016nmzsx-actionlint-1.7.12"
+      },
+      "system": "x86_64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/mk996amm0g9pssw96f0nh4460x97p890-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:23.770360Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/20imjbvi2q6z691fd5acg20mfx3aqvkj-actionlint-1.7.12"
+      },
+      "system": "x86_64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/h7qr1dkmmmwvr6rdp41d46mrxxyypqc2-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:14:50.123814Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/py6hpk9rm5vh16dn0sifa3wpmsl0kl67-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/bf4yd8vzhafk7nknzjjz5awvkqvyfspc-shellcheck-0.11.0-doc",
+        "man": "/nix/store/lwd2gr8083jfif5xb8h7jj396dvr6kdd-shellcheck-0.11.0-man",
+        "out": "/nix/store/7qi1h6hbr1ybpz9xyh4j38vrki1xc2z4-shellcheck-0.11.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/27a27jgwxyq768zr75divyi6x4744bix-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:43:48.990893Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/ydbg36fc5vvgc4k60d38vj95741wvv28-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/dmj404h7ac342mrnj5dfdych83cd6r6c-shellcheck-0.11.0-doc",
+        "man": "/nix/store/l3202mccjm3iz9m0myddbmvhiy8nkp9m-shellcheck-0.11.0-man",
+        "out": "/nix/store/yyy8s43483p5ww6v09kal0kidb7kxvmk-shellcheck-0.11.0"
+      },
+      "system": "aarch64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/40c53aw1zc0db8fxqk9z33pbx5sbgwbn-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:11:23.130360Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/68yldspq5p1gxa79ghprb1njskk36ax2-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/4sk9v7wwdh2sia6wi3rknvvvm52wqg6r-shellcheck-0.11.0-doc",
+        "man": "/nix/store/90d8x14kmdq8fa12d5azjwdnp4z55q8b-shellcheck-0.11.0-man",
+        "out": "/nix/store/crl9a7fkfbpjbzgwj5nwpj57bmj7z940-shellcheck-0.11.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/fjnaf97vql7h3d6mzymqabz7lmbljj0x-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:43:04.681164Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/vwvvnr1qxpwn0vffbsn8bkviqcgicizr-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/wm6ncb99697pw9px9dpnx4vdq7mjskq2-shellcheck-0.11.0-doc",
+        "man": "/nix/store/g6cz58h4p7dasw30y0qrk0xwdp5595qv-shellcheck-0.11.0-man",
+        "out": "/nix/store/gykrz50q65f9jrljvd9bds46irfbd0bh-shellcheck-0.11.0"
+      },
+      "system": "x86_64-linux",
+      "group": "actionlint",
+      "priority": 5
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+schema-version = "1.11.0"
+
+[install]
+fnm = { pkg-path = "fnm", pkg-group = "node" }
+
+[vars]
+FNM_DIR="${FLOX_ENV_CACHE}/fnm"
+FNM_VERSION_FILE_STRATEGY="recursive"
+NPM_CONFIG_STORE_DIR="${FLOX_ENV_CACHE}/npm-cache"
+
+[hook]
+on-activate = '''
+  set -euo pipefail
+
+  echo "NodeJS Setup... Starting"
+  echo "Current Directory: $(pwd)"
+
+  eval "$(fnm env --shell bash)"
+  fnm install --use --corepack-enabled
+  corepack enable
+
+  package_manager="$(node -p "require('./web/package.json').packageManager")"
+  corepack prepare "${package_manager}" --activate
+  CI=true pnpm install -C "./web" --frozen-lockfile
+
+  echo "NodeJS Setup... Complete"
+'''
+
+[profile]
+bash = '''
+  eval "$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)"
+'''
+zsh = '''
+  eval "$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)"
+'''
+fish = '''
+  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source
+'''

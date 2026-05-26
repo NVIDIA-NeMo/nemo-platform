@@ -1,0 +1,148 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.11.0",
+    "install": {
+      "fnm": {
+        "pkg-path": "fnm",
+        "pkg-group": "node"
+      }
+    },
+    "vars": {
+      "FNM_DIR": "${FLOX_ENV_CACHE}/fnm",
+      "FNM_VERSION_FILE_STRATEGY": "recursive",
+      "NPM_CONFIG_STORE_DIR": "${FLOX_ENV_CACHE}/npm-cache"
+    },
+    "hook": {
+      "on-activate": "  set -euo pipefail\n\n  echo \"NodeJS Setup... Starting\"\n  echo \"Current Directory: $(pwd)\"\n\n  eval \"$(fnm env --shell bash)\"\n  fnm install --use --corepack-enabled\n  corepack enable\n\n  package_manager=\"$(node -p \"require('./web/package.json').packageManager\")\"\n  corepack prepare \"${package_manager}\" --activate\n  CI=true pnpm install -C \"./web\" --frozen-lockfile\n\n  echo \"NodeJS Setup... Complete\"\n"
+    },
+    "profile": {
+      "bash": "  eval \"$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)\"\n",
+      "zsh": "  eval \"$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)\"\n",
+      "fish": "  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source\n"
+    },
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/m4s0894j2dj2k375c7dns2ib8nk5krpw-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:55.889515Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fp3ndk75i6c1c31a9zqkz3pk61gz294h-fnm-1.39.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/zh7xw7li0b92r9cx25f4j19qdp1kqvdz-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:22.827979Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1312sbdkqvdp0m5gak0dfgz0bf2p1kgj-fnm-1.39.0"
+      },
+      "system": "aarch64-linux",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/0ib0kdcx3a11klp8pjjz6a2z474bf820-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:01.365196Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/m6mcghc8bqzaal27zkqrp0a9mpk98hld-fnm-1.39.0"
+      },
+      "system": "x86_64-darwin",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/isdxp3dj73n1j6zzxjnjg20f4016h7ia-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:25.581588Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1dih2h4sxfqkkg32db7753m02d9q54hk-fnm-1.39.0"
+      },
+      "system": "x86_64-linux",
+      "group": "node",
+      "priority": 5
+    }
+  ]
+}

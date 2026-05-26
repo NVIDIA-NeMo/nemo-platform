@@ -3,31 +3,654 @@
   "manifest": {
     "schema-version": "1.11.0",
     "install": {
+      "actionlint": {
+        "pkg-path": "actionlint",
+        "pkg-group": "actionlint",
+        "version": "1.7.12"
+      },
+      "diffutils": {
+        "pkg-path": "diffutils"
+      },
+      "findutils": {
+        "pkg-path": "findutils"
+      },
+      "fnm": {
+        "pkg-path": "fnm",
+        "pkg-group": "node"
+      },
+      "gnumake": {
+        "pkg-path": "gnumake"
+      },
       "gnutar": {
         "pkg-path": "gnutar"
       },
+      "gum": {
+        "pkg-path": "gum"
+      },
+      "helm-docs": {
+        "pkg-path": "helm-docs",
+        "pkg-group": "helm-docs",
+        "version": "1.14.2"
+      },
+      "kubeconform": {
+        "pkg-path": "kubeconform",
+        "pkg-group": "kubeconform",
+        "version": "0.6.7"
+      },
+      "kubernetes-helm": {
+        "pkg-path": "kubernetes-helm",
+        "pkg-group": "kubernetes-helm",
+        "version": "4.2.3"
+      },
       "open-policy-agent": {
         "pkg-path": "open-policy-agent",
-        "pkg-group": "tools",
+        "pkg-group": "open-policy-agent",
         "version": "1.8.0"
       },
       "osv-scanner": {
         "pkg-path": "osv-scanner",
-        "pkg-group": "tools"
+        "pkg-group": "osv-scanner",
+        "version": "2.3.3"
       },
-      "python3": {
-        "pkg-path": "python3"
+      "shellcheck": {
+        "pkg-path": "shellcheck",
+        "pkg-group": "actionlint",
+        "version": "0.11.0"
       },
       "uv": {
         "pkg-path": "uv",
-        "version": "~0.9"
+        "pkg-group": "uv",
+        "version": ">=0.9.14,<0.10.0"
       }
     },
-    "hook": {},
-    "profile": {},
-    "options": {}
+    "vars": {
+      "ALIGN": "center",
+      "BORDER": "double",
+      "BORDER_FOREGROUND": "514",
+      "FNM_DIR": "${FLOX_ENV_CACHE}/fnm",
+      "FNM_VERSION_FILE_STRATEGY": "recursive",
+      "FOREGROUND": "514",
+      "GUM_LOG_MESSAGE_FOREGROUND": "514",
+      "MARGIN": "1 2",
+      "NPM_CONFIG_STORE_DIR": "${FLOX_ENV_CACHE}/npm-cache",
+      "PADDING": "1 2",
+      "UV_CACHE_DIR": "${FLOX_ENV_CACHE}/uv-cache",
+      "UV_MANAGED_PYTHON": "1",
+      "UV_PYTHON": "3.13",
+      "UV_PYTHON_INSTALL_DIR": "${FLOX_ENV_CACHE}/python",
+      "UV_VENV_SEED": "1",
+      "WIDTH": "50"
+    },
+    "hook": {
+      "on-activate": "  set -euo pipefail\n\n  echo \"Python Setup... Starting\"\n  uv sync --frozen --all-packages\n  echo \"Python Setup... Complete\"\n\n  set -euo pipefail\n\n  echo \"NodeJS Setup... Starting\"\n  echo \"Current Directory: $(pwd)\"\n\n  eval \"$(fnm env --shell bash)\"\n  fnm install --use --corepack-enabled\n  corepack enable\n\n  package_manager=\"$(node -p \"require('./web/package.json').packageManager\")\"\n  corepack prepare \"${package_manager}\" --activate\n  CI=true pnpm install -C \"./web\" --frozen-lockfile\n\n  echo \"NodeJS Setup... Complete\"\n"
+    },
+    "profile": {
+      "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n",
+      "bash": "  source .venv/bin/activate\n\n  eval \"$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)\"\n",
+      "zsh": "  source .venv/bin/activate\n\n  eval \"$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)\"\n",
+      "fish": "  set -gx VIRTUAL_ENV \"$PWD/.venv\"\n  set -gx PATH \"$VIRTUAL_ENV/bin\" $PATH\n\n  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source\n"
+    },
+    "options": {
+      "systems": [
+        "aarch64-darwin",
+        "aarch64-linux",
+        "x86_64-linux"
+      ]
+    }
   },
   "packages": [
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/f6xz9pw6zvga7r04isc4xf54y8g4sq5z-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:54.694474Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/9qj0ikkqv66k52xs8fywmnzyg8zn2svm-actionlint-1.7.12"
+      },
+      "system": "aarch64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/pih7r5p4pify73ap7r0g4s7aqv5q01d2-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:21.154073Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/31js4yryr1yjq4waygdlv2k5w5ks0s0n-actionlint-1.7.12"
+      },
+      "system": "aarch64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "actionlint",
+      "broken": false,
+      "derivation": "/nix/store/mk996amm0g9pssw96f0nh4460x97p890-actionlint-1.7.12.drv",
+      "description": "Static checker for GitHub Actions workflow files",
+      "install_id": "actionlint",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "actionlint-1.7.12",
+      "pname": "actionlint",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:23.770360Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.7.12",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/20imjbvi2q6z691fd5acg20mfx3aqvkj-actionlint-1.7.12"
+      },
+      "system": "x86_64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/h7qr1dkmmmwvr6rdp41d46mrxxyypqc2-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:14:50.123814Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/py6hpk9rm5vh16dn0sifa3wpmsl0kl67-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/bf4yd8vzhafk7nknzjjz5awvkqvyfspc-shellcheck-0.11.0-doc",
+        "man": "/nix/store/lwd2gr8083jfif5xb8h7jj396dvr6kdd-shellcheck-0.11.0-man",
+        "out": "/nix/store/7qi1h6hbr1ybpz9xyh4j38vrki1xc2z4-shellcheck-0.11.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/27a27jgwxyq768zr75divyi6x4744bix-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:43:48.990893Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/ydbg36fc5vvgc4k60d38vj95741wvv28-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/dmj404h7ac342mrnj5dfdych83cd6r6c-shellcheck-0.11.0-doc",
+        "man": "/nix/store/l3202mccjm3iz9m0myddbmvhiy8nkp9m-shellcheck-0.11.0-man",
+        "out": "/nix/store/yyy8s43483p5ww6v09kal0kidb7kxvmk-shellcheck-0.11.0"
+      },
+      "system": "aarch64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "shellcheck",
+      "broken": false,
+      "derivation": "/nix/store/fjnaf97vql7h3d6mzymqabz7lmbljj0x-shellcheck-0.11.0.drv",
+      "description": "Shell script analysis tool",
+      "install_id": "shellcheck",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "shellcheck-0.11.0",
+      "pname": "shellcheck",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:43:04.681164Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.11.0",
+      "outputs_to_install": [
+        "bin",
+        "doc",
+        "man"
+      ],
+      "outputs": {
+        "bin": "/nix/store/vwvvnr1qxpwn0vffbsn8bkviqcgicizr-shellcheck-0.11.0-bin",
+        "doc": "/nix/store/wm6ncb99697pw9px9dpnx4vdq7mjskq2-shellcheck-0.11.0-doc",
+        "man": "/nix/store/g6cz58h4p7dasw30y0qrk0xwdp5595qv-shellcheck-0.11.0-man",
+        "out": "/nix/store/gykrz50q65f9jrljvd9bds46irfbd0bh-shellcheck-0.11.0"
+      },
+      "system": "x86_64-linux",
+      "group": "actionlint",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/gbxz6zs7rv9qynjlq5z993cx97js8x5i-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:13:10.955708Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/i6nz37y0ghagc34nlpfngq71fn6z3rs2-helm-docs-1.14.2"
+      },
+      "system": "aarch64-darwin",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/29i243jas4fqcpm8wdhbw4hvnyf4yp6h-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:41.686139Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/bgaaxnb9i8fzvkvl6ggddngc0v41wwny-helm-docs-1.14.2"
+      },
+      "system": "aarch64-linux",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "helm-docs",
+      "broken": false,
+      "derivation": "/nix/store/7hxy923h5639mxb0lb05asr77arvwyjb-helm-docs-1.14.2.drv",
+      "description": "Tool for automatically generating markdown documentation for Helm charts",
+      "install_id": "helm-docs",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "helm-docs-1.14.2",
+      "pname": "helm-docs",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:45.057500Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.14.2",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/63l33x2rrpzdx0fg7yg776ajm6ilmgx7-helm-docs-1.14.2"
+      },
+      "system": "x86_64-linux",
+      "group": "helm-docs",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/9s4snw6sv1rxkppb2vh77mfx8y8w3dk0-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T04:19:29.834897Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/39nyhvxm0fj2bqpy1hb0wp1mj6drgw6k-kubeconform-0.6.7"
+      },
+      "system": "aarch64-darwin",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/lq4z544sl9s1g771v8si3pa54zk39x4h-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T04:37:22.795766Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/dl336sgplkl83x7hgq9vchnwia92rllx-kubeconform-0.6.7"
+      },
+      "system": "aarch64-linux",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubeconform",
+      "broken": false,
+      "derivation": "/nix/store/7sn96dgwl0lkghawlg88557cr9nr88y4-kubeconform-0.6.7.drv",
+      "description": "FAST Kubernetes manifests validator, with support for Custom Resources!",
+      "install_id": "kubeconform",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "name": "kubeconform-0.6.7",
+      "pname": "kubeconform",
+      "rev": "979daf34c8cacebcd917d540070b52a3c2b9b16e",
+      "rev_count": 793735,
+      "rev_date": "2025-05-04T03:14:55Z",
+      "scrape_date": "2025-05-05T05:15:57.921277Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.6.7",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8cmvaf9s4h36rz1464kwwn5a9pifgf56-kubeconform-0.6.7"
+      },
+      "system": "x86_64-linux",
+      "group": "kubeconform",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/8fnhgk1cylc66jpbkpkhi1b8l763zz61-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T04:54:14.871348Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/jg1p2gzhrgg5d0wfdv45j1144q3ms3i2-kubernetes-helm-4.2.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "kubernetes-helm",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/zpbg9qqi19k2pcp06yfkmv76a1yb2j0x-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:24:45.679341Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/0fmrj3fq2j2l95cj12pw1bkni4nihwsl-kubernetes-helm-4.2.3"
+      },
+      "system": "aarch64-linux",
+      "group": "kubernetes-helm",
+      "priority": 5
+    },
+    {
+      "attr_path": "kubernetes-helm",
+      "broken": false,
+      "derivation": "/nix/store/4nb9airy740jinzgf83vpk7gp13vjmii-kubernetes-helm-4.2.3.drv",
+      "description": "Package manager for kubernetes",
+      "install_id": "kubernetes-helm",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "kubernetes-helm-4.2.3",
+      "pname": "kubernetes-helm",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:59:04.143872Z",
+      "stabilities": [
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.2.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/7vgl8w4ma0pl7f32n0rjgnmj6xalmiac-kubernetes-helm-4.2.3"
+      },
+      "system": "x86_64-linux",
+      "group": "kubernetes-helm",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/m4s0894j2dj2k375c7dns2ib8nk5krpw-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:12:55.889515Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/fp3ndk75i6c1c31a9zqkz3pk61gz294h-fnm-1.39.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/zh7xw7li0b92r9cx25f4j19qdp1kqvdz-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:41:22.827979Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1312sbdkqvdp0m5gak0dfgz0bf2p1kgj-fnm-1.39.0"
+      },
+      "system": "aarch64-linux",
+      "group": "node",
+      "priority": 5
+    },
+    {
+      "attr_path": "fnm",
+      "broken": false,
+      "derivation": "/nix/store/isdxp3dj73n1j6zzxjnjg20f4016h7ia-fnm-1.39.0.drv",
+      "description": "Fast and simple Node.js version manager",
+      "install_id": "fnm",
+      "license": "GPL-3.0-only",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "fnm-1.39.0",
+      "pname": "fnm",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:40:25.581588Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.39.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/1dih2h4sxfqkkg32db7753m02d9q54hk-fnm-1.39.0"
+      },
+      "system": "x86_64-linux",
+      "group": "node",
+      "priority": 5
+    },
     {
       "attr_path": "open-policy-agent",
       "broken": false,
@@ -56,7 +679,7 @@
         "out": "/nix/store/28vvl32vygjxdalfprxjqvnwpbsp2j7i-open-policy-agent-1.8.0"
       },
       "system": "aarch64-darwin",
-      "group": "tools",
+      "group": "open-policy-agent",
       "priority": 5
     },
     {
@@ -87,38 +710,7 @@
         "out": "/nix/store/i98fklmmf7xcqlmm1hdzkcw4wvyf92my-open-policy-agent-1.8.0"
       },
       "system": "aarch64-linux",
-      "group": "tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "open-policy-agent",
-      "broken": false,
-      "derivation": "/nix/store/x7smjn0d496p62ckf6jcvp0i4qb9gzqv-open-policy-agent-1.8.0.drv",
-      "description": "General-purpose policy engine",
-      "install_id": "open-policy-agent",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
-      "name": "open-policy-agent-1.8.0",
-      "pname": "open-policy-agent",
-      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
-      "rev_count": 866707,
-      "rev_date": "2025-09-24T05:06:22Z",
-      "scrape_date": "2025-09-26T04:39:57.100020Z",
-      "stabilities": [
-        "unstable",
-        "staging",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "1.8.0",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/mby5spqsadnhrbdc20h01b5fbf7938vl-open-policy-agent-1.8.0"
-      },
-      "system": "x86_64-darwin",
-      "group": "tools",
+      "group": "open-policy-agent",
       "priority": 5
     },
     {
@@ -149,395 +741,513 @@
         "out": "/nix/store/v3nqh59l69bpq739pa2amj427h1isc5d-open-policy-agent-1.8.0"
       },
       "system": "x86_64-linux",
-      "group": "tools",
+      "group": "open-policy-agent",
       "priority": 5
     },
     {
       "attr_path": "osv-scanner",
       "broken": false,
-      "derivation": "/nix/store/2ddz5rl2cg9nfpy2465fbwcrpd34l1yh-osv-scanner-2.2.2.drv",
+      "derivation": "/nix/store/g2jx4p30qxqyjk65mbgv63mawimskfbg-osv-scanner-2.3.3.drv",
       "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
       "install_id": "osv-scanner",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
-      "name": "osv-scanner-2.2.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "osv-scanner-2.3.3",
       "pname": "osv-scanner",
-      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
-      "rev_count": 866707,
-      "rev_date": "2025-09-24T05:06:22Z",
-      "scrape_date": "2025-09-26T03:42:59.393464Z",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T04:54:27.813904Z",
       "stabilities": [
-        "unstable",
-        "staging",
-        "stable"
+        "unstable"
       ],
       "unfree": false,
-      "version": "2.2.2",
+      "version": "2.3.3",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/26wh6j075c2ja715gin101n3vic20g92-osv-scanner-2.2.2"
+        "out": "/nix/store/qfv8fsdf1bhsl4ml0955nplrw1wi83d6-osv-scanner-2.3.3"
       },
       "system": "aarch64-darwin",
-      "group": "tools",
+      "group": "osv-scanner",
       "priority": 5
     },
     {
       "attr_path": "osv-scanner",
       "broken": false,
-      "derivation": "/nix/store/2mv1gpg13bjisqdr1jiybpr5y2kql4hv-osv-scanner-2.2.2.drv",
+      "derivation": "/nix/store/pnqpmpkk9fbrm0411g73r277gnda7ili-osv-scanner-2.3.3.drv",
       "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
       "install_id": "osv-scanner",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
-      "name": "osv-scanner-2.2.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "osv-scanner-2.3.3",
       "pname": "osv-scanner",
-      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
-      "rev_count": 866707,
-      "rev_date": "2025-09-24T05:06:22Z",
-      "scrape_date": "2025-09-26T04:12:14.182935Z",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:25:09.330153Z",
       "stabilities": [
-        "unstable",
-        "staging",
-        "stable"
+        "unstable"
       ],
       "unfree": false,
-      "version": "2.2.2",
+      "version": "2.3.3",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/3bn0dv4wba1jkz3x61jxfyavk75yj8yp-osv-scanner-2.2.2"
+        "out": "/nix/store/v1d3ifdfb4j91gvx46swna13h6bpx9fb-osv-scanner-2.3.3"
       },
       "system": "aarch64-linux",
-      "group": "tools",
+      "group": "osv-scanner",
       "priority": 5
     },
     {
       "attr_path": "osv-scanner",
       "broken": false,
-      "derivation": "/nix/store/a9d5nlnbvl0yaw75x9dr1p753dqwl7ss-osv-scanner-2.2.2.drv",
+      "derivation": "/nix/store/j64ih3qz2fdcmi1gvycirnmzisbdzpl6-osv-scanner-2.3.3.drv",
       "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
       "install_id": "osv-scanner",
       "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
-      "name": "osv-scanner-2.2.2",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "name": "osv-scanner-2.3.3",
       "pname": "osv-scanner",
-      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
-      "rev_count": 866707,
-      "rev_date": "2025-09-24T05:06:22Z",
-      "scrape_date": "2025-09-26T04:39:57.558517Z",
+      "rev": "241313f4e8e508cb9b13278c2b0fa25b9ca27163",
+      "rev_count": 1037713,
+      "rev_date": "2026-07-19T21:52:44Z",
+      "scrape_date": "2026-07-21T05:59:27.881702Z",
       "stabilities": [
-        "unstable",
-        "staging",
-        "stable"
+        "unstable"
       ],
       "unfree": false,
-      "version": "2.2.2",
+      "version": "2.3.3",
       "outputs_to_install": [
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/mivgza1fjrcg1mzlp4868lfg8a1fr051-osv-scanner-2.2.2"
-      },
-      "system": "x86_64-darwin",
-      "group": "tools",
-      "priority": 5
-    },
-    {
-      "attr_path": "osv-scanner",
-      "broken": false,
-      "derivation": "/nix/store/hhrm279m6xlr10hh4xhxmhznqnb1kvp4-osv-scanner-2.2.2.drv",
-      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
-      "install_id": "osv-scanner",
-      "license": "Apache-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=e643668fd71b949c53f8626614b21ff71a07379d",
-      "name": "osv-scanner-2.2.2",
-      "pname": "osv-scanner",
-      "rev": "e643668fd71b949c53f8626614b21ff71a07379d",
-      "rev_count": 866707,
-      "rev_date": "2025-09-24T05:06:22Z",
-      "scrape_date": "2025-09-26T05:11:20.395916Z",
-      "stabilities": [
-        "unstable",
-        "staging",
-        "stable"
-      ],
-      "unfree": false,
-      "version": "2.2.2",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/dwj2i6qhz1pv0331h704swc656fhhbjs-osv-scanner-2.2.2"
+        "out": "/nix/store/6x0287bsy0pc19ygy84r6rg4lz51dkmx-osv-scanner-2.3.3"
       },
       "system": "x86_64-linux",
-      "group": "tools",
+      "group": "osv-scanner",
       "priority": 5
     },
     {
-      "attr_path": "gnutar",
+      "attr_path": "diffutils",
       "broken": false,
-      "derivation": "/nix/store/srhxmpzbdjkzx49sxfv4gdgik8hjpb3l-gnutar-1.35.drv",
-      "description": "GNU implementation of the `tar' archiver",
-      "install_id": "gnutar",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "gnutar-1.35",
-      "pname": "gnutar",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:35:55.625459Z",
+      "derivation": "/nix/store/a4idiq74cs37nrckg8fvqn436l1jli0k-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:03.203715Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "1.35",
+      "version": "3.12",
       "outputs_to_install": [
-        "out",
         "out",
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/vmm74jf3h3h4w8kz0bnk6vgn0ixyfyyk-gnutar-1.35-info",
-        "out": "/nix/store/4jhz97mvip61gn146avpanb60glazgz4-gnutar-1.35"
+        "info": "/nix/store/wbb3pzx0mg0a7ksjvc44kd5w3mzynnlz-diffutils-3.12-info",
+        "out": "/nix/store/37rdk8zsdbqcp73l3nrmwilwb2ixkacv-diffutils-3.12"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "gnutar",
+      "attr_path": "diffutils",
       "broken": false,
-      "derivation": "/nix/store/9hzp7c9vng5dc9x747bspkvbmcsab11g-gnutar-1.35.drv",
-      "description": "GNU implementation of the `tar' archiver",
-      "install_id": "gnutar",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "gnutar-1.35",
-      "pname": "gnutar",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:05:24.904605Z",
+      "derivation": "/nix/store/7kp4z354654mvw5brn01k26r4kg2di8j-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:26.601002Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "1.35",
+      "version": "3.12",
       "outputs_to_install": [
-        "out",
-        "out",
         "out",
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/chjh1afhyda3vli9lwnfaiz39pb7n39p-gnutar-1.35-info",
-        "out": "/nix/store/p83mlijcdg429fj17frdcxv7jj9jnsqv-gnutar-1.35"
+        "info": "/nix/store/rl95zx5xc6jx0ziigcgygj3zd9fwj77x-diffutils-3.12-info",
+        "out": "/nix/store/l2vdh6xnh51cqav31cwsdwr3c91i2gbl-diffutils-3.12"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "gnutar",
+      "attr_path": "diffutils",
       "broken": false,
-      "derivation": "/nix/store/rg7qpn90a3ijqj1i2fq9m0jy6sqy0jq6-gnutar-1.35.drv",
-      "description": "GNU implementation of the `tar' archiver",
-      "install_id": "gnutar",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "gnutar-1.35",
-      "pname": "gnutar",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:33:33.880310Z",
+      "derivation": "/nix/store/hr30bp0br6nigp0zv5jmf9l4g3xsms2q-diffutils-3.12.drv",
+      "description": "Commands for showing the differences between files (diff, cmp, etc.)",
+      "install_id": "diffutils",
+      "license": "GPL-3.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "diffutils-3.12",
+      "pname": "diffutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:51.733292Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "1.35",
+      "version": "3.12",
       "outputs_to_install": [
-        "out",
-        "out"
-      ],
-      "outputs": {
-        "info": "/nix/store/kyc01mpv5sizdndi7w7b3ks2gq9s6bcz-gnutar-1.35-info",
-        "out": "/nix/store/s3pyki0jss8gkxa935xwc4hzh93ly2z6-gnutar-1.35"
-      },
-      "system": "x86_64-darwin",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "gnutar",
-      "broken": false,
-      "derivation": "/nix/store/zs2p03ld9jhdx4wrdi8qk9adl9crkb3v-gnutar-1.35.drv",
-      "description": "GNU implementation of the `tar' archiver",
-      "install_id": "gnutar",
-      "license": "GPL-3.0-or-later",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "gnutar-1.35",
-      "pname": "gnutar",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:05:47.954880Z",
-      "stabilities": [
-        "unstable",
-        "staging"
-      ],
-      "unfree": false,
-      "version": "1.35",
-      "outputs_to_install": [
-        "out",
-        "out",
-        "out",
-        "out",
         "out",
         "out",
         "out",
         "out"
       ],
       "outputs": {
-        "info": "/nix/store/ax6j94gib9m7ni9pfv3qmm5l8fi1hlz2-gnutar-1.35-info",
-        "out": "/nix/store/qyg62bc2xnpwz0fa9prqxvvk00zj4g9q-gnutar-1.35"
+        "info": "/nix/store/6mkh4xmxcqcmkx5dddiw9zr57bkw9qvv-diffutils-3.12-info",
+        "out": "/nix/store/ww555mznia5v7sz2w85lblg4amvhkhv1-diffutils-3.12"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "python3",
+      "attr_path": "findutils",
       "broken": false,
-      "derivation": "/nix/store/2f9f2hcw24ncf86i63v9apf9s0k2fgyz-python3-3.13.11.drv",
-      "description": "High-level dynamically-typed programming language",
-      "install_id": "python3",
-      "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "python3-3.13.11",
-      "pname": "python3",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T04:36:33.164594Z",
+      "derivation": "/nix/store/v1gwnzlgn4vivbr5j9jzsqqb8kl8z3k4-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:03.570130Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "3.13.11",
+      "version": "4.10.0",
       "outputs_to_install": [
-        "out",
-        "out",
-        "out",
         "out",
         "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/qzgxkh5rnlswnj5ywhag0djwvn83kr3r-python3-3.13.11"
+        "info": "/nix/store/34l83gpv8481k0wzmmi9cxh9flbmhsg4-findutils-4.10.0-info",
+        "locate": "/nix/store/mwx56wc51wvky0a78fizs90y7s7mg2ia-findutils-4.10.0-locate",
+        "out": "/nix/store/3wz2j41nnr1badij6fcnip5vgrfpdd82-findutils-4.10.0"
       },
       "system": "aarch64-darwin",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "python3",
+      "attr_path": "findutils",
       "broken": false,
-      "derivation": "/nix/store/cadmaxzh2h1i0id6zfa5zq0mjpr9qqda-python3-3.13.11.drv",
-      "description": "High-level dynamically-typed programming language",
-      "install_id": "python3",
-      "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "python3-3.13.11",
-      "pname": "python3",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:06:19.681973Z",
+      "derivation": "/nix/store/rka0crnhr888cfy9ilwmdy2b7zkb2iwl-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:27.153777Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "3.13.11",
+      "version": "4.10.0",
       "outputs_to_install": [
-        "out",
-        "out",
-        "out",
         "out",
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/bzb0vriv1a1kaz9zv6lzv62zkcvvm88r-python3-3.13.11-debug",
-        "out": "/nix/store/ygzfhw5nxrn7qqfqmz2s9p6cikcjqqkh-python3-3.13.11"
+        "info": "/nix/store/168irs0ni0r9iynjv0q05s72ad276hjc-findutils-4.10.0-info",
+        "locate": "/nix/store/1ycgnkm4c43vggyw76qc0jvrz4yvaddn-findutils-4.10.0-locate",
+        "out": "/nix/store/gbd7xfq2d1wbrwr2i045mvc8fkkw7i1g-findutils-4.10.0"
       },
       "system": "aarch64-linux",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "python3",
+      "attr_path": "findutils",
       "broken": false,
-      "derivation": "/nix/store/dk525f5vnsqf4c5m90rhm2hazww34xmx-python3-3.13.11.drv",
-      "description": "High-level dynamically-typed programming language",
-      "install_id": "python3",
-      "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "python3-3.13.11",
-      "pname": "python3",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:34:11.664697Z",
+      "derivation": "/nix/store/nv9vbwdbppdb9zvv78m9a99vga207ykq-findutils-4.10.0.drv",
+      "description": "GNU Find Utilities, the basic directory searching utilities of the GNU operating system",
+      "install_id": "findutils",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "findutils-4.10.0",
+      "pname": "findutils",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:52.337279Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "3.13.11",
+      "version": "4.10.0",
       "outputs_to_install": [
+        "out",
         "out",
         "out",
         "out"
       ],
       "outputs": {
-        "out": "/nix/store/5wy2gaa1kaskq3j63zwl1jw6a0ffllx5-python3-3.13.11"
+        "info": "/nix/store/mc65clwg5q361fa9614ryvmhl3yqradh-findutils-4.10.0-info",
+        "locate": "/nix/store/fcid2ld7f37q6h1rknkrv80302is8c0y-findutils-4.10.0-locate",
+        "out": "/nix/store/c1cjgg6p8m8fssivzrc2p13mwwml3p3v-findutils-4.10.0"
       },
-      "system": "x86_64-darwin",
+      "system": "x86_64-linux",
       "group": "toplevel",
       "priority": 5
     },
     {
-      "attr_path": "python3",
+      "attr_path": "gnumake",
       "broken": false,
-      "derivation": "/nix/store/bmlsz2bfdg16dr10k8rm3hmkq09h06nr-python3-3.13.11.drv",
-      "description": "High-level dynamically-typed programming language",
-      "install_id": "python3",
-      "license": "Python-2.0",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "python3-3.13.11",
-      "pname": "python3",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T06:06:47.427720Z",
+      "derivation": "/nix/store/kpylm5v2c10jkmpjfll8jk9vc0icnzmf-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:03.974647Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
       ],
       "unfree": false,
-      "version": "3.13.11",
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out"
+      ],
+      "outputs": {
+        "doc": "/nix/store/sl2ygvgjg4ml8dhyfxj5kh84x2bs1mhc-gnumake-4.4.1-doc",
+        "info": "/nix/store/6dbp1ysgxsrrn7xgjgf523faqrm605a5-gnumake-4.4.1-info",
+        "man": "/nix/store/wdm9prq35jlgwq6rjyhqxy4jzy833sfr-gnumake-4.4.1-man",
+        "out": "/nix/store/8wwiw8pwyhrkzyq28hqzxfl4z84lks81-gnumake-4.4.1"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/5i4kfrpjrag02vk2n04ndvfbsb086kkq-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:28.288092Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/mdv67w2xvchbs76zjdzppdkk64z5avki-gnumake-4.4.1-debug",
+        "doc": "/nix/store/bybbj9avk3g107mwhgvkzkpm6mkbl8gv-gnumake-4.4.1-doc",
+        "info": "/nix/store/bxdqxx2q13sj15ss8z5l33jd31x55j5l-gnumake-4.4.1-info",
+        "man": "/nix/store/dg3aa71vii59scbfhi02cdxnps64x6ql-gnumake-4.4.1-man",
+        "out": "/nix/store/9ngw1ippk25jjj5fjxv36xbp6iq7rxdx-gnumake-4.4.1"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnumake",
+      "broken": false,
+      "derivation": "/nix/store/7r4i2k0iihf294fij4fharxs9ph4xy7i-gnumake-4.4.1.drv",
+      "description": "Tool to control the generation of non-source files from sources",
+      "install_id": "gnumake",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnumake-4.4.1",
+      "pname": "gnumake",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:53.551884Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "4.4.1",
+      "outputs_to_install": [
+        "man",
+        "out",
+        "out",
+        "out",
+        "out"
+      ],
+      "outputs": {
+        "debug": "/nix/store/q683z843wi7xs96pngh1kinnx88vn2if-gnumake-4.4.1-debug",
+        "doc": "/nix/store/wxg27bzsljjw4k72m9b2v6a0fx5a68s0-gnumake-4.4.1-doc",
+        "info": "/nix/store/03d41qgjsrhcr3fzq2z99ry07rahnj0v-gnumake-4.4.1-info",
+        "man": "/nix/store/bmvqa5ym318mymhxlwwmxq8wxal958p4-gnumake-4.4.1-man",
+        "out": "/nix/store/d3bwqm6bymhy3pdgbvf7vxjqfp31m3j1-gnumake-4.4.1"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/pdvrawd3q9d8ax2ys053rvv1jinpgncs-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:03.982516Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
       "outputs_to_install": [
         "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/lfn1823f7k3iaar3088ag3vkk3g8mf46-gnutar-1.35-info",
+        "out": "/nix/store/3aikbnf5fq99gvw1wb242wrjnbj7fcr9-gnutar-1.35"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/2vfljm4iy3yngf9bcb98djkq762z2845-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:28.303349Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
         "out",
+        "out"
+      ],
+      "outputs": {
+        "info": "/nix/store/isnpsk3kgnlfv3gs1j9vn75cx6pw015a-gnutar-1.35-info",
+        "out": "/nix/store/lg4p75b1g1ncr0xf20qpyc96pikpg1sp-gnutar-1.35"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gnutar",
+      "broken": false,
+      "derivation": "/nix/store/k8mgqrkbrh8jpll2yamzk66jksqhlw0y-gnutar-1.35.drv",
+      "description": "GNU implementation of the `tar` archiver",
+      "install_id": "gnutar",
+      "license": "GPL-3.0-or-later",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gnutar-1.35",
+      "pname": "gnutar",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:53.566097Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "1.35",
+      "outputs_to_install": [
         "out",
         "out",
         "out",
@@ -545,8 +1255,104 @@
         "out"
       ],
       "outputs": {
-        "debug": "/nix/store/gvhg8py0jr9v83ysqb86rr2s1yidppca-python3-3.13.11-debug",
-        "out": "/nix/store/slhpx9glq7vl99bwi93bgrhn3syv98s1-python3-3.13.11"
+        "info": "/nix/store/mrvcwlivqq2nr2anqq9ap4wdhflk52lm-gnutar-1.35-info",
+        "out": "/nix/store/55nbxpjrgrrsplq739z1z8n05h16cgsq-gnutar-1.35"
+      },
+      "system": "x86_64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/j8ybq6l473j7zinlzgivynnqb9zvl76a-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:06:04.219243Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/6jb5frkadampkcmbjynch118cc4smzfj-gum-0.17.0"
+      },
+      "system": "aarch64-darwin",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/3rhl22hpsgrv3p835m8kkmkli1v1swnq-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T07:34:28.702751Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/8p8fi8pl4lb776q2gnby3rd3mcbj5grh-gum-0.17.0"
+      },
+      "system": "aarch64-linux",
+      "group": "toplevel",
+      "priority": 5
+    },
+    {
+      "attr_path": "gum",
+      "broken": false,
+      "derivation": "/nix/store/b84rjgg7a2yk5hjvrml660hrir7xd3nx-gum-0.17.0.drv",
+      "description": "Tasty Bubble Gum for your shell",
+      "install_id": "gum",
+      "license": "MIT",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "name": "gum-0.17.0",
+      "pname": "gum",
+      "rev": "64c08a7ca051951c8eae34e3e3cb1e202fe36786",
+      "rev_count": 1004030,
+      "rev_date": "2026-05-23T18:24:25Z",
+      "scrape_date": "2026-05-26T08:32:53.979932Z",
+      "stabilities": [
+        "lts",
+        "stable",
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "0.17.0",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/2ii7sbkq44zrkv4iv6g7bqi47m4ch28b-gum-0.17.0"
       },
       "system": "x86_64-linux",
       "group": "toplevel",
@@ -567,8 +1373,8 @@
       "rev_date": "2026-02-04T09:32:58Z",
       "scrape_date": "2026-02-06T04:38:13.753987Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "staging",
+        "unstable"
       ],
       "unfree": false,
       "version": "0.9.28",
@@ -579,7 +1385,7 @@
         "out": "/nix/store/rnci0wgac6r47gr09bhb6x5fyc507i43-uv-0.9.28"
       },
       "system": "aarch64-darwin",
-      "group": "toplevel",
+      "group": "uv",
       "priority": 5
     },
     {
@@ -597,8 +1403,8 @@
       "rev_date": "2026-02-04T09:32:58Z",
       "scrape_date": "2026-02-06T05:08:27.505844Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "staging",
+        "unstable"
       ],
       "unfree": false,
       "version": "0.9.28",
@@ -609,37 +1415,7 @@
         "out": "/nix/store/r6g6avldk8dlj30dmk2p2971akkmw9h3-uv-0.9.28"
       },
       "system": "aarch64-linux",
-      "group": "toplevel",
-      "priority": 5
-    },
-    {
-      "attr_path": "uv",
-      "broken": false,
-      "derivation": "/nix/store/1dxxxb7ia28b4fcvn00vvc2xmal3kamm-uv-0.9.28.drv",
-      "description": "Extremely fast Python package installer and resolver, written in Rust",
-      "install_id": "uv",
-      "license": "[ Apache-2.0, MIT ]",
-      "locked_url": "https://github.com/flox/nixpkgs?rev=00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "name": "uv-0.9.28",
-      "pname": "uv",
-      "rev": "00c21e4c93d963c50d4c0c89bfa84ed6e0694df2",
-      "rev_count": 940249,
-      "rev_date": "2026-02-04T09:32:58Z",
-      "scrape_date": "2026-02-06T05:35:52.717277Z",
-      "stabilities": [
-        "unstable",
-        "staging"
-      ],
-      "unfree": false,
-      "version": "0.9.28",
-      "outputs_to_install": [
-        "out"
-      ],
-      "outputs": {
-        "out": "/nix/store/vrzvbvds4vvj5989w838m562vavqzd4w-uv-0.9.28"
-      },
-      "system": "x86_64-darwin",
-      "group": "toplevel",
+      "group": "uv",
       "priority": 5
     },
     {
@@ -657,8 +1433,8 @@
       "rev_date": "2026-02-04T09:32:58Z",
       "scrape_date": "2026-02-06T06:09:00.313627Z",
       "stabilities": [
-        "unstable",
-        "staging"
+        "staging",
+        "unstable"
       ],
       "unfree": false,
       "version": "0.9.28",
@@ -669,8 +1445,237 @@
         "out": "/nix/store/jddcqyx0099mynb7gxr0dd66hkpqqs2r-uv-0.9.28"
       },
       "system": "x86_64-linux",
-      "group": "toplevel",
+      "group": "uv",
       "priority": 5
     }
-  ]
+  ],
+  "compose": {
+    "composer": {
+      "schema-version": "1.11.0",
+      "profile": {
+        "common": "  test -f .git/hooks/pre-commit || pre-commit install\n\n  gum style \"NeMo Platform\"\n"
+      },
+      "options": {},
+      "include": {
+        "environments": [
+          {
+            "dir": "flox-environments/common"
+          },
+          {
+            "dir": "flox-environments/helm"
+          },
+          {
+            "dir": "flox-environments/actionlint"
+          },
+          {
+            "dir": "flox-environments/python"
+          },
+          {
+            "dir": "flox-environments/web"
+          },
+          {
+            "dir": "flox-environments/osv-scanner"
+          },
+          {
+            "dir": "flox-environments/open-policy-agent"
+          }
+        ]
+      }
+    },
+    "include": [
+      {
+        "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "diffutils": {
+              "pkg-path": "diffutils"
+            },
+            "findutils": {
+              "pkg-path": "findutils"
+            },
+            "gnumake": {
+              "pkg-path": "gnumake"
+            },
+            "gnutar": {
+              "pkg-path": "gnutar"
+            },
+            "gum": {
+              "pkg-path": "gum"
+            }
+          },
+          "vars": {
+            "ALIGN": "center",
+            "BORDER": "double",
+            "BORDER_FOREGROUND": "514",
+            "FOREGROUND": "514",
+            "GUM_LOG_MESSAGE_FOREGROUND": "514",
+            "MARGIN": "1 2",
+            "PADDING": "1 2",
+            "WIDTH": "50"
+          },
+          "profile": {},
+          "options": {}
+        },
+        "name": "common",
+        "descriptor": {
+          "dir": "flox-environments/common"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.13.0",
+          "install": {
+            "helm-docs": {
+              "pkg-path": "helm-docs",
+              "pkg-group": "helm-docs",
+              "version": "1.14.2"
+            },
+            "kubeconform": {
+              "pkg-path": "kubeconform",
+              "pkg-group": "kubeconform",
+              "version": "0.6.7"
+            },
+            "kubernetes-helm": {
+              "pkg-path": "kubernetes-helm",
+              "pkg-group": "kubernetes-helm",
+              "version": "4.2.3"
+            }
+          },
+          "hook": {},
+          "profile": {},
+          "options": {
+            "systems": [
+              "aarch64-darwin",
+              "aarch64-linux",
+              "x86_64-linux"
+            ]
+          }
+        },
+        "name": "helm",
+        "descriptor": {
+          "dir": "flox-environments/helm"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.13.0",
+          "install": {
+            "actionlint": {
+              "pkg-path": "actionlint",
+              "pkg-group": "actionlint",
+              "version": "1.7.12"
+            },
+            "shellcheck": {
+              "pkg-path": "shellcheck",
+              "pkg-group": "actionlint",
+              "version": "0.11.0"
+            }
+          },
+          "hook": {},
+          "profile": {},
+          "options": {}
+        },
+        "name": "actionlint",
+        "descriptor": {
+          "dir": "flox-environments/actionlint"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "uv": {
+              "pkg-path": "uv",
+              "pkg-group": "uv",
+              "version": ">=0.9.14,<0.10.0"
+            }
+          },
+          "vars": {
+            "UV_CACHE_DIR": "${FLOX_ENV_CACHE}/uv-cache",
+            "UV_MANAGED_PYTHON": "1",
+            "UV_PYTHON": "3.13",
+            "UV_PYTHON_INSTALL_DIR": "${FLOX_ENV_CACHE}/python",
+            "UV_VENV_SEED": "1"
+          },
+          "hook": {
+            "on-activate": "  set -euo pipefail\n\n  echo \"Python Setup... Starting\"\n  uv sync --frozen --all-packages\n  echo \"Python Setup... Complete\"\n"
+          },
+          "profile": {
+            "bash": "  source .venv/bin/activate\n",
+            "zsh": "  source .venv/bin/activate\n",
+            "fish": "  set -gx VIRTUAL_ENV \"$PWD/.venv\"\n  set -gx PATH \"$VIRTUAL_ENV/bin\" $PATH\n"
+          },
+          "options": {}
+        },
+        "name": "nemo-platform-python",
+        "descriptor": {
+          "dir": "flox-environments/python"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "fnm": {
+              "pkg-path": "fnm",
+              "pkg-group": "node"
+            }
+          },
+          "vars": {
+            "FNM_DIR": "${FLOX_ENV_CACHE}/fnm",
+            "FNM_VERSION_FILE_STRATEGY": "recursive",
+            "NPM_CONFIG_STORE_DIR": "${FLOX_ENV_CACHE}/npm-cache"
+          },
+          "hook": {
+            "on-activate": "  set -euo pipefail\n\n  echo \"NodeJS Setup... Starting\"\n  echo \"Current Directory: $(pwd)\"\n\n  eval \"$(fnm env --shell bash)\"\n  fnm install --use --corepack-enabled\n  corepack enable\n\n  package_manager=\"$(node -p \"require('./web/package.json').packageManager\")\"\n  corepack prepare \"${package_manager}\" --activate\n  CI=true pnpm install -C \"./web\" --frozen-lockfile\n\n  echo \"NodeJS Setup... Complete\"\n"
+          },
+          "profile": {
+            "bash": "  eval \"$(fnm env --shell bash --use-on-cd --version-file-strategy=recursive)\"\n",
+            "zsh": "  eval \"$(fnm env --shell zsh --use-on-cd --version-file-strategy=recursive)\"\n",
+            "fish": "  fnm env --shell fish --use-on-cd --version-file-strategy=recursive | source\n"
+          },
+          "options": {}
+        },
+        "name": "nemo-platform-nodejs",
+        "descriptor": {
+          "dir": "flox-environments/web"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "osv-scanner": {
+              "pkg-path": "osv-scanner",
+              "pkg-group": "osv-scanner",
+              "version": "2.3.3"
+            }
+          },
+          "options": {}
+        },
+        "name": "osv-scanner",
+        "descriptor": {
+          "dir": "flox-environments/osv-scanner"
+        }
+      },
+      {
+        "manifest": {
+          "schema-version": "1.11.0",
+          "install": {
+            "open-policy-agent": {
+              "pkg-path": "open-policy-agent",
+              "pkg-group": "open-policy-agent",
+              "version": "1.8.0"
+            }
+          },
+          "options": {}
+        },
+        "name": "open-policy-agent",
+        "descriptor": {
+          "dir": "flox-environments/open-policy-agent"
+        }
+      }
+    ],
+    "warnings": []
+  }
 }

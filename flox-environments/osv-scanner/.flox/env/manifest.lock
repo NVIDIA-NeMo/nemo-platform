@@ -1,0 +1,136 @@
+{
+  "lockfile-version": 1,
+  "manifest": {
+    "schema-version": "1.11.0",
+    "install": {
+      "osv-scanner": {
+        "pkg-path": "osv-scanner",
+        "pkg-group": "osv-scanner",
+        "version": "2.3.3"
+      }
+    },
+    "options": {}
+  },
+  "packages": [
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/6wq5al03q2wa5q7n1ncbd7abhl66y7b8-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:13:26.142590Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/ns183jzjw9y8cs1psf76lw21005p4z0j-osv-scanner-2.3.3"
+      },
+      "system": "aarch64-darwin",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/qq33cdnga8jg16qj9p7f8m6llhsxvfyw-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T03:42:08.260295Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/mry5p0m1qd8sr7hrv5pzrymdvfky1zw7-osv-scanner-2.3.3"
+      },
+      "system": "aarch64-linux",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/1js2yqnpa9m8r6pzibwx3fcz85rrfhz0-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:09:39.284981Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/l79gbf7zv1ry5h66xnhb544ncpxcniax-osv-scanner-2.3.3"
+      },
+      "system": "x86_64-darwin",
+      "group": "osv-scanner",
+      "priority": 5
+    },
+    {
+      "attr_path": "osv-scanner",
+      "broken": false,
+      "derivation": "/nix/store/y8jd2pjjlpkdsbp1hkzszsfzxx1ajz1c-osv-scanner-2.3.3.drv",
+      "description": "Vulnerability scanner written in Go which uses the data provided by https://osv.dev",
+      "install_id": "osv-scanner",
+      "license": "Apache-2.0",
+      "locked_url": "https://github.com/flox/nixpkgs?rev=d407951447dcd00442e97087bf374aad70c04cea",
+      "name": "osv-scanner-2.3.3",
+      "pname": "osv-scanner",
+      "rev": "d407951447dcd00442e97087bf374aad70c04cea",
+      "rev_count": 1027867,
+      "rev_date": "2026-07-05T04:06:12Z",
+      "scrape_date": "2026-07-06T04:41:14.038939Z",
+      "stabilities": [
+        "staging",
+        "unstable"
+      ],
+      "unfree": false,
+      "version": "2.3.3",
+      "outputs_to_install": [
+        "out"
+      ],
+      "outputs": {
+        "out": "/nix/store/znf20q4b2114afsq39pn3fhmcda25rhy-osv-scanner-2.3.3"
+      },
+      "system": "x86_64-linux",
+      "group": "osv-scanner",
+      "priority": 5
+    }
+  ]
+}

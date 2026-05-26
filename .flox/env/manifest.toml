@@ -1,26 +1,23 @@
 schema-version = "1.11.0"
 
-
 [install]
-# Python
-python3.pkg-path = "python3"
-uv.pkg-path = "uv"
-uv.version = "~0.9"
-
-# Utilities
-gnutar.pkg-path = "gnutar"
-
-# Tools
-open-policy-agent.pkg-path = "open-policy-agent"
-open-policy-agent.version = "1.8.0"
-open-policy-agent.pkg-group = "tools"
-osv-scanner.pkg-path = "osv-scanner"
-osv-scanner.pkg-group = "tools"
 
 [vars]
-[hook]
+
 [profile]
-[services]
+common = '''
+  test -f .git/hooks/pre-commit || pre-commit install
+
+  gum style "NeMo Platform"
+'''
+
 [include]
-[build]
-[options]
+environments = [
+    { dir = "flox-environments/common" },
+    { dir = "flox-environments/helm" },
+    { dir = "flox-environments/actionlint" },
+    { dir = "flox-environments/python" },
+    { dir = "flox-environments/web" },
+    { dir = "flox-environments/osv-scanner" },
+    { dir = "flox-environments/open-policy-agent" },
+]

@@ -67,9 +67,9 @@ repos:
 
   - repo: https://github.com/norwoodj/helm-docs
     # The container itself is 'latest' no matter what here
-    rev: "v1.14.2"
+    rev: v1.14.2
     hooks:
-      - id: helm-docs-container
+      - id: helm-docs
         files: |
           (?x)^(
             k8s/helm/values\.yaml|
@@ -96,6 +96,12 @@ repos:
         files: 'pyproject\.toml$'
         pass_filenames: false
         verbose: true
+      - id: uv-version-constraint
+        name: Check uv version constraints
+        entry: python3 tools/lint/check_uv_version.py
+        language: system
+        files: '^(pyproject\.toml|flox-environments/python/\.flox/env/manifest\.toml)$'
+        pass_filenames: false
       - id: copyright-fix
         name: Fix copyright headers
         entry: uv run script/copyright_fixer.py
@@ -148,3 +154,15 @@ repos:
       - id: check-merge-conflict
         args:
           - --assume-in-merge
+# Flox
+  - repo: local
+    hooks:
+      - id: flox-include-check
+        name: Flox Include Upgrade
+        entry: |-
+          bash -c 'set -e
+          flox include upgrade 2>/dev/null'
+        language: system
+        files: '(^\.flox/env/manifest\.toml$|^flox-environments/[^/]+/\.flox/env/manifest\.toml$)'
+        pass_filenames: false
+        stages: [pre-commit]
