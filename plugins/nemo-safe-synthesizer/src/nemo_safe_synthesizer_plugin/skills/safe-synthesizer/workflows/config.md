@@ -50,3 +50,22 @@ See `workflows/pii-architecture.md` for "PII classification architecture".
 ## Secrets
 
 Use `hf_token_secret` at the top level of the job spec when model initialization needs a Hugging Face token from the platform secrets service.
+
+## Reusing a Previously Trained NSS Model
+
+To continue from a prior NSS training run, set `pretrained_model_job` at the top level of the job spec.
+The plugin resolves that earlier job's `adapter` result and uses it as the local pretrained model input at runtime.
+
+```json
+{
+  "data_source": "default/my-input#input.csv",
+  "pretrained_model_job": "default/my-earlier-nss-job",
+  "config": {
+    "generation": {
+      "num_records": 100
+    }
+  }
+}
+```
+
+Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.

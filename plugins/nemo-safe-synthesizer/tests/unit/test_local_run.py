@@ -5,6 +5,7 @@ import importlib
 import json
 import sys
 from types import ModuleType, SimpleNamespace
+from unittest.mock import MagicMock
 
 import pandas as pd
 import pytest
@@ -61,3 +62,62 @@ def test_run_from_env_reports_missing_config_path(monkeypatch):
 
     with pytest.raises(ValueError, match=f"{task_main.NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR} is not set"):
         task_main.run_from_env()
+
+def test_run_local_resolves_pretrained_model_job_before_run(tmp_path, monkeypatch):
+    task_main = import_task_main_without_heavy_runtime(monkeypatch)
+    spec_file = tmp_path / "spec.json"
+    spec_file.write_text(
+        json.dumps(
+            {
+                "data_source": "default/data#input.csv",
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {
+                    "enable_synthesis": False,
+                    "enable_replace_pii": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    data_file = tmp_path / "input.csv"
+    data_file.write_text("value\n1\n", encoding="utf-8")
+
+    adapter_dir = tmp_path / "downloaded-adapter"
+    adapter_dir.mkdir()
+    (adapter_dir / "adapter_config.json").write_text("{}", encoding="utf-8")
+
+    sdk = MagicMock()
+    sdk.jobs.results.retrieve.return_value = SimpleNamespace(
+        artifact_url="default/job-results-prior#results/attempt-1/adapter"
+    )
+    monkeypatch.setattr(task_main, "get_platform_sdk", lambda: sdk)
+
+    file_manager = MagicMock()
+    file_manager.download_from_url.return_value = SimpleNamespace(
+        path=adapter_dir,
+        cleanup_tmp_dir=MagicMock(),
+    )
+    monkeypatch.setattr(task_main, "FilesetFileManager", MagicMock(return_value=file_manager))
+
+    captured = {}
+    result = SimpleNamespace(
+        synthetic_data=pd.DataFrame({"value": [1]}),
+        summary=SimpleNamespace(model_dump=lambda: {"row_count": 1}),
+        evaluation_report_html=None,
+    )
+
+    def fake_run_config(job_config, data_source, save_path):
+        captured["pretrained_model"] = job_config.config.training.pretrained_model
+        return result, None
+
+    monkeypatch.setattr(task_main, "run_config", fake_run_config)
+
+    output_dir = tmp_path / "output"
+    task_main.run_local(spec_file=spec_file, workspace="default", output_dir=output_dir, data_source=data_file)
+
+    assert captured["pretrained_model"] == str(adapter_dir)
+    sdk.jobs.results.retrieve.assert_called_once_with(
+        name="adapter",
+        job="prior-safe-synth-job",
+        workspace="default",
+    )
