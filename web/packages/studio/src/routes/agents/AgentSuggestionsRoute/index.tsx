@@ -70,12 +70,12 @@ import {
 import { useLocation } from 'react-router-dom';
 
 type MultiState = Record<string, true>;
-type SuggestionFilter = {
+interface SuggestionFilter {
   agent?: MultiState;
   severity?: MultiState;
   type?: MultiState;
   scope?: MultiState;
-};
+}
 
 export const AgentOptimizationsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();

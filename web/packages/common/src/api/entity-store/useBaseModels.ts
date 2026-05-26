@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { modelsListModels } from '@nemo/sdk/generated/platform/api';
 import {
   ModelEntity,
@@ -14,7 +15,6 @@ import { useCallback, useMemo } from 'react';
 import { DEFAULT_NAMESPACE } from '../../constants';
 import { DEFAULT_PAGE_SIZE, QUERY_PREFIX_ENTITY_STORE } from '../../constants/api';
 import { isBaseModel } from '../../utils/models';
-import type { WithFilterOperators } from '../filterOperators';
 
 const SORT_COMPARATORS: Record<ModelEntitySortField, (a: ModelEntity, b: ModelEntity) => number> = {
   [ModelEntitySortField.name]: (a, b) => (a.name ?? '').localeCompare(b.name ?? ''),

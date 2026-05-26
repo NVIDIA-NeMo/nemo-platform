@@ -389,7 +389,8 @@ export const getIntakeRoute = (workspace: string) => {
 };
 
 export const getIntakeEntriesRoute = (workspace: string, options?: ListEntriesParams) => {
-  const queryParamStr = options ? `?${generateFilterParam(options.filter)}` : '';
+  const filterQuery = options ? generateFilterParam(options.filter) : '';
+  const queryParamStr = filterQuery ? `?${filterQuery}` : '';
   return generatePath(ROUTES.workspace.intakeEntries, { workspace }) + queryParamStr;
 };
 
