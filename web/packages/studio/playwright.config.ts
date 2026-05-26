@@ -27,10 +27,10 @@ export default defineConfig({
     baseURL: STUDIO_URL,
 
     /* Collect trace when retrying the failed test. See https://playwright.dev/docs/trace-viewer */
-    trace: 'on-first-retry',
+    trace: process.env.RECORD ? 'on' : 'on-first-retry',
 
     /* Record video on failure for debugging. See https://playwright.dev/docs/videos */
-    video: 'retain-on-failure',
+    video: process.env.RECORD ? 'on' : 'retain-on-failure',
   },
 
   /* Configure projects for major browsers */
