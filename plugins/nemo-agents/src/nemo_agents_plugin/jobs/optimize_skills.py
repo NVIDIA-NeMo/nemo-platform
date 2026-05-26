@@ -22,7 +22,9 @@ import logging
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from pydantic import BaseModel, Field
 
@@ -56,6 +58,15 @@ class OptimizeSkillsConfig(BaseModel):
             "records — extend this Literal."
         ),
     )
+    anthropic_api_key_secret: str | None = Field(
+        default=None,
+        description=(
+            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess so "
+            "the loop's ``check_anthropic_api`` / Claude analyzer preflights pass.  Local "
+            "(in-process) runs read ``ANTHROPIC_API_KEY`` from the calling shell as before."
+        ),
+    )
 
 
 class OptimizeSkillsJob(NemoJob):
@@ -84,9 +95,43 @@ class OptimizeSkillsJob(NemoJob):
         platform (and the user's docker daemon / Claude CLI).  No dedicated container image.
         """
         from nemo_platform_plugin.jobs.api_factory import (
+            EnvironmentVariable,
+            EnvironmentVariableFromSecret,
             PlatformJobStep,
             SubprocessExecutionProviderSpec,
         )
+        from nmp.common.jobs.constants import (
+            DEFAULT_JOB_STORAGE_PATH,
+            PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+        )
+
+        # Subprocess work dir is /tmp/nmp-subprocess-jobs/.../task-..., not the
+        # caller's cwd; reject relative paths up front.
+        _require_absolute(spec.evals, "evals")
+        _require_absolute(spec.agent, "agent")
+        _require_absolute(spec.state, "state")
+        _require_absolute(spec.initial_batch, "initial_batch")
+
+        # URL workspace is the auth boundary.  Config has no ``workspace``
+        # field today; injecting the key is a no-op now and a guard against
+        # future workspace-scoped fields.
+        spec_dict = spec.model_dump(mode="json")
+        spec_dict["workspace"] = workspace
+
+        environment: list[EnvironmentVariable] = [
+            EnvironmentVariable(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=DEFAULT_JOB_STORAGE_PATH),
+        ]
+        if spec.anthropic_api_key_secret:
+            # The subprocess backend's sanitized environment does not inherit
+            # ANTHROPIC_API_KEY from the platform process.  Inject from a
+            # platform Secret so ``preflight.check_anthropic_api`` and the
+            # Claude coding-agent preflight pass inside the dispatched step.
+            environment.append(
+                EnvironmentVariable(
+                    name="ANTHROPIC_API_KEY",
+                    from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
+                )
+            )
 
         return PlatformJobSpec(
             steps=[
@@ -96,16 +141,19 @@ class OptimizeSkillsJob(NemoJob):
                         provider="subprocess",
                         command=["python", "-m", "nemo_agents_plugin.tasks.optimize_skills"],
                     ),
-                    config=spec.model_dump(mode="json"),
+                    config=spec_dict,
+                    environment=environment,
                 ),
             ],
         )
 
-    def run(self, config: dict) -> dict:
+    def run(self, config: dict, *, ctx: JobContext) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.coding_agents.claude import ClaudeCodingAgent
         from nemo_agents_plugin.improvement.loop import run_analyze_only, run_loop
         from nemo_agents_plugin.improvement.models import _serialize
+
+        del ctx  # framework-injected for future fileset writes; not consumed yet
 
         cfg = OptimizeSkillsConfig.model_validate(config)
         agent_root = Path(cfg.agent).resolve()

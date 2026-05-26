@@ -28,10 +28,33 @@ from pathlib import Path
 from typing import ClassVar, Literal
 
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
+
+
+def _require_absolute(value: str | None, field: str) -> None:
+    """Raise PlatformJobCompilationError if *value* is set and not absolute.
+
+    The platform's host-subprocess executor runs each step in an ephemeral
+    work dir under ``/tmp/nmp-subprocess-jobs/<job>/<attempt>/<step>/task-<id>``,
+    not the caller's project root.  Relative paths on the submit path resolve
+    against that work dir, which is empty, and the job silently fails preflight
+    (or worse, writes outputs to the work dir that get reaped after the job's
+    TTL).  Reject relative paths up front with a clear error so a 422 surfaces
+    at submit time instead.
+    """
+    if value is None:
+        return
+    if not Path(value).is_absolute():
+        raise PlatformJobCompilationError(
+            f"{field!r} must be an absolute path when submitting via the platform "
+            f"(got {value!r}); the subprocess executor's work dir is not the caller's "
+            f"cwd. Re-submit with an absolute path."
+        )
 
 
 class EvaluateSuiteConfig(BaseModel):
@@ -72,9 +95,28 @@ class EvaluateSuiteJob(NemoJob):
         platform (and the user's docker daemon).  No dedicated container image.
         """
         from nemo_platform_plugin.jobs.api_factory import (
+            EnvironmentVariable,
             PlatformJobStep,
             SubprocessExecutionProviderSpec,
         )
+        from nmp.common.jobs.constants import (
+            DEFAULT_JOB_STORAGE_PATH,
+            PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+        )
+
+        # Subprocess work dir is /tmp/nmp-subprocess-jobs/.../task-..., not the
+        # caller's cwd.  Relative paths silently fail at preflight or stash
+        # outputs in the ephemeral work dir.
+        _require_absolute(spec.evals, "evals")
+        _require_absolute(spec.agent, "agent")
+        _require_absolute(spec.output, "output")
+
+        # URL workspace is the auth boundary; overwrite any spec workspace
+        # field if one is added later.  Today the config has no `workspace`
+        # field so this just adds the key (Pydantic ``extra="ignore"`` on
+        # the subprocess-side validate drops it).
+        spec_dict = spec.model_dump(mode="json")
+        spec_dict["workspace"] = workspace
 
         return PlatformJobSpec(
             steps=[
@@ -84,14 +126,22 @@ class EvaluateSuiteJob(NemoJob):
                         provider="subprocess",
                         command=["python", "-m", "nemo_agents_plugin.tasks.evaluate_suite"],
                     ),
-                    config=spec.model_dump(mode="json"),
+                    config=spec_dict,
+                    environment=[
+                        EnvironmentVariable(
+                            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+                            value=DEFAULT_JOB_STORAGE_PATH,
+                        ),
+                    ],
                 ),
             ],
         )
 
-    def run(self, config: dict) -> dict:
+    def run(self, config: dict, *, ctx: JobContext) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.runners.detect import detect_runner, get_runner
+
+        del ctx  # framework-injected for future fileset writes; not consumed yet
 
         cfg = EvaluateSuiteConfig.model_validate(config)
         evals_dir = Path(cfg.evals).resolve()
@@ -123,7 +173,11 @@ class EvaluateSuiteJob(NemoJob):
 
             evals = [e for e in evals if _fn(e.name, cfg.filter_glob)]
         if not evals:
-            return {"status": "no-evals-found", "runner": runner.name, "evals_dir": str(evals_dir)}
+            # Raising instead of returning {"status": "no-evals-found"} so the
+            # platform dispatcher marks the job as error rather than completed.
+            # A silent success here is invisible in Studio's Jobs view.
+            filter_clause = f" matching {cfg.filter_glob!r}" if cfg.filter_glob else ""
+            raise RuntimeError(f"No evals found in {evals_dir} (runner={runner.name}){filter_clause}.")
 
         batch = asyncio.run(
             runner.run_batch(
