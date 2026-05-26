@@ -102,8 +102,12 @@ class ClaudeCodeAgent(CodingAgent):
             session_id = resume_session_id
             work_dir_name = str(uuid.uuid4())
 
+        # Restrictive perms: prompts and outputs can contain sensitive data
+        # (file contents, API keys agents pull from env, etc.). 0o700/0o600
+        # keeps everything user-only.
         run_dir = self.work_root / work_dir_name
-        run_dir.mkdir(parents=True, exist_ok=True)
+        run_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        run_dir.chmod(0o700)
         prompt_path = run_dir / "turn_0000.prompt"
         jsonl_path = run_dir / "turn_0000.jsonl"
         stderr_path = run_dir / "turn_0000.stderr"
@@ -118,9 +122,12 @@ class ClaudeCodeAgent(CodingAgent):
                     "working_dir": str(working_dir),
                 },
                 indent=2,
-            )
+            ),
+            encoding="utf-8",
         )
+        meta_path.chmod(0o600)
         prompt_path.write_text(prompt, encoding="utf-8")
+        prompt_path.chmod(0o600)
 
         cmd = self._build_cmd(
             session_id=session_id,
@@ -210,11 +217,16 @@ class ClaudeCodeAgent(CodingAgent):
         stderr_path: Path,
     ) -> asyncio.subprocess.Process:
         # Open files for stdin/stdout/stderr; the child gets dup'd fds, so we
-        # can close ours immediately after spawn.
-        stdin_fd = os.open(str(prompt_path), os.O_RDONLY)
-        stdout_fd = os.open(str(jsonl_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
-        stderr_fd = os.open(str(stderr_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+        # can close ours immediately after spawn. fds are initialized to None
+        # and opened inside the try so a failure on later os.open() calls
+        # still closes the earlier ones.
+        stdin_fd: int | None = None
+        stdout_fd: int | None = None
+        stderr_fd: int | None = None
         try:
+            stdin_fd = os.open(str(prompt_path), os.O_RDONLY)
+            stdout_fd = os.open(str(jsonl_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            stderr_fd = os.open(str(stderr_path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
             return await asyncio.create_subprocess_exec(
                 *cmd,
                 stdin=stdin_fd,
@@ -224,9 +236,9 @@ class ClaudeCodeAgent(CodingAgent):
                 cwd=str(working_dir),
             )
         finally:
-            os.close(stdin_fd)
-            os.close(stdout_fd)
-            os.close(stderr_fd)
+            for fd in (stdin_fd, stdout_fd, stderr_fd):
+                if fd is not None:
+                    os.close(fd)
 
     @staticmethod
     async def _terminate(proc: asyncio.subprocess.Process) -> None:

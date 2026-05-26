@@ -3,7 +3,7 @@ name = "coding-agents"
 version = "0.0.1"
 description = "Library for invoking coding agents (Claude Code, ...) in headless mode through a uniform abstraction."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 
 dependencies = [
     "pydantic>=2.10.0",

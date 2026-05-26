@@ -22,8 +22,10 @@ _HEADLESS_SAFE_MODES = frozenset({PermissionMode.BYPASS, PermissionMode.PLAN})
 @dataclass(frozen=True)
 class PermissionPolicy:
     mode: PermissionMode = PermissionMode.BYPASS
-    allowed_tools: list[str] = field(default_factory=list)
-    disallowed_tools: list[str] = field(default_factory=list)
+    # Tuples (not lists) so the frozen contract actually holds — callers
+    # can't do policy.allowed_tools.append(...) to sneak around immutability.
+    allowed_tools: tuple[str, ...] = field(default_factory=tuple)
+    disallowed_tools: tuple[str, ...] = field(default_factory=tuple)
 
     def is_headless_safe(self) -> bool:
         return self.mode in _HEADLESS_SAFE_MODES
