@@ -63,7 +63,11 @@ class TestJobCreationWithAuth:
                         "executor": {
                             "provider": "cpu",
                             "profile": "default",
-                            "container": {"image": "busybox:latest"},
+                            "container": {
+                                "image": "busybox:latest",
+                                "entrypoint": "entrypoint",
+                                "command": ["command"],
+                            },
                         },
                     },
                 ]
