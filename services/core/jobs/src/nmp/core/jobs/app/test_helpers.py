@@ -20,6 +20,7 @@ class TestConstants:
     # Basic values
     SOURCE = "test-source"
     PROJECT = "test-project"
+    WORKSPACE = "test-workspace"
 
     # Descriptions
     DESC_TEST = "A test job for round-trip testing"
