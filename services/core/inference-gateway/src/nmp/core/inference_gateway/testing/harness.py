@@ -5,22 +5,21 @@
 
 Design:
 
-- One real HTTP boundary owned by ``pytest_httpserver``. The IGW + Models
-  app runs in-process via ``httpx.ASGITransport`` (no uvicorn, no real
-  port). Both the proxy step's outbound HTTP and any plugin-side outbound
-  HTTP terminate at the same socket.
-- Providers are plain (not ``igw-mock-`` prefixed) — their ``host_url``
-  points at the mock NIM so IGW issues real HTTP that the mock answers.
+- ``pytest_httpserver`` owns the only real socket. The IGW + Models app
+  runs in-process via ``httpx.ASGITransport``. Both the proxy step's
+  outbound HTTP and any plugin-side outbound HTTP terminate at the same
+  mock-NIM socket.
+- Providers are plain (no ``igw-mock-`` prefix); their ``host_url``
+  points at the mock NIM so IGW issues real HTTP.
 - Assertions read the mock NIM's per-call request log rather than
-  matching response IDs through the proxy.
+  threading response IDs through the proxy.
 
-Sync entry points (:meth:`IGWPluginHarness.add_virtual_model`, etc.) call
-``asyncio.run`` internally, so they must not run inside a live event
-loop. Async tests use the ``a``-prefixed siblings
-(:meth:`aadd_virtual_model`, :meth:`achat_completions`,
-:meth:`ause_plugin`).
+Sync entry points (:meth:`IGWPluginHarness.add_virtual_model`, etc.)
+call :func:`asyncio.run` internally and must not run inside a live loop.
+Use the ``a``-prefixed siblings (:meth:`aadd_virtual_model`,
+:meth:`achat_completions`, :meth:`ause_plugin`) from async tests.
 
-Companion fixture: :mod:`nmp.core.inference_gateway.testing.fixtures`.
+Companion fixtures: :mod:`nmp.core.inference_gateway.testing.fixtures`.
 """
 
 import asyncio
@@ -70,10 +69,10 @@ DEFAULT_MOCK_CHAT_PATH = "/v1/chat/completions"
 
 DEFAULT_WORKSPACE = "default"
 """Workspace seeded by :func:`~nmp.testing.client.create_test_client` at
-module-fixture setup. Exposed on the harness as :attr:`IGWPluginHarness.workspace`
-so test bodies can read it without hardcoding ``"default"`` — when the
-fixture migrates to per-test workspaces (Option B in AIRCORE-585), only
-the harness internals change and existing test bodies keep working."""
+module-fixture setup. Exposed on the harness as
+:attr:`IGWPluginHarness.workspace` so test bodies don't hardcode
+``"default"`` and stay portable if the fixture later issues a per-test
+workspace."""
 
 
 @dataclass
@@ -82,12 +81,11 @@ class IGWPluginHarness:
 
     Owns a :class:`~nmp.testing.client.ClientContext` (sync + async SDK,
     :class:`TestClient`, :class:`EntityClient`) backed by an in-process
-    ASGI IGW + Models app, a :class:`HTTPServer` (``mock_nim``) — the
-    only real listening socket — and a
-    :class:`MockChatCompletionsHandler` pre-mounted at
-    ``POST /v1/chat/completions`` on it.
+    ASGI IGW + Models app, the mock-NIM :class:`HTTPServer` (the only
+    real socket), and a :class:`MockChatCompletionsHandler` pre-mounted
+    at ``POST /v1/chat/completions``.
 
-    Construct via :func:`igw_plugin_harness` (the pytest fixture).
+    Construct via the :func:`igw_plugin_harness` pytest fixture.
     """
 
     sdk: NeMoPlatform
@@ -96,38 +94,36 @@ class IGWPluginHarness:
     entity_client: EntityClient
 
     mock_nim: HTTPServer
-    """The single real socket in the test process. Tests can register
-    extra routes on it (e.g. ``/v1/embeddings``) beyond the auto-mounted
+    """The only real socket in the test process. Tests can register extra
+    routes (e.g. ``/v1/embeddings``) on top of the auto-mounted
     chat-completions handler.
 
     The auto-mounted handler uses ``expect_request`` (a *permanent*
-    matcher). A test mounting a oneshot matcher for
-    ``/v1/chat/completions`` wins for the first call; subsequent calls
-    fall back to the permanent handler — usually what tests want."""
+    matcher). A oneshot matcher for ``/v1/chat/completions`` wins the
+    first call; subsequent calls fall through to the permanent
+    handler — usually what tests want."""
 
     handler: MockChatCompletionsHandler
-    """Mounted chat-completions handler. Tests register responses via
-    :meth:`mock_chat_completions` and assert via :meth:`assert_call_count`
-    and friends rather than touching this directly."""
+    """The auto-mounted chat-completions handler. Tests interact via
+    :meth:`mock_chat_completions` and :meth:`assert_call_count` rather
+    than touching this directly."""
 
     workspace: str
-    """Workspace seeded by the module-scoped app context. Reach for this
-    instead of a literal ``"default"`` so test bodies stay portable if
-    the fixture later issues a per-test workspace (Option B)."""
+    """Workspace the module-scoped fixture seeded. Reach for this in test
+    bodies instead of a literal ``"default"``."""
 
     _registry: MiddlewareRegistry
     _model_cache: ModelCache
     _vm_cache: VirtualModelCache
     _cache_accessor: InferenceMiddlewareCacheAccessorImpl
     _virtual_models: list[tuple[str, str]]
-    """``(workspace, name)`` of VMs created by this harness — torn down on cleanup."""
+    """VMs created by this harness, deleted on teardown."""
     _providers: list[tuple[str, str]]
-    """``(workspace, name)`` of providers created via :meth:`add_provider` —
-    deleted from the entity store on cleanup so a stale row can't re-enter
-    the model cache on the next test in a module-scoped fixture."""
+    """Providers created via :meth:`add_provider`, deleted on teardown so
+    they can't re-enter the model cache on the next test."""
     _secrets: list[tuple[str, str]]
-    """``(workspace, name)`` of secrets created via :meth:`create_secret` —
-    deleted on cleanup in dependency order after providers."""
+    """Secrets created via :meth:`create_secret`, deleted on teardown
+    after providers."""
 
     # ------------------------------------------------------------------
     # Builder
@@ -142,11 +138,10 @@ class IGWPluginHarness:
         workspace: str = DEFAULT_WORKSPACE,
         **extra_fields: Any,
     ) -> "IGWPluginHarness":
-        """Construct a harness around an already-running IGW + Models app.
+        """Build a harness around an already-running app.
 
-        Subclasses (e.g. :class:`IGWLoopbackHarness`) pass their extra
-        dataclass fields through *extra_fields* so the same ``cls(...)``
-        call wires up parent + subclass fields together.
+        Subclasses pass their extra dataclass fields via *extra_fields*
+        so one ``cls(...)`` call wires parent + subclass together.
         """
         registry = global_middleware_registry()
         model_cache = global_model_cache()
@@ -179,51 +174,28 @@ class IGWPluginHarness:
         )
 
     def _cleanup(self) -> None:
-        """Delete this test's entities from the entity store and runtime state.
+        """Delete this test's entities, then rebuild the in-memory caches.
 
-        Order matters: VMs first (they reference provider-derived model
-        entities via ``default_model_entity``), then providers (they
-        reference secrets via ``api_key_secret_name``), then secrets.
-        Each step is ``try/except``-guarded with ``logger.warning`` so a
-        single delete failure can't mask the test's own failure.
+        Deletes in FK order: VMs → providers → secrets. Each step is
+        ``try/except``-guarded with ``logger.warning`` so a single
+        delete failure can't mask the test's real failure. Module-scoped
+        fixtures rely on this — a stray provider would otherwise re-enter
+        the model cache on the next refresh and trigger
+        ``notify_upserted`` on a dead VM.
 
-        Module-scoped fixtures rely on this to keep the entity store
-        clean between tests; a stray provider row would otherwise
-        re-enter ``ModelCache`` on the next ``refresh_model_cache`` and
-        trigger plugin ``notify_upserted`` callbacks on a dead VM. The
-        runtime caches are still rebuilt after entity deletion so a
-        plugin observing the registry between tests doesn't see ghost
-        VMs.
+        **What this does NOT clean up:**
 
-        **Scope of guaranteed cleanup.**
-
-        * **Plugins loaded via** :meth:`use_plugin` / :meth:`load_plugin`
-          (the supported pattern for per-test plugin registration) are
-          already removed from the registry by the time ``_cleanup``
-          runs — the test body's ``with`` block exits before fixture
-          teardown — so the plugin instance is unreachable and its
-          internal per-VM state goes with it.
-        * **Plugins registered persistently at app startup** (via
-          :func:`load_middleware_plugins` and the
-          ``nemo.inference_middleware`` entry-point group) survive the
-          whole module. ``_cleanup`` calls ``registry.evict(key)`` for
-          each tracked VM but does **not** call
-          ``registry.notify_destroyed(vm)`` — the
-          ``on_virtual_model_destroyed`` hook only fires from inside
-          :func:`refresh_virtual_model_cache`. Any per-VM state such a
-          plugin tracks (warmed caches, indexes, etc.) leaks across
-          tests in the module. Persistent plugins that need cleanup
-          notifications should subscribe to their own cache invalidation
-          path rather than depend on this teardown.
-        * ``registry.broken_vms`` (set on resolve failure) and
-          :attr:`VirtualModelCache.config_ref_versions` are not pruned
-          here; they self-heal on the next
-          :func:`refresh_virtual_model_cache` triggered by
-          :meth:`add_virtual_model` / :meth:`refresh_caches`. Tests that
-          neither create a VM nor call ``refresh_caches`` after a
-          previous test's failures may observe stale entries; in
-          practice every test that exercises the registry creates a
-          fresh VM and the next refresh cleans up.
+        * Plugins registered persistently at app startup (via the
+          ``nemo.inference_middleware`` entry-point group) won't see
+          ``on_virtual_model_destroyed`` — only ``registry.evict`` runs.
+          Per-VM state in such plugins leaks across tests; register them
+          per-test via :meth:`use_plugin` / :meth:`load_plugin` if you
+          need clean state.
+        * ``registry.broken_vms`` and
+          :attr:`VirtualModelCache.config_ref_versions` aren't pruned
+          here — they self-heal on the next
+          :func:`refresh_virtual_model_cache`. In practice every test
+          calls :meth:`add_virtual_model` which triggers a refresh.
         """
         for workspace, name in reversed(self._virtual_models):
             try:
@@ -258,9 +230,7 @@ class IGWPluginHarness:
                     exc_info=True,
                 )
 
-        # Rebuild caches so they reflect the post-delete entity store
-        # state. The middleware registry's per-VM factories are removed
-        # via evict; the VM cache rebuild drops the same set.
+        # Rebuild in-memory caches to match the post-delete entity store.
         for key in self._virtual_models:
             self._registry.evict(key)
         removed = set(self._virtual_models)
@@ -268,10 +238,8 @@ class IGWPluginHarness:
             self._vm_cache.rebuild(
                 [vm for vm in self._vm_cache.virtual_model_map.values() if (vm.workspace, vm.name) not in removed]
             )
-        # Drop provider rows from the model cache too — without this,
-        # the next ``add_provider`` fast-path would see stale
-        # ``ModelProviderInfo`` entries from the deleted providers (and
-        # the rebuilt entity map would still resolve through them).
+        # Drop deleted providers so the next add_provider fast-path
+        # doesn't see ghost ModelProviderInfo rows.
         for workspace, name in self._providers:
             self._model_cache.workspace_name_provider_map.pop((workspace, name), None)
         self._model_cache.rebuild_model_entity_map()
@@ -286,11 +254,10 @@ class IGWPluginHarness:
 
     @property
     def nim_base_url(self) -> str:
-        """OpenAI-compatible base URL — pass as ``parameters.base_url``.
+        """OpenAI-compatible base URL (``http://host:port/v1``).
 
-        Resolves to ``http://<host>:<port>/v1``. Both the IGW proxy step
-        and an OpenAI client built from this URL hit the auto-mounted
-        handler.
+        Pass as ``parameters.base_url``. Both the IGW proxy step and an
+        OpenAI client built from this URL hit the auto-mounted handler.
         """
         return self.mock_nim.url_for("/v1")
 
@@ -313,39 +280,25 @@ class IGWPluginHarness:
     ) -> Generator[NemoInferenceMiddleware, None, None]:
         """Register *plugin* under *name*; restore the prior entry on exit.
 
-        The cache accessor is injected before yield, so plugin cache
-        methods (``get_inference_url_and_model``, ``get_virtual_model``,
-        ...) work inside the context.
+        The cache accessor is injected before yield so plugin cache methods
+        work inside the context. Prefer :meth:`load_plugin` for any
+        pip-installed plugin so the test exercises its entry-point
+        declaration; use this method for workspace-only plugins or to
+        substitute a :class:`MagicMock`-spec'd instance.
 
-        **Production parity:** prefer :meth:`load_plugin` when the plugin's
-        package is pip-installed in the test venv — it discovers the plugin
-        via the same ``nemo.inference_middleware`` entry-point group IGW
-        uses in production. Reach for ``use_plugin`` when the plugin isn't
-        installable (workspace-only, like the example plugin) or when you
-        need to substitute a :class:`MagicMock` /
-        :class:`AsyncMock`-spec'd instance.
+        With ``call_lifecycle=True`` (the default), ``on_startup`` and
+        ``on_shutdown`` each run via :func:`asyncio.run` — i.e. on a
+        fresh disposable event loop. Plugins that build loop-bound
+        resources in ``on_startup`` (``aiohttp.ClientSession``,
+        ``asyncio.Lock``, long-running Tasks) and then use them during
+        a request will fail with "attached to a different loop": the
+        request runs on yet another loop. Drive those tests from
+        ``async def`` and use :meth:`ause_plugin` so both hooks share the
+        test's own loop.
 
-        ``call_lifecycle=True`` (the default) runs ``on_startup`` /
-        ``on_shutdown`` via :func:`asyncio.run`, which spins up a **fresh
-        disposable event loop** for each. This matches what production does
-        (lifespan startup + shutdown) and is what plugins like Guardrails
-        require to wire up their SDK / cache; the previous
-        ``call_lifecycle=False`` default silently 503'd every request for
-        such plugins.
-
-        Loop-bound resources (``aiohttp.ClientSession``, ``asyncio.Lock`` /
-        ``Queue``, long-lived Tasks) created in ``on_startup`` will be torn
-        down on a different loop in ``on_shutdown`` and may emit "attached
-        to a different loop"; if the plugin *uses* such resources during
-        :meth:`process_request` / :meth:`process_response`, the request
-        will fail with the same error because the request loop differs from
-        the loop ``on_startup`` ran on. Drive those tests from an
-        ``async def`` and use :meth:`ause_plugin` instead — both lifecycle
-        hooks then run on the test's own loop, matching the request loop.
-
-        Pass ``call_lifecycle=False`` to skip the hooks entirely (useful
-        for ``MagicMock(spec=Plugin)`` substitutions or for tests that
-        manually drive the lifecycle).
+        Pass ``call_lifecycle=False`` to skip the hooks — useful for
+        ``MagicMock(spec=Plugin)`` or tests that drive the lifecycle
+        themselves.
         """
         original_present = name in self._registry.plugins
         original = self._registry.plugins.get(name)
@@ -362,8 +315,7 @@ class IGWPluginHarness:
             else:
                 self._registry.plugins.pop(name, None)
             if call_lifecycle:
-                # Log instead of raising so cleanup failures are visible
-                # without masking the test outcome.
+                # Log rather than raise so cleanup failures don't mask the test outcome.
                 try:
                     asyncio.run(plugin.on_shutdown())
                 except Exception:
@@ -383,11 +335,11 @@ class IGWPluginHarness:
     ) -> AsyncGenerator[NemoInferenceMiddleware, None]:
         """Async variant of :meth:`use_plugin`.
 
-        Both lifecycle hooks run on the test's own running loop (the same
-        loop the request will execute on), so loop-bound resources created
-        in ``on_startup`` stay valid through ``on_shutdown``. This is the
-        loop-safe alternative to :meth:`use_plugin` for plugins whose
-        startup builds long-lived loop-bound resources.
+        Both lifecycle hooks run on the test's own loop (the same loop
+        the request runs on), so loop-bound resources created in
+        ``on_startup`` stay valid through ``on_shutdown``. Use this
+        instead of :meth:`use_plugin` for plugins that build long-lived
+        loop-bound resources at startup.
         """
         original_present = name in self._registry.plugins
         original = self._registry.plugins.get(name)
@@ -420,33 +372,26 @@ class IGWPluginHarness:
         *,
         call_lifecycle: bool = True,
     ) -> Generator[NemoInferenceMiddleware, None, None]:
-        """Load *name* via the production ``nemo.inference_middleware`` entry-point group.
+        """Load *name* via the ``nemo.inference_middleware`` entry-point group.
 
-        This is the production-parity path — IGW's
-        :func:`~nmp.core.inference_gateway.api.middleware_registry.load_middleware_plugins`
-        uses the same :func:`~nemo_platform_plugin.discovery.discover_inference_middleware`
-        function to walk the same entry-point group. A test that goes through
-        ``load_plugin`` therefore exercises the entry-point declaration in
-        the plugin's ``pyproject.toml`` and catches misconfigurations
-        (missing entry-point key, wrong import path, broken class import)
-        that :meth:`use_plugin` silently glosses over.
+        Production-parity: IGW's :func:`load_middleware_plugins` walks
+        the same entry-point group, so this exercises the plugin's
+        ``pyproject.toml`` declaration and catches misconfigurations
+        (missing key, wrong import path) that :meth:`use_plugin` would
+        silently gloss over.
 
-        Use :meth:`use_plugin` only when:
+        Use :meth:`use_plugin` instead when:
 
-        - The plugin isn't pip-installed in the test venv (workspace-only
-          plugins like the example plugin are not discoverable).
-        - You need to substitute a :class:`MagicMock` /
-          :class:`AsyncMock`-spec'd instance.
-        - You need to pre-configure plugin instance state before
-          ``on_startup`` runs.
+        - The plugin isn't pip-installed (workspace-only plugins).
+        - You need a :class:`MagicMock` / :class:`AsyncMock` instance.
+        - You need to pre-configure instance state before ``on_startup``.
 
-        ``call_lifecycle`` defaults to ``True`` — same as :meth:`use_plugin`;
-        see that method's docstring for the loop-binding caveat. For plugins
-        that build loop-bound resources in ``on_startup``, drive the test
-        from an ``async def`` and use :meth:`aload_plugin`.
+        ``call_lifecycle`` carries the same loop-binding caveat as
+        :meth:`use_plugin` — use :meth:`aload_plugin` for plugins with
+        loop-bound startup resources.
 
         Raises:
-            ValueError: If no plugin is registered under *name* in the
+            ValueError: If *name* isn't registered in the
                 ``nemo.inference_middleware`` entry-point group.
         """
         instance = _instantiate_discovered_plugin(name)
@@ -477,24 +422,15 @@ class IGWPluginHarness:
         value: str,
         description: str | None = None,
     ) -> str:
-        """Create a Secret via the SDK and track it for harness cleanup.
+        """Create a Secret and track it so the harness deletes it on teardown.
 
-        Prefer this over a direct ``self.sdk.secrets.create(...)`` call —
-        only harness-mediated entities are tracked, and a secret created
-        directly will leak across tests when the fixture is module-scoped
-        (and may then keep a deleted provider's ``api_key_secret_name``
-        reference alive on the next ``refresh_model_cache``).
+        Prefer this over a direct ``self.sdk.secrets.create(...)`` — only
+        harness-tracked entities get cleaned up, and an untracked secret
+        will leak across tests under module scope (and keep a deleted
+        provider's ``api_key_secret_name`` alive on the next refresh).
 
-        Args:
-            workspace: Workspace the secret lives in.
-            name: Secret name. Must be unique within the workspace.
-            value: Secret payload (returned by the secrets SDK as
-                ``secret_value`` during model-cache refresh).
-            description: Optional human-readable description.
-
-        Returns:
-            *name* unchanged — useful when chaining into
-            :meth:`add_provider` (``api_key_secret_name=harness.create_secret(...)``).
+        Returns *name* so it chains cleanly into
+        :meth:`add_provider` (``api_key_secret_name=harness.create_secret(...)``).
         """
         kwargs: dict[str, Any] = {"workspace": workspace, "name": name, "value": value}
         if description is not None:
@@ -513,52 +449,39 @@ class IGWPluginHarness:
         enabled_models: Sequence[str] | None = None,
         api_key_secret_name: str | None = None,
     ) -> ModelProvider:
-        """Register a (real, non-mock) ModelProvider routed at the mock NIM.
-
-        Plain provider — no ``igw-mock-`` prefix — so the proxy step
-        issues a real HTTP request, terminating at ``mock_nim`` because
-        ``host_url`` defaults to :attr:`nim_host_url`.
+        """Register a real (non-mock) ModelProvider pointing at the mock NIM.
 
         Call this **before** :meth:`add_virtual_model` for any VM that
-        references the provider — the VM-cache refresh resolves
-        middleware configs against the model cache, and an unknown
-        ``default_model_entity`` silently produces an empty
-        pre-resolved-call list for that VM.
+        references the provider — an unknown ``default_model_entity``
+        silently produces an empty pre-resolved-call list rather than
+        raising.
 
-        **Auth-aware refresh:** when *api_key_secret_name* is set, the
-        method runs the full :func:`refresh_model_cache` after creation
-        so the provider's ``secret_value`` is resolved via the secrets
-        SDK; without that, the proxy would reject inference with HTTP
-        424. Without *api_key_secret_name*, the method takes a fast path
-        that updates the model cache in-place without secret-resolution
-        plumbing.
+        When *api_key_secret_name* is set, this runs the full
+        :func:`refresh_model_cache` so the secret value is resolved via
+        the secrets SDK (otherwise the proxy would 424). Without it, the
+        method takes a fast path that updates the cache in place.
 
         Args:
             workspace: Provider workspace.
             served_models: ``model_entity_name`` → ``served_model_name``.
                 The served name is what arrives at the upstream — register
-                handler responses under the same key.
-            name: Provider name. Auto-generated if omitted (recommended;
-                fixture isolation guarantees uniqueness). An explicit
-                duplicate name raises ``ConflictError`` so isolation
-                breakage fails loudly rather than masked by delete+recreate.
-            host_url: Override the default mock NIM URL.
+                mock handler responses under the same key.
+            name: Provider name. Auto-generated if omitted (recommended).
+                An explicit duplicate raises ``ConflictError`` so isolation
+                breakage fails loudly.
+            host_url: Override the default mock-NIM URL.
             enabled_models: Optional enabled-models list for the SDK.
-            api_key_secret_name: Name of an existing platform Secret to
-                attach as the provider's bearer token. The secret must
-                already exist in *workspace* — create it via
-                ``self.sdk.secrets.create(...)`` before calling this
-                method. When set, triggers a full cache refresh so the
-                secret value is resolved.
+            api_key_secret_name: Existing Secret name to attach as the
+                provider's bearer token. Create it via
+                :meth:`create_secret` first. Triggers a full cache refresh
+                so the secret value is resolved.
 
         Returns:
-            The created ``ModelProvider`` (read back via ``retrieve``
-            after ``update_status``, so its ``id`` and ``served_models``
-            reflect entity-store state).
+            The provider, read back after ``update_status`` so its ``id``
+            and ``served_models`` reflect entity-store state.
 
         Raises:
-            ConflictError: If a provider with *name* already exists in
-                *workspace*.
+            ConflictError: If *name* already exists in *workspace*.
         """
         from nmp.testing.utils import short_unique_name
 
@@ -572,14 +495,11 @@ class IGWPluginHarness:
             enabled_models=list(enabled_models) if enabled_models is not None else omit,
             api_key_secret_name=api_key_secret_name if api_key_secret_name is not None else omit,
         )
-        # Track immediately after ``create`` succeeds so a later raise from
-        # ``update_status`` or ``retrieve`` still leaves the provider
-        # eligible for teardown — module-scoped fixtures rely on every
-        # row being deleted between tests, even partial-failure rows.
+        # Track right after create so a later raise from update_status /
+        # retrieve still leaves the provider eligible for teardown.
         self._providers.append((workspace, provider_name))
 
-        # served_models persisted via update_status (the create path
-        # doesn't accept them) so they survive future cache refreshes.
+        # served_models has to go through update_status — the create path doesn't accept it.
         self.sdk.inference.providers.update_status(
             name=provider_name,
             workspace=workspace,
@@ -618,22 +538,19 @@ class IGWPluginHarness:
         response_middleware: Sequence[MiddlewareCallParam] = (),
         post_response_middleware: Sequence[MiddlewareCallParam] = (),
     ) -> SDKVirtualModel:
-        """Create a VirtualModel and refresh IGW's VM cache so it routes immediately.
+        """Create a VirtualModel and refresh the VM cache so it routes immediately.
 
-        Sync entry point — the cache refresh runs via :func:`asyncio.run`,
-        so this must not run inside a live event loop. Use
-        :meth:`aadd_virtual_model` from async tests.
+        Sync entry — uses :func:`asyncio.run`, so don't call this inside
+        a live loop. Use :meth:`aadd_virtual_model` from async tests.
 
         Call :meth:`add_provider` first for any provider this VM
         references; otherwise middleware-config pre-resolution sees an
         empty model cache.
 
-        ``models`` is the per-VM list of model entity references with
-        optional ``backend_format`` overrides. Plugins like
-        ``nemo-switchyard`` read ``virtual_model.models`` in
-        :meth:`on_virtual_model_upserted` to build their format-aware
-        routing tables; pass an entry per backend the test needs.
-        Format::
+        ``models`` is the per-VM list of entity refs with optional
+        ``backend_format`` overrides. Plugins like ``nemo-switchyard``
+        read this in ``on_virtual_model_upserted`` to build their
+        routing tables::
 
             models=[
                 {"model": "default/main", "backend_format": "OPENAI_CHAT"},
@@ -641,21 +558,14 @@ class IGWPluginHarness:
             ]
 
         .. note::
-            **Plugin-raised errors during VM upsert are swallowed.** Both
-            :meth:`NemoInferenceMiddleware.validate_middleware_config` and
-            :meth:`NemoInferenceMiddleware.on_virtual_model_upserted`
-            failures are caught by IGW's
-            :class:`MiddlewareRegistry` (logged-and-continued, never
-            re-raised). So a plugin that rejects a VM at upsert time
-            (e.g. switchyard's ``translate``-in-``response_middleware``
-            400) will *not* cause this method to raise — the VM lands in
-            the entity store, the phase-list ends up empty, and the
-            rejection only manifests when the first inference request
-            against that VM gets back "no factory registered for VM ..."
-            from the plugin. Tests that want to assert a rejection
-            should fire a request via :meth:`chat_completions` and check
-            for the error there, not assert that ``add_virtual_model``
-            itself raises.
+            Plugin errors during upsert are swallowed. Both
+            ``validate_middleware_config`` and ``on_virtual_model_upserted``
+            failures get logged-and-continued by the registry, so a
+            plugin that rejects a VM at upsert time won't make this
+            method raise — the VM lands in the store with an empty
+            phase-list and the rejection surfaces as "no factory
+            registered" on the first request. Assert rejections via
+            :meth:`chat_completions`, not via this method's return.
         """
         vm = self._create_virtual_model(
             workspace=workspace,
@@ -694,12 +604,12 @@ class IGWPluginHarness:
         return vm
 
     def refresh_caches(self) -> None:
-        """Refresh model cache **and** VM cache (sync).
+        """Refresh model + VM cache (sync). Model cache first because VM
+        resolution depends on the served-model topology.
 
-        Model cache first — VM-cache resolution depends on the
-        served-model topology. The model-cache refresh resolves provider
-        secrets via the SDK; call this rather than relying on
-        :meth:`add_provider`'s fast path when ``api_key_secret_name`` is set.
+        The model-cache refresh resolves provider secrets via the SDK;
+        call this instead of relying on :meth:`add_provider`'s fast path
+        when ``api_key_secret_name`` is set.
         """
         asyncio.run(self._refresh_all_caches())
 
@@ -768,26 +678,20 @@ class IGWPluginHarness:
     # ------------------------------------------------------------------
 
     def mock_chat_completions(self, model: str, responses: Sequence[MockResponse]) -> None:
-        """Queue *responses* for chat-completion calls whose ``body["model"] == model``.
+        """Queue *responses* for chat-completion calls with ``body["model"] == model``.
 
-        ``model`` is the value that arrives at the upstream. For a
-        provider with ``served_models={"main": "main"}`` and an entity
-        ``"default/main"``, the upstream receives ``"model": "main"``,
-        so register under ``"main"``.
+        *model* is the value that arrives at the upstream. For
+        ``served_models={"main": "main"}`` on a ``default/main`` entity,
+        the upstream sees ``"model": "main"`` — register under ``"main"``.
 
-        Plugins issuing their own outbound calls (e.g. Guardrails' rail
-        calls) typically send the workspace-qualified entity id —
-        ``"default/main"``. Register a separate queue under the entity
-        id for those.
+        Plugin-issued outbound calls (Guardrails rails, etc.) typically
+        send the workspace-qualified entity id like ``"default/main"``;
+        register a separate queue for those.
 
-        Repeated calls for the same model append; the queue consumes in
-        order, reusing the last response if drained.
-
-        Response bodies built with :func:`chat_completion` or
-        :func:`chat_completion_chunk` that left ``model`` at the default
-        are automatically stamped with the dispatch key so the response
-        body's ``"model"`` field matches the routing key without the
-        caller having to repeat it.
+        Repeated calls append; the queue is consumed in order and the
+        last response is reused once drained. Response bodies built with
+        :func:`chat_completion` / :func:`chat_completion_chunk` that
+        leave ``model`` unset are auto-stamped with the dispatch key.
 
         Raises:
             ValueError: If *responses* is empty.
@@ -844,37 +748,23 @@ class IGWPluginHarness:
         body: dict[str, Any],
         extra_headers: Mapping[str, str] | None = None,
     ) -> list[dict[str, Any]] | dict[str, Any]:
-        """Call IGW's chat completions endpoint with streaming and return the parsed body.
+        """Call the chat-completions endpoint with ``stream=True``.
 
-        Forces ``stream=True`` on *body* and uses :class:`TestClient` directly
-        because the SDK's ``post(...)`` buffers the full body before returning,
-        which would defeat the purpose of streaming.
+        Uses :class:`TestClient` directly because the SDK's ``post``
+        buffers the full body before returning, defeating streaming.
 
-        Returns one of two shapes, depending on the response's ``Content-Type``:
+        Return type depends on ``Content-Type``:
 
-        - ``text/event-stream`` → ``list[dict]`` of parsed SSE chunks in
-          order (the terminating ``data: [DONE]`` is dropped). This is the
-          normal case: upstream returned a stream and IGW relayed it.
-        - ``application/json`` → the raw JSON dict. This happens when a
-          plugin short-circuits the proxy with an :class:`ImmediateResponse`
-          (e.g. an input rail blocks before any tokens stream); the proxy
-          step never runs, so there's nothing to encode as SSE. Callers
-          that want to demand SSE can ``isinstance(result, list)`` at the
-          call site.
-
-        Use this to integration-test ``process_response`` with an
-        :class:`AsyncIterator[dict]` payload, or to assert the JSON body
-        a plugin emits when it blocks a streaming request. Pair with a
-        :class:`~nmp.testing.mock_chat_completions.ChatCompletionStream`
-        mock response for the upstream model on the SSE branch.
-
-        The ``/apis/inference-gateway`` prefix mirrors the production mount
-        path (see :func:`nmp.platform_runner.server.create_app`), which is
-        what :class:`create_test_client` uses too — without the prefix the
-        TestClient returns 404.
+        - ``text/event-stream`` → list of parsed SSE chunks in order
+          (``data: [DONE]`` dropped). The normal case: upstream streamed
+          and IGW relayed.
+        - ``application/json`` → the raw JSON dict. Happens when a plugin
+          short-circuits the proxy with :class:`ImmediateResponse` (e.g.
+          an input rail blocks before any token streams). Demand SSE
+          with ``isinstance(result, list)`` if your assertion requires it.
 
         Raises:
-            httpx.HTTPStatusError: If IGW returns a non-2xx status.
+            httpx.HTTPStatusError: On non-2xx from IGW.
         """
         streaming_body = {**body, "stream": True}
         path = f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions"
@@ -914,11 +804,11 @@ class IGWPluginHarness:
         *,
         index: int = 0,
     ) -> None:
-        """Assert the *index*-th recorded request to *model* contains *substring*.
+        """Assert the *index*-th request to *model* has *substring* in any message.
 
-        Searches across the ``content`` field of every message in the
-        request body. Raises ``AssertionError`` if no request at *index*
-        exists or the substring is missing.
+        Searches across each message's ``content`` field. Raises
+        ``AssertionError`` if no request at *index* or the substring is
+        missing.
         """
         recorded_for_model = self.requests_for(model)
         if index < 0 or index >= len(recorded_for_model):
@@ -950,16 +840,15 @@ class IGWPluginHarness:
         *,
         index: int = 0,
     ) -> None:
-        """Assert *predicate(body)* is true for the *index*-th recorded request to *model*.
+        """Assert *predicate(body)* is true for the *index*-th request to *model*.
 
-        Generalises :meth:`assert_request_messages_contain` to any property of
-        the request body — tool calls, response_format, embedding inputs,
-        custom plugin-injected fields, etc. The predicate receives the parsed
-        JSON body verbatim.
+        Generalises :meth:`assert_request_messages_contain` to any body
+        property (tool calls, response_format, embedding inputs,
+        plugin-injected fields). The predicate gets the parsed JSON
+        body verbatim.
 
         Raises:
-            AssertionError: If no request at *index* exists for *model*, or
-                if the predicate returns falsy.
+            AssertionError: If no request at *index*, or predicate returns falsy.
         """
         recorded_for_model = self.requests_for(model)
         if index < 0 or index >= len(recorded_for_model):
@@ -979,22 +868,14 @@ class IGWPluginHarness:
     ) -> None:
         """Assert the *index*-th recorded request to *model* arrived on *path*.
 
-        Path comparison is exact — a leading slash counts. The mock NIM
-        records the path verbatim from the inbound request, so callers
-        comparing against IGW-rewritten paths should include the leading
-        ``/`` (e.g. ``"/v1/messages"`` not ``"v1/messages"``).
-
-        Useful for plugins that rewrite ``InferenceRequest.path``
-        mid-pipeline — most prominently switchyard's ``translate``
-        factory, which routes OpenAI Chat requests to the Anthropic
-        ``v1/messages`` endpoint by stamping
-        :data:`CTX_PATH_UPDATE` into the proxy context. Without a path
-        assertion the test only proves the in-memory rewrite happened,
-        not that it actually reached the upstream socket.
+        Exact match — include the leading slash. Useful for plugins that
+        rewrite ``InferenceRequest.path`` mid-pipeline (e.g. switchyard
+        rerouting OpenAI Chat to Anthropic ``v1/messages``); without
+        this you only prove the in-memory rewrite happened, not that it
+        reached the wire.
 
         Raises:
-            AssertionError: If no request at *index* exists for *model*,
-                or the recorded path doesn't match *path*.
+            AssertionError: If no request at *index*, or path mismatch.
         """
         recorded_for_model = self.requests_for(model)
         if index < 0 or index >= len(recorded_for_model):
@@ -1013,17 +894,16 @@ class IGWPluginHarness:
         *,
         index: int = 0,
     ) -> None:
-        """Assert the *index*-th recorded request to *model* carries header *header*.
+        """Assert the *index*-th request to *model* carries *header*.
 
-        Header lookup is case-insensitive (matches HTTP semantics). When
-        *value* is ``None``, only the header's presence is asserted; when
-        *value* is given, an exact match is required. Use
+        Case-insensitive (HTTP semantics). With *value* unset only
+        presence is asserted; with *value* set, an exact match. Use
         :meth:`requests_for` directly for substring or duplicate-header
         assertions.
 
         Raises:
-            AssertionError: If no request at *index* exists for *model*, the
-                header is absent, or *value* doesn't match.
+            AssertionError: If no request at *index*, the header is
+                absent, or *value* doesn't match.
         """
         recorded_for_model = self.requests_for(model)
         if index < 0 or index >= len(recorded_for_model):
@@ -1047,31 +927,24 @@ class IGWPluginHarness:
     # ------------------------------------------------------------------
 
     async def aflush_post_response(self) -> None:
-        """Await every fire-and-forget post-response task IGW has scheduled so far.
+        """Await every fire-and-forget post-response task IGW has scheduled.
 
-        IGW schedules :func:`execute_post_response_middleware` via
-        :func:`asyncio.create_task` after the response has been sent to the
-        caller (see ``proxy.py``). The fixture initialises
-        ``app.state.pending_post_response_tasks = []`` and ``proxy.py``
-        appends each scheduled task to that list, giving tests a
-        deterministic way to await them before asserting.
+        ``proxy.py`` appends each :func:`execute_post_response_middleware`
+        task to ``app.state.pending_post_response_tasks`` (set up by the
+        fixture). This drains and awaits them.
 
-        **Loop constraint:** post-response tasks are bound to whichever
-        event loop scheduled them — typically the loop driving the inbound
-        request. ``aflush_post_response`` must run on the same loop.
-        That means tests should drive the request via :meth:`achat_completions`
-        (so the request and the post-response tasks share the loop) and
-        await this method directly. Calling it after a sync
-        :meth:`chat_completions` is unsupported because the SDK runs the
-        request on a transient loop that's already torn down by the time
-        the call returns; the post-response task is unreachable.
+        **Loop constraint**: post-response tasks are bound to the loop
+        that scheduled them — the request loop. Drive your request from
+        ``async def`` via :meth:`achat_completions` so the request and
+        flush share a loop. Calling this after a sync
+        :meth:`chat_completions` doesn't work: the SDK's transient loop
+        is already torn down.
 
         Exceptions raised by post-response middleware are **not** raised
-        from here — they're swallowed inside
+        from here — they're swallowed in
         :func:`execute_post_response_middleware` (matching production's
-        fire-and-forget contract), but task results are awaited via
-        ``asyncio.gather(..., return_exceptions=True)`` so a single failure
-        doesn't stop the flush.
+        fire-and-forget contract); ``asyncio.gather(return_exceptions=True)``
+        ensures one failure doesn't stop the rest of the flush.
         """
         pending = self._pending_post_response_tasks()
         if pending is None:
@@ -1087,9 +960,7 @@ class IGWPluginHarness:
         await asyncio.gather(*in_flight, return_exceptions=True)
 
     def _pending_post_response_tasks(self) -> list[asyncio.Task[None]] | None:
-        # ``TestClient.app`` is typed as a bare ``ASGIApp`` callable; cast so
-        # ``state`` (a :class:`FastAPI` attribute) is reachable to the type
-        # checker. The fixture is responsible for initialising the list.
+        # TestClient.app is typed as bare ASGIApp; cast so .state is reachable.
         from fastapi import FastAPI
 
         app = cast(FastAPI, self.test_client.app)
@@ -1097,11 +968,7 @@ class IGWPluginHarness:
 
 
 def _coerce_dict(value: Any) -> dict[str, Any]:
-    """Cast an SDK response (dict or Pydantic model) to ``dict``.
-
-    Anything else is a programming error — a string error body shouldn't
-    pretend to be a dict.
-    """
+    """Cast an SDK response (dict or Pydantic model) to ``dict``."""
     if isinstance(value, dict):
         return value
     if hasattr(value, "model_dump"):
@@ -1114,11 +981,10 @@ def _coerce_dict(value: Any) -> dict[str, Any]:
 
 
 def _parse_sse_text(text: str) -> list[dict[str, Any]]:
-    """Parse a buffered SSE response string into a list of chunk dicts.
+    """Parse a buffered SSE response into chunk dicts.
 
-    Skips ``data: [DONE]`` and silently drops malformed JSON lines (matching
-    IGW's own ``_parse_sse_stream`` permissiveness — real upstreams
-    occasionally emit keep-alives or comments that aren't JSON).
+    Skips ``data: [DONE]`` and silently drops malformed JSON lines,
+    matching IGW's own ``_parse_sse_stream`` permissiveness.
     """
     import json
 
@@ -1140,13 +1006,12 @@ def _parse_sse_text(text: str) -> list[dict[str, Any]]:
 
 
 def _instantiate_discovered_plugin(name: str) -> NemoInferenceMiddleware:
-    """Locate *name* in the ``nemo.inference_middleware`` entry-point group and instantiate.
+    """Look up *name* in the entry-point group and instantiate.
 
-    Discovery is cached at the :func:`~nemo_platform_plugin.discovery.discover` layer
-    for the process lifetime; tests adding/removing entry points dynamically
-    must call ``discover.cache_clear()`` themselves. Raises a verbose
-    :class:`ValueError` on miss to nudge callers toward the most common fix
-    (install the plugin's package, or fall back to :meth:`use_plugin`).
+    Discovery is cached for the process lifetime; tests adding/removing
+    entry points dynamically must clear the cache themselves. The
+    error on miss points at the two most common fixes (install the
+    package, or fall back to :meth:`use_plugin`).
     """
     discovered = discover_inference_middleware()
     cls = discovered.get(name)
@@ -1167,63 +1032,48 @@ def _instantiate_discovered_plugin(name: str) -> NemoInferenceMiddleware:
 class IGWLoopbackHarness(IGWPluginHarness):
     """:class:`IGWPluginHarness` plus IGW served on a real ``127.0.0.1`` port.
 
-    Most plugin tests should prefer :class:`IGWPluginHarness` and pin
-    ``parameters.base_url`` directly to :attr:`nim_base_url`. Reach for
-    this harness only when the test specifically needs the in-process
-    app reachable over a real socket — e.g. when the plugin calls
+    Prefer :class:`IGWPluginHarness` for most tests. Reach for this
+    harness only when the in-process app needs to be reachable over a
+    real socket — e.g. when the plugin calls
     :meth:`~nemo_platform_plugin.inference_middleware.InferenceMiddlewareCacheAccessor.get_openai_compatible_inference_url_and_model`
-    and the resulting URL must be reachable, or when plugin outbound
-    HTTP needs to traverse IGW's full request pipeline (VirtualModel
-    resolution + middleware) instead of terminating directly at the
-    upstream mock.
+    and the returned URL must actually work, or when plugin outbound
+    HTTP needs to go through IGW's full request pipeline instead of
+    landing at the upstream mock.
 
-    Costs: a uvicorn thread, two extra context-manager levels, and an
-    HTTP hop on every plugin-side outbound request. Opt-in for that reason.
+    Costs a uvicorn thread and an HTTP hop on every plugin-side
+    outbound request — hence opt-in.
 
     .. warning::
 
-        **Two-loop limitation.** This harness drives the same FastAPI app
-        from *two* event loops simultaneously: the :class:`TestClient`'s
-        loop (used by the SDK's ASGI transport) and the uvicorn thread's
-        loop (used for plugin-originated outbound HTTP that hits the
-        loopback URL). Loop-bound resources are tricky here:
+        **Two-loop limitation.** This harness drives the FastAPI app
+        from two event loops: the TestClient's (for SDK requests via
+        ASGI transport) and uvicorn's (for plugin-originated HTTP
+        hitting the loopback URL). Implications:
 
         * The fixture overrides :func:`global_http_client` with a
           per-request :class:`aiohttp.ClientSession` so the proxy step's
-          HTTP client is always created on the loop handling the inbound
-          request. Production uses a process-singleton client tied to
-          service lifespan and is unaffected.
-        * If a plugin's :meth:`on_startup` builds a long-lived
-          loop-bound resource (``aiohttp.ClientSession``, ``asyncio.Lock``,
-          long-running ``Task``) and uses it during
-          :meth:`process_request`, the resource will be bound to the
-          startup loop and likely fail with "attached to a different loop"
-          when the request runs on the other loop. Such plugins should
-          wire their long-lived resources lazily (per-request, or behind a
-          loop-aware factory) — or be tested via the default
-          :class:`IGWPluginHarness` where only one loop is in play.
-        * Other production shared resources that aren't per-request
-          overridable (connection pools, async caches, custom
-          ``asyncio.Queue``) carry the same risk and may need similar
-          dependency overrides.
-
-        The fixture's three patches (``per_request_http_client``,
-        ``override_platform_base_url``, ``serve_app_in_thread``) document
-        their individual reasons; the harness-level summary lives here so
-        callers see it at point of use.
+          client is created on the loop handling the request.
+        * A plugin that builds a long-lived loop-bound resource
+          (``aiohttp.ClientSession``, ``asyncio.Lock``, long-running
+          ``Task``) in ``on_startup`` and uses it from
+          ``process_request`` will fail with "attached to a different
+          loop" — the request loop is different. Wire those lazily, or
+          test via the plain :class:`IGWPluginHarness` where only one
+          loop is in play.
+        * Other shared production resources (connection pools, async
+          caches, ``asyncio.Queue``) carry the same risk and may need
+          per-request dependency overrides too.
     """
 
     igw_loopback_base_url: str
-    """``http://<host>:<port>`` — bare loopback root, no path. For
-    workspace-scoped openai-compatible URLs use
-    :meth:`igw_openai_loopback_url`."""
+    """``http://<host>:<port>`` — bare loopback root, no path. Use
+    :meth:`igw_openai_loopback_url` for the workspace-scoped variant."""
 
     def igw_openai_loopback_url(self, workspace: str) -> str:
-        """Workspace-scoped OpenAI-compatible loopback URL.
+        """Workspace-scoped OpenAI-compatible loopback URL (includes ``/v1``).
 
-        Pass as ``parameters.base_url`` when plugin outbound HTTP should
-        traverse IGW's openai-compatible proxy for *workspace*. Includes
-        the ``/v1`` suffix expected by OpenAI clients.
+        Pass as ``parameters.base_url`` to route plugin outbound HTTP
+        through IGW's openai-compatible proxy for *workspace*.
         """
         return f"{self.igw_loopback_base_url}/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1"
 

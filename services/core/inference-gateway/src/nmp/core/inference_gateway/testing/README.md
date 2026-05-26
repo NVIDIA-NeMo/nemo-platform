@@ -9,12 +9,11 @@ runs with its production implementation — the only mock is the upstream
 model provider itself, which every offline test needs.
 
 The heavy ASGI stack (FastAPI app, SQLite-backed entity store, dependency
-wiring, `/health/ready` polling, default workspace + project seeding) is
-**module-scoped**: it is built once per test file and shared across every
-test in the module. Per-test concerns (global-cache resets,
-`MockChatCompletionsHandler` mount, post-response task list re-init,
-entity teardown) still run per test. See [Module scope and xdist](#module-scope-and-xdist)
-for the constraints this imposes on the pytest command line.
+wiring, `/health/ready` polling, workspace seeding) is built **once per
+test file** and shared across every test in the module. Per-test concerns
+(mock-NIM handler mount, post-response list reset, entity teardown) still
+run per test. See [Module scope and xdist](#module-scope-and-xdist) for
+the resulting pytest command-line constraints.
 
 ## Quick start
 
@@ -31,25 +30,22 @@ from nmp.core.inference_gateway.testing.fixtures import (
 __all__ = ["_igw_app_context", "_igw_extra_services", "igw_plugin_harness"]
 ```
 
-`_igw_app_context` and `_igw_extra_services` are the module-scoped
-helpers `igw_plugin_harness` depends on; pytest needs them in the same
-conftest scope to resolve the dependency chain. If you use
-`igw_loopback_harness`, additionally re-export `_igw_loopback_context`.
+`_igw_app_context` and `_igw_extra_services` are module-scoped
+fixtures that `igw_plugin_harness` depends on; pytest needs them in
+the same conftest scope to resolve the dependency chain. Add
+`_igw_loopback_context` too if you use `igw_loopback_harness`.
 
 #### Mounting extra services
 
-To mount additional services on the module-scoped app (e.g.
-`GuardrailsService` for entity-backed guardrail-config tests), override
-`_igw_extra_services` in your conftest:
+Override `_igw_extra_services` in your conftest to mount additional
+services on the module app (e.g. `GuardrailsService` for entity-backed
+guardrail-config tests):
 
 ```python
 @pytest.fixture(scope="module")
 def _igw_extra_services() -> tuple[ServiceFactory, ...]:
     return (GuardrailsService,)
 ```
-
-This is module-scoped because the app context itself is module-scoped —
-the service list cannot change mid-module.
 
 ### 2. Write a test
 
@@ -89,8 +85,8 @@ def test_safe_input_reaches_backend(igw_plugin_harness: IGWPluginHarness) -> Non
 
 | Fixture | When to use |
 |---|---|
-| `igw_plugin_harness` | Default. No real port for IGW; plugin outbound HTTP goes directly to the mock NIM via `nim_base_url`. |
-| `igw_loopback_harness` | Factory for tests where plugin outbound HTTP needs to traverse IGW (e.g. the plugin calls `get_openai_compatible_inference_url_and_model` and the resulting URL must be reachable). Call `h = igw_loopback_harness()`. Extra service classes are accepted for source compatibility but ignored — mount them via `_igw_extra_services` instead. Costs a (module-scoped) uvicorn thread + per-test `aiohttp.ClientSession` override. The `per_request_http_client` dependency override is scoped per-loopback-test so plain `igw_plugin_harness` tests in the same module don't pay the per-request session cost. |
+| `igw_plugin_harness` | Default. No real port for IGW; plugin outbound HTTP goes straight to the mock NIM via `nim_base_url`. |
+| `igw_loopback_harness` | Factory for tests where plugin outbound HTTP needs to traverse IGW (e.g. the plugin calls `get_openai_compatible_inference_url_and_model` and the returned URL must be reachable). Call as `h = igw_loopback_harness()` — passing extra services raises `TypeError`; use `_igw_extra_services` instead. Costs a (module-scoped) uvicorn thread plus a per-test `aiohttp.ClientSession` override (scoped to loopback tests only, so plain `igw_plugin_harness` tests in the same module aren't affected). |
 
 ### 4. Choose a plugin registration method
 
@@ -124,7 +120,7 @@ These run the same code as production:
 4. **`get_platform_config()`** — patched in the loopback variant so the resolver returns the loopback URL.
 5. **`global_http_client`** — replaced with per-request sessions in the loopback variant (loop-binding workaround).
 6. **Passthrough VM auto-creation** — the `provider_reconciler` doesn't run. Tests needing the resolver must create passthrough VMs manually.
-7. **Background cache-refresh task** — explicitly disabled in the module-scoped app context (`refresh_model_cache_interval_sec=0`). Tests refresh synchronously inside `add_provider` / `add_virtual_model`. Without this, the 3-second background loop would re-list providers cross-workspace between tests in the same module and re-populate the cache with stale rows.
+7. **Background cache-refresh task** — disabled (`refresh_model_cache_interval_sec=0`) so the 3-second loop can't fire between tests in a module and re-populate the cache with stale rows. Tests refresh synchronously inside `add_provider` / `add_virtual_model`.
 8. **Authorization** — disabled by default (`auth_enabled=False`).
 
 ## What cannot be tested
@@ -150,11 +146,10 @@ These run the same code as production:
 
 ### Workspace
 
-`harness.workspace` — the workspace name the module-scoped fixture
-seeded (`"default"` today). Reach for it instead of a literal
-`"default"` so test bodies stay portable if the harness ever migrates
-to per-test workspaces. Today it's a constant; tomorrow a per-test
-fixture change is all that's needed.
+`harness.workspace` — the workspace the module-scoped fixture seeded
+(`"default"` today). Use this instead of hardcoding `"default"` in
+test bodies; the day the harness moves to per-test workspaces, only
+the fixture changes.
 
 ### Inference
 
@@ -198,130 +193,86 @@ Defined in `nmp.testing.mock_chat_completions`:
 
 ## Module scope and xdist
 
-The expensive ASGI stack (FastAPI app, IGW + Models services, SQLite
-entity store, dependency wiring, default workspace + project seeding)
-is wrapped in `_igw_app_context`, which is `scope="module"`. Without
-this, every parametrised test pays the full `~3–10s` build cost; with
-it, the build amortises across the module and only the cheap per-test
-concerns (cache resets, mock NIM handler mount, entity teardown) run
-per test.
+The expensive ASGI stack is wrapped in the module-scoped
+`_igw_app_context`. Without that, every parametrised test pays the
+full ~3–10s build cost; with it, the build amortises across the file.
 
-**xdist requirement.** Module scope is preserved under
-`--dist=loadfile` (one file per worker) and `--dist=loadscope` (one
-fixture scope per worker). The default `--dist=load` distributes
-**individual tests** across workers, which means each worker rebuilds
-the module-scoped app from scratch — defeating the optimization. Run
-integration tests with:
+**xdist requirement.** Only `--dist=loadfile` (one file per worker) and
+`--dist=loadscope` (one fixture scope per worker) preserve module
+scope. The default `--dist=load` distributes individual tests across
+workers, so each worker rebuilds the app from scratch and defeats the
+optimisation. Run integration tests with:
 
 ```bash
 uv run --frozen pytest plugins/<plugin>/tests/integration --dist=loadfile -n auto
 ```
 
-or
-
-```bash
-uv run --frozen pytest plugins/<plugin>/tests/integration --dist=loadscope -n auto
-```
-
-`loadfile` is the safer default — it also forces every test in a file
-to run on the same worker, which matches the fixture lifecycle exactly.
+`loadfile` is the safer default — it also keeps every test in a file
+on the same worker, matching the fixture lifecycle exactly.
 
 ## Entity teardown across tests
 
-`IGWPluginHarness` tracks every entity it creates and deletes them
-via the SDK on test teardown, in dependency order: virtual models →
-providers → secrets. Each delete is `try/except`-guarded with
-`logger.warning` so a single failure can't mask the test's own
-failure.
+The harness tracks every entity it creates and deletes them on
+teardown in FK order: virtual models → providers → secrets. Each
+delete is guarded so one failure can't mask the test's real failure.
+After deletion the in-memory caches are rebuilt so the next test's
+`add_provider` doesn't see ghost `ModelProviderInfo` rows.
 
-**This is only true for entities created through the harness.** If a
-test calls `harness.sdk.secrets.create(...)` directly (or any other
-entity-store API not mediated by the harness), the entity will leak
-across tests in a module-scoped fixture and may be picked up by the
-next `refresh_model_cache` — triggering plugin `notify_upserted` on a
-dead VM, or causing `add_provider` to see stale `ModelProviderInfo`
-rows.
+**Only entities created through the harness are tracked.** A direct
+`harness.sdk.<entity>.create(...)` call leaks across tests under
+module scope, and may then be picked up by the next
+`refresh_model_cache` — triggering `notify_upserted` on a dead VM, or
+making `add_provider` see stale provider rows.
 
-If you need to create an entity outside the harness's create methods,
-add tracking yourself (`harness._secrets.append((workspace, name))`)
-or delete the entity explicitly in a `try/finally` around the test
-body. For Secrets specifically, use `harness.create_secret(...)` —
-it tracks for you.
-
-After deletion, the runtime caches are also rebuilt: middleware
-registry entries for deleted VMs are evicted, the VM cache is rebuilt
-without them, and the model cache's `workspace_name_provider_map` is
-pruned of deleted providers and the entity map rebuilt. This guards
-against the in-process caches getting out of sync with the entity
-store and keeps the next test's `add_provider` fast-path from seeing
-ghost `ModelProviderInfo` rows.
+For secrets, use `harness.create_secret(...)`. For other entity types
+you need to create outside the harness, either append to the relevant
+tracking list yourself (e.g. `harness._secrets.append((ws, name))`) or
+delete in an explicit `try/finally` around the test body.
 
 ## Plugin lifecycle and shared SDK clients
 
-`use_plugin` / `load_plugin` (and their async siblings) run the
-plugin's `on_startup` on enter and `on_shutdown` on exit. When the
-harness fixture was function-scoped, the entire test client and its
-shared SDK HTTP client were rebuilt per test, so a plugin's
-`on_shutdown` could safely call `await sdk.close()` — closing the
-shared client was a no-op for the next test (which got a fresh
-client).
+`use_plugin` / `load_plugin` run the plugin's `on_startup` on enter
+and `on_shutdown` on exit. The catch with module scope: the shared
+SDK HTTP client now lives across tests, so a plugin's `on_shutdown`
+calling `await sdk.close()` (as `nemo-guardrails` does) would close
+the shared client and break every later test in the module.
 
-With the module-scoped app, the shared SDK HTTP client lives across
-tests. A plugin's `on_shutdown` calling `await sdk.close()` (as
-`nemo-guardrails` does) would close the shared client and break every
-subsequent test in the module, including the periodic
-`refresh_model_cache_task`'s SDK calls.
+The module fixture monkey-patches the shared client's `aclose` to a
+no-op for the module's lifetime. `ASGITransport` is in-process so
+nothing actually leaks. Plugin authors don't need to do anything
+special — `on_shutdown` still runs; only the close is intercepted.
 
-The module-scoped app context monkey-patches the shared client's
-`aclose` to a no-op for the lifetime of the module. The `ASGITransport`
-uses in-process connections, so skipping `aclose` has no real-resource
-leak. Plugin authors don't need to do anything special — `on_shutdown`
-still runs, its other side effects still take effect, only the close
-call is short-circuited.
-
-If you're writing a plugin that owns resources separate from the
-shared SDK (custom connection pools, background tasks, on-disk
-caches), close those in `on_shutdown` as you normally would. Only the
-shared SDK's close is intercepted.
+If your plugin owns separate resources (custom pools, background
+tasks, on-disk caches), close those normally — only the shared SDK's
+close is intercepted.
 
 ## Limitations under module scope
 
-A few patterns that worked under the previous function-scoped
-fixture quietly stop working — or stop working *correctly* — when the
-ASGI stack is module-scoped. Avoid these:
+A few patterns that worked under function scope quietly break under
+module scope:
 
 * **Function-scoped autouse `monkeypatch` fixtures that need to
-  affect service startup.** The module-scoped `_igw_app_context`
-  builds the FastAPI app — including every service's `on_startup` —
-  before any function-scoped fixture runs, so a `monkeypatch.setenv`
-  in a per-test autouse fixture lands after the service has already
-  observed the env var. If you need a value in place before service
-  startup, set it at conftest import time
+  affect service startup.** `_igw_app_context` builds the app —
+  including every service's `on_startup` — before any function-scoped
+  fixture runs, so `monkeypatch.setenv` in a per-test autouse fixture
+  lands too late. Set the value at conftest import time
   (`os.environ.setdefault(...)` at module level) or in a
-  `scope="module", autouse=True` fixture that depends on
-  `_igw_app_context` indirectly (so pytest orders it after the env
-  var is set but before the harness is built). The `nemo-guardrails`
+  `scope="module", autouse=True` fixture. The `nemo-guardrails`
   conftest's `HF_HUB_OFFLINE` setup is the worked example.
-* **Direct `harness.sdk.<entity>.create(...)` calls.** Anything
-  created outside the harness's track-and-delete methods leaks across
-  tests in the module. See [Entity teardown across tests](#entity-teardown-across-tests).
-* **Per-test extra services to `igw_loopback_harness`.** Previously
-  `harness = igw_loopback_harness(GuardrailsService)` would mount
-  extras per call; that now raises `TypeError` because the
-  module-scoped app is already built. Override the
-  `_igw_extra_services` module fixture in your conftest instead.
-* **Plugins registered persistently at app startup** (via the
-  `nemo.inference_middleware` entry-point group) won't receive
-  `on_virtual_model_destroyed`-style callbacks on test teardown —
-  only `registry.evict(...)` runs. Plugins that need cleanup
-  notifications between tests should be registered per-test via
-  `harness.use_plugin(...)` / `harness.load_plugin(...)` so the
-  plugin instance itself is discarded with the test.
-* **Module-shared state in plugin instances under `load_plugin`.**
-  `load_plugin` instantiates a fresh plugin class per test, so
-  *instance* state is per-test, but class-level state (singletons,
-  caches stored on the class) is shared across the module. Keep
-  caches on the instance.
+* **Direct `harness.sdk.<entity>.create(...)` calls** — leaks; see
+  [Entity teardown](#entity-teardown-across-tests).
+* **Per-call extra services to `igw_loopback_harness`** — now raises
+  `TypeError`. Override `_igw_extra_services` instead.
+* **Entry-point-registered plugins won't get
+  `on_virtual_model_destroyed`** on teardown — only `registry.evict`
+  runs, so any per-VM state the plugin tracks leaks across tests in
+  the module. Register such plugins per-test via
+  `harness.use_plugin` / `harness.load_plugin` so the plugin instance
+  is discarded with the test.
+* **Class-level state on plugins under `load_plugin`** is shared
+  across the module. `load_plugin` builds a fresh instance per test,
+  so instance state is fine — keep caches on the instance, not on
+  the class.
 
 ## File layout
 
