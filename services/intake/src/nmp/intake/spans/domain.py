@@ -73,6 +73,7 @@ class SpanListFilter(BaseModel):
     workspace: str
     session_id: str | None = None
     trace_id: str | None = None
+    span_id: str | None = None
     external_parent_span_id: str | None = None
     source_format: str | None = None
     kind: SpanKind | None = None
