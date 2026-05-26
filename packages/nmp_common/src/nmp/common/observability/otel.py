@@ -16,12 +16,30 @@ working.
 
 from __future__ import annotations
 
-import contextlib
 import os
-from collections.abc import Iterator
-from contextvars import ContextVar, Token
-from typing import Dict, Literal
+from typing import Literal
 
+# Header propagation lives in nemo_platform_plugin.otel_headers so plugins can
+# import it without pulling in the full opentelemetry SDK. Service-side
+# callers keep using `nmp.common.observability.otel` via these re-exports.
+from nemo_platform_plugin.otel_headers import (
+    INTERNAL_REQUEST_HEADER as INTERNAL_REQUEST_HEADER,
+)
+from nemo_platform_plugin.otel_headers import (
+    MARK_INTERNAL_REQUEST_HEADERS as MARK_INTERNAL_REQUEST_HEADERS,
+)
+from nemo_platform_plugin.otel_headers import (
+    get_otel_headers as get_otel_headers,
+)
+from nemo_platform_plugin.otel_headers import (
+    otel_headers_context as otel_headers_context,
+)
+from nemo_platform_plugin.otel_headers import (
+    scoped_otel_headers as scoped_otel_headers,
+)
+from nemo_platform_plugin.otel_headers import (
+    set_otel_headers as set_otel_headers,
+)
 from pydantic_settings import BaseSettings
 
 
@@ -71,53 +89,10 @@ class OTELSettings(BaseSettings):
 
 settings = OTELSettings()
 
-INTERNAL_REQUEST_HEADER = "X-NMP-Internal"
-MARK_INTERNAL_REQUEST_HEADERS = {INTERNAL_REQUEST_HEADER: "true"}
-
-otel_headers_context: ContextVar[Dict[str, str] | None] = ContextVar("otel_headers_context", default=None)
-
-
-def set_otel_headers(headers: Dict[str, str]) -> Token[Dict[str, str] | None]:
-    """Set headers to propagate through the request chain (e.g., X-NMP-Internal).
-
-    This is called by middleware to store headers that should be forwarded
-    to downstream service calls via EntityClient.  Returns a token that
-    can be passed to ``otel_headers_context.reset()`` to restore the
-    previous value.
-    """
-    return otel_headers_context.set(headers.copy())
-
-
-def get_otel_headers() -> Dict[str, str]:
-    """Get headers that should be propagated to downstream service calls.
-
-    Returns:
-        A shallow copy of the propagation headers, or empty dict if none set.
-    """
-    headers = otel_headers_context.get()
-    return headers.copy() if headers else {}
-
-
-@contextlib.contextmanager
-def scoped_otel_headers(headers: Dict[str, str]) -> Iterator[None]:
-    """Context manager that sets propagation headers and resets them on exit.
-
-    Use this instead of bare ``set_otel_headers`` when the caller is not
-    request-scoped middleware (which already resets via the token).  This
-    prevents the headers from leaking to unrelated downstream calls in the
-    same async task.
-    """
-    token = set_otel_headers(headers)
-    try:
-        yield
-    finally:
-        otel_headers_context.reset(token)
-
-
 _obs_initialized: bool = False
 
 
-def initialize_obs(resource_attributes: Dict[str, str] | None = None):
+def initialize_obs(resource_attributes: dict[str, str] | None = None):
     """
     Entrypoint for initializing OpenTelemetry observability for this application.
 

@@ -24,7 +24,7 @@ def _clear_sdk_factory_test_client():
     that assert on base_url or service routing. Clearing it keeps tests order-independent
     and ensures sdk_factory tests always exercise the config path.
     """
-    import nmp.common.sdk_factory as sdk_factory_module
+    import nemo_platform_plugin.sdk_factory as sdk_factory_module
 
     old = sdk_factory_module._test_http_client
     sdk_factory_module._test_http_client = None
@@ -163,8 +163,8 @@ def test_get_request_scoped_sdk_merges_otel_and_auth_headers():
     mock_otel_headers = {"traceparent": "00-trace-id-span-id-01", "tracestate": "vendor=value"}
     mock_auth_headers = {"X-NMP-Principal-Id": "user@example.com", "X-NMP-Principal-Groups": "group1,group2"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Verify it's a new SDK instance
@@ -188,8 +188,8 @@ def test_get_request_scoped_sdk_returns_base_sdk_when_no_headers():
     base_sdk = get_async_platform_sdk()
 
     # Mock both functions to return empty dicts
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value={}):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value={}):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value={}):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value={}):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Should return the same SDK instance when no headers to add
@@ -208,8 +208,8 @@ def test_get_request_scoped_sdk_preserves_original_base_sdk():
     mock_otel_headers = {"traceparent": "00-trace-id-span-id-01"}
     mock_auth_headers = {"X-NMP-Principal-Id": "user@example.com"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Verify original SDK is unchanged
@@ -226,8 +226,8 @@ def test_get_request_scoped_sdk_only_otel_headers():
 
     mock_otel_headers = {"traceparent": "00-trace-id-span-id-01"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value={}):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value={}):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Should create new SDK with OTEL headers
@@ -242,8 +242,8 @@ def test_get_request_scoped_sdk_only_auth_headers():
 
     mock_auth_headers = {"X-NMP-Principal-Id": "user@example.com"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value={}):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value={}):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Should create new SDK with auth headers
@@ -260,8 +260,8 @@ def test_get_request_scoped_sdk_auth_headers_override_otel_headers():
     mock_otel_headers = {"X-Custom-Header": "otel-value"}
     mock_auth_headers = {"X-Custom-Header": "auth-value"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Auth headers should win (they're applied after OTEL via .update())
@@ -281,8 +281,8 @@ def test_get_request_scoped_sdk_preserves_base_sdk_http_client():
 
     mock_auth_headers = {"X-NMP-Principal-Id": "user@example.com"}
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value={}):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value={}):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Verify the HTTP client is reused (same instance)
@@ -304,8 +304,8 @@ def test_get_request_scoped_sdk_with_on_behalf_of_header():
         "X-NMP-Principal-Groups": "admin-group",
     }
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value=mock_otel_headers):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Verify it's a new SDK instance
@@ -335,8 +335,8 @@ def test_get_request_scoped_sdk_service_principal_with_on_behalf_of():
         "X-NMP-Principal-On-Behalf-Of": "user@example.com",
     }
 
-    with patch("nmp.common.sdk_factory.get_otel_headers", return_value={}):
-        with patch("nmp.common.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
+    with patch("nemo_platform_plugin.sdk_factory.get_otel_headers", return_value={}):
+        with patch("nemo_platform_plugin.sdk_factory.get_principal_auth_headers", return_value=mock_auth_headers):
             scoped_sdk = get_request_scoped_sdk(base_sdk)
 
     # Verify scoped SDK has both service principal and on-behalf-of
@@ -353,7 +353,7 @@ def test_get_request_scoped_sdk_service_principal_with_on_behalf_of():
 @pytest.fixture
 def platform_config_with_service_discovery():
     """Platform config with service_discovery map for entities and jobs."""
-    return PlatformConfig(  # type: ignore[abstract]
+    return PlatformConfig(  # ty: ignore[invalid-argument-type]
         base_url="http://platform:8080",
         service_discovery={
             "entities": "http://entities-service:8080",
@@ -367,7 +367,7 @@ def test_get_platform_sdk_routes_entities_path_to_entities_service(
 ):
     """Routes /apis/entities/v2/workspaces to the entities service URL."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_platform_sdk()
@@ -386,7 +386,7 @@ def test_get_platform_sdk_routes_jobs_path_to_jobs_service(
 ):
     """Routes /apis/jobs/v2/workspaces/jobs to the jobs service URL."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_platform_sdk()
@@ -404,7 +404,7 @@ def test_get_platform_sdk_routing_fallback_to_base_url_when_no_match(
 ):
     """When the path does not match /apis/{service-name}/ (lowercase+dashes), use the original URL (base)."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_platform_sdk()
@@ -422,7 +422,7 @@ def test_get_async_platform_sdk_routes_entities_path_to_entities_service(
 ):
     """Routes /apis/entities/v2/workspaces to the entities service URL (async SDK)."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_async_platform_sdk()
@@ -440,7 +440,7 @@ def test_get_async_platform_sdk_routes_jobs_path_to_jobs_service(
 ):
     """Routes /apis/jobs/v2/workspaces/jobs to the jobs service URL (async SDK)."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_async_platform_sdk()
@@ -458,7 +458,7 @@ def test_get_async_platform_sdk_routing_fallback_to_base_url_when_no_match(
 ):
     """When the path does not match /apis/{service-name}/, use the original URL (async SDK)."""
     with patch(
-        "nmp.common.sdk_factory.Configuration.get_platform_config",
+        "nemo_platform_plugin.sdk_factory._platform_config",
         return_value=platform_config_with_service_discovery,
     ):
         sdk = get_async_platform_sdk()

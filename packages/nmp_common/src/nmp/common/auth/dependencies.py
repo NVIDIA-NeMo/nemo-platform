@@ -4,16 +4,26 @@
 """FastAPI dependencies and utilities for authentication."""
 
 from contextlib import contextmanager
-from contextvars import ContextVar
-from typing import TYPE_CHECKING, Dict, Generator, Optional
+from typing import TYPE_CHECKING, Generator, Optional
 
 from fastapi import HTTPException, Request
 
+# The ContextVar + plugin-safe header helpers live in nemo_platform_plugin.auth
+# so plugins can read auth-propagation state without pulling nmp.common's heavy
+# server-side deps. Server-side middleware sets the same ContextVar via this
+# re-export, so identity is preserved across the import paths.
+from nemo_platform_plugin.auth.dependencies import (
+    auth_client_context as auth_client_context,
+)
+from nemo_platform_plugin.auth.dependencies import (
+    build_service_principal_headers as build_service_principal_headers,
+)
+from nemo_platform_plugin.auth.dependencies import (
+    get_principal_auth_headers as get_principal_auth_headers,
+)
+
 if TYPE_CHECKING:
     from .client import AuthClient
-
-# Context variable to store the current auth client (set by middleware or tasks runtime)
-auth_client_context: ContextVar[Optional["AuthClient"]] = ContextVar("auth_client_context", default=None)
 
 
 def get_auth_client(request: Request) -> "AuthClient":
@@ -59,82 +69,6 @@ def get_auth_client(request: Request) -> "AuthClient":
             detail="No auth context found. Authorization middleware may not be configured.",
         )
     return auth_client
-
-
-def get_principal_auth_headers() -> Dict[str, str]:
-    """Get principal authentication headers from the current auth context.
-
-    This is a utility function for services that need to forward principal
-    authentication headers when making HTTP calls to other NeMo Platform services.
-    It retrieves the current auth client from the context variable and
-    extracts the principal headers for identity propagation.
-
-    Returns:
-        Dictionary of principal authentication headers to forward, or empty dict
-        if no auth context. Headers include:
-
-        - X-NMP-Principal-Id: The principal's unique identifier
-        - X-NMP-Principal-Email: The principal's email (if available)
-        - X-NMP-Principal-Groups: Comma-separated list of groups (if available)
-        - X-NMP-Principal-On-Behalf-Of: On-behalf-of principal (if available)
-        - X-NMP-Principal-On-Behalf-Of-Groups: On-behalf-of principal groups (if available)
-        - X-NMP-Principal-On-Behalf-Of-Email: On-behalf-of principal email (if available)
-
-    Example:
-        ```python
-        import httpx
-        from nmp.common.auth import get_principal_auth_headers
-
-        async def fetch_from_entities_service(resource_id: str):
-            headers = get_principal_auth_headers()
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    f"{entities_url}/v2/models/{resource_id}",
-                    headers=headers
-                )
-                return response.json()
-        ```
-    """
-    auth_client = auth_client_context.get()
-    if auth_client and auth_client.principal:
-        return auth_client.principal.get_headers()
-    return {}
-
-
-def build_service_principal_headers(service_name: str) -> Dict[str, str]:
-    """Build NeMo Platform auth headers for outbound service-to-service calls.
-
-    Returns:
-    - `X-NMP-Principal-Id: service:<service_name>` so the downstream service
-      can authorize the call.
-    - When the current auth context is a non-service principal, also forwards
-      `X-NMP-Principal-On-Behalf-Of`, `-Email`, and `-Groups` from
-      ``Principal.effective_principal`` so downstream PDP checks evaluate the
-      acting user (not the elevated service row alone).
-
-    Args:
-        service_name: The calling service's name (ex. "guardrails").
-
-    Returns:
-        Header dictionary ready to merge into an outbound request.
-    """
-    headers: Dict[str, str] = {"X-NMP-Principal-Id": f"service:{service_name}"}
-
-    auth_client = auth_client_context.get()
-    if auth_client is None or not auth_client.principal or not auth_client.principal.id:
-        return headers
-
-    effective = auth_client.principal.effective_principal
-    if effective.id.startswith("service:"):
-        return headers
-
-    headers["X-NMP-Principal-On-Behalf-Of"] = effective.id
-    if effective.email:
-        headers["X-NMP-Principal-On-Behalf-Of-Email"] = effective.email
-    if effective.groups:
-        headers["X-NMP-Principal-On-Behalf-Of-Groups"] = ",".join(effective.groups)
-
-    return headers
 
 
 @contextmanager

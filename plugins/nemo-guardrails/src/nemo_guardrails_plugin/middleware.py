@@ -75,11 +75,11 @@ from nemo_platform_plugin.inference_middleware import (
     NemoInferenceMiddleware,
     VirtualModel,
 )
+from nemo_platform_plugin.sdk_factory import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationResponse
 from nmp.common.config import get_common_service_config
 from nmp.common.entities.utils import parse_entity_ref
-from nmp.common.sdk_factory import get_async_platform_sdk
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +271,7 @@ class GuardrailsMiddleware(NemoInferenceMiddleware):
         return EntityGuardrailConfigSource(
             workspace=entity.workspace,
             name=entity.name,
-            updated_at=entity.updated_at,
+            updated_at=entity.updated_at,  # ty: ignore[invalid-argument-type]
             rails=rails_data,
         )
 

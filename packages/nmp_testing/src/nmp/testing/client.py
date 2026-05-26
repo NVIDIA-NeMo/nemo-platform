@@ -259,7 +259,7 @@ def create_test_client(
                 assert req.principal_id == "test@example.com"
     """
     if client_type is None:
-        client_type = NeMoPlatform
+        client_type = NeMoPlatform  # ty: ignore[invalid-assignment]
     with ExitStack() as stack:
         # Create temp directory if not provided
         # Use ignore_cleanup_errors=True because fire-and-forget background tasks
@@ -355,14 +355,14 @@ def create_test_client(
 
         # Clear any stale SDK client from previous tests BEFORE creating app.
         # This prevents service startup code from using a previous test's http transport.
-        from nmp.common import sdk_factory as sdk_factory_module
+        from nemo_platform_plugin import sdk_factory as sdk_factory_module
 
         sdk_factory_module._test_http_client = None
 
         # Create transport and http_client BEFORE the app, so we can inject the client
         # into create_app() for middleware (AuthorizationMiddleware). We set transport.app
         # after app creation - this works because no requests are made until setup completes.
-        transport = httpx.ASGITransport(app=None)
+        transport = httpx.ASGITransport(app=None)  # ty: ignore[invalid-argument-type]
         pdp_timeout = Configuration.get_service_config(AuthConfig).policy_decision_point_request_timeout_seconds
         async_http_client = httpx.AsyncClient(transport=transport, base_url="http://testserver", timeout=pdp_timeout)
 
@@ -379,7 +379,7 @@ def create_test_client(
         access_log_instance: AccessLog | None = None
         if access_log:
             access_log_instance = AccessLog()
-            app.add_middleware(AccessLogMiddleware, access_log=access_log_instance)
+            app.add_middleware(AccessLogMiddleware, access_log=access_log_instance)  # ty: ignore[invalid-argument-type]
             # Store on app.state so tests can access it via test_client.app.state.access_log
             app.state.access_log = access_log_instance
 

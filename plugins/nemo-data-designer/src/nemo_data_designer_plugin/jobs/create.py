@@ -21,8 +21,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.image import get_qualified_image
 from pydantic import BaseModel
 
 
