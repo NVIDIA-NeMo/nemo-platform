@@ -8,7 +8,7 @@ import {
   type PlatformJobResultResponse,
 } from '@nemo/sdk/generated/platform/schema';
 import { Flex, Spinner, Stack } from '@nvidia/foundations-react-core';
-import { DatasetFilePreviewPanel } from '@studio/components/DatasetFilePreviewPanel';
+import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import {
   ArtifactItemRows,
   type ArtifactPreviewState,
@@ -89,11 +89,11 @@ export const ArtifactFilesPanel: FC<ArtifactFilesPanelProps> = ({
         ))}
       </Stack>
 
-      <DatasetFilePreviewPanel
+      <FilesetFilePreviewPanel
         open={preview != null}
         onCloseClick={() => setPreview(null)}
-        datasetWorkspace={preview?.workspace ?? ''}
-        datasetName={preview?.fileset ?? ''}
+        workspace={preview?.workspace ?? ''}
+        filesetName={preview?.fileset ?? ''}
         filePath={preview?.file.path ?? ''}
         file={preview?.file ?? undefined}
       />

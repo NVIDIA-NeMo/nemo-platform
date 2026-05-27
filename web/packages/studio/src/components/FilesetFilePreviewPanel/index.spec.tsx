@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { DatasetFilePreviewPanel } from '@studio/components/DatasetFilePreviewPanel';
+import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, fireEvent } from '@testing-library/react';
 
@@ -12,20 +12,20 @@ vi.mock('@studio/providers/workers/useWorkers', () => ({
   }),
 }));
 
-describe('DatasetFilePreviewPanel', () => {
+describe('FilesetFilePreviewPanel', () => {
   const defaultProps = {
     open: true,
     onCloseClick: vi.fn(),
     onOutsideClick: vi.fn(),
-    datasetWorkspace: 'default',
-    datasetName: 'test-dataset',
+    workspace: 'default',
+    filesetName: 'test-dataset',
     filePath: 'test.txt',
   };
 
-  it('renders DatasetFilePreviewPanel', () => {
+  it('renders FilesetFilePreviewPanel', () => {
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...defaultProps} />
+        <FilesetFilePreviewPanel {...defaultProps} />
       </TestProviders>
     );
     // Verify component renders by checking for auto-generated breadcrumbs
@@ -43,7 +43,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -69,7 +69,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -86,7 +86,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
     // Loading UI comes from FileContentPreview (spinner with aria-label="Loading...").
@@ -102,7 +102,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
     expect(screen.getByText('Error: Failed to load file')).toBeInTheDocument();
@@ -117,7 +117,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
     expect(screen.getByText('Pre-fetched content')).toBeInTheDocument();
@@ -139,7 +139,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -153,7 +153,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...defaultProps} filePath={testFilePath} />
+        <FilesetFilePreviewPanel {...defaultProps} filePath={testFilePath} />
       </TestProviders>
     );
 
@@ -177,7 +177,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -195,7 +195,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -214,7 +214,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -235,7 +235,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -256,7 +256,7 @@ describe('DatasetFilePreviewPanel', () => {
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
@@ -265,22 +265,22 @@ describe('DatasetFilePreviewPanel', () => {
     expect(fileBreadcrumb.tagName).toBe('SPAN');
   });
 
-  it('calls onDatasetClick when dataset breadcrumb is clicked', () => {
-    const onDatasetClick = vi.fn();
+  it('calls onFilesetClick when fileset breadcrumb is clicked', () => {
+    const onFilesetClick = vi.fn();
     const props = {
       ...defaultProps,
-      onDatasetClick,
+      onFilesetClick,
     };
 
     render(
       <TestProviders>
-        <DatasetFilePreviewPanel {...props} />
+        <FilesetFilePreviewPanel {...props} />
       </TestProviders>
     );
 
-    const datasetBreadcrumb = screen.getByText('test-dataset');
-    fireEvent.click(datasetBreadcrumb);
+    const filesetBreadcrumb = screen.getByText('test-dataset');
+    fireEvent.click(filesetBreadcrumb);
 
-    expect(onDatasetClick).toHaveBeenCalledTimes(1);
+    expect(onFilesetClick).toHaveBeenCalledTimes(1);
   });
 });

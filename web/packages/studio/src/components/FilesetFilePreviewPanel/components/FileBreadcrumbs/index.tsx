@@ -12,37 +12,39 @@ interface BreadcrumbItem {
 }
 
 export interface FileBreadcrumbsProps {
-  /** Dataset name - becomes the first breadcrumb */
-  datasetName: string;
+  /** Fileset name - becomes the first breadcrumb */
+  filesetName: string;
   /** File path - split into breadcrumb segments */
   filePath: string;
-  /** Callback when dataset name is clicked */
-  onDatasetClick?: () => void;
+  /** Callback when the fileset name (first crumb) is clicked */
+  onFilesetClick?: () => void;
   /** Callback when folder is clicked (receives full path to that folder) */
   onFolderClick?: (folderPath: string) => void;
 }
 
 /**
- * File breadcrumbs component that automatically generates breadcrumbs from dataset name and file path.
+ * File breadcrumbs component that automatically generates breadcrumbs from
+ * fileset name and file path.
  *
  * Example:
- * - datasetName: "my-dataset"
+ * - filesetName: "my-dataset"
  * - filePath: "folder1/folder2/file.txt"
  * - Result: "my-dataset > folder1 > folder2 > file.txt"
  *
- * The dataset name and folders (non-last segments) are clickable if callbacks are provided.
+ * The fileset name and folders (non-last segments) are clickable if callbacks
+ * are provided.
  */
 export const FileBreadcrumbs: FC<FileBreadcrumbsProps> = ({
-  datasetName,
+  filesetName,
   filePath,
-  onDatasetClick,
+  onFilesetClick,
   onFolderClick,
 }) => {
   const breadcrumbs = useMemo((): BreadcrumbItem[] => {
     const items: BreadcrumbItem[] = [
       {
-        label: datasetName,
-        onClick: onDatasetClick,
+        label: filesetName,
+        onClick: onFilesetClick,
       },
     ];
 
@@ -62,7 +64,7 @@ export const FileBreadcrumbs: FC<FileBreadcrumbsProps> = ({
     });
 
     return items;
-  }, [datasetName, filePath, onDatasetClick, onFolderClick]);
+  }, [filesetName, filePath, onFilesetClick, onFolderClick]);
 
   const items = breadcrumbs.map(({ label, onClick }, index) => ({
     key: `breadcrumb-${index}`,

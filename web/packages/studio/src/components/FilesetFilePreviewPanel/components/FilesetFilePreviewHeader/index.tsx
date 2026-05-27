@@ -2,30 +2,30 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Flex } from '@nvidia/foundations-react-core';
-import { FileActions } from '@studio/components/DatasetFilePreviewPanel/components/FileActions';
-import { FileBreadcrumbs } from '@studio/components/DatasetFilePreviewPanel/components/FileBreadcrumbs';
+import { FileActions } from '@studio/components/FilesetFilePreviewPanel/components/FileActions';
+import { FileBreadcrumbs } from '@studio/components/FilesetFilePreviewPanel/components/FileBreadcrumbs';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { FolderOpen } from 'lucide-react';
 import type { FC } from 'react';
 
-export interface DatasetFilePreviewHeaderProps {
-  datasetWorkspace: string;
-  datasetName: string;
+export interface FilesetFilePreviewHeaderProps {
+  workspace: string;
+  filesetName: string;
   filePath: string;
   /** Resolved file used to render delete/rename/split actions. Omit to hide actions. */
   file?: FileSystemFile;
-  onDatasetClick?: () => void;
+  onFilesetClick?: () => void;
   onFolderClick?: (folderPath: string) => void;
   onDeleteSuccess?: () => void;
   onRenameSuccess?: (newPath: string) => void;
 }
 
-export const DatasetFilePreviewHeader: FC<DatasetFilePreviewHeaderProps> = ({
-  datasetWorkspace,
-  datasetName,
+export const FilesetFilePreviewHeader: FC<FilesetFilePreviewHeaderProps> = ({
+  workspace,
+  filesetName,
   filePath,
   file,
-  onDatasetClick,
+  onFilesetClick,
   onFolderClick,
   onDeleteSuccess,
   onRenameSuccess,
@@ -34,17 +34,17 @@ export const DatasetFilePreviewHeader: FC<DatasetFilePreviewHeaderProps> = ({
     <Flex gap="density-sm" align="center" className="min-w-0">
       <FolderOpen width={16} height={16} />
       <FileBreadcrumbs
-        datasetName={datasetName}
+        filesetName={filesetName}
         filePath={filePath}
-        onDatasetClick={onDatasetClick}
+        onFilesetClick={onFilesetClick}
         onFolderClick={onFolderClick}
       />
     </Flex>
     {file && (
       <FileActions
         file={file}
-        datasetWorkspace={datasetWorkspace}
-        datasetName={datasetName}
+        workspace={workspace}
+        filesetName={filesetName}
         onDeleteSuccess={onDeleteSuccess}
         onRenameSuccess={onRenameSuccess}
       />

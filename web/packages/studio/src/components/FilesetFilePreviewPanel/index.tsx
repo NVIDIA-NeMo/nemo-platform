@@ -3,24 +3,24 @@
 
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { SidePanel } from '@nvidia/foundations-react-core';
-import { DatasetFilePreviewHeader } from '@studio/components/DatasetFilePreviewPanel/components/DatasetFilePreviewHeader';
-import { DatasetFilePreviewContent } from '@studio/components/DatasetFilePreviewPanel/DatasetFilePreviewContent';
+import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
+import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import type { FC } from 'react';
 
-export interface DatasetFilePreviewPanelProps {
+export interface FilesetFilePreviewPanelProps {
   // Panel chrome
   open: boolean;
   onCloseClick: () => void;
   onOutsideClick?: () => void;
 
-  // Dataset context
-  datasetWorkspace: string;
-  datasetName: string;
+  // Fileset context
+  workspace: string;
+  filesetName: string;
   filePath: string;
 
   // Navigation callbacks
-  onDatasetClick?: () => void;
+  onFilesetClick?: () => void;
   onFolderClick?: (folderPath: string) => void;
 
   // File actions
@@ -35,20 +35,21 @@ export interface DatasetFilePreviewPanelProps {
 }
 
 /**
- * Side-panel wrapper around `DatasetFilePreviewContent`.
+ * Side-panel wrapper around `FilesetFilePreviewContent`.
  *
  * Kept as a thin shim so legacy callers (`FilesetListRoute/PanelManagement`)
- * continue to render the file preview as a right-side panel. The new
- * dataset detail Files tab embeds `DatasetFilePreviewContent` inline instead.
+ * continue to render the file preview as a right-side panel. The newer
+ * fileset detail Files tabs (dataset, model) embed `FilesetFilePreviewContent`
+ * inline instead.
  */
-export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
+export const FilesetFilePreviewPanel: FC<FilesetFilePreviewPanelProps> = ({
   open,
   onCloseClick,
   onOutsideClick,
-  datasetWorkspace,
-  datasetName,
+  workspace,
+  filesetName,
   filePath,
-  onDatasetClick,
+  onFilesetClick,
   onFolderClick,
   onDeleteSuccess,
   onRenameSuccess,
@@ -69,12 +70,9 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
     }
   };
 
-  const { data: allFilesResponse } = useFilesListFilesetFiles(
-    datasetWorkspace,
-    datasetName,
-    undefined,
-    { query: { enabled: !externalFile && open } }
-  );
+  const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {
+    query: { enabled: !externalFile && open },
+  });
   const file =
     externalFile ??
     (allFilesResponse?.data?.find((f) => f.path === filePath) as FileSystemFile | undefined);
@@ -93,12 +91,12 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
         handleOutside();
       }}
       slotHeading={
-        <DatasetFilePreviewHeader
-          datasetWorkspace={datasetWorkspace}
-          datasetName={datasetName}
+        <FilesetFilePreviewHeader
+          workspace={workspace}
+          filesetName={filesetName}
           filePath={filePath}
           file={file}
-          onDatasetClick={onDatasetClick}
+          onFilesetClick={onFilesetClick}
           onFolderClick={onFolderClick}
           onDeleteSuccess={onDeleteSuccess}
           onRenameSuccess={onRenameSuccess}
@@ -111,15 +109,15 @@ export const DatasetFilePreviewPanel: FC<DatasetFilePreviewPanelProps> = ({
       modal
       className="max-w-[960px] w-full"
     >
-      <DatasetFilePreviewContent
-        datasetWorkspace={datasetWorkspace}
-        datasetName={datasetName}
+      <FilesetFilePreviewContent
+        workspace={workspace}
+        filesetName={filesetName}
         filePath={filePath}
         file={file}
         fileContent={fileContent}
         isLoading={isLoading}
         error={error}
-        onDatasetClick={onDatasetClick}
+        onFilesetClick={onFilesetClick}
         onFolderClick={onFolderClick}
         onDeleteSuccess={onDeleteSuccess}
         onRenameSuccess={onRenameSuccess}

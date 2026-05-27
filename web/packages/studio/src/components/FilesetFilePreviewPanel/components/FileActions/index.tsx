@@ -25,10 +25,10 @@ import { useAuth } from 'react-oidc-context';
 type ModalType = 'createSplit' | 'rename' | 'delete';
 
 interface Props {
-  /** Dataset workspace (e.g., 'my-workspace') */
-  datasetWorkspace: string;
-  /** Dataset name (e.g., 'my-dataset') */
-  datasetName: string;
+  /** Fileset workspace (e.g., 'my-workspace') */
+  workspace: string;
+  /** Fileset name (e.g., 'my-dataset' / 'my-model') */
+  filesetName: string;
   /** File to perform actions on */
   file: FileSystemFile;
   /** Callback when file is successfully deleted */
@@ -38,8 +38,8 @@ interface Props {
 }
 
 export const FileActions: FC<Props> = ({
-  datasetWorkspace,
-  datasetName,
+  workspace,
+  filesetName,
   file,
   onDeleteSuccess,
   onRenameSuccess,
@@ -70,23 +70,23 @@ export const FileActions: FC<Props> = ({
     });
     worker.postMessage({
       action: 'downloadAsFile',
-      workspace: datasetWorkspace,
-      dataset: datasetName,
+      workspace,
+      dataset: filesetName,
       path: file.path,
       accessToken: auth.user?.access_token,
     });
   };
 
   const handleDeleteFile = async () => {
-    if (!datasetWorkspace || !datasetName) {
-      toast.error('Failed to delete file: invalid dataset name');
+    if (!workspace || !filesetName) {
+      toast.error('Failed to delete file: invalid fileset name');
       return false;
     }
 
     try {
       const response = await deleteFile({
-        workspace: datasetWorkspace,
-        datasetName: datasetName,
+        workspace,
+        datasetName: filesetName,
         path: file.path,
       });
       if (response) {
