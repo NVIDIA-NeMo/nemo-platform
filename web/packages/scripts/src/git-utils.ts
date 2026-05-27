@@ -25,7 +25,7 @@ export function openBrowser(url: string): void {
   let args: string[];
   if (process.platform === 'darwin') {
     cmd = 'open';
-    args = ['--', safeUrl];
+    args = [safeUrl];
   } else if (process.platform === 'win32') {
     cmd = 'rundll32';
     args = ['url.dll,FileProtocolHandler', safeUrl];

@@ -475,10 +475,15 @@ try {
 
   // Step 3: Run prettier
   console.log('Running prettier...');
-  execFileSync('prettier', ['--write', generatedPath], {
-    stdio: 'inherit',
-    cwd: path.join(__dirname, '..'),
-  });
+  const isWindows = process.platform === 'win32';
+  execFileSync(
+    isWindows ? 'cmd.exe' : 'prettier',
+    isWindows ? ['/c', 'prettier', '--write', generatedPath] : ['--write', generatedPath],
+    {
+      stdio: 'inherit',
+      cwd: path.join(__dirname, '..'),
+    }
+  );
 
   console.log('✅ Successfully processed generated files\n');
 } catch (error) {

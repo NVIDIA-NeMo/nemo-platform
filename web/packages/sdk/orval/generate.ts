@@ -127,7 +127,12 @@ const main = async () => {
     if (client) {
       orvalEnv.ORVAL_CLIENT = client;
     }
-    execFileSync('pnpm', ['exec', 'orval'], { stdio: 'inherit', env: orvalEnv });
+    const isWindows = process.platform === 'win32';
+    execFileSync(
+      isWindows ? 'cmd.exe' : 'pnpm',
+      isWindows ? ['/c', 'pnpm', 'exec', 'orval'] : ['exec', 'orval'],
+      { stdio: 'inherit', env: orvalEnv }
+    );
 
     // Post-process Zod files if generating with zod client
     if (client === 'zod') {
