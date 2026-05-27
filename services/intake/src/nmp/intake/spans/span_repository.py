@@ -119,9 +119,6 @@ def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:
     if filters.trace_id is not None:
         clauses.append("trace_id = %(trace_id)s")
         parameters["trace_id"] = filters.trace_id
-    if filters.span_id is not None:
-        clauses.append("external_span_id = %(external_span_id)s")
-        parameters["external_span_id"] = filters.span_id
     if filters.external_parent_span_id is not None:
         clauses.append("external_parent_span_id = %(external_parent_span_id)s")
         parameters["external_parent_span_id"] = filters.external_parent_span_id

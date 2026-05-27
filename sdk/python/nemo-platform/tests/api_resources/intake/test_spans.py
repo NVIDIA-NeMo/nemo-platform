@@ -117,7 +117,6 @@ class TestSpans:
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
-                "span_id": "span_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -257,7 +256,6 @@ class TestAsyncSpans:
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
-                "span_id": "span_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),

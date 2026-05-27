@@ -82,9 +82,6 @@ class SpanFilterParam(TypedDict, total=False):
     source: str
     """Filter by ingest source (e.g. 'otel', 'atif', 'chat_completions')."""
 
-    span_id: str
-    """Filter by external span id."""
-
     started_at: DatetimeFilter
     """Filter by span start timestamp."""
 

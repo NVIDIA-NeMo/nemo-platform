@@ -28,7 +28,6 @@ SpanMode = Literal["summary", "detailed"]
 class SpanFilter(BaseModel):
     session_id: str | None = Field(default=None, description="Filter by span session id.")
     trace_id: str | None = Field(default=None, description="Filter by canonical trace id.")
-    span_id: str | None = Field(default=None, description="Filter by external span id.")
     project: str | None = Field(default=None, description="Filter by project name.")
     evaluation_id: str | None = Field(default=None, description="Filter by evaluation id.")
     evaluation_sha: str | None = Field(default=None, description="Filter by evaluation sha.")
