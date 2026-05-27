@@ -183,8 +183,10 @@ def normalize_model_entity_name(model_name: str) -> str:
 
     Entity store requires: start with [a-z], length 2-63, only [a-z0-9-] (and
     temporarily @ . + _), no consecutive hyphens, no trailing hyphen. This function
-    normalizes when possible; if the result would not match, it raises ValueError
-    so callers can skip or fail explicitly.
+    normalizes when possible; digit-leading names are prefixed with ``md-`` so
+    provider model IDs like ``01-ai/yi-large`` can still be registered without
+    dropping meaningful leading digits. If the result would not match, it raises
+    ValueError so callers can skip or fail explicitly.
 
     Args:
         model_name: The original model name (e.g., "meta/llama-3.2-1b-instruct")
@@ -194,13 +196,15 @@ def normalize_model_entity_name(model_name: str) -> str:
 
     Raises:
         ValueError: If the name cannot be normalized to a valid entity name (e.g. empty,
-            only invalid characters, starts with digit with no letter, or single character).
+            only invalid characters, or single character).
 
     Examples:
         >>> normalize_model_entity_name("meta/llama-3.2-1b-instruct")
         "meta-llama-3-2-1b-instruct"
         >>> normalize_model_entity_name("model:v1.0")
         "model-v1-0"
+        >>> normalize_model_entity_name("01-ai/yi-large")
+        "md-01-ai-yi-large"
         >>> normalize_model_entity_name("")
         ValueError: ... cannot be normalized to a valid entity name
     """
@@ -216,6 +220,8 @@ def normalize_model_entity_name(model_name: str) -> str:
             f"Model name {model_name!r} cannot be normalized to a valid entity name: "
             "result is empty (use at least one letter or digit)."
         )
+    if normalized[0].isdigit():
+        normalized = f"md-{normalized}"
     # If over 63 chars, truncate with deterministic hash suffix to avoid collisions (before validating)
     if len(normalized) > 63:
         hash_suffix = hashlib.sha256(model_name.encode()).hexdigest()[:8]

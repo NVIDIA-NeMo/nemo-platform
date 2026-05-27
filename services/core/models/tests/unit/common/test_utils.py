@@ -795,6 +795,9 @@ def test_is_multi_llm_image_random_image_returns_false():
         pytest.param("model(version)", "model-version", id="parentheses"),
         pytest.param("already-valid-model-name", "already-valid-model-name", id="already_valid"),
         pytest.param("model123-v4.5.6", "model123-v4-5-6", id="numbers"),
+        pytest.param("01-ai/yi-large", "md-01-ai-yi-large", id="digit_leading_org"),
+        pytest.param("9model", "md-9model", id="digit_leading_model"),
+        pytest.param("123", "md-123", id="digits_only"),
         pytest.param(
             "org/model:v1.0@main with spaces",
             "org-model-v1-0-main-with-spaces",
@@ -812,8 +815,6 @@ def test_normalize_model_entity_name_output(input_name, expected):
     [
         pytest.param("", "cannot be normalized to a valid entity name", id="empty_string"),
         pytest.param("///:::", "cannot be normalized to a valid entity name", id="only_invalid_chars"),
-        pytest.param("123", "not valid", id="starts_with_digit_only"),
-        pytest.param("9model", "not valid", id="starts_with_digit_then_letters"),
         pytest.param("a", "not valid", id="single_char"),
     ],
 )

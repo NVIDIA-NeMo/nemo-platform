@@ -323,6 +323,7 @@ def test_entity_name_from_discovered_model_no_prefix_normalizes_whole_id():
     """When model_id has no provider-workspace prefix, normalize the whole id (existing behavior)."""
     assert _entity_name_from_discovered_model("meta/llama-3.2-1b-instruct", "other-ns") == "meta-llama-3-2-1b-instruct"
     assert _entity_name_from_discovered_model("model:with:colons", "test-ns") == "model-with-colons"
+    assert _entity_name_from_discovered_model("01-ai/yi-large", "system") == "md-01-ai-yi-large"
 
 
 def test_entity_name_from_discovered_model_different_workspace_prefix_normalizes_whole():
@@ -332,8 +333,6 @@ def test_entity_name_from_discovered_model_different_workspace_prefix_normalizes
 
 def test_entity_name_from_discovered_model_invalid_raises():
     """When model_id normalizes to an invalid entity name, ValueError is raised."""
-    with pytest.raises(ValueError, match="not valid"):
-        _entity_name_from_discovered_model("123", "test-ns")
     with pytest.raises(ValueError, match="not valid"):
         _entity_name_from_discovered_model("a", "test-ns")
 
@@ -1083,6 +1082,49 @@ async def test_update_model_providers_normalizes_model_names(reconciler):
     assert len(served_models) == 1
     assert served_models[0].served_model_name == "model:with:colons"  # Original
     assert "model-with-colons" in served_models[0].model_entity_id  # Normalized
+
+
+@pytest.mark.asyncio
+async def test_update_model_providers_prefixes_digit_leading_external_model_id(reconciler, caplog):
+    """Digit-leading external model ids are prefixed so entity-store validation accepts them."""
+    provider = MagicMock()
+    provider.workspace = "system"
+    provider.name = "nvidia-build"
+    provider.model_deployment_id = None
+    provider.enabled_models = None
+    provider.served_models = []
+
+    ctx = ModelContext(
+        model_provider=provider,
+        model_deployment=None,
+        model_deployment_config=None,
+        model_entity=None,
+    )
+
+    reconciler._models_sdk.inference.providers.update_status = AsyncMock()
+
+    with (
+        patch.object(
+            reconciler,
+            "_discover_models",
+            return_value=DiscoverySuccess(_discovery_models_from_ids(["01-ai/yi-large"])),
+        ),
+        patch.object(reconciler, "_ensure_model_entity_for_provider") as mock_ensure,
+        caplog.at_level("INFO"),
+    ):
+        await reconciler.reconcile_model_providers([ctx])
+
+    mock_ensure.assert_called_once()
+    assert mock_ensure.call_args.kwargs["model_name"] == "md-01-ai-yi-large"
+
+    call_kwargs = reconciler._models_sdk.inference.providers.update_status.call_args.kwargs
+    served_models = call_kwargs["served_models"]
+    assert len(served_models) == 1
+    assert served_models[0].model_entity_id == "system/md-01-ai-yi-large"
+    assert served_models[0].served_model_name == "01-ai/yi-large"
+    assert not any(
+        "Skipped" in record.message and "01-ai/yi-large" in record.message for record in caplog.records
+    )
 
 
 @pytest.mark.asyncio
