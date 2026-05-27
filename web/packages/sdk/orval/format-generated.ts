@@ -463,14 +463,14 @@ function splitZodTagFilesIn(zodDir: string): void {
 }
 
 async function formatWithPrettier(dir: string): Promise<void> {
-  const entries = readdirSync(dir);
+  const entries = readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
-    const fullPath = path.join(dir, entry);
-    const stat = statSync(fullPath);
-    if (stat.isDirectory()) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
       await formatWithPrettier(fullPath);
       continue;
     }
+    if (!entry.isFile()) continue;
     const fileInfo = await prettier.getFileInfo(fullPath);
     if (fileInfo.ignored || !fileInfo.inferredParser) continue;
     const opts = (await prettier.resolveConfig(fullPath)) ?? {};
