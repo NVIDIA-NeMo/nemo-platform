@@ -244,6 +244,21 @@ async def test_optimize_skills_compile_rejects_relative_paths() -> None:
         )
 
 
+@pytest.mark.asyncio
+async def test_optimize_skills_compile_rejects_analyze_only_without_initial_batch() -> None:
+    from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsConfig, OptimizeSkillsJob
+
+    spec = OptimizeSkillsConfig(evals="/abs/evals", agent="/abs/agent", analyze_only=True)
+    with pytest.raises(PlatformJobCompilationError, match="'analyze_only' requires 'initial_batch'"):
+        await OptimizeSkillsJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
 # ---------------------------------------------------------------------------
 # AnalyzeBatchJob + OptimizeAgentJob — newly added compile() paths
 # ---------------------------------------------------------------------------

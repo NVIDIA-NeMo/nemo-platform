@@ -26,6 +26,7 @@ from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,14 @@ class OptimizeSkillsJob(NemoJob):
         _require_absolute(spec.agent, "agent")
         _require_absolute(spec.state, "state")
         _require_absolute(spec.initial_batch, "initial_batch")
+
+        # Mirror the run() guard so submit fails fast with a 422 instead of
+        # spawning a doomed subprocess that errors inside analyze_only.
+        if spec.analyze_only and not spec.initial_batch:
+            raise PlatformJobCompilationError(
+                "'analyze_only' requires 'initial_batch' to point at an existing batch "
+                "directory; the analyze-only path has no batch to consume otherwise."
+            )
 
         # URL workspace is the auth boundary.  Config has no ``workspace``
         # field today; injecting the key is a no-op now and a guard against

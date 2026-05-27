@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: agents (plugin)
-  version: 0.1.3
+  version: 0.1.1
 paths:
   /apis/agents/v2/workspaces/{workspace}/agents:
     post:
@@ -377,6 +377,380 @@ paths:
           content:
             application/json:
               schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze:
+    post:
+      tags:
+      - Agents
+      summary: Create Job
+      operationId: create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyzeJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agents
+      summary: List Jobs
+      operationId: list_jobs_apis_agents_v2_workspaces__workspace__jobs_analyze_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AnalyzeJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AnalyzeJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{job}/results/{name}:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Result
+      operationId: get_job_result_apis_agents_v2_workspaces__workspace__jobs_analyze__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{job}/results/{name}/download:
+    get:
+      tags:
+      - Agents
+      summary: Download Job Result
+      operationId: download_job_result_apis_agents_v2_workspaces__workspace__jobs_analyze__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{name}:
+    get:
+      tags:
+      - Agents
+      summary: Get Job
+      operationId: get_job_apis_agents_v2_workspaces__workspace__jobs_analyze__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agents
+      summary: Delete Job
+      operationId: delete_job_apis_agents_v2_workspaces__workspace__jobs_analyze__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{name}/cancel:
+    post:
+      tags:
+      - Agents
+      summary: Cancel Job
+      operationId: cancel_job_apis_agents_v2_workspaces__workspace__jobs_analyze__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalyzeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{name}/logs:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_agents_v2_workspaces__workspace__jobs_analyze__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{name}/results:
+    get:
+      tags:
+      - Agents
+      summary: List Job Results
+      operationId: list_job_results_apis_agents_v2_workspaces__workspace__jobs_analyze__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/analyze/{name}/status:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Status
+      operationId: get_job_status_apis_agents_v2_workspaces__workspace__jobs_analyze__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
         '422':
           description: Validation Error
           content:
@@ -1131,6 +1505,102 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize:
+    post:
+      tags:
+      - Agents
+      summary: Create Job
+      operationId: create_job_apis_agents_v2_workspaces__workspace__jobs_optimize_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OptimizeJobRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Agents
+      summary: List Jobs
+      operationId: list_jobs_apis_agents_v2_workspaces__workspace__jobs_optimize_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          exclusiveMinimum: 0
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/OptimizeJobsSortField'
+          description: The field to sort by. To sort in decreasing order, use `-`
+            in front of the field name.
+          default: -created_at
+        description: The field to sort by. To sort in decreasing order, use `-` in
+          front of the field name.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/OptimizeJobsListFilter'
+        description: Filter jobs on various criteria.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeJobsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/agents/v2/workspaces/{workspace}/jobs/optimize-skills:
     post:
       tags:
@@ -1505,6 +1975,284 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{job}/results/{name}:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Result
+      operationId: get_job_result_apis_agents_v2_workspaces__workspace__jobs_optimize__job__results__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{job}/results/{name}/download:
+    get:
+      tags:
+      - Agents
+      summary: Download Job Result
+      operationId: download_job_result_apis_agents_v2_workspaces__workspace__jobs_optimize__job__results__name__download_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: job
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Job
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Not Found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{name}:
+    get:
+      tags:
+      - Agents
+      summary: Get Job
+      operationId: get_job_apis_agents_v2_workspaces__workspace__jobs_optimize__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Agents
+      summary: Delete Job
+      operationId: delete_job_apis_agents_v2_workspaces__workspace__jobs_optimize__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{name}/cancel:
+    post:
+      tags:
+      - Agents
+      summary: Cancel Job
+      operationId: cancel_job_apis_agents_v2_workspaces__workspace__jobs_optimize__name__cancel_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OptimizeJob'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{name}/logs:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Logs
+      operationId: get_job_logs_apis_agents_v2_workspaces__workspace__jobs_optimize__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: limit
+        in: query
+        required: false
+        schema:
+          title: Limit
+          type: integer
+      - name: page_cursor
+        in: query
+        required: false
+        schema:
+          title: Page Cursor
+          type: string
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobLogPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{name}/results:
+    get:
+      tags:
+      - Agents
+      summary: List Job Results
+      operationId: list_job_results_apis_agents_v2_workspaces__workspace__jobs_optimize__name__results_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobListResultResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/jobs/optimize/{name}/status:
+    get:
+      tags:
+      - Agents
+      summary: Get Job Status
+      operationId: get_job_status_apis_agents_v2_workspaces__workspace__jobs_optimize__name__status_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformJobStatusResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
 components:
   schemas:
     Agent:
@@ -1697,6 +2445,173 @@ components:
         \ ``agent_deployment``\nLifecycle: pending \u2192 starting \u2192 running\
         \ | failed.\nThe :class:`~nemo_agents_plugin.runner.controller.AgentDeploymentController`\n\
         drives state transitions by reconciling this entity against the\n:class:`~nemo_agents_plugin.runner.backend.RunnerBackend`."
+    AnalyzeBatchConfig:
+      properties:
+        batch:
+          type: string
+          title: Batch
+          description: Path to a batch directory produced by evaluate-suite.
+        format:
+          type: string
+          enum:
+          - md
+          - json
+          title: Format
+          description: 'Output format: md or json.'
+          default: md
+        mechanical_only:
+          type: boolean
+          title: Mechanical Only
+          description: Skip the LLM analysis pass.
+          default: false
+        anthropic_api_key_secret:
+          title: Anthropic Api Key Secret
+          description: Name of a platform Secret holding the Anthropic API key.  When
+            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
+            dispatched subprocess so the LLM gap-analysis pass can call Anthropic.  Ignored
+            when ``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY``
+            from the calling shell as before.
+          type: string
+      type: object
+      required:
+      - batch
+      title: AnalyzeBatchConfig
+    AnalyzeJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/AnalyzeBatchConfig'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: AnalyzeJob
+    AnalyzeJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/AnalyzeBatchConfig'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: AnalyzeJobRequest
+    AnalyzeJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          description: Name of the job.
+          title: Name
+          type: string
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: AnalyzeJobsListFilter
+      type: object
+    AnalyzeJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/AnalyzeJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnalyzeJobsPage
+    AnalyzeJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: AnalyzeJobsSortField
     CreateAgentRequest:
       properties:
         name:
@@ -1755,29 +2670,6 @@ components:
           type: string
       title: DatetimeFilter
       type: object
-    DeploymentLogsResponse:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/LogLine'
-          type: array
-          title: Data
-        total_lines:
-          type: integer
-          title: Total Lines
-          description: Number of lines actually returned.
-        next_offset:
-          type: integer
-          title: Next Offset
-          description: Byte offset just past the returned tail; pass as Last-Event-ID
-            to resume the stream without gaps.
-      type: object
-      required:
-      - data
-      - total_lines
-      - next_offset
-      title: DeploymentLogsResponse
-      description: Response body for ``GET /deployments/{name}/logs``.
     EvaluateAgentSpec:
       properties:
         agent:
@@ -2198,38 +3090,6 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
-    LogLine:
-      properties:
-        timestamp:
-          type: string
-          title: Timestamp
-          description: ISO-8601 timestamp parsed from the line; empty when absent.
-        job:
-          type: string
-          title: Job
-          description: "Empty \u2014 kept for shape compatibility with jobs logs."
-          default: ''
-        job_step:
-          type: string
-          title: Job Step
-          description: "Empty \u2014 kept for shape compatibility."
-          default: ''
-        job_task:
-          type: string
-          title: Job Task
-          description: "Empty \u2014 kept for shape compatibility."
-          default: ''
-        message:
-          type: string
-          title: Message
-          description: The raw log line minus any parsed timestamp prefix.
-      type: object
-      required:
-      - timestamp
-      - message
-      title: LogLine
-      description: One line shaped to match ``PlatformJobLog`` so Studio's LogViewer
-        renders it as-is.
     NemoListResponse_AgentDeployment_:
       properties:
         data:
@@ -2276,6 +3136,185 @@ components:
       required:
       - data
       title: NemoListResponse_Agent_
+    OptimizeAgentSpec:
+      properties:
+        agent:
+          title: Agent
+          description: "Agent to optimize \u2014 either a platform-managed agent reference\
+            \ (e.g. 'react-agent', 'workspace/react-agent') or an HTTP(S) endpoint\
+            \ URL (e.g. 'http://localhost:8080').  Bare names fetch the agent's stored\
+            \ config and merge it with the optimize config so trials run the agent's\
+            \ workflow locally with swept parameters; URLs are passed through to 'nat\
+            \ optimize --endpoint' verbatim (opaque service mode \u2014 local parameter\
+            \ sweeps don't reach the remote agent).  When omitted, the optimize config\
+            \ must include an inline agent workflow."
+          type: string
+        optimize_config:
+          type: string
+          title: Optimize Config
+          description: Path to the NAT optimization YAML config file.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace name used to fetch the agent's stored config when
+            --agent is a bare name, and to construct the Inference Gateway URL when
+            injecting base_url into LLMs that have none set.
+          default: default
+      type: object
+      required:
+      - optimize_config
+      title: OptimizeAgentSpec
+      description: "Spec for an agent optimization job.\n\nField declaration order\
+        \ also drives the auto-generated CLI flag\norder \u2014 keep the most-frequently-set\
+        \ knobs first.\n\nAttributes:\n    agent: The agent to optimize.  Accepts\
+        \ either a platform-managed\n        agent reference (``\"name\"`` or ``\"\
+        workspace/name\"``) or a\n        literal HTTP(S) endpoint URL.  Bare names\
+        \ cause the job to\n        fetch the agent's stored config from the platform\
+        \ and merge\n        it with the optimize config so trials run the agent's\n\
+        \        workflow locally with the swept parameters; URLs are\n        forwarded\
+        \ to ``nat optimize --endpoint`` and treated as an\n        opaque service\
+        \ (sweeps don't affect the remote agent \u2014 see\n        module docstring).\
+        \  When ``None`` the optimize config is\n        expected to include an inline\
+        \ agent workflow.\n    optimize_config: Path to the NAT optimization YAML\
+        \ config file.\n        The output path is controlled by ``optimizer.output_path``\n\
+        \        inside the YAML.\n    workspace: NeMo Platform workspace used to\
+        \ scope the agent fetch and the\n        gateway URL injection."
+    OptimizeJob:
+      properties:
+        id:
+          title: Id
+          type: string
+        name:
+          type: string
+          title: Name
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        workspace:
+          title: Workspace
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        spec:
+          $ref: '#/components/schemas/OptimizeAgentSpec'
+        status:
+          $ref: '#/components/schemas/PlatformJobStatus'
+        status_details:
+          title: Status Details
+          additionalProperties: true
+          type: object
+        error_details:
+          title: Error Details
+          additionalProperties: true
+          type: object
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - name
+      - spec
+      title: OptimizeJob
+    OptimizeJobRequest:
+      properties:
+        name:
+          title: Name
+          type: string
+        description:
+          title: Description
+          type: string
+        project:
+          title: Project
+          type: string
+        spec:
+          $ref: '#/components/schemas/OptimizeAgentSpec'
+        ownership:
+          title: Ownership
+          additionalProperties: true
+          type: object
+        custom_fields:
+          title: Custom Fields
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - spec
+      title: OptimizeJobRequest
+    OptimizeJobsListFilter:
+      additionalProperties: false
+      properties:
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs created at 'gte' datetime or 'lte' datetime.
+        name:
+          description: Name of the job.
+          title: Name
+          type: string
+        workspace:
+          description: Workspace of the job.
+          title: Workspace
+          type: string
+        project:
+          description: Project containing the job.
+          title: Project
+          type: string
+        status:
+          allOf:
+          - $ref: '#/components/schemas/PlatformJobStatus'
+          description: The current status.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Jobs updated at 'gte' datetime or 'lte' datetime.
+      title: OptimizeJobsListFilter
+      type: object
+    OptimizeJobsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/OptimizeJob'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: OptimizeJobsPage
+    OptimizeJobsSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      - updated_at
+      - -updated_at
+      title: OptimizeJobsSortField
     OptimizeSkillsConfig:
       properties:
         evals:
