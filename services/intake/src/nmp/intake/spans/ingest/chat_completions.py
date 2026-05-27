@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-from typing import Any
+from decimal import Decimal, InvalidOperation
+from typing import Annotated, Any, Self
 
 from fastapi import APIRouter, Depends, status
 from nmp.intake.entities.values import FlexibleEntryRequest, FlexibleEntryResponse
@@ -23,12 +24,13 @@ from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, stable_id, utc_now
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
 
 SOURCE_FORMAT = "chat_completions"
+NonNegativeFloat = Annotated[float, Field(ge=0)]
 
 
 class ChatCompletionsIngestRequest(BaseModel):
@@ -50,6 +52,36 @@ class ChatCompletionsIngestRequest(BaseModel):
     )
     evaluation_context: EvaluationContext | None = None
     provider: str | None = None
+    cost_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Total estimated cost of this model call in USD. Alias for cost_total_usd.",
+    )
+    cost_total_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Total estimated cost of this model call in USD.",
+    )
+    cost_input_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Estimated input-token cost of this model call in USD.",
+    )
+    cost_output_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Estimated output-token cost of this model call in USD.",
+    )
+    cost_details: dict[str, NonNegativeFloat] = Field(
+        default_factory=dict,
+        description="Additional estimated cost breakdown fields in USD.",
+    )
+
+    @model_validator(mode="after")
+    def validate_cost_aliases(self) -> Self:
+        if (
+            self.cost_usd is not None
+            and self.cost_total_usd is not None
+            and not math.isclose(self.cost_usd, self.cost_total_usd, rel_tol=0.0, abs_tol=1e-12)
+        ):
+            raise ValueError("cost_usd and cost_total_usd must match when both are set")
+        return self
 
 
 class ChatCompletionsIngestResponse(BaseModel):
@@ -127,7 +159,11 @@ def _build_attribute_bags(
     error: dict[str, Any] | None,
 ) -> SpanAttributeBags:
     prompt_details = _dict_or_empty(usage.get("prompt_tokens_details"))
+    input_details = _dict_or_empty(usage.get("input_tokens_details"))
     completion_details = _dict_or_empty(usage.get("completion_tokens_details"))
+    output_details = _dict_or_empty(usage.get("output_tokens_details"))
+    input_tokens = _first_clean_int(usage, "prompt_tokens", "input_tokens")
+    output_tokens = _first_clean_int(usage, "completion_tokens", "output_tokens")
 
     error_type: str | None = None
     error_message: str | None = None
@@ -148,15 +184,40 @@ def _build_attribute_bags(
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         error_type=error_type,
         error_message=error_message,
-        input_tokens=_clean_int(usage.get("prompt_tokens")),
-        output_tokens=_clean_int(usage.get("completion_tokens")),
-        total_tokens=_clean_int(usage.get("total_tokens")),
-        cached_tokens=_clean_int(prompt_details.get("cached_tokens")),
-        prompt_audio_tokens=_clean_int(prompt_details.get("audio_tokens")),
-        completion_reasoning_tokens=_clean_int(completion_details.get("reasoning_tokens")),
-        completion_audio_tokens=_clean_int(completion_details.get("audio_tokens")),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=_coalesce_int(_first_clean_int(usage, "total_tokens"), _sum_optional_ints(input_tokens, output_tokens)),
+        cached_tokens=_coalesce_int(
+            _first_clean_int(prompt_details, "cached_tokens"),
+            _first_clean_int(input_details, "cached_tokens"),
+            _first_clean_int(usage, "cache_read_input_tokens"),
+        ),
+        prompt_cache_write_tokens=_coalesce_int(
+            _first_clean_int(prompt_details, "cache_creation_tokens"),
+            _first_clean_int(input_details, "cache_creation_tokens"),
+            _first_clean_int(usage, "cache_creation_input_tokens"),
+        ),
+        prompt_audio_tokens=_coalesce_int(
+            _first_clean_int(prompt_details, "audio_tokens"),
+            _first_clean_int(input_details, "audio_tokens"),
+        ),
+        completion_reasoning_tokens=_coalesce_int(
+            _first_clean_int(completion_details, "reasoning_tokens"),
+            _first_clean_int(output_details, "reasoning_tokens"),
+            _first_clean_int(usage, "reasoning_tokens"),
+        ),
+        completion_audio_tokens=_coalesce_int(
+            _first_clean_int(completion_details, "audio_tokens"),
+            _first_clean_int(output_details, "audio_tokens"),
+        ),
+        cost_total_usd=_decimal_or_none(_cost_total_usd(body)),
+        cost_input_usd=_decimal_or_none(_cost_input_usd(body)),
+        cost_output_usd=_decimal_or_none(_cost_output_usd(body)),
     )
     attribute_bags = semantic.to_bags()
+    for key, value in body.cost_details.items():
+        if key not in {"total", "total_cost", "input", "input_cost", "prompt", "output", "output_cost", "completion"}:
+            attribute_bags.put_unhandled_source_attribute(f"llm.cost.{key}", value)
     if evaluation_context is not None:
         attribute_bags.put_json("evaluation.metadata", evaluation_context.metadata)
     return attribute_bags
@@ -214,3 +275,69 @@ def _clean_int(value: Any) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool):
         return None
     return value if value >= 0 else None
+
+
+def _first_clean_int(values: dict[str, Any], *keys: str) -> int | None:
+    for key in keys:
+        value = _clean_int(values.get(key))
+        if value is not None:
+            return value
+    return None
+
+
+def _sum_optional_ints(*values: int | None) -> int | None:
+    if any(value is None for value in values):
+        return None
+    return sum(value for value in values if value is not None)
+
+
+def _coalesce_int(*values: int | None) -> int | None:
+    for value in values:
+        if value is not None:
+            return value
+    return None
+
+
+def _decimal_or_none(value: float | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _cost_total_usd(body: ChatCompletionsIngestRequest) -> float | None:
+    return (
+        body.cost_total_usd
+        if body.cost_total_usd is not None
+        else body.cost_usd
+        if body.cost_usd is not None
+        else body.cost_details.get("total_cost")
+        if body.cost_details.get("total_cost") is not None
+        else body.cost_details.get("total")
+    )
+
+
+def _cost_input_usd(body: ChatCompletionsIngestRequest) -> float | None:
+    return (
+        body.cost_input_usd
+        if body.cost_input_usd is not None
+        else body.cost_details.get("input_cost")
+        if body.cost_details.get("input_cost") is not None
+        else body.cost_details.get("input")
+        if body.cost_details.get("input") is not None
+        else body.cost_details.get("prompt")
+    )
+
+
+def _cost_output_usd(body: ChatCompletionsIngestRequest) -> float | None:
+    return (
+        body.cost_output_usd
+        if body.cost_output_usd is not None
+        else body.cost_details.get("output_cost")
+        if body.cost_details.get("output_cost") is not None
+        else body.cost_details.get("output")
+        if body.cost_details.get("output") is not None
+        else body.cost_details.get("completion")
+    )
