@@ -7,13 +7,19 @@
  * For private GitHub raw URLs, set the GITHUB_TOKEN environment variable.
  * For local files, no token is required.
  */
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import { serviceConfigs } from './constants';
 import path from 'path';
 import { generateCustomFetcher } from './generateCustomFetcher';
 import { getGithubTokenHeaders } from './githubTokenHeaders';
+
+const ALLOWED_SPEC_HOSTS = new Set([
+  'github.com',
+  'raw.githubusercontent.com',
+  'gitlab-master.nvidia.com',
+]);
 
 const githubToken = process.env.GITHUB_TOKEN;
 const client = process.env.ORVAL_CLIENT;
@@ -28,8 +34,11 @@ if (!config) {
 const getFile = async () => {
   if (config.url.startsWith('http')) {
     const remoteUrl = new URL(config.url);
+    if (remoteUrl.protocol !== 'https:' || !ALLOWED_SPEC_HOSTS.has(remoteUrl.hostname)) {
+      throw new Error(`Refusing to fetch spec from disallowed host: ${remoteUrl.hostname}`);
+    }
     const headers = getGithubTokenHeaders(remoteUrl, githubToken);
-    const res = await fetch(config.url, headers ? { headers } : undefined);
+    const res = await fetch(remoteUrl, headers ? { headers } : undefined);
     if (Math.floor(res.status / 100) !== 2) {
       throw new Error(`${res.status} - Failed to fetch spec. ${res.statusText}`);
     }
@@ -49,14 +58,18 @@ const getFile = async () => {
 const postProcessZodFiles = (zodPath: string) => {
   const zodDefaultFile = path.join(__dirname, '..', zodPath);
 
-  if (!fs.existsSync(zodDefaultFile)) {
-    console.log(`Zod file not found at ${zodDefaultFile}, skipping post-processing`);
-    return;
+  let content: string;
+  try {
+    content = fs.readFileSync(zodDefaultFile, 'utf8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      console.log(`Zod file not found at ${zodDefaultFile}, skipping post-processing`);
+      return;
+    }
+    throw err;
   }
 
   console.log(`Post-processing Zod file: ${zodDefaultFile}`);
-
-  const content = fs.readFileSync(zodDefaultFile, 'utf8');
   const lines = content.split('\n');
   let fixCount = 0;
 
@@ -109,10 +122,8 @@ const postProcessZodFiles = (zodPath: string) => {
 const main = async () => {
   console.log(`Generating types for: ${service}.`);
   const spec = await getFile();
-  // Per-run temp dir with random suffix avoids predictable paths in a shared tmp.
   const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-spec-'));
   const tempFile = path.join(tempDir, `${config.path}.yaml`);
-  const clientVar = client ? `ORVAL_CLIENT=${client}` : '';
   const target =
     client === 'zod'
       ? `./generated/${config.path}/zod/index.ts`
@@ -125,12 +136,17 @@ const main = async () => {
   }
 
   try {
-    execSync(
-      `ORVAL_SERVICE=${service} ORVAL_INPUT=${tempFile} ${clientVar} ORVAL_TARGET=${target} ORVAL_SCHEMAS=./generated/${config.path}/schema pnpm exec orval`,
-      {
-        stdio: 'inherit',
-      }
-    );
+    const orvalEnv: NodeJS.ProcessEnv = {
+      ...process.env,
+      ORVAL_SERVICE: service,
+      ORVAL_INPUT: tempFile,
+      ORVAL_TARGET: target,
+      ORVAL_SCHEMAS: `./generated/${config.path}/schema`,
+    };
+    if (client) {
+      orvalEnv.ORVAL_CLIENT = client;
+    }
+    execFileSync('pnpm', ['exec', 'orval'], { stdio: 'inherit', env: orvalEnv });
 
     // Post-process Zod files if generating with zod client
     if (client === 'zod') {

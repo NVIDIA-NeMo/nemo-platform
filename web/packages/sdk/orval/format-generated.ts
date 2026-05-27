@@ -7,7 +7,7 @@
  * Runs prettier and eslint fix on generated API files, and prefixes unused parameters with underscores.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -475,7 +475,7 @@ try {
 
   // Step 3: Run prettier
   console.log('Running prettier...');
-  execSync(`prettier --write ${generatedPath}`, {
+  execFileSync('prettier', ['--write', generatedPath], {
     stdio: 'inherit',
     cwd: path.join(__dirname, '..'),
   });
