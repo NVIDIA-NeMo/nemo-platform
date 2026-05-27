@@ -6947,9 +6947,9 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/SpanFilter'
-        description: Filter spans by session_id, parent_span_id, project, evaluation
-          context fields, source, kind, status, model, tool_name, provider, agent_id,
-          agent_name, prompt_name, prompt_version, and started_at.
+        description: Filter spans by session_id, trace_id, parent_span_id, project,
+          evaluation context fields, source, kind, status, model, tool_name, provider,
+          agent_id, agent_name, prompt_name, prompt_version, and started_at.
       responses:
         '200':
           description: Successful Response
@@ -28517,6 +28517,10 @@ components:
         session_id:
           description: Filter by span session id.
           title: Session Id
+          type: string
+        trace_id:
+          description: Filter by canonical trace id.
+          title: Trace Id
           type: string
         project:
           description: Filter by project name.

@@ -56,7 +56,7 @@ ATTRIBUTE_EQ_FILTER_FIELDS = frozenset(
     openapi_extra=generate_openapi_extra_params(
         filter_schema=SpanFilter,
         filter_description=(
-            "Filter spans by session_id, parent_span_id, project, evaluation context fields, "
+            "Filter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, "
             "source, kind, status, model, tool_name, provider, agent_id, agent_name, "
             "prompt_name, prompt_version, and started_at."
         ),
@@ -113,6 +113,8 @@ def _span_filter(workspace: str, parsed: ParsedFilter) -> SpanListFilter:
     for comparison in filter_comparisons(parsed):
         if comparison.field == "session_id":
             filters.session_id = require_string_value(comparison)
+        elif comparison.field == "trace_id":
+            filters.trace_id = require_string_value(comparison)
         elif comparison.field == "parent_span_id":
             filters.external_parent_span_id = require_string_value(comparison)
         elif comparison.field in ATTRIBUTE_EQ_FILTER_FIELDS:

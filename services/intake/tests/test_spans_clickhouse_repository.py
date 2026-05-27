@@ -129,21 +129,16 @@ async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
 
 
 @pytest.mark.asyncio
-async def test_get_span_falls_back_to_internal_id_after_external_miss():
-    row = _span_row(internal_id=123, external_span_id="external-123")
-    client = _Client(query_results=[_QueryResult([], SPAN_COLUMNS), _QueryResult([row], SPAN_COLUMNS)])
+async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
+    client = _Client(query_results=[_QueryResult([], SPAN_COLUMNS)])
     repository = _repository(client)
 
     span = await repository.get_span(workspace="workspace-a", span_id="123")
 
-    assert span is not None
-    assert span.id == 123
-    assert span.external_span_id == "external-123"
-    assert len(client.queries) == 2
+    assert span is None
+    assert len(client.queries) == 1
     assert "external_span_id = %(span_id)s" in client.queries[0]
-    assert "id = %(id)s" in client.queries[1]
     assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
-    assert client.parameters[1] == {"workspace": "workspace-a", "id": 123}
 
 
 def _span_row(*, internal_id: int, external_span_id: str) -> tuple[object, ...]:
