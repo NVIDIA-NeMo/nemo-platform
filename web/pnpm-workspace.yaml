@@ -7,8 +7,8 @@ packages:
 catalog:
   '@mui/x-charts': ^7.28.0
   '@mui/x-data-grid': ^7.28.3
-  '@nvidia/foundations-react-core': 0.607.4
-  '@nvidia/foundations-tailwind-plugin': 0.607.4
+  '@nvidia/foundations-react-core': 1.0.0
+  '@nvidia/foundations-tailwind-plugin': 1.0.0
   'lucide-react': ^0.577.0
   '@storybook/react': ^10.3.3
   '@storybook/react-vite': ^10.3.3

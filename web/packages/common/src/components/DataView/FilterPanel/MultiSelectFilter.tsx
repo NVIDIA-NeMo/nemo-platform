@@ -30,7 +30,7 @@ export function MultiSelectFilterControl({ column }: { column: DataViewColumn })
           disabled={opt.disabled}
           slotLabel={opt.label ?? opt.value}
           attributes={{
-            CheckboxBox: {
+            CheckboxInput: {
               id: `column-filter-${column.id}-${opt.value}`,
               'aria-label': opt.label ?? opt.value,
             },

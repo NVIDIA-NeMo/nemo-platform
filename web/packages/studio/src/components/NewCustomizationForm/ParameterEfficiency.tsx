@@ -66,21 +66,13 @@ export const ParameterEfficiency = () => {
                   )}
                 </Stack>
               }
-              attributes={{
-                RadioGroupItem: {
-                  labelSide: 'left',
-                },
-              }}
+              labelSide="left"
             />
             <RadioCard
               value="full_weights"
               label="Full Weights Fine-tuning"
               description="Update all model weights for best performance; needs more compute and training."
-              attributes={{
-                RadioGroupItem: {
-                  labelSide: 'left',
-                },
-              }}
+              labelSide="left"
             />
           </Flex>
         </RadioGroupRoot>

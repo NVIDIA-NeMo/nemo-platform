@@ -65,11 +65,7 @@ export const TrainingMethodSelect = () => {
                   value={option.type}
                   label={option.label}
                   description={option.description}
-                  attributes={{
-                    RadioGroupItem: {
-                      labelSide: 'left',
-                    },
-                  }}
+                  labelSide="left"
                 />
               ))}
             </Grid>

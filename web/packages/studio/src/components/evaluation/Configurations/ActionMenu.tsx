@@ -27,7 +27,7 @@ interface ActionMenuProps {
  */
 export const ActionMenu: FC<ActionMenuProps> = ({ actions, slotTrigger }) => {
   const handleItemClicked =
-    (action: QuickActionItem): React.MouseEventHandler<HTMLLIElement> =>
+    (action: QuickActionItem): React.MouseEventHandler<HTMLButtonElement> =>
     (e) => {
       e.stopPropagation();
       action.onSelect();

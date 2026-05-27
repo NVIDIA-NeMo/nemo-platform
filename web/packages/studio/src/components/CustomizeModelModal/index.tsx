@@ -112,9 +112,7 @@ export const CustomizeModelModal: FC<CustomizeModelModalProps> = ({
                         </Text>
                       </Stack>
                     }
-                    attributes={{
-                      RadioGroupItem: { labelSide: 'left' },
-                    }}
+                    labelSide="left"
                   />
                 ))}
               </Stack>

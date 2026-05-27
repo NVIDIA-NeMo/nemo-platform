@@ -78,7 +78,7 @@ export const DatasetSelect: FC<Props> = ({ onChange, selectedDatasetId, errorTex
             value={selectedDatasetOption}
             onValueChange={(value) => onChange(value)}
             placeholder="Select a dataset"
-            portal={false}
+            
           />
         }
       />

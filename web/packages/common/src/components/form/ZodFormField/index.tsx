@@ -114,10 +114,8 @@ export const ZodFormField = ({
         <ControlledTextArea
           disabled={fieldDisabled}
           defaultValue={fieldDefaultValue ? String(fieldDefaultValue) : undefined}
-          onChange={(e) => {
-            if (e.target instanceof HTMLTextAreaElement) {
-              onChange?.(e.target.value || '', name);
-            }
+          onChange={(value) => {
+            onChange?.(value || '', name);
           }}
           formFieldProps={composedFormFieldProps}
           useControllerProps={useControllerProps}

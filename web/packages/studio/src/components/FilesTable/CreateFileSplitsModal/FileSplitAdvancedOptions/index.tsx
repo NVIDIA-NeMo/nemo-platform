@@ -25,7 +25,7 @@ export const FileSplitAdvancedOptions: FC<Props> = ({ distributionType }) => {
           label="Seed Value (Optional)"
           formFieldProps={{
             attributes: {
-              TooltipContent: { className: tooltipClassName },
+              Popover: { className: tooltipClassName },
               FormFieldLabelGroup: {
                 className: 'justify-between',
               },
@@ -42,7 +42,7 @@ export const FileSplitAdvancedOptions: FC<Props> = ({ distributionType }) => {
           label="Sort Key (Optional)"
           formFieldProps={{
             attributes: {
-              TooltipContent: { className: tooltipClassName },
+              Popover: { className: tooltipClassName },
               FormFieldLabelGroup: {
                 className: 'justify-between',
               },
@@ -77,7 +77,7 @@ export const FileSplitAdvancedOptions: FC<Props> = ({ distributionType }) => {
           value: 'advanced-options',
           slotTrigger: <Text kind="label/bold/sm">Advanced Options</Text>,
           slotContent,
-          iconSide: 'left',
+          chevronPosition: 'start',
         },
       ]}
     />

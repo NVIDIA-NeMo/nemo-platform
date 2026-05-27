@@ -241,7 +241,7 @@ export const MappingFields = <
             disabled={isDisabled}
             freeForm
             dismissible={false}
-            portal={false}
+            
             hideError
             className={cn('font-normal', keyComboboxClassName)}
             attributes={keyComboboxAttributes}
@@ -274,7 +274,7 @@ export const MappingFields = <
             disabled={isDisabled}
             freeForm
             dismissible={false}
-            portal={false}
+            
             hideError
             className={cn('font-normal', valueComboboxClassName)}
             attributes={valueComboboxAttributes}

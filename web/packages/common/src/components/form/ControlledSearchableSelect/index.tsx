@@ -106,7 +106,6 @@ export const ControlledSearchableSelect = ({
   maxHeight = '300px',
   formFieldProps,
   useControllerProps,
-  portal,
   disabled,
   required,
   status,
@@ -237,7 +236,7 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)" portal={portal}>
+        <SelectContent className="w-(--radix-popper-anchor-width)">
           <Block className="p-2 w-full sticky top-0 bg-surface z-10">
             <TextInput
               ref={searchInputRef}
@@ -250,8 +249,8 @@ export const ControlledSearchableSelect = ({
                 setLocalSearch(e.target.value);
               }}
               attributes={{
-                TextInputValue: {
-                  'data-testid': `${useControllerProps.name}-search`,
+                Input: {
+                  ['data-testid' as never]: `${useControllerProps.name}-search`,
                 },
               }}
             />

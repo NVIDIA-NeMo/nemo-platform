@@ -250,7 +250,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
               }
             }}
             attributes={{
-              CheckboxBox: {
+              CheckboxInput: {
                 'aria-label': `Select all files and directories`,
                 'aria-labelledby': undefined,
               },
@@ -325,7 +325,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                   }
                 }}
                 attributes={{
-                  CheckboxBox: {
+                  CheckboxInput: {
                     'aria-label': `Select path ${node.path}`,
                     'aria-labelledby': undefined,
                   },

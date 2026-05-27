@@ -75,7 +75,7 @@ export const EventListItemLayout: FC<EventListItemLayoutProps> = ({
                 items={[
                   {
                     children: 'Delete Annotation',
-                    slotLeft: <Trash size="16" />,
+                    slotStart: <Trash size="16" />,
                     onSelect: onDelete,
                     danger: true,
                   },

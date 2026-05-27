@@ -127,7 +127,6 @@ export const FileSplitsSliders: FC = () => {
               }}
               attributes={{
                 Slider: {
-                  stepPosition: 'none',
                   onValueChange: (value) => {
                     if (!isLocked) {
                       redistributePercentages(fieldName, value);

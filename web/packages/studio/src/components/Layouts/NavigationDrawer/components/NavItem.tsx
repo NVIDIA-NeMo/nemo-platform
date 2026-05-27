@@ -2,26 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  VerticalNavAccordionContent,
-  VerticalNavAccordionItem,
-  VerticalNavAccordionRoot,
-  VerticalNavAccordionTrigger,
-  VerticalNavIcon,
-  VerticalNavLink,
+  VerticalNavCollapsibleContent,
+  VerticalNavCollapsibleSection,
+  VerticalNavCollapsibleTrigger,
+  VerticalNavItem as KuiVerticalNavItem,
   VerticalNavListItem,
-  VerticalNavSubLink,
   VerticalNavSubList,
   VerticalNavSubListItem,
-  VerticalNavText,
-  type VerticalNavItem,
-  type VerticalNavSubItem,
 } from '@nvidia/foundations-react-core';
+import type { NavItem as NavItemData } from '@studio/components/Layouts/NavigationDrawer/types';
 import { ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
-import type { FC } from 'react';
+import { type FC } from 'react';
 import { NavLink } from 'react-router-dom';
 
 interface NavItemProps {
-  item: VerticalNavItem;
+  item: NavItemData;
   isActive: (href: string) => boolean;
   accordionOpen: boolean | undefined;
   onAccordionChange: (itemId: string, open: boolean) => void;
@@ -33,10 +28,10 @@ export const NavItem: FC<NavItemProps> = ({ item, isActive, accordionOpen, onAcc
   // Section header (no href, no subItems)
   if (item.href === undefined && !item.subItems?.length) {
     return (
-      <VerticalNavListItem>
+      <VerticalNavListItem {...item.attributes?.VerticalNavListItem}>
         <div className="flex items-center gap-2 px-4 py-2" aria-hidden>
-          {item.slotIcon && <VerticalNavIcon>{item.slotIcon}</VerticalNavIcon>}
-          <VerticalNavText {...item.attributes?.VerticalNavText}>{item.slotLabel}</VerticalNavText>
+          {item.slotIcon}
+          <span>{item.slotLabel}</span>
         </div>
       </VerticalNavListItem>
     );
@@ -45,74 +40,61 @@ export const NavItem: FC<NavItemProps> = ({ item, isActive, accordionOpen, onAcc
   // Accordion (has subItems)
   if (item.subItems?.length) {
     const isOpen =
-      accordionOpen ?? (item.open !== undefined ? item.open : item.defaultOpen !== false);
+      item.open !== undefined ? item.open : (accordionOpen ?? item.defaultOpen !== false);
     return (
-      <VerticalNavListItem>
-        <VerticalNavAccordionRoot
-          defaultValue={item.defaultOpen !== false ? [item.id] : []}
-          value={item.open !== undefined ? (item.open ? [item.id] : []) : undefined}
-          onValueChange={(v) => {
-            onAccordionChange(item.id, v.includes(item.id));
-            item.onOpenChange?.(v.includes(item.id));
+      <VerticalNavListItem {...item.attributes?.VerticalNavListItem}>
+        <VerticalNavCollapsibleSection
+          open={isOpen}
+          onOpenChange={(nextOpen) => {
+            onAccordionChange(item.id, nextOpen);
+            item.onOpenChange?.(nextOpen);
           }}
-          {...item.attributes?.VerticalNavAccordionRoot}
+          {...item.attributes?.VerticalNavCollapsibleSection}
         >
-          <VerticalNavAccordionItem value={item.id} {...item.attributes?.VerticalNavAccordionItem}>
-            <VerticalNavAccordionTrigger {...item.attributes?.VerticalNavAccordionTrigger}>
-              {item.slotIcon && <VerticalNavIcon>{item.slotIcon}</VerticalNavIcon>}
-              <VerticalNavText {...item.attributes?.VerticalNavText}>
-                {item.slotLabel}
-              </VerticalNavText>
-              {isOpen ? <ChevronUp /> : <ChevronDown />}
-            </VerticalNavAccordionTrigger>
-            <VerticalNavAccordionContent {...item.attributes?.VerticalNavAccordionContent}>
-              <VerticalNavSubList {...item.attributes?.VerticalNavSubList}>
-                {item.subItems.map((sub) => (
-                  <VerticalNavSubListItem
-                    key={sub.id}
-                    {...(sub as VerticalNavSubItem).attributes?.VerticalNavSubListItem}
+          <VerticalNavCollapsibleTrigger>
+            {item.slotIcon}
+            <span>{item.slotLabel}</span>
+            {isOpen ? <ChevronUp /> : <ChevronDown />}
+          </VerticalNavCollapsibleTrigger>
+          <VerticalNavCollapsibleContent>
+            <VerticalNavSubList {...item.attributes?.VerticalNavSubList}>
+              {item.subItems.map((sub) => (
+                <VerticalNavSubListItem key={sub.id} {...sub.attributes?.VerticalNavSubListItem}>
+                  <KuiVerticalNavItem
+                    kind="secondary"
+                    active={sub.active ?? (sub.href ? isActive(sub.href) : false)}
+                    disabled={!sub.href}
+                    slotStart={sub.slotIcon}
+                    {...sub.attributes?.VerticalNavItem}
+                    asChild
                   >
-                    <VerticalNavSubLink
-                      active={sub.active ?? (sub.href ? isActive(sub.href) : false)}
-                      disabled={!sub.href}
-                      {...(sub as VerticalNavSubItem).attributes?.VerticalNavSubLink}
-                      asChild
-                    >
-                      <NavLink to={sub.href ?? ''}>
-                        {sub.slotIcon && <VerticalNavIcon>{sub.slotIcon}</VerticalNavIcon>}
-                        <VerticalNavText
-                          {...(sub as VerticalNavSubItem).attributes?.VerticalNavText}
-                        >
-                          {sub.slotLabel}
-                        </VerticalNavText>
-                      </NavLink>
-                    </VerticalNavSubLink>
-                  </VerticalNavSubListItem>
-                ))}
-              </VerticalNavSubList>
-            </VerticalNavAccordionContent>
-          </VerticalNavAccordionItem>
-        </VerticalNavAccordionRoot>
+                    <NavLink to={sub.href ?? ''}>{sub.slotLabel}</NavLink>
+                  </KuiVerticalNavItem>
+                </VerticalNavSubListItem>
+              ))}
+            </VerticalNavSubList>
+          </VerticalNavCollapsibleContent>
+        </VerticalNavCollapsibleSection>
       </VerticalNavListItem>
     );
   }
 
   // Link (href, no subItems)
   return (
-    <VerticalNavListItem>
-      <VerticalNavLink
+    <VerticalNavListItem {...item.attributes?.VerticalNavListItem}>
+      <KuiVerticalNavItem
         active={active}
         disabled={!item.href}
-        {...item.attributes?.VerticalNavLink}
+        slotStart={item.slotIcon}
+        slotEnd={
+          item.attributes?.VerticalNavItem?.target === '_blank' ? <ExternalLink /> : undefined
+        }
         className="py-3 px-4"
+        {...item.attributes?.VerticalNavItem}
         asChild
       >
-        <NavLink to={item.href ?? ''}>
-          {item.slotIcon && <VerticalNavIcon>{item.slotIcon}</VerticalNavIcon>}
-          <VerticalNavText {...item.attributes?.VerticalNavText}>{item.slotLabel}</VerticalNavText>
-          {item.attributes?.VerticalNavLink?.target === '_blank' && <ExternalLink />}
-        </NavLink>
-      </VerticalNavLink>
+        <NavLink to={item.href ?? ''}>{item.slotLabel}</NavLink>
+      </KuiVerticalNavItem>
     </VerticalNavListItem>
   );
 };

@@ -3,16 +3,15 @@
 
 import {
   Tooltip,
-  VerticalNavIcon,
-  VerticalNavLink,
+  VerticalNavItem as KuiVerticalNavItem,
   VerticalNavListItem,
-  type VerticalNavItem,
 } from '@nvidia/foundations-react-core';
+import type { NavItem as NavItemData } from '@studio/components/Layouts/NavigationDrawer/types';
 import type { FC } from 'react';
 import { NavLink } from 'react-router-dom';
 
 interface CollapsedNavItemProps {
-  item: VerticalNavItem;
+  item: NavItemData;
   isActive: (href: string) => boolean;
 }
 
@@ -24,17 +23,16 @@ export const CollapsedNavItem: FC<CollapsedNavItemProps> = ({ item, isActive }) 
   return (
     <VerticalNavListItem>
       <Tooltip slotContent={item.slotLabel} side="right">
-        <VerticalNavLink
+        <KuiVerticalNavItem
           active={active}
           disabled={!href}
-          {...item.attributes?.VerticalNavLink}
+          slotStart={item.slotIcon}
+          {...item.attributes?.VerticalNavItem}
           className="py-3 px-4"
           asChild
         >
-          <NavLink to={href}>
-            <VerticalNavIcon className="[&>svg]:text-primary">{item.slotIcon}</VerticalNavIcon>
-          </NavLink>
-        </VerticalNavLink>
+          <NavLink to={href} />
+        </KuiVerticalNavItem>
       </Tooltip>
     </VerticalNavListItem>
   );
