@@ -49,8 +49,9 @@ End-to-end **SFT + LoRA** on NeMo Platform. Default plugin: **automodel**. Batch
 - HF dataset id from the user → convert locally; do not ask for local paths first.
 - Dataset fileset name = HF dataset **name** only (`tau/commonsense_qa` → `commonsense_qa`), not the model name.
 - Prefer **CHAT** JSONL when the model has a chat template; details in `references/dataset-formats.md`.
-- User asks to tune LR, epochs, LoRA rank, batch size, or parallelism → edit `/tmp/job.json` per `references/hyperparameters.md` (schema: `nemo customization automodel explain`).
-- **Do not use local `docker info`** to pick automodel vs unsloth. After auth, run `nemo jobs list-execution-profiles` against the user's platform (see `references/troubleshooting.md`).
+- User asks to tune LR, epochs, LoRA rank, batch size, or parallelism → edit `/tmp/job.json` per **Batch sizing** below and `references/hyperparameters.md` (schema: `nemo customization automodel explain`).
+- Skill **defaults** (`micro_batch_size` 1, `global_batch_size` 4) are safe on unknown VRAM. When the user has **≥48 GB** on one GPU, use **Batch sizing** instead of defaults.
+- **Do not use local `docker info`** to pick automodel vs unsloth. After auth, run `uv run nemo jobs list-execution-profiles -f json` against the user's platform (see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
 - For submit/image/plugin errors, read `references/troubleshooting.md`.
 
 ## Workflow
@@ -58,11 +59,11 @@ End-to-end **SFT + LoRA** on NeMo Platform. Default plugin: **automodel**. Batch
 ```
 - [ ] export NEMO_BASE_URL (if user provided endpoint)
 - [ ] cd nemo-platform && uv run nemo auth login --unsigned-token --email <user email or admin@example.com>
-- [ ] nemo jobs list-execution-profiles — GPU profile → automodel; else see troubleshooting (no local docker check)
+- [ ] uv run nemo jobs list-execution-profiles -f json — GPU profile → automodel; else see troubleshooting (no local docker check)
 - [ ] Convert HF dataset → /tmp/train-data/*.jsonl (see references/hf-conversion.md)
 - [ ] Create dataset fileset (--exist-ok), upload train.jsonl (+ validation.jsonl), nemo files list to verify
 - [ ] Create HF weights fileset + model entity if missing (--exist-ok)
-- [ ] Write /tmp/job.json (defaults in SKILL.md; user tuning → references/hyperparameters.md)
+- [ ] Write /tmp/job.json (batch sizing for ≥48 GB GPU; else Defaults table)
 - [ ] uv run nemo customization automodel submit /tmp/job.json --workspace default
 - [ ] Poll until top-level terminal (scripts/poll_automodel_job.sh or 60–120s manual polls)
 - [ ] Report using output template below
@@ -146,13 +147,76 @@ Or poll manually: `uv run nemo jobs get-status automodel-<job-id>` every 60–12
 | Training | SFT + LoRA, `max_seq_length` 2048 |
 | Schedule | `epochs` ≥ 1; omit `max_steps` |
 | Parallelism | 1 node, 1 GPU, TP=1 |
-| Batch | `global_batch_size` 4, `micro_batch_size` 1 |
+| Batch | `global_batch_size` 4, `micro_batch_size` 1 (unknown VRAM; see **Batch sizing** for ≥48 GB) |
 | Optimizer | `learning_rate` 5e-5 |
 | Auth email | `admin@example.com` unless user specifies |
 
+## Batch sizing (≥48 GB VRAM)
+
+Assume **one GPU with at least 48 GB** (e.g. RTX 5880 / A6000 / L40), `parallelism` = 1 node × 1 GPU, `tensor_parallel_size` 1, bf16, `training_type` `sft`, LoRA **rank 16** unless the user asks otherwise.
+
+**How to size**
+
+1. Read **model size** from the entity (`nemo models get`) or HF card (parameter count).
+2. Pick **`finetuning_type`**: `lora` (adapter only, default) vs `all_weights` (full SFT — much heavier).
+3. Set **`max_seq_length`** (2048 is the skill default; shorter seq → more batch headroom).
+4. Set **`micro_batch_size`** first (drives peak VRAM), then **`global_batch_size`** as a multiple of `micro_batch_size` (gradient accumulation when GBS > micro).
+
+**Constraint:** `global_batch_size` must be divisible by `micro_batch_size × data_parallel_size`, where `data_parallel_size = (num_nodes × num_gpus_per_node) / (tensor_parallel_size × pipeline_parallel_size × context_parallel_size)` (1 for a single-GPU job).
+
+### LoRA (`finetuning_type: lora`) — `max_seq_length` 2048
+
+| Model params | `micro_batch_size` | `global_batch_size` | `learning_rate` |
+|--------------|-------------------:|--------------------:|----------------:|
+| ≤2B | 16 | 64 | `1e-4` |
+| 2B–4B | 8 | 32 | `8e-5` |
+| 4B–8B | 4 | 16 | `5e-5` |
+| 8B–14B | 2 | 8 | `2e-5` |
+| >14B | 1 | 4 | `1e-5` |
+
+Validated on platform: **Qwen3-1.7B** LoRA + `commonsense_qa` @ 2048 — `micro` 1 / GBS 4 under-filled VRAM (~56 min); `micro` 16 / GBS 64 completed in ~8 min with similar val loss.
+
+### Full-weight SFT (`finetuning_type: all_weights`) — `max_seq_length` 2048
+
+| Model params | `micro_batch_size` | `global_batch_size` | `learning_rate` |
+|--------------|-------------------:|--------------------:|----------------:|
+| ≤2B | 2 | 8 | `2e-5` |
+| 2B–4B | 1 | 4 | `1e-5` |
+| 4B–8B | 1 | 2 | `5e-6` |
+| >8B | 1 | 1 | lower LR or use TP / shorter seq |
+
+Output type is **model** (full checkpoint), not adapter. Expect much longer runs than LoRA at the same batch.
+
+### `max_seq_length` scaling
+
+Scale **`micro_batch_size`** from the 2048 tables (round down, minimum 1):
+
+| `max_seq_length` | Multiply `micro_batch_size` by |
+|------------------|-------------------------------:|
+| 512 | 4× |
+| 1024 | 2× |
+| 2048 | 1× (tables above) |
+| 4096 | 0.5× |
+
+Then set `global_batch_size` to a multiple of the new `micro_batch_size` (often keep the same ratio as the table, e.g. GBS = 4 × micro for LoRA).
+
+### LoRA rank
+
+Higher rank uses more VRAM. If OOM at rank 16, drop to rank 8 before lowering batch; if headroom remains, rank 32 is fine for training (deploy rank ≤32 on default NIM/vLLM).
+
+### Tuning loop
+
+| Symptom | Action |
+|---------|--------|
+| CUDA OOM | Halve `micro_batch_size`, then `global_batch_size`, then `max_seq_length` |
+| Slow / low GPU memory use | Increase `micro_batch_size`, then raise `global_batch_size` (keep divisible); scale `learning_rate` up modestly with GBS (e.g. 5e-5 → 1e-4 when 4× GBS) |
+| User wants max throughput | Prefer higher `micro_batch_size` over very large GBS with `micro_batch_size` 1 |
+
+Field details and distillation: `references/hyperparameters.md`.
+
 ## Worked example
 
-`Qwen/Qwen3-1.7B` + `tau/commonsense_qa` → CHAT JSONL, fileset `commonsense_qa`, entity `qwen3-1.7b`, output `qwen3-1.7b-commonsense-qa-lora`, `epochs: 1` (no `max_steps`).
+`Qwen/Qwen3-1.7B` + `tau/commonsense_qa` → CHAT JSONL, fileset `commonsense_qa`, entity `qwen3-1.7b`, output `qwen3-1.7b-commonsense-qa-lora`, `epochs: 1` (no `max_steps`). On ≥48 GB GPU use LoRA ≤2B row: `micro_batch_size` 16, `global_batch_size` 64, `learning_rate` `1e-4`.
 
 ## Report to user
 
@@ -172,7 +236,8 @@ Or poll manually: `uv run nemo jobs get-status automodel-<job-id>` every 60–12
 |------|------|
 | HF conversion or MCQA shaping | `references/hf-conversion.md` |
 | CHAT vs SFT vs CUSTOM | `references/dataset-formats.md` |
-| Hyperparameters, tuning, LoRA, batch/schedule | `references/hyperparameters.md` |
+| Hyperparameters, distillation, extra presets | `references/hyperparameters.md` |
+| Batch sizing (≥48 GB), OOM / throughput | **Batch sizing** section above |
 | Backend choice, execution profiles, submit failure, images, CLI | `references/troubleshooting.md` |
 | Live JSON schema | `uv run nemo customization automodel explain` |
 | Job JSON fixture | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
