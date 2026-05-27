@@ -108,7 +108,8 @@ class TrainingRunner:
                 self._progress.report_error(error_details)
         finally:
             self._write_result(result)
-            return result
+
+        return result
 
     def _get_barrier_dir(self) -> Path:
         return self._job_ctx.storage_path / self._job_ctx.attempt_id / "distributed" / "barriers"
