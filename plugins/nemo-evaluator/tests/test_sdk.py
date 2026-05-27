@@ -23,9 +23,9 @@ from nemo_evaluator.sdk._executor import (
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundler, MetricBundlingError
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundler
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
-from nemo_evaluator_sdk.metrics.bundles import MetricBundle, MetricBundler, MetricBundlingError
-from nemo_evaluator_sdk.metrics.cloudpickle import CloudpickleMetricBundler
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel

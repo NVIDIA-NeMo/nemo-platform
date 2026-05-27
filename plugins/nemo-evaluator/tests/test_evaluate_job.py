@@ -22,9 +22,7 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateSpec,
 )
 from nemo_evaluator.resolvers import PlatformModelResolver
-from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
-from nemo_evaluator_sdk.enums import AgentFormat
-from nemo_evaluator_sdk.metrics.bundles import (
+from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
     MetricBundle,
     MetricBundlePayload,
@@ -32,7 +30,9 @@ from nemo_evaluator_sdk.metrics.bundles import (
     register_metric_bundle_payload,
     register_metric_bundler,
 )
-from nemo_evaluator_sdk.metrics.cloudpickle import CloudpickleMetricBundler
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundler
+from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
+from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
@@ -62,7 +62,9 @@ from typer.testing import CliRunner
 
 def _exact_match_spec() -> dict:
     return {
-        "metrics": [_bundle_payload(ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"))],
+        "metrics": [
+            _bundle_payload(ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}"))
+        ],
         "dataset": [
             {"expected": "blue", "model_output": "Blue"},
             {"expected": "Jupiter", "model_output": "Saturn"},
@@ -414,27 +416,27 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
 async def test_evaluate_job_compile_injects_metric_and_target_secrets() -> None:
     secret_ref = SecretRef(root="NVIDIA_BUILD_API_KEY")
     spec = EvaluateSpec.model_validate(
-            {
-                **_exact_match_spec(),
-                "metrics": [
-                    _bundle_payload(
-                        LLMJudgeMetric(
-                            model=Model(
-                                url="https://integrate.api.nvidia.com/v1/chat/completions",
-                                name="nvidia/nemotron-3-super-120b-a12b",
-                                api_key_secret=secret_ref,
+        {
+            **_exact_match_spec(),
+            "metrics": [
+                _bundle_payload(
+                    LLMJudgeMetric(
+                        model=Model(
+                            url="https://integrate.api.nvidia.com/v1/chat/completions",
+                            name="nvidia/nemotron-3-super-120b-a12b",
+                            api_key_secret=secret_ref,
+                        ),
+                        scores=[
+                            RangeScore(
+                                name="quality",
+                                minimum=1,
+                                maximum=5,
+                                parser=JSONScoreParser(json_path="quality"),
                             ),
-                            scores=[
-                                RangeScore(
-                                    name="quality",
-                                    minimum=1,
-                                    maximum=5,
-                                    parser=JSONScoreParser(json_path="quality"),
-                                ),
-                            ],
-                        )
+                        ],
                     )
-                ],
+                )
+            ],
             "target": Model(
                 url="https://integrate.api.nvidia.com/v1/chat/completions",
                 name="nvidia/nemotron-3-super-120b-a12b",

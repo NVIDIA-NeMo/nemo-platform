@@ -7,12 +7,11 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Mapping
-from typing import Any, Literal, Protocol, cast
+from typing import Annotated, Any, Literal, Protocol, cast
 
 from nemo_evaluator_sdk.metrics.protocol import (
     Metric,
     MetricOutputSpec,
-    MetricTypeName,
     MetricWithSecrets,
 )
 from nemo_evaluator_sdk.values.common import SecretRef
@@ -21,10 +20,13 @@ from pydantic import (
     ConfigDict,
     Field,
     SerializeAsAny,
+    StringConstraints,
     field_serializer,
     field_validator,
     model_validator,
 )
+
+BundleMetricTypeName = Annotated[str, StringConstraints(min_length=1)]
 
 
 class MetricBundlingError(ValueError):
@@ -80,9 +82,7 @@ def _payload_kind(payload: MetricBundlePayload) -> str:
     return kind
 
 
-def register_metric_bundle_payload(
-    kind: str, payload_type: type[MetricBundlePayload]
-) -> None:
+def register_metric_bundle_payload(kind: str, payload_type: type[MetricBundlePayload]) -> None:
     """Register a concrete Pydantic payload model for a bundle kind."""
     if not kind:
         raise ValueError("metric bundle payload kind must not be empty")
@@ -103,7 +103,7 @@ class MetricBundle(BaseModel):
 
     bundle_kind: Literal["metric-bundle"] = "metric-bundle"
     bundle_format_version: Literal["v1"] = "v1"
-    metric_type: MetricTypeName
+    metric_type: BundleMetricTypeName
     metadata: MetricMetadata = Field(default_factory=MetricMetadata)
     outputs: list[BundledMetricOutputSpec] = Field(min_length=1)
     secrets: dict[str, SecretRef] = Field(default_factory=dict)

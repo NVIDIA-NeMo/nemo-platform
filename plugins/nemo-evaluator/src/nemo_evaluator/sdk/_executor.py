@@ -23,10 +23,10 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundler
 from nemo_evaluator_sdk import Evaluator as SDKEvaluator
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
-from nemo_evaluator_sdk.metrics.bundles import MetricBundle, MetricBundler
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -491,9 +491,7 @@ class _AsyncEvaluatorPluginExecutor:
         return filter_benchmark_result(result, request.aggregate_fields)
 
 
-def bundle_metrics_for_spec(
-    metrics: Metric | Sequence[Metric], *, metric_bundler: MetricBundler
-) -> list[MetricBundle]:
+def bundle_metrics_for_spec(metrics: Metric | Sequence[Metric], *, metric_bundler: MetricBundler) -> list[MetricBundle]:
     """Bundle one metric or a benchmark metric sequence for an evaluator plugin spec."""
     if isinstance(metrics, Sequence) and not isinstance(metrics, (str, bytes)):
         metric_sequence = cast(Sequence[Metric], metrics)

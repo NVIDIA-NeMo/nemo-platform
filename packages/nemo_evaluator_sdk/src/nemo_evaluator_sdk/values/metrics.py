@@ -33,7 +33,6 @@ from nemo_evaluator_sdk.metrics.llm_judge_defaults import (
 from nemo_evaluator_sdk.metrics.llm_judge_defaults import (
     is_chat_inference as is_chat_inference,
 )
-from nemo_evaluator_sdk.metrics.protocol import MetricTypeName
 from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
 from nemo_evaluator_sdk.values.dataset_schemas import InputSchema
 from nemo_evaluator_sdk.values.models import Model, ModelRef, ReasoningParams
@@ -88,7 +87,7 @@ class MetricBase(BaseModel):
 
     __entity_type__: ClassVar[str] = "metric"
 
-    type: MetricTypeName = Field(description="The type of metric. Used as a discriminator for the metric type.")
+    type: str = Field(description="The type of metric. Used as a discriminator for the metric type.")
     description: str | None = Field(default=None, description="Human-readable description of the metric.")
     labels: dict[str, str] = Field(
         default_factory=dict, description="Labels are key-value pairs that can be used for grouping and filtering."

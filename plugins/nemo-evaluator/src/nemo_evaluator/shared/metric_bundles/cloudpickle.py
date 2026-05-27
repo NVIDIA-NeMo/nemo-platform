@@ -11,7 +11,7 @@ import platform
 from typing import Annotated, Literal
 
 import cloudpickle
-from nemo_evaluator_sdk.metrics.bundles import (
+from nemo_evaluator.shared.metric_bundles.bundles import (
     BundledMetricOutputSpec,
     MetricBundle,
     MetricBundlePayload,

@@ -29,7 +29,7 @@ from nemo_evaluator.sdk.job_resources import (
     metric_job_status_details_value,
     metric_job_status_value,
 )
-from nemo_evaluator_sdk.metrics.cloudpickle import CloudpickleMetricBundler
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundler
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,

@@ -12,12 +12,12 @@ from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 from nemo_evaluator.jobs.utils import resolve_run_dataset
 from nemo_evaluator.resolvers import PlatformModelResolver
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, metric_bundler_for_payload
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution._protocols import JobParamsConfigurableMetric
 from nemo_evaluator_sdk.execution.config import normalize_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.metrics.bundles import MetricBundle, metric_bundler_for_payload
-from nemo_evaluator_sdk.metrics.cloudpickle import CloudpickleMetricPayload  # noqa: F401
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_evaluator_sdk.values import (
     Agent,
