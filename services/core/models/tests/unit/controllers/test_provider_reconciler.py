@@ -332,10 +332,16 @@ def test_entity_name_from_discovered_model_different_workspace_prefix_normalizes
 
 def test_entity_name_from_discovered_model_invalid_raises():
     """When model_id normalizes to an invalid entity name, ValueError is raised."""
-    with pytest.raises(ValueError, match="not valid"):
-        _entity_name_from_discovered_model("123", "test-ns")
+    # Single-character id still fails NAME_PATTERN's 2-char minimum length.
     with pytest.raises(ValueError, match="not valid"):
         _entity_name_from_discovered_model("a", "test-ns")
+
+
+def test_entity_name_from_discovered_model_digit_leading_gets_prefix():
+    """Digit-leading upstream ids (e.g. NVIDIA Build's '01-ai/yi-large') get an
+    internal 'm-' prefix from normalize_model_entity_name and become routable."""
+    assert _entity_name_from_discovered_model("01-ai/yi-large", "default") == "m-01-ai-yi-large"
+    assert _entity_name_from_discovered_model("123", "test-ns") == "m-123"
 
 
 # ============================================================================
