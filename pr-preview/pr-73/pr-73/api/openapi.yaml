@@ -13370,7 +13370,9 @@ components:
             minimum: 0.0
           type: object
           title: Cost Details
-          description: Additional estimated cost breakdown fields in USD.
+          description: Additional estimated cost breakdown fields in USD. Well-known
+            keys such as total, total_cost, input, input_cost, prompt, output, output_cost,
+            and completion are normalized into semantic cost fields.
       additionalProperties: false
       type: object
       required:
