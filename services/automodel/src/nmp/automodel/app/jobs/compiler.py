@@ -8,7 +8,6 @@ import logging
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.automodel.api.v2.jobs.schemas import (
-    CustomizationJobInput,
     CustomizationJobOutput,
     DeploymentParams,
     DistillationTraining,
@@ -46,7 +45,6 @@ from nmp.automodel.entities.values import FinetuningType
 from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
 from nmp.automodel.platform_client import fetch_model_entity
 from nmp.common.auth import AuthClient, auth_client_context
-from nmp.common.entities import EntityClient
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.api_factory import (
     ContainerSpec,
@@ -100,7 +98,7 @@ def _extract_model_uri(me: ModelEntity) -> str | None:
     return me.fileset if me.fileset else None
 
 
-def _require_fileset_for_download(fileset_name: str | None, *, entity_label: str) -> str:
+def _require_fileset_for_download(fileset_name: str | None, entity_label: str) -> str:
     """Require a platform fileset reference for checkpoint download."""
     if not fileset_name or not str(fileset_name).strip():
         raise PlatformJobCompilationError(
@@ -381,13 +379,8 @@ async def platform_job_config_compiler(
     workspace: str,
     job_spec: CustomizationJobOutput,
     sdk: AsyncNeMoPlatform,
-    entity_client: EntityClient | None = None,
-    job_name: str | None = None,
-    original_spec: CustomizationJobInput | None = None,
-    profile: str | None = None,
 ) -> PlatformJobSpec:
     """Compile canonical job spec into a four-step PlatformJobSpec."""
-    del entity_client, job_name, original_spec, profile
     transformed_spec = job_spec
     logger.info("Compiling Automodel job to PlatformJobSpec: %s", transformed_spec.model_dump_json(indent=2))
 

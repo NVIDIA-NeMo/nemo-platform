@@ -44,7 +44,6 @@ class DefaultExecutionProfileConfig(BaseModel):
 def get_default_executor_profiles_for_runtime(
     runtime: Runtime,
     defaults: DefaultExecutionProfileConfig,
-    *,
     enable_subprocess_executor: bool | None = None,
 ) -> list:
     """Returns a list of default executor profiles based on the deployment runtime."""

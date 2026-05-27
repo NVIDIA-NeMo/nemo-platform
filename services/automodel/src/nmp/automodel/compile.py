@@ -28,8 +28,6 @@ async def platform_job_config_compiler(
         workspace,
         job_spec,
         sdk,  # type: ignore[arg-type]
-        job_name=job_name,
-        profile=profile,
     )
 
 

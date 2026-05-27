@@ -54,7 +54,6 @@ class AutomodelJob(NemoJob):
         async_sdk: object,
         is_local: bool,
     ) -> AutomodelJobOutput:
-        del entity_client, is_local
         job_input = (
             input_spec
             if isinstance(input_spec, AutomodelJobInput)
@@ -73,7 +72,6 @@ class AutomodelJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
-        del entity_client, options
         _require_docker_runtime()
         canonical = (
             spec if isinstance(spec, AutomodelJobOutput) else AutomodelJobOutput.model_validate(spec.model_dump())
