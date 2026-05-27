@@ -42,3 +42,30 @@ jobs:
       - name: Scan Results Status
         if: ${{ github.event_name != 'merge_group' && steps.trufflehog.outcome == 'failure' }}
         run: exit 1
+  codeql:
+    name: CodeQL Analyze Codebase
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'python', 'javascript-typescript' ]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+            languages: ${{matrix.language}}
+            queries: +security-and-quality
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+            category: "/language:${{matrix.language}}"
