@@ -8,9 +8,7 @@ import { expect, type Page } from '@playwright/test';
 const PROJECTS_PAGE_URL = `projects?sort_by=created_at&order=desc`;
 
 export class ProjectsPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   private async openQuickActionsMenu(projectName: string, actionName: string) {
     const projectRow = await getRowByName(this.page, projectName);

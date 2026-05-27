@@ -6,9 +6,7 @@ import { CreateModelEntityRequest, ModelEntity } from '@nemo/sdk/generated/platf
 import { APIRequestContext } from '@playwright/test';
 
 export class ModelsAPI {
-  constructor(private request: APIRequestContext) {
-    this.request = request;
-  }
+  constructor(private request: APIRequestContext) {}
 
   async createModel(workspace: string, data: CreateModelEntityRequest) {
     const response = await this.request.post(`${NMP_BASE_URL}/v2/workspaces/${workspace}/models`, {

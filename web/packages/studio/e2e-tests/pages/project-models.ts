@@ -7,9 +7,7 @@ import { getRowByName } from '@e2e-tests/utils/tables';
 import { expect, type Page } from '@playwright/test';
 
 export class ProjectModelsPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   private async openQuickActionsMenu(modelName: string, actionName: string) {
     const modelRow = await getRowByName(this.page, modelName);

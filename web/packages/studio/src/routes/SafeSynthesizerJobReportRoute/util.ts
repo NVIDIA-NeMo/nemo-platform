@@ -12,33 +12,21 @@ export const GRADE_VALUES = {
 };
 
 export function getDataPrivacyGradeLabel(score: number): string {
-  if (score < 2) {
-    return GRADE_VALUES.POOR;
-  } else if (score < 4) {
-    return GRADE_VALUES.MODERATE;
-  } else if (score < 6) {
-    return GRADE_VALUES.GOOD;
-  } else if (score < 8) {
-    return GRADE_VALUES.VERY_GOOD;
-  } else if (score >= 8) {
-    return GRADE_VALUES.EXCELLENT;
-  }
-  return GRADE_VALUES.UNAVAILABLE;
+  if (Number.isNaN(score)) return GRADE_VALUES.UNAVAILABLE;
+  if (score < 2) return GRADE_VALUES.POOR;
+  if (score < 4) return GRADE_VALUES.MODERATE;
+  if (score < 6) return GRADE_VALUES.GOOD;
+  if (score < 8) return GRADE_VALUES.VERY_GOOD;
+  return GRADE_VALUES.EXCELLENT;
 }
 
 export function getSyntheticQualityGradeLabel(score: number): string {
-  if (score < 2) {
-    return GRADE_VALUES.VERY_POOR;
-  } else if (score < 4) {
-    return GRADE_VALUES.POOR;
-  } else if (score < 6) {
-    return GRADE_VALUES.MODERATE;
-  } else if (score < 8) {
-    return GRADE_VALUES.GOOD;
-  } else if (score >= 8) {
-    return GRADE_VALUES.EXCELLENT;
-  }
-  return GRADE_VALUES.UNAVAILABLE;
+  if (Number.isNaN(score)) return GRADE_VALUES.UNAVAILABLE;
+  if (score < 2) return GRADE_VALUES.VERY_POOR;
+  if (score < 4) return GRADE_VALUES.POOR;
+  if (score < 6) return GRADE_VALUES.MODERATE;
+  if (score < 8) return GRADE_VALUES.GOOD;
+  return GRADE_VALUES.EXCELLENT;
 }
 
 export const GRADE_ORDER = [

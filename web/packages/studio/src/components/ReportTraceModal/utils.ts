@@ -62,7 +62,7 @@ Thanks!`;
 };
 
 export const formatTags = (tags: TraceData['spans'][number]['tags']) => {
-  if (tags == null || tags === undefined) {
+  if (tags == null) {
     return 'empty';
   }
 

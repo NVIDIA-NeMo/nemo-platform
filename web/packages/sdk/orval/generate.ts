@@ -109,7 +109,9 @@ const postProcessZodFiles = (zodPath: string) => {
 const main = async () => {
   console.log(`Generating types for: ${service}.`);
   const spec = await getFile();
-  const tempFile = path.join(os.tmpdir(), `openapi-spec-${config.path}.yaml`);
+  // Per-run temp dir with random suffix avoids predictable paths in a shared tmp.
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'openapi-spec-'));
+  const tempFile = path.join(tempDir, `${config.path}.yaml`);
   const clientVar = client ? `ORVAL_CLIENT=${client}` : '';
   const target =
     client === 'zod'
@@ -135,7 +137,7 @@ const main = async () => {
       postProcessZodFiles(`./generated/${config.path}/zod/default.ts`);
     }
   } finally {
-    fs.unlinkSync(tempFile);
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 };
 
