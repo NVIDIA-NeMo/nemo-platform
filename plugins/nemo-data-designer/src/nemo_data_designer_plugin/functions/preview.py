@@ -12,11 +12,12 @@ import anyio.to_thread
 import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
-from data_designer_nemo.context import create_data_designer_context
+from data_designer_nemo.context import DataDesignerContext, create_data_designer_context
+from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
 from data_designer_nemo.model_configs import get_model_configs
-from fastapi import HTTPException, status
 from nemo_data_designer_plugin.config import get_config
+from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 from nemo_data_designer_plugin.functions._types import (
     LogFrame,
     PreviewSpec,
@@ -25,7 +26,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
 from nemo_platform_plugin.functions.frames import Done, Error
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PreviewMessageDeliveryError(Exception): ...
@@ -36,6 +37,8 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
     description: ClassVar[str] = "Generate a small preview dataset by streaming NDJSON frames."
     spec_schema: ClassVar[type[PreviewSpec]] = PreviewSpec
 
+    errors: list[NDDError] = Field(default_factory=list)
+
     async def run(
         self,
         spec: PreviewSpec,
@@ -44,13 +47,14 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         async_sdk: AsyncNeMoPlatform,
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
-        model_configs = get_model_configs(spec.config)
-        num_records = _validate_and_get_num_records(spec.num_records, is_local)
-
         dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
-        await dd_ctx.validate(spec.config)
 
-        model_providers = await dd_ctx.get_model_providers(model_configs)
+        # Extract/set all necessary values, validating along the way. Raise if any errors were collected.
+        self.errors = []
+        num_records = self._validate_and_get_num_records(spec.num_records, is_local)
+        model_configs, model_providers = await self._get_model_configs_and_providers(dd_ctx, spec.config)
+        await self._validate_config(dd_ctx, spec.config)
+        self._raise_if_errors()
 
         workspace_cvar.set(ctx.workspace)
 
@@ -64,8 +68,6 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
                 raise PreviewMessageDeliveryError(
                     "Caught an anyio resource error. Most likely the request was canceled."
                 ) from None
-
-        from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 
         config_builder = dd.DataDesignerConfigBuilder.from_config(spec.config.to_dict())
 
@@ -101,23 +103,46 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
             if not completed_with_error:
                 yield Done()
 
+    def _validate_and_get_num_records(self, requested_num_records: int | None, is_local: bool) -> int:
+        if is_local:
+            return requested_num_records or DEFAULT_NUM_RECORDS
 
-def _validate_and_get_num_records(requested_num_records: int | None, is_local: bool) -> int:
-    if is_local:
-        return requested_num_records or DEFAULT_NUM_RECORDS
+        config = get_config()
+        num_records = config.preview_num_records.default
+        if requested_num_records:
+            if requested_num_records > config.preview_num_records.max:
+                self.errors.append(
+                    NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
+                )
+            num_records = requested_num_records
 
-    config = get_config()
-    num_records = config.preview_num_records.default
-    if requested_num_records:
-        if requested_num_records > config.preview_num_records.max:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=_max_num_records_error_message(config.preview_num_records.max),
-            )
-        num_records = requested_num_records
+        return num_records
 
-    return num_records
+    async def _get_model_configs_and_providers(
+        self, dd_ctx: DataDesignerContext, config: dd.DataDesignerConfig
+    ) -> tuple[list[dd.ModelConfig], list[dd.ModelProvider]]:
+        model_configs = []
+        model_providers = []
 
+        try:
+            model_configs = get_model_configs(config)
+        except NDDInvalidConfigError as e:
+            self.errors.append(e)
+        else:
+            try:
+                model_providers = await dd_ctx.get_model_providers(model_configs)
+            except (NDDInvalidConfigError, NDDInternalError) as e:
+                self.errors.append(e)
 
-def _max_num_records_error_message(max_num_records: int) -> str:
-    return f"Max num records for preview requests is {max_num_records}"
+        return model_configs, model_providers
+
+    async def _validate_config(self, dd_ctx: DataDesignerContext, config: dd.DataDesignerConfig) -> None:
+        validation_errors = await dd_ctx.validate(config)
+        self.errors.extend(validation_errors)
+
+    def _raise_if_errors(self) -> None:
+        if self.errors:
+            aggregated_message = "\n".join(str(e) for e in self.errors)
+            if any(isinstance(e, NDDInvalidConfigError) for e in self.errors):
+                raise NDDInvalidConfigError(aggregated_message)
+            raise NDDInternalError(aggregated_message)

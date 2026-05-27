@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from data_designer_nemo.context import create_data_designer_context
-from data_designer_nemo.errors import NDDInvalidConfigError
+from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.model_configs import get_model_configs
 from nemo_data_designer_plugin.jobs.run import run_step_config_result
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
@@ -49,15 +49,28 @@ class CreateJob(NemoJob):
         input_spec = cast(DataDesignerJobConfig, input_spec)
         dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
 
+        # Aggregate errors across context validation and model config/provider resolution.
+        # Raise if any errors were collected.
+        errors = await dd_ctx.validate(input_spec.config)
+
+        model_configs: list = []
+        model_providers: list = []
         try:
-            await dd_ctx.validate(input_spec.config)
             model_configs = get_model_configs(input_spec.config)
-            model_providers = await dd_ctx.get_model_providers(model_configs)
-        # Only catch-and-transform NDDInvalidConfigError here; other errors
-        # (e.g. NDDInternalError) should bubble out as 500s.
-        # TODO: raise a more generic error (not "job compilation")
         except NDDInvalidConfigError as e:
-            raise PlatformJobCompilationError(str(e)) from e
+            errors.append(e)
+        else:
+            try:
+                model_providers = await dd_ctx.get_model_providers(model_configs)
+            except (NDDInvalidConfigError, NDDInternalError) as e:
+                errors.append(e)
+
+        if errors:
+            aggregated_message = "\n".join(str(e) for e in errors)
+            # TODO: raise a more generic error (not "job compilation")
+            if any(isinstance(e, NDDInvalidConfigError) for e in errors):
+                raise PlatformJobCompilationError(aggregated_message)
+            raise NDDInternalError(aggregated_message)
 
         return DataDesignerStepConfig(
             job_config=input_spec,

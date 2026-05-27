@@ -176,12 +176,12 @@ def test_preview_surfaces_worker_error_through_sdk(monkeypatch: pytest.MonkeyPat
     ``Error`` frame instead of ``Done``; the SDK's ``_PreviewFrameCollector`` translates
     that ``Error`` into a typed ``DataDesignerPreviewError`` with the original message.
     """
-    from nemo_data_designer_plugin.functions import _preview_worker as worker_module
+    from nemo_data_designer_plugin.functions import preview as preview_module
 
     def boom(*args: object, **kwargs: object) -> None:
         raise RuntimeError("forced worker failure")
 
-    monkeypatch.setattr(worker_module, "make_preview_dataset", boom)
+    monkeypatch.setattr(preview_module, "make_preview_dataset", boom)
 
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
     builder.add_column(

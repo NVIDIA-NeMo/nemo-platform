@@ -37,6 +37,12 @@ from nemo_data_designer_plugin.sdk.errors import (
 )
 from nemo_data_designer_plugin.sdk.job_resources import AsyncDataDesignerJobResource, DataDesignerJobResource
 from nemo_data_designer_plugin.sdk.logging import with_logging
+from nemo_data_designer_plugin.sdk.validation import (
+    ExecutionContext,
+    ValidationReport,
+    validate_config,
+    validate_config_sync,
+)
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.models.resources import AsyncModelsResource, ModelsResource
 from nemo_platform.types.inference import ModelProvider as NMPModelProvider
@@ -352,6 +358,46 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
     def get_info(self) -> InterfaceInfo:
         return InterfaceInfo(model_providers=self.get_default_model_providers())
 
+    def validate(
+        self,
+        config_builder: dd.DataDesignerConfigBuilder,
+        *,
+        execution_context: ExecutionContext | None = None,
+        workspace: str | None = None,
+    ) -> ValidationReport:
+        """Validate a Data Designer config against one or every execution context.
+
+        This runs the same client-side checks ``preview`` / ``create`` perform
+        internally, but never short-circuits — every detectable problem is
+        reported. The remote pass is a client-side simulation and does not
+        contact the data-designer service.
+
+        Args:
+            config_builder: Data Designer configuration builder.
+            execution_context: ``"local"``, ``"remote"``, or ``None``.
+                ``None`` (the default) runs every applicable context.
+            workspace: Workspace used to resolve provider references and seed
+                sources for the remote pass. Falls back to the platform
+                client's default workspace, then to ``"default"``.
+
+        Returns:
+            A :class:`ValidationReport` whose ``ok`` property is true iff
+            every requested context validated cleanly.
+        """
+        # Reject unsupported local-only seed types eagerly, the same way
+        # ``preview`` / ``create`` do, so SDK consumers get a consistent error.
+        config = _get_config_for_api_call(config_builder)
+        # Rebuild a config_builder from the (possibly normalized) config so the
+        # downstream engine validate sees exactly what would be submitted.
+        validated_builder = dd.DataDesignerConfigBuilder.from_config(config.to_dict())
+        resolved_workspace = workspace or self._platform.workspace or "default"
+        return validate_config_sync(
+            validated_builder,
+            sdk=self._platform,
+            workspace=resolved_workspace,
+            execution_context=execution_context,
+        )
+
 
 @with_logging
 class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
@@ -491,6 +537,24 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
 
     async def get_info(self) -> InterfaceInfo:
         return InterfaceInfo(model_providers=await self.get_default_model_providers())
+
+    async def validate(
+        self,
+        config_builder: dd.DataDesignerConfigBuilder,
+        *,
+        execution_context: ExecutionContext | None = None,
+        workspace: str | None = None,
+    ) -> ValidationReport:
+        """Async equivalent of :meth:`DataDesignerResource.validate`."""
+        config = _get_config_for_api_call(config_builder)
+        validated_builder = dd.DataDesignerConfigBuilder.from_config(config.to_dict())
+        resolved_workspace = workspace or self._platform.workspace or "default"
+        return await validate_config(
+            validated_builder,
+            async_sdk=self._platform,
+            workspace=resolved_workspace,
+            execution_context=execution_context,
+        )
 
 
 def _get_config_for_api_call(config_builder: dd.DataDesignerConfigBuilder) -> dd.DataDesignerConfig:

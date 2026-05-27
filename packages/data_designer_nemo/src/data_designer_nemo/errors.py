@@ -2,7 +2,11 @@
 # SPDX-License-Identifier: Apache-2.0
 
 
-class NDDInternalError(Exception): ...
+class NDDError(Exception):
+    "Shared base for all data_designer_nemo errors."
 
 
-class NDDInvalidConfigError(Exception): ...
+class NDDInternalError(NDDError): ...
+
+
+class NDDInvalidConfigError(NDDError): ...
