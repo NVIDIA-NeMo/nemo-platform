@@ -398,6 +398,10 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
+          # Point setup-uv at the nemo-platform checkout so it picks up the
+          # repo's `required-version` constraint from pyproject.toml. Other
+          # jobs check out into the workspace root and get this implicitly.
+          working-directory: nemo-platform
           python-version: "3.11"
           enable-cache: true
       - name: Bootstrap Python environment
