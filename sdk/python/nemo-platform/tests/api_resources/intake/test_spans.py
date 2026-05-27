@@ -117,6 +117,7 @@ class TestSpans:
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
+                "span_id": "span_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -124,6 +125,7 @@ class TestSpans:
                 "status": "success",
                 "test_case_id": "test_case_id",
                 "tool_name": "tool_name",
+                "trace_id": "trace_id",
             },
             mode="summary",
             page=1,
@@ -255,6 +257,7 @@ class TestAsyncSpans:
                 "provider": "provider",
                 "session_id": "session_id",
                 "source": "source",
+                "span_id": "span_id",
                 "started_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -262,6 +265,7 @@ class TestAsyncSpans:
                 "status": "success",
                 "test_case_id": "test_case_id",
                 "tool_name": "tool_name",
+                "trace_id": "trace_id",
             },
             mode="summary",
             page=1,

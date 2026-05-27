@@ -39,7 +39,7 @@ def list_spans(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, trace_id, span_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
@@ -82,6 +82,7 @@ def list_spans(
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
     ] = None,
     filter_source: Annotated[str | None, typer.Option("--filter.source", rich_help_panel="Filter Options")] = None,
+    filter_span_id: Annotated[str | None, typer.Option("--filter.span-id", rich_help_panel="Filter Options")] = None,
     filter_status: Annotated[str | None, typer.Option("--filter.status", rich_help_panel="Filter Options")] = None,
     filter_test_case_id: Annotated[
         str | None, typer.Option("--filter.test-case-id", rich_help_panel="Filter Options")
@@ -89,6 +90,7 @@ def list_spans(
     filter_tool_name: Annotated[
         str | None, typer.Option("--filter.tool-name", rich_help_panel="Filter Options")
     ] = None,
+    filter_trace_id: Annotated[str | None, typer.Option("--filter.trace-id", rich_help_panel="Filter Options")] = None,
     mode: Annotated[Literal["summary", "detailed"] | None, typer.Option("--mode")] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
@@ -133,9 +135,11 @@ def list_spans(
             provider=filter_provider,
             session_id=filter_session_id,
             source=filter_source,
+            span_id=filter_span_id,
             status=filter_status,
             test_case_id=filter_test_case_id,
             tool_name=filter_tool_name,
+            trace_id=filter_trace_id,
         ),
         mode=mode,
         page=page,
