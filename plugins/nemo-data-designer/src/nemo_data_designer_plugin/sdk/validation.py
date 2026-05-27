@@ -46,8 +46,12 @@ class ValidationContextResult(BaseModel):
     """Aggregate result for a single execution context (local or remote)."""
 
     context: ExecutionContext
-    ok: bool
     errors: list[ValidationError] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def ok(self) -> bool:
+        return not self.errors
 
 
 class ValidationReport(BaseModel):
@@ -141,7 +145,6 @@ async def _validate_one_context(
 
     return ValidationContextResult(
         context=context,
-        ok=not errors,
         errors=errors,
     )
 
