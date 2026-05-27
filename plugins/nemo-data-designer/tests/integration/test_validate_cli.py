@@ -228,14 +228,12 @@ def test_validate_json_output_round_trips(tmp_path: Path) -> None:
     assert isinstance(payload["results"], list)
     assert payload["results"][0]["context"] == "local"
     assert payload["results"][0]["ok"] is True
-    # Severity should be present on each error (none here, but the field exists
-    # in the schema). Roundtrip validates that.
     assert payload["results"][0]["errors"] == []
     # Confirm the surface is a JSON object, not the rich text rendering.
     assert "Local execution" not in result.output
 
 
-def test_validate_json_output_carries_severity_for_failures(tmp_path: Path) -> None:
+def test_validate_json_output_reports_failures(tmp_path: Path) -> None:
     config_path = _write_unsupported_seed_with_tool_configs(tmp_path)
 
     with (
@@ -255,4 +253,6 @@ def test_validate_json_output_carries_severity_for_failures(tmp_path: Path) -> N
     assert remote_result["ok"] is False
     assert len(remote_result["errors"]) >= 2
     for err in remote_result["errors"]:
-        assert err["severity"] in {"config", "internal"}
+        # Each error is a structured object carrying at least a message string.
+        assert isinstance(err["message"], str)
+        assert err["message"]

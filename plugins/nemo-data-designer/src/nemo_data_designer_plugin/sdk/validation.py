@@ -32,7 +32,6 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from pydantic import BaseModel, Field, computed_field
 
 ExecutionContext = Literal["local", "remote"]
-Severity = Literal["config", "internal"]
 
 _ALL_CONTEXTS: tuple[ExecutionContext, ...] = ("local", "remote")
 
@@ -41,7 +40,6 @@ class ValidationError(BaseModel):
     """A single problem surfaced by a validation pass."""
 
     message: str
-    severity: Severity = "config"
 
 
 class ValidationContextResult(BaseModel):
@@ -64,16 +62,8 @@ class ValidationReport(BaseModel):
         return all(r.ok for r in self.results) and len(self.results) > 0
 
 
-def _classify_severity(exc: BaseException) -> Severity:
-    if isinstance(exc, NDDInternalError):
-        return "internal"
-    # NDDInvalidConfigError, upstream InvalidConfigError, and anything else we
-    # opted to surface as a config-level problem.
-    return "config"
-
-
 def _to_validation_error(exc: BaseException) -> ValidationError:
-    return ValidationError(message=str(exc), severity=_classify_severity(exc))
+    return ValidationError(message=str(exc))
 
 
 async def _validate_one_context(
@@ -146,11 +136,7 @@ async def _validate_one_context(
                 # Engine validate is sync; run it on a worker thread so the
                 # event loop stays unblocked.
                 await asyncio.to_thread(data_designer.validate, config_builder)
-        except InvalidConfigError as e:
-            errors.append(ValidationError(message=str(e), severity="config"))
-        except NDDInvalidConfigError as e:  # defensive: in case engine surfaces our own
-            errors.append(_to_validation_error(e))
-        except NDDInternalError as e:
+        except (InvalidConfigError, NDDInvalidConfigError, NDDInternalError) as e:
             errors.append(_to_validation_error(e))
 
     return ValidationContextResult(

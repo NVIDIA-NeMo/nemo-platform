@@ -143,7 +143,7 @@ def _render_context_block(result: ValidationContextResult) -> None:
         typer.echo("  ✔ Configuration is valid")
         return
     for err in result.errors:
-        typer.echo(f"  ✘ [{err.severity}] {err.message}")
+        typer.echo(f"  ✘ {err.message}")
 
 
 def _format_summary(report: ValidationReport) -> str:

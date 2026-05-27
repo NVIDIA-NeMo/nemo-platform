@@ -187,9 +187,8 @@ def test_validate_report_round_trips_through_pydantic() -> None:
     payload = report.model_dump_json()
     rehydrated = ValidationReport.model_validate_json(payload)
     assert rehydrated.results[0].context == "local"
-    # Severity is populated on every error (none for the success case here, but
-    # the field exists on the model).
-    assert all(err.severity in {"config", "internal"} for err in rehydrated.results[0].errors)
+    # Successful pass has no errors; the model itself is round-trippable either way.
+    assert rehydrated.results[0].errors == []
 
 
 @pytest.mark.asyncio
