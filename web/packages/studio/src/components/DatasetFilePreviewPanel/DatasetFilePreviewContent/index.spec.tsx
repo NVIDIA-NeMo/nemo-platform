@@ -58,7 +58,8 @@ describe('DatasetFilePreviewContent', () => {
         <DatasetFilePreviewContent {...baseProps} isLoading />
       </TestProviders>
     );
-    expect(screen.getByText('Loading content...')).toBeInTheDocument();
+    // Loading + error UI now lives inside FileContentPreview (the spinner has aria-label="Loading...").
+    expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
   });
 
   it('shows the error state', () => {
@@ -67,8 +68,7 @@ describe('DatasetFilePreviewContent', () => {
         <DatasetFilePreviewContent {...baseProps} isLoading={false} error={new Error('boom')} />
       </TestProviders>
     );
-    expect(screen.getByText(/Error loading file/)).toBeInTheDocument();
-    expect(screen.getByText(/boom/)).toBeInTheDocument();
+    expect(screen.getByText('Error: boom')).toBeInTheDocument();
   });
 
   it('invokes onFolderClick with the cumulative folder path', () => {

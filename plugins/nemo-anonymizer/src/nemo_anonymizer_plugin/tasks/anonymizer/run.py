@@ -22,7 +22,7 @@ from nemo_anonymizer_plugin.app.upstream_logging import preserve_root_logging
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import PlatformJobResults
-from nmp.common.jobs.constants import (
+from nemo_platform_plugin.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     NEMO_JOB_ID_ENVVAR,
     NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,

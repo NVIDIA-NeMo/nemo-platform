@@ -89,7 +89,8 @@ describe('DatasetFilePreviewPanel', () => {
         <DatasetFilePreviewPanel {...props} />
       </TestProviders>
     );
-    expect(screen.getByText('Loading content...')).toBeInTheDocument();
+    // Loading UI comes from FileContentPreview (spinner with aria-label="Loading...").
+    expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
   });
 
   it('displays error state', () => {
@@ -104,8 +105,7 @@ describe('DatasetFilePreviewPanel', () => {
         <DatasetFilePreviewPanel {...props} />
       </TestProviders>
     );
-    expect(screen.getByText(/Error loading file/)).toBeInTheDocument();
-    expect(screen.getByText(/Failed to load file/)).toBeInTheDocument();
+    expect(screen.getByText('Error: Failed to load file')).toBeInTheDocument();
   });
 
   it('accepts pre-fetched data', () => {

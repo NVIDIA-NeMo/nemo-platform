@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
   StudioDataView,
@@ -89,9 +90,11 @@ export const InferenceProvidersDataView: FC<InferenceProvidersDataViewProps> = (
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.apiFilter.searchText
-          ? { name: { $like: dataViewState.apiFilter.searchText } as unknown as string }
+          ? withOperators<ModelProviderFilter>({
+              name: { $like: dataViewState.apiFilter.searchText },
+            })
           : {}),
-      } as ModelProviderFilter,
+      },
     },
     {
       query: {

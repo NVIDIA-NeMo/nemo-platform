@@ -4,16 +4,28 @@
 import { FileContentPreview } from '@nemo/common/src/components/FileContentPreview/index';
 import { render, screen } from '@testing-library/react';
 
+vi.mock('@nemo/common/src/components/CodeEditor', () => ({
+  CodeEditor: ({ content, contentType }: { content: string; contentType: string }) => (
+    <div data-testid="code-editor" data-content-type={contentType}>
+      {content}
+    </div>
+  ),
+}));
+
+vi.mock('@nemo/common/src/components/MarkdownContent', () => ({
+  MarkdownContent: ({ content }: { content: string }) => (
+    <div data-testid="markdown-content">{content}</div>
+  ),
+}));
+
 // Mock papaparse
 vi.mock('papaparse', () => ({
   default: {
     parse: vi.fn((content: string) => {
-      // Simple CSV parser mock
       const lines = content.trim().split('\n');
       if (lines.length === 0) {
         return { data: [], meta: { fields: [] }, errors: [] };
       }
-
       const headers = lines[0].split(',');
       const data = lines.slice(1).map((line) => {
         const values = line.split(',');
@@ -23,12 +35,7 @@ vi.mock('papaparse', () => ({
         });
         return row;
       });
-
-      return {
-        data,
-        meta: { fields: headers },
-        errors: [],
-      };
+      return { data, meta: { fields: headers }, errors: [] };
     }),
   },
 }));
@@ -36,193 +43,141 @@ vi.mock('papaparse', () => ({
 describe('FileContentPreview', () => {
   const defaultFile = { path: 'test.txt', url: '' };
 
-  describe('loading state', () => {
+  describe('loading / error / empty states', () => {
     it('renders spinner when loading', () => {
       render(<FileContentPreview file={defaultFile} isLoading error={null} content={undefined} />);
-
       expect(screen.getByLabelText('Loading...')).toBeInTheDocument();
     });
-  });
 
-  describe('error state', () => {
     it('renders error message when error is provided', () => {
-      const error = new Error('Failed to fetch file');
-
-      render(<FileContentPreview file={defaultFile} isLoading={false} error={error} />);
-
+      render(
+        <FileContentPreview
+          file={defaultFile}
+          isLoading={false}
+          error={new Error('Failed to fetch file')}
+        />
+      );
       expect(screen.getByText('Error: Failed to fetch file')).toBeInTheDocument();
     });
 
-    it('renders generic error message when error has no message', () => {
+    it('renders fallback message when error has no message', () => {
       const error = new Error();
       error.message = '';
-
       render(<FileContentPreview file={defaultFile} isLoading={false} error={error} />);
-
       expect(screen.getByText('Error: Failed to load file')).toBeInTheDocument();
     });
-  });
 
-  describe('no content state', () => {
-    it('renders "No content available" when content is undefined', () => {
-      render(
+    it('renders "No content available" when content is missing or empty', () => {
+      const { rerender } = render(
         <FileContentPreview file={defaultFile} isLoading={false} error={null} content={undefined} />
       );
-
       expect(screen.getByText('No content available')).toBeInTheDocument();
-    });
 
-    it('renders "No content available" when content is empty string', () => {
-      render(<FileContentPreview file={defaultFile} isLoading={false} error={null} content="" />);
-
+      rerender(<FileContentPreview file={defaultFile} isLoading={false} error={null} content="" />);
       expect(screen.getByText('No content available')).toBeInTheDocument();
     });
   });
 
-  describe('JSON files', () => {
-    it('renders JSON content with CodeSnippet', () => {
-      const jsonFile = { path: 'data.json', url: '' };
-      const content = '{"key": "value"}';
-
+  describe('JSON / JSONL dispatch', () => {
+    it('routes .json through CodeEditor with contentType=json', () => {
       render(
-        <FileContentPreview file={jsonFile} isLoading={false} error={null} content={content} />
+        <FileContentPreview
+          file={{ path: 'data.json' }}
+          isLoading={false}
+          error={null}
+          content='{"key": "value"}'
+        />
       );
-
-      // CodeSnippet should render the content
-      expect(screen.getByText('{"key": "value"}')).toBeInTheDocument();
+      const editor = screen.getByTestId('code-editor');
+      expect(editor).toHaveAttribute('data-content-type', 'json');
+      expect(editor).toHaveTextContent('{"key": "value"}');
     });
 
-    it('renders JSONL content with CodeSnippet', () => {
-      const jsonlFile = { path: 'data.jsonl', url: '' };
-      const content = '{"line": 1}\n{"line": 2}';
-
+    it('routes .jsonl through CodeEditor with contentType=jsonl', () => {
       render(
-        <FileContentPreview file={jsonlFile} isLoading={false} error={null} content={content} />
+        <FileContentPreview
+          file={{ path: 'data.jsonl' }}
+          isLoading={false}
+          error={null}
+          content={'{"line": 1}\n{"line": 2}'}
+        />
       );
+      const editor = screen.getByTestId('code-editor');
+      expect(editor).toHaveAttribute('data-content-type', 'jsonl');
+      expect(editor).toHaveTextContent('{"line": 1}');
+    });
 
-      // Verify CodeSnippet renders with the content
-      const codeSnippet = screen.getByTestId('nv-code-snippet-root');
-      expect(codeSnippet).toBeInTheDocument();
-      expect(codeSnippet).toHaveTextContent('{"line": 1}');
-      expect(codeSnippet).toHaveTextContent('{"line": 2}');
+    it('handles nested file paths', () => {
+      render(
+        <FileContentPreview
+          file={{ path: 'folder/subfolder/data.json' }}
+          isLoading={false}
+          error={null}
+          content='{"nested": true}'
+        />
+      );
+      expect(screen.getByTestId('code-editor')).toHaveAttribute('data-content-type', 'json');
+    });
+  });
+
+  describe('Markdown dispatch', () => {
+    it('routes .md through MarkdownContent', () => {
+      render(
+        <FileContentPreview
+          file={{ path: 'README.md' }}
+          isLoading={false}
+          error={null}
+          content="# Heading"
+        />
+      );
+      const md = screen.getByTestId('markdown-content');
+      expect(md).toHaveTextContent('# Heading');
+      expect(screen.queryByTestId('code-editor')).toBeNull();
+    });
+
+    it('routes .markdown through MarkdownContent', () => {
+      render(
+        <FileContentPreview
+          file={{ path: 'notes.markdown' }}
+          isLoading={false}
+          error={null}
+          content="text"
+        />
+      );
+      expect(screen.getByTestId('markdown-content')).toHaveTextContent('text');
     });
   });
 
   describe('CSV files', () => {
     it('renders CSV content in a table', () => {
-      const csvFile = { path: 'data.csv', url: '' };
-      const content = 'name,age\nAlice,30\nBob,25';
-
       render(
-        <FileContentPreview file={csvFile} isLoading={false} error={null} content={content} />
+        <FileContentPreview
+          file={{ path: 'data.csv' }}
+          isLoading={false}
+          error={null}
+          content={'name,age\nAlice,30\nBob,25'}
+        />
       );
-
-      // Table headers
       expect(screen.getByText('name')).toBeInTheDocument();
       expect(screen.getByText('age')).toBeInTheDocument();
-
-      // Table data
       expect(screen.getByText('Alice')).toBeInTheDocument();
       expect(screen.getByText('30')).toBeInTheDocument();
-      expect(screen.getByText('Bob')).toBeInTheDocument();
-      expect(screen.getByText('25')).toBeInTheDocument();
     });
   });
 
-  describe('plain text fallback', () => {
-    it('renders plain text content with CodeSnippet', () => {
-      const txtFile = { path: 'readme.txt', url: '' };
-      const content = 'This is plain text content';
-
+  describe('Plain text fallback', () => {
+    it('routes unknown extensions through CodeEditor with contentType=text', () => {
       render(
-        <FileContentPreview file={txtFile} isLoading={false} error={null} content={content} />
+        <FileContentPreview
+          file={{ path: 'readme.txt' }}
+          isLoading={false}
+          error={null}
+          content="This is plain text content"
+        />
       );
-
-      expect(screen.getByText('This is plain text content')).toBeInTheDocument();
-    });
-
-    it('renders markdown content with CodeSnippet', () => {
-      const mdFile = { path: 'readme.md', url: '' };
-      const content = '# Heading\n\nSome text';
-
-      render(<FileContentPreview file={mdFile} isLoading={false} error={null} content={content} />);
-
-      // Verify CodeSnippet renders with the content
-      const codeSnippet = screen.getByTestId('nv-code-snippet-root');
-      expect(codeSnippet).toBeInTheDocument();
-      expect(codeSnippet).toHaveTextContent('# Heading');
-      expect(codeSnippet).toHaveTextContent('Some text');
-    });
-  });
-
-  describe('file type detection', () => {
-    it('detects JSON file by extension', () => {
-      const file = { path: 'config.json', url: '' };
-      const content = '{"setting": true}';
-
-      render(<FileContentPreview file={file} isLoading={false} error={null} content={content} />);
-
-      // JSON files render in CodeSnippet
-      expect(screen.getByText('{"setting": true}')).toBeInTheDocument();
-    });
-
-    it('detects JSONL file by extension', () => {
-      const file = { path: 'logs.jsonl', url: '' };
-      const content = '{"event": "login"}';
-
-      render(<FileContentPreview file={file} isLoading={false} error={null} content={content} />);
-
-      expect(screen.getByText('{"event": "login"}')).toBeInTheDocument();
-    });
-
-    it('handles nested file paths', () => {
-      const file = { path: 'folder/subfolder/data.json', url: '' };
-      const content = '{"nested": true}';
-
-      render(<FileContentPreview file={file} isLoading={false} error={null} content={content} />);
-
-      expect(screen.getByText('{"nested": true}')).toBeInTheDocument();
-    });
-  });
-
-  describe('with file content from FileListItem', () => {
-    it('renders content from file with dataset info', () => {
-      const file = {
-        path: 'train.jsonl',
-        url: 'fileset://org/dataset/train.jsonl',
-        dataset: {
-          id: 'org/dataset',
-          name: 'dataset',
-          workspace: 'org',
-          description: '',
-          purpose: 'dataset' as const,
-          storage: { type: 'local' as const, path: '/data' },
-          metadata: {},
-          custom_fields: {},
-          project: 'default',
-          created_at: '2024-01-01T00:00:00Z',
-          updated_at: '2024-01-01T00:00:00Z',
-        },
-      };
-      const content = '{"example": 1}';
-
-      render(<FileContentPreview file={file} isLoading={false} error={null} content={content} />);
-
-      expect(screen.getByText('{"example": 1}')).toBeInTheDocument();
-    });
-
-    it('renders content from file with local content', () => {
-      const file = {
-        path: 'uploaded.json',
-        url: 'blob:http://localhost/abc123',
-        content: '{"local": true}',
-      };
-
-      render(
-        <FileContentPreview file={file} isLoading={false} error={null} content={file.content} />
-      );
-
-      expect(screen.getByText('{"local": true}')).toBeInTheDocument();
+      const editor = screen.getByTestId('code-editor');
+      expect(editor).toHaveAttribute('data-content-type', 'text');
+      expect(editor).toHaveTextContent('This is plain text content');
     });
   });
 });

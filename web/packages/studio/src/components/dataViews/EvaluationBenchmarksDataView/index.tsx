@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators, type WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
@@ -9,7 +10,10 @@ import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import { useEvaluationListBenchmarks } from '@nemo/sdk/generated/platform/api';
-import type { EvaluationListBenchmarksSort } from '@nemo/sdk/generated/platform/schema';
+import type {
+  EvaluationListBenchmarksParams,
+  EvaluationListBenchmarksSort,
+} from '@nemo/sdk/generated/platform/schema';
 import { Button, Stack, Text } from '@nvidia/foundations-react-core';
 import type {
   BenchmarkItemWithId,
@@ -31,11 +35,12 @@ export const EvaluationBenchmarksDataView: FC<EvaluationBenchmarksDataViewProps>
   });
 
   const benchmarksFilter = useMemo(() => {
-    const filterObj: Record<string, unknown> = {};
+    type BenchmarksFilter = NonNullable<EvaluationListBenchmarksParams['filter']>;
+    const filterObj: WithFilterOperators<BenchmarksFilter> = {};
 
     const nameFilter = dataViewState.apiFilter.searchText;
     if (nameFilter) {
-      filterObj.name = { $like: nameFilter } as unknown as string;
+      filterObj.name = { $like: nameFilter };
     }
 
     const createdAtFilter = dataViewState.apiFilter.filter?.created_at;
@@ -44,11 +49,11 @@ export const EvaluationBenchmarksDataView: FC<EvaluationBenchmarksDataViewProps>
       typeof createdAtFilter === 'object' &&
       Object.keys(createdAtFilter).length > 0
     ) {
-      filterObj.created_at = createdAtFilter;
+      filterObj.created_at = createdAtFilter as BenchmarksFilter['created_at'];
     }
 
     if (Object.keys(filterObj).length === 0) return undefined;
-    return filterObj;
+    return withOperators<BenchmarksFilter>(filterObj);
   }, [dataViewState.apiFilter]);
 
   const {

@@ -26,7 +26,7 @@ export function useLinter(view: EditorView | null, contentType: ContentType, hid
   return extension;
 }
 
-const getLinterExtension = (contentType: ContentType, hideLinter: boolean): Extension => {
+export const getLinterExtension = (contentType: ContentType, hideLinter: boolean): Extension => {
   if (hideLinter) return [];
   switch (contentType) {
     case ContentType.YAML:
@@ -35,7 +35,8 @@ const getLinterExtension = (contentType: ContentType, hideLinter: boolean): Exte
       return jsonLinter;
     case ContentType.JSONL:
       return jsonlLinter;
+    case ContentType.TEXT:
     default:
-      return jsonLinter;
+      return [];
   }
 };

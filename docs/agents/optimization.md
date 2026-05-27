@@ -179,10 +179,11 @@ and keeps the change only when the evaluation result improves.
 === "CLI"
 
     ```bash
-    nemo agents optimize-skills --config .agent-improver.yml
+    nemo agents optimize-skills run --spec-file .agent-improver.yml
     ```
 
-    Use `--open-pr` when you want the loop to prepare a reviewable branch.
+    Set `open_pr: true` in the YAML when you want the loop to prepare a
+    reviewable branch.
 
     A sample `.agent-improver.yml` is in
     `plugins/nemo-agents/examples/agent-improver.example.yml`.
@@ -214,9 +215,13 @@ and keeps the change only when the evaluation result improves.
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from nemo_platform_plugin.scheduler import NemoJobScheduler
 
+    import yaml
+    from pathlib import Path
+
+    spec = yaml.safe_load(Path(".agent-improver.yml").read_text())
     NemoJobScheduler().run_local(
         OptimizeSkillsJob,
-        {"config": ".agent-improver.yml"},
+        spec,
         workspace="default",
     )
     ```

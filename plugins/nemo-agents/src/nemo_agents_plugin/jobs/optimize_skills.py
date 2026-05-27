@@ -52,7 +52,7 @@ class OptimizeSkillsJob(NemoJob):
     """Run the optimize-skills loop end-to-end."""
 
     name: ClassVar[str] = "optimize-skills"
-    description: ClassVar[str] = "Optimize-skills loop — platform-job form. Daily use: `nemo agents optimize-skills`."
+    description: ClassVar[str] = "Optimize an agent's skills against eval failures via a coding agent (Claude)."
     container: ClassVar[str] = "cpu-tasks"
 
     def run(self, config: dict) -> dict:

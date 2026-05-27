@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { EntryFilter } from '@nemo/sdk/generated/platform/schema';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
 
@@ -12,11 +13,7 @@ import { ChatCompletionMessageParam } from 'openai/resources/index.mjs';
  * @param params - The URLSearchParams instance to populate
  * @param prefix - The current key prefix for nested properties (e.g., 'context', 'created_at')
  */
-const processFilterObject = (
-  obj: Record<string, unknown>,
-  params: URLSearchParams,
-  prefix = ''
-): void => {
+const processFilterObject = (obj: EntryFilter, params: URLSearchParams, prefix = ''): void => {
   for (const [key, value] of Object.entries(obj)) {
     // Skip undefined and null values
     if (value === undefined || value === null) {
@@ -36,7 +33,7 @@ const processFilterObject = (
     }
     // Handle nested objects recursively
     else if (typeof value === 'object' && value !== null) {
-      processFilterObject(value as Record<string, unknown>, params, paramKey);
+      processFilterObject(value, params, paramKey);
     }
     // Handle primitive values (string, number, boolean)
     else {
@@ -45,7 +42,7 @@ const processFilterObject = (
   }
 };
 
-export const generateFilterParam = (filter?: Record<string, unknown>): string => {
+export const generateFilterParam = (filter?: EntryFilter): string => {
   if (!filter) {
     return '';
   }
@@ -57,7 +54,7 @@ export const generateFilterParam = (filter?: Record<string, unknown>): string =>
     const withoutProject = { ...filter, project: undefined };
     processFilterObject(withoutProject, params);
   } else {
-    processFilterObject(filter as Record<string, unknown>, params);
+    processFilterObject(filter, params);
   }
 
   return params.toString();

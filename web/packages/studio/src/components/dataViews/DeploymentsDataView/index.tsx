@@ -10,6 +10,7 @@
  * its affiliates is strictly prohibited.
  */
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
@@ -68,9 +69,11 @@ export const DeploymentsDataView: FC<DeploymentsDataViewProps> = ({
       filter: {
         ...dataViewState.apiFilter.filter,
         ...(dataViewState.apiFilter.searchText
-          ? { name: { $like: dataViewState.apiFilter.searchText } as unknown as string }
+          ? withOperators<ModelDeploymentFilter>({
+              name: { $like: dataViewState.apiFilter.searchText },
+            })
           : {}),
-      } as ModelDeploymentFilter,
+      },
     },
     {
       query: {

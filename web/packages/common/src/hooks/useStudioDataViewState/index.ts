@@ -39,15 +39,23 @@ export interface UseStudioDataViewStateOptions extends Omit<
   defaultSort?: { id: string; desc: boolean };
 }
 
-export interface ApiFilter {
+/**
+ * API filter object exposed by the hook. The `filter` shape is parameterized by
+ * `FilterType` so consumers get type-checked filter keys and values without
+ * needing `as` casts at the call site.
+ *
+ * Defaults to `Record<string, unknown>` for callers that don't supply a type.
+ */
+export interface ApiFilter<FilterType = Record<string, unknown>> {
   searchText?: string;
-  filter?: Record<string, unknown>;
+  filter?: Partial<FilterType>;
 }
 
 /**
  * Extended DataView state that includes helper functions for common table operations.
  */
-export interface StudioDataViewState extends DataView.DataViewState {
+export interface StudioDataViewState<FilterType = Record<string, unknown>>
+  extends DataView.DataViewState {
   /**
    * Resets pagination to page 1 and clears row selection.
    * Call this when search/filter criteria change to ensure users see results from the beginning.
@@ -64,7 +72,7 @@ export interface StudioDataViewState extends DataView.DataViewState {
    *   mapping `searchText` onto the appropriate filter field (and wrapping it in an operator
    *   like `$like` if fuzzy matching is desired).
    */
-  apiFilter: ApiFilter;
+  apiFilter: ApiFilter<FilterType>;
   /** Clears searchBar, columnFilters, and resets pagination. */
   resetFilters: () => void;
 }
@@ -91,9 +99,9 @@ export interface StudioDataViewState extends DataView.DataViewState {
  * - Use `resetPagination()` when search/filter criteria change.
  * - Intended for table/data grid views where browser-driven navigation is desirable.
  */
-export const useStudioDataViewState = (
+export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
   options?: UseStudioDataViewStateOptions
-): StudioDataViewState => {
+): StudioDataViewState<FilterType> => {
   const {
     defaultPage = DEFAULT_PAGE,
     defaultPageSize = DEFAULT_PAGE_SIZE,
@@ -453,9 +461,12 @@ export const useStudioDataViewState = (
     }
   }, [dataViewState.columnFiltering, urlColumnFilters, urlFiltersParam, updateUrlParams]);
 
-  // Convention-mapped API filter object
-  const apiFilter = useMemo<ApiFilter>(() => {
-    const result: ApiFilter = {};
+  // Convention-mapped API filter object.
+  // The narrowing from TanStack's untyped `ColumnFiltersState` ({id: string, value: unknown}[])
+  // to `Partial<FilterType>` happens here in one place, so call sites get a typed
+  // `apiFilter.filter` and don't need their own `as` casts.
+  const apiFilter = useMemo<ApiFilter<FilterType>>(() => {
+    const result: ApiFilter<FilterType> = {};
 
     if (debouncedSearchBar) {
       result.searchText = debouncedSearchBar;
@@ -475,7 +486,7 @@ export const useStudioDataViewState = (
             return true;
           })
           .map((f) => [f.id, f.value])
-      );
+      ) as Partial<FilterType>;
     }
 
     return result;

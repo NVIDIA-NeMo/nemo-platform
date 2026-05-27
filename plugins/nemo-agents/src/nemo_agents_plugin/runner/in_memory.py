@@ -28,6 +28,7 @@ import re
 import shutil
 import socket
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -53,6 +54,32 @@ def _sanitize_filename(name: str) -> str:
     """
     cleaned = _FILENAME_UNSAFE_RE.sub("_", name).strip("._-") or "deployment"
     return cleaned
+
+
+def _resolve_nat_bin() -> str:
+    """Locate the ``nat`` executable to spawn for an agent deployment.
+
+    Resolution order:
+
+    1. ``shutil.which("nat")`` — handles activated venvs, the agentic
+       container (which prepends ``/app/.venv/bin`` to ``PATH``), and any
+       setup where the user has ``nat`` on their shell ``PATH``.
+    2. Sibling of ``sys.executable`` — covers ``uv tool install
+       nemo-platform``, where the tool venv's ``bin/`` is **not** prepended
+       to ``PATH`` (uv only symlinks the declared ``[project.scripts]`` into
+       ``~/.local/bin``; the rest of the tool venv stays off ``PATH``).
+       ``nat`` is co-installed with ``nemo`` in that same venv, so picking
+       it up next to ``sys.executable`` is the canonical way to find it.
+    3. ``/app/.venv/bin/nat`` — last-resort fallback for the official
+       agentic container if the ``PATH`` lookup somehow fails. Kept for
+       backwards compatibility with prior behavior.
+    """
+    if found := shutil.which("nat"):
+        return found
+    sibling = Path(sys.executable).parent / "nat"
+    if sibling.is_file():
+        return str(sibling)
+    return "/app/.venv/bin/nat"
 
 
 def system_dir(workspace_dir: Path | None = None) -> Path:
@@ -297,7 +324,7 @@ class InMemoryRunnerBackend(RunnerBackend):
         """
         # config_path is an absolute path — pass it as-is so nat can find it
         # regardless of the working directory it inherits.
-        nat_bin = shutil.which("nat") or "/app/.venv/bin/nat"
+        nat_bin = _resolve_nat_bin()
         cmd = [
             nat_bin,
             "start",

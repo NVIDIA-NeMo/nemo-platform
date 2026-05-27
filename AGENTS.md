@@ -67,6 +67,7 @@ This project loads local developer preferences from @AGENTS.local.md. You MUST r
 ## Git Workflow
 
 - Git branches should follow the pattern `[git-issue-number]-<descriptive-branch-name>/<username>` where the GitLab issue number is inserted as a prefix if known, the branch name follows, the `/<username>` suffix is included (not email address, just username), and kebab case is used.
+- Always pass `-s` to `git commit` (DCO sign-off). This includes amends, fixups, and any commit variant.
 
 ### Squashing Commits
 

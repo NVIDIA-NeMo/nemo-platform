@@ -1,16 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
-import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
+import { FileContentPreview } from '@nemo/common/src/components/FileContentPreview';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { Flex, Stack } from '@nvidia/foundations-react-core';
+import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { FileActions } from '@studio/components/DatasetFilePreviewPanel/components/FileActions';
-import { FileBreadcrumbs } from '@studio/components/DatasetFilePreviewPanel/components/FileBreadcrumbs';
+import { DatasetFilePreviewHeader } from '@studio/components/DatasetFilePreviewPanel/components/DatasetFilePreviewHeader';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
-import { inferJsonContentType, isJsonFile } from '@studio/util/files';
-import { FolderOpen } from 'lucide-react';
 import { useMemo, type FC } from 'react';
 
 export interface DatasetFilePreviewContentProps {
@@ -91,35 +87,17 @@ export const DatasetFilePreviewContent: FC<DatasetFilePreviewContentProps> = ({
   const file =
     externalFile ?? (allFiles?.find((f) => f.path === filePath) as FileSystemFile | undefined);
 
-  const body = useMemo(() => {
-    if (error) {
-      return (
-        <div className="flex items-center justify-center h-full text-red-600">
-          Error loading file: {error.message}
-        </div>
-      );
-    }
-
-    if (isLoading) {
-      return (
-        <div className="flex items-center justify-center h-full">
-          <span>Loading content...</span>
-        </div>
-      );
-    }
-
-    const jsonContentType = inferJsonContentType(filePath);
-    const isJson = isJsonFile(jsonContentType);
-
-    return (
-      <CodeEditor
-        content={fileContent || ''}
-        contentType={isJson ? ContentType.JSON : ContentType.TEXT}
-        readOnly
-        className="h-full min-h-0"
+  const body = useMemo(
+    () => (
+      <FileContentPreview
+        file={{ path: filePath }}
+        content={fileContent}
+        isLoading={isLoading}
+        error={error ?? null}
       />
-    );
-  }, [fileContent, isLoading, error, filePath]);
+    ),
+    [filePath, fileContent, isLoading, error]
+  );
 
   if (hideHeader) {
     return body;
@@ -127,26 +105,16 @@ export const DatasetFilePreviewContent: FC<DatasetFilePreviewContentProps> = ({
 
   return (
     <Stack gap="density-sm" className="h-full min-h-0">
-      <Flex justify="between" align="center" gap="density-sm" className="shrink-0">
-        <Flex gap="density-sm" align="center">
-          <FolderOpen width={16} height={16} />
-          <FileBreadcrumbs
-            datasetName={datasetName}
-            filePath={filePath}
-            onDatasetClick={onDatasetClick}
-            onFolderClick={onFolderClick}
-          />
-        </Flex>
-        {file && (
-          <FileActions
-            file={file}
-            datasetWorkspace={datasetWorkspace}
-            datasetName={datasetName}
-            onDeleteSuccess={onDeleteSuccess}
-            onRenameSuccess={onRenameSuccess}
-          />
-        )}
-      </Flex>
+      <DatasetFilePreviewHeader
+        datasetWorkspace={datasetWorkspace}
+        datasetName={datasetName}
+        filePath={filePath}
+        file={file}
+        onDatasetClick={onDatasetClick}
+        onFolderClick={onFolderClick}
+        onDeleteSuccess={onDeleteSuccess}
+        onRenameSuccess={onRenameSuccess}
+      />
       <div className="flex-1 min-h-0">{body}</div>
     </Stack>
   );

@@ -3,7 +3,7 @@
 
 import { filesDownloadFile, filesHeadFile } from '@nemo/sdk/generated/platform/api';
 import { EntityIdentifier } from '@studio/api/common/types';
-import { ALLOWED_CONTENT_FILE_TYPES } from '@studio/api/datasets/constants';
+import { PREVIEWABLE_FILE_TYPES } from '@studio/api/datasets/constants';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
@@ -29,9 +29,9 @@ export const datasetFileContentQueryOptions = ({
       ...(range ? range.map((bound) => String(bound)) : []),
     ],
     queryFn: async () => {
-      if (!path.includes('.') || !ALLOWED_CONTENT_FILE_TYPES.has(path.split('.').at(-1)!)) {
+      if (!path.includes('.') || !PREVIEWABLE_FILE_TYPES.has(path.split('.').at(-1)!)) {
         throw new Error(
-          `Unsupported file type. Currently supports: ${[...ALLOWED_CONTENT_FILE_TYPES].join(', ')}`
+          `Unsupported file type. Currently supports: ${[...PREVIEWABLE_FILE_TYPES].join(', ')}`
         );
       }
 

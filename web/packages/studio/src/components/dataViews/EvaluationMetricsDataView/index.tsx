@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators, type WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import {
   ROW_ACTIONS_COLUMN_SIZE,
@@ -17,7 +18,10 @@ import {
   useEvaluationDeleteMetric,
   useEvaluationListMetrics,
 } from '@nemo/sdk/generated/platform/api';
-import type { EvaluationListMetricsSort } from '@nemo/sdk/generated/platform/schema';
+import type {
+  EvaluationListMetricsParams,
+  EvaluationListMetricsSort,
+} from '@nemo/sdk/generated/platform/schema';
 import { Badge, Button, Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import type {
   EvaluationMetricsDataViewProps,
@@ -73,11 +77,12 @@ export const EvaluationMetricsDataView: FC<EvaluationMetricsDataViewProps> = ({
 
   // Build filter object from the dataview filter state
   const metricsFilter = useMemo(() => {
-    const filterObj: Record<string, unknown> = {};
+    type MetricsFilter = NonNullable<EvaluationListMetricsParams['filter']>;
+    const filterObj: WithFilterOperators<MetricsFilter> = {};
 
     const nameFilter = dataViewState.apiFilter.searchText;
     if (nameFilter) {
-      filterObj.name = { $like: nameFilter } as unknown as string;
+      filterObj.name = { $like: nameFilter };
     }
 
     const createdAtFilter = dataViewState.apiFilter.filter?.created_at;
@@ -86,11 +91,11 @@ export const EvaluationMetricsDataView: FC<EvaluationMetricsDataViewProps> = ({
       typeof createdAtFilter === 'object' &&
       Object.keys(createdAtFilter).length > 0
     ) {
-      filterObj.created_at = createdAtFilter;
+      filterObj.created_at = createdAtFilter as MetricsFilter['created_at'];
     }
 
     if (Object.keys(filterObj).length === 0) return undefined;
-    return filterObj;
+    return withOperators<MetricsFilter>(filterObj);
   }, [dataViewState.apiFilter]);
 
   const {

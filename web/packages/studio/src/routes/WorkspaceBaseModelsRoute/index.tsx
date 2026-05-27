@@ -120,7 +120,9 @@ export const WorkspaceBaseModelsRoute: FC = () => {
     items: [{ slotLabel: 'Base Models' }],
   });
 
-  const dataViewState = useStudioDataViewState({
+  const dataViewState = useStudioDataViewState<
+    Partial<ModelEntityFilterInput> & { [CUSTOMIZABLE_FILTER_ID]?: CustomizableFilterState }
+  >({
     defaultSort: { id: 'name', desc: false },
   });
 
@@ -130,9 +132,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
   const modelNameFromPath = decodeURIComponent(modelNameParam ?? '');
 
   const nameSearch = dataViewState.apiFilter.searchText;
-  const allColumnFilters = dataViewState.apiFilter.filter as
-    | (Partial<ModelEntityFilterInput> & { [CUSTOMIZABLE_FILTER_ID]?: CustomizableFilterState })
-    | undefined;
+  const allColumnFilters = dataViewState.apiFilter.filter;
   const customizableFilter = CUSTOMIZER_ENABLED
     ? allColumnFilters?.[CUSTOMIZABLE_FILTER_ID]
     : undefined;
