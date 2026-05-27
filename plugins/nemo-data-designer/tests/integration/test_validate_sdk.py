@@ -12,8 +12,7 @@ We exercise the **async** SDK (``AsyncDataDesignerResource``) because the
 in-process test transport lives on ``client_context.async_sdk``. The sync
 SDK's ``validate`` method rebuilds an async sibling via ``sync_to_async_sdk``,
 which (correctly, in production) makes real HTTP calls — but those don't
-reach the in-process services in tests. ``test_sync_resource_exposes_validate_method``
-covers the sync surface as a smoke check.
+reach the in-process services in tests.
 """
 
 from __future__ import annotations
@@ -22,7 +21,7 @@ import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
 import pandas as pd
 import pytest
-from nemo_data_designer_plugin.sdk.resources import AsyncDataDesignerResource, DataDesignerResource
+from nemo_data_designer_plugin.sdk.resources import AsyncDataDesignerResource
 from nemo_data_designer_plugin.sdk.validation import ValidationReport, validate_config
 
 pytestmark = pytest.mark.integration
@@ -178,14 +177,3 @@ async def test_validate_report_round_trips_through_pydantic() -> None:
     assert rehydrated.results[0].context == "local"
     # Successful pass has no errors; the model itself is round-trippable either way.
     assert rehydrated.results[0].errors == []
-
-
-def test_sync_resource_exposes_validate_method() -> None:
-    """Sanity check that ``DataDesignerResource.validate`` exists on the public API.
-
-    The sync resource's ``validate`` rebuilds an async sibling via
-    ``sync_to_async_sdk`` to do the actual work; we don't exercise the full
-    flow here because the in-process test transport doesn't survive that
-    rebuild. The async resource (above) covers behavior end-to-end.
-    """
-    assert callable(DataDesignerResource.__dict__["validate"])
