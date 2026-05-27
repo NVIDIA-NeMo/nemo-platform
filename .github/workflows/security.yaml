@@ -38,7 +38,6 @@ jobs:
         with:
           path: ./
           version: 3.95.3
-          extra_args: --debug
 
       - name: Scan Results Status
         if: ${{ github.event_name != 'merge_group' && steps.trufflehog.outcome == 'failure' }}
