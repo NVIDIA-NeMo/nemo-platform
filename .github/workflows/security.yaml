@@ -1,0 +1,44 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  secrets-scan:
+    name: Secrets Scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Skip merge queue scan
+        if: ${{ github.event_name == 'merge_group' }}
+        run: echo "Skipping secrets scan for merge queue"
+
+      - uses: actions/checkout@v6
+        if: ${{ github.event_name != 'merge_group' }}
+        with:
+          fetch-depth: 0
+      - name: TruffleHog OSS
+        if: ${{ github.event_name != 'merge_group' }}
+        id: trufflehog
+        uses: trufflesecurity/trufflehog@37b77001d0174ebec2fcca2bd83ff83a6d45a3ab # v3.95.3
+        continue-on-error: true
+        with:
+          path: ./
+          version: 3.95.3
+
+      - name: Scan Results Status
+        if: ${{ github.event_name != 'merge_group' && steps.trufflehog.outcome == 'failure' }}
+        run: exit 1
