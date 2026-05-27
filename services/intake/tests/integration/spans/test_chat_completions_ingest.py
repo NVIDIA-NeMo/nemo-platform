@@ -129,6 +129,9 @@ def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
         "cost_input_usd": 0.0024,
         "cost_output_usd": 0.0037,
         "cost_details": {
+            "total": 0.99,
+            "input": 0.98,
+            "output": 0.97,
             "base_input": 0.0018,
             "cached_input": 0.0004,
             "cache_write": 0.0002,
@@ -160,11 +163,11 @@ def test_chat_completions_ingest_rejects_producer_cost_total_alias(client: TestC
     assert response.status_code == 422, response.text
 
 
-def test_chat_completions_ingest_accepts_anthropic_style_usage(client: TestClient):
+def test_chat_completions_ingest_uses_only_openai_usage_fields(client: TestClient):
     body = {
         "request": _openai_request(model="aws/anthropic/bedrock-claude-opus-4-7"),
         "response": _openai_response(
-            id="chatcmpl-claude-usage",
+            id="chatcmpl-openai-usage-only",
             model="aws/anthropic/bedrock-claude-opus-4-7",
             usage={
                 "input_tokens": 30,
@@ -174,20 +177,19 @@ def test_chat_completions_ingest_accepts_anthropic_style_usage(client: TestClien
                 "output_tokens_details": {"reasoning_tokens": 2},
             },
         ),
-        "session_id": "session-claude-usage",
+        "session_id": "session-openai-usage-only",
     }
     response = client.post(INGEST_URL, json=body)
     assert response.status_code == 201, response.text
 
-    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-claude-usage"})
+    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-openai-usage-only"})
     assert listed.status_code == 200, listed.text
     span = listed.json()["data"][0]
-    assert span["input_tokens"] == 30
-    assert span["output_tokens"] == 7
-    assert span["total_tokens"] == 37
-    assert span["cached_tokens"] == 5
-    assert span["usage_details"]["prompt_details.cache_write"] == 3
-    assert span["usage_details"]["completion_details.reasoning"] == 2
+    assert "input_tokens" not in span
+    assert "output_tokens" not in span
+    assert "total_tokens" not in span
+    assert "cached_tokens" not in span
+    assert span["usage_details"] == {}
 
 
 # ---------------------------------------------------------------------------
