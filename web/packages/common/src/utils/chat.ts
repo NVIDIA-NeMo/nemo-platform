@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FlexibleMessage } from '@nemo/sdk/generated/platform/schema';
 import {
   ChatCompletion,
   ChatCompletionChunk,
@@ -70,71 +69,4 @@ export const maybeInsertSystemMessage = (
     },
     ...parsedMessages,
   ];
-};
-
-/**
- * Safely extracts string content from a FlexibleMessage.
- * Returns empty string if content is undefined, null, or not a string.
- */
-const getStringContent = (content: unknown): string => {
-  if (typeof content === 'string') return content;
-  if (content === null || content === undefined) return '';
-  // Handle array content (OpenAI multi-part messages) by joining text parts
-  if (Array.isArray(content)) {
-    return content
-      .filter(
-        (part): part is { type: 'text'; text: string } =>
-          typeof part === 'object' && part?.type === 'text' && typeof part?.text === 'string'
-      )
-      .map((part) => part.text)
-      .join(' ');
-  }
-  return '';
-};
-
-/**
- * Converts a FlexibleMessage (intake API) to ChatCompletionMessageParam (OpenAI).
- * FlexibleMessage is provider-agnostic; this maps it to the OpenAI standard.
- */
-export const toOpenAIMessage = (message: FlexibleMessage): ChatCompletionMessageParam => {
-  const { role, content, name, tool_calls, tool_call_id } = message;
-  const stringContent = getStringContent(content);
-
-  switch (role) {
-    case 'user':
-      return {
-        role: 'user',
-        content: stringContent,
-        ...(typeof name === 'string' && { name }),
-      };
-    case 'assistant':
-      return {
-        role: 'assistant',
-        content: stringContent || null,
-        ...(Array.isArray(tool_calls) && { tool_calls }),
-      };
-    case 'system':
-      return {
-        role: 'system',
-        content: stringContent,
-        ...(typeof name === 'string' && { name }),
-      };
-    case 'tool':
-      return {
-        role: 'tool',
-        content: stringContent,
-        tool_call_id: typeof tool_call_id === 'string' ? tool_call_id : '',
-      };
-    case 'function':
-      // Map legacy 'function' role to 'tool' for OpenAI compatibility
-      return {
-        role: 'tool',
-        content: stringContent,
-        tool_call_id: typeof tool_call_id === 'string' ? tool_call_id : '',
-      };
-    case 'developer':
-      return { role: 'developer', content: stringContent };
-    default:
-      return { role: 'user', content: stringContent };
-  }
 };

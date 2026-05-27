@@ -10,7 +10,7 @@ import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPa
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationMetricsRunRoute, getIntakeEntriesRoute } from '@studio/routes/utils';
+import { getEvaluationMetricsRunRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -72,10 +72,10 @@ export const CustomizationJobListRoute: FC = () => {
                   kind="secondary"
                   size="small"
                   onClick={() => {
-                    navigate(getIntakeEntriesRoute(workspace));
+                    navigate(getIntakeTracesRoute(workspace));
                   }}
                 >
-                  View Intake Entries
+                  View Intake Traces
                 </Button>
               )}
               <Button

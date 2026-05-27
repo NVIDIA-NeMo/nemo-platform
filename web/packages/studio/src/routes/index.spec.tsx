@@ -74,13 +74,10 @@ const evalRoutes = [
 
 const intakeRoutes = [
   ROUTES.workspace.intake,
-  ROUTES.workspace.intakeEntries,
-  ROUTES.workspace.intakeThreads,
-  ROUTES.workspace.intakeExportJobs,
-  ROUTES.workspace.intakeEntry,
-  ROUTES.workspace.intakeEntryMessages,
-  ROUTES.workspace.intakeEntryEvents,
-  ROUTES.workspace.intakeEntryMetadata,
+  ROUTES.workspace.intakeTraces,
+  ROUTES.workspace.intakeSpans,
+  ROUTES.workspace.intakeTrace,
+  ROUTES.workspace.intakeSpan,
 ];
 
 const safeSynthesizerRoutes = [

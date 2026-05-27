@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/namedEntity';
-import { ListEntriesParams } from '@nemo/sdk/generated/platform/schema';
-import { generateFilterParam } from '@studio/api/intake/utils';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
@@ -229,10 +227,6 @@ export const getWorkspaceDeploymentDetailsRoute = (
   });
 };
 
-export const getWorkspaceIntakeRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intake, { workspace });
-};
-
 export const getWorkspaceSafeSynthesizerRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizer, { workspace });
 };
@@ -388,43 +382,20 @@ export const getIntakeRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.intake, { workspace });
 };
 
-export const getIntakeEntriesRoute = (workspace: string, options?: ListEntriesParams) => {
-  const filterQuery = options ? generateFilterParam(options.filter) : '';
-  const queryParamStr = filterQuery ? `?${filterQuery}` : '';
-  return generatePath(ROUTES.workspace.intakeEntries, { workspace }) + queryParamStr;
+export const getIntakeTracesRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.intakeTraces, { workspace });
 };
 
-export const getIntakeThreadsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intakeThreads, { workspace });
+export const getIntakeSpansRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.intakeSpans, { workspace });
 };
 
-export const getIntakeExportJobsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intakeExportJobs, { workspace });
+export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
+  return generatePath(ROUTES.workspace.intakeTrace, { workspace, traceId });
 };
 
-export const getIntakeEntryRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntry, { workspace, entryId });
-};
-
-export const getIntakeEntryMessagesRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryMessages, {
-    workspace,
-    entryId,
-  });
-};
-
-export const getIntakeEntryEventsRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryEvents, {
-    workspace,
-    entryId,
-  });
-};
-
-export const getIntakeEntryMetadataRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryMetadata, {
-    workspace,
-    entryId,
-  });
+export const getIntakeSpanRoute = (workspace: string, spanId: string) => {
+  return generatePath(ROUTES.workspace.intakeSpan, { workspace, spanId });
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {

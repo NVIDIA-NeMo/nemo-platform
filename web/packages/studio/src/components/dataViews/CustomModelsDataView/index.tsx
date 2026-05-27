@@ -39,7 +39,7 @@ import { BaseModelSearchFilterField } from '@studio/components/FilterFields';
 import type { ModelPanelTab } from '@studio/components/sidePanels/ModelPanels/ModelPanel';
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_STUDIO_CUSTOMIZATION } from '@studio/constants/links';
-import { getEvaluationMetricsRunRoute, getIntakeEntriesRoute } from '@studio/routes/utils';
+import { getEvaluationMetricsRunRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { BrainCircuit, X, Trash } from 'lucide-react';
 import { ComponentProps, FC, useCallback, useMemo, useState } from 'react';
@@ -375,9 +375,9 @@ export const CustomModelsDataView: FC<CustomModelsDataViewProps> = ({
           ...(INTAKE_ENABLED
             ? [
                 {
-                  children: 'View Entries',
+                  children: 'View Intake',
                   onSelect: () => {
-                    navigate(getIntakeEntriesRoute(workspace));
+                    navigate(getIntakeTracesRoute(workspace));
                   },
                 },
               ]

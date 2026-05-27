@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
+import { Stack } from '@nvidia/foundations-react-core';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
@@ -13,6 +14,7 @@ import {
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
+import { INTAKE_FILTER_ACTION_TARGET_ID } from '@studio/routes/IntakeLayout';
 import { PageLayout } from '@studio/routes/PageLayout';
 import { RootLayout } from '@studio/routes/RootLayout';
 import { RootRedirect } from '@studio/routes/RootRedirect';
@@ -44,39 +46,36 @@ import { Navigate, RouteObject } from 'react-router-dom';
 const IntakeLayout = lazy(() =>
   import('@studio/routes/IntakeLayout').then((module) => ({ default: module.IntakeLayout }))
 );
-const IntakeEntriesRoute = lazy(() =>
-  import('@studio/routes/IntakeEntriesRoute').then((module) => ({
-    default: module.IntakeEntriesRoute,
+const IntakeTracesTableRoute = lazy(() =>
+  import('@studio/components/IntakeTracesTable').then(({ IntakeTracesTable }) => {
+    const IntakeTracesTableRouteComponent: FC = () => (
+      <Stack className="flex-1 min-h-0">
+        <IntakeTracesTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+      </Stack>
+    );
+
+    return { default: IntakeTracesTableRouteComponent };
+  })
+);
+const IntakeSpansTableRoute = lazy(() =>
+  import('@studio/components/IntakeSpansTable').then(({ IntakeSpansTable }) => {
+    const IntakeSpansTableRouteComponent: FC = () => (
+      <Stack className="flex-1 min-h-0">
+        <IntakeSpansTable filterTogglePortalTargetId={INTAKE_FILTER_ACTION_TARGET_ID} />
+      </Stack>
+    );
+
+    return { default: IntakeSpansTableRouteComponent };
+  })
+);
+const IntakeTraceDetailRoute = lazy(() =>
+  import('@studio/routes/IntakeTraceDetailRoute').then((module) => ({
+    default: module.IntakeTraceDetailRoute,
   }))
 );
-const IntakeThreadsRoute = lazy(() =>
-  import('@studio/routes/IntakeThreadsRoute').then((module) => ({
-    default: module.IntakeThreadsRoute,
-  }))
-);
-const IntakeExportJobsRoute = lazy(() =>
-  import('@studio/routes/IntakeExportJobsRoute').then((module) => ({
-    default: module.IntakeExportJobsRoute,
-  }))
-);
-const IntakeEntryLayout = lazy(() =>
-  import('@studio/routes/IntakeEntryLayout').then((module) => ({
-    default: module.IntakeEntryLayout,
-  }))
-);
-const IntakeEntryMessagesRoute = lazy(() =>
-  import('@studio/routes/IntakeEntryMessagesRoute').then((module) => ({
-    default: module.IntakeEntryMessagesRoute,
-  }))
-);
-const IntakeEntryEventsRoute = lazy(() =>
-  import('@studio/routes/IntakeEntryEventsRoute').then((module) => ({
-    default: module.IntakeEntryEventsRoute,
-  }))
-);
-const IntakeEntryMetadataRoute = lazy(() =>
-  import('@studio/routes/IntakeEntryMetadataRoute').then((module) => ({
-    default: module.IntakeEntryMetadataRoute,
+const IntakeSpanDetailRoute = lazy(() =>
+  import('@studio/routes/IntakeSpanDetailRoute').then((module) => ({
+    default: module.IntakeSpanDetailRoute,
   }))
 );
 const CustomizationJobDetailsRoute = lazy(() =>
@@ -610,44 +609,27 @@ export const routes: RouteObject[] = [
                   children: [
                     {
                       index: true,
-                      element: <Navigate to="entries" replace />,
+                      element: <Navigate to="traces" replace />,
                     },
                     {
-                      path: ROUTES.workspace.intakeEntries,
-                      element: <IntakeEntriesRoute />,
+                      path: ROUTES.workspace.intakeTraces,
+                      element: <IntakeTracesTableRoute />,
                     },
                     {
-                      path: ROUTES.workspace.intakeThreads,
-                      element: <IntakeThreadsRoute />,
-                    },
-                    {
-                      path: ROUTES.workspace.intakeExportJobs,
-                      element: <IntakeExportJobsRoute />,
+                      path: ROUTES.workspace.intakeSpans,
+                      element: <IntakeSpansTableRoute />,
                     },
                   ],
                 },
                 {
-                  path: ROUTES.workspace.intakeEntry,
-                  element: <IntakeEntryLayout />,
+                  path: ROUTES.workspace.intakeTrace,
+                  element: <IntakeTraceDetailRoute />,
                   errorElement: <ErrorPanel title="Intake" />,
-                  children: [
-                    {
-                      index: true,
-                      element: <Navigate to="messages" replace />,
-                    },
-                    {
-                      path: ROUTES.workspace.intakeEntryMessages,
-                      element: <IntakeEntryMessagesRoute />,
-                    },
-                    {
-                      path: ROUTES.workspace.intakeEntryEvents,
-                      element: <IntakeEntryEventsRoute />,
-                    },
-                    {
-                      path: ROUTES.workspace.intakeEntryMetadata,
-                      element: <IntakeEntryMetadataRoute />,
-                    },
-                  ],
+                },
+                {
+                  path: ROUTES.workspace.intakeSpan,
+                  element: <IntakeSpanDetailRoute />,
+                  errorElement: <ErrorPanel title="Intake" />,
                 },
               ]),
               ...gateSafeSynthesizerRoutes([
