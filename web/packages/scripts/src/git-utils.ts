@@ -31,7 +31,7 @@ export function openBrowser(url: string): void {
     args = ['url.dll,FileProtocolHandler', safeUrl];
   } else {
     cmd = 'xdg-open';
-    args = ['--', safeUrl];
+    args = [safeUrl];
   }
   execFile(cmd, args, (error) => {
     if (error) {
