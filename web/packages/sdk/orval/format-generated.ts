@@ -7,10 +7,10 @@
  * Runs prettier and eslint fix on generated API files, and prefixes unused parameters with underscores.
  */
 
-import { execFileSync } from 'child_process';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import prettier from 'prettier';
 import { serviceConfigs } from './constants';
 
 // Get __dirname equivalent for ES modules
@@ -462,41 +462,48 @@ function splitZodTagFilesIn(zodDir: string): void {
   }
 }
 
-try {
-  // Step 1: Prefix unused parameters with underscore
+async function formatWithPrettier(dir: string): Promise<void> {
+  const entries = readdirSync(dir);
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry);
+    const stat = statSync(fullPath);
+    if (stat.isDirectory()) {
+      await formatWithPrettier(fullPath);
+      continue;
+    }
+    const fileInfo = await prettier.getFileInfo(fullPath);
+    if (fileInfo.ignored || !fileInfo.inferredParser) continue;
+    const opts = (await prettier.resolveConfig(fullPath)) ?? {};
+    const source = readFileSync(fullPath, 'utf-8');
+    const formatted = await prettier.format(source, { ...opts, filepath: fullPath });
+    if (formatted !== source) {
+      writeFileSync(fullPath, formatted, 'utf-8');
+    }
+  }
+}
+
+async function run(): Promise<void> {
   console.log('Prefixing unused parameters...');
   const tsFiles = getTsFiles(generatedPath);
   let modifiedCount = 0;
-
   for (const file of tsFiles) {
     if (prefixUnusedParameters(file)) {
       modifiedCount++;
     }
   }
-
   console.log(`  Modified ${modifiedCount} file(s)`);
 
-  // Step 2: Split large orval-generated zod tag files into per-operation files.
-  // Each tag file (e.g. zod/evaluator.ts) gets replaced with a barrel and a
-  // sibling directory of per-operation files (zod/evaluator/<op>.ts).
   const zodDir = path.join(generatedPath, 'zod');
   console.log('Splitting zod tag files by operation...');
   splitZodTagFilesIn(zodDir);
 
-  // Step 3: Run prettier
   console.log('Running prettier...');
-  const isWindows = process.platform === 'win32';
-  execFileSync(
-    isWindows ? 'cmd.exe' : 'prettier',
-    isWindows ? ['/c', 'prettier', '--write', generatedPath] : ['--write', generatedPath],
-    {
-      stdio: 'inherit',
-      cwd: path.join(__dirname, '..'),
-    }
-  );
+  await formatWithPrettier(generatedPath);
 
   console.log('✅ Successfully processed generated files\n');
-} catch (error) {
+}
+
+run().catch((error) => {
   console.error('❌ Error during processing:', (error as Error).message);
   process.exit(1);
-}
+});
