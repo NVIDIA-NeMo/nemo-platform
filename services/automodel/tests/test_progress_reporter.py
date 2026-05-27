@@ -6,8 +6,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from nmp.automodel.app.jobs.context import NMPJobContext
 from nemo_platform import omit
+from nmp.automodel.app.jobs.context import NMPJobContext
 from nmp.automodel.tasks.progress_reporter import JobsServiceProgressReporter
 from nmp.common.jobs.schemas import PlatformJobStatus
 

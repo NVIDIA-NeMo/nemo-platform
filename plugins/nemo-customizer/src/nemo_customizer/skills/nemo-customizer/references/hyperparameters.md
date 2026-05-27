@@ -10,6 +10,8 @@ uv run nemo customization automodel explain
 
 **Contract examples:** `tests/customizer-automodel-contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
 
+**Batch sizing, 48 GB VRAM tables, multi-GPU (data parallel vs tensor parallel), and throughput tuning** live in **`SKILL.md`** (§ Batch sizing, § Multi-GPU). This file is the **field glossary**, full JSON template, distillation/KD, and schema pointers — not the place to pick `micro_batch_size` / `global_batch_size` for production runs.
+
 ---
 
 ## Job JSON layout
@@ -127,15 +129,15 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `global_batch_size` | `8` | Effective batch across all GPUs (skill default **4** for small local runs) |
-| `micro_batch_size` | `1` | Per-GPU microbatch; increase only if VRAM allows |
+| `global_batch_size` | `8` (schema) | Effective batch across all GPUs; **≥48 GB LoRA tables → `SKILL.md`** |
+| `micro_batch_size` | `1` (schema) | **Per GPU**; same SKILL tables for single- and multi-GPU (TP=1) |
 | `sequence_packing` | `false` | Pack short sequences for throughput (needs compatible data) |
 
 **Validation:** `global_batch_size` must be divisible by `micro_batch_size × data_parallel_size`, where:
 
 `data_parallel_size = (num_nodes × num_gpus_per_node) / (tensor_parallel_size × pipeline_parallel_size × context_parallel_size)`
 
-Example: 1 node, 1 GPU, TP=1 → DP=1 → GBS must be a multiple of `micro_batch_size`.
+Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro_batch_size`. See **`SKILL.md` § Multi-GPU** for data parallel vs tensor parallel.
 
 ### `optimizer`
 
@@ -153,7 +155,7 @@ Example: 1 node, 1 GPU, TP=1 → DP=1 → GBS must be a multiple of `micro_batch
 |-------|---------|-------|
 | `num_nodes` | `1` | Multi-node distributed jobs |
 | `num_gpus_per_node` | `1` | GPUs per node |
-| `tensor_parallel_size` | `1` | Shard layers across GPUs (large models) |
+| `tensor_parallel_size` | `1` | **> 1** when the model does not fit on one ≥48 GB GPU — see **`SKILL.md` § Multi-GPU** |
 | `pipeline_parallel_size` | `1` | Pipeline stages |
 | `context_parallel_size` | `1` | Long-context sharding |
 | `expert_parallel_size` | `null` | MoE only; must divide `data_parallel_size × context_parallel_size` |
@@ -173,12 +175,12 @@ Example: 1 node, 1 GPU, TP=1 → DP=1 → GBS must be a multiple of `micro_batch
 
 ## Tuning guide (when the user asks)
 
-Apply user overrides to `/tmp/job.json` before submit. If unspecified, keep skill defaults from `SKILL.md`.
+Apply user overrides to `/tmp/job.json` before submit. For **batch / GPU count / parallelism**, follow **`SKILL.md`** (defaults table + § Batch sizing + § Multi-GPU). Below covers **non-batch** fields and defers VRAM/batch symptoms to the skill.
 
 | Symptom / goal | Try first |
 |----------------|-----------|
-| CUDA OOM | Lower `micro_batch_size` (→ 1), then `global_batch_size`, then `max_seq_length` |
-| Training too slow | Raise `global_batch_size` (if divisible), enable `sequence_packing`, more GPUs |
+| CUDA OOM | **`SKILL.md` tuning loop:** halve `micro_batch_size`, then `global_batch_size`, then `max_seq_length`; use TP > 1 only if the model does not fit one ≥48 GB GPU |
+| Slow / low GPU use | **`SKILL.md`:** step toward high-util column or double `micro`+GBS until ~35–40 GiB; multi-GPU data parallel if model fits one GPU |
 | Underfitting | More `epochs`, slightly higher `learning_rate`, higher LoRA `rank` (≤ 32 for NIM/vLLM deploy) |
 | Overfitting | Fewer `epochs`, lower `learning_rate`, higher `weight_decay`, smaller `rank` |
 | Quick smoke test | `max_steps` only (e.g. 10–50), **omit or ignore epoch goal**; or `epochs: 1` on tiny slice |
@@ -206,20 +208,13 @@ Schema default is `5e-6` (conservative). Fixtures: `qwen3_0.6b_sft_lora.json` us
 
 ### Epochs vs dataset size
 
-One epoch = one full pass over `train.jsonl`. For ~10k short MCQA examples and GBS 4, expect thousands of steps per epoch on 1 GPU — plan poll time accordingly.
+One epoch = one full pass over `train.jsonl`. Steps per epoch ≈ `train_samples / global_batch_size` (e.g. ~10k samples, GBS 64 → ~153 steps). Plan poll time from the **GBS you chose in `SKILL.md`**, not the unknown-VRAM default (GBS 4).
 
 ---
 
-## Presets (copy into job JSON)
+## Presets (non-batch fields)
 
-**Small model, 1 GPU (default skill path)**
-
-```json
-"schedule": { "epochs": 1 },
-"batch": { "global_batch_size": 4, "micro_batch_size": 1 },
-"optimizer": { "learning_rate": 5e-5 },
-"training": { "training_type": "sft", "finetuning_type": "lora", "max_seq_length": 2048 }
-```
+Use **`SKILL.md` § Batch sizing** and **§ Multi-GPU** for `batch` and `parallelism` on ≥48 GB GPUs. Presets below only override schedule / training / optimizer.
 
 **Smoke test (step-capped)**
 
@@ -235,14 +230,7 @@ One epoch = one full pass over `train.jsonl`. For ~10k short MCQA examples and G
 "optimizer": { "learning_rate": 2e-5, "warmup_steps": 100 }
 ```
 
-**Multi-GPU same node (e.g. 4× GPU, no TP)**
-
-```json
-"parallelism": { "num_nodes": 1, "num_gpus_per_node": 4, "tensor_parallel_size": 1 },
-"batch": { "global_batch_size": 16, "micro_batch_size": 1 }
-```
-
-Ensure GBS is divisible by `4 × micro_batch_size`.
+Pair with batch rows from **`SKILL.md`** (e.g. ≤4B default `micro` 32 / GBS 128, not `micro` 1 / GBS 4).
 
 ---
 
@@ -296,12 +284,14 @@ Verify: `nemo models get <teacher-entity> --workspace default`. Reuse an existin
     "max_seq_length": 2048
   },
   "schedule": { "epochs": 1 },
-  "batch": { "global_batch_size": 4, "micro_batch_size": 1 },
-  "optimizer": { "learning_rate": 5e-5 },
+  "batch": { "global_batch_size": 64, "micro_batch_size": 16 },
+  "optimizer": { "learning_rate": 8e-5 },
   "parallelism": { "num_nodes": 1, "num_gpus_per_node": 1, "tensor_parallel_size": 1 },
   "output": { "name": "<output-name>" }
 }
 ```
+
+(`batch` / `parallelism` example uses an 8B-scale row from **`SKILL.md`**; adjust for student size.)
 
 | Field | Meaning |
 |-------|---------|
@@ -313,10 +303,11 @@ Verify: `nemo models get <teacher-entity> --workspace default`. Reuse an existin
 
 ## Source of truth
 
-| Resource | Path |
-|----------|------|
-| Submit schema | `plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py` |
-| Schema → compiler mapping | `services/automodel/src/nmp/automodel/adapter.py` |
-| API field descriptions | `services/automodel/src/nmp/automodel/api/v2/jobs/schemas.py` |
-| JSON examples | `plugins/nemo-automodel/tests/fixtures/*.json` |
-| Full spec doc | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) |
+| Resource | Path | Use for |
+|----------|------|---------|
+| **Batch / multi-GPU / 48 GB LoRA** | `SKILL.md` (§ Batch sizing, § Multi-GPU) | Choosing `micro`, GBS, LR, TP vs data parallel |
+| Submit schema | `plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py` | Allowed JSON fields |
+| Schema → compiler mapping | `services/automodel/src/nmp/automodel/adapter.py` | `dataset.training` → compiler `dataset` string |
+| API field descriptions | `services/automodel/src/nmp/automodel/api/v2/jobs/schemas.py` | Compiler-internal shape (not submit JSON) |
+| JSON examples | `plugins/nemo-automodel/tests/fixtures/*.json` | Copy-paste templates (ignore fixture `max_steps` in prod) |
+| Full spec doc | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |

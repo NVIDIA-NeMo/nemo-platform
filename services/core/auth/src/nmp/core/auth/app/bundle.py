@@ -14,11 +14,8 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-import logging
 import yaml
 from nmp.common.auth import ALL_WORKSPACES
-
-logger = logging.getLogger(__name__)
 from nmp.common.auth.authz_format import validate_static_authz_data
 from nmp.common.config import get_service_config
 from nmp.common.entities import EntityClient

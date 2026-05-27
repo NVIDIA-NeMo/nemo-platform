@@ -8,8 +8,9 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote, urljoin
 
-from nemo_automodel_plugin.schema import AutomodelJobInput
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+
+from nemo_automodel_plugin.schema import AutomodelJobInput
 
 PlatformClient = NeMoPlatform | AsyncNeMoPlatform
 

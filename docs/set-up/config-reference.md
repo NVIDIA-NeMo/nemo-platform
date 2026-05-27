@@ -409,6 +409,8 @@ jobs:
   reconcile_interval_seconds: 2
   # Interval in seconds for the job scheduler to run | default: 5
   schedule_interval_seconds: 5
+  # Register the subprocess/default execution profile. When unset, defaults to true for docker/none runtimes and false for kubernetes.
+  enable_subprocess_executor:
 ```
 
 ### `models`

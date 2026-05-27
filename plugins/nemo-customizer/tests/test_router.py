@@ -57,7 +57,7 @@ def test_router_sets_merged_dependencies(monkeypatch: pytest.MonkeyPatch) -> Non
         "nemo_customizer.router.discover_customization_contributors",
         lambda: {"fake": _FakeContributor()},
     )
-    service = CustomizationRouterService()
+    CustomizationRouterService()
     assert "studio" in CustomizationRouterService.dependencies
 
 
