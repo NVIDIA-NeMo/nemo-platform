@@ -52,7 +52,11 @@ class AnnotationFilterParam(TypedDict, total=False):
     """Return only annotations attached to this span."""
 
     value_numeric: NumericFilterParam
-    """Range filter for numeric annotation values."""
+    """Range filter for numeric annotation values.
+
+    At least one of `$gte` or `$lte` must be supplied — an empty `{}` is not a
+    meaningful filter and is rejected.
+    """
 
     value_text: str
     """Return only annotations with this text value.

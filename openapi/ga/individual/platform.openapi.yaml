@@ -11169,6 +11169,7 @@ components:
           metadata: '#/components/schemas/MetadataAnnotation'
           note: '#/components/schemas/NoteAnnotation'
     AnnotationFilter:
+      additionalProperties: false
       properties:
         span_id:
           description: Return only annotations attached to this span.
@@ -24028,7 +24029,10 @@ components:
       description: Response type for NumberCheckMetric.
     NumericFilter:
       additionalProperties: false
-      description: Range filter for numeric annotation values.
+      description: "Range filter for numeric annotation values.\n\nAt least one of\
+        \ `$gte` or `$lte` must be supplied \u2014 an empty `{}` is not a\nmeaningful\
+        \ filter and is rejected."
+      minProperties: 1
       properties:
         $gte:
           description: Include only values greater than or equal to this number.

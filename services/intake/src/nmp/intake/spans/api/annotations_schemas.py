@@ -21,7 +21,11 @@ from pydantic import BaseModel, ConfigDict, Field, RootModel, model_validator
 
 
 class NumericFilter(Filter):
-    """Range filter for numeric annotation values."""
+    """Range filter for numeric annotation values.
+
+    At least one of `$gte` or `$lte` must be supplied — an empty `{}` is not a
+    meaningful filter and is rejected.
+    """
 
     gte: float | None = Field(
         default=None,
@@ -40,7 +44,15 @@ class NumericFilter(Filter):
         extra="forbid",
         protected_namespaces=(),
         populate_by_name=True,
+        # Surface the at-least-one-bound rule in the generated OpenAPI schema.
+        json_schema_extra={"minProperties": 1},
     )
+
+    @model_validator(mode="after")
+    def _require_at_least_one_bound(self) -> Self:
+        if self.gte is None and self.lte is None:
+            raise ValueError("NumericFilter requires at least one of `$gte` or `$lte`")
+        return self
 
 
 class AnnotationSortField(StrEnum):
@@ -49,6 +61,8 @@ class AnnotationSortField(StrEnum):
 
 
 class AnnotationFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     span_id: str | None = Field(default=None, description="Return only annotations attached to this span.")
     session_id: str | None = Field(default=None, description="Return only annotations attached to this session.")
     kind: AnnotationKind | None = Field(

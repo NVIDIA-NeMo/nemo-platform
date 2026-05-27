@@ -25,7 +25,11 @@ __all__ = ["NumericFilterParam"]
 
 
 class NumericFilterParam(TypedDict, total=False):
-    """Range filter for numeric annotation values."""
+    """Range filter for numeric annotation values.
+
+    At least one of `$gte` or `$lte` must be supplied — an empty `{}` is not a
+    meaningful filter and is rejected.
+    """
 
     gte: Annotated[float, PropertyInfo(alias="$gte")]
     """Include only values greater than or equal to this number."""
