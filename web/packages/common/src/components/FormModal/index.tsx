@@ -22,7 +22,14 @@ import {
   Stack,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { ComponentProps, ComponentPropsWithoutRef, FC, PropsWithChildren, ReactNode } from 'react';
+import {
+  ComponentProps,
+  ComponentPropsWithoutRef,
+  FC,
+  PropsWithChildren,
+  ReactNode,
+  useId,
+} from 'react';
 
 export interface FormModalProps {
   open: boolean;
@@ -73,6 +80,7 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
   slotFooterRight,
   attributes,
 }) => {
+  const modalId = useId();
   // Prevents the user from closing the dialog if the inputs are disabled
   const handleUserClose = () => {
     if (!disabled) {
@@ -88,7 +96,7 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
   const footerJustifyClass = slotFooterLeft ? 'justify-between' : 'justify-end';
 
   return (
-    <ModalRoot open={open} onOpenChange={handleUserClose}>
+    <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose}>
       <ModalDialog>
         <ModalContent className={`max-h-[90vh] ${className || ''}`}>
           <form

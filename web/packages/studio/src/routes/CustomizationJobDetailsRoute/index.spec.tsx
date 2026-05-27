@@ -125,7 +125,7 @@ describe('CustomizationJobDetailsRoute', () => {
     ).toBeInTheDocument();
 
     // Open Status Logs Accordion
-    const statusLogsAccordion = await screen.findByRole('button', { name: 'Status Logs' });
+    const statusLogsAccordion = await screen.findByText('Status Logs');
     await user.click(statusLogsAccordion);
 
     // Ensure status logs are displayed (accordion may take a moment to expand and render content)

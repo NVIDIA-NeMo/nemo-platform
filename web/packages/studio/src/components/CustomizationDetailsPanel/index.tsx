@@ -171,7 +171,7 @@ export const CustomizationDetailsPanel: FC<Props> = ({ customizationJobName, wor
   // Fallback to status details if logs are not available
   const codeSnippet = logs?.length
     ? formatLogs(logs)
-    : JSON.stringify(customization?.status_details?.events, null, 2);
+    : (JSON.stringify(customization?.status_details?.events, null, 2) ?? '');
 
   return (
     <Panel

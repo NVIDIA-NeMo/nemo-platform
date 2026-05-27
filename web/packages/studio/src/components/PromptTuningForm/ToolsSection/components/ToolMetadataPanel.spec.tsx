@@ -4,8 +4,7 @@
 import { ChatCompletionToolsParam } from '@nemo/common/src/zod/tools';
 import { ToolMetadataPanel } from '@studio/components/PromptTuningForm/ToolsSection/components/ToolMetadataPanel';
 import { mockTool } from '@studio/mocks/studio-ui/tool';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 // Mock the CodeEditor component
 vi.mock('@nemo/common/src/components/CodeEditor', () => ({
@@ -17,7 +16,6 @@ vi.mock('@nemo/common/src/components/CodeEditor', () => ({
 }));
 
 describe('ToolMetadataModal', () => {
-  const user = userEvent.setup();
   const mockOnClose = vi.fn();
 
   beforeEach(() => {
@@ -122,9 +120,12 @@ describe('ToolMetadataModal', () => {
     it('calls onClose when modal is closed', async () => {
       render(<ToolMetadataPanel open tool={mockTool} onClose={mockOnClose} />);
 
-      await user.click(screen.getByText('Tool Metadata'));
-      await user.keyboard('{Escape}');
-      expect(mockOnClose).toHaveBeenCalled();
+      // KUI SidePanel uses a native <dialog> with a hidden form[method="dialog"].
+      // happy-dom does not fire the dialog close event when that form submits,
+      // so simulate the native close event directly.
+      const dialog = screen.getByRole('dialog', { hidden: true });
+      fireEvent(dialog, new Event('close'));
+      await waitFor(() => expect(mockOnClose).toHaveBeenCalled());
     });
 
     it('renders with correct modal structure', () => {

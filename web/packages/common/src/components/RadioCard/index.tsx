@@ -100,7 +100,12 @@ export const RadioCard: FC<RadioCardProps> = ({
         )}
         {...attributes?.Card}
       >
-        <RadioGroupInput value={value} disabled={disabled} {...attributes?.RadioGroupInput} />
+        <RadioGroupInput
+          value={value}
+          disabled={disabled}
+          aria-labelledby={id}
+          {...attributes?.RadioGroupInput}
+        />
         {/* Single column for label + description (separate from the radio indicator column) */}
         <Flex direction="col" gap="density-sm" className={labelClass}>
           <Flex gap="density-md" align="center" className="min-h-0">

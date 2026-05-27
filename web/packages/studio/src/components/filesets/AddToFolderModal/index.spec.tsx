@@ -129,11 +129,9 @@ describe('AddToFolderModal', () => {
     it('renders select dropdown with placeholder', async () => {
       render(<AddToFolderModal {...defaultProps} />);
 
-      await waitFor(() => {
-        const trigger = screen.getByTestId('nv-select-trigger');
-        expect(trigger).toBeInTheDocument();
-        expect(trigger).toHaveTextContent('Select a folder');
-      });
+      const trigger = await screen.findByTestId('nv-select-trigger');
+      expect(trigger).toBeInTheDocument();
+      expect(trigger).toHaveTextContent('Select a folder');
     });
   });
 
@@ -154,9 +152,7 @@ describe('AddToFolderModal', () => {
       await user.click(trigger);
 
       await waitFor(() => {
-        expect(
-          screen.getByRole('option', { name: '.. (parent folder)' })
-        ).toBeInTheDocument();
+        expect(screen.getByRole('option', { name: '.. (parent folder)' })).toBeInTheDocument();
       });
     });
 

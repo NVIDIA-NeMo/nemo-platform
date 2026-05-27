@@ -26,7 +26,7 @@ import {
   ModalRoot,
   Stack,
 } from '@nvidia/foundations-react-core';
-import { FC, MouseEvent, useMemo } from 'react';
+import { FC, MouseEvent, useId, useMemo } from 'react';
 
 const UploadModalContent: FC<UploadModalProps> = ({
   workspace,
@@ -42,6 +42,7 @@ const UploadModalContent: FC<UploadModalProps> = ({
   attributes,
 }) => {
   const [, dispatch] = useUploadModalContext();
+  const modalId = useId();
   const { submit, isSubmitting } = useUploadSubmit({
     workspace,
     includeDataset,
@@ -66,7 +67,7 @@ const UploadModalContent: FC<UploadModalProps> = ({
   };
 
   return (
-    <ModalRoot open={open} onOpenChange={handleUserClose} {...attributes?.ModalRoot}>
+    <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose} {...attributes?.ModalRoot}>
       <ModalDialog>
         <ModalContent
           className={`max-h-[90vh] overflow-y-auto ${className || ''}`}

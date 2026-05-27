@@ -98,7 +98,7 @@ describe('UserPopover', () => {
     await user.click(trigger);
 
     // Check that the email is displayed as heading (use testid to be specific)
-    const heading = screen.getByTestId('nv-dropdown-heading');
+    const heading = screen.getByTestId('nv-menu-heading');
     expect(heading).toBeInTheDocument();
     expect(heading).toHaveTextContent('john.doe@example.com');
   });
@@ -112,7 +112,7 @@ describe('UserPopover', () => {
     await user.click(trigger);
 
     // Check that no heading is displayed
-    expect(screen.queryByTestId('nv-dropdown-heading')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nv-menu-heading')).not.toBeInTheDocument();
   });
 
   it('should display all menu items when opened with authenticated user', async () => {
@@ -221,7 +221,7 @@ describe('UserPopover', () => {
 
     // Verify popover is closed
     await waitFor(() => {
-      expect(screen.queryByTestId('nv-dropdown-content')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('nv-dropdown-content')).not.toHaveAttribute('popover-open');
     });
   });
 
