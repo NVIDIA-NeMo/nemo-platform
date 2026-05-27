@@ -63,7 +63,11 @@ class JobContext:
                         "executor": {
                             "provider": "cpu",
                             "profile": "default",
-                            "container": {"image": "test:latest"},
+                            "container": {
+                                "image": "test:latest",
+                                "entrypoint": ["entrypoint"],
+                                "command": ["command"],
+                            },
                         },
                     }
                 ]

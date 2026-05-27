@@ -39,6 +39,30 @@ entities: {}
 
 # Jobs service configuration
 jobs:
+  # Explicitly register the subprocess executor at profile "default". This opts
+  # the documented `cpu/default` plugin steps (Data Designer create, Evaluator
+  # metrics, Anonymizer, hello-world, etc.) into the cpu→subprocess translation
+  # in the Jobs API (see `translate_cpu_container_steps_to_subprocess` in
+  # services/core/jobs/src/nmp/core/jobs/api/v2/jobs/endpoints.py), so jobs
+  # submitted with a CPU container step run on the host subprocess backend
+  # rather than being dispatched to the Docker backend (which currently fails
+  # because the `nmp-cpu-tasks` image is not available — see the temp comment
+  # in services/core/jobs/src/nmp/core/jobs/controllers/backends/config.py).
+  # Deployers that have a working Docker or Kubernetes setup may register
+  # additional image-backed profiles here under different (provider, profile)
+  # keys; `merge_executor_profiles` keys on (provider, profile) so subprocess
+  # and Docker entries coexist.
+  executors:
+    - provider: subprocess
+      profile: default
+      backend: subprocess
+      config:
+        working_directory: /tmp/nmp-subprocess-jobs
+        cleanup_completed_jobs_immediately: false
+        ttl_seconds_before_active: 60
+        ttl_seconds_active: 3600
+        ttl_seconds_after_finished: 300
+
   # Local path to the jobs-launcher binary used by the Docker job backend
   executor_defaults:
     docker:
