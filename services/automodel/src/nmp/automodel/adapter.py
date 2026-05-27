@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from nmp.common.api.common import SecretRef
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DistillationTraining,
@@ -18,6 +17,7 @@ from nmp.automodel.api.v2.jobs.schemas import (
     SFTTraining,
     WandBParams,
 )
+from nmp.common.api.common import SecretRef
 
 
 def _map_finetuning_type(value: str) -> str:

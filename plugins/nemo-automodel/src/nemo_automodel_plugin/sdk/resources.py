@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+
 from nemo_automodel_plugin.schema import AutomodelJobInput
 from nemo_automodel_plugin.sdk import http_utils
 from nemo_automodel_plugin.sdk.job_resources import (
@@ -14,7 +16,6 @@ from nemo_automodel_plugin.sdk.job_resources import (
     AutomodelJobRecord,
     AutomodelJobResource,
 )
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 
 class AutomodelJobsResource:

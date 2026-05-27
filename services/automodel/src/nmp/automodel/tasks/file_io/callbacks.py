@@ -12,9 +12,9 @@ from pathlib import Path
 from typing import Any
 
 from fsspec.callbacks import Callback, TqdmCallback
-from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.automodel.app.jobs.file_io.schemas import DownloadStats, TaskPhase, UploadStats
 from nmp.automodel.tasks.file_io.progress_reporter import ProgressReporter
+from nmp.common.jobs.schemas import PlatformJobStatus
 
 logger = logging.getLogger(__name__)
 

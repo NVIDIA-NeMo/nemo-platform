@@ -8,14 +8,14 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
+from nmp.automodel.platform_client import check_dataset_access, fetch_model_entity
+from nmp.common.entities.utils import parse_entity_ref
+
 from nemo_automodel_plugin.schema import (
     AutomodelJobInput,
     AutomodelJobOutput,
-    OutputRequest,
     OutputResponse,
 )
-from nmp.automodel.platform_client import check_dataset_access, fetch_model_entity
-from nmp.common.entities.utils import parse_entity_ref
 
 if TYPE_CHECKING:
     from nemo_platform import AsyncNeMoPlatform
