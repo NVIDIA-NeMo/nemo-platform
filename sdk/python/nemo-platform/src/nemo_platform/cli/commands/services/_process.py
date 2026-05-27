@@ -354,14 +354,14 @@ def _sweep_orphans(children: list[psutil.Process], timeout: float = 5.0) -> list
             child.terminate()
             killed.append(child.pid)
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+            pass  # Already exited or not owned by us — skip.
 
     _, still_alive = psutil.wait_procs(alive_children, timeout=timeout)
     for child in still_alive:
         try:
             child.kill()
         except (psutil.NoSuchProcess, psutil.AccessDenied):
-            pass
+            pass  # Raced with exit or not owned — nothing to do.
 
     if killed:
         logger.info(
@@ -433,7 +433,7 @@ def stop_instance(
             except PermissionError:
                 logger.warning("No permission to SIGKILL pid %d; process may still be running", pid)
                 swept = _sweep_orphans(children) if children else []
-                remove_descriptor(scope, base_dir=base_dir)
+                # Keep the descriptor so subsequent stop/restart can retry.
                 return StopResult(stopped_pids=[], swept_children=swept)
             except OSError:
                 logger.debug("Failed to send SIGKILL to pid %d", pid, exc_info=True)

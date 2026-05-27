@@ -565,16 +565,17 @@ def _wait_for_children(pid: int, timeout: float = 5.0) -> list[psutil.Process]:
     return []
 
 
+_SPAWN_CHILD_SCRIPT = (
+    "import subprocess, sys, time; "
+    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+    "time.sleep(60)"
+)
+
+
 class TestSnapshotChildren:
     def test_captures_child_processes(self) -> None:
         parent = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "import subprocess, sys, time; "
-                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-                "time.sleep(60)",
-            ],
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -674,13 +675,7 @@ class TestStopInstanceChildSweep:
     def test_sweeps_surviving_children(self, base_dir: Path) -> None:
         """Parent + child spawned; stop should kill both and report the child."""
         parent = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "import subprocess, sys, time; "
-                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-                "time.sleep(60)",
-            ],
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -711,7 +706,7 @@ class TestStopInstanceChildSweep:
                 for c in psutil.Process(parent.pid).children(recursive=True):
                     c.kill()
             except psutil.NoSuchProcess:
-                pass
+                pass  # Parent already exited — children cleaned up.
             if parent.poll() is None:
                 parent.kill()
                 parent.wait(timeout=5)
@@ -749,13 +744,7 @@ class TestStopInstanceChildSweep:
     def test_restart_path_sweeps_children(self, base_dir: Path) -> None:
         """The restart flow calls stop_instance(force=True); verify it sweeps children too."""
         parent = subprocess.Popen(
-            [
-                sys.executable,
-                "-c",
-                "import subprocess, sys, time; "
-                "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
-                "time.sleep(60)",
-            ],
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
@@ -788,7 +777,7 @@ class TestStopInstanceChildSweep:
                 for c in psutil.Process(parent.pid).children(recursive=True):
                     c.kill()
             except psutil.NoSuchProcess:
-                pass
+                pass  # Parent already exited — children cleaned up.
             if parent.poll() is None:
                 parent.kill()
                 parent.wait(timeout=5)
