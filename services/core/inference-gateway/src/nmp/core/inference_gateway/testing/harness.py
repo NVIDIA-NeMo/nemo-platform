@@ -176,12 +176,14 @@ class IGWPluginHarness:
     def _cleanup(self) -> None:
         """Delete this test's entities, then rebuild the in-memory caches.
 
-        Deletes in FK order: VMs → providers → secrets. Each step is
-        ``try/except``-guarded with ``logger.warning`` so a single
-        delete failure can't mask the test's real failure. Module-scoped
-        fixtures rely on this — a stray provider would otherwise re-enter
-        the model cache on the next refresh and trigger
-        ``notify_upserted`` on a dead VM.
+        Deletes in FK order: VMs → providers → secrets. Each step
+        catches and logs broadly: cleanup runs in ``finally`` after the
+        test has already finished, and the goal is to drain every
+        tracked entity even if one delete raises. Narrowing to
+        ``APIError`` would let a programming error in cleanup code
+        strand the remaining deletes — the precise pollution we set
+        this up to prevent. Failures are logged with ``exc_info=True``
+        so nothing is silently lost.
 
         **What this does NOT clean up:**
 
@@ -200,7 +202,7 @@ class IGWPluginHarness:
         for workspace, name in reversed(self._virtual_models):
             try:
                 self.sdk.inference.virtual_models.delete(name=name, workspace=workspace)
-            except Exception:
+            except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete VirtualModel %r in workspace %r during harness cleanup",
                     name,
@@ -211,7 +213,7 @@ class IGWPluginHarness:
         for workspace, name in reversed(self._providers):
             try:
                 self.sdk.inference.providers.delete(name=name, workspace=workspace)
-            except Exception:
+            except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete ModelProvider %r in workspace %r during harness cleanup",
                     name,
@@ -222,7 +224,7 @@ class IGWPluginHarness:
         for workspace, name in reversed(self._secrets):
             try:
                 self.sdk.secrets.delete(name=name, workspace=workspace)
-            except Exception:
+            except Exception:  # noqa: BLE001  # see _cleanup docstring
                 logger.warning(
                     "Failed to delete Secret %r in workspace %r during harness cleanup",
                     name,
@@ -315,10 +317,11 @@ class IGWPluginHarness:
             else:
                 self._registry.plugins.pop(name, None)
             if call_lifecycle:
-                # Log rather than raise so cleanup failures don't mask the test outcome.
+                # Plugin code can raise anything; log rather than raise
+                # so a teardown failure doesn't mask the test outcome.
                 try:
                     asyncio.run(plugin.on_shutdown())
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning(
                         "Plugin %r on_shutdown raised during use_plugin teardown",
                         name,
@@ -356,9 +359,10 @@ class IGWPluginHarness:
             else:
                 self._registry.plugins.pop(name, None)
             if call_lifecycle:
+                # See use_plugin for why this is a blind catch.
                 try:
                     await plugin.on_shutdown()
-                except Exception:
+                except Exception:  # noqa: BLE001
                     logger.warning(
                         "Plugin %r on_shutdown raised during ause_plugin teardown",
                         name,
