@@ -54,6 +54,7 @@ class FileSetRef(BaseModel):
             return None, parts[0]
         if len(parts) == 2:
             return parts[0], parts[1]
+        return None
 
     @classmethod
     def extract_name(cls, ref: str) -> str:

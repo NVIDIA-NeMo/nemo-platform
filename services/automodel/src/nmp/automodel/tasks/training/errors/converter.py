@@ -101,6 +101,17 @@ def create_error_details(exception: Exception) -> ErrorDetails:
         )
         return exc.to_error_details()
 
+    # Defensive fallback: if converter unexpectedly does not raise, still return valid details
+    logger.warning(
+        "Converter returned without raising for exception type %s; using InternalError fallback.",
+        type(exception).__name__,
+    )
+    exc = InternalError(
+        message=f"An internal error occurred. ({type(exception).__name__}: {exception})",
+        detail=str(exception),
+    )
+    return exc.to_error_details()
+
 
 __all__ = [
     "get_error_converter",
