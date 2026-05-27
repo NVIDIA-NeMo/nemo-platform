@@ -28,10 +28,10 @@ Automodel training steps need a **GPU execution profile** on the platform. `subp
 
 When using automodel, set `training.execution_profile` in job JSON to the **`profile`** string of a GPU row from the list (e.g. `default`, `docker_gpu`). If omitted, the plugin default is usually `gpu` — submit errors mentioning an unknown profile mean you should re-list and set an exact name from the API.
 
-Quick filter:
+Quick filter (stdout only — do not use `2>&1` or `json.load` breaks on stderr warnings):
 
 ```bash
-uv run nemo jobs list-execution-profiles -f json | python3 -c "
+uv run nemo jobs list-execution-profiles -f json 2>/dev/null | python3 -c "
 import sys, json
 for p in json.load(sys.stdin):
     if p.get('provider') in ('gpu', 'gpu_distributed'):
