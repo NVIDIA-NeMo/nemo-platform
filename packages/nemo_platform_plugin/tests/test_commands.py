@@ -322,7 +322,7 @@ class TestSubmitVerb:
     def test_submit_passes_cli_auth_headers(self, monkeypatch) -> None:
         captured: dict[str, object] = {}
 
-        def _capture(_self, _job_cls, _spec, *, headers=None, **_kwargs) -> dict:
+        def _capture(_self, _job_cls, _spec, headers=None, **_kwargs) -> dict:
             captured["headers"] = headers
             return {"id": "job-123"}
 
