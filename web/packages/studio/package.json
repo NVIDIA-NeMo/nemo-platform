@@ -77,7 +77,6 @@
     "react-router-dom": "catalog:",
     "recharts": "catalog:",
     "seedrandom": "^3.0.5",
-    "unique-names-generator": "^4.7.1",
     "use-debounce": "catalog:",
     "vite": "catalog:",
     "vite-plugin-mkcert": "catalog:",
