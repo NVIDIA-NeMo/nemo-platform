@@ -7,7 +7,7 @@
  * Runs prettier and eslint fix on generated API files, and prefixes unused parameters with underscores.
  */
 
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import prettier from 'prettier';
@@ -46,15 +46,14 @@ function getTsFiles(dir: string): string[] {
   const files: string[] = [];
 
   try {
-    const entries = readdirSync(dir);
+    const entries = readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry);
-      const stat = statSync(fullPath);
+      const fullPath = path.join(dir, entry.name);
 
-      if (stat.isDirectory()) {
+      if (entry.isDirectory()) {
         files.push(...getTsFiles(fullPath));
-      } else if (entry.endsWith('.ts')) {
+      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
         files.push(fullPath);
       }
     }
@@ -445,19 +444,18 @@ function splitZodTagFile(filePath: string): number {
 }
 
 function splitZodTagFilesIn(zodDir: string): void {
-  let entries: string[];
+  let entries: Dirent[];
   try {
-    entries = readdirSync(zodDir);
+    entries = readdirSync(zodDir, { withFileTypes: true });
   } catch {
     return;
   }
   for (const entry of entries) {
-    const fullPath = path.join(zodDir, entry);
-    if (!entry.endsWith('.ts')) continue;
-    if (!statSync(fullPath).isFile()) continue;
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+    const fullPath = path.join(zodDir, entry.name);
     const count = splitZodTagFile(fullPath);
     if (count > 0) {
-      console.log(`    Split ${entry} into ${count} operation files`);
+      console.log(`    Split ${entry.name} into ${count} operation files`);
     }
   }
 }
