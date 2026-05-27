@@ -589,6 +589,9 @@ class TestDiscoverCustomizationContributors:
             def get_cli(self) -> None:
                 return None
 
+            def get_authz_contribution(self):
+                return None
+
         ep = _make_ep("fake", _Contributor)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_customization_contributors()
@@ -606,6 +609,9 @@ class TestDiscoverCustomizationContributors:
                 return []
 
             def get_cli(self) -> None:
+                return None
+
+            def get_authz_contribution(self):
                 return None
 
         good = _make_ep("good", _Contributor)

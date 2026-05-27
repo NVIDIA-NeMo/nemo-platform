@@ -70,7 +70,7 @@ class AuthzContribution:
         }
 
 
-def _scopes_for(api_area: str, *, write: bool) -> list[str]:
+def _scopes_for(api_area: str, write: bool) -> list[str]:
     verb = "write" if write else "read"
     return [f"{api_area}:{verb}", f"platform:{verb}"]
 
@@ -85,7 +85,6 @@ def _job_collection_permissions(permission_prefix: str) -> dict[str, str]:
 
 
 def authz_for_workspace_job_collection(
-    *,
     api_area: str,
     collection_suffix: str,
     permission_prefix: str,

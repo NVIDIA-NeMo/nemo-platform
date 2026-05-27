@@ -45,14 +45,13 @@ def _replace_job_run_disabled(group: typer.Typer) -> None:
 
     @group.command("run")
     def run(
-        typer_ctx: typer.Context,
-        job_json: Path | None = typer.Argument(
+        _typer_ctx: typer.Context,
+        _job_json: Path | None = typer.Argument(
             None,
             metavar="JOB_JSON",
             help=_JOB_JSON_HELP,
         ),
     ) -> None:
-        del typer_ctx, job_json
         typer.secho(
             "Automodel does not support local run. Submit to the platform API instead:\n"
             "  nemo customization automodel submit <job.json> -w <workspace>",

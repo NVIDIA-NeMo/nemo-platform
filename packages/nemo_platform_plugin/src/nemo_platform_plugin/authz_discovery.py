@@ -19,7 +19,7 @@ AUTHZ_GROUP = "nemo.authz"
 AuthzContributor = Callable[[], AuthzContribution] | type[Any]
 
 
-def _load_authz_contribution(loaded: AuthzContributor, *, source: str) -> AuthzContribution | None:
+def _load_authz_contribution(loaded: AuthzContributor, source: str) -> AuthzContribution | None:
     try:
         if isinstance(loaded, type):
             target = loaded
@@ -77,7 +77,6 @@ def _method_from_dict(spec: dict[str, Any]) -> Any:
 
 def _collect_from_plugin_surface(
     items: dict[str, Any],
-    *,
     surface: str,
 ) -> list[AuthzContribution]:
     contributions: list[AuthzContribution] = []

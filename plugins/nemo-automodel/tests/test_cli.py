@@ -70,8 +70,8 @@ def test_cli_submit_accepts_job_json_file(monkeypatch: pytest.MonkeyPatch) -> No
         options: dict | None = None,
         metadata: dict | None = None,
         http_client: httpx.Client | None = None,
+        headers: dict[str, str] | None = None,
     ) -> dict:
-        del _scheduler, job_cls, profile, options, metadata, http_client
         submitted["workspace"] = workspace
         submitted["spec"] = spec_data
         submitted["base_url"] = base_url
@@ -102,7 +102,7 @@ def test_cli_submit_accepts_job_json_file(monkeypatch: pytest.MonkeyPatch) -> No
     assert result.exit_code == 0, result.stdout + result.stderr
     assert submitted["workspace"] == "acme-corp"
     assert submitted["base_url"] == "https://nmp.test"
-    assert submitted["spec"]["model"] == "meta/llama-test"
+    assert submitted["spec"]["model"] == "default/qwen3-1.7b"
 
 
 def test_cli_run_is_disabled() -> None:

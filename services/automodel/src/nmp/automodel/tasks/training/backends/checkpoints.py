@@ -297,7 +297,7 @@ def merge_lora_embedding_adapter(
     tmp_path = Path("/scratch/merged_lora") if Path("/scratch").is_dir() else Path("/tmp/merged_lora")
     shutil.rmtree(tmp_path, ignore_errors=True)
     tmp_path.mkdir(parents=True, exist_ok=True)
-
+    model = None
     try:
         logger.info("Loading base model (AutoModel): %s", base_model_path)
         model = AutoModel.from_pretrained(
@@ -329,10 +329,6 @@ def merge_lora_embedding_adapter(
 
     finally:
         shutil.rmtree(tmp_path, ignore_errors=True)
-        try:
-            del model
-        except Exception:
-            pass
         torch.cuda.empty_cache()
         gc.collect()
 
