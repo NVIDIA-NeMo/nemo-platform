@@ -16,15 +16,21 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Get the service path from command line args
-const servicePath = process.argv[2];
+const SERVICE_PATH_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const rawServicePath = process.argv[2];
 
-if (!servicePath) {
+if (!rawServicePath) {
   console.error('Error: Service path is required');
   console.error('Usage: node format-generated.js <service-path>');
   process.exit(1);
 }
 
+if (!SERVICE_PATH_PATTERN.test(rawServicePath)) {
+  console.error(`Error: Invalid service path: ${rawServicePath}`);
+  process.exit(1);
+}
+
+const servicePath: string = rawServicePath;
 const generatedPath = path.join(__dirname, '..', 'generated', servicePath);
 
 console.log(`\n📝 Processing generated files in ${generatedPath}...`);
