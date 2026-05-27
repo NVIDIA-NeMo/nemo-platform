@@ -11,12 +11,15 @@ import { execFileSync } from 'child_process';
 import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { serviceConfigs } from './constants';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const SERVICE_PATH_PATTERN = /^[a-zA-Z0-9_-]+$/;
+const ALLOWED_SERVICE_PATHS: ReadonlySet<string> = new Set(
+  Object.values(serviceConfigs).map((c) => c.path)
+);
 const rawServicePath = process.argv[2];
 
 if (!rawServicePath) {
@@ -25,12 +28,13 @@ if (!rawServicePath) {
   process.exit(1);
 }
 
-if (!SERVICE_PATH_PATTERN.test(rawServicePath)) {
-  console.error(`Error: Invalid service path: ${rawServicePath}`);
+if (!ALLOWED_SERVICE_PATHS.has(rawServicePath)) {
+  console.error(`Error: Unknown service path: ${rawServicePath}`);
+  console.error(`Allowed: ${[...ALLOWED_SERVICE_PATHS].join(', ')}`);
   process.exit(1);
 }
 
-const servicePath: string = rawServicePath;
+const servicePath = rawServicePath;
 const generatedPath = path.join(__dirname, '..', 'generated', servicePath);
 
 console.log(`\n📝 Processing generated files in ${generatedPath}...`);
