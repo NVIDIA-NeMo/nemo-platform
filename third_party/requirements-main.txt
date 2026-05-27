@@ -25,6 +25,8 @@
     #   nemo-agents-plugin
     #   nemo-anonymizer-plugin
     #   nemo-auditor-plugin
+    #   nemo-automodel-plugin
+    #   nemo-customizer-plugin
     #   nemo-data-designer-plugin
     #   nemo-evaluator-plugin
     #   nemo-guardrails-plugin
@@ -36,6 +38,8 @@
     #   nemo-agents-plugin
     #   nemo-anonymizer-plugin
     #   nemo-auditor-plugin
+    #   nemo-automodel-plugin
+    #   nemo-customizer-plugin
     #   nemo-data-designer-plugin
     #   nemo-evaluator-plugin
     #   nemo-guardrails-plugin
@@ -55,6 +59,7 @@
     #   nemo-platform
     #   nemoplatform
     #   nmp-auth
+    #   nmp-automodel
     #   nmp-core-mcp
     #   nmp-customizer
     #   nmp-entities
@@ -83,6 +88,8 @@
     # via nemo-agents-plugin
 -e ./plugins/nemo-anonymizer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-auditor ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+-e ./plugins/nemo-automodel ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+-e ./plugins/nemo-customizer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-data-designer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-evaluator ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-guardrails ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
@@ -95,9 +102,12 @@
     #   nemo-platform
     #   nemo-platform-ext
     #   nemo-platform-plugin
+    #   nmp-automodel
     #   nmp-common
     #   nmp-core-mcp
     #   nmp-entities
+-e ./services/automodel ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+    # via nemo-automodel-plugin
 -e ./services/core/auth ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via
     #   nemoplatform
@@ -174,6 +184,7 @@ aiofiles==25.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   aioboto3
     #   nemoguardrails
     #   ngcsdk
+    #   nmp-automodel
     #   nmp-common
     #   nmp-evaluator
     #   nvidia-nat-core
@@ -407,6 +418,7 @@ boto3==1.40.61 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (
     # via
     #   aiobotocore
     #   langchain-aws
+    #   nemo-agents-plugin
     #   ngcsdk
 botocore==1.40.61 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:17ebae412692fd4824f99cde0f08d50126dc97954008e5ba2b522eb049238aa7 \
@@ -414,6 +426,7 @@ botocore==1.40.61 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
     # via
     #   aiobotocore
     #   boto3
+    #   nemo-agents-plugin
     #   ngcsdk
     #   s3transfer
 botocore-stubs==1.42.41 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -706,11 +719,15 @@ data-designer-engine==0.6.0 ; (platform_machine == 'arm64' and sys_platform == '
 dataclasses-json==0.6.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:0dbf33f26c8d5305befd61b39d2b3414e8a407bedc2834dea9b8d642666fb40a \
     --hash=sha256:b6b3e528266ea45b9535223bc53ca645f5208833c29229e847b3f26a1cc55fc0
-    # via langchain-community
+    # via
+    #   langchain-community
+    #   nemo-guardrails-plugin
+    #   nmp-guardrails
 datasets==4.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:7ef95e62025fd122882dbce6cb904c8cd3fbc829de6669a5eb939c77d50e203d \
     --hash=sha256:9657e7140a9050db13443ba21cb5de185af8af944479b00e7ff1e00a61c8dbf1
     # via
+    #   nemo-customizer-plugin
     #   nemo-safe-synthesizer
     #   nmp-evaluator
     #   ragas
@@ -787,7 +804,6 @@ duckdb==1.5.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     # via
     #   data-designer-engine
     #   data-designer-nemo
-    #   nemo-data-designer-plugin
     #   nmp-files
     #   nmp-jobs
 durationpy==0.10 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -1232,6 +1248,7 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-platform-sdk
     #   nemoguardrails
     #   nmp-auth
+    #   nmp-automodel
     #   nmp-guardrails
     #   nmp-intake
     #   nmp-safe-synthesizer
@@ -1262,6 +1279,7 @@ huggingface-hub==1.15.0 ; (platform_machine == 'arm64' and sys_platform == 'darw
     #   nmp-evaluator
     #   nmp-intake
     #   tokenizers
+    #   transformers
 humanize==4.15.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:1dd098483eb1c7ee8e32eb2e99ad1910baefa4b75c3aff3a82f4d78688993b10 \
     --hash=sha256:b1186eb9f5a9749cd9cb8565aee77919dd7c8d076161cf44d70e59e3301e1769
@@ -1486,6 +1504,7 @@ jsonschema==4.23.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     #   mcp
     #   nemo-evaluator-sdk
     #   nemo-safe-synthesizer
+    #   nmp-automodel
 jsonschema-path==0.3.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:8365356039f16cc65fddffafda5f58766e34bebab7d6d105616ab52bc4297001 \
     --hash=sha256:f502191fdc2b22050f9a81c9237be9d27145b9001c55842bece5e94e382e52f8
@@ -1524,7 +1543,9 @@ langchain==1.2.14 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
 langchain-aws==1.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:1e2f8570328eae4907c3cf7e900dc68d8034ddc865d9dc96823c9f9d8cccb901 \
     --hash=sha256:8ec074615b42839e035354063717374c32c63f5028ef5221ba073fd5f3ef5e37
-    # via nvidia-nat-langchain
+    # via
+    #   nemo-agents-plugin
+    #   nvidia-nat-langchain
 langchain-classic==1.0.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:d9d9be38f7aa534ed0259c2410432e34a1f80b1d491e686749bb55af56479be3 \
     --hash=sha256:debbec8065e69b95108d2652e8d5c44f4516e19aa8d716c02ed2211c3aee099d
@@ -2101,6 +2122,7 @@ numpy==2.4.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     #   sacrebleu
     #   scikit-network
     #   scipy
+    #   transformers
 nvidia-ml-py==13.595.45 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:b65a7977f503d56154b14d683710125ef93594adb63fbf7e559336e3318f1376 \
     --hash=sha256:c9f34897fe0441ff35bc8f35baf80f830a20b0f4e6ce71e0a325bc0e66acf079
@@ -2108,37 +2130,33 @@ nvidia-ml-py==13.595.45 ; (platform_machine == 'arm64' and sys_platform == 'darw
     #   nemo-platform-ext
     #   nemo-platform-sdk
     #   nmp-common
-nvidia-nat-atif==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:b95979e24aae0ba07277ec20e993ae910278b2bd0b00ce3415037f02694a1ebb
+nvidia-nat-atif==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:65d471a366dfafe75cf94428bdba3007bd3e1368487e2e16fd62484298635334
     # via
-    #   nemo-agents-plugin
     #   nvidia-nat-core
     #   nvidia-nat-eval
-nvidia-nat-config-optimizer==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:a0e04114fc85df980b96766dec366bf4c7a2e08e6aaa4ce1531dd1bc6dadfcde
+nvidia-nat-config-optimizer==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:5b14cb63d1076f314f63039a4f659c0d4129f20b2bedc38b026ceee53da9e8f1
     # via nemo-agents-plugin
-nvidia-nat-core==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:590ae4bf36f79068605806de2044429f29001a206d31a7297a4f1dacbedf9eb1
+nvidia-nat-core==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:fb4691ad3437e0e8b8d84256d36da18085ba1fc6dd47861e7a7e64c6a808390c
     # via
     #   nemo-agents-example-calculator
     #   nemo-agents-plugin
     #   nvidia-nat-config-optimizer
     #   nvidia-nat-langchain
     #   nvidia-nat-opentelemetry
-nvidia-nat-eval==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:44adcc9f8534b3a0abfde521aabc1e450ea52ed3d57381fcaf9ace7cf67b15c4
+nvidia-nat-eval==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:724fa6410a7a66050b525d75660d7fb753ed83aba32c37d31111ae322d54a548
     # via
-    #   nemo-agents-plugin
     #   nvidia-nat-config-optimizer
     #   nvidia-nat-langchain
-nvidia-nat-langchain==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:544d52d0e6d6ae8c6b9da11ee5b471ba119e1704b98ed1e3119ab18c88c0d87c
+nvidia-nat-langchain==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:e00812f9d2c602bb59cc006081a5deef2e71cc46357e70f51503780196f9cc20
     # via nemo-agents-plugin
-nvidia-nat-opentelemetry==1.7.0rc3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:dbe77666b0c8143291995a76a591441c243d41a3db5c1b79560d79a0885fed2c
-    # via
-    #   nemo-agents-plugin
-    #   nvidia-nat-langchain
+nvidia-nat-opentelemetry==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:e468fb4bd2a9e2fa4fb0d67daa1dea22b900c70301249d2785aa96f305808f7f
+    # via nvidia-nat-langchain
 oauthlib==3.3.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:0f0f8aa759826a193cf66c12ea1af1637f87b9b4622d46e866952bb022e538c9 \
     --hash=sha256:88119c938d2b8fb88561af5f6ee0eec8cc8d552b7bb1f712743136eb7523b7a1
@@ -2469,6 +2487,7 @@ packaging==26.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   opentelemetry-instrumentation-sqlalchemy
     #   optuna
     #   pytest
+    #   transformers
 pandas==2.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:1d37b5848ba49824e5c30bedb9c830ab9b7751fd049bc7914533e01c65f79791 \
     --hash=sha256:318d77e0e42a628c04dc56bcef4b40de67918f7041c2b061af1da41dcff670ac \
@@ -2876,6 +2895,8 @@ pydantic==2.12.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   mcp
     #   nemo-anonymizer
     #   nemo-auditor-plugin
+    #   nemo-automodel-plugin
+    #   nemo-customizer-plugin
     #   nemo-evaluator-plugin
     #   nemo-evaluator-sdk
     #   nemo-platform-ext
@@ -2885,6 +2906,7 @@ pydantic==2.12.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nemoguardrails
     #   nemoplatform
     #   nmp-auth
+    #   nmp-automodel
     #   nmp-common
     #   nmp-customizer
     #   nmp-entities
@@ -2979,9 +3001,11 @@ pydantic-settings==2.8.1 ; (platform_machine == 'arm64' and sys_platform == 'dar
     #   fastapi
     #   langchain-community
     #   mcp
+    #   nemo-automodel-plugin
     #   nemo-platform-plugin
     #   nemo-safe-synthesizer
     #   nmp-auth
+    #   nmp-automodel
     #   nmp-common
     #   nmp-customizer
     #   nmp-entities
@@ -3157,6 +3181,7 @@ pyyaml==6.0.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nvidia-nat-core
     #   optuna
     #   sqlfluff
+    #   transformers
     #   uvicorn
     #   watchdog
 ragas==0.3.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -3223,6 +3248,7 @@ regex==2025.7.34 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   sacrebleu
     #   sqlfluff
     #   tiktoken
+    #   transformers
 requests==2.33.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:18817f8c57c6263968bc123d237e3b8b08ac046f5456bd1e307ee8f4250d3517 \
     --hash=sha256:4e6d1ef462f3626a1f0a0a9c42dd93c63bad33f9f1c1937509b8c5c8718ab56a
@@ -3472,6 +3498,25 @@ sacrebleu==2.6.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     # via
     #   nemo-evaluator-sdk
     #   nemoplatform
+safetensors==0.8.0rc0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:2b40d25911c5f241cad874ad1ea4100a9a9e3c2d469a73a38b47af759d239f44 \
+    --hash=sha256:2ef8ab6704ea895cb13c89d5825f49e87328cac2093e7e45fb3cb615bd457fb2 \
+    --hash=sha256:35bf158d1555df7a529c844ae8ab89355c9df34546de0f94c47d538902bcc07c \
+    --hash=sha256:50c56d7b6a2f44c3f4ab130bfeb6a8a51ce72bec152805f9c5a46bdf6addb6c5 \
+    --hash=sha256:79547625fa84f3a9b28b933e44c67d012edf22a0c7170ed68835b9f467dda836 \
+    --hash=sha256:7e7cc49c69d8df5aaaf332532cd636609727599f81294bf4e5de56a2e3b70a10 \
+    --hash=sha256:94d9c0d569a124fe3074b9934031c2cdcfab12d4d7b64ae17343fac4a92081e8 \
+    --hash=sha256:98b0f6f2a14a6bde7f6acaa5f0381baef9a87c6a3124338affe4e4bb40bf826b \
+    --hash=sha256:a132d3cf5f63c3f02b82c4abf65c58d33a8422199ae34e09a9a7edb661bd2ca9 \
+    --hash=sha256:b4168a839ff287dc26b0d843e1760962b2e92ed5645f95e8ab3f4b9401807e6a \
+    --hash=sha256:b4fcccda047df747e2463744428cba352d99527c4e52545d07f8c3a8583136f1 \
+    --hash=sha256:b7f8180f8c119dce85da7913904ccf4a0227adf095eb63f1732a6729c2672cb1 \
+    --hash=sha256:bf0d366f75f63867f1ede90f87090450c7cec320da1fc2a597f9bb8cb73460db \
+    --hash=sha256:c052d1706567487bc103088fe02daf05132dbccbbc3d798753541b66eb37fb14 \
+    --hash=sha256:c1e7a6a1c0dd0128888bc47aca0a9625855673f44f275bf4073088563bf7121b \
+    --hash=sha256:d42f6c44773901ce1a021d2372747a559e9ec5aa59d044c0d711c273bff21c67 \
+    --hash=sha256:d6532e381c492f5a6b4e82706b232f003e9e697b77d6c2eb7e806d11b578d00b
+    # via transformers
 scikit-network==0.33.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:2408d3f4c81256a3193d536aad4a6ffcfbb05d096abe6a9cc0b6b5e275df876d \
     --hash=sha256:2866b16aed9ef25ba42cb2f2e44ef2ad079337f336ce48d0604b55fa4af87688 \
@@ -3627,9 +3672,9 @@ sqlalchemy==2.0.48 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     #   nmp-intake
     #   optuna
     #   sqlmodel
-sqlfluff==3.4.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:115e3f1bf1dc1318c58426ba3299eb682642cb67b5d12d9ea7c42b5e23aeabd6 \
-    --hash=sha256:6e1ea2d39b20cc791a1a009c234afaf043b448c7f2eb1c11551316fb41f36f47
+sqlfluff==4.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:83dd4c081afb48c0af861833015a18b13d52726bfe52a286246dbd7a64b7d111 \
+    --hash=sha256:ae11123ca4a697abadbd2783f85f04e58c36e7dd26ae8024f400efccc6a44631
     # via data-designer-engine
 sqlmodel==0.0.37 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:2137a4045ef3fd66a917a7717ada959a1ceb3630d95e1f6aaab39dd2c0aef278 \
@@ -3698,6 +3743,7 @@ tenacity==9.1.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   instructor
     #   langchain-community
     #   langchain-core
+    #   nmp-automodel
     #   nmp-models
 tiktoken==0.12.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:01d99484dc93b129cd0964f9d34eee953f2737301f18b3c7257bf368d7615baa \
@@ -3756,6 +3802,7 @@ tokenizers==0.22.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     #   fastembed
     #   langchain-huggingface
     #   litellm
+    #   transformers
 tomlkit==0.14.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:592064ed85b40fa213469f81ac584f67a4f2992509a7c3ea2d632208623a3680 \
     --hash=sha256:cf00efca415dbd57575befb1f6634c4f42d2d87dbba376128adb42c121b87064
@@ -3787,6 +3834,11 @@ tqdm==4.67.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     #   optuna
     #   ragas
     #   sqlfluff
+    #   transformers
+transformers==5.3.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:009555b364029da9e2946d41f1c5de9f15e6b1df46b189b7293f33a161b9c557 \
+    --hash=sha256:50ac8c89c3c7033444fb3f9f53138096b997ebb70d4b5e50a2e810bf12d3d29a
+    # via nemo-customizer-plugin
 typer==0.24.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:112c1f0ce578bfb4cab9ffdabc68f031416ebcc216536611ba21f04e9aa84c9e \
     --hash=sha256:e39b4732d65fbdcde189ae76cf7cd48aeae72919dea1fdfc16593be016256b45
@@ -3797,12 +3849,15 @@ typer==0.24.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   huggingface-hub
     #   instructor
     #   nemo-auditor-plugin
+    #   nemo-automodel-plugin
+    #   nemo-customizer-plugin
     #   nemo-evaluator-plugin
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
     #   nemoguardrails
     #   ragas
+    #   transformers
 types-aioboto3==15.5.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:5769a1c3df7ca1abedf3656ddf0b970c9b0436d0f88cf4686040b55cd2a02925 \
     --hash=sha256:8aed7c9b6fe9b59e6ce74f7a6db7b8a9912a34c8f80ed639fac1fa59d6b20aa1

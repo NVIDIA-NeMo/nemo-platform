@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import pytest
-
 from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
 from nemo_platform_plugin.authz_discovery import _collect_from_plugin_surface, discover_authz_contributions
 from nemo_platform_plugin.service import NemoService

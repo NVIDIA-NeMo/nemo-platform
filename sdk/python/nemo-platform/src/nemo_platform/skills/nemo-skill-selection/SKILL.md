@@ -55,7 +55,6 @@ Match the user's intent to one downstream skill. Pick exactly one.
 
 **Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
-
 If two rows fit, pick the earliest one in the lifecycle (setup before build before try). If nothing matches, ask one disambiguating question with the relevant rows as a numbered list.
 
 ## Pre-flight

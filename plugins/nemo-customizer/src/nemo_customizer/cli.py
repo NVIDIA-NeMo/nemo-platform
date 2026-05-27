@@ -8,8 +8,8 @@ from __future__ import annotations
 from typing import ClassVar
 
 import typer
-from nemo_platform_plugin.discovery import discover_customization_contributors
 from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.discovery import discover_customization_contributors
 
 
 class CustomizationCLI(NemoCLI):
@@ -28,8 +28,7 @@ class CustomizationCLI(NemoCLI):
         contributors = discover_customization_contributors()
         if not contributors:
             typer.echo(
-                "No customization contributors installed. "
-                "Add nemo-automodel (or another backend) to enabled-plugins.",
+                "No customization contributors installed. Add nemo-automodel (or another backend) to enabled-plugins.",
                 err=True,
             )
             return app

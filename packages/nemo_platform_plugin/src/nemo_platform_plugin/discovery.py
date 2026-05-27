@@ -52,8 +52,8 @@ from nemo_platform_plugin.interface import PluginManifest
 if TYPE_CHECKING:
     from nemo_platform_plugin.cli import NemoCLI
     from nemo_platform_plugin.controller import NemoController
-    from nemo_platform_plugin.function import NemoFunction
     from nemo_platform_plugin.customization_contributor import CustomizationContributor
+    from nemo_platform_plugin.function import NemoFunction
     from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
     from nemo_platform_plugin.job import NemoJob
     from nemo_platform_plugin.seed import NemoSeedJob
@@ -501,7 +501,6 @@ def discover_customization_contributors() -> dict[str, CustomizationContributor]
     instance. Broken contributors are skipped with a warning (same fault isolation as
     :func:`discover`).
     """
-    from nemo_platform_plugin.customization_contributor import CustomizationContributor
 
     result: dict[str, CustomizationContributor] = {}
 

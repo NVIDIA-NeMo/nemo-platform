@@ -56,13 +56,14 @@ class AutomodelContributor:
         ]
 
     def get_cli(self) -> typer.Typer:
-        from nemo_automodel_plugin.cli.inputs import apply_automodel_job_cli_overrides
         from nemo_platform_plugin.commands import (
             _add_explain_command,
             _add_run_command,
             _add_submit_command,
         )
         from nemo_platform_plugin.scheduler import NemoJobScheduler
+
+        from nemo_automodel_plugin.cli.inputs import apply_automodel_job_cli_overrides
 
         app = typer.Typer(
             name=self.name,

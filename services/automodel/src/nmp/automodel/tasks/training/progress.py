@@ -17,9 +17,9 @@ import logging
 import os
 from typing import Any
 
-from nmp.common.sdk_factory import get_task_sdk
 from nmp.automodel.app.constants import SERVICE_NAME
 from nmp.automodel.app.jobs.context import NMPJobContext
+from nmp.common.sdk_factory import get_task_sdk
 
 logger = logging.getLogger(__name__)
 

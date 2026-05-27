@@ -8,21 +8,21 @@ import gzip
 import hashlib
 import io
 import json
+import logging
 import tarfile
 import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-import logging
 import yaml
 from nmp.common.auth import ALL_WORKSPACES
-
-logger = logging.getLogger(__name__)
 from nmp.common.auth.authz_format import validate_static_authz_data
 from nmp.common.config import get_service_config
 from nmp.common.entities import EntityClient
 from nmp.core.auth.config import AuthServiceConfig
 from nmp.core.auth.entities import RoleBindingEntity
+
+logger = logging.getLogger(__name__)
 
 # Bundle cache configuration
 _bundle_cache: Optional[Tuple[bytes, str, float]] = None  # (bundle_bytes, etag, timestamp)

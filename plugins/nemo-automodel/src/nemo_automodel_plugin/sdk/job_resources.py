@@ -8,10 +8,10 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote
 
-from nemo_automodel_plugin.sdk import http_utils
-from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
 from pydantic import BaseModel
+
+from nemo_automodel_plugin.sdk import http_utils
 
 
 class AutomodelJobRecord(BaseModel):
