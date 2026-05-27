@@ -37,8 +37,10 @@ class AgentsService(NemoService):
             deployments,
             gateway,
         )
+        from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
         from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
         from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+        from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
         from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 
         _prefix = "/v2/workspaces/{workspace}"
@@ -60,6 +62,12 @@ class AgentsService(NemoService):
                 description="Submit and track agent evaluation jobs",
                 prefix=_prefix,
             ),
+            # Distinct service_name per job type so each list endpoint filters
+            # to rows of its own type only.  add_job_routes filters by
+            # source=service_name; if all jobs shared the default service_name
+            # ("nemo-agents-plugin"), listing /jobs/evaluate would pull in rows
+            # from sibling types and 500 on Pydantic validation against the
+            # wrong schema.
             RouterSpec(
                 add_job_routes(EvaluateSuiteJob, service_name="nemo-agents-plugin-evaluate-suite"),
                 tag="Agents",
@@ -70,6 +78,18 @@ class AgentsService(NemoService):
                 add_job_routes(OptimizeSkillsJob, service_name="nemo-agents-plugin-optimize-skills"),
                 tag="Agents",
                 description="Submit and track optimize-skills jobs (skills-improvement loop).",
+                prefix=_prefix,
+            ),
+            RouterSpec(
+                add_job_routes(AnalyzeBatchJob, service_name="nemo-agents-plugin-analyze"),
+                tag="Agents",
+                description="Submit and track analyze jobs (eval-suite batch analysis).",
+                prefix=_prefix,
+            ),
+            RouterSpec(
+                add_job_routes(OptimizeAgentJob, service_name="nemo-agents-plugin-optimize"),
+                tag="Agents",
+                description="Submit and track optimize jobs (prompt tuning, HPO).",
                 prefix=_prefix,
             ),
         ]

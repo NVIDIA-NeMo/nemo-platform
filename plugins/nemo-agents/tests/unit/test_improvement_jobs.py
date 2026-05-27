@@ -242,3 +242,92 @@ async def test_optimize_skills_compile_rejects_relative_paths() -> None:
             job_name=None,
             async_sdk=MagicMock(),
         )
+
+
+# ---------------------------------------------------------------------------
+# AnalyzeBatchJob + OptimizeAgentJob — newly added compile() paths
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_analyze_compile_produces_single_subprocess_step() -> None:
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchConfig, AnalyzeBatchJob
+
+    spec = AnalyzeBatchConfig(batch="/abs/batch", mechanical_only=True)
+    platform_spec = await AnalyzeBatchJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=MagicMock(),
+        job_name=None,
+        async_sdk=MagicMock(),
+    )
+    step = next(iter(platform_spec["steps"]))
+    assert step["name"] == "analyze"
+    executor = step["executor"]
+    assert executor.get("provider") == "subprocess"
+    assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.analyze"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_compile_requires_anthropic_secret_unless_mechanical_only() -> None:
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchConfig, AnalyzeBatchJob
+
+    spec = AnalyzeBatchConfig(batch="/abs/batch")  # mechanical_only defaults False, secret unset
+    with pytest.raises(PlatformJobCompilationError, match="anthropic_api_key_secret"):
+        await AnalyzeBatchJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_analyze_compile_rejects_relative_batch_path() -> None:
+    from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchConfig, AnalyzeBatchJob
+
+    spec = AnalyzeBatchConfig(batch="./my-batch", mechanical_only=True)
+    with pytest.raises(PlatformJobCompilationError, match="'batch' must be an absolute path"):
+        await AnalyzeBatchJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )
+
+
+@pytest.mark.asyncio
+async def test_optimize_agent_compile_produces_single_subprocess_step() -> None:
+    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
+
+    spec = OptimizeAgentSpec(agent=None, optimize_config="/abs/optimize.yml")
+    platform_spec = await OptimizeAgentJob.compile(
+        workspace="staging",
+        spec=spec,
+        entity_client=MagicMock(),
+        job_name=None,
+        async_sdk=MagicMock(),
+    )
+    step = next(iter(platform_spec["steps"]))
+    assert step["name"] == "optimize-agent"
+    executor = step["executor"]
+    assert executor.get("provider") == "subprocess"
+    assert executor.get("command") == ["python", "-m", "nemo_agents_plugin.tasks.optimize"]
+    assert step["config"]["workspace"] == "staging"
+
+
+@pytest.mark.asyncio
+async def test_optimize_agent_compile_rejects_relative_optimize_config() -> None:
+    from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob, OptimizeAgentSpec
+
+    spec = OptimizeAgentSpec(agent=None, optimize_config="./relative.yml")
+    with pytest.raises(PlatformJobCompilationError, match="'optimize_config' must be an absolute path"):
+        await OptimizeAgentJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=MagicMock(),
+            job_name=None,
+            async_sdk=MagicMock(),
+        )

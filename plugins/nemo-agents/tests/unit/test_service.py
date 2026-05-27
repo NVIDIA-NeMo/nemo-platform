@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 from fastapi.routing import APIRoute
+from nemo_agents_plugin.jobs.analyze_batch import AnalyzeBatchJob
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
 from nemo_agents_plugin.jobs.evaluate_suite import EvaluateSuiteJob
+from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
 from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 from nemo_agents_plugin.service import AgentsService
 from nemo_platform_plugin.scheduler import submit_path_for
@@ -36,3 +38,13 @@ def test_evaluate_suite_job_route_matches_generated_submit_path() -> None:
 def test_optimize_skills_job_route_matches_generated_submit_path() -> None:
     mounted = _mounted_post_paths_for("Submit and track optimize-skills jobs (skills-improvement loop).")
     assert submit_path_for(OptimizeSkillsJob, workspace="{workspace}") in mounted
+
+
+def test_analyze_job_route_matches_generated_submit_path() -> None:
+    mounted = _mounted_post_paths_for("Submit and track analyze jobs (eval-suite batch analysis).")
+    assert submit_path_for(AnalyzeBatchJob, workspace="{workspace}") in mounted
+
+
+def test_optimize_job_route_matches_generated_submit_path() -> None:
+    mounted = _mounted_post_paths_for("Submit and track optimize jobs (prompt tuning, HPO).")
+    assert submit_path_for(OptimizeAgentJob, workspace="{workspace}") in mounted
