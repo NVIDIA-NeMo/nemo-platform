@@ -13350,12 +13350,8 @@ components:
           type: string
         cost_usd:
           title: Cost Usd
-          description: Total estimated cost of this model call in USD. Alias for cost_total_usd.
-          type: number
-          minimum: 0.0
-        cost_total_usd:
-          title: Cost Total Usd
-          description: Total estimated cost of this model call in USD.
+          description: Total estimated cost of this model call in USD. This matches
+            ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
           type: number
           minimum: 0.0
         cost_input_usd:

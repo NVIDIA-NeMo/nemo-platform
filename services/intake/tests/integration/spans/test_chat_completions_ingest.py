@@ -148,6 +148,18 @@ def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
     assert Decimal(str(span["cost_details"]["cache_write"])) == Decimal("0.0002")
 
 
+def test_chat_completions_ingest_rejects_producer_cost_total_alias(client: TestClient):
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-cost-total-alias"),
+        "session_id": "session-cost-total-alias",
+        "cost_total_usd": 0.0061,
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 422, response.text
+
+
 def test_chat_completions_ingest_accepts_anthropic_style_usage(client: TestClient):
     body = {
         "request": _openai_request(model="aws/anthropic/bedrock-claude-opus-4-7"),

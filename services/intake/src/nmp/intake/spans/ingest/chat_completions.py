@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any, Self
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
 from nmp.intake.entities.values import FlexibleEntryRequest, FlexibleEntryResponse
@@ -24,7 +24,7 @@ from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, stable_id, utc_now
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
@@ -54,11 +54,10 @@ class ChatCompletionsIngestRequest(BaseModel):
     provider: str | None = None
     cost_usd: NonNegativeFloat | None = Field(
         default=None,
-        description="Total estimated cost of this model call in USD. Alias for cost_total_usd.",
-    )
-    cost_total_usd: NonNegativeFloat | None = Field(
-        default=None,
-        description="Total estimated cost of this model call in USD.",
+        description=(
+            "Total estimated cost of this model call in USD. This matches ATIF step "
+            "metrics; Intake stores it as semantic cost_total_usd on spans."
+        ),
     )
     cost_input_usd: NonNegativeFloat | None = Field(
         default=None,
@@ -72,16 +71,6 @@ class ChatCompletionsIngestRequest(BaseModel):
         default_factory=dict,
         description="Additional estimated cost breakdown fields in USD.",
     )
-
-    @model_validator(mode="after")
-    def validate_cost_aliases(self) -> Self:
-        if (
-            self.cost_usd is not None
-            and self.cost_total_usd is not None
-            and not math.isclose(self.cost_usd, self.cost_total_usd, rel_tol=0.0, abs_tol=1e-12)
-        ):
-            raise ValueError("cost_usd and cost_total_usd must match when both are set")
-        return self
 
 
 class ChatCompletionsIngestResponse(BaseModel):
@@ -309,9 +298,7 @@ def _decimal_or_none(value: float | None) -> Decimal | None:
 
 def _cost_total_usd(body: ChatCompletionsIngestRequest) -> float | None:
     return (
-        body.cost_total_usd
-        if body.cost_total_usd is not None
-        else body.cost_usd
+        body.cost_usd
         if body.cost_usd is not None
         else body.cost_details.get("total_cost")
         if body.cost_details.get("total_cost") is not None
