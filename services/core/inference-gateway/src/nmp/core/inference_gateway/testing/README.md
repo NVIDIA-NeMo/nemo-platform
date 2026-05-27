@@ -8,15 +8,43 @@ code (`process_request`, `process_response`, `process_post_response`)
 runs with its production implementation — the only mock is the upstream
 model provider itself, which every offline test needs.
 
+The heavy ASGI stack (FastAPI app, SQLite-backed entity store, dependency
+wiring, `/health/ready` polling, workspace seeding) is built **once per
+test file** and shared across every test in the module. Per-test concerns
+(mock-NIM handler mount, post-response list reset, entity teardown) still
+run per test. See [Module scope and xdist](#module-scope-and-xdist) for
+the resulting pytest command-line constraints.
+
 ## Quick start
 
-### 1. Re-export the fixture in your plugin's `conftest.py`
+### 1. Re-export the fixtures in your plugin's `conftest.py`
 
 ```python
 # plugins/<your-plugin>/tests/integration/conftest.py
-from nmp.core.inference_gateway.testing.fixtures import igw_plugin_harness
+from nmp.core.inference_gateway.testing.fixtures import (
+    _igw_app_context,
+    _igw_extra_services,
+    igw_plugin_harness,
+)
 
-__all__ = ["igw_plugin_harness"]
+__all__ = ["_igw_app_context", "_igw_extra_services", "igw_plugin_harness"]
+```
+
+`_igw_app_context` and `_igw_extra_services` are module-scoped
+fixtures that `igw_plugin_harness` depends on; pytest needs them in
+the same conftest scope to resolve the dependency chain. Add
+`_igw_loopback_context` too if you use `igw_loopback_harness`.
+
+#### Mounting extra services
+
+Override `_igw_extra_services` in your conftest to mount additional
+services on the module app (e.g. `GuardrailsService` for entity-backed
+guardrail-config tests):
+
+```python
+@pytest.fixture(scope="module")
+def _igw_extra_services() -> tuple[ServiceFactory, ...]:
+    return (GuardrailsService,)
 ```
 
 ### 2. Write a test
@@ -57,8 +85,8 @@ def test_safe_input_reaches_backend(igw_plugin_harness: IGWPluginHarness) -> Non
 
 | Fixture | When to use |
 |---|---|
-| `igw_plugin_harness` | Default. No real port for IGW; plugin outbound HTTP goes directly to the mock NIM via `nim_base_url`. |
-| `igw_loopback_harness` | Factory for tests where plugin outbound HTTP needs to traverse IGW (e.g. the plugin calls `get_openai_compatible_inference_url_and_model` and the resulting URL must be reachable). Call `h = igw_loopback_harness()`, which includes IGW + Models by default, or pass extra service classes like `igw_loopback_harness(GuardrailsService)` to mount additional routes. Costs a uvicorn thread + per-request `aiohttp.ClientSession` override. |
+| `igw_plugin_harness` | Default. No real port for IGW; plugin outbound HTTP goes straight to the mock NIM via `nim_base_url`. |
+| `igw_loopback_harness` | Factory for tests where plugin outbound HTTP needs to traverse IGW (e.g. the plugin calls `get_openai_compatible_inference_url_and_model` and the returned URL must be reachable). Call as `h = igw_loopback_harness()` — passing extra services raises `TypeError`; use `_igw_extra_services` instead. Costs a (module-scoped) uvicorn thread plus a per-test `aiohttp.ClientSession` override (scoped to loopback tests only, so plain `igw_plugin_harness` tests in the same module aren't affected). |
 
 ### 4. Choose a plugin registration method
 
@@ -92,7 +120,7 @@ These run the same code as production:
 4. **`get_platform_config()`** — patched in the loopback variant so the resolver returns the loopback URL.
 5. **`global_http_client`** — replaced with per-request sessions in the loopback variant (loop-binding workaround).
 6. **Passthrough VM auto-creation** — the `provider_reconciler` doesn't run. Tests needing the resolver must create passthrough VMs manually.
-7. **Background cache-refresh task** — tests refresh synchronously inside `add_provider` / `add_virtual_model`.
+7. **Background cache-refresh task** — disabled (`refresh_model_cache_interval_sec=0`) so the 3-second loop can't fire between tests in a module and re-populate the cache with stale rows. Tests refresh synchronously inside `add_provider` / `add_virtual_model`.
 8. **Authorization** — disabled by default (`auth_enabled=False`).
 
 ## What cannot be tested
@@ -109,11 +137,19 @@ These run the same code as production:
 
 | Method | Description |
 |---|---|
-| `add_provider(workspace, served_models, ...)` | Register a `ModelProvider` routed at the mock NIM. Call **before** `add_virtual_model`. |
-| `add_virtual_model(workspace, name, ...)` | Create a `VirtualModel` and refresh caches so it routes immediately. |
+| `add_provider(workspace, served_models, ...)` | Register a `ModelProvider` routed at the mock NIM. Call **before** `add_virtual_model`. Tracked for entity-store cleanup. |
+| `add_virtual_model(workspace, name, ...)` | Create a `VirtualModel` and refresh caches so it routes immediately. Tracked for entity-store cleanup. |
+| `create_secret(workspace, name, value, ...)` | Create a Secret via the SDK and track it for harness cleanup. Use this instead of `harness.sdk.secrets.create(...)` so the secret is deleted between tests in a module-scoped fixture. |
 | `mock_chat_completions(model, responses)` | Queue mock responses for a model. Responses are consumed in order; the last is reused if drained. |
 | `load_plugin(name)` / `use_plugin(name, instance)` | Register a plugin (context manager). |
 | `refresh_caches()` | Full model + VM cache refresh. Needed when `api_key_secret_name` is set on a provider. |
+
+### Workspace
+
+`harness.workspace` — the workspace the module-scoped fixture seeded
+(`"default"` today). Use this instead of hardcoding `"default"` in
+test bodies; the day the harness moves to per-test workspaces, only
+the fixture changes.
 
 ### Inference
 
@@ -154,6 +190,89 @@ Defined in `nmp.testing.mock_chat_completions`:
 | `ErrorResponse(status_code, body)` | Error response (status >= 400). |
 | `chat_completion(content, model, ...)` | Builder for a non-streaming response body. |
 | `chat_completion_chunk(content, model, ...)` | Builder for a single SSE chunk body. |
+
+## Module scope and xdist
+
+The expensive ASGI stack is wrapped in the module-scoped
+`_igw_app_context`. Without that, every parametrised test pays the
+full ~3–10s build cost; with it, the build amortises across the file.
+
+**xdist requirement.** Only `--dist=loadfile` (one file per worker) and
+`--dist=loadscope` (one fixture scope per worker) preserve module
+scope. The default `--dist=load` distributes individual tests across
+workers, so each worker rebuilds the app from scratch and defeats the
+optimisation. Run integration tests with:
+
+```bash
+uv run --frozen pytest plugins/<plugin>/tests/integration --dist=loadfile -n auto
+```
+
+`loadfile` is the safer default — it also keeps every test in a file
+on the same worker, matching the fixture lifecycle exactly.
+
+## Entity teardown across tests
+
+The harness tracks every entity it creates and deletes them on
+teardown in FK order: virtual models → providers → secrets. Each
+delete is guarded so one failure can't mask the test's real failure.
+After deletion the in-memory caches are rebuilt so the next test's
+`add_provider` doesn't see ghost `ModelProviderInfo` rows.
+
+**Only entities created through the harness are tracked.** A direct
+`harness.sdk.<entity>.create(...)` call leaks across tests under
+module scope, and may then be picked up by the next
+`refresh_model_cache` — triggering `notify_upserted` on a dead VM, or
+making `add_provider` see stale provider rows.
+
+For secrets, use `harness.create_secret(...)`. For other entity types
+you need to create outside the harness, either append to the relevant
+tracking list yourself (e.g. `harness._secrets.append((ws, name))`) or
+delete in an explicit `try/finally` around the test body.
+
+## Plugin lifecycle and shared SDK clients
+
+`use_plugin` / `load_plugin` run the plugin's `on_startup` on enter
+and `on_shutdown` on exit. The catch with module scope: the shared
+SDK HTTP client now lives across tests, so a plugin's `on_shutdown`
+calling `await sdk.close()` (as `nemo-guardrails` does) would close
+the shared client and break every later test in the module.
+
+The module fixture monkey-patches the shared client's `aclose` to a
+no-op for the module's lifetime. `ASGITransport` is in-process so
+nothing actually leaks. Plugin authors don't need to do anything
+special — `on_shutdown` still runs; only the close is intercepted.
+
+If your plugin owns separate resources (custom pools, background
+tasks, on-disk caches), close those normally — only the shared SDK's
+close is intercepted.
+
+## Limitations under module scope
+
+A few patterns that worked under function scope quietly break under
+module scope:
+
+* **Function-scoped autouse `monkeypatch` fixtures that need to
+  affect service startup.** `_igw_app_context` builds the app —
+  including every service's `on_startup` — before any function-scoped
+  fixture runs, so `monkeypatch.setenv` in a per-test autouse fixture
+  lands too late. Set the value at conftest import time
+  (`os.environ.setdefault(...)` at module level) or in a
+  `scope="module", autouse=True` fixture. The `nemo-guardrails`
+  conftest's `HF_HUB_OFFLINE` setup is the worked example.
+* **Direct `harness.sdk.<entity>.create(...)` calls** — leaks; see
+  [Entity teardown](#entity-teardown-across-tests).
+* **Per-call extra services to `igw_loopback_harness`** — now raises
+  `TypeError`. Override `_igw_extra_services` instead.
+* **Entry-point-registered plugins won't get
+  `on_virtual_model_destroyed`** on teardown — only `registry.evict`
+  runs, so any per-VM state the plugin tracks leaks across tests in
+  the module. Register such plugins per-test via
+  `harness.use_plugin` / `harness.load_plugin` so the plugin instance
+  is discarded with the test.
+* **Class-level state on plugins under `load_plugin`** is shared
+  across the module. `load_plugin` builds a fresh instance per test,
+  so instance state is fine — keep caches on the instance, not on
+  the class.
 
 ## File layout
 

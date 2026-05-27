@@ -16,11 +16,9 @@ import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
-from nmp.guardrails.service import GuardrailsService
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
 from .utils import (
-    DEFAULT_WORKSPACE,
     GUARDRAILS_PLUGIN_NAME,
     RailType,
     make_guardrails_test_data_names,
@@ -41,9 +39,20 @@ class TopicControlTestDataNames:
     topic_control_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> TopicControlTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    topic_control_model = make_served_model(test_id=base_test_data_names.test_id, prefix="tc-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> TopicControlTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    topic_control_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="tc-model",
+        workspace=workspace,
+    )
 
     return TopicControlTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -105,17 +114,17 @@ class TestTopicControl:
         return "off-topic"
 
     @staticmethod
-    def _middleware_call(config_name: str) -> MiddlewareCallParam:
+    def _middleware_call(workspace: str, config_name: str) -> MiddlewareCallParam:
         return {
             "name": GUARDRAILS_PLUGIN_NAME,
             "config_type": GUARDRAILS_PLUGIN_CONFIG_TYPE,
-            "config_id": f"{DEFAULT_WORKSPACE}/{config_name}",
+            "config_id": f"{workspace}/{config_name}",
         }
 
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=DEFAULT_WORKSPACE)
+            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -153,10 +162,10 @@ class TestTopicControl:
         return {"models": models, "rails": rails, "prompts": prompts}
 
     def _setup_entity_backed_vm(self, harness: IGWLoopbackHarness) -> TopicControlTestDataNames:
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -164,7 +173,7 @@ class TestTopicControl:
             },
         )
         harness.sdk.guardrail.configs.create(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed topic-control config for integration tests",
             data=self._config_data(
@@ -174,15 +183,15 @@ class TestTopicControl:
             ),
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.request_virtual_model_name,
             default_model_entity=test_data_names.main_model_entity_ref,
-            request_middleware=[self._middleware_call(test_data_names.guardrail_config_name)],
+            request_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
         )
         return test_data_names
 
@@ -208,9 +217,9 @@ class TestTopicControl:
             )
 
         response = harness.chat_completions(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             body={
-                "model": f"{DEFAULT_WORKSPACE}/{test_data_names.request_virtual_model_name}",
+                "model": f"{harness.workspace}/{test_data_names.request_virtual_model_name}",
                 "messages": [{"role": "user", "content": user_input}],
             },
         )
@@ -222,7 +231,7 @@ class TestTopicControl:
         )
         harness.assert_request_messages_contain(test_data_names.topic_control_entity_ref, user_input)
         guardrails_data: dict[str, Any] = response.get("guardrails_data") or {}
-        assert guardrails_data.get("config_ids") == [f"{DEFAULT_WORKSPACE}/{test_data_names.guardrail_config_name}"]
+        assert guardrails_data.get("config_ids") == [f"{harness.workspace}/{test_data_names.guardrail_config_name}"]
 
         if expect_blocked:
             harness.assert_no_calls_to(test_data_names.main_model_served_name)
@@ -249,7 +258,7 @@ class TestTopicControl:
         expect_blocked: bool,
     ) -> None:
         """Input topic-control rails should block off-topic user messages before they reach the backend."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         user_input = self.USER_INPUT_OFF_TOPIC if expect_blocked else self.USER_INPUT_ON_TOPIC
         topic_control_response = (

@@ -16,7 +16,6 @@ from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness, IGWPl
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
 from .utils import (
-    DEFAULT_WORKSPACE,
     GUARDRAILS_PLUGIN_NAME,
     RailType,
     make_guardrail_config,
@@ -89,9 +88,20 @@ class ContentSafetyTestDataNames:
     content_safety_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> ContentSafetyTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    content_safety_model = make_served_model(test_id=base_test_data_names.test_id, prefix="cs-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> ContentSafetyTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    content_safety_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="cs-model",
+        workspace=workspace,
+    )
 
     return ContentSafetyTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -237,7 +247,7 @@ class TestContentSafety:
         :meth:`test_resolver_fills_content_safety_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         user_input = self.UNSAFE_USER_INPUT if expect_blocked else self.USER_INPUT
         content_safety_response = (
@@ -256,7 +266,7 @@ class TestContentSafety:
                 responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
             )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -265,13 +275,13 @@ class TestContentSafety:
         )
         # Passthrough VM so body["model"] (main entity ref) resolves to the mock NIM URL.
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(
                 rail_types=[RailType.INPUT],
@@ -281,13 +291,13 @@ class TestContentSafety:
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": user_input}],
@@ -342,7 +352,7 @@ class TestContentSafety:
         :meth:`test_resolver_fills_content_safety_base_url`.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
         content_safety_response = (
             self._unsafe_output_content_safety_response()
             if expect_blocked
@@ -358,7 +368,7 @@ class TestContentSafety:
             responses=[ChatCompletion(body=chat_completion(content=content_safety_response))],
         )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -366,13 +376,13 @@ class TestContentSafety:
             },
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(
                 rail_types=[RailType.OUTPUT],
@@ -382,13 +392,13 @@ class TestContentSafety:
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 response_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
@@ -438,7 +448,7 @@ class TestContentSafety:
         reaches the caller intact.
         """
         harness = igw_plugin_harness
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         input_verdict = (
             self._unsafe_input_content_safety_response()
@@ -466,7 +476,7 @@ class TestContentSafety:
                 responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
             )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -474,13 +484,13 @@ class TestContentSafety:
             },
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(
                 rail_types=[RailType.INPUT, RailType.OUTPUT],
@@ -490,14 +500,14 @@ class TestContentSafety:
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
                 response_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
@@ -559,7 +569,7 @@ class TestContentSafety:
         covered by :meth:`test_input_rail` / :meth:`test_output_rail`.
         """
         harness = igw_loopback_harness()
-        test_data_names = _make_test_data_names(main_model_prefix="gr-main")
+        test_data_names = _make_test_data_names(main_model_prefix="gr-main", workspace=harness.workspace)
 
         harness.mock_chat_completions(
             test_data_names.content_safety_model_served_name,
@@ -570,7 +580,7 @@ class TestContentSafety:
             responses=[ChatCompletion(body=chat_completion(content=self.BACKEND_RESPONSE))],
         )
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -578,18 +588,18 @@ class TestContentSafety:
             },
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.content_safety_model_served_name,
             default_model_entity=test_data_names.content_safety_entity_ref,
         )
 
         guardrail_config = make_guardrail_config(
-            DEFAULT_WORKSPACE,
+            harness.workspace,
             test_data_names.guardrail_config_name,
             data=self._config_data(
                 rail_types=[RailType.INPUT],
@@ -599,13 +609,13 @@ class TestContentSafety:
         )
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             harness.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 name=test_data_names.request_virtual_model_name,
                 default_model_entity=test_data_names.main_model_entity_ref,
                 request_middleware=[make_middleware_call(guardrail_config)],
             )
             response = harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": test_data_names.request_virtual_model_name,
                     "messages": [{"role": "user", "content": self.USER_INPUT}],
