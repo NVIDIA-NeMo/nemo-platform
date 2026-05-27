@@ -64,7 +64,6 @@ export const IrregularTrainingParameterSlider: FC<TrainingParameterSliderProps> 
             orientation="horizontal"
             value={sliderValue}
             onValueChange={(newValue) => handleSliderChange(field, newValue)}
-            defaultValue={sliderValue}
             max={(fieldMetadata.values?.length ?? 0) - 1}
             min={0}
             step={1}

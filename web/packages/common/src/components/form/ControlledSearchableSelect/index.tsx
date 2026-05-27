@@ -256,7 +256,7 @@ export const ControlledSearchableSelect = ({
             />
           </Block>
           {/* eslint-disable-next-line no-restricted-syntax */}
-          <Stack className="overflow-auto w-full" style={{ maxHeight }}>
+          <Stack className="overflow-auto w-full" style={{ maxHeight }} role="listbox">
             {isLoading && filteredOptions.length === 0 ? (
               <Flex align="center" justify="center" className="py-4">
                 <Spinner aria-label="Loading options" size="small" />

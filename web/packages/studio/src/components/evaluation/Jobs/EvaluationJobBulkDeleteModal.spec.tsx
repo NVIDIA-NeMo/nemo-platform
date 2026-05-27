@@ -6,7 +6,7 @@ import { EvaluationJobBulkDeleteModal } from '@studio/components/evaluation/Jobs
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { customRender as render } from '@studio/tests/util/render';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 
 const TEST_WORKSPACE = 'test-workspace';
 
@@ -151,7 +151,9 @@ describe('EvaluationJobBulkDeleteModal', () => {
       expect(await screen.findByText('Delete 2 Jobs')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       fireEvent.click(deleteButton);
 
       await waitFor(() => {
@@ -197,7 +199,9 @@ describe('EvaluationJobBulkDeleteModal', () => {
       expect(await screen.findByText('Delete 2 Jobs')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       fireEvent.click(deleteButton);
 
       await waitFor(() => {
@@ -234,7 +238,9 @@ describe('EvaluationJobBulkDeleteModal', () => {
       expect(await screen.findByText('Delete 3 Jobs')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       fireEvent.click(deleteButton);
 
       await waitFor(() => {

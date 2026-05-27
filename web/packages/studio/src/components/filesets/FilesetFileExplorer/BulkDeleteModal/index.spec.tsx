@@ -4,7 +4,7 @@
 import { extractFilePathsFromDirectory } from '@studio/components/filesets/FilesetFileExplorer/BulkDeleteModal/utils';
 import { FileSystemNode } from '@studio/components/FilesTable/utils';
 import { render } from '@studio/tests/util/render';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { BulkDeleteModal } from '.';
@@ -74,6 +74,9 @@ const defaultProps = {
   onConfirmDelete: vi.fn(),
 };
 
+const getTriggerButton = () => screen.getByTestId('bulk-delete-modal-trigger-button');
+const getDialog = () => screen.getByRole('dialog');
+
 describe('BulkDeleteModal', () => {
   const user = userEvent.setup();
 
@@ -86,7 +89,7 @@ describe('BulkDeleteModal', () => {
     it('renders the modal trigger button', () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       expect(triggerButton).toBeInTheDocument();
       expect(triggerButton).toHaveTextContent('Delete');
     });
@@ -94,7 +97,7 @@ describe('BulkDeleteModal', () => {
     it('opens modal when trigger button is clicked', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
       expect(screen.getByText('Delete 3 Items')).toBeInTheDocument();
@@ -109,7 +112,7 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...propsWithSingleItem} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
       expect(screen.getByText('Delete 1 Item')).toBeInTheDocument();
@@ -118,11 +121,12 @@ describe('BulkDeleteModal', () => {
     it('renders cancel and delete buttons in modal', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /^delete$/i })).toBeInTheDocument();
+      const dialog = getDialog();
+      expect(within(dialog).getByRole('button', { name: /cancel/i })).toBeInTheDocument();
+      expect(within(dialog).getByRole('button', { name: /^delete$/i })).toBeInTheDocument();
     });
   });
 
@@ -182,10 +186,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...propsWithFilesOnly} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -205,10 +209,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...propsWithDirectoriesOnly} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -223,10 +227,10 @@ describe('BulkDeleteModal', () => {
     it('calls mutateAsync with combined file paths when deleting mixed items', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -251,10 +255,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...propsWithNoItems} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -271,10 +275,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...propsWithCallback} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -285,13 +289,13 @@ describe('BulkDeleteModal', () => {
     it('closes modal after successful deletion', async () => {
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
       // Verify modal is open
       expect(screen.getByText('Delete 3 Items')).toBeInTheDocument();
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -306,10 +310,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /deleting/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /deleting/i });
       expect(deleteButton).toBeInTheDocument();
       expect(deleteButton).toHaveTextContent('Deleting...');
     });
@@ -319,10 +323,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /deleting/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /deleting/i });
       expect(deleteButton).toBeDisabled();
     });
 
@@ -331,10 +335,10 @@ describe('BulkDeleteModal', () => {
 
       render(<BulkDeleteModal {...defaultProps} />);
 
-      const triggerButton = screen.getByRole('button', { name: /delete/i });
+      const triggerButton = getTriggerButton();
       await user.click(triggerButton);
 
-      const deleteButton = screen.getByRole('button', { name: /^delete$/i });
+      const deleteButton = within(getDialog()).getByRole('button', { name: /^delete$/i });
       expect(deleteButton).not.toBeDisabled();
     });
   });

@@ -63,6 +63,11 @@ export const SliderWithTextInput = ({
     attributes?.Slider?.onValueChange?.(clampedValue);
   };
   const handleTextInputChange = (newValue: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    if (newValue === '') {
+      field.onChange(undefined);
+      attributes?.TextInput?.onValueChange?.('', event);
+      return;
+    }
     const numberValue = parseFloat(newValue);
     const clampedValue = Math.min(Math.max(numberValue, min), max);
     field.onChange(clampedValue);
@@ -73,6 +78,9 @@ export const SliderWithTextInput = ({
     attributes?.Slider?.onValueChange?.(defaultValue);
   };
   const fallback = defaultValue ?? min;
+  const isFieldValueNumber = typeof field.value === 'number' && !Number.isNaN(field.value);
+  const safeFieldValue = isFieldValueNumber ? field.value : fallback;
+  const textInputValue = isFieldValueNumber ? field.value.toString() : '';
 
   const stepMarkerClassNames =
     'pb-5 [&_.nv-slider-step:first-of-type]:items-start [&_.nv-slider-step:last-of-type]:items-end';
@@ -120,8 +128,7 @@ export const SliderWithTextInput = ({
       >
         <Slider
           orientation="horizontal"
-          value={typeof field.value === 'number' ? field.value : fallback}
-          defaultValue={defaultValue}
+          value={safeFieldValue}
           max={max}
           min={min}
           step={step}
@@ -139,11 +146,10 @@ export const SliderWithTextInput = ({
         name={field.name}
         status={fieldStatus}
         aria-label="Slider value"
-        value={typeof field.value === 'number' ? field.value.toString() : fallback.toString()}
+        value={textInputValue}
         max={max.toString()}
         min={min.toString()}
         step={step?.toString()}
-        defaultValue={defaultValue?.toString()}
         type="number"
         disabled={disabled}
         className={`${textInputWidth} h-[40px] shrink-0`}

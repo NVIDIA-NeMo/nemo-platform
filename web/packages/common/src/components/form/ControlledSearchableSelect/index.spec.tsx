@@ -47,8 +47,9 @@ describe('ControlledSearchableSelect', () => {
         />
       );
 
-      expect(await screen.findByRole('combobox')).toBeInTheDocument();
-      expect(screen.getByText('Select a fruit')).toBeInTheDocument();
+      const combobox = await screen.findByRole('combobox');
+      expect(combobox).toBeInTheDocument();
+      expect(combobox).toHaveTextContent('Select a fruit');
       expect(screen.getByText('Favorite Fruit')).toBeInTheDocument();
     });
 
@@ -62,7 +63,7 @@ describe('ControlledSearchableSelect', () => {
         />
       );
 
-      expect(screen.getByText('Loading...')).toBeInTheDocument();
+      expect(screen.getByRole('combobox')).toHaveTextContent('Loading...');
     });
   });
 

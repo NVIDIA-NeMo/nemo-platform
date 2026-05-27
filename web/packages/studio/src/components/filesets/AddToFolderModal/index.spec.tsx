@@ -130,8 +130,9 @@ describe('AddToFolderModal', () => {
       render(<AddToFolderModal {...defaultProps} />);
 
       await waitFor(() => {
-        expect(screen.getByTestId('nv-select-trigger')).toBeInTheDocument();
-        expect(screen.getByText('Select a folder')).toBeInTheDocument();
+        const trigger = screen.getByTestId('nv-select-trigger');
+        expect(trigger).toBeInTheDocument();
+        expect(trigger).toHaveTextContent('Select a folder');
       });
     });
   });
@@ -153,7 +154,9 @@ describe('AddToFolderModal', () => {
       await user.click(trigger);
 
       await waitFor(() => {
-        expect(screen.getByText('.. (parent folder)')).toBeInTheDocument();
+        expect(
+          screen.getByRole('option', { name: '.. (parent folder)' })
+        ).toBeInTheDocument();
       });
     });
 
@@ -234,7 +237,9 @@ describe('AddToFolderModal', () => {
       const trigger = screen.getByTestId('nv-select-trigger');
       await user.click(trigger);
 
-      const parentOption = await screen.findByText('.. (parent folder)');
+      const parentOption = await screen.findByRole('option', {
+        name: '.. (parent folder)',
+      });
       await user.click(parentOption);
 
       const moveButton = screen.getByRole('button', { name: /Move/i });
@@ -345,7 +350,9 @@ describe('AddToFolderModal', () => {
       const trigger = screen.getByTestId('nv-select-trigger');
       await user.click(trigger);
 
-      const parentOption = await screen.findByText('.. (parent folder)');
+      const parentOption = await screen.findByRole('option', {
+        name: '.. (parent folder)',
+      });
       await user.click(parentOption);
 
       await waitFor(() => {
@@ -359,7 +366,9 @@ describe('AddToFolderModal', () => {
       const trigger = screen.getByTestId('nv-select-trigger');
       await user.click(trigger);
 
-      const parentOption = await screen.findByText('.. (parent folder)');
+      const parentOption = await screen.findByRole('option', {
+        name: '.. (parent folder)',
+      });
       await user.click(parentOption);
 
       const moveButton = screen.getByRole('button', { name: /Move/i });

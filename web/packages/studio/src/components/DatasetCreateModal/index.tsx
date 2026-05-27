@@ -269,7 +269,6 @@ export const DatasetCreateModal: FC<DatasetCreateModalProps> = ({
               useControllerProps={{ control, name: 'folderPrefix' }}
               label="Folder (optional)"
               resetValueOnBlur={false}
-              
               items={Object.values(CUSTOMIZATION_FILESET_FILE_PREFIXES)}
               formFieldProps={{
                 slotHelp:

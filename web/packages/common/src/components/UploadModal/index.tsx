@@ -19,6 +19,7 @@ import { useUploadSubmit } from '@nemo/common/src/components/UploadModal/useUplo
 import {
   Button,
   ModalContent,
+  ModalDialog,
   ModalFooter,
   ModalHeading,
   ModalMain,
@@ -66,36 +67,38 @@ const UploadModalContent: FC<UploadModalProps> = ({
 
   return (
     <ModalRoot open={open} onOpenChange={handleUserClose} {...attributes?.ModalRoot}>
-      <ModalContent
-        className={`max-h-[90vh] overflow-y-auto ${className || ''}`}
-        {...attributes?.ModalContent}
-      >
-        <Stack gap="density-2xl" className="max-h-full overflow-y-hidden">
-          <ModalHeading {...attributes?.ModalHeading}>{title}</ModalHeading>
-          <ModalMain {...attributes?.ModalMain} asChild>
-            <Stack gap="density-md" className="shrink overflow-y-auto">
-              <UploadPickerBody
-                workspace={workspace}
-                includeDataset={includeDataset}
-                includeTabs={includeTabs}
-              />
-            </Stack>
-          </ModalMain>
-          <ModalFooter className="flex w-full justify-end gap-2" {...attributes?.ModalFooter}>
-            <Button kind="tertiary" onClick={handleUserClose} type="button">
-              {cancelButtonText}
-            </Button>
-            <LoadingButton
-              type="button"
-              color="brand"
-              loading={isSubmitting}
-              onClick={handleSubmit}
-            >
-              {submitButtonText}
-            </LoadingButton>
-          </ModalFooter>
-        </Stack>
-      </ModalContent>
+      <ModalDialog>
+        <ModalContent
+          className={`max-h-[90vh] overflow-y-auto ${className || ''}`}
+          {...attributes?.ModalContent}
+        >
+          <Stack gap="density-2xl" className="max-h-full overflow-y-hidden">
+            <ModalHeading {...attributes?.ModalHeading}>{title}</ModalHeading>
+            <ModalMain {...attributes?.ModalMain} asChild>
+              <Stack gap="density-md" className="shrink overflow-y-auto">
+                <UploadPickerBody
+                  workspace={workspace}
+                  includeDataset={includeDataset}
+                  includeTabs={includeTabs}
+                />
+              </Stack>
+            </ModalMain>
+            <ModalFooter className="flex w-full justify-end gap-2" {...attributes?.ModalFooter}>
+              <Button kind="tertiary" onClick={handleUserClose} type="button">
+                {cancelButtonText}
+              </Button>
+              <LoadingButton
+                type="button"
+                color="brand"
+                loading={isSubmitting}
+                onClick={handleSubmit}
+              >
+                {submitButtonText}
+              </LoadingButton>
+            </ModalFooter>
+          </Stack>
+        </ModalContent>
+      </ModalDialog>
     </ModalRoot>
   );
 };
