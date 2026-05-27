@@ -1,0 +1,16 @@
+name: DCO
+on:
+  merge_group:
+    types: [checks_requested]
+
+permissions:
+  contents: read
+
+jobs:
+  DCO:
+    runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}
+    steps:
+      - run: echo "DCO app doesn't support merge groups, so this allows them until it does. See https://github.com/dcoapp/app/issues/199"
+        shell: bash
+
