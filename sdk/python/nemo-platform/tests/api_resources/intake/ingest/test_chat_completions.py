@@ -58,6 +58,10 @@ class TestChatCompletions:
                 "choices": [{"foo": "bar"}],
                 "error": {"foo": "bar"},
             },
+            cost_details={"foo": 0},
+            cost_input_usd=0,
+            cost_output_usd=0,
+            cost_usd=0,
             evaluation_context={
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",
@@ -155,6 +159,10 @@ class TestAsyncChatCompletions:
                 "choices": [{"foo": "bar"}],
                 "error": {"foo": "bar"},
             },
+            cost_details={"foo": 0},
+            cost_input_usd=0,
+            cost_output_usd=0,
+            cost_usd=0,
             evaluation_context={
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",

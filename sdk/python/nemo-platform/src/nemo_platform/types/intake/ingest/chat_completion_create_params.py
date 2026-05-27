@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import Required, TypedDict
 
 from ..evaluation_context_param import EvaluationContextParam
@@ -49,6 +50,22 @@ class ChatCompletionCreateParams(TypedDict, total=False):
     Required: either `choices` (successful response) or `error` (failed call).
     Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
     etc.
+    """
+
+    cost_details: Dict[str, float]
+    """Additional estimated cost breakdown fields in USD."""
+
+    cost_input_usd: float
+    """Estimated input-token cost of this model call in USD."""
+
+    cost_output_usd: float
+    """Estimated output-token cost of this model call in USD."""
+
+    cost_usd: float
+    """Total estimated cost of this model call in USD.
+
+    This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on
+    spans.
     """
 
     evaluation_context: EvaluationContextParam
