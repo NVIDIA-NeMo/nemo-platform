@@ -2884,7 +2884,7 @@ components:
           description: Path to the directory of eval tasks.
         agent:
           title: Agent
-          description: Agent root (defaults to repo root).
+          description: Agent root (defaults to repo root in local run).
           type: string
         runner:
           type: string
@@ -2916,7 +2916,8 @@ components:
           default: false
         output:
           title: Output
-          description: Output dir for batch artifacts.
+          description: Output dir for batch artifacts (defaults to cwd/runs in local
+            run).
           type: string
         filter_glob:
           title: Filter Glob
@@ -2940,6 +2941,18 @@ components:
       required:
       - evals
       title: EvaluateSuiteConfig
+      description: 'Canonical config consumed by ``EvaluateSuiteJob.run``.
+
+
+        ``agent`` and ``output`` are optional here so the local run path can
+
+        fall back to ``Path.cwd()`` / ``Path.cwd()/runs/batch-<ts>``.  The
+
+        submit path uses :class:`EvaluateSuiteSubmitConfig` (where both are
+
+        required) as its wire schema, and ``compile()`` re-validates that
+
+        both ended up non-``None`` before dispatch.'
     EvaluateSuiteJob:
       properties:
         id:
@@ -3002,7 +3015,7 @@ components:
           title: Project
           type: string
         spec:
-          $ref: '#/components/schemas/EvaluateSuiteConfig'
+          $ref: '#/components/schemas/EvaluateSuiteSubmitConfig'
         ownership:
           title: Ownership
           additionalProperties: true
@@ -3076,6 +3089,88 @@ components:
       - updated_at
       - -updated_at
       title: EvaluateSuiteJobsSortField
+    EvaluateSuiteSubmitConfig:
+      properties:
+        evals:
+          type: string
+          title: Evals
+          description: Path to the directory of eval tasks.
+        agent:
+          type: string
+          title: Agent
+          description: Agent root (required on submit).
+        runner:
+          type: string
+          enum:
+          - auto
+          - harbor
+          - nat
+          title: Runner
+          description: Eval runner.
+          default: auto
+        prefer:
+          type: string
+          enum:
+          - harbor
+          - nat
+          title: Prefer
+          description: Tiebreaker when both markers present.
+          default: nat
+        concurrency:
+          type: integer
+          minimum: 1.0
+          title: Concurrency
+          description: Parallel eval concurrency.
+          default: 4
+        skip_build:
+          type: boolean
+          title: Skip Build
+          description: Skip docker build (Harbor only).
+          default: false
+        output:
+          type: string
+          title: Output
+          description: Output dir for batch artifacts (required on submit).
+        filter_glob:
+          title: Filter Glob
+          description: Glob filter on eval names.
+          type: string
+        repeats:
+          type: integer
+          minimum: 1.0
+          title: Repeats
+          description: Trials per eval (median aggregation when >1).
+          default: 1
+        anthropic_api_key_secret:
+          title: Anthropic Api Key Secret
+          description: Name of a platform Secret holding the Anthropic API key.  When
+            set on a submit, the value is injected as ``ANTHROPIC_API_KEY`` into the
+            dispatched subprocess so the Harbor eval tasks' LLM-judge calls reach
+            Anthropic.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` from the
+            calling shell as before.
+          type: string
+      type: object
+      required:
+      - evals
+      - agent
+      - output
+      title: EvaluateSuiteSubmitConfig
+      description: 'Submit-side wire schema for ``EvaluateSuiteJob``.
+
+
+        Narrows ``agent`` and ``output`` from ``str | None`` to ``str`` (no
+
+        default) so the OpenAPI contract matches the runtime behaviour: the
+
+        subprocess executor''s work dir is not the caller''s cwd, so the
+
+        canonical ``EvaluateSuiteConfig`` fallback to ``Path.cwd()`` would
+
+        silently land in ``/tmp/nmp-subprocess-jobs/.../task-*/``.  Making
+
+        them required at the schema layer surfaces the requirement as a
+
+        422 at submit time instead of a confusing dispatched-job failure.'
     FileStorageType:
       type: string
       enum:

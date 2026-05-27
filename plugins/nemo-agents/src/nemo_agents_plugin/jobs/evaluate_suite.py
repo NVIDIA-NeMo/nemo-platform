@@ -58,13 +58,24 @@ def _require_absolute(value: str | None, field: str) -> None:
 
 
 class EvaluateSuiteConfig(BaseModel):
+    """Canonical config consumed by ``EvaluateSuiteJob.run``.
+
+    ``agent`` and ``output`` are optional here so the local run path can
+    fall back to ``Path.cwd()`` / ``Path.cwd()/runs/batch-<ts>``.  The
+    submit path uses :class:`EvaluateSuiteSubmitConfig` (where both are
+    required) as its wire schema, and ``compile()`` re-validates that
+    both ended up non-``None`` before dispatch.
+    """
+
     evals: str = Field(description="Path to the directory of eval tasks.")
-    agent: str | None = Field(default=None, description="Agent root (defaults to repo root).")
+    agent: str | None = Field(default=None, description="Agent root (defaults to repo root in local run).")
     runner: Literal["auto", "harbor", "nat"] = Field(default="auto", description="Eval runner.")
     prefer: Literal["harbor", "nat"] = Field(default="nat", description="Tiebreaker when both markers present.")
     concurrency: int = Field(default=4, ge=1, description="Parallel eval concurrency.")
     skip_build: bool = Field(default=False, description="Skip docker build (Harbor only).")
-    output: str | None = Field(default=None, description="Output dir for batch artifacts.")
+    output: str | None = Field(
+        default=None, description="Output dir for batch artifacts (defaults to cwd/runs in local run)."
+    )
     filter_glob: str | None = Field(default=None, description="Glob filter on eval names.")
     repeats: int = Field(default=1, ge=1, description="Trials per eval (median aggregation when >1).")
     anthropic_api_key_secret: str | None = Field(
@@ -78,6 +89,22 @@ class EvaluateSuiteConfig(BaseModel):
     )
 
 
+class EvaluateSuiteSubmitConfig(EvaluateSuiteConfig):
+    """Submit-side wire schema for ``EvaluateSuiteJob``.
+
+    Narrows ``agent`` and ``output`` from ``str | None`` to ``str`` (no
+    default) so the OpenAPI contract matches the runtime behaviour: the
+    subprocess executor's work dir is not the caller's cwd, so the
+    canonical ``EvaluateSuiteConfig`` fallback to ``Path.cwd()`` would
+    silently land in ``/tmp/nmp-subprocess-jobs/.../task-*/``.  Making
+    them required at the schema layer surfaces the requirement as a
+    422 at submit time instead of a confusing dispatched-job failure.
+    """
+
+    agent: str = Field(description="Agent root (required on submit).")
+    output: str = Field(description="Output dir for batch artifacts (required on submit).")
+
+
 class EvaluateSuiteJob(NemoJob):
     """Run a suite of containerized eval tasks against an agent."""
 
@@ -85,6 +112,21 @@ class EvaluateSuiteJob(NemoJob):
     description: ClassVar[str] = "Run a directory of containerized eval tasks (Harbor or NAT) against an agent."
     container: ClassVar[str] = "cpu-tasks"
     spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteConfig
+    input_spec_schema: ClassVar[type[BaseModel]] = EvaluateSuiteSubmitConfig
+
+    @classmethod
+    async def to_spec(  # type: ignore[override]
+        cls,
+        input_spec: EvaluateSuiteSubmitConfig,
+        *,
+        workspace: str,
+        entity_client: object,
+        async_sdk: object,
+        is_local: bool,
+    ) -> EvaluateSuiteConfig:
+        # input_spec_schema is a strict subclass — re-pack to drop the input
+        # label so downstream consumers (compile, run) see the canonical type.
+        return EvaluateSuiteConfig.model_validate(input_spec.model_dump())
 
     @classmethod
     async def compile(  # type: ignore[override]
