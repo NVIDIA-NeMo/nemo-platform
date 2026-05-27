@@ -175,7 +175,9 @@ def _build_attribute_bags(
         error_message=error_message,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        total_tokens=_coalesce_int(_first_clean_int(usage, "total_tokens"), _sum_optional_ints(input_tokens, output_tokens)),
+        total_tokens=_coalesce_int(
+            _first_clean_int(usage, "total_tokens"), _sum_optional_ints(input_tokens, output_tokens)
+        ),
         cached_tokens=_coalesce_int(
             _first_clean_int(prompt_details, "cached_tokens"),
             _first_clean_int(input_details, "cached_tokens"),

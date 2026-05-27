@@ -13348,6 +13348,29 @@ components:
         provider:
           title: Provider
           type: string
+        cost_usd:
+          title: Cost Usd
+          description: Total estimated cost of this model call in USD. This matches
+            ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
+          type: number
+          minimum: 0.0
+        cost_input_usd:
+          title: Cost Input Usd
+          description: Estimated input-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_output_usd:
+          title: Cost Output Usd
+          description: Estimated output-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_details:
+          additionalProperties:
+            type: number
+            minimum: 0.0
+          type: object
+          title: Cost Details
+          description: Additional estimated cost breakdown fields in USD.
       additionalProperties: false
       type: object
       required:

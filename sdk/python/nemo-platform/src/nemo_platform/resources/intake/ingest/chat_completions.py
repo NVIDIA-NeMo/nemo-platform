@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Dict
+
 import httpx
 
 from ...._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -66,6 +68,10 @@ class ChatCompletionsResource(SyncAPIResource):
         workspace: str | None = None,
         request: FlexibleEntryRequestParam,
         response: FlexibleEntryResponseParam,
+        cost_details: Dict[str, float] | Omit = omit,
+        cost_input_usd: float | Omit = omit,
+        cost_output_usd: float | Omit = omit,
+        cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
@@ -99,6 +105,15 @@ class ChatCompletionsResource(SyncAPIResource):
               Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
               etc.
 
+          cost_details: Additional estimated cost breakdown fields in USD.
+
+          cost_input_usd: Estimated input-token cost of this model call in USD.
+
+          cost_output_usd: Estimated output-token cost of this model call in USD.
+
+          cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
+              Intake stores it as semantic cost_total_usd on spans.
+
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
           trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
@@ -123,6 +138,10 @@ class ChatCompletionsResource(SyncAPIResource):
                 {
                     "request": request,
                     "response": response,
+                    "cost_details": cost_details,
+                    "cost_input_usd": cost_input_usd,
+                    "cost_output_usd": cost_output_usd,
+                    "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
                     "provider": provider,
                     "session_id": session_id,
@@ -163,6 +182,10 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         workspace: str | None = None,
         request: FlexibleEntryRequestParam,
         response: FlexibleEntryResponseParam,
+        cost_details: Dict[str, float] | Omit = omit,
+        cost_input_usd: float | Omit = omit,
+        cost_output_usd: float | Omit = omit,
+        cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
@@ -196,6 +219,15 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
               Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
               etc.
 
+          cost_details: Additional estimated cost breakdown fields in USD.
+
+          cost_input_usd: Estimated input-token cost of this model call in USD.
+
+          cost_output_usd: Estimated output-token cost of this model call in USD.
+
+          cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
+              Intake stores it as semantic cost_total_usd on spans.
+
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
           trace_id: Opt into joining an existing trace built via OTel or ATIF. This is not a
@@ -220,6 +252,10 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
                 {
                     "request": request,
                     "response": response,
+                    "cost_details": cost_details,
+                    "cost_input_usd": cost_input_usd,
+                    "cost_output_usd": cost_output_usd,
+                    "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
                     "provider": provider,
                     "session_id": session_id,
