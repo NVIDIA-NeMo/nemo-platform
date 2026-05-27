@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 """Integration smoke test: actually invokes `claude` headlessly.
 
 Skipped when claude is not installed. Designed to also work when run from

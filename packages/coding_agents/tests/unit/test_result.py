@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from coding_agents.claude_code.result import find_result_in_jsonl, to_result_event
 from coding_agents.events import ResultEvent
 

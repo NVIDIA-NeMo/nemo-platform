@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
 from coding_agents.base import AgentAvailability, CodingAgent
 from coding_agents.claude_code import ClaudeCodeAgent
 from coding_agents.errors import (
