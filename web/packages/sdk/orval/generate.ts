@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 /**
- * This script generates the types for the openapi specs.
- *
- * For private GitHub raw URLs, set the GITHUB_TOKEN environment variable.
- * For local files, no token is required.
+ * This script generates the types for the openapi specs from local YAML files.
  */
 import { execFileSync } from 'child_process';
 import fs from 'fs';
@@ -13,15 +10,7 @@ import os from 'os';
 import { serviceConfigs } from './constants';
 import path from 'path';
 import { generateCustomFetcher } from './generateCustomFetcher';
-import { getGithubTokenHeaders } from './githubTokenHeaders';
 
-const ALLOWED_SPEC_HOSTS = new Set([
-  'github.com',
-  'raw.githubusercontent.com',
-  'gitlab-master.nvidia.com',
-]);
-
-const githubToken = process.env.GITHUB_TOKEN;
 const client = process.env.ORVAL_CLIENT;
 
 const service = process.argv[2] as keyof typeof serviceConfigs;
@@ -31,24 +20,16 @@ if (!config) {
   throw new Error('Unsupported OpenAPI Spec.');
 }
 
-const getFile = async () => {
-  if (config.url.startsWith('http')) {
-    const remoteUrl = new URL(config.url);
-    if (remoteUrl.protocol !== 'https:' || !ALLOWED_SPEC_HOSTS.has(remoteUrl.hostname)) {
-      throw new Error(`Refusing to fetch spec from disallowed host: ${remoteUrl.hostname}`);
-    }
-    const headers = getGithubTokenHeaders(remoteUrl, githubToken);
-    const res = await fetch(remoteUrl, headers ? { headers } : undefined);
-    if (Math.floor(res.status / 100) !== 2) {
-      throw new Error(`${res.status} - Failed to fetch spec. ${res.statusText}`);
-    }
-    return await res.text();
-  } else {
-    // Load local file otherwise
-    const filePath = path.resolve(__dirname, config.url);
-    const spec = fs.readFileSync(filePath, 'utf8');
-    return spec;
-  }
+if (config.url.startsWith('http')) {
+  throw new Error(
+    `Remote spec URLs are not supported by this script. Got: ${config.url}. ` +
+      `Vendor the spec locally and reference it by relative path.`
+  );
+}
+
+const getFile = () => {
+  const filePath = path.resolve(__dirname, config.url);
+  return fs.readFileSync(filePath, 'utf8');
 };
 
 /**

@@ -5,20 +5,33 @@ import { execFile, execFileSync } from 'child_process';
 import * as process from 'process';
 
 /**
- * Open a URL in the default browser (works on macOS, Windows, and most Linux distros).
+ * Open an HTTP/HTTPS URL in the default browser (works on macOS, Windows, and most Linux distros).
  */
 export function openBrowser(url: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    console.error('Refusing to open invalid URL:', url);
+    return;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    console.error('Refusing to open non-http(s) URL:', parsed.protocol);
+    return;
+  }
+  const safeUrl = parsed.toString();
+
   let cmd: string;
   let args: string[];
   if (process.platform === 'darwin') {
     cmd = 'open';
-    args = [url];
+    args = ['--', safeUrl];
   } else if (process.platform === 'win32') {
-    cmd = 'cmd';
-    args = ['/c', 'start', '', url];
+    cmd = 'rundll32';
+    args = ['url.dll,FileProtocolHandler', safeUrl];
   } else {
     cmd = 'xdg-open';
-    args = [url];
+    args = ['--', safeUrl];
   }
   execFile(cmd, args, (error) => {
     if (error) {
