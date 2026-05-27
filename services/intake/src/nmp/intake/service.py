@@ -12,7 +12,7 @@ from nmp.intake.api.v2.entries import endpoints as entries
 from nmp.intake.api.v2.exports import endpoints as exports
 from nmp.intake.api.v2.tasks import endpoints as tasks
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api import evaluator_results, spans, traces
+from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 
@@ -52,6 +52,11 @@ class IntakeService(Service[IntakeConfig]):
                 evaluator_results.router,
                 tag="Evaluator Results",
                 description="ClickHouse-backed evaluator_result endpoints",
+            ),
+            RouterConfig(
+                annotations.router,
+                tag="Annotations",
+                description="Post-hoc annotation endpoints (feedback, labels, notes, metadata)",
             ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),
             RouterConfig(atif.router, tag="Ingest", description="ATIF trajectory ingest endpoints"),

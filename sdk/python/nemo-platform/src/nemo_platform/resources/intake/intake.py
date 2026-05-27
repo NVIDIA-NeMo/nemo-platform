@@ -35,6 +35,14 @@ from .apps.apps import (
     AsyncAppsResourceWithStreamingResponse,
 )
 from ..._resource import SyncAPIResource, AsyncAPIResource
+from .annotations import (
+    AnnotationsResource,
+    AsyncAnnotationsResource,
+    AnnotationsResourceWithRawResponse,
+    AsyncAnnotationsResourceWithRawResponse,
+    AnnotationsResourceWithStreamingResponse,
+    AsyncAnnotationsResourceWithStreamingResponse,
+)
 from .spans.spans import (
     SpansResource,
     AsyncSpansResource,
@@ -93,6 +101,10 @@ class IntakeResource(SyncAPIResource):
         return EvaluatorResultsResource(self._client)
 
     @cached_property
+    def annotations(self) -> AnnotationsResource:
+        return AnnotationsResource(self._client)
+
+    @cached_property
     def exports(self) -> ExportsResource:
         return ExportsResource(self._client)
 
@@ -140,6 +152,10 @@ class AsyncIntakeResource(AsyncAPIResource):
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResource:
         return AsyncEvaluatorResultsResource(self._client)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResource:
+        return AsyncAnnotationsResource(self._client)
 
     @cached_property
     def exports(self) -> AsyncExportsResource:
@@ -194,6 +210,10 @@ class IntakeResourceWithRawResponse:
         return EvaluatorResultsResourceWithRawResponse(self._intake.evaluator_results)
 
     @cached_property
+    def annotations(self) -> AnnotationsResourceWithRawResponse:
+        return AnnotationsResourceWithRawResponse(self._intake.annotations)
+
+    @cached_property
     def exports(self) -> ExportsResourceWithRawResponse:
         return ExportsResourceWithRawResponse(self._intake.exports)
 
@@ -225,6 +245,10 @@ class AsyncIntakeResourceWithRawResponse:
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithRawResponse:
         return AsyncEvaluatorResultsResourceWithRawResponse(self._intake.evaluator_results)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResourceWithRawResponse:
+        return AsyncAnnotationsResourceWithRawResponse(self._intake.annotations)
 
     @cached_property
     def exports(self) -> AsyncExportsResourceWithRawResponse:
@@ -260,6 +284,10 @@ class IntakeResourceWithStreamingResponse:
         return EvaluatorResultsResourceWithStreamingResponse(self._intake.evaluator_results)
 
     @cached_property
+    def annotations(self) -> AnnotationsResourceWithStreamingResponse:
+        return AnnotationsResourceWithStreamingResponse(self._intake.annotations)
+
+    @cached_property
     def exports(self) -> ExportsResourceWithStreamingResponse:
         return ExportsResourceWithStreamingResponse(self._intake.exports)
 
@@ -291,6 +319,10 @@ class AsyncIntakeResourceWithStreamingResponse:
     @cached_property
     def evaluator_results(self) -> AsyncEvaluatorResultsResourceWithStreamingResponse:
         return AsyncEvaluatorResultsResourceWithStreamingResponse(self._intake.evaluator_results)
+
+    @cached_property
+    def annotations(self) -> AsyncAnnotationsResourceWithStreamingResponse:
+        return AsyncAnnotationsResourceWithStreamingResponse(self._intake.annotations)
 
     @cached_property
     def exports(self) -> AsyncExportsResourceWithStreamingResponse:

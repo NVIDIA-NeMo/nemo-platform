@@ -1103,6 +1103,28 @@ resources:
           create: post /apis/intake/v2/workspaces/{workspace}/evaluator-results
           list: get /apis/intake/v2/workspaces/{workspace}/evaluator-results
           retrieve: get /apis/intake/v2/workspaces/{workspace}/evaluator-results/{evaluator_result_id}
+      annotations:
+        models:
+          annotation: Annotation
+          annotation_filter: AnnotationFilter
+          annotation_kind: AnnotationKind
+          annotation_param: AnnotationInput
+          annotation_sort_field: AnnotationSortField
+          annotations_page: AnnotationsPage
+          feedback_annotation: FeedbackAnnotation
+          feedback_annotation_param: FeedbackAnnotationInput
+          label_annotation: LabelAnnotation
+          label_annotation_param: LabelAnnotationInput
+          metadata_annotation: MetadataAnnotation
+          metadata_annotation_param: MetadataAnnotationInput
+          note_annotation: NoteAnnotation
+          note_annotation_param: NoteAnnotationInput
+          numeric_filter: NumericFilter
+        methods:
+          create: post /apis/intake/v2/workspaces/{workspace}/annotations
+          list: get /apis/intake/v2/workspaces/{workspace}/annotations
+          retrieve: get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
+          delete: delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
       exports:
         models:
           export_config_param: ExportConfigInput

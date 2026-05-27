@@ -174,6 +174,15 @@ authz:
           description: "List intake evaluator results"
         read:
           description: "Read intake evaluator results"
+      annotations:
+        create:
+          description: "Create intake annotations"
+        list:
+          description: "List intake annotations"
+        read:
+          description: "Read intake annotations"
+        delete:
+          description: "Delete intake annotations"
       events:
         create:
           description: "Create intake entry events"
@@ -341,6 +350,8 @@ authz:
       - inference.providers.read
       - inference.virtual-models.list
       - inference.virtual-models.read
+      - intake.annotations.list
+      - intake.annotations.read
       - intake.apps.list
       - intake.apps.read
       - intake.entries.list
@@ -401,6 +412,8 @@ authz:
       - inference.virtual-models.create
       - inference.virtual-models.delete
       - inference.virtual-models.update
+      - intake.annotations.create
+      - intake.annotations.delete
       - intake.apps.create
       - intake.apps.delete
       - intake.apps.update
@@ -1181,6 +1194,32 @@ authz:
         scopes:
         - inference:write
         - platform:write
+    /apis/intake/v2/workspaces/{workspace}/annotations:
+      get:
+        permissions:
+        - intake.annotations.list
+        scopes:
+        - intake:read
+        - platform:read
+      post:
+        permissions:
+        - intake.annotations.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
+      delete:
+        permissions:
+        - intake.annotations.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.annotations.read
+        scopes:
+        - intake:read
+        - platform:read
     /apis/intake/v2/workspaces/{workspace}/apps:
       get:
         permissions:

@@ -5598,6 +5598,163 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/annotations:
+    post:
+      tags:
+      - Annotations
+      summary: Create Annotation
+      operationId: create_annotation_apis_intake_v2_workspaces__workspace__annotations_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Annotations
+      summary: List Annotations
+      operationId: list_annotations_apis_intake_v2_workspaces__workspace__annotations_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 10
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationSortField'
+          default: -created_at
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/AnnotationFilter'
+        description: Filter annotations by span_id, session_id, kind, name, created_by,
+          and created_at range.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnnotationsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
+    get:
+      tags:
+      - Annotations
+      summary: Get Annotation
+      operationId: get_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '404':
+          description: Annotation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Annotations
+      summary: Delete Annotation
+      operationId: delete_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: annotation_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Annotation Id
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Annotation not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/apps:
     get:
       tags:
@@ -10996,6 +11153,116 @@ components:
       - scores
       title: AggregatedMetricResult
       description: Result of aggregating metric scores with full statistics.
+    Annotation:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotation'
+      - $ref: '#/components/schemas/NoteAnnotation'
+      - $ref: '#/components/schemas/MetadataAnnotation'
+      - $ref: '#/components/schemas/LabelAnnotation'
+      title: Annotation
+      description: Discriminated annotation read response. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotation'
+          label: '#/components/schemas/LabelAnnotation'
+          metadata: '#/components/schemas/MetadataAnnotation'
+          note: '#/components/schemas/NoteAnnotation'
+    AnnotationFilter:
+      additionalProperties: false
+      properties:
+        span_id:
+          description: Return only annotations attached to this span.
+          title: Span Id
+          type: string
+        session_id:
+          description: Return only annotations attached to this session.
+          title: Session Id
+          type: string
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationKind'
+          description: Return only annotations of this kind (`feedback`, `note`, `label`,
+            or `metadata`).
+        name:
+          description: Return only `label` annotations with this `name` (e.g., `severity`,
+            `helpfulness`).
+          title: Name
+          type: string
+        value_text:
+          description: Return only annotations with this text value. For `feedback`
+            annotations this is `positive` or `negative`; for `label` annotations
+            with `value_type=text` this is the label's value.
+          title: Value Text
+          type: string
+        value_numeric:
+          allOf:
+          - $ref: '#/components/schemas/NumericFilter'
+          description: Return only `label` annotations whose numeric value falls within
+            the given range. Applies to labels with `value_type=numeric`.
+        created_by:
+          description: Return only annotations created by this user.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Return only annotations created within the given time range.
+      title: AnnotationFilter
+      type: object
+    AnnotationInput:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotationInput'
+      - $ref: '#/components/schemas/NoteAnnotationInput'
+      - $ref: '#/components/schemas/MetadataAnnotationInput'
+      - $ref: '#/components/schemas/LabelAnnotationInput'
+      title: AnnotationInput
+      description: Discriminated annotation create body. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotationInput'
+          label: '#/components/schemas/LabelAnnotationInput'
+          metadata: '#/components/schemas/MetadataAnnotationInput'
+          note: '#/components/schemas/NoteAnnotationInput'
+    AnnotationKind:
+      enum:
+      - feedback
+      - label
+      - note
+      - metadata
+      title: AnnotationKind
+      type: string
+    AnnotationSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      title: AnnotationSortField
+    AnnotationsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Annotation'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnnotationsPage
     AnswerAccuracyMetric:
       properties:
         name:
@@ -17486,6 +17753,87 @@ components:
       - judge_model
       title: FaithfulnessMetricResponse
       description: Response type for Faithfulness metrics.
+    FeedbackAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value
+      title: FeedbackAnnotation
+      description: Thumbs-up / thumbs-down feedback on a span or session.
+    FeedbackAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value
+      title: FeedbackAnnotationInput
+      description: Thumbs-up / thumbs-down feedback on a span or session.
     FiddlerGuardrails:
       properties:
         fiddler_endpoint:
@@ -20156,6 +20504,123 @@ components:
       - model
       - scores
       title: LLMJudgeMetricResponse
+    LabelAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` is a text label (`text`) or a number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. A string when `value_type=text`, a number
+            when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures, when set.
+          type: string
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotation
+      description: Categorical or numeric label attached to a span or session.
+    LabelAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` should be interpreted as text (`text`) or a
+            number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. Must be a string when `value_type=text`
+            and a number when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures (e.g., `severity`,
+            `helpfulness`). Optional for text labels; required for numeric labels.
+          type: string
+          maxLength: 256
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotationInput
+      description: 'Categorical or numeric label attached to a span or session.
+
+
+        Use `value_type=text` for tag-style labels (e.g., `regression`, `needs-review`)
+        and
+
+        `value_type=numeric` for scored labels (e.g., a 1-5 helpfulness rating). Numeric
+        labels
+
+        must include a `name` to identify what the score measures.'
     LinearLayerSpec:
       properties:
         name:
@@ -20323,6 +20788,84 @@ components:
       - content
       title: MessageTemplate
       description: Template for a message structure.
+    MetadataAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: The metadata key/value pairs.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - metadata
+      title: MetadataAnnotation
+      description: Structured key/value metadata attached to a span or session.
+    MetadataAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          minProperties: 1
+          title: Metadata
+          description: Arbitrary key/value pairs. Must contain at least one entry.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - metadata
+      title: MetadataAnnotationInput
+      description: Structured key/value metadata attached to a span or session.
     MetricEvaluationJob:
       properties:
         id:
@@ -23080,6 +23623,83 @@ components:
       - judge_model
       title: NoiseSensitivityMetricResponse
       description: Response type for NoiseSensitivity metrics.
+    NoteAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          title: Text
+          description: The note content.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - text
+      title: NoteAnnotation
+      description: Free-text note attached to a span or session.
+    NoteAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Text
+          description: The note content. 1 to 10,000 characters.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - text
+      title: NoteAnnotationInput
+      description: Free-text note attached to a span or session.
     NumberCheckMetric:
       properties:
         name:
@@ -23407,6 +24027,23 @@ components:
       - right_template
       title: NumberCheckMetricResponse
       description: Response type for NumberCheckMetric.
+    NumericFilter:
+      additionalProperties: false
+      description: "Range filter for numeric annotation values.\n\nAt least one of\
+        \ `$gte` or `$lte` must be supplied \u2014 an empty `{}` is not a\nmeaningful\
+        \ filter and is rejected."
+      minProperties: 1
+      properties:
+        $gte:
+          description: Include only values greater than or equal to this number.
+          title: $Gte
+          type: number
+        $lte:
+          description: Include only values less than or equal to this number.
+          title: $Lte
+          type: number
+      title: NumericFilter
+      type: object
     OIDCDiscoveryResponse:
       properties:
         issuer:

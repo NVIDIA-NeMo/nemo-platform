@@ -114,6 +114,37 @@ Methods:
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluator-results/{evaluator_result_id}">client.intake.evaluator_results.<a href="./src/nemo_platform/resources/intake/evaluator_results.py">retrieve</a>(evaluator_result_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/evaluator_result.py">EvaluatorResult</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/evaluator-results">client.intake.evaluator_results.<a href="./src/nemo_platform/resources/intake/evaluator_results.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/evaluator_result_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/evaluator_result.py">SyncDefaultPagination[EvaluatorResult]</a></code>
 
+## Annotations
+
+Types:
+
+```python
+from nemo_platform.types.intake import (
+    Annotation,
+    AnnotationFilter,
+    AnnotationKind,
+    AnnotationParam,
+    AnnotationSortField,
+    AnnotationsPage,
+    FeedbackAnnotation,
+    FeedbackAnnotationParam,
+    LabelAnnotation,
+    LabelAnnotationParam,
+    MetadataAnnotation,
+    MetadataAnnotationParam,
+    NoteAnnotation,
+    NoteAnnotationParam,
+    NumericFilter,
+)
+```
+
+Methods:
+
+- <code title="post /apis/intake/v2/workspaces/{workspace}/annotations">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">create</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/annotation_create_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/annotation.py">Annotation</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">retrieve</a>(annotation_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/annotation.py">Annotation</a></code>
+- <code title="get /apis/intake/v2/workspaces/{workspace}/annotations">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/annotation_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/annotation.py">SyncDefaultPagination[Annotation]</a></code>
+- <code title="delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}">client.intake.annotations.<a href="./src/nemo_platform/resources/intake/annotations.py">delete</a>(annotation_id, \*, workspace) -> None</code>
+
 ## Exports
 
 Types:

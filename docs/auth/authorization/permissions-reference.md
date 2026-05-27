@@ -69,6 +69,8 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 
 | Permission | Description | Viewer | Editor | Admin |
 |------------|-------------|:------:|:------:|:-----:|
+| `intake.annotations.(read \| list)` | Read, list intake annotations | ✓ | ✓ | ✓ |
+| `intake.annotations.(create \| delete)` | Create, delete intake annotations |  | ✓ | ✓ |
 | `intake.apps.(read \| list)` | Read, list intake apps | ✓ | ✓ | ✓ |
 | `intake.apps.(create \| update \| delete)` | Create, update, delete intake apps |  | ✓ | ✓ |
 | `intake.entries.(read \| list)` | Read, list intake entries | ✓ | ✓ | ✓ |

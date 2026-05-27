@@ -174,9 +174,76 @@ def _create_evaluator_results_schema(client, settings: ClickHouseMigrationSettin
     )
 
 
+def _create_annotations_schema(client, settings: ClickHouseMigrationSettings) -> None:
+    # `span_id` uses an empty-string default (matches `external_parent_span_id`
+    # on `spans`) so it can participate cleanly in ORDER BY. Empty means
+    # "session-level annotation".
+    #
+    # Skip indexes let direct-id lookups (GET /annotations/{annotation_id}) and
+    # per-span listings (GET /spans/{span_id}/annotations) avoid scanning the
+    # full workspace when leading ORDER BY keys aren't supplied.
+    client.command(
+        f"""
+        CREATE TABLE IF NOT EXISTS {_table(settings, "annotations")}
+        (
+            annotation_id String,
+            workspace LowCardinality(String),
+            span_id String DEFAULT '',
+            session_id String,
+
+            kind Enum8(
+                'feedback' = 1,
+                'label' = 2,
+                'note' = 3,
+                'metadata' = 4
+            ),
+            name LowCardinality(Nullable(String)),
+            value_text Nullable(String),
+            value_numeric Nullable(Float64),
+            text Nullable(String) CODEC(ZSTD(3)),
+            metadata Nullable(String) CODEC(ZSTD(3)),
+
+            created_by Nullable(String),
+            created_at DateTime64(3),
+            ingested_at DateTime64(3),
+            is_deleted UInt8 DEFAULT 0,
+
+            INDEX idx_annotation_id annotation_id TYPE bloom_filter(0.001) GRANULARITY 1,
+            INDEX idx_span_id span_id TYPE bloom_filter(0.01) GRANULARITY 1,
+            INDEX idx_value_numeric value_numeric TYPE minmax GRANULARITY 1,
+            INDEX idx_created_at created_at TYPE minmax GRANULARITY 1
+        )
+        ENGINE = ReplacingMergeTree(ingested_at, is_deleted)
+        ORDER BY (workspace, session_id, span_id, kind, annotation_id)
+        """
+    )
+
+
+def _add_evaluator_results_skip_indexes(client, settings: ClickHouseMigrationSettings) -> None:
+    """Add skip indexes for direct-id lookups, per-span listings, and value/time range queries."""
+
+    table = _table(settings, "evaluator_results")
+    client.command(
+        f"ALTER TABLE {table} ADD INDEX IF NOT EXISTS"
+        " idx_evaluator_result_id evaluator_result_id TYPE bloom_filter(0.001) GRANULARITY 1"
+    )
+    client.command(
+        f"ALTER TABLE {table} ADD INDEX IF NOT EXISTS idx_span_id span_id TYPE bloom_filter(0.01) GRANULARITY 1"
+    )
+    client.command(f"ALTER TABLE {table} ADD INDEX IF NOT EXISTS idx_value value TYPE minmax GRANULARITY 1")
+    client.command(f"ALTER TABLE {table} ADD INDEX IF NOT EXISTS idx_created_at created_at TYPE minmax GRANULARITY 1")
+    # Build the indexes for already-stored rows; new inserts populate them automatically.
+    client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_evaluator_result_id")
+    client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_span_id")
+    client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_value")
+    client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_created_at")
+
+
 _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_spans_0002", _create_spans_schema),
     ("ch_evaluator_results_0001", _create_evaluator_results_schema),
+    ("ch_annotations_0001", _create_annotations_schema),
+    ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 
