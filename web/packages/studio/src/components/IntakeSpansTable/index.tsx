@@ -32,7 +32,7 @@ import {
   type SpanTableRow,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ComponentProps, FC, useMemo, type ReactNode } from 'react';
+import { type ComponentProps, type FC, type ReactNode, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 const SPAN_STATUS_FILTER_OPTIONS = [

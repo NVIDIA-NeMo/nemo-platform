@@ -73,7 +73,9 @@ const IntakeTelemetryToolbar = <DataType,>({
   ) : null;
   const shouldPortalToggle = Boolean(filterTogglePortalTargetId);
   const rendersInlineToggle = Boolean(!filterTogglePortalTargetId && filterToggle);
-  const rendersToolbar = Boolean(searchField || slotEnd || rendersInlineToggle);
+  const rendersToolbar = Boolean(
+    searchField || slotEnd || rendersInlineToggle || renderBulkActions
+  );
 
   return (
     <>
@@ -225,8 +227,8 @@ export const IntakeTelemetryDataView = <DataType,>({
                   <Block className="h-full">
                     <TableEmptyState
                       className="py-4"
-                      header="No Entries Found"
-                      emptyMessage="No entries available."
+                      header="No Data Found"
+                      emptyMessage="No telemetry data available."
                     />
                   </Block>
                 )}

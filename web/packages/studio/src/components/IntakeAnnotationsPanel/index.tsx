@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { zodResolver } from '@hookform/resolvers/zod';
 import { formatAbsoluteTimestamp } from '@nemo/common/src/components/RelativeTime/util';
 import {
   getListAnnotationsQueryKey,
@@ -30,7 +31,15 @@ import { getErrorMessage } from '@studio/api/common/utils';
 import { ThumbButton } from '@studio/components/buttons/ThumbButton';
 import { useQueryClient } from '@tanstack/react-query';
 import { MessageSquarePlus, NotebookPen, Trash2 } from 'lucide-react';
-import { ChangeEvent, FC, FormEvent, useMemo, useState } from 'react';
+import { type FC, useMemo, useState } from 'react';
+import { type SubmitHandler, useForm } from 'react-hook-form';
+import { z } from 'zod';
+
+const noteSchema = z.object({
+  text: z.string().trim().min(1, 'Note is required.'),
+});
+
+type NoteFormValues = z.infer<typeof noteSchema>;
 
 const getAnnotationErrorMessage = (error: unknown, fallback: string): string =>
   error instanceof Error ? getErrorMessage(error, fallback) : fallback;
@@ -99,8 +108,18 @@ export const IntakeAnnotationsPanel: FC<IntakeAnnotationsPanelProps> = ({
   sessionId,
 }) => {
   const queryClient = useQueryClient();
-  const [noteText, setNoteText] = useState('');
   const [mutationError, setMutationError] = useState<string | undefined>();
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    formState: { errors, isValid },
+  } = useForm<NoteFormValues>({
+    resolver: zodResolver(noteSchema),
+    defaultValues: { text: '' },
+    mode: 'onChange',
+  });
 
   const listParams = useMemo(
     () => ({
@@ -122,6 +141,7 @@ export const IntakeAnnotationsPanel: FC<IntakeAnnotationsPanelProps> = ({
   const createAnnotation = useCreateAnnotation();
   const deleteAnnotation = useDeleteAnnotation();
 
+  const noteText = watch('text');
   const annotations = annotationsResponse?.data ?? [];
   const activeFeedback = annotations.find((annotation) => annotation.kind === 'feedback');
   const isMutating = createAnnotation.isPending || deleteAnnotation.isPending;
@@ -150,16 +170,7 @@ export const IntakeAnnotationsPanel: FC<IntakeAnnotationsPanelProps> = ({
     }
   };
 
-  const handleNoteChange = (event: ChangeEvent<HTMLDivElement>): void => {
-    if (!(event.target instanceof HTMLTextAreaElement)) return;
-    setNoteText(event.target.value);
-  };
-
-  const handleNoteSubmit = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-    const text = noteText.trim();
-    if (!text) return;
-
+  const handleNoteSubmit: SubmitHandler<NoteFormValues> = async ({ text }) => {
     setMutationError(undefined);
     try {
       await createAnnotation.mutateAsync({
@@ -171,7 +182,7 @@ export const IntakeAnnotationsPanel: FC<IntakeAnnotationsPanelProps> = ({
           span_id: spanId,
         },
       });
-      setNoteText('');
+      reset();
       await refreshAnnotations();
     } catch (error) {
       setMutationError(getAnnotationErrorMessage(error, 'Failed to save note.'));
@@ -221,24 +232,30 @@ export const IntakeAnnotationsPanel: FC<IntakeAnnotationsPanelProps> = ({
           </Flex>
         </Stack>
 
-        <form onSubmit={(event) => void handleNoteSubmit(event)}>
+        <form onSubmit={(event) => void handleSubmit(handleNoteSubmit)(event)}>
           <Stack gap="density-sm">
-            <FormField name="annotation-note" slotLabel="Note">
+            <FormField
+              name="annotation-note"
+              slotLabel="Note"
+              slotError={errors.text?.message}
+              status={errors.text && 'error'}
+            >
               <TextArea
                 value={noteText}
-                onChange={handleNoteChange}
                 placeholder="Add a note about this span."
                 disabled={isMutating}
+                status={errors.text && 'error'}
                 resizeable="manual"
                 attributes={{
                   TextAreaElement: {
                     rows: 3,
                   },
                 }}
+                {...register('text')}
               />
             </FormField>
             <Flex justify="end">
-              <Button type="submit" disabled={isMutating || noteText.trim().length === 0}>
+              <Button type="submit" disabled={isMutating || !isValid}>
                 <MessageSquarePlus />
                 Add Note
               </Button>

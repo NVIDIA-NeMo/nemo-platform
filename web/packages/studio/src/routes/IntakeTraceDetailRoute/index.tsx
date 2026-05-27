@@ -32,15 +32,32 @@ import {
   hasEvaluationContext,
 } from '@studio/util/intakeTelemetry';
 import { Activity, CircleAlert, Hash } from 'lucide-react';
-import { FC, useEffect } from 'react';
+import { type FC, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 const TRACE_SPANS_PAGE_SIZE = 1000;
 const TRACE_DETAIL_SPANS_FILTER_TARGET_ID = 'trace-detail-spans-filter-action-target';
 
+type TraceRouteParams = Record<typeof ROUTE_PARAMS.traceId, string | undefined>;
+
 export const IntakeTraceDetailRoute: FC = () => {
+  const { [ROUTE_PARAMS.traceId]: traceId } = useParams<TraceRouteParams>();
+
+  if (!traceId) {
+    return (
+      <NotFound subheader="Trace Not Found" message="The trace route is missing a trace ID." />
+    );
+  }
+
+  return <IntakeTraceDetailContent traceId={traceId} />;
+};
+
+interface IntakeTraceDetailContentProps {
+  traceId: string;
+}
+
+const IntakeTraceDetailContent: FC<IntakeTraceDetailContentProps> = ({ traceId }) => {
   const workspace = useWorkspaceFromPath();
-  const { [ROUTE_PARAMS.traceId]: traceId } = useParams() as { [ROUTE_PARAMS.traceId]: string };
 
   const {
     data: trace,

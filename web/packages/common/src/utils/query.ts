@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { CJobTerminalStatuses } from '@nemo/common/src/constants/query';
+import type { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 
 import * as DataView from '../components/DataView/internal';
 import { JOB_POLLING_INTERVAL_MS } from '../constants';
-import { CJobTerminalStatuses } from '../constants/query';
 
-export const getJobRefetchInterval = (status?: PlatformJobStatus) => {
+export const getJobRefetchInterval = (status?: PlatformJobStatus): number | false => {
   if (!status || !CJobTerminalStatuses.includes(status)) {
     return JOB_POLLING_INTERVAL_MS;
   }

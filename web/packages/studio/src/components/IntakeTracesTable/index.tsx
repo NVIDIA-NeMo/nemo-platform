@@ -21,7 +21,7 @@ import {
   getTraceDisplayName,
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ComponentProps, FC, type ReactNode } from 'react';
+import type { ComponentProps, FC, ReactNode } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
 export interface IntakeTracesTableProps {

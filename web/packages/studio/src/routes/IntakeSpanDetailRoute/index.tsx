@@ -38,7 +38,7 @@ import {
   hasEvaluationContext,
 } from '@studio/util/intakeTelemetry';
 import { Activity, CircleAlert, Coins } from 'lucide-react';
-import { FC, useEffect } from 'react';
+import { type FC, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 const truncatedValueAttributes = {
@@ -86,9 +86,24 @@ const SpanContentBlock: FC<SpanContentBlockProps> = ({ label, value, emptyMessag
   );
 };
 
+type SpanRouteParams = Record<typeof ROUTE_PARAMS.spanId, string | undefined>;
+
 export const IntakeSpanDetailRoute: FC = () => {
+  const { [ROUTE_PARAMS.spanId]: spanId } = useParams<SpanRouteParams>();
+
+  if (!spanId) {
+    return <NotFound subheader="Span Not Found" message="The span route is missing a span ID." />;
+  }
+
+  return <IntakeSpanDetailContent spanId={spanId} />;
+};
+
+interface IntakeSpanDetailContentProps {
+  spanId: string;
+}
+
+const IntakeSpanDetailContent: FC<IntakeSpanDetailContentProps> = ({ spanId }) => {
   const workspace = useWorkspaceFromPath();
-  const { [ROUTE_PARAMS.spanId]: spanId } = useParams() as { [ROUTE_PARAMS.spanId]: string };
 
   const { data: span, error, isLoading } = useGetSpan(workspace, spanId);
   const { setBreadcrumbs } = useBreadcrumbs();

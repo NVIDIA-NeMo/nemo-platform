@@ -189,13 +189,17 @@ const baseAnnotations: Annotation[] = [
 ];
 
 let mockAnnotations = [...baseAnnotations];
+let nextAnnotationSequence = baseAnnotations.length + 1;
 
 const pageAnnotations = (annotations: Annotation[], page: number, pageSize: number): Annotation[] =>
   annotations.slice((page - 1) * pageSize, page * pageSize);
 
 export const resetMockAnnotations = (): void => {
   mockAnnotations = [...baseAnnotations];
+  nextAnnotationSequence = baseAnnotations.length + 1;
 };
+
+const nextAnnotationId = (): string => `annotation-${nextAnnotationSequence++}`;
 
 export const mockAnnotationsPage = ({
   spanId,
@@ -235,7 +239,7 @@ export const createMockAnnotation = ({
 }): Annotation => {
   const now = new Date().toISOString();
   const base = {
-    annotation_id: `annotation-${mockAnnotations.length + 1}`,
+    annotation_id: nextAnnotationId(),
     workspace,
     span_id: data.span_id,
     session_id: data.session_id,

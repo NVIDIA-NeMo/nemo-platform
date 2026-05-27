@@ -6,8 +6,8 @@ import { resetMockAnnotations } from '@studio/mocks/intake/telemetry';
 import { renderRoute, screen, waitFor, within } from '@studio/tests/util/render';
 import userEvent from '@testing-library/user-event';
 
-const spanId = 'span-root-001';
-const sessionId = 'session-agent-run-001';
+const SPAN_ID = 'span-root-001';
+const SESSION_ID = 'session-agent-run-001';
 
 describe('IntakeAnnotationsPanel', () => {
   beforeEach(() => {
@@ -18,7 +18,7 @@ describe('IntakeAnnotationsPanel', () => {
     const user = userEvent.setup();
 
     renderRoute(
-      <IntakeAnnotationsPanel workspace="default" spanId={spanId} sessionId={sessionId} />,
+      <IntakeAnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />,
       { history: '/workspaces/default/intake/spans/span-root-001' }
     );
 
@@ -39,7 +39,7 @@ describe('IntakeAnnotationsPanel', () => {
     const user = userEvent.setup();
 
     renderRoute(
-      <IntakeAnnotationsPanel workspace="default" spanId={spanId} sessionId={sessionId} />,
+      <IntakeAnnotationsPanel workspace="default" spanId={SPAN_ID} sessionId={SESSION_ID} />,
       { history: '/workspaces/default/intake/spans/span-root-001' }
     );
 

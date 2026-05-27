@@ -544,13 +544,15 @@ export const handlers = [
   http.get('*/apis/intake/v2/workspaces/:workspace/annotations', ({ request }) => {
     const url = new URL(request.url);
     const spanId = url.searchParams.get('filter[span_id]') ?? undefined;
-    const page = Number(url.searchParams.get('page') ?? '1');
-    const pageSize = Number(url.searchParams.get('page_size') ?? '100');
+    const parsedPage = Number(url.searchParams.get('page') ?? '1');
+    const parsedPageSize = Number(url.searchParams.get('page_size') ?? '100');
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const pageSize = Number.isInteger(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : 100;
     return HttpResponse.json(
       mockAnnotationsPage({
         spanId,
-        page: Number.isNaN(page) ? 1 : page,
-        pageSize: Number.isNaN(pageSize) ? 100 : pageSize,
+        page,
+        pageSize,
       })
     );
   }),
