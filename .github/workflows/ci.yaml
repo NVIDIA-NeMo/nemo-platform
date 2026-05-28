@@ -382,7 +382,8 @@ jobs:
           esac
 
   benchmark-guardrails:
-    name: NeMo Guardrails benchmark
+    name: Guardrails plugin benchmark
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
