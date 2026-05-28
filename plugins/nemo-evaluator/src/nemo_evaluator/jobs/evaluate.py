@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 from nemo_evaluator.jobs.utils import remote_compile_metric, resolve_run_dataset, resolve_submit_dataset
@@ -20,6 +22,8 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
+from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
@@ -29,11 +33,28 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent
 MetricSpec: TypeAlias = MetricsUnion | Annotated[Sequence[MetricsUnion], Field(min_length=1)]
+EvaluationArtifactResult: TypeAlias = EvaluationResult | BenchmarkEvaluationResult
 InlineDataset: TypeAlias = Annotated[list[dict[str, object]], Field(min_length=1)]
 DatasetSpec: TypeAlias = InlineDataset | FilesetRef
 
 DEFAULT_RESULT_NAME = "evaluation-results"
 DEFAULT_FILE_NAME = "evaluation-results.json"
+ARTIFACTS_RESULT_NAME = "artifacts"
+AGGREGATE_SCORES_RESULT_NAME = "aggregate-scores"
+ROW_SCORES_RESULT_NAME = "row-scores"
+AGGREGATE_SCORES_FILE_NAME = "aggregate-scores.json"
+ROW_SCORES_FILE_NAME = "row-scores.jsonl"
+RESULT_IGNORE_PATTERNS = ["cache.db", "cache/"]
+
+
+@dataclass(frozen=True)
+class EvaluationResultFiles:
+    """Filesystem layout for an evaluator SDK result."""
+
+    full_result: Path
+    aggregate_scores: Path
+    row_scores: Path
+    artifacts_dir: Path
 
 
 class EvaluateSpec(BaseModel):
@@ -67,6 +88,29 @@ class EvaluateJob(NemoJob):
     container: ClassVar[str] = "cpu-tasks"
     spec_schema: ClassVar[type[BaseModel] | None] = EvaluateSpec
     job_collection_path: ClassVar[str | None] = "/evaluate/jobs"
+
+    @staticmethod
+    def _write_result_files(result: EvaluationArtifactResult, persistent_dir: Path) -> EvaluationResultFiles:
+        """Write full, aggregate, and row-level evaluator artifacts."""
+        result_payload = result.model_dump(mode="json")
+        full_result_path = persistent_dir / DEFAULT_FILE_NAME
+        full_result_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
+
+        artifacts_dir = persistent_dir / ARTIFACTS_RESULT_NAME
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        aggregate_path = artifacts_dir / AGGREGATE_SCORES_FILE_NAME
+        aggregate_path.write_text(result.aggregate_scores.model_dump_json(indent=2), encoding="utf-8")
+        row_scores_path = artifacts_dir / ROW_SCORES_FILE_NAME
+        with row_scores_path.open("w", encoding="utf-8") as f:
+            for row_score in result.row_scores:
+                f.write(row_score.model_dump_json() + "\n")
+
+        return EvaluationResultFiles(
+            full_result=full_result_path,
+            aggregate_scores=aggregate_path,
+            row_scores=row_scores_path,
+            artifacts_dir=artifacts_dir,
+        )
 
     @classmethod
     async def compile(
@@ -147,10 +191,11 @@ class EvaluateJob(NemoJob):
             result = evaluator.run_sync(metrics=spec.metric, **common_kwargs)
         else:
             result = evaluator.run_sync(metrics=cast(MetricsUnion, spec.metric), **common_kwargs)
-        result_payload = result.model_dump(mode="json")
-        result_path = ctx.storage.persistent / DEFAULT_FILE_NAME
-        result_path.write_text(json.dumps(result_payload, indent=2), encoding="utf-8")
-        artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_path)
+        result_files = self._write_result_files(result, ctx.storage.persistent)
+        artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
+        ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)
+        ctx.results.save(ROW_SCORES_RESULT_NAME, result_files.row_scores)
+        ctx.results.save(ARTIFACTS_RESULT_NAME, result_files.artifacts_dir, ignore_patterns=RESULT_IGNORE_PATTERNS)
 
         # TODO: Implement progress reporting hook in SDK - AALGO-149
         # self.report_progress(

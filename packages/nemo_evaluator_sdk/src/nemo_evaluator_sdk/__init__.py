@@ -19,6 +19,7 @@ from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.number_check import NumberCheckMetric
 from nemo_evaluator_sdk.metrics.protocol import (
     Metric,
+    MetricTypeName,
     validate_metric_result,
 )
 from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, RemoteMetric
@@ -85,6 +86,7 @@ __all__ = [
     "InferenceStructuredOutput",
     "JSONScoreParser",
     "Metric",
+    "MetricTypeName",
     "MetricDescriptor",
     "MetricInput",
     "MetricOutput",

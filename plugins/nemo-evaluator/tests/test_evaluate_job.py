@@ -11,7 +11,15 @@ from typing import Any, cast
 
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
-from nemo_evaluator.jobs.evaluate import DEFAULT_FILE_NAME, DEFAULT_RESULT_NAME, EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import (
+    AGGREGATE_SCORES_RESULT_NAME,
+    ARTIFACTS_RESULT_NAME,
+    DEFAULT_FILE_NAME,
+    DEFAULT_RESULT_NAME,
+    ROW_SCORES_RESULT_NAME,
+    EvaluateJob,
+    EvaluateSpec,
+)
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
@@ -82,6 +90,24 @@ def _assert_saved_result_artifact(
     assert json.loads(result_path.read_text(encoding="utf-8")) == result_payload
     artifact_path = Path(run_result["artifact"]["artifact_url"].removeprefix("file://"))
     assert json.loads(artifact_path.read_text(encoding="utf-8")) == result_payload
+    results_dir = ctx.storage.persistent / "results"
+    assert (
+        json.loads((results_dir / AGGREGATE_SCORES_RESULT_NAME).read_text(encoding="utf-8"))
+        == result_payload["aggregate_scores"]
+    )
+    assert (results_dir / ROW_SCORES_RESULT_NAME).read_text(encoding="utf-8") == ""
+    assert (results_dir / ARTIFACTS_RESULT_NAME).is_dir()
+
+
+def _mock_evaluation_result(mocker: MockerFixture, result_payload: dict[str, object]) -> Any:
+    """Return an evaluator result mock with platform result artifact surfaces."""
+    result = mocker.Mock()
+    result.model_dump.return_value = result_payload
+    aggregate_scores = mocker.Mock()
+    aggregate_scores.model_dump_json.return_value = json.dumps(result_payload["aggregate_scores"], indent=2)
+    result.aggregate_scores = aggregate_scores
+    result.row_scores = []
+    return result
 
 
 def _load_artifact_payload(run_result: dict[str, Any]) -> dict[str, Any]:
@@ -543,8 +569,7 @@ class TestEvaluateJobRun:
         mocker: MockerFixture,
     ) -> None:
         result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _mock_evaluation_result(mocker, result_payload)
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -581,8 +606,7 @@ class TestEvaluateJobRun:
             "aggregate_scores": {"scores": []},
             "per_metric": {},
         }
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _mock_evaluation_result(mocker, result_payload)
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         evaluator_cls = mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -622,8 +646,7 @@ class TestEvaluateJobRun:
         self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _mock_evaluation_result(mocker, result_payload)
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
@@ -661,8 +684,7 @@ class TestEvaluateJobRun:
         self, tmp_path: Path, mocker: MockerFixture
     ) -> None:
         result_payload = {"aggregate_scores": {"scores": []}}
-        result = mocker.Mock()
-        result.model_dump.return_value = result_payload
+        result = _mock_evaluation_result(mocker, result_payload)
         evaluator = mocker.Mock()
         evaluator.run_sync.return_value = result
         mocker.patch("nemo_evaluator.jobs.evaluate.Evaluator", return_value=evaluator)
