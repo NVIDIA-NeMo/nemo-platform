@@ -33,7 +33,7 @@ export const BenchmarkDetailsPanel: FC<BenchmarkDetailsPanelProps> = ({
     const { metrics } = benchmark;
     if (typeof metrics[0] === 'string') return metrics.join(', ');
     return metrics
-      .map((m) => (m && typeof m === 'object' && m !== null && 'name' in m ? String(m.name) : ''))
+      .map((m) => (m && typeof m === 'object' && 'name' in m ? String(m.name) : ''))
       .filter(Boolean)
       .join(', ');
   })();

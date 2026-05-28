@@ -33,7 +33,7 @@ import {
   getEvaluationMetricsRoute,
   getEvaluationResultsRoute,
   getGuardrailsRoute,
-  getIntakeEntriesRoute,
+  getIntakeTracesRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceCustomizationJobListRoute,
   getWorkspaceDashboardRoute,
@@ -132,7 +132,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             id: 'annotation',
             slotIcon: <UserPen className={iconColorClass} />,
             slotLabel: 'Annotation',
-            href: getIntakeEntriesRoute(workspace),
+            href: getIntakeTracesRoute(workspace),
           },
         ]
       : [];

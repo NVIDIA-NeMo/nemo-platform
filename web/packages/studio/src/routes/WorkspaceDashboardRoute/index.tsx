@@ -22,11 +22,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import {
-  getEvaluationMetricsRunRoute,
-  getModelCompareRoute,
-  getWorkspaceBaseModelsRoute,
-} from '@studio/routes/utils';
+import { getEvaluationMetricsRunRoute, getModelCompareRoute } from '@studio/routes/utils';
 import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardCard';
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
 import { Sliders, Boxes } from 'lucide-react';
@@ -67,11 +63,7 @@ export const WorkspaceDashboardRoute: FC = () => {
                   title="Chat with a Model"
                   description="Chat with base models and explore capabilities."
                   actionLabel="Chat"
-                  actionHref={
-                    MODEL_COMPARE_ENABLED
-                      ? getModelCompareRoute(workspace)
-                      : getWorkspaceBaseModelsRoute(workspace)
-                  }
+                  actionHref={getModelCompareRoute(workspace)}
                 />
               )}
               {/* Fine-tune a Model */}

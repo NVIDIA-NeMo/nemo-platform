@@ -36,12 +36,9 @@ export const useSubmitICLsFile = (
       fileName,
     };
     const hasFileAlready = currentICLs.some((icl) => icl.fileName === fileName);
-    let combinedICLs = currentICLs;
-    if (hasFileAlready) {
-      combinedICLs = currentICLs.map((icl) => (icl.fileName === fileName ? newICL : icl));
-    } else {
-      combinedICLs = [...currentICLs, newICL];
-    }
+    const combinedICLs = hasFileAlready
+      ? currentICLs.map((icl) => (icl.fileName === fileName ? newICL : icl))
+      : [...currentICLs, newICL];
     const iclFewShotExamples = combinedICLs.map((icl) => icl.content).join('\n');
     const { prompt: compiledSystemPrompt, promptTemplate: newSystemPromptTemplate } =
       compileSystemPrompt({

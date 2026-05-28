@@ -6,9 +6,7 @@ import { ProjectInput, Project, ProjectsPage } from '@nemo/sdk/generated/platfor
 import { APIRequestContext } from '@playwright/test';
 
 export class ProjectsAPI {
-  constructor(private request: APIRequestContext) {
-    this.request = request;
-  }
+  constructor(private request: APIRequestContext) {}
 
   async createProject(workspace: string, data: ProjectInput) {
     const response = await this.request.post(

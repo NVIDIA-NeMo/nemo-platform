@@ -684,9 +684,6 @@ importers:
       seedrandom:
         specifier: ^3.0.5
         version: 3.0.5
-      unique-names-generator:
-        specifier: ^4.7.1
-        version: 4.7.1
       use-debounce:
         specifier: 'catalog:'
         version: 10.1.0(react@19.2.5)

@@ -42,7 +42,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({ actions, slotTrigger }) => {
         {actions.map((action, key) => (
           <DropdownItem key={`action-${key}`} onClick={handleItemClicked(action)}>
             <Flex gap="density-xs" align="center">
-              {action.slotIcon && action.slotIcon}
+              {action.slotIcon}
               {action.slotLabel}
             </Flex>
           </DropdownItem>
