@@ -115,10 +115,9 @@ async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
         u.make_mock_client_context() as client_context,
         u.setup_mock_providers(client_context),
     ):
-        # The SDK's _get_config_for_api_call rejects unsupported remote seed types
-        # up-front. To exercise the aggregated-remote-diagnostic path we go through
-        # the validation core directly with a config builder that still contains
-        # the unsupported seed.
+        # Exercise the validation core directly so the contract is documented
+        # without going through the SDK shell. The SDK-shell path is covered
+        # by ``test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors``.
         report = await validate_config(
             builder,
             async_sdk=client_context.async_sdk,
@@ -132,6 +131,79 @@ async def test_validate_remote_only_aggregates_seed_and_tool_errors() -> None:
     messages = [err.message for err in result.errors]
     assert any("Tool configs" in m for m in messages)
     assert any(("seed" in m.lower()) or ("df" in m) for m in messages)
+
+
+async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors() -> None:
+    """Regression: ``DataDesignerResource.validate`` itself (not just the
+    underlying ``validate_config`` core) must accept a ``df``-seed config and
+    aggregate the unsupported-seed error with every other detected problem.
+
+    Earlier versions of the SDK applied an eager
+    ``_get_config_for_api_call`` rejection (the same one ``preview`` /
+    ``create`` use) and short-circuited with a single error before the
+    validate pass could run.
+    """
+    builder = dd.DataDesignerConfigBuilder(
+        model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)],
+        tool_configs=[dd.ToolConfig(tool_alias="hello", providers=[u.OPEN_PROVIDER_NAME])],
+    )
+    builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a", "b"]),
+        )
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_providers(client_context),
+    ):
+        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
+        report = await dd_client.validate(builder, execution_context="remote")
+
+    assert not report.ok
+    [result] = report.results
+    assert result.context == "remote"
+    messages = [err.message for err in result.errors]
+    # Both messages must surface in a single pass.
+    assert any("Tool configs" in m for m in messages)
+    # Remote rejects everything outside the {hf, nmp} whitelist; the message
+    # mentions both supported types rather than calling out "df" specifically.
+    assert any("seed_type=hf" in m and "seed_type=nmp" in m for m in messages)
+
+
+async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
+    """A ``df``-seed config is invalid for local execution too — preview
+    serializes the config across the worker-thread boundary, which a
+    pandas DataFrame can't survive — but the diagnostic must come from
+    the validate pass (with a helpful message), not from an eager
+    pre-flight rejection.
+    """
+    builder = dd.DataDesignerConfigBuilder(
+        model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)],
+    )
+    builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a", "b"]),
+        )
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_providers(client_context),
+    ):
+        dd_client = AsyncDataDesignerResource(client_context.async_sdk)
+        report = await dd_client.validate(builder, execution_context="local")
+
+    assert not report.ok
+    [result] = report.results
+    assert result.context == "local"
+    assert any("Dataframe seed sources" in err.message for err in result.errors)
 
 
 async def test_validate_remote_only_rejects_unknown_provider() -> None:

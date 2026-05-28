@@ -384,15 +384,16 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
             A :class:`ValidationReport` whose ``ok`` property is true iff
             every requested context validated cleanly.
         """
-        # Reject unsupported local-only seed types eagerly, the same way
-        # ``preview`` / ``create`` do, so SDK consumers get a consistent error.
-        config = _get_config_for_api_call(config_builder)
-        # Rebuild a config_builder from the (possibly normalized) config so the
-        # downstream engine validate sees exactly what would be submitted.
-        validated_builder = dd.DataDesignerConfigBuilder.from_config(config.to_dict())
+        # Don't apply the eager ``_get_config_for_api_call`` rejection that
+        # ``preview`` / ``create`` use — the validate pass is *meant* to
+        # surface unsupported-seed errors as part of its report, alongside
+        # any other problems. Short-circuiting on the first eager check would
+        # break aggregation and would also reject ``df``-seed configs that
+        # are surfaced cleanly with a helpful message by the validate pass
+        # itself (see ``_validate_seed_type_for_execution_context``).
         resolved_workspace = workspace or self._platform.workspace or "default"
         return validate_config_sync(
-            validated_builder,
+            config_builder,
             sdk=self._platform,
             workspace=resolved_workspace,
             execution_context=execution_context,
@@ -546,11 +547,11 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
         workspace: str | None = None,
     ) -> ValidationReport:
         """Async equivalent of :meth:`DataDesignerResource.validate`."""
-        config = _get_config_for_api_call(config_builder)
-        validated_builder = dd.DataDesignerConfigBuilder.from_config(config.to_dict())
+        # See the sync ``DataDesignerResource.validate`` docstring for why we
+        # bypass ``_get_config_for_api_call`` here.
         resolved_workspace = workspace or self._platform.workspace or "default"
         return await validate_config(
-            validated_builder,
+            config_builder,
             async_sdk=self._platform,
             workspace=resolved_workspace,
             execution_context=execution_context,
