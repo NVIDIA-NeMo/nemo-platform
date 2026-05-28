@@ -26,7 +26,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
 from nemo_platform_plugin.functions.frames import Done, Error
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class PreviewMessageDeliveryError(Exception): ...
@@ -36,8 +36,6 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
     name: ClassVar[str] = "preview"
     description: ClassVar[str] = "Generate a small preview dataset by streaming NDJSON frames."
     spec_schema: ClassVar[type[PreviewSpec]] = PreviewSpec
-
-    errors: list[NDDError] = Field(default_factory=list)
 
     async def run(
         self,
@@ -50,11 +48,11 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
 
         # Extract/set all necessary values, validating along the way. Raise if any errors were collected.
-        self.errors = []
-        num_records = self._validate_and_get_num_records(spec.num_records, is_local)
-        model_configs, model_providers = await self._get_model_configs_and_providers(dd_ctx, spec.config)
-        await self._validate_config(dd_ctx, spec.config)
-        self._raise_if_errors()
+        errors: list[NDDError] = []
+        num_records = _validate_and_get_num_records(spec.num_records, is_local, errors)
+        model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, spec.config, errors)
+        errors.extend(await dd_ctx.validate(spec.config))
+        _raise_if_errors(errors)
 
         workspace_cvar.set(ctx.workspace)
 
@@ -103,46 +101,59 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
             if not completed_with_error:
                 yield Done()
 
-    def _validate_and_get_num_records(self, requested_num_records: int | None, is_local: bool) -> int:
-        if is_local:
-            return requested_num_records or DEFAULT_NUM_RECORDS
 
-        config = get_config()
-        num_records = config.preview_num_records.default
-        if requested_num_records:
-            if requested_num_records > config.preview_num_records.max:
-                self.errors.append(
-                    NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
-                )
-            num_records = requested_num_records
+def _validate_and_get_num_records(
+    requested_num_records: int | None,
+    is_local: bool,
+    errors: list[NDDError],
+) -> int:
+    """Resolve the effective ``num_records``, appending to ``errors`` on overflow."""
+    if is_local:
+        return requested_num_records or DEFAULT_NUM_RECORDS
 
-        return num_records
+    config = get_config()
+    num_records = config.preview_num_records.default
+    if requested_num_records:
+        if requested_num_records > config.preview_num_records.max:
+            errors.append(
+                NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
+            )
+        num_records = requested_num_records
 
-    async def _get_model_configs_and_providers(
-        self, dd_ctx: DataDesignerContext, config: dd.DataDesignerConfig
-    ) -> tuple[list[dd.ModelConfig], list[dd.ModelProvider]]:
-        model_configs = []
-        model_providers = []
+    return num_records
 
+
+async def _get_model_configs_and_providers(
+    dd_ctx: DataDesignerContext,
+    config: dd.DataDesignerConfig,
+    errors: list[NDDError],
+) -> tuple[list[dd.ModelConfig], list[dd.ModelProvider]]:
+    """Resolve referenced model configs / providers, appending failures to ``errors``."""
+    model_configs: list[dd.ModelConfig] = []
+    model_providers: list[dd.ModelProvider] = []
+
+    try:
+        model_configs = get_model_configs(config)
+    except NDDInvalidConfigError as e:
+        errors.append(e)
+    else:
         try:
-            model_configs = get_model_configs(config)
-        except NDDInvalidConfigError as e:
-            self.errors.append(e)
-        else:
-            try:
-                model_providers = await dd_ctx.get_model_providers(model_configs)
-            except (NDDInvalidConfigError, NDDInternalError) as e:
-                self.errors.append(e)
+            model_providers = await dd_ctx.get_model_providers(model_configs)
+        except (NDDInvalidConfigError, NDDInternalError) as e:
+            errors.append(e)
 
-        return model_configs, model_providers
+    return model_configs, model_providers
 
-    async def _validate_config(self, dd_ctx: DataDesignerContext, config: dd.DataDesignerConfig) -> None:
-        validation_errors = await dd_ctx.validate(config)
-        self.errors.extend(validation_errors)
 
-    def _raise_if_errors(self) -> None:
-        if self.errors:
-            aggregated_message = "\n".join(str(e) for e in self.errors)
-            if any(isinstance(e, NDDInvalidConfigError) for e in self.errors):
-                raise NDDInvalidConfigError(aggregated_message)
-            raise NDDInternalError(aggregated_message)
+def _raise_if_errors(errors: list[NDDError]) -> None:
+    """Raise an aggregated NDD error if ``errors`` is non-empty.
+
+    Any config-level error wins (422 path); only when *every* error is internal
+    do we raise ``NDDInternalError`` (500 path).
+    """
+    if not errors:
+        return
+    aggregated_message = "\n".join(str(e) for e in errors)
+    if any(isinstance(e, NDDInvalidConfigError) for e in errors):
+        raise NDDInvalidConfigError(aggregated_message)
+    raise NDDInternalError(aggregated_message)
