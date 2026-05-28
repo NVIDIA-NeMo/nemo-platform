@@ -6,7 +6,9 @@
 from __future__ import annotations
 
 import json
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Thread
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
@@ -31,6 +33,13 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     register_metric_bundler,
 )
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundler
+from nemo_evaluator.shared.metric_bundles.container import (
+    ContainerImageBuilder,
+    ContainerMetricBundler,
+    ContainerMetricPayload,
+    MetricContainerLauncher,
+    RunningMetricContainer,
+)
 from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -54,6 +63,7 @@ from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.scheduler import NemoJobScheduler
+from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
@@ -75,6 +85,131 @@ def _exact_match_spec() -> dict:
 
 def _bundle_payload(metric) -> dict[str, Any]:
     return CloudpickleMetricBundler().bundle(metric).model_dump(mode="json")
+
+
+class _NoopImageBuilder(ContainerImageBuilder):
+    def build(self, *, context_dir: Path, image: str) -> None:
+        del context_dir, image
+
+
+class _ContainerBuildableMetric:
+    def __init__(self, metric_type: str = "container-score") -> None:
+        self._metric_type = metric_type
+
+    @property
+    def type(self) -> str:
+        return self._metric_type
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
+
+    def container_build_spec(self) -> dict[str, list[str]]:
+        return {"requirements": []}
+
+
+def _container_bundle_payload(
+    metric_type: str = "container-score",
+) -> dict[str, Any]:
+    return (
+        ContainerMetricBundler(builder=_NoopImageBuilder())
+        .bundle(_ContainerBuildableMetric(metric_type=metric_type))
+        .model_dump(mode="json")
+    )
+
+
+class _MetricHTTPService:
+    def __init__(self, *, output_value: float) -> None:
+        self.output_value = output_value
+        self.score_requests = 0
+        self._server: ThreadingHTTPServer | None = None
+        self._thread: Thread | None = None
+
+    @property
+    def endpoint_url(self) -> str:
+        if self._server is None:
+            raise RuntimeError("metric HTTP service has not been started")
+        return f"http://127.0.0.1:{self._server.server_port}"
+
+    def start(self) -> None:
+        owner = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self) -> None:
+                if self.path != "/health":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(b'{"status":"ok"}')
+
+            def do_POST(self) -> None:
+                if self.path != "/score":
+                    self.send_response(404)
+                    self.end_headers()
+                    return
+                content_length = int(self.headers.get("Content-Length", "0"))
+                if content_length:
+                    self.rfile.read(content_length)
+                owner.score_requests += 1
+                response = json.dumps({"outputs": [{"name": "score", "value": owner.output_value}]}).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response)))
+                self.end_headers()
+                self.wfile.write(response)
+
+            def log_message(self, format: str, *args: object) -> None:
+                del format, args
+
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self._thread = Thread(target=self._server.serve_forever, daemon=True)
+        self._thread.start()
+
+    def stop(self) -> None:
+        if self._server is None:
+            return
+        self._server.shutdown()
+        self._server.server_close()
+        if self._thread is not None:
+            self._thread.join(timeout=5)
+        self._server = None
+        self._thread = None
+
+
+class _HTTPRunningMetricContainer:
+    def __init__(self, service: _MetricHTTPService) -> None:
+        self._service = service
+        self.endpoint_url = service.endpoint_url
+
+    def stop(self) -> None:
+        self._service.stop()
+
+    def diagnostics(self) -> str:
+        return "fake evaluator metric service"
+
+
+class _HTTPMetricContainerLauncher(MetricContainerLauncher):
+    def __init__(self, values_by_image: dict[str, float]) -> None:
+        self.values_by_image = values_by_image
+        self.services_by_image: dict[str, _MetricHTTPService] = {}
+        self.launched_images: list[str] = []
+
+    def launch(self, *, image: str) -> RunningMetricContainer:
+        service = _MetricHTTPService(output_value=self.values_by_image[image])
+        service.start()
+        self.services_by_image[image] = service
+        self.launched_images.append(image)
+        return _HTTPRunningMetricContainer(service)
+
+    def stop_all(self) -> None:
+        for service in self.services_by_image.values():
+            service.stop()
 
 
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
@@ -211,6 +346,42 @@ def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     assert aggregate_scores[0]["mean"] == 0.5
 
 
+def test_evaluate_job_runs_multiple_container_metric_services(tmp_path: Path) -> None:
+    metric_one = _container_bundle_payload(metric_type="container-one")
+    metric_two = _container_bundle_payload(metric_type="container-two")
+    image_one = cast(ContainerMetricPayload, MetricBundle.model_validate(metric_one).payload).image
+    image_two = cast(ContainerMetricPayload, MetricBundle.model_validate(metric_two).payload).image
+    launcher = _HTTPMetricContainerLauncher({image_one: 0.25, image_two: 0.75})
+    ctx = _make_job_context(tmp_path)
+    register_metric_bundler(
+        "container-http",
+        lambda: ContainerMetricBundler(builder=_NoopImageBuilder(), launcher=launcher),
+    )
+
+    try:
+        result = EvaluateJob().run(
+            {
+                "metrics": [metric_one, metric_two],
+                "dataset": [{"model_output": "one"}, {"model_output": "two"}],
+                "params": {"parallelism": 2},
+            },
+            ctx=ctx,
+        )
+    finally:
+        register_metric_bundler("container-http", ContainerMetricBundler)
+        launcher.stop_all()
+
+    payload = _load_artifact_payload(result)
+    aggregate_scores = {score["name"]: score["mean"] for score in payload["aggregate_scores"]["scores"]}
+    assert aggregate_scores == {
+        "container-one.score": 0.25,
+        "container-two.score": 0.75,
+    }
+    assert launcher.launched_images == [image_one, image_two]
+    assert launcher.services_by_image[image_one].score_requests == 2
+    assert launcher.services_by_image[image_two].score_requests == 2
+
+
 def test_cli_explain_uses_registered_evaluator_job_key() -> None:
     app = EvaluatorPluginCLI().get_cli()
     add_job_commands(app, {"evaluator.evaluate": EvaluateJob})
@@ -233,6 +404,66 @@ def test_cli_info_reports_registered_evaluator_job_key() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["jobs"] == ["evaluator.evaluate"]
+
+
+def test_cli_metric_server_image_build_dry_run_uses_platform_image() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["images", "build-metric-server", "--python-version", "3.12", "--dry-run"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["image"] == get_qualified_image("nemo-evaluator-metric-server-py312")
+    assert payload["python_version"] == "3.12"
+    assert payload["command"] == [
+        "docker",
+        "build",
+        "--build-arg",
+        "PYTHON_BASE_IMAGE=python:3.12-slim",
+        "-t",
+        payload["image"],
+    ]
+
+
+def test_cli_metric_server_image_build_dry_run_accepts_image_override() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "images",
+            "build-metric-server",
+            "--image",
+            "registry.test/evaluator-metric-server:dev",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["image"] == "registry.test/evaluator-metric-server:dev"
+
+
+def test_cli_metric_server_image_build_dry_run_accepts_python_base_image_override() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "images",
+            "build-metric-server",
+            "--python-version",
+            "3.12",
+            "--python-base-image",
+            "python:3.12-alpine",
+            "--dry-run",
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["python_base_image"] == "python:3.12-alpine"
+    assert "PYTHON_BASE_IMAGE=python:3.12-alpine" in payload["command"]
 
 
 def test_cli_run_executes_evaluator_job() -> None:
@@ -330,6 +561,59 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     assert config["metrics"][0]["bundle_kind"] == "metric-bundle"
     assert config["metrics"][0]["metric_type"] == "exact-match"
     assert config["dataset"] == _exact_match_spec()["dataset"]
+
+
+async def test_evaluate_job_compile_keeps_evaluator_image_for_container_metrics() -> None:
+    spec = EvaluateSpec.model_validate(
+        {
+            **_exact_match_spec(),
+            "metrics": [_container_bundle_payload()],
+        }
+    )
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=object(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    container = cast(Any, job_spec.steps[0].executor).container
+    config = cast(dict[str, Any], job_spec.steps[0].config)
+    assert container.image == get_qualified_image("nmp-cpu-tasks")
+    assert config["metrics"][0]["payload"]["kind"] == "container-http"
+    assert config["metrics"][0]["payload"]["image"].startswith("nemo-evaluator-metric-container-score-")
+
+
+async def test_evaluate_job_compile_allows_multiple_container_metric_images() -> None:
+    spec = EvaluateSpec.model_validate(
+        {
+            **_exact_match_spec(),
+            "metrics": [
+                _container_bundle_payload(metric_type="container-one"),
+                _container_bundle_payload(metric_type="container-two"),
+            ],
+        }
+    )
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=object(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    container = cast(Any, job_spec.steps[0].executor).container
+    config = cast(dict[str, Any], job_spec.steps[0].config)
+    assert container.image == get_qualified_image("nmp-cpu-tasks")
+    assert [metric["payload"]["image"] for metric in config["metrics"]] == [
+        cast(ContainerMetricPayload, MetricBundle.model_validate(spec.metrics[0]).payload).image,
+        cast(ContainerMetricPayload, MetricBundle.model_validate(spec.metrics[1]).payload).image,
+    ]
 
 
 async def test_evaluate_job_compile_preserves_bundled_metric_model_refs_for_runtime_resolution() -> None:

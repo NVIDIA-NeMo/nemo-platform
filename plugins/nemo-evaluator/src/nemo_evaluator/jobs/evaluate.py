@@ -14,6 +14,7 @@ from nemo_evaluator.jobs.utils import resolve_run_dataset
 from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, metric_bundler_for_payload
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
+from nemo_evaluator.shared.metric_bundles.container import ContainerMetricPayload  # noqa: F401
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution._protocols import JobParamsConfigurableMetric
 from nemo_evaluator_sdk.execution.config import normalize_params
@@ -152,7 +153,14 @@ class EvaluateJob(NemoJob):
             artifacts_dir=artifacts_dir,
         )
 
-    def run(self, config: dict, *, ctx: JobContext, sdk: object | None = None, async_sdk: object | None = None) -> dict:
+    def run(
+        self,
+        config: dict,
+        *,
+        ctx: JobContext,
+        sdk: object | None = None,
+        async_sdk: object | None = None,
+    ) -> dict:
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()

@@ -1,0 +1,14 @@
+ARG PYTHON_BASE_IMAGE=python:3.11-slim
+FROM ${PYTHON_BASE_IMAGE}
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+WORKDIR /app
+
+COPY requirements.txt ./requirements.txt
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+
+CMD ["python", "-c", "import sys; print('This is the evaluator metric-server base image. Build and run a metric-specific container bundle image instead.', file=sys.stderr); raise SystemExit(1)"]

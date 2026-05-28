@@ -10,6 +10,10 @@ from collections.abc import Callable, Mapping
 from typing import Annotated, Any, Literal, Protocol, cast
 
 from nemo_evaluator_sdk.metrics.protocol import (
+    BooleanValue,
+    ContinuousScore,
+    DiscreteScore,
+    Label,
     Metric,
     MetricOutputSpec,
     MetricWithSecrets,
@@ -49,6 +53,7 @@ class BundledMetricOutputSpec(BaseModel):
 
     name: str
     description: str | None = None
+    value_kind: Literal["continuous", "discrete", "label", "boolean", "model"] = "model"
     value_json_schema: dict[str, Any]
 
     @classmethod
@@ -57,8 +62,21 @@ class BundledMetricOutputSpec(BaseModel):
         return cls(
             name=output.name,
             description=output.description,
+            value_kind=_output_value_kind(output),
             value_json_schema=output.value_json_schema(),
         )
+
+
+def _output_value_kind(output: MetricOutputSpec) -> Literal["continuous", "discrete", "label", "boolean", "model"]:
+    if issubclass(output.value_schema, ContinuousScore):
+        return "continuous"
+    if issubclass(output.value_schema, DiscreteScore):
+        return "discrete"
+    if issubclass(output.value_schema, Label):
+        return "label"
+    if issubclass(output.value_schema, BooleanValue):
+        return "boolean"
+    return "model"
 
 
 class MetricBundlePayload(BaseModel, ABC):

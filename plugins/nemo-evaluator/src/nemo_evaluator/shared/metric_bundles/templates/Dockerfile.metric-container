@@ -1,0 +1,12 @@
+FROM ${BASE_IMAGE}
+WORKDIR /opt/nemo-metric
+
+COPY requirements.txt ./requirements.txt
+RUN python -m pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+
+COPY ${SERVER_PACKAGE_NAME}/ ./${SERVER_PACKAGE_NAME}/
+COPY ${METRIC_ARTIFACT_NAME} ./${METRIC_ARTIFACT_NAME}
+COPY ${METRIC_DESCRIPTOR_NAME} ./${METRIC_DESCRIPTOR_NAME}
+
+EXPOSE ${SERVER_PORT}
+CMD ${SERVER_COMMAND_JSON}
