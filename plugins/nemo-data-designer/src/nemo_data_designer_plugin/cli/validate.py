@@ -1,14 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Plugin-owned ``nemo data-designer validate`` command.
-
-Replaces the upstream ``data_designer.cli.commands.validate.validate_command``,
-which is local-only and rejects IGW-provider references. This implementation
-delegates to the shared validation core in
-:mod:`nemo_data_designer_plugin.sdk.validation`, so SDK and CLI share the same
-behavior.
-"""
+"""Execution context-aware CLI validation of config sources"""
 
 from __future__ import annotations
 

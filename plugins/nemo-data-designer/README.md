@@ -24,7 +24,7 @@ The exit code is `0` only when every requested context validates cleanly. JSON o
 
 ### Local vs. remote
 
-- **Local** mirrors what `nemo data-designer <preview|create> run` checks: the engine compiles the config and resolves model providers. Providers can be defined locally **or** referenced by name from the Inference Gateway — both are first-class.
+- **Local** mirrors what `nemo data-designer <preview|create> run` accepts: the engine compiles the config and resolves model providers. Providers can be defined locally **or** referenced by name from the Inference Gateway — both are first-class.
 - **Remote** mirrors what `nemo data-designer <preview|create> submit` accepts: unsupported seed types and `tool_configs` are rejected, IGW providers are resolved against the platform, Files-service seeds are looked up, and Nemotron Personas filesets are checked. The remote pass is a client-side simulation of those checks; it does not contact the data-designer service.
 
 ### Programmatic use
