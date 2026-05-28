@@ -339,7 +339,8 @@ describe('CombinedAgentsTable', () => {
 
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
-      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      const deleteItems = await screen.findAllByRole('menuitem', { name: 'Delete' });
+      await user.click(deleteItems[0]);
 
       const confirmDialog = await screen.findByRole('dialog');
       await user.click(within(confirmDialog).getByRole('button', { name: 'Delete' }));

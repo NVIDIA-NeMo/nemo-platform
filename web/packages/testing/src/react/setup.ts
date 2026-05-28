@@ -194,12 +194,18 @@ beforeEach(() => {
     syncPopoverState.call(this, desired);
     return desired;
   };
+});
 
-  /**
-   * Browsers auto-toggle the popover targeted by a button's `popovertarget`
-   * attribute on click. happy-dom does not. Add the missing behavior here so
-   * KUI Select/Tooltip/Popover tests can open/close via user interaction.
-   */
+/**
+ * Browsers auto-toggle the popover targeted by a button's `popovertarget`
+ * attribute on click. happy-dom does not. Add the missing behavior here so
+ * KUI Select/Tooltip/Popover tests can open/close via user interaction.
+ *
+ * Registered once per test file via `beforeAll` — registering in `beforeEach`
+ * stacks duplicate handlers across tests, causing N toggles per click and
+ * order-dependent flakes.
+ */
+beforeAll(() => {
   document.addEventListener(
     'click',
     (event) => {
