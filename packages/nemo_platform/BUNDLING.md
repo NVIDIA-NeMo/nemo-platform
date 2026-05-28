@@ -1,4 +1,6 @@
-# nemo-platform
+# nemo-platform wheel bundling
+
+> Internal developer docs for the `nemo-platform` wrapper distribution. For an end-user introduction to NeMo Platform, see the [repo root README](../../README.md) or the [PyPI page](https://pypi.org/project/nemo-platform/).
 
 Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[services]`, this is the wheel they get.
 
