@@ -45,26 +45,3 @@ def test_intake_openapi_keeps_span_era_routes(sdk: NeMoPlatform) -> None:
     assert "/apis/intake/v2/workspaces/{workspace}/annotations" in paths
     assert "/apis/intake/v2/workspaces/{workspace}/evaluator-results" in paths
     assert "/apis/intake/v2/workspaces/{workspace}/ingest/otlp/v1/traces" in paths
-
-
-def test_intake_openapi_removes_legacy_entry_app_task_and_export_routes(sdk: NeMoPlatform) -> None:
-    response = sdk._client.get("/openapi.json")
-    assert response.status_code == 200
-
-    paths = response.json().get("paths", {})
-
-    legacy_paths = {
-        "/apis/intake/v2/workspaces/{workspace}/apps",
-        "/apis/intake/v2/workspaces/{workspace}/apps/{name}",
-        "/apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks",
-        "/apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}",
-        "/apis/intake/v2/workspaces/{workspace}/entries",
-        "/apis/intake/v2/workspaces/{workspace}/entries/{name}",
-        "/apis/intake/v2/workspaces/{workspace}/entries/{name}/events",
-        "/apis/intake/v2/workspaces/{workspace}/entries/{entry}/events/{name}",
-        "/apis/intake/v2/workspaces/{workspace}/export/jobs",
-        "/apis/intake/v2/workspaces/{workspace}/export/jobs/{name}",
-        "/apis/intake/v2/workspaces/{workspace}/export/preview",
-    }
-
-    assert legacy_paths.isdisjoint(paths)

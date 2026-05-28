@@ -20,8 +20,6 @@ Active v2 workspace endpoints:
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions`
 - `POST /apis/intake/v2/workspaces/{workspace}/ingest/atif`
 
-Legacy apps, tasks, entries, events, and export-job endpoints have been removed.
-
 ## Local Development
 
 Run these commands from the repository root unless a command says otherwise.

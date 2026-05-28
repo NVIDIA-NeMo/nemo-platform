@@ -145,28 +145,6 @@ authz:
         update:
           description: "Update virtual models"
     intake:
-      apps:
-        create:
-          description: "Create intake apps"
-        delete:
-          description: "Delete intake apps"
-        list:
-          description: "List intake apps"
-        read:
-          description: "Read intake apps"
-        update:
-          description: "Update intake apps"
-      entries:
-        create:
-          description: "Create intake entries"
-        delete:
-          description: "Delete intake entries"
-        list:
-          description: "List intake entries"
-        read:
-          description: "Read intake entries"
-        update:
-          description: "Update intake entries"
       evaluator-results:
         create:
           description: "Create intake evaluator results"
@@ -183,18 +161,6 @@ authz:
           description: "Read intake annotations"
         delete:
           description: "Delete intake annotations"
-      events:
-        create:
-          description: "Create intake entry events"
-        delete:
-          description: "Delete intake entry events"
-      exports:
-        create:
-          description: "Create intake export jobs"
-        list:
-          description: "List intake export jobs"
-        read:
-          description: "Read intake export jobs and previews"
       ingest:
         create:
           description: "Ingest traces into intake"
@@ -206,17 +172,6 @@ authz:
       traces:
         read:
           description: "Read intake traces"
-      tasks:
-        create:
-          description: "Create intake tasks"
-        delete:
-          description: "Delete intake tasks"
-        list:
-          description: "List intake tasks"
-        read:
-          description: "Read intake tasks"
-        update:
-          description: "Update intake tasks"
     jobs:
       cancel:
         description: "Cancel jobs"
@@ -352,18 +307,10 @@ authz:
       - inference.virtual-models.read
       - intake.annotations.list
       - intake.annotations.read
-      - intake.apps.list
-      - intake.apps.read
-      - intake.entries.list
-      - intake.entries.read
       - intake.evaluator-results.list
       - intake.evaluator-results.read
-      - intake.exports.list
-      - intake.exports.read
       - intake.spans.list
       - intake.spans.read
-      - intake.tasks.list
-      - intake.tasks.read
       - intake.traces.read
       - jobs.list
       - jobs.read
@@ -414,20 +361,8 @@ authz:
       - inference.virtual-models.update
       - intake.annotations.create
       - intake.annotations.delete
-      - intake.apps.create
-      - intake.apps.delete
-      - intake.apps.update
-      - intake.entries.create
-      - intake.entries.delete
-      - intake.entries.update
       - intake.evaluator-results.create
-      - intake.events.create
-      - intake.events.delete
-      - intake.exports.create
       - intake.ingest.create
-      - intake.tasks.create
-      - intake.tasks.delete
-      - intake.tasks.update
       - jobs.cancel
       - jobs.create
       - jobs.delete
