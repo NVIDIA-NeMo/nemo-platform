@@ -24,7 +24,7 @@ from nemo_data_designer_plugin.sdk.validation import (
     validate_config_sync,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.commands import _resolve_local_cli_sdks
+from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
 
 OutputFormat = Literal["text", "json"]
 
@@ -84,7 +84,7 @@ def validate_command(
         print_error(f"Could not load config: {e}")
         raise typer.Exit(code=1) from e
 
-    sdk, async_sdk = _resolve_local_cli_sdks(typer_ctx)
+    sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
     sdk = cast("NeMoPlatform | None", sdk)
     async_sdk = cast("AsyncNeMoPlatform | None", async_sdk)
 

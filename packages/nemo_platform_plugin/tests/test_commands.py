@@ -27,7 +27,7 @@ from typing import Any, AsyncIterator, ClassVar, cast
 import httpx
 import pytest
 import typer
-from nemo_platform_plugin.commands import _resolve_local_cli_sdks, add_function_commands, add_job_commands
+from nemo_platform_plugin.commands import add_function_commands, add_job_commands
 from nemo_platform_plugin.discovery import discover, discover_manifests
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.function_context import FunctionContext
@@ -381,26 +381,6 @@ class TestSpecFlagRename:
         result = runner.invoke(app, ["greet", "run", "--config", '{"name": "Legacy"}'])
         assert result.exit_code == 0
         assert json.loads(result.output)["message"] == "Hello, Legacy!"
-
-
-class TestResolveLocalCliSdks:
-    def test_returns_none_without_context_obj(self) -> None:
-        assert _resolve_local_cli_sdks(_typer_context_with_obj(None)) == (None, None)
-
-    def test_uses_cli_context_client_getters(self) -> None:
-        sdk = object()
-        async_sdk = object()
-
-        # Stand in for either nemo_platform_ext.cli.core.context.CLIContext
-        # or its vendored nemo_platform.cli.core.context.CLIContext copy.
-        class _State:
-            def get_client(self) -> object:
-                return sdk
-
-            def get_async_client(self) -> object:
-                return async_sdk
-
-        assert _resolve_local_cli_sdks(_typer_context_with_obj(_State())) == (sdk, async_sdk)
 
 
 # ---------------------------------------------------------------------------
