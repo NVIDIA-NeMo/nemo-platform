@@ -46,9 +46,7 @@ Notebook testing:
 from .client import TEST_ADMIN_EMAIL, TEST_USER_EMAIL, ClientContext, create_test_client
 from .docker import (
     DEFAULT_RETRY_CONFIG,
-    MOCK_NIM_IMAGE_TAG,
     MOCK_NIM_NGINX_CONF,
-    MOCK_SIDECAR_IMAGE_TAG,
     MODELS_CONTROLLER_MANAGED_LABEL,
     DockerRetryConfig,
     DockerTestContext,
@@ -116,8 +114,6 @@ __all__ = [
     "cleanup_model_deployment_containers",
     "get_worker_port_range",
     "MOCK_NIM_NGINX_CONF",
-    "MOCK_NIM_IMAGE_TAG",
-    "MOCK_SIDECAR_IMAGE_TAG",
     "MODELS_CONTROLLER_MANAGED_LABEL",
     # Notebook testing
     "create_temp_venv_with_kernel",
