@@ -1,0 +1,100 @@
+# NeMo Platform
+
+[![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Docs](https://img.shields.io/badge/docs-nvidia--nemo.github.io-76B900?style=flat-square&logo=readthedocs&logoColor=white)](https://nvidia-nemo.github.io/nemo-platform/)
+
+Make the agents you ship faster, more accurate, and safer.
+
+NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, and web UI. Hardening, evaluation, and tuning for the agents you put in production.
+
+## What's here today
+
+- **Secure agents.** Guardrails (content safety, jailbreak detection, PII redaction), Auditor (red-teaming via garak), Anonymizer (PII handling for training data).
+- **Evaluate agents.** LLM-as-judge, deterministic, agentic, and RAG benchmarks. Harbor-backed eval suites for regression testing.
+- **Tune agents.** Skill optimization, prompt and hyperparameter tuning, Switchyard model routing.
+- **Build agents.** NVIDIA NeMo Agent Toolkit (NAT) for LangGraph-based agents. Shared infrastructure: Inference Gateway, Secrets, Files, Entity Store, Jobs.
+- **Generate synthetic data.** Generate synthetic data for training or evaluation purposes using Data Designer.
+- **NeMo Studio (alpha).** Browser UI for chat, monitoring, and reviewing optimization suggestions. Studio's agent-focused features are still a work in progress; the CLI is the primary surface today.
+
+## What's coming soon
+
+- Fine-tuning
+- Safe Synthesizer (synthetic data with privacy guarantees)
+- Broader agent framework support. Today NeMo Platform optimizes LangGraph agents wrapped in NAT. If your agent is in another framework, you need to write the NAT wrapper.
+
+## Install
+
+**Prerequisites:** Python 3.11–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
+
+The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
+
+```bash
+# SDK + CLI only
+pip install nemo-platform
+
+# SDK + CLI + all platform services and default plugins
+pip install "nemo-platform[services]"
+```
+
+Then bring up the platform:
+
+```bash
+nemo setup
+```
+
+`nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and (optionally) deploys a sample agent.
+
+Verify:
+
+```bash
+nemo services status
+```
+
+The recommended developer setup is to clone the repo and use `make bootstrap` instead of installing from PyPI — see the [setup playbook](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md) for the full walkthrough, including local data dir, DB reset, and troubleshooting.
+
+## Quick tour
+
+```bash
+nemo --help                # All commands
+nemo models list           # Available models
+nemo chat <model-name>     # Chat directly with a model
+nemo services status       # Platform health
+nemo skills list           # Skills installed on the platform
+```
+
+Every capability is also available via REST API. Model inference uses the model IDs returned from `nemo models list` and is available at:
+
+```text
+http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions
+```
+
+## Use NeMo Platform from your coding agent
+
+After installation, launch your coding agent (Claude Code, Codex, Cursor, OpenCode, etc) from inside a NeMo Platform workspace. NeMo ships agent skills that let you drive the platform conversationally:
+
+- "Scaffold an agent from this spec and deploy it."
+- "Run an evaluation against my agent."
+- "Add content-safety guardrails to my agent."
+- "Help me optimize my agent."
+- "Show me what's running on the platform."
+- "Shut down NeMo cleanly."
+
+Install or refresh skills with:
+
+```bash
+nemo skills install --agent claude
+```
+
+## Links
+
+- **Source:** https://github.com/NVIDIA-NeMo/nemo-platform
+- **Documentation:** https://nvidia-nemo.github.io/nemo-platform/
+- **Setup playbook:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md
+- **CLI reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/cli/index.md
+- **API reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/api/index.md
+- **Issue tracker:** https://github.com/NVIDIA-NeMo/nemo-platform/issues
+
+## License
+
+NeMo Platform is licensed under the [Apache License 2.0](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE). Third-party open-source dependencies have their own licenses; review them before use.
