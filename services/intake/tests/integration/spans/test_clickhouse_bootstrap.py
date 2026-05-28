@@ -29,13 +29,13 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
     ]
 
 
-def test_intake_service_readiness_bootstraps_service_owned_clickhouse(client: TestClient, run_async):
+def test_intake_service_readiness_does_not_bootstrap_service_owned_clickhouse(client: TestClient, run_async):
     app = cast(FastAPI, client.app)
     service = cast(IntakeService, app.state.intake_service)
 
     assert service.clickhouse_client is not None
     assert run_async(service.is_ready()) is True
-    assert service.clickhouse_client._bootstrapped is True
+    assert service.clickhouse_client._bootstrapped is False
 
     response = client.get("/apis/intake/v2/workspaces/default/spans")
 

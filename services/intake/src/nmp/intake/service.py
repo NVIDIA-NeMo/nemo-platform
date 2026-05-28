@@ -66,7 +66,7 @@ class IntakeService(Service[IntakeConfig]):
         self.clickhouse_client = ClickHouseSpanClient(ClickHouseSettings.from_config(cfg))
         logger.warning(
             "ClickHouse schema setup was not run during Intake startup; "
-            "readiness checks and trace endpoints will initialize ClickHouse on first use",
+            "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable",
             extra={
                 "service": self.name,
                 "clickhouse_url": cfg.clickhouse_config.url,
@@ -85,12 +85,4 @@ class IntakeService(Service[IntakeConfig]):
         await super().on_shutdown()
 
     async def is_ready(self) -> bool:
-        if not self._ready or self.clickhouse_client is None:
-            return False
-
-        try:
-            await self.clickhouse_client.query("SELECT 1")
-        except Exception as exc:
-            logger.warning("ClickHouse readiness check failed: %s", exc, extra={"service": self.name})
-            return False
-        return True
+        return self._ready
