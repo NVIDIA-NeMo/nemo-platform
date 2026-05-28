@@ -10,9 +10,7 @@ import path from 'path';
 /** Dataset shape for e2e page (files_url, name, etc.). */
 type Dataset = { files_url?: string; name?: string; [key: string]: unknown };
 export class ProjectDatasetsPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   private async openQuickActionsMenu(name: string, actionName: string) {
     const fileRow = await getRowByName(this.page, name);

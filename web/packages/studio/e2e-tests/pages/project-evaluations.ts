@@ -5,9 +5,7 @@ import { waitForLongOperation } from '@e2e-tests/utils/pageUtils';
 import { expect, type Page } from '@playwright/test';
 
 export class ProjectEvaluationsPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   async gotoEvaluations(projectNamespace: string, projectName: string) {
     await this.page.goto(`projects/${projectNamespace}/${projectName}/evaluation/jobs`);

@@ -32,7 +32,7 @@ const processFilterObject = (obj: EntryFilter, params: URLSearchParams, prefix =
       });
     }
     // Handle nested objects recursively
-    else if (typeof value === 'object' && value !== null) {
+    else if (typeof value === 'object') {
       processFilterObject(value, params, paramKey);
     }
     // Handle primitive values (string, number, boolean)

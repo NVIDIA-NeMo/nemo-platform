@@ -17,9 +17,7 @@ interface Dataset {
 }
 
 export class DatasetsAPI {
-  constructor(private request: APIRequestContext) {
-    this.request = request;
-  }
+  constructor(private request: APIRequestContext) {}
 
   private getFileNameFromPath(filePath: string) {
     const fileNameParts = filePath.split('/');

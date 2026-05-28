@@ -10,9 +10,7 @@ type EvaluationConfig = Record<string, unknown>;
 type EvaluationConfigInput = Record<string, unknown>;
 
 export class EvaluationsAPI {
-  constructor(private request: APIRequestContext) {
-    this.request = request;
-  }
+  constructor(private request: APIRequestContext) {}
 
   async createEvaluationConfig(data: EvaluationConfigInput) {
     const response = await this.request.post(`${NMP_BASE_URL}/v1/evaluation/configs`, {

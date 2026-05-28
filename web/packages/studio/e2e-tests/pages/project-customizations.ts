@@ -5,9 +5,7 @@ import { CustomizationJob as CustomizationJobOutput } from '@nemo/sdk/vendored/c
 import { type Page } from '@playwright/test';
 
 export class ProjectCustomizationsPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   async goto(
     projectNamespace: string,
