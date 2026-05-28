@@ -109,7 +109,6 @@ def should_process_markdown(md_path: Path) -> bool:
             except Exception as e:
                 # If frontmatter parsing fails, continue to other checks
                 logger.debug(f"Frontmatter parsing failed for {md_path}: {e}")
-                pass
 
         return False
 

@@ -216,7 +216,7 @@ def validate_port_available(port: int, config: QuickstartConfig | None = None) -
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.bind(("0.0.0.0", port))
+        sock.bind(("127.0.0.1", port))
         sock.close()
         return ValidationResult(True, f"Port {port} is available")
     except OSError:

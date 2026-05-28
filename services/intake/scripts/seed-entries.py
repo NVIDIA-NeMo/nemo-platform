@@ -956,7 +956,7 @@ def main():
         logger.info("🛑 Seeding interrupted by user")
     except Exception as e:
         logger.exception("❌ Seeding failed: %s", str(e))
-        exit(1)
+        raise SystemExit(1) from e
 
 
 if __name__ == "__main__":

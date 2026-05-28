@@ -349,7 +349,6 @@ class PydanticJSONLResultSerializer(BaseResultSerializer):
                                 "error": {
                                     "type": e.__class__.__name__,
                                     "line": line_number,
-                                    "message": str(e),
                                 }
                             }
                         )

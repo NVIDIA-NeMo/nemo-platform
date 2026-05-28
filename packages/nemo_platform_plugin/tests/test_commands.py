@@ -836,9 +836,8 @@ class TestFunctionSubmitVerb:
     def test_submit_uses_nmp_base_url_env_when_no_flags(self, monkeypatch) -> None:
         captured_url: list[str] = []
 
-        def _fake_post(url: str, body: dict, *, headers: dict, timeout: float = 30.0, **_kwargs) -> None:
+        def _fake_post(url: str, body: dict, *, headers: dict, timeout: float = 30.0, **_kwargs) -> None:  # noqa: ARG001
             captured_url.append(url)
-            del body, headers, timeout
 
         monkeypatch.setattr("nemo_platform_plugin.commands._post_function_submit", _fake_post)
         monkeypatch.setenv("NMP_BASE_URL", "http://from-env:1234")
