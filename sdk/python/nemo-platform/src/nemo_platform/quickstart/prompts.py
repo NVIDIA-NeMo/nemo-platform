@@ -5,25 +5,25 @@
 
 from __future__ import annotations
 
-from typing import Literal
 from dataclasses import dataclass
+from typing import Literal
 
 from pydantic import SecretStr
 from rich.console import Console
 
 from nemo_platform.ui.prompts import (
-    prompt_text,
+    non_empty_validator,
     prompt_choice,
     prompt_password,
-    non_empty_validator,
+    prompt_text,
 )
 
-from .config import QuickstartConfig
 from ._registry import image_registry_host
+from .config import QuickstartConfig
 from .container import ContainerManager
 from .gpu_config import (
-    format_gpu_ids_for_storage,
     apply_cuda_visible_devices_filter,
+    format_gpu_ids_for_storage,
     parse_cuda_visible_devices_integers,
 )
 

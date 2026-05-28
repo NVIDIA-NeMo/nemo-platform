@@ -7,13 +7,13 @@ from __future__ import annotations
 
 import os
 import stat
-from typing import Any, Literal
 from pathlib import Path
-from typing_extensions import Self
+from typing import Any, Literal
 
 import yaml
-from pydantic import Field, BaseModel, SecretStr, model_validator, field_serializer
+from pydantic import BaseModel, Field, SecretStr, field_serializer, model_validator
 from pydantic.functional_serializers import SerializationInfo
+from typing_extensions import Self
 
 from ._registry import image_registry_host
 from .gpu_config import parse_comma_separated_non_negative_integers

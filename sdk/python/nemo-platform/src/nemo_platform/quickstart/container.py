@@ -5,25 +5,25 @@
 
 from __future__ import annotations
 
+import logging
 import os
 import sys
 import typing
-import logging
-from typing import TypedDict
-from pathlib import Path
 from collections.abc import Iterator
+from pathlib import Path
+from typing import TypedDict
 
-from .config import QuickstartConfig
 from ._registry import image_registry_host
+from .config import QuickstartConfig
 from .platform_config import PlatformConfig
 
 logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
     from docker import DockerClient
-    from docker.types import Mount
-    from docker.models.networks import Network
     from docker.models.containers import Container
+    from docker.models.networks import Network
+    from docker.types import Mount
 
 
 class PullProgress(TypedDict):
