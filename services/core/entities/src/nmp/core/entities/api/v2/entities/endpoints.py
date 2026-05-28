@@ -350,7 +350,15 @@ async def list_entities(
             filter_op=combined_filter,
             relationship_child_workspaces=accessible_workspaces,
         )
-    elif accessible_workspaces is None or workspace in accessible_workspaces:
+    else:
+        # 422 if the caller doesn't have access to the requested workspace.
+        # raise_if_workspace_inaccessible is a no-op when accessible_workspaces is
+        # None (full access) or the workspace is in the set.
+        raise_if_workspace_inaccessible(
+            accessible_workspaces,
+            workspace,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        )
         # Check if workspace is being deleted (404 for user requests)
         await validate_workspace_not_deleting(workspace_repository, auth_client, workspace)
 
@@ -363,12 +371,6 @@ async def list_entities(
             sort=sort,
             filter_op=filter,
             relationship_child_workspaces=accessible_workspaces,
-        )
-    else:
-        raise_if_workspace_inaccessible(
-            accessible_workspaces,
-            workspace,
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         )
 
     return EntitiesPage(
