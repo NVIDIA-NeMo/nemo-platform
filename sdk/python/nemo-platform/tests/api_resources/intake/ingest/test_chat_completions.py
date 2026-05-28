@@ -24,7 +24,9 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
-from nemo_platform.types.intake.ingest import ChatCompletionsIngestResponse
+from nemo_platform.types.intake.ingest import (
+    ChatCompletionsIngestResponse,
+)
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 

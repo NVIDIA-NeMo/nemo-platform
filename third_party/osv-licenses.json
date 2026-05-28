@@ -127,16 +127,6 @@
         },
         {
           "package": {
-            "name": "amqp",
-            "version": "5.3.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "annotated-doc",
             "version": "0.0.4",
             "ecosystem": "PyPI"
@@ -217,16 +207,6 @@
         },
         {
           "package": {
-            "name": "async-timeout",
-            "version": "5.0.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "asyncpg",
             "version": "0.31.0",
             "ecosystem": "PyPI"
@@ -297,16 +277,6 @@
         },
         {
           "package": {
-            "name": "billiard",
-            "version": "4.2.4",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "boto3",
             "version": "1.40.61",
             "ecosystem": "PyPI"
@@ -353,16 +323,6 @@
           },
           "licenses": [
             "UNKNOWN"
-          ]
-        },
-        {
-          "package": {
-            "name": "celery",
-            "version": "5.6.3",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
           ]
         },
         {
@@ -423,36 +383,6 @@
           },
           "licenses": [
             "BSD-3-Clause"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-didyoumean",
-            "version": "0.3.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-plugins",
-            "version": "1.1.1.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-repl",
-            "version": "0.3.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -975,16 +905,6 @@
         },
         {
           "package": {
-            "name": "flower",
-            "version": "2.0.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "frozenlist",
             "version": "1.8.0",
             "ecosystem": "PyPI"
@@ -1141,16 +1061,6 @@
           },
           "licenses": [
             "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "humanize",
-            "version": "4.15.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -1401,16 +1311,6 @@
           },
           "licenses": [
             "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "kombu",
-            "version": "5.6.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
           ]
         },
         {
@@ -2165,16 +2065,6 @@
         },
         {
           "package": {
-            "name": "opentelemetry-instrumentation-openai",
-            "version": "0.57.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "opentelemetry-instrumentation-requests",
             "version": "0.61b0",
             "ecosystem": "PyPI"
@@ -2237,16 +2127,6 @@
           "package": {
             "name": "opentelemetry-semantic-conventions",
             "version": "0.61b0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "opentelemetry-semantic-conventions-ai",
-            "version": "0.5.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2937,16 +2817,6 @@
           ],
           "licenses": [
             "non-standard"
-          ]
-        },
-        {
-          "package": {
-            "name": "redis",
-            "version": "7.4.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -3952,16 +3822,6 @@
         },
         {
           "package": {
-            "name": "types-requests",
-            "version": "2.33.0.20260327",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "types-s3transfer",
             "version": "0.16.0",
             "ecosystem": "PyPI"
@@ -4078,16 +3938,6 @@
           },
           "licenses": [
             "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "vine",
-            "version": "5.1.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
           ]
         },
         {
@@ -4396,19 +4246,19 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 136
+      "count": 132
     },
     {
       "name": "Apache-2.0",
-      "count": 84
+      "count": 80
     },
     {
       "name": "non-standard",
-      "count": 47
+      "count": 42
     },
     {
       "name": "BSD-3-Clause",
-      "count": 33
+      "count": 31
     },
     {
       "name": "ISC",

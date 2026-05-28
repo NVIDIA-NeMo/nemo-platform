@@ -15,8 +15,19 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing_extensions import Literal, TypeAlias
+from __future__ import annotations
 
-__all__ = ["ThumbDirection"]
+from typing_extensions import Required, TypedDict
 
-ThumbDirection: TypeAlias = Literal["up", "down"]
+from .chat_message_role import ChatMessageRole
+
+__all__ = ["CapturedChatMessageParam"]
+
+
+class CapturedChatMessageParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+    """
+    A flexible message model that requires a valid role field but allows provider-specific fields.
+    """
+
+    role: Required[ChatMessageRole]
+    """Valid role values for captured chat-completions messages."""

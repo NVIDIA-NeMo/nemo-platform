@@ -21,8 +21,8 @@ from typing import Dict
 from typing_extensions import Required, TypedDict
 
 from ..evaluation_context_param import EvaluationContextParam
-from ..flexible_entry_request_param import FlexibleEntryRequestParam
-from ..flexible_entry_response_param import FlexibleEntryResponseParam
+from .captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
+from .captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
 __all__ = ["ChatCompletionCreateParams"]
 
@@ -30,27 +30,11 @@ __all__ = ["ChatCompletionCreateParams"]
 class ChatCompletionCreateParams(TypedDict, total=False):
     workspace: str
 
-    request: Required[FlexibleEntryRequestParam]
-    """Flexible entry request that accepts any object shape.
+    request: Required[CapturedChatCompletionsRequestParam]
+    """Flexible captured chat-completions request."""
 
-    This flexibility enables the Intake service to store requests from various LLM
-    providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-    multimodal, etc.) without requiring schema updates.
-
-    Required fields: `messages` and `model` Common optional fields: `temperature`,
-    `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
-    """
-
-    response: Required[FlexibleEntryResponseParam]
-    """Flexible entry response that accepts any object shape.
-
-    This flexibility enables the Intake service to store responses from various LLM
-    providers and future model types without requiring schema updates.
-
-    Required: either `choices` (successful response) or `error` (failed call).
-    Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-    etc.
-    """
+    response: Required[CapturedChatCompletionsResponseParam]
+    """Flexible captured chat-completions response."""
 
     cost_details: Dict[str, float]
     """Additional estimated cost breakdown fields in USD."""

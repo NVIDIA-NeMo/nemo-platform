@@ -34,5 +34,7 @@ def test_intake_ready_when_clickhouse_is_unavailable(
             await service.on_shutdown()
 
     assert asyncio.run(check_readiness()) is True
-    assert any("ClickHouse schema setup was not run during Intake startup" in record.message for record in caplog.records)
+    assert any(
+        "ClickHouse schema setup was not run during Intake startup" in record.message for record in caplog.records
+    )
     assert not any("ClickHouse readiness check failed" in record.message for record in caplog.records)

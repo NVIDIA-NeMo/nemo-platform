@@ -1084,8 +1084,12 @@ resources:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/atif
           chat_completions:
             models:
+              captured_chat_completions_request: CapturedChatCompletionsRequest
+              captured_chat_completions_response: CapturedChatCompletionsResponse
+              captured_chat_message: CapturedChatMessage
               chat_completions_ingest_param: ChatCompletionsIngestRequest
               chat_completions_ingest_response: ChatCompletionsIngestResponse
+              chat_message_role: ChatMessageRole
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions
           otlp:
