@@ -7,10 +7,6 @@ import logging
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
-from nmp.intake.api.v2.apps import endpoints as apps
-from nmp.intake.api.v2.entries import endpoints as entries
-from nmp.intake.api.v2.exports import endpoints as exports
-from nmp.intake.api.v2.tasks import endpoints as tasks
 from nmp.intake.config import IntakeConfig
 from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
@@ -37,15 +33,11 @@ class IntakeService(Service[IntakeConfig]):
 
     @property
     def description(self) -> str:
-        return "Intake service for storing LLM entries and feedback"
+        return "Intake service for ingesting and reading spans, traces, annotations, and evaluator results"
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the intake service."""
         return [
-            RouterConfig(apps.router, tag="Apps", description="App management endpoints"),
-            RouterConfig(tasks.router, tag="Tasks", description="Task management endpoints"),
-            RouterConfig(entries.router, tag="Entries", description="Entry management endpoints"),
-            RouterConfig(exports.router, tag="Exports", description="Export endpoints"),
             RouterConfig(spans.router, tag="Spans", description="ClickHouse-backed span read endpoints"),
             RouterConfig(traces.router, tag="Traces", description="ClickHouse-backed trace summary read endpoints"),
             RouterConfig(
