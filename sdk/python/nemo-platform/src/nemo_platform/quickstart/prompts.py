@@ -5,24 +5,25 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Literal
+from dataclasses import dataclass
 
 from pydantic import SecretStr
 from rich.console import Console
 
 from nemo_platform.ui.prompts import (
-    non_empty_validator,
+    prompt_text,
     prompt_choice,
     prompt_password,
-    prompt_text,
+    non_empty_validator,
 )
 
 from .config import QuickstartConfig
+from ._registry import image_registry_host
 from .container import ContainerManager
 from .gpu_config import (
-    apply_cuda_visible_devices_filter,
     format_gpu_ids_for_storage,
+    apply_cuda_visible_devices_filter,
     parse_cuda_visible_devices_integers,
 )
 
@@ -49,16 +50,8 @@ class RegistryCredentials:
 
 
 def _image_registry_host_from_ref(image: str) -> str:
-    if not image or "/" not in image:
-        return ""
-    parts = image.split("/")
-    host = ""
-    if len(parts) >= 3:
-        host = parts[0]
-    elif len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-        host = parts[0]
-    # Strip explicit port (e.g. "nvcr.io:443" -> "nvcr.io").
-    return host.split(":", 1)[0]
+    # Strip explicit port (e.g. "nvcr.io:443" -> "nvcr.io") for canonical matching.
+    return image_registry_host(image).split(":", 1)[0]
 
 
 def detect_registry_auth_type(image: str) -> Literal["ngc", "user_pass", "none"]:
@@ -310,21 +303,8 @@ def prompt_for_configuration(config: QuickstartConfig) -> QuickstartConfig:
 
 
 def _registry_host_from_image(image: str) -> str:
-    """Extract registry host from an image reference, or empty if not a registry.
-
-    For 2-part names like \"ubuntu/mysql:latest\" (Docker Hub namespace/repo), the
-    first segment is a namespace, not a registry, so we return \"\".
-    For 3+ part names (e.g. \"nvcr.io/nvidia/nemo-microservices/nmp-api:tag\") or when the first
-    segment looks like a host (contains '.' or ':'), we return that segment.
-    """
-    if not image or "/" not in image:
-        return ""
-    parts = image.split("/")
-    if len(parts) >= 3:
-        return parts[0]
-    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-        return parts[0]
-    return ""
+    """Thin wrapper kept for back-compat with tests that import this name."""
+    return image_registry_host(image)
 
 
 def prompt_for_optional_registry_credentials(config: QuickstartConfig) -> bool:

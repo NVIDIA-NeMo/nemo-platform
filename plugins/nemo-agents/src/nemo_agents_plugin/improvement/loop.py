@@ -18,7 +18,6 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
 
 from nemo_agents_plugin.improvement.analysis.llm import generate_gap_analysis
 from nemo_agents_plugin.improvement.baselines import load_baselines, save_baselines, update_baselines
@@ -37,6 +36,7 @@ from nemo_agents_plugin.improvement.runners.base import Runner
 from nemo_agents_plugin.improvement.runners.detect import detect_runner
 from nemo_agents_plugin.improvement.traces.claude_code_parser import ClaudeCodeTraceParser
 from nemo_agents_plugin.improvement.worktree import create_worktree, remove_worktree
+from nemo_platform_plugin.git_url import git_remote_host
 from rich.console import Console
 
 # ``discover_evals`` and ``parse_batch_results`` are imported directly because
@@ -521,14 +521,6 @@ async def create_mr(
     return mr_output or None
 
 
-def _git_remote_host(url: str) -> str:
-    if "://" in url:
-        return (urlparse(url).hostname or "").lower()
-    if "@" in url and ":" in url:
-        return url.split("@", 1)[1].split(":", 1)[0].lower()
-    return ""
-
-
 async def _detect_forge(worktree_path: Path) -> str | None:
     """Inspect ``git remote -v`` and return 'github', 'gitlab', or None."""
     proc = await asyncio.create_subprocess_exec(
@@ -541,7 +533,7 @@ async def _detect_forge(worktree_path: Path) -> str | None:
         stderr=asyncio.subprocess.PIPE,
     )
     out, _ = await proc.communicate()
-    host = _git_remote_host(out.decode().strip())
+    host = git_remote_host(out.decode().strip())
     if host == "github.com":
         return "github"
     # Match gitlab.com, self-hosted instances (gitlab.example.com), and

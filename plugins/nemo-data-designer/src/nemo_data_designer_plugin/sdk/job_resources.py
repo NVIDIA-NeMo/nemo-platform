@@ -21,6 +21,7 @@ from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -59,21 +60,7 @@ def _raise_for_status(resp: httpx.Response) -> None:
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
-    output_path.mkdir(parents=True, exist_ok=True)
-    base_path = output_path.resolve()
-    members = tar.getmembers()
-    # Validate every member before writing anything to disk so a rejected
-    # archive never leaves partial artifacts behind.
-    for member in members:
-        target_path = (output_path / member.name).resolve()
-        if target_path != base_path and base_path not in target_path.parents:
-            raise DataDesignerJobError(f"Refusing to extract unsafe tar member: {member.name}")
-        if member.issym() or member.islnk():
-            raise DataDesignerJobError(f"Refusing to extract tar link member: {member.name}")
-        if not (member.isfile() or member.isdir()):
-            raise DataDesignerJobError(f"Refusing to extract special tar member: {member.name}")
-    for member in members:
-        tar.extract(member, path=output_path)
+    safe_extract_tar(tar, output_path, error_cls=DataDesignerJobError)
 
 
 @dataclass

@@ -5,24 +5,25 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import sys
 import typing
-from collections.abc import Iterator
-from pathlib import Path
+import logging
 from typing import TypedDict
+from pathlib import Path
+from collections.abc import Iterator
 
 from .config import QuickstartConfig
+from ._registry import image_registry_host
 from .platform_config import PlatformConfig
 
 logger = logging.getLogger(__name__)
 
 if typing.TYPE_CHECKING:
     from docker import DockerClient
-    from docker.models.containers import Container
-    from docker.models.networks import Network
     from docker.types import Mount
+    from docker.models.networks import Network
+    from docker.models.containers import Container
 
 
 class PullProgress(TypedDict):
@@ -33,18 +34,6 @@ class PullProgress(TypedDict):
     layer_id: str | None
     current: int | None  # bytes downloaded for this layer
     total: int | None  # total bytes for this layer
-
-
-def _image_registry_host(image: str) -> str | None:
-    """Extract the registry host from an image reference."""
-    if not image or "/" not in image:
-        return None
-    parts = image.split("/")
-    if len(parts) >= 3:
-        return parts[0]
-    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-        return parts[0]
-    return None
 
 
 class ContainerManager:
@@ -188,7 +177,7 @@ class ContainerManager:
             return
 
         # Parse registry from image name
-        registry = _image_registry_host(self.config.image)
+        registry = image_registry_host(self.config.image) or None
 
         auth_config = None
         if registry and registry.split(":", 1)[0] == "nvcr.io":
@@ -220,7 +209,7 @@ class ContainerManager:
             return
 
         # Build auth config (same logic as _pull_image)
-        registry = _image_registry_host(self.config.image)
+        registry = image_registry_host(self.config.image) or None
 
         auth_config = None
         if auth_override and registry == auth_override["registry"]:
@@ -375,7 +364,7 @@ class ContainerManager:
         from .prompts import detect_registry_auth_type
 
         auth_type = detect_registry_auth_type(self.config.image)
-        jobs_registry_host = _image_registry_host(self.config.image)
+        jobs_registry_host = image_registry_host(self.config.image) or None
         if auth_type == "ngc" and jobs_registry_host and self.config.ngc_api_key:
             # NGC uses $oauthtoken as username and NGC API key as password
             env["NEMO_JOBS_IMAGE_REGISTRY"] = jobs_registry_host
