@@ -84,8 +84,7 @@ def _configure_logging(verbose: bool) -> None:
 
 
 def _validate_nemoguardrails_repo(nemoguardrails_repo_root: Path) -> None:
-    """Fail fast if the upstream checkout is missing files the harness depends on.
-    """
+    """Fail fast if the upstream checkout is missing files the harness depends on."""
     missing = [p for p in _REQUIRED_NEMOGUARDRAILS_FILES if not (nemoguardrails_repo_root / p).is_file()]
     if missing:
         bullet = "\n  - ".join(str(p) for p in missing)
@@ -134,7 +133,8 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
         spec(
             "mock-content-safety-llm",
             8001,
-            paths.nemoguardrails_repo_root / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
+            paths.nemoguardrails_repo_root
+            / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
         ),
     ]
 
@@ -291,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.keep_running:
             # Pop the cleanup so processes outlive this script.
             stack.pop_all()
-        
+
         log.info("Waiting for all services to be ready...")
 
         wait_http(
