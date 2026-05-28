@@ -135,7 +135,7 @@ def create_docker_client(fail_message: str | None = None) -> docker.DockerClient
         A validated Docker client.
 
     Raises:
-        pytest.fail: If Docker client cannot be created or daemon is not responding.
+        pytest.fail.Exception: If Docker client cannot be created or daemon is not responding.
     """
     try:
         client = docker.from_env()

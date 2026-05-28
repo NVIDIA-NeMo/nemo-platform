@@ -176,11 +176,11 @@ def load_benchmark_result_entity(
     if isinstance(job.benchmark, app.Benchmark):
         metric_refs = [metric.metric_ref for metric in job.benchmark.metrics]
         dataset_ref = job.benchmark.dataset
-        benchmark_ref = app.BenchmarkRef(job.benchmark.name)
+        benchmark_ref = app.BenchmarkRef(root=job.benchmark.name)
     elif isinstance(job.benchmark, app.SystemBenchmark):
-        benchmark_ref = app.BenchmarkRef(f"{SYSTEM_WORKSPACE}/{job.benchmark.name}")
+        benchmark_ref = app.BenchmarkRef(root=f"{SYSTEM_WORKSPACE}/{job.benchmark.name}")
     else:
-        raise TypeError(f"Unsupported benchmark type: {type(job.benchmark).__name__}")
+        raise ValueError(f"Unsupported benchmark type: {type(job.benchmark).__name__}")
 
     return entities.BenchmarkJobResult(
         name=config.NEMO_JOB_ID,
