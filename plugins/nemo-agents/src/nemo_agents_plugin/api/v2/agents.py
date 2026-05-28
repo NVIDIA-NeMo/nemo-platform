@@ -49,6 +49,7 @@ async def create_agent(
         description=body.description,
         config=body.config,
         config_format=body.config_format,
+        spec_file_ref=body.spec_file_ref,
     )
     try:
         saved = await entity_client.create(agent)

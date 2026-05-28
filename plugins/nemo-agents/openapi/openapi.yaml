@@ -719,6 +719,14 @@ components:
             \ dict.  Not read or validated by NAT \u2014 used by NeMo Platform for\
             \ future config migration.  Currently only 'nat-workflow-v1' is supported."
           default: nat-workflow-v1
+        spec_file_ref:
+          title: Spec File Ref
+          description: 'Reference to the fileset holding this agent''s spec (AGENTSpec.md).
+            Set by ``nemo-spec`` when the spec is uploaded, then carried forward by
+            ``nemo agents create``. Optional: agents created via the CLI without an
+            onboarding skill will leave this empty, which is queryable (''show me
+            agents with no spec'').'
+          type: string
         id:
           type: string
           title: Id
@@ -896,6 +904,12 @@ components:
           title: Config Format
           description: Config format identifier.
           default: nat-workflow-v1
+        spec_file_ref:
+          title: Spec File Ref
+          description: Optional reference to the fileset holding the agent's spec
+            (AGENTSpec.md). Populated by ``nemo-spec`` after upload; left
+            empty for agents created without an onboarding skill.
+          type: string
       type: object
       required:
       - name

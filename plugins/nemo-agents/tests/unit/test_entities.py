@@ -21,6 +21,7 @@ from nemo_agents_plugin.schema import (
     CreateAgentRequest,
     CreateDeploymentRequest,
 )
+from nemo_platform_plugin.refs import FilesetRef
 from pydantic import ValidationError
 
 NOW = datetime.now(timezone.utc)
@@ -42,6 +43,17 @@ class TestAgentEntity:
         assert a.description == ""
         assert a.config == {}
         assert a.config_format == "nat-workflow-v1"
+        assert a.spec_file_ref is None
+
+    def test_spec_file_ref_round_trip(self) -> None:
+        a = Agent(name="calc", workspace="default", spec_file_ref=FilesetRef("default/calc-spec"))
+        assert a.spec_file_ref == "default/calc-spec"
+        # Serializes back as a plain string in the API response.
+        assert a.model_dump()["spec_file_ref"] == "default/calc-spec"
+
+    def test_spec_file_ref_in_data_fields(self) -> None:
+        a = Agent(name="calc", workspace="default", spec_file_ref=FilesetRef("default/calc-spec"))
+        assert "spec_file_ref" in a._get_data_fields()
 
     def test_config_stored(self) -> None:
         config = {"llms": {"my_llm": {"_type": "nim", "model_name": "llama"}}}
@@ -171,6 +183,7 @@ class TestCreateAgentRequest:
         assert req.config == {"llms": {}}
         assert req.description == ""
         assert req.config_format == "nat-workflow-v1"
+        assert req.spec_file_ref is None
 
     def test_missing_config_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -179,6 +192,10 @@ class TestCreateAgentRequest:
     def test_custom_format(self) -> None:
         req = CreateAgentRequest(name="x", config={}, config_format="custom-v2")
         assert req.config_format == "custom-v2"
+
+    def test_spec_file_ref_accepted(self) -> None:
+        req = CreateAgentRequest(name="x", config={}, spec_file_ref=FilesetRef("default/x-spec"))
+        assert req.spec_file_ref == "default/x-spec"
 
 
 # ---------------------------------------------------------------------------
