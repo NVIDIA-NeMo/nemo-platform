@@ -1,0 +1,156 @@
+name: Build nemo-platform wheel
+description: >
+  Set up the build toolchain (uv, plus pnpm/node when building nemo-platform
+  so the hatch hook can compile Studio assets), stamp the SDK version, and
+  run `uv build --wheel --package <pkg>`. The build itself — including
+  Studio asset compilation and wheel content force-includes — lives in the
+  package's hatch_build.py; this action only handles environment setup,
+  the pre-build version stamp, and capturing the produced wheel.
+
+  Both ci.yaml's wheel-test job and release-bundle.yaml's build-sdks matrix
+  call this action so the test wheel and the published wheel come out of
+  one code path.
+
+  Assumes the repository has already been checked out to `inputs.source-root`
+  and that any required runtime assets (e.g. policy.wasm via the
+  build-policy-wasm action) already exist on disk.
+
+inputs:
+  package:
+    description: >
+      Distribution name passed to `uv build --package`. Must match a workspace
+      package such as `nemo-platform` or `nemo-platform-plugin`.
+    required: false
+    default: nemo-platform
+  out-dir:
+    description: Absolute path where the wheel is written.
+    required: true
+  cadence:
+    description: >
+      Forwarded to stamp_sdk_version.py. One of `nightly`, `rc`, `release`.
+    required: false
+    default: nightly
+  release-label:
+    description: >
+      Forwarded to stamp_sdk_version.py. Required for `cadence: rc` (e.g.
+      `1.0.0-rc0`) or `cadence: release` (e.g. `1.0.0`); ignored for `nightly`.
+    required: false
+    default: ""
+  nightly-timestamp:
+    description: >
+      Forwarded to stamp_sdk_version.py. Required for `cadence: nightly`. Must
+      be exactly 14 digits in `YYYYMMDDHHMMSS` form.
+    required: false
+    default: "19700101000000"
+  python-version:
+    description: Python version for setup-uv.
+    required: false
+    default: "3.11"
+  source-root:
+    description: >
+      Path to the checked-out repository. release-bundle.yaml uses `source`;
+      the ci.yaml test job uses `.`.
+    required: false
+    default: "."
+
+outputs:
+  wheel-path:
+    description: Absolute path to the single wheel produced by `uv build`.
+    value: ${{ steps.build.outputs.wheel-path }}
+  wheel-version:
+    description: Resolved version string written into the wheel metadata.
+    value: ${{ steps.stamp.outputs.wheel-version }}
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+        enable-cache: true
+        version-file: ${{ inputs.source-root }}/pyproject.toml
+        cache-dependency-glob: ${{ inputs.source-root }}/uv.lock
+
+    # Stamp early, before pnpm/node setup, so bad cadence/label/timestamp
+    # inputs fail fast instead of after spending ~20s on tool setup. The
+    # version is written into packages/nmp_common/.../version.py and the
+    # generated _version.py before `uv build` runs (hatchling reads
+    # version.py via its regex source but does not write it). The
+    # --print-version flag emits just the resolved version on stdout;
+    # the human banner goes to stderr.
+    - name: Stamp SDK version
+      id: stamp
+      shell: bash
+      env:
+        SOURCE_ROOT: ${{ inputs.source-root }}
+        PACKAGE: ${{ inputs.package }}
+        CADENCE: ${{ inputs.cadence }}
+        RELEASE_LABEL: ${{ inputs.release-label }}
+        NIGHTLY_TIMESTAMP: ${{ inputs.nightly-timestamp }}
+        # Run the stamp script from the action's own checkout (the workflow
+        # ref), not from inputs.source-root. For ci.yaml these are the same;
+        # for release-bundle.yaml the source checkout can be at an older
+        # source_sha (RC/stable rerun of an old tag) and we want today's
+        # stamping logic to apply.
+        STAMP_SCRIPT_PATH: ${{ github.action_path }}/../../scripts/stamp_sdk_version.py
+      run: |
+        set -euo pipefail
+        args=(
+          --source-root "${SOURCE_ROOT}"
+          --sdk-id "${PACKAGE}"
+          --cadence "${CADENCE}"
+          --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
+          --print-version
+        )
+        if [[ -n "${RELEASE_LABEL}" ]]; then
+          args+=(--release-label "${RELEASE_LABEL}")
+        fi
+        wheel_version="$(uv run --no-project python "${STAMP_SCRIPT_PATH}" "${args[@]}")"
+        echo "wheel-version=${wheel_version}" >>"${GITHUB_OUTPUT}"
+
+    # Studio assets are only force-included by the nemo-platform wrapper.
+    # The hatch hook in packages/nemo-platform/hatch_build.py compiles them
+    # via pnpm during `uv build`; we set up pnpm/node here so the hook can
+    # find them. Other packages (nemo-platform-plugin, ...) skip these.
+    - name: Set up pnpm
+      if: inputs.package == 'nemo-platform'
+      uses: pnpm/action-setup@v4
+      with:
+        package_json_file: ${{ inputs.source-root }}/web/package.json
+
+    - name: Set up Node.js
+      if: inputs.package == 'nemo-platform'
+      uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+        cache: pnpm
+        cache-dependency-path: ${{ inputs.source-root }}/web/pnpm-lock.yaml
+
+    - name: Build wheel
+      id: build
+      shell: bash
+      env:
+        SOURCE_ROOT: ${{ inputs.source-root }}
+        OUT_DIR: ${{ inputs.out-dir }}
+        PACKAGE: ${{ inputs.package }}
+      run: |
+        set -euo pipefail
+        if [[ "${OUT_DIR}" != /* ]]; then
+          echo "::error::out-dir must be absolute, got: '${OUT_DIR}'" >&2
+          exit 1
+        fi
+
+        uv build --wheel \
+          --directory "${SOURCE_ROOT}" \
+          --package "${PACKAGE}" \
+          --out-dir "${OUT_DIR}"
+
+        shopt -s nullglob
+        wheels=("${OUT_DIR}"/*.whl)
+        if [[ "${#wheels[@]}" -ne 1 ]]; then
+          echo "::error::expected exactly one wheel for ${PACKAGE}, found ${#wheels[@]}" >&2
+          printf '  %s\n' "${wheels[@]}" >&2
+          exit 1
+        fi
+        echo "wheel-path=${wheels[0]}" >>"${GITHUB_OUTPUT}"
