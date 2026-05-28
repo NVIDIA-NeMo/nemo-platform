@@ -412,7 +412,8 @@ def stop_services_cmd(
     msg = f"Stopped platform services (pid {pids_str})"
     if result.swept_children:
         n = len(result.swept_children)
-        msg += f" and {n} child {'process' if n == 1 else 'processes'}"
+        noun = "process" if n == 1 else "processes"
+        msg += f" and {n} child {noun}"
     typer.echo(msg)
 
 
