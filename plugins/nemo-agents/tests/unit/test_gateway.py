@@ -260,31 +260,26 @@ class TestProxyByDeploymentName:
         assert "not running" in resp.json()["detail"].lower()
 
     @pytest.mark.parametrize(
-        "malicious_trailing_uri",
+        "malicious_path",
         [
-            "//evil.example.com/x",
-            "http://evil.example.com/x",
+            "%2F%2Fevil.example.com/x",
+            "http:%2F%2Fevil.example.com/x",
         ],
     )
-    def test_cross_origin_trailing_uri_rejected(self, malicious_trailing_uri: str) -> None:
-        import asyncio
-        from unittest.mock import MagicMock
+    def test_cross_origin_trailing_uri_rejected(
+        self, client: TestClient, mock_entity_client: AsyncMock, malicious_path: str
+    ) -> None:
+        """SSRF guard rejects trailing_uri values that resolve to a different host."""
+        dep = _make_deployment(status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
 
-        request = MagicMock()
-        request.url.query = ""
-        request.method = "POST"
-        request.headers = {}
-        request.body = AsyncMock(return_value=b"")
+        resp = client.post(
+            f"/apis/agents/v2/workspaces/default/deployments/calc-dep/-/{malicious_path}",
+            json={},
+        )
 
-        with pytest.raises(Exception) as excinfo:
-            asyncio.run(
-                gateway_module._proxy(
-                    request,
-                    endpoint="http://localhost:9001",
-                    trailing_uri=malicious_trailing_uri,
-                )
-            )
-        assert getattr(excinfo.value, "status_code", None) == 400
+        assert resp.status_code == 400
+        assert "invalid proxy target" in resp.json()["detail"].lower()
 
 
 # ---------------------------------------------------------------------------

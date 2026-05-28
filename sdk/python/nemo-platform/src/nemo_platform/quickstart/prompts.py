@@ -52,11 +52,13 @@ def _image_registry_host_from_ref(image: str) -> str:
     if not image or "/" not in image:
         return ""
     parts = image.split("/")
+    host = ""
     if len(parts) >= 3:
-        return parts[0]
-    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-        return parts[0]
-    return ""
+        host = parts[0]
+    elif len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
+        host = parts[0]
+    # Strip explicit port (e.g. "nvcr.io:443" -> "nvcr.io").
+    return host.split(":", 1)[0]
 
 
 def detect_registry_auth_type(image: str) -> Literal["ngc", "user_pass", "none"]:
@@ -410,7 +412,7 @@ def prompt_for_registry_credentials(
 
     username_value = username.strip() if username else ""
     if not username_value:
-        if registry_value.lower() == "nvcr.io":
+        if registry_value.lower().split(":", 1)[0] == "nvcr.io":
             username_value = "$oauthtoken"
         else:
             username_value = prompt_text("Username: ", validator=non_empty_validator("Username")).strip()

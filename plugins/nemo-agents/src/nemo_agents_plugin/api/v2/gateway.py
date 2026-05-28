@@ -181,7 +181,10 @@ async def _proxy(
     async def _stream_with_headers() -> AsyncIterator[bytes]:
         read_timeout = float(os.environ.get("NEMO_AGENTS_GATEWAY_READ_TIMEOUT", "300"))
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0)
+            timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0),
+            # SSRF defense in depth: never let an agent's 3xx response redirect
+            # us off the validated origin.
+            follow_redirects=False,
         ) as client:
             async with client.stream(
                 method=request.method,

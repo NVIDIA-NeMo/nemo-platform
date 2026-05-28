@@ -102,7 +102,10 @@ def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
     output_path.mkdir(parents=True, exist_ok=True)
     base_path = output_path.resolve()
     with tarfile.open(fileobj=BytesIO(payload), mode="r:*") as tar:
-        for member in tar.getmembers():
+        members = tar.getmembers()
+        # Validate every member before writing anything to disk so a rejected
+        # archive never leaves partial artifacts behind.
+        for member in members:
             target_path = (output_path / member.name).resolve()
             if target_path != base_path and base_path not in target_path.parents:
                 raise ValueError(f"Refusing to extract unsafe tar member: {member.name}")
@@ -110,6 +113,7 @@ def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
                 raise ValueError(f"Refusing to extract tar link member: {member.name}")
             if not (member.isfile() or member.isdir()):
                 raise ValueError(f"Refusing to extract special tar member: {member.name}")
+        for member in members:
             tar.extract(member, path=output_path)
 
     return output_path

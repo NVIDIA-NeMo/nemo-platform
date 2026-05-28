@@ -61,7 +61,10 @@ def _raise_for_status(resp: httpx.Response) -> None:
 def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
     output_path.mkdir(parents=True, exist_ok=True)
     base_path = output_path.resolve()
-    for member in tar.getmembers():
+    members = tar.getmembers()
+    # Validate every member before writing anything to disk so a rejected
+    # archive never leaves partial artifacts behind.
+    for member in members:
         target_path = (output_path / member.name).resolve()
         if target_path != base_path and base_path not in target_path.parents:
             raise DataDesignerJobError(f"Refusing to extract unsafe tar member: {member.name}")
@@ -69,6 +72,7 @@ def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
             raise DataDesignerJobError(f"Refusing to extract tar link member: {member.name}")
         if not (member.isfile() or member.isdir()):
             raise DataDesignerJobError(f"Refusing to extract special tar member: {member.name}")
+    for member in members:
         tar.extract(member, path=output_path)
 
 

@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import zlib
+import hashlib
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 
@@ -21,7 +21,7 @@ def endpoint_identity(base_url: str, model_id: str | None = None, auth_identity:
     """Build a stable endpoint key for scheduler state and accounting."""
     auth_fingerprint = ""
     if auth_identity:
-        auth_fingerprint = format(zlib.crc32(auth_identity.encode("utf-8")), "08x")
+        auth_fingerprint = hashlib.blake2b(auth_identity.encode("utf-8"), digest_size=8).hexdigest()
     return f"{base_url}|{model_id or '_'}|{auth_fingerprint}"
 
 

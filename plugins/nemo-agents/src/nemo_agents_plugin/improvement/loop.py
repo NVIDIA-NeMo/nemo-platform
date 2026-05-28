@@ -544,7 +544,9 @@ async def _detect_forge(worktree_path: Path) -> str | None:
     host = _git_remote_host(out.decode().strip())
     if host == "github.com":
         return "github"
-    if host == "gitlab.com" or host.startswith("gitlab."):
+    # Match gitlab.com, self-hosted instances (gitlab.example.com), and
+    # variants whose first label contains 'gitlab' (gitlab-master.nvidia.com).
+    if host == "gitlab.com" or host.startswith("gitlab.") or "gitlab" in host.split(".", 1)[0]:
         return "gitlab"
     return None
 

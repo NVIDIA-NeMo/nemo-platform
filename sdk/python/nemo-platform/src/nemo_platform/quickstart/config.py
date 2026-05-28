@@ -265,7 +265,8 @@ class QuickstartConfig(BaseModel):
 
     def is_ngc_registry(self) -> bool:
         """Check if the configured image uses NGC registry."""
-        return self.get_registry_host().lower() == "nvcr.io"
+        # Strip explicit port (e.g. "nvcr.io:443") before matching.
+        return self.get_registry_host().lower().split(":", 1)[0] == "nvcr.io"
 
     def get_registry_host(self) -> str:
         """Extract registry host from image name."""
