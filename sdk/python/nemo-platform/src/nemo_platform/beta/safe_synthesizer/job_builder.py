@@ -3,17 +3,16 @@
 
 from __future__ import annotations
 
+import logging
 import random
 import string
-import logging
 import tempfile
-from typing import TYPE_CHECKING, Any, cast
 from pathlib import Path
-from typing_extensions import Self
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
-
 from nemo_platform.types.safe_synthesizer import SafeSynthesizerJobConfigParam
+from typing_extensions import Self
 
 from .job import SafeSynthesizerJob
 
