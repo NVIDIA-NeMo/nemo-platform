@@ -33,8 +33,8 @@ The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, 
 # SDK + CLI only
 pip install nemo-platform
 
-# SDK + CLI + all platform services and default plugins
-pip install "nemo-platform[services]"
+# SDK + CLI + all platform services and default plugins (recommended)
+pip install "nemo-platform[all]"
 ```
 
 Then bring up the platform:
