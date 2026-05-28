@@ -9,7 +9,7 @@ from typing import ClassVar, cast
 
 import data_designer.config as dd
 from data_designer_nemo.context import DataDesignerContext, create_data_designer_context
-from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError
+from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.model_configs import get_model_configs
 from nemo_data_designer_plugin.jobs.run import run_step_config_result
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
@@ -22,7 +22,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
 )
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.image import get_qualified_image
 from pydantic import BaseModel
 
@@ -55,9 +54,9 @@ class CreateJob(NemoJob):
         # check we either raise (with all errors aggregated) or proceed with
         # the resolved values.
         errors: list[NDDError] = []
-        model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, input_spec.config, errors)
         errors.extend(await dd_ctx.validate(input_spec.config))
-        _raise_if_errors(errors)
+        model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, input_spec.config, errors)
+        raise_if_errors(errors)
 
         return DataDesignerStepConfig(
             job_config=input_spec,
@@ -121,20 +120,3 @@ async def _get_model_configs_and_providers(
             errors.append(e)
 
     return model_configs, model_providers
-
-
-def _raise_if_errors(errors: list[NDDError]) -> None:
-    """Raise an aggregated error if ``errors`` is non-empty.
-
-    Any config-level error wins (422 path) and surfaces as
-    :class:`PlatformJobCompilationError`, which the job-route handler maps to
-    HTTP 422. Only when *every* error is internal do we raise
-    :class:`NDDInternalError` (500 path).
-    """
-    if not errors:
-        return
-    aggregated_message = "\n".join(str(e) for e in errors)
-    # TODO: raise a more generic error (not "job compilation")
-    if any(isinstance(e, NDDInvalidConfigError) for e in errors):
-        raise PlatformJobCompilationError(aggregated_message)
-    raise NDDInternalError(aggregated_message)

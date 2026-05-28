@@ -13,7 +13,7 @@ import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
 from data_designer_nemo.context import DataDesignerContext, create_data_designer_context
-from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError
+from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
 from data_designer_nemo.model_configs import get_model_configs
 from nemo_data_designer_plugin.config import get_config
@@ -52,7 +52,7 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         num_records = _validate_and_get_num_records(spec.num_records, is_local, errors)
         model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, spec.config, errors)
         errors.extend(await dd_ctx.validate(spec.config))
-        _raise_if_errors(errors)
+        raise_if_errors(errors)
 
         workspace_cvar.set(ctx.workspace)
 
@@ -143,17 +143,3 @@ async def _get_model_configs_and_providers(
             errors.append(e)
 
     return model_configs, model_providers
-
-
-def _raise_if_errors(errors: list[NDDError]) -> None:
-    """Raise an aggregated NDD error if ``errors`` is non-empty.
-
-    Any config-level error wins (422 path); only when *every* error is internal
-    do we raise ``NDDInternalError`` (500 path).
-    """
-    if not errors:
-        return
-    aggregated_message = "\n".join(str(e) for e in errors)
-    if any(isinstance(e, NDDInvalidConfigError) for e in errors):
-        raise NDDInvalidConfigError(aggregated_message)
-    raise NDDInternalError(aggregated_message)
