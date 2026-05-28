@@ -1,0 +1,5183 @@
+# Full CLI Reference
+
+Command-line interface for NeMo Platform.
+
+**Getting started:**
+- Browse documentation with **`nemo docs --list`**
+- Run local platform services with **`nemo services run --help`**
+
+**Examples:**
+
+```shell
+nemo workspaces list --output-format markdown
+nemo workspaces get default -f json
+```
+
+**Usage:**
+
+```shell
+nemo [GLOBAL OPTIONS] COMMAND [ARGS]...
+```
+
+**Global Options:**
+
+* `--base-url`: Base URL for the NeMo Platform API
+* `--output-format, -f <CHOICE>`: Output format for how results are printed. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output
+* `--timestamp-format <CHOICE>`: Timestamp format for table/markdown/csv output [possible values: relative, iso8601]
+* `--verbose, -v`: Enable verbose messaging. This only impacts logs that are visible, it doesn't change any data outputs.
+* `--agent-mode, -A`: Enable agent-friendly output mode with extra context for coding agents.
+
+**Help:**
+
+* `--version, -V`: Show version information and exit.
+* `--install-completion`: Install completion for the current shell.
+* `--show-completion`: Show completion for the current shell, to copy it or customize the installation.
+* `--help, -h`: Show this message and exit.
+
+## Setup
+
+### nemo setup
+
+Set up NeMo Platform: start services, configure a provider, install skills.
+
+Walks through starting local services, selecting a provider, entering
+credentials, registering the provider with the platform, picking a
+default model, installing coding agent skills, and optionally deploying
+a demo agent.
+
+Requires an interactive terminal (TTY). In non-interactive contexts
+(CI, piped input), pass --auto to use environment variables instead.
+
+Use --auto for non-interactive setup from environment variables
+(NEMO_DEFAULT_INFERENCE_KEY, NVIDIA_API_KEY, OPENAI_API_KEY,
+ANTHROPIC_API_KEY, GEMINI_API_KEY).
+Override the default model with NEMO_DEFAULT_MODEL.
+
+**Examples:**
+
+```shell
+nemo setup
+nemo setup --auto
+nemo setup --auto --start-services --install-skills --deploy-agent
+nemo setup --auto --start-services --ready-timeout 360
+nemo setup --workspace my-workspace
+nemo setup --no-install-skills --no-deploy-agent
+```
+
+**Usage:**
+
+```shell
+nemo setup [OPTIONS]
+```
+
+**Options:**
+
+* `--auto`: Non-interactive mode: register provider from environment variables
+* `--workspace, -w`: Target workspace [default: default]
+* `--start-services, --no-start-services`: Start local platform services
+* `--install-skills, --no-install-skills`: Install NeMo skills for coding agents
+* `--skills-agents`: Comma-separated list of agents to install skills for (e.g. 'codex,cursor'). Default: all detected. Only applied when --install-skills is set.
+* `--skills-scope <CHOICE>`: Install scope for skills: 'project' (this repo) or 'user' (home). Default: project. Only applied when --install-skills is set. [possible values: project, user]
+* `--skills-from`: Comma-separated list of skill sources to install from (e.g. 'nemo-platform,nemo-evaluator-plugin'). Use 'nemo-platform' for the built-in set. Default: all sources. Only applied when --install-skills is set.
+* `--deploy-agent, --no-deploy-agent`: Deploy the demo calculator agent
+* `--ready-timeout <INTEGER>`: Seconds to wait for platform readiness (default: 240)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo services
+
+Run platform services locally.
+
+**Usage:**
+
+```shell
+nemo services [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `run`: Run platform services in the foreground.
+* `start`: Start platform services in the background.
+* `stop`: Stop running platform services.
+* `restart`: Restart platform services.
+* `status`: Show status of the platform services instance for this...
+* `ls`: List all known service instances on this host.
+* `logs`: Show or locate the service log file.
+
+#### nemo services run
+
+Run platform services in the foreground.  Ctrl-C to stop.
+
+**Usage:**
+
+```shell
+nemo services run [OPTIONS]
+```
+
+**Options:**
+
+* `--services`: Comma-separated services to run, e.g. models,entities,jobs. Defaults to all available services.
+* `--service-group`: Run a predefined service group. Cannot be combined with --services.
+* `--controllers`: Comma-separated controllers to run, e.g. jobs,models.
+* `--controller-group`: Run a predefined controller group. Cannot be combined with --controllers.
+* `--sidecars`: Comma-separated sidecars to run, e.g. adapters,cache.
+* `--config`: Path to a platform configuration YAML file.
+* `--host`: Host to bind to. [default: 127.0.0.1]
+* `--port <INTEGER>`: Port to bind to. [default: 8080]
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services start
+
+Start platform services in the background.
+
+Detaches the process, polls /health/ready, then returns.
+
+**Examples:**
+
+```shell
+nemo services start
+nemo services start --services entities,models --port 9090
+```
+
+**Usage:**
+
+```shell
+nemo services start [OPTIONS]
+```
+
+**Options:**
+
+* `--services`: Comma-separated services to run, e.g. models,entities,jobs.
+* `--service-group`: Run a predefined service group. Cannot be combined with --services.
+* `--controllers`: Comma-separated controllers to run, e.g. jobs,models.
+* `--controller-group`: Run a predefined controller group. Cannot be combined with --controllers.
+* `--sidecars`: Comma-separated sidecars to run, e.g. adapters,cache.
+* `--config`: Path to a platform configuration YAML file.
+* `--host`: Host to bind to. [default: 127.0.0.1]
+* `--port <INTEGER>`: Port to bind to. [default: 8080]
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services stop
+
+Stop running platform services.
+
+Sends SIGTERM to the running service process and waits for it to exit.
+Falls back to SIGKILL after a timeout.  Foreground instances (started
+with ``run``) are protected; use ``--force`` to override.
+
+**Examples:**
+
+```shell
+nemo services stop
+nemo services stop --timeout 60
+```
+
+**Usage:**
+
+```shell
+nemo services stop [OPTIONS]
+```
+
+**Options:**
+
+* `--timeout <FLOAT>`: Seconds to wait before SIGKILL. [default: 30.0]
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+* `--port <INTEGER>`: Port (used for scope computation if --instance not given). [default: 8080]
+* `--force`: Stop even if the instance is running in the foreground.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services restart
+
+Restart platform services.
+
+Stops any running services and relaunches them.  Without flags, preserves
+the service set from the previous run.  Errors if no previously tracked
+instance exists for the computed scope; does not start a fresh instance.
+
+**Examples:**
+
+```shell
+nemo services restart
+nemo services restart --services entities,models,agents
+```
+
+**Usage:**
+
+```shell
+nemo services restart [OPTIONS]
+```
+
+**Options:**
+
+* `--services`: Comma-separated services to run. Overrides previous service set.
+* `--service-group`: Run a predefined service group. Overrides previous setting.
+* `--controllers`: Comma-separated controllers to run. Overrides previous controller set.
+* `--controller-group`: Run a predefined controller group. Overrides previous setting.
+* `--sidecars`: Comma-separated sidecars to run. Overrides previous setting.
+* `--config`: Path to a platform configuration YAML file.
+* `--host`: Host to bind to. Defaults to previous value or 127.0.0.1.
+* `--port <INTEGER>`: Port to bind to. Defaults to previous value or 8080.
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services status
+
+Show status of the platform services instance for this scope.
+
+**Usage:**
+
+```shell
+nemo services status [OPTIONS]
+```
+
+**Options:**
+
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+* `--port <INTEGER>`: Port (used for scope computation if --instance not given). [default: 8080]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services ls
+
+List all known service instances on this host.
+
+**Usage:**
+
+```shell
+nemo services ls [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services logs
+
+Show or locate the service log file.
+
+**Examples:**
+
+```shell
+nemo services logs
+nemo services logs --path
+nemo services logs -n 100
+```
+
+**Usage:**
+
+```shell
+nemo services logs [OPTIONS]
+```
+
+**Options:**
+
+* `--path`: Print the log file path instead of tailing.
+* `-n, --lines <INTEGER RANGE>`: Number of lines to show from end of log. [default: 50]
+* `--instance`: Instance name. Defaults to a name derived from the working directory and port.
+* `--port <INTEGER>`: Port (used for scope computation if --instance not given). [default: 8080]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo skills
+
+Install AI agent skill files for Nemo.
+
+Supported agents: claude, codex, cursor, opencode
+
+**Examples:**
+
+```shell
+# List available skills.
+nemo skills list
+# Show a skill's content.
+nemo skills show inference
+# Install all skills for Claude Code.
+nemo skills install --agent claude
+# Install specific skills only.
+nemo skills install --agent claude --skill inference
+```
+
+**Usage:**
+
+```shell
+nemo skills [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List available skills.
+* `show`: Print skill content to stdout.
+* `install`: Install Nemo skill files for an AI coding agent.
+
+#### nemo skills list
+
+List available skills.
+
+The default table word-wraps long descriptions; use `--no-truncate` to let
+descriptions fill the full terminal width. For structured output use
+`-f json|yaml|csv|markdown`. When stdout is not a TTY (pipe/redirect),
+JSON is the default so callers get parseable output.
+
+**Examples:**
+
+```shell
+nemo skills list
+nemo skills list --no-truncate
+nemo skills list -f json
+nemo skills list --source nemo-platform
+nemo skills list --source nemo-platform --source nemo-agents-plugin
+```
+
+**Usage:**
+
+```shell
+nemo skills list [OPTIONS]
+```
+
+**Options:**
+
+* `--source`: Filter to skills from a specific source (distribution / plugin name as shown in the `Source` column, e.g. `nemo-platform`, `nemo-agents-plugin`). Can be repeated to include multiple sources. Matching is case-insensitive.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo skills show
+
+Print skill content to stdout.
+
+Without --agent, prints the raw skill content.
+With --agent, prints the agent-specific formatted version.
+
+**Examples:**
+
+```shell
+nemo skills show inference
+nemo skills show --agent claude inference
+nemo skills show inference | pbcopy
+```
+
+**Usage:**
+
+```shell
+nemo skills show [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Skill name to show (use 'nemo skills list' to see available skills)
+
+**Options:**
+
+* `--agent, -a`: Agent to format for. Supported: claude, codex, cursor, opencode
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo skills install
+
+Install Nemo skill files for an AI coding agent.
+
+By default, installs all skills to project scope.
+Use --skill to select specific skills, --user for user scope.
+
+**Examples:**
+
+```shell
+nemo skills install --agent claude
+nemo skills install --agent claude --user
+nemo skills install --agent claude --skill inference
+```
+
+**Usage:**
+
+```shell
+nemo skills install [OPTIONS]
+```
+
+**Options:**
+
+* `--agent, -a`: Agent to install for (required). Supported: claude, codex, cursor, opencode
+* `--skill, -s`: Install specific skill(s) only. Can be repeated.
+* `--user`: Install to user scope (default: project scope)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+## CLI functions
+
+### nemo chat
+
+Start an interactive chat session with a model.
+
+By default, uses model entity routing where the model name should match
+what's shown in 'nemo models list'.
+
+Use --provider for direct provider routing, where the model argument is
+passed directly to the provider's API.
+
+Passing PROMPT sends one message and exits unless --interactive is set.
+Omitting PROMPT in a TTY starts the interactive chat UI. In non-TTY
+contexts, PROMPT may also be piped on stdin. Piped stdin is read in full
+before sending. If both PROMPT and piped stdin are provided, PROMPT takes
+precedence.
+
+**Examples:**
+
+```shell
+nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5
+nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5 "What is machine learning?"
+nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5 "What is machine learning?" --interactive
+echo "What is machine learning?" | nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5
+nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5 "What is machine learning?" -f json
+nemo chat nvidia/llama-3.3-nemotron-super-49b-v1.5 --provider nvidia-build
+```
+
+**Usage:**
+
+```shell
+nemo chat [OPTIONS] MODEL [PROMPT]
+```
+
+**Arguments:**
+
+* `<MODEL>`: Model entity name (from 'nemo models list') or model ID when using --provider
+* `<PROMPT>`: Prompt for one-shot mode. Takes precedence over piped stdin.
+
+**Options:**
+
+* `--provider`: Provider name for direct provider routing (bypasses model entity routing)
+* `--workspace`: Workspace name
+
+**Chat Options:**
+
+* `--interactive`: Start the terminal chat UI; cannot be used with piped stdin. With PROMPT, send it first.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Model Options:**
+
+* `--temperature <FLOAT>`: Sampling temperature (0.0 to 2.0)
+* `--max-tokens <INTEGER>`: Maximum tokens to generate
+* `--system-message`: System message to set context for the conversation
+
+**Output Options:**
+
+* `--output-format, --format, -f <CHOICE>`: Output format for one-shot responses. [possible values: text, json, raw]
+
+### nemo docs
+
+Read NeMo Platform documentation.
+
+**Examples:**
+
+```shell
+nemo docs get-started/setup
+nemo docs --list
+nemo docs cli/configuration
+```
+
+**Usage:**
+
+```shell
+nemo docs [OPTIONS] [PATH]
+```
+
+**Arguments:**
+
+* `<PATH>`: Path to a doc topic (e.g., get-started/setup). Omit to see available topics.
+
+**Options:**
+
+* `--list, -l`: List available documentation topics.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo wait
+
+Wait for resources to reach a desired status.
+
+**Usage:**
+
+```shell
+nemo wait [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `inference`: Wait for inference resources
+
+#### nemo wait inference
+
+Wait for inference resources
+
+**Usage:**
+
+```shell
+nemo wait inference [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `deployment`: Wait for a deployment to reach a desired status.
+* `provider`: Wait for the inference gateway to be ready to route to a...
+
+##### nemo wait inference deployment
+
+Wait for a deployment to reach a desired status.
+
+Polls the deployment status until it reaches the desired state or times out.
+For READY status, optionally verifies the gateway can route to the provider.
+For DELETED status, waits for the resource to be fully garbage collected.
+
+Exit codes:
+  0: Desired status reached
+  1: Timeout or error
+
+**Examples:**
+
+```shell
+nemo wait inference deployment my-deployment --status READY
+nemo wait inference deployment my-deployment --status READY --timeout 600 --no-check-gateway
+nemo wait inference deployment my-deployment --status DELETED --timeout 90
+```
+
+**Usage:**
+
+```shell
+nemo wait inference deployment [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the deployment to wait for
+
+**Options:**
+
+* `--workspace`: Workspace name
+* `--status, -s <CHOICE>`: Desired status to wait for [possible values: READY, DELETED, PENDING, ERROR; default: READY]
+* `--timeout, -t <INTEGER RANGE>`: Maximum time to wait in seconds [default: 1200]
+* `--check-gateway, --no-check-gateway`: When waiting for READY, also verify gateway can route to the provider
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo wait inference provider
+
+Wait for the inference gateway to be ready to route to a provider.
+
+Polls the gateway's ready endpoint until it can route requests to the
+specified provider. This is useful after creating a deployment to ensure
+the gateway has refreshed its cache.
+
+Exit codes:
+  0: Gateway is ready
+  1: Timeout
+
+**Examples:**
+
+```shell
+nemo wait inference provider my-deployment
+nemo wait inference provider my-deployment --timeout 120
+```
+
+**Usage:**
+
+```shell
+nemo wait inference provider [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the provider to wait for
+
+**Options:**
+
+* `--workspace`: Workspace name
+* `--timeout, -t <INTEGER RANGE>`: Maximum time to wait in seconds [default: 60]
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 1]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo agent
+
+Commands for AI agent context and capability discovery.
+
+**Examples:**
+
+```shell
+# Dump full agent context (plugins, commands, skills).
+nemo agent context
+# List all available commands.
+nemo agent commands
+```
+
+**Usage:**
+
+```shell
+nemo agent [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `context`: Dump everything an agent needs in one call.
+* `commands`: List all available top-level CLI commands.
+
+#### nemo agent context
+
+Dump everything an agent needs in one call.
+
+Outputs installed plugins, CLI commands, entry-point catalog,
+available skills, and quick-reference patterns. Runs without a
+connected cluster (metadata-only).
+
+**Examples:**
+
+```shell
+nemo agent context
+```
+
+**Usage:**
+
+```shell
+nemo agent context [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo agent commands
+
+List all available top-level CLI commands.
+
+Outputs a flat list of commands with descriptions, useful for
+agent capability discovery.
+
+**Examples:**
+
+```shell
+nemo agent commands
+```
+
+**Usage:**
+
+```shell
+nemo agent commands [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+### nemo plugins
+
+Commands for plugin discovery.
+
+**Examples:**
+
+```shell
+# List installed plugins.
+nemo plugins list
+```
+
+**Usage:**
+
+```shell
+nemo plugins [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List installed plugins.
+
+#### nemo plugins list
+
+List installed plugins.
+
+Discovers installed plugins from registered NeMo plugin entry points.
+
+**Examples:**
+
+```shell
+nemo plugins list
+nemo plugins list -f json
+```
+
+**Usage:**
+
+```shell
+nemo plugins list [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+## Core plugins
+
+### nemo files
+
+Manage files.
+
+**Usage:**
+
+```shell
+nemo files [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `upload`: Upload local files to a fileset.
+* `download`: Download files from a fileset to a local path.
+* `list`: List files in a fileset.
+* `delete`: Delete a file from a fileset.
+* `filesets`: Manage filesets
+* `otlp`: Otlp operations
+
+#### nemo files upload
+
+Upload local files to a fileset.
+
+Supports uploading single files or directories. For directories, contents
+are uploaded recursively.
+
+**Examples:**
+
+```shell
+# Upload a file to the root of a fileset
+nemo files upload ./data.csv my-fileset
+```
+
+\# Upload a directory to a subdirectory in the fileset
+nemo files upload ./data/ my-fileset --remote-path uploads/
+
+\# Upload without specifying a fileset (auto-creates one)
+nemo files upload ./data.csv
+
+**Usage:**
+
+```shell
+nemo files upload [OPTIONS] LOCAL_PATH [FILESET]
+```
+
+**Arguments:**
+
+* `<LOCAL_PATH>`: Local path to upload
+* `<FILESET>`: Name of the fileset to upload to. If not provided, a new fileset is created.
+
+**Options:**
+
+* `--workspace`
+* `--remote-path`: Path within the fileset. Defaults to root. [default: ]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo files download
+
+Download files from a fileset to a local path.
+
+Supports downloading single files or directories. For directories, contents
+are downloaded recursively.
+
+**Examples:**
+
+```shell
+# Download entire fileset to current directory
+nemo files download my-fileset -o ./
+```
+
+\# Download a subdirectory from the fileset
+nemo files download my-fileset --remote-path data/ -o ./downloads/
+
+**Usage:**
+
+```shell
+nemo files download [OPTIONS] FILESET
+```
+
+**Arguments:**
+
+* `<FILESET>`: Name of the fileset to download from
+
+**Options:**
+
+* `--workspace`
+* `--remote-path`: Path within the fileset. Defaults to root. [default: ]
+* `--output, -o <PATH>`: Local path to download to.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo files list
+
+List files in a fileset.
+
+Lists all files recursively from the specified path within the fileset.
+
+**Examples:**
+
+```shell
+# List all files in a fileset
+nemo files list my-fileset
+```
+
+\# List files in a subdirectory
+nemo files list my-fileset --remote-path data/
+
+**Usage:**
+
+```shell
+nemo files list [OPTIONS] FILESET
+```
+
+**Arguments:**
+
+* `<FILESET>`: Name of the fileset to list files from
+
+**Options:**
+
+* `--workspace`
+* `--remote-path`: Path within the fileset. Defaults to root. [default: ]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+
+#### nemo files delete
+
+Delete a file from a fileset.
+
+**Examples:**
+
+```shell
+# Delete a specific file
+nemo files delete my-fileset --remote-path data/old-file.txt
+```
+
+**Usage:**
+
+```shell
+nemo files delete [OPTIONS] FILESET
+```
+
+**Arguments:**
+
+* `<FILESET>`: Name of the fileset containing the file
+
+**Options:**
+
+* `--workspace`
+* `--remote-path`: Path of the file to delete within the fileset
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo files filesets
+
+Manage filesets
+
+**Usage:**
+
+```shell
+nemo files filesets [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new fileset.
+* `delete`: Delete Fileset.
+* `list`: List Filesets endpoint with filtering and pagination.
+* `get`: Get Fileset by Workspace and Name.
+* `update`: Update Fileset Metadata.
+
+##### nemo files filesets create
+
+Create a new fileset.
+
+If no storage configuration is provided, the default storage backend will be
+used.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo files filesets create <name> --input-file config.json
+nemo files filesets create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo files filesets create <name> --input-file -
+nemo files filesets create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo files filesets create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: The name of the fileset. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--cache`: Cache all files after creation. Only applies to external storage.
+* `--custom-fields`: Custom fields for the fileset. (JSON string)
+* `--description`: The description of the fileset.
+* `--metadata`: Tagged metadata container - the key indicates the type.
+
+Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
+* `--project`: The name of the project associated with this fileset.
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+* `--storage`: The storage configuration for the fileset. If not provided, uses default storage. (JSON string)
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo files filesets delete
+
+Delete Fileset.
+
+Permanently deletes a fileset from the platform.
+
+Returns metadata about the
+deleted fileset. For local storage backends, this also deletes the underlying
+files.
+
+**Usage:**
+
+```shell
+nemo files filesets delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo files filesets list
+
+List Filesets endpoint with filtering and pagination.
+
+Supports filtering by name, description, purpose, storage_type, created_at, and
+updated_at via query parameters. Returns paginated results with sorting options.
+
+**Usage:**
+
+```shell
+nemo files filesets list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, name, -name]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter filesets by name, description, purpose, storage_type, created_at, and updated_at.
+* `--filter.description`
+* `--filter.name`
+* `--filter.purpose`
+* `--filter.storage-type`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo files filesets get
+
+Get Fileset by Workspace and Name.
+
+Returns the details of a specific fileset identified by its workspace and name.
+
+**Usage:**
+
+```shell
+nemo files filesets get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo files filesets update
+
+Update Fileset Metadata.
+
+**Examples:**
+
+```shell
+nemo files filesets update <name> --input-file config.json
+nemo files filesets update <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo files filesets update <name> --input-file -
+nemo files filesets update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo files filesets update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--custom-fields`: Custom fields for the fileset. (JSON string)
+* `--description`: The description of the fileset.
+* `--metadata`: Tagged metadata container - the key indicates the type.
+
+Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent( schema=`{"columns": ["id", "name"]}`, ) ) (JSON string)
+* `--project`: The name of the project associated with this fileset.
+* `--purpose <CHOICE>`: The purpose of the fileset. [possible values: dataset, generic, model]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo files otlp
+
+Otlp operations
+
+**Usage:**
+
+```shell
+nemo files otlp [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `logs`: Manage logs
+
+##### nemo files otlp logs
+
+Manage logs
+
+**Usage:**
+
+```shell
+nemo files otlp logs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Upload OTLP logs to a specified fileset in JSON or...
+* `query`: Query logs from parquet files in a fileset.
+
+###### nemo files otlp logs create
+
+Upload OTLP logs to a specified fileset in JSON or Protobuf format.
+
+Supports both application/json and application/x-protobuf content types.
+
+**Examples:**
+
+```shell
+nemo files otlp logs create <name> --input-file config.json
+nemo files otlp logs create <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo files otlp logs create <name> --input-file -
+nemo files otlp logs create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo files otlp logs create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo files otlp logs query
+
+Query logs from parquet files in a fileset.
+
+This is an internal endpoint that runs DuckDB queries with direct storage
+access.
+
+**Usage:**
+
+```shell
+nemo files otlp logs query [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--filters`: Key-value filters to apply to the query
+* `--limit <INTEGER>`: Maximum number of results to return
+* `--page-cursor`: Cursor for pagination
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo inference
+
+Inference operations.
+
+**Usage:**
+
+```shell
+nemo inference [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `get-url`: Print the OpenAI-compatible base URL for the inference...
+* `deployment-configs`: Manage deployment_configs
+* `deployments`: Manage deployments
+* `gateway`: Gateway operations
+* `models`: Manage models
+* `providers`: Manage providers
+* `virtual-models`: Manage virtual_models
+
+#### nemo inference get-url
+
+Print the OpenAI-compatible base URL for the inference gateway.
+
+**Examples:**
+
+```shell
+# Workspace-scoped OpenAI base URL (use as OpenAI client's base_url)
+nemo inference get-url
+# Provider proxy route (append your own trailing path, e.g. /v1/chat/completions)
+nemo inference get-url --provider llama-3-2-1b-deployment
+# Model-entity proxy route
+nemo inference get-url --virtual-model meta-llama-3-2-1b-instruct
+```
+
+**Usage:**
+
+```shell
+nemo inference get-url [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`: Workspace to scope the URL to. Defaults to the CLI context workspace.
+* `--provider`: Print the provider proxy route for this provider name.
+* `--virtual-model`: Print the model entity proxy route for this virtual model name.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo inference deployment-configs
+
+Manage deployment_configs
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new ModelDeploymentConfig (version 1).
+* `delete`: Delete all versions of a ModelDeploymentConfig.
+* `list`: List ModelDeploymentConfigs for a specific workspace.
+* `get`: Get the latest version of a ModelDeploymentConfig.
+* `update`: Update a ModelDeploymentConfig (creates a new immutable...
+* `versions`: Manage versions
+
+##### nemo inference deployment-configs create
+
+Create a new ModelDeploymentConfig (version 1).
+
+**Required fields:** name, nim_deployment
+
+**Examples:**
+
+```shell
+nemo inference deployment-configs create <name> --input-file config.json
+nemo inference deployment-configs create <name> --input-data '`{"name": "value", "nim_deployment": {}}`'
+echo '{"json": "data"}' | nemo inference deployment-configs create <name> --input-file -
+nemo inference deployment-configs create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the deployment configuration. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--nim-deployment`: Configuration for NIM-based model deployment. (JSON string)
+* `--description`: Optional description of the deployment configuration
+* `--model-entity-id`: Optional reference to the base model entity ID for this deployment
+* `--project`: The URN of the project associated with this deployment configuration
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployment-configs delete
+
+Delete all versions of a ModelDeploymentConfig.
+
+This operation will fail with 409 Conflict if any ModelDeployments currently
+reference this config and are not in DELETED status. Delete or wait for
+dependent deployments to reach DELETED status before deleting the config.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo inference deployment-configs list
+
+List ModelDeploymentConfigs for a specific workspace.
+
+Returns only the latest
+version of each config.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort`: The field to sort by. To sort in decreasing order, use `-` in front of the field name.
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter deployment configs by workspace, project, model_entity_id, name, description, created_at, and updated_at.
+* `--filter.description`
+* `--filter.model-entity-id`
+* `--filter.name`
+* `--filter.project`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference deployment-configs get
+
+Get the latest version of a ModelDeploymentConfig.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployment-configs update
+
+Update a ModelDeploymentConfig (creates a new immutable version).
+
+**Required fields:** nim_deployment
+
+**Examples:**
+
+```shell
+nemo inference deployment-configs update <name> --input-file config.json
+nemo inference deployment-configs update <name> --input-data '`{"nim_deployment": {}}`'
+echo '{"json": "data"}' | nemo inference deployment-configs update <name> --input-file -
+nemo inference deployment-configs update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--nim-deployment`: Configuration for NIM-based model deployment. (JSON string)
+* `--description`: Optional description of the deployment configuration
+* `--model-entity-id`: Optional reference to the base model entity ID for this deployment
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployment-configs versions
+
+Manage versions
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs versions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `delete`: Delete a specific version of a ModelDeploymentConfig.
+* `list`: List all versions of a ModelDeploymentConfig.
+* `get`: Get a specific version of a ModelDeploymentConfig.
+
+###### nemo inference deployment-configs versions delete
+
+Delete a specific version of a ModelDeploymentConfig.
+
+This operation will fail with 409 Conflict if any ModelDeployments currently
+reference this specific version and are not in DELETED status. Delete or wait
+for dependent deployments to reach DELETED status before deleting the config
+version.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs versions delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--config`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+###### nemo inference deployment-configs versions list
+
+List all versions of a ModelDeploymentConfig.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs versions list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+###### nemo inference deployment-configs versions get
+
+Get a specific version of a ModelDeploymentConfig.
+
+**Usage:**
+
+```shell
+nemo inference deployment-configs versions get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--config`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo inference deployments
+
+Manage deployments
+
+**Usage:**
+
+```shell
+nemo inference deployments [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new ModelDeployment (version 1).
+* `delete`: Delete all versions of a ModelDeployment.
+* `list`: List ModelDeployments for a specific workspace.
+* `list-models`: Get Latest ModelDeployment's Model Entities from Entity...
+* `get`: Get the latest version of a ModelDeployment.
+* `update`: Update a ModelDeployment (creates a new immutable version).
+* `update-status`: Update the status of a ModelDeployment (mutable operation).
+* `versions`: Manage versions
+
+##### nemo inference deployments create
+
+Create a new ModelDeployment (version 1).
+
+**Required fields:** config, name
+
+**Examples:**
+
+```shell
+nemo inference deployments create <name> --input-file config.json
+nemo inference deployments create <name> --input-data '{"config": "value", "name": "value"}'
+echo '{"json": "data"}' | nemo inference deployments create <name> --input-file -
+nemo inference deployments create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference deployments create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the deployment. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--config`: Reference to the ModelDeploymentConfig name
+* `--config-version <INTEGER>`: Reference to a specific ModelDeploymentConfig version. If not specified, uses latest.
+* `--project`: The URN of the project associated with this deployment
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+**Wait Options:**
+
+* `--wait`: Wait for the created deployment to reach a terminal state
+* `--timeout <INTEGER RANGE>`: Maximum time to wait in seconds [default: 1200]
+* `--poll-interval <INTEGER RANGE>`: Seconds between status checks [default: 3]
+
+##### nemo inference deployments delete
+
+Delete all versions of a ModelDeployment.
+
+If the deployment is in any state other than DELETED, this will set its status
+to DELETING. The models controller will then:
+
+1. Delete the infrastructure (e.g., K8s NimService)
+2. Update the status to DELETED
+
+If the deployment is already in DELETED status, calling delete again will
+permanently remove it from the database.
+
+Returns:
+
+- 202 Accepted: Deployment marked for deletion (status set to DELETING)
+- 204 No Content: Deployment permanently removed from database (was already
+  DELETED)
+- 404 Not Found: Deployment doesn't exist
+
+**Usage:**
+
+```shell
+nemo inference deployments delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo inference deployments list
+
+List ModelDeployments for a specific workspace.
+
+By default, returns only the latest version of each deployment.
+
+**Usage:**
+
+```shell
+nemo inference deployments list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--all-versions`: If true, return all versions of each deployment. If false (default), return only the latest version.
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort`: The field to sort by. To sort in decreasing order, use `-` in front of the field name.
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter deployments by workspace, project, status, config, model_provider_id, name, status_message, created_at, and updated_at.
+* `--filter.config`
+* `--filter.model-provider-id`
+* `--filter.name`
+* `--filter.project`
+* `--filter.status`
+* `--filter.status-message`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference deployments list-models
+
+Get Latest ModelDeployment's Model Entities from Entity Store.
+
+This provides the
+API contract that NIMs expect from Entity Store today, for pulling LoRAs, but
+enables us to enforce AuthZ boundaries.
+
+TODO: Implement model entity retrieval based on deployment config.
+
+**Usage:**
+
+```shell
+nemo inference deployments list-models [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference deployments get
+
+Get the latest version of a ModelDeployment.
+
+**Usage:**
+
+```shell
+nemo inference deployments get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployments update
+
+Update a ModelDeployment (creates a new immutable version).
+
+**Required fields:** config
+
+**Examples:**
+
+```shell
+nemo inference deployments update <name> --input-file config.json
+nemo inference deployments update <name> --input-data '{"config": "value"}'
+echo '{"json": "data"}' | nemo inference deployments update <name> --input-file -
+nemo inference deployments update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference deployments update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--config`: Reference to the ModelDeploymentConfig name
+* `--config-version <INTEGER>`: Reference to a specific ModelDeploymentConfig version. If not specified, uses latest.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployments update-status
+
+Update the status of a ModelDeployment (mutable operation).
+
+If version is not
+specified, updates the latest version.
+
+**Required fields:** status
+
+**Examples:**
+
+```shell
+nemo inference deployments update-status <name> --input-file config.json
+nemo inference deployments update-status <name> --input-data '{"status": "value"}'
+echo '{"json": "data"}' | nemo inference deployments update-status <name> --input-file -
+nemo inference deployments update-status <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference deployments update-status [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--status <CHOICE>`: Status enum for ModelDeployment objects.  [possible values: UNKNOWN, CREATED, PENDING, READY, ERROR, DELETING, DELETED, LOST]
+* `--version`
+* `--model-provider-id`: Optional reference to the auto-created ModelProvider workspace/name (format: workspace/name)
+* `--status-message`: Detailed status message
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference deployments versions
+
+Manage versions
+
+**Usage:**
+
+```shell
+nemo inference deployments versions [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `delete`: Delete a specific version of a ModelDeployment.
+* `list`: List all versions of a ModelDeployment.
+* `get`: Get a specific version of a ModelDeployment.
+
+###### nemo inference deployments versions delete
+
+Delete a specific version of a ModelDeployment.
+
+If the deployment is in any state other than DELETED, this will set its status
+to DELETING. The models controller will then:
+
+1. Delete the infrastructure (e.g., K8s NimService)
+2. Update the status to DELETED
+
+If the deployment is already in DELETED status, calling delete again will
+permanently remove it from the database.
+
+Returns:
+
+- 202 Accepted: Deployment version marked for deletion (status set to DELETING)
+- 204 No Content: Deployment version permanently removed from database (was
+  already DELETED)
+- 404 Not Found: Deployment version doesn't exist
+
+**Usage:**
+
+```shell
+nemo inference deployments versions delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--deployment`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+###### nemo inference deployments versions list
+
+List all versions of a ModelDeployment.
+
+**Usage:**
+
+```shell
+nemo inference deployments versions list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+###### nemo inference deployments versions get
+
+Get a specific version of a ModelDeployment.
+
+**Usage:**
+
+```shell
+nemo inference deployments versions get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--deployment`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo inference gateway
+
+Gateway operations
+
+**Usage:**
+
+```shell
+nemo inference gateway [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `model`: Manage model
+* `openai`: Openai operations
+* `provider`: Manage provider
+
+##### nemo inference gateway model
+
+Manage model
+
+**Usage:**
+
+```shell
+nemo inference gateway model [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `delete`: Proxy requests to model entity inference endpoints.
+* `get`: Proxy requests to model entity inference endpoints.
+* `patch`: Proxy requests to model entity inference endpoints.
+* `post`: Proxy requests to model entity inference endpoints.
+* `put`: Proxy requests to model entity inference endpoints.
+
+###### nemo inference gateway model delete
+
+Proxy requests to model entity inference endpoints.
+
+All inference requests must resolve to a `VirtualModel`. The platform's provider
+reconciler auto-creates an implicit `autoprovisioned` VirtualModel for every
+served model entity (named after the entity, with `default_model_entity` set to
+the entity ref) so this is the typical case; operators can also create custom
+VirtualModels for routing, plugin chains, LoRA escape-hatches, etc. Requests for
+which no VirtualModel can be found return `404`.
+
+**Usage:**
+
+```shell
+nemo inference gateway model delete [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+###### nemo inference gateway model get
+
+Proxy requests to model entity inference endpoints.
+
+All inference requests must resolve to a `VirtualModel`. The platform's provider
+reconciler auto-creates an implicit `autoprovisioned` VirtualModel for every
+served model entity (named after the entity, with `default_model_entity` set to
+the entity ref) so this is the typical case; operators can also create custom
+VirtualModels for routing, plugin chains, LoRA escape-hatches, etc. Requests for
+which no VirtualModel can be found return `404`.
+
+**Usage:**
+
+```shell
+nemo inference gateway model get [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway model patch
+
+Proxy requests to model entity inference endpoints.
+
+All inference requests must resolve to a `VirtualModel`. The platform's provider
+reconciler auto-creates an implicit `autoprovisioned` VirtualModel for every
+served model entity (named after the entity, with `default_model_entity` set to
+the entity ref) so this is the typical case; operators can also create custom
+VirtualModels for routing, plugin chains, LoRA escape-hatches, etc. Requests for
+which no VirtualModel can be found return `404`.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway model patch <trailing_uri> --input-file config.json
+nemo inference gateway model patch <trailing_uri> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway model patch <trailing_uri> --input-file -
+nemo inference gateway model patch <trailing_uri> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway model patch [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`: (required)
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway model post
+
+Proxy requests to model entity inference endpoints.
+
+All inference requests must resolve to a `VirtualModel`. The platform's provider
+reconciler auto-creates an implicit `autoprovisioned` VirtualModel for every
+served model entity (named after the entity, with `default_model_entity` set to
+the entity ref) so this is the typical case; operators can also create custom
+VirtualModels for routing, plugin chains, LoRA escape-hatches, etc. Requests for
+which no VirtualModel can be found return `404`.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway model post <trailing_uri> <name> --input-file config.json
+nemo inference gateway model post <trailing_uri> <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway model post <trailing_uri> <name> --input-file -
+nemo inference gateway model post <trailing_uri> <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway model post [OPTIONS] TRAILING_URI [NAME]
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+* `<NAME>`: (required)
+
+**Options:**
+
+* `--workspace`
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway model put
+
+Proxy requests to model entity inference endpoints.
+
+All inference requests must resolve to a `VirtualModel`. The platform's provider
+reconciler auto-creates an implicit `autoprovisioned` VirtualModel for every
+served model entity (named after the entity, with `default_model_entity` set to
+the entity ref) so this is the typical case; operators can also create custom
+VirtualModels for routing, plugin chains, LoRA escape-hatches, etc. Requests for
+which no VirtualModel can be found return `404`.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway model put <trailing_uri> <name> --input-file config.json
+nemo inference gateway model put <trailing_uri> <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway model put <trailing_uri> <name> --input-file -
+nemo inference gateway model put <trailing_uri> <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway model put [OPTIONS] TRAILING_URI [NAME]
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+* `<NAME>`: (required)
+
+**Options:**
+
+* `--workspace`
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference gateway openai
+
+Openai operations
+
+**Usage:**
+
+```shell
+nemo inference gateway openai [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `v1`: V1 operations
+
+###### nemo inference gateway openai v1
+
+V1 operations
+
+**Usage:**
+
+```shell
+nemo inference gateway openai v1 [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `models`: Manage models
+
+**nemo inference gateway openai v1 models**
+
+Manage models
+
+**Usage:**
+
+```shell
+nemo inference gateway openai v1 models [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `get`: Retrieve information about a specific OpenAI-compatible...
+* `list`: This endpoint aggregates models from all model entities...
+
+**nemo inference gateway openai v1 models get**
+
+Retrieve information about a specific OpenAI-compatible model.
+
+Workspace is
+always taken from the URL path; name may be model_entity_name or
+workspace/model_entity_name (workspace prefix is ignored).
+
+**Usage:**
+
+```shell
+nemo inference gateway openai v1 models get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+**nemo inference gateway openai v1 models list**
+
+This endpoint aggregates models from all model entities and returns them in
+OpenAI's list models format. Each model ID is the model entity identifier in
+format workspace/model_entity_name.
+
+**Usage:**
+
+```shell
+nemo inference gateway openai v1 models list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference gateway provider
+
+Manage provider
+
+**Usage:**
+
+```shell
+nemo inference gateway provider [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `delete`: Proxy requests to provider inference endpoints.
+* `get`: Proxy requests to provider inference endpoints.
+* `patch`: Proxy requests to provider inference endpoints.
+* `post`: Proxy requests to provider inference endpoints.
+* `put`: Proxy requests to provider inference endpoints.
+* `ready`: Check if a model provider is registered in the gateway's...
+
+###### nemo inference gateway provider delete
+
+Proxy requests to provider inference endpoints.
+
+**Usage:**
+
+```shell
+nemo inference gateway provider delete [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+###### nemo inference gateway provider get
+
+Proxy requests to provider inference endpoints.
+
+**Usage:**
+
+```shell
+nemo inference gateway provider get [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway provider patch
+
+Proxy requests to provider inference endpoints.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway provider patch <trailing_uri> --input-file config.json
+nemo inference gateway provider patch <trailing_uri> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway provider patch <trailing_uri> --input-file -
+nemo inference gateway provider patch <trailing_uri> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway provider patch [OPTIONS] TRAILING_URI
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+
+**Options:**
+
+* `--workspace`
+* `--name`: (required)
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway provider post
+
+Proxy requests to provider inference endpoints.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway provider post <trailing_uri> <name> --input-file config.json
+nemo inference gateway provider post <trailing_uri> <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway provider post <trailing_uri> <name> --input-file -
+nemo inference gateway provider post <trailing_uri> <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway provider post [OPTIONS] TRAILING_URI [NAME]
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+* `<NAME>`: (required)
+
+**Options:**
+
+* `--workspace`
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway provider put
+
+Proxy requests to provider inference endpoints.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference gateway provider put <trailing_uri> <name> --input-file config.json
+nemo inference gateway provider put <trailing_uri> <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference gateway provider put <trailing_uri> <name> --input-file -
+nemo inference gateway provider put <trailing_uri> <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference gateway provider put [OPTIONS] TRAILING_URI [NAME]
+```
+
+**Arguments:**
+
+* `<TRAILING_URI>`
+* `<NAME>`: (required)
+
+**Options:**
+
+* `--workspace`
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+###### nemo inference gateway provider ready
+
+Check if a model provider is registered in the gateway's cache.
+
+This is a lightweight endpoint that only checks the gateway's internal state,
+without making any requests to the actual provider backend. Use this to verify
+the gateway is ready to route requests to a provider after deployment.
+
+Returns: 200 OK with provider info if the provider is registered 404 Not Found
+if the provider is not yet in the gateway's cache
+
+**Usage:**
+
+```shell
+nemo inference gateway provider ready [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo inference models
+
+Manage models
+
+**Usage:**
+
+```shell
+nemo inference models [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `get`: Retrieve information about a specific OpenAI-compatible...
+* `list`: This endpoint aggregates models from all model entities...
+
+##### nemo inference models get
+
+Retrieve information about a specific OpenAI-compatible model.
+
+Workspace is
+always taken from the URL path; name may be model_entity_name or
+workspace/model_entity_name (workspace prefix is ignored).
+
+**Usage:**
+
+```shell
+nemo inference models get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference models list
+
+This endpoint aggregates models from all model entities and returns them in
+OpenAI's list models format. Each model ID is the model entity identifier in
+format workspace/model_entity_name.
+
+**Usage:**
+
+```shell
+nemo inference models list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo inference providers
+
+Manage providers
+
+**Usage:**
+
+```shell
+nemo inference providers [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new model provider.
+* `delete`: Delete a model provider by workspace and name.
+* `list`: List model providers for a specific workspace.
+* `get`: Get a model provider by workspace and name.
+* `update`: Create or update a model provider.
+* `update-status`: Update status-related fields of a model provider.
+
+##### nemo inference providers create
+
+Create a new model provider.
+
+**Required fields:** host_url, name
+
+**Examples:**
+
+```shell
+nemo inference providers create <name> --input-file config.json
+nemo inference providers create <name> --input-data '{"host_url": "value", "name": "value"}'
+echo '{"json": "data"}' | nemo inference providers create <name> --input-file -
+nemo inference providers create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference providers create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the model provider. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--host-url`: The network endpoint URL for the model provider
+* `--api-key-secret-name`: Reference to an API key secret stored in the Secrets service. Create the secret first via secrets API, then pass the secret name here.
+* `--auth-header-format`: Jinja2 template string controlling how the API key secret is sent to the upstream. Must contain exactly one variable named `auth_secret`, which is substituted with the resolved secret value at request time. Example: `'X-Api-Key: {{ auth_secret }}'`. If not set, defaults to `'Authorization: Bearer {{ auth_secret }}'`.
+* `--default-extra-body`: Default body parameters for inference requests. Can be overridden by user requests. (JSON string)
+* `--default-extra-headers`: Default headers for inference requests. Can be overridden by user requests. (JSON string)
+* `--description`: Optional description of the model provider
+* `--enabled-models`: Optional list of specific models to enable from this provider (can be repeated)
+* `--model-deployment-id`: Optional reference to the ModelDeployment ID if this provider is being auto-created for a deployment
+* `--project`: The URN of the project associated with this model provider
+* `--required-extra-body`: Required body parameters for inference requests. Cannot be overridden by user requests. (JSON string)
+* `--required-extra-headers`: Required headers for inference requests. Cannot be overridden by user requests. (JSON string)
+* `--status <CHOICE>`: Status enum for ModelProvider objects. [possible values: UNKNOWN, CREATED, PENDING, READY, ERROR, DELETING, DELETED, LOST]
+* `--status-message`: Status message
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference providers delete
+
+Delete a model provider by workspace and name.
+
+**Usage:**
+
+```shell
+nemo inference providers delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo inference providers list
+
+List model providers for a specific workspace.
+
+**Usage:**
+
+```shell
+nemo inference providers list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: name, -name, created_at, -created_at, updated_at, -updated_at, status, -status]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter model providers by workspace, project, status, model_deployment_id, name, description, host_url, created_at, and updated_at.
+* `--filter.description`
+* `--filter.host-url`
+* `--filter.model-deployment-id`
+* `--filter.name`
+* `--filter.project`
+* `--filter.status`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference providers get
+
+Get a model provider by workspace and name.
+
+**Usage:**
+
+```shell
+nemo inference providers get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference providers update
+
+Create or update a model provider.
+
+**Required fields:** host_url
+
+**Examples:**
+
+```shell
+nemo inference providers update <name> --input-file config.json
+nemo inference providers update <name> --input-data '{"host_url": "value"}'
+echo '{"json": "data"}' | nemo inference providers update <name> --input-file -
+nemo inference providers update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference providers update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--host-url`: The network endpoint URL for the model provider
+* `--api-key-secret-name`: Reference to an API key secret stored in the Secrets service. Create the secret first via secrets API, then pass the secret name here.
+* `--auth-header-format`: Jinja2 template string controlling how the API key secret is sent to the upstream. Must contain exactly one variable named `auth_secret`, which is substituted with the resolved secret value at request time. Example: `'X-Api-Key: {{ auth_secret }}'`. If not set, defaults to `'Authorization: Bearer {{ auth_secret }}'`.
+* `--default-extra-body`: Default body parameters for inference requests. Can be overridden by user requests. (JSON string)
+* `--default-extra-headers`: Default headers for inference requests. Can be overridden by user requests. (JSON string)
+* `--description`: Optional description of the model provider
+* `--enabled-models`: Optional list of specific models to enable from this provider (can be repeated)
+* `--model-deployment-id`: Optional reference to the ModelDeployment ID if this provider is associated with a deployment
+* `--project`: The URN of the project associated with this model provider
+* `--required-extra-body`: Required body parameters for inference requests. Cannot be overridden by user requests. (JSON string)
+* `--required-extra-headers`: Required headers for inference requests. Cannot be overridden by user requests. (JSON string)
+* `--status <CHOICE>`: Status enum for ModelProvider objects. [possible values: UNKNOWN, CREATED, PENDING, READY, ERROR, DELETING, DELETED, LOST]
+* `--status-message`: Status message
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference providers update-status
+
+Update status-related fields of a model provider.
+
+This endpoint supports partial updates for fields managed by Models Controller:
+
+- model_deployment_id
+- served_models
+- status
+- status_message
+
+If status is provided without status_message, status_message will be set to
+empty string.
+
+**Examples:**
+
+```shell
+nemo inference providers update-status <name> --input-file config.json
+nemo inference providers update-status <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo inference providers update-status <name> --input-file -
+nemo inference providers update-status <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference providers update-status [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--model-deployment-id`: Reference to the ModelDeployment ID if this provider is associated with a deployment
+* `--served-models`: List of models served by this provider with routing information for IGW (JSON string)
+* `--status <CHOICE>`: Status enum for ModelProvider objects. [possible values: UNKNOWN, CREATED, PENDING, READY, ERROR, DELETING, DELETED, LOST]
+* `--status-message`: Status message. If status is provided without status_message, defaults to empty string.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo inference virtual-models
+
+Manage virtual_models
+
+**Usage:**
+
+```shell
+nemo inference virtual-models [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new VirtualModel in the given workspace.
+* `delete`: Permanently delete a VirtualModel.
+* `list`: List VirtualModels for the given workspace.
+* `patch`: Partially update a VirtualModel.
+* `get`: Get a VirtualModel by workspace and name.
+
+##### nemo inference virtual-models create
+
+Create a new VirtualModel in the given workspace.
+
+A VirtualModel defines an ordered middleware pipeline that IGW executes when an
+inference request arrives with `model: "workspace/name"` matching this entity.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo inference virtual-models create <name> --input-file config.json
+nemo inference virtual-models create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo inference virtual-models create <name> --input-file -
+nemo inference virtual-models create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference virtual-models create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the virtual model within the workspace. Must be unique per workspace.
+
+**Options:**
+
+* `--workspace`
+* `--autoprovisioned`: Marks this VirtualModel as controller-managed. The Models controller will delete it once no ModelProvider serves the matching entity. Setting this manually opts the VirtualModel into that cleanup behavior.
+* `--default-model-entity`: Model entity to route to, in "workspace/name" format. Written into request["model"] before the request middleware pipeline runs. If omitted, a request middleware plugin must handle backend routing itself. Set to null to clear an existing value.
+* `--models`: Model entity references used by this VirtualModel. A per-entry backend_format overrides the referenced ModelEntity backend_format when IGW resolves the backend format for a request. (JSON string)
+* `--override-proxy`: Plugin-provided proxy implementation for IGW to use instead of its default aiohttp proxy. Format: "plugin-name.proxy-name". Leave unset to use the default IGW proxy. Set to null to clear an existing value.
+* `--post-response-middleware`: Ordered list of middleware plugins invoked after the response has been returned to the caller. Intended for fire-and-forget work (logging, analytics) that must not block or modify the response. (JSON string)
+* `--request-middleware`: Ordered list of middleware plugins applied before proxying to the backend. Each entry is a MiddlewareCall with a "name" (plugin identifier) and optional "config_type" and "config_id" fields that reference a stored plugin configuration. (JSON string)
+* `--response-middleware`: Ordered list of middleware plugins applied after the backend response is received, before returning it to the caller. (JSON string)
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference virtual-models delete
+
+Permanently delete a VirtualModel.
+
+This does not affect any in-flight requests already being routed through this
+VirtualModel. IGW's model cache is refreshed on its next polling cycle.
+
+**Usage:**
+
+```shell
+nemo inference virtual-models delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo inference virtual-models list
+
+List VirtualModels for the given workspace.
+
+Use `workspace=-` to list across all workspaces accessible to the caller.
+
+**Usage:**
+
+```shell
+nemo inference virtual-models list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number (1-indexed).
+* `--page-size <INTEGER>`: Number of results per page.
+* `--sort`: Sort field. Prefix with `-` for descending order.
+* `--all-pages`: Fetch all pages
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo inference virtual-models patch
+
+Partially update a VirtualModel.
+
+Only fields present in the request body are modified. Fields absent from the
+request body retain their current values.
+
+**Examples:**
+
+```shell
+nemo inference virtual-models patch <name> --input-file config.json
+nemo inference virtual-models patch <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo inference virtual-models patch <name> --input-file -
+nemo inference virtual-models patch <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo inference virtual-models patch [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--autoprovisioned`: Marks this VirtualModel as controller-managed. The Models controller will delete it once no ModelProvider serves the matching entity. Setting this manually opts the VirtualModel into that cleanup behavior.
+* `--default-model-entity`: Model entity to route to, in "workspace/name" format. Written into request["model"] before the request middleware pipeline runs. If omitted, a request middleware plugin must handle backend routing itself. Set to null to clear an existing value.
+* `--models`: Model entity references used by this VirtualModel. A per-entry backend_format overrides the referenced ModelEntity backend_format when IGW resolves the backend format for a request. (JSON string)
+* `--override-proxy`: Plugin-provided proxy implementation for IGW to use instead of its default aiohttp proxy. Format: "plugin-name.proxy-name". Leave unset to use the default IGW proxy. Set to null to clear an existing value.
+* `--post-response-middleware`: Ordered list of middleware plugins invoked after the response has been returned to the caller. Intended for fire-and-forget work (logging, analytics) that must not block or modify the response. (JSON string)
+* `--request-middleware`: Ordered list of middleware plugins applied before proxying to the backend. Each entry is a MiddlewareCall with a "name" (plugin identifier) and optional "config_type" and "config_id" fields that reference a stored plugin configuration. (JSON string)
+* `--response-middleware`: Ordered list of middleware plugins applied after the backend response is received, before returning it to the caller. (JSON string)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo inference virtual-models get
+
+Get a VirtualModel by workspace and name.
+
+**Usage:**
+
+```shell
+nemo inference virtual-models get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo jobs
+
+Manage jobs.
+
+**Usage:**
+
+```shell
+nemo jobs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `cancel`: Cancel a platform job.
+* `create`: Create a new platform job.
+* `delete`: Delete a platform job.
+* `get-logs`: Get paginated logs for a platform job.
+* `get-status`: Get the status of a platform job.
+* `list`: List platform jobs with filtering and pagination.
+* `list-execution-profiles`: Get all currently configured execution profiles.
+* `pause`: Pause a platform job.
+* `resume`: Resume a paused platform job.
+* `get`: Get a platform job by name.
+* `update-status-details`: Update the status details of a platform job.
+* `results`: Manage results
+* `steps`: Manage steps
+* `tasks`: Manage tasks
+
+#### nemo jobs cancel
+
+Cancel a platform job.
+
+**Usage:**
+
+```shell
+nemo jobs cancel [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs create
+
+Create a new platform job.
+
+**Required fields:** platform_spec, source, spec
+
+**Examples:**
+
+```shell
+nemo jobs create <name> --input-file config.json
+nemo jobs create <name> --input-data '{"platform_spec": {}, "source": "value", "spec": {}}'
+echo '{"json": "data"}' | nemo jobs create <name> --input-file -
+nemo jobs create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo jobs create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--platform-spec`: Specification for a platform job, containing steps and secrets. (JSON string)
+* `--source`: (required)
+* `--spec`: JSON string
+* `--custom-fields`: JSON string
+* `--description`
+* `--ownership`: JSON string
+* `--project`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs delete
+
+Delete a platform job.
+
+**Usage:**
+
+```shell
+nemo jobs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo jobs get-logs
+
+Get paginated logs for a platform job.
+
+**Usage:**
+
+```shell
+nemo jobs get-logs [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--attempt-id <INTEGER>`: Filter logs by job attempt ID
+* `--limit <INTEGER>`: Maximum number of logs to return
+* `--page-cursor`: Page cursor
+* `--step-id`: Filter logs by step name
+* `--task-id`: Filter logs by task ID
+* `--all-pages`: Fetch all pages
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo jobs get-status
+
+Get the status of a platform job.
+
+**Usage:**
+
+```shell
+nemo jobs get-status [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs list
+
+List platform jobs with filtering and pagination.
+
+**Usage:**
+
+```shell
+nemo jobs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter jobs by workspace, project, name, status, source, created_at, and updated_at.
+* `--filter.name`
+* `--filter.project`
+* `--filter.source`
+* `--filter.status`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo jobs list-execution-profiles
+
+Get all currently configured execution profiles.
+
+**Usage:**
+
+```shell
+nemo jobs list-execution-profiles [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo jobs pause
+
+Pause a platform job.
+
+**Usage:**
+
+```shell
+nemo jobs pause [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs resume
+
+Resume a paused platform job.
+
+**Usage:**
+
+```shell
+nemo jobs resume [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs get
+
+Get a platform job by name.
+
+**Usage:**
+
+```shell
+nemo jobs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs update-status-details
+
+Update the status details of a platform job.
+
+**Required fields:** body
+
+**Examples:**
+
+```shell
+nemo jobs update-status-details <name> --input-file config.json
+nemo jobs update-status-details <name> --input-data '`{"body": {}}`'
+echo '{"json": "data"}' | nemo jobs update-status-details <name> --input-file -
+nemo jobs update-status-details <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo jobs update-status-details [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--body`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs results
+
+Manage results
+
+**Usage:**
+
+```shell
+nemo jobs results [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new result for a job.
+* `download`: Download a job result file.
+* `list`: List results for a job.
+* `get`: Get a specific job result.
+
+##### nemo jobs results create
+
+Create a new result for a job.
+
+**Required fields:** job, artifact_storage_type, artifact_url
+
+**Examples:**
+
+```shell
+nemo jobs results create <name> --input-file config.json
+nemo jobs results create <name> --input-data '{"job": "value", "artifact_storage_type": "value", "artifact_url": "value"}'
+echo '{"json": "data"}' | nemo jobs results create <name> --input-file -
+nemo jobs results create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo jobs results create [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`: (required)
+* `--artifact-storage-type <CHOICE>`: (required) [possible values: fileset]
+* `--artifact-url`: (required)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo jobs results download
+
+Download a job result file.
+
+**Usage:**
+
+```shell
+nemo jobs results download [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`
+* `--output-file, -o <PATH>`: Output file path
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo jobs results list
+
+List results for a job.
+
+**Usage:**
+
+```shell
+nemo jobs results list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--sort <CHOICE>`: The field to sort by. [possible values: created_at, -created_at, updated_at, -updated_at]
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo jobs results get
+
+Get a specific job result.
+
+**Usage:**
+
+```shell
+nemo jobs results get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs steps
+
+Manage steps
+
+**Usage:**
+
+```shell
+nemo jobs steps [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `list`: List job steps with pagination and filtering.
+* `get`: Get a specific job step.
+* `update-status`: Update a job step status.
+
+##### nemo jobs steps list
+
+List job steps with pagination and filtering.
+
+**Usage:**
+
+```shell
+nemo jobs steps list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, updated_at, -updated_at]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  status: ['created' | 'pending' | 'active' | 'cancelled' | 'cancelling' | 'error' | 'completed' | 'paused' | 'pausing' | 'resuming']
+
+Filter steps by job, status, and source.
+* `--filter.job`
+* `--filter.source`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo jobs steps get
+
+Get a specific job step.
+
+**Usage:**
+
+```shell
+nemo jobs steps get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo jobs steps update-status
+
+Update a job step status.
+
+**Required fields:** job, status
+
+**Examples:**
+
+```shell
+nemo jobs steps update-status <name> --input-file config.json
+nemo jobs steps update-status <name> --input-data '{"job": "value", "status": "value"}'
+echo '{"json": "data"}' | nemo jobs steps update-status <name> --input-file -
+nemo jobs steps update-status <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo jobs steps update-status [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`: (required)
+* `--status <CHOICE>`: Enumeration of possible job statuses. This enum represents the various states a job can be in during its lifecycle, from creation to a terminal state.  [possible values: created, pending, active, cancelled, cancelling, error, completed, paused, pausing, resuming]
+* `--error-details`: Optional error details related to the status update. (JSON string)
+* `--status-details`: Optional status details related to the status update. (JSON string)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo jobs tasks
+
+Manage tasks
+
+**Usage:**
+
+```shell
+nemo jobs tasks [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create-or-update`: Update a job step task.
+* `list`: List tasks for a job step.
+* `get`: Get a specific job step task.
+
+##### nemo jobs tasks create-or-update
+
+Update a job step task.
+
+**Required fields:** job, step
+
+**Examples:**
+
+```shell
+nemo jobs tasks create-or-update <name> --input-file config.json
+nemo jobs tasks create-or-update <name> --input-data '{"job": "value", "step": "value"}'
+echo '{"json": "data"}' | nemo jobs tasks create-or-update <name> --input-file -
+nemo jobs tasks create-or-update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo jobs tasks create-or-update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`: (required)
+* `--step`: (required)
+* `--error-details`: JSON string
+* `--error-stack`
+* `--status <CHOICE>`: Enumeration of possible job statuses. This enum represents the various states a job can be in during its lifecycle, from creation to a terminal state. [possible values: created, pending, active, cancelled, cancelling, error, completed, paused, pausing, resuming]
+* `--status-details`: JSON string
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo jobs tasks list
+
+List tasks for a job step.
+
+**Usage:**
+
+```shell
+nemo jobs tasks list [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo jobs tasks get
+
+Get a specific job step task.
+
+**Usage:**
+
+```shell
+nemo jobs tasks get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--job`
+* `--step`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo models
+
+Manage models.
+
+**Usage:**
+
+```shell
+nemo models [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new model entity.
+* `delete`: Delete Model entity.
+* `list`: List Models endpoint with filtering, pagination, and...
+* `get`: Get Model by Workspace and Name.
+* `update`: Update Model metadata.
+* `adapters`: Manage adapters
+
+#### nemo models create
+
+Create a new model entity.
+
+This endpoint creates a new Model Entity in the Models service database. The
+Model Entity will be registered for use within the platform.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo models create <name> --input-file config.json
+nemo models create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo models create <name> --input-file -
+nemo models create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo models create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Name of the model entity. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--api-endpoint`: Data about an inference endpoint. (JSON string)
+* `--backend-format <CHOICE>`: Inference backend API wire formats understood by IGW and middleware plugins. [possible values: OPENAI_CHAT, ANTHROPIC_MESSAGES]
+* `--base-model`: Link to another model which is used as a base for the current model
+* `--custom-fields`: Custom fields for additional metadata (JSON string)
+* `--description`: Optional description of the model
+* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format {workspace}/{fileset_name}
+* `--finetuning-type <CHOICE>`: Finetuning types. [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
+* `--model-providers`: List of ModelProvider workspace/name resource names that provide inference for this Model Entity (can be repeated)
+* `--ownership`: Ownership information for the model (JSON string)
+* `--project`: The URN of the project associated with this model entity
+* `--prompt`: Configuration for prompt engineering. (JSON string)
+* `--spec`: Detailed specification for a model. (JSON string)
+* `--trust-remote-code`: Whether to trust remote code for the checkpoint. Some models without support in certain libraries such as Transformers require additional custom Python code to execute. Due to security ramifications of running arbitrary code, this can only be set to true on one of the following conditions: (1) the model's fileset's source is pre-approved in the platform config, or (2) the user creating this model is an administrator.
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo models delete
+
+Delete Model entity.
+
+Permanently deletes a model entity from the platform.
+
+**Usage:**
+
+```shell
+nemo models delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo models list
+
+List Models endpoint with filtering, pagination, and sorting.
+
+Supports filter parameters for various criteria (including peft, custom fields),
+pagination (page, page_size), sorting, and workspace filtering via query
+parameter.
+
+**Usage:**
+
+```shell
+nemo models list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, name, -name, updated_at, -updated_at]
+* `--verbose`: Whether to include full spec details
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter models by name, project, workspace, base_model, adapters, finetuning_type, prompt, lora_enabled, description, created_at, and updated_at.
+* `--filter.adapters`
+* `--filter.base-model`
+* `--filter.description`
+* `--filter.finetuning-type`
+* `--filter.lora-enabled`
+* `--filter.name`
+* `--filter.project`
+* `--filter.prompt`
+* `--filter.workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo models get
+
+Get Model by Workspace and Name.
+
+Returns the details of a specific model entity identified by its workspace and
+name.
+
+**Usage:**
+
+```shell
+nemo models get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--verbose`: Whether to include full spec details
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo models update
+
+Update Model metadata.
+
+Updates the metadata of an existing model entity.
+
+If the request body has an
+empty field, the old value is kept.
+
+**Examples:**
+
+```shell
+nemo models update <name> --input-file config.json
+nemo models update <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo models update <name> --input-file -
+nemo models update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo models update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--verbose`: Whether to include full spec details
+* `--api-endpoint`: Data about an inference endpoint. (JSON string)
+* `--backend-format <CHOICE>`: Inference backend API wire formats understood by IGW and middleware plugins. [possible values: OPENAI_CHAT, ANTHROPIC_MESSAGES]
+* `--base-model`: Link to another model which is used as a base for the current model
+* `--custom-fields`: Custom fields for additional metadata (JSON string)
+* `--description`: Optional description of the model
+* `--fileset`: A set of checkpoint files, configs, and other auxiliary info associated with this model - expected format {workspace}/{fileset_name}
+* `--finetuning-type <CHOICE>`: Finetuning types. [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
+* `--model-providers`: List of ModelProvider workspace/name resource names that provide inference for this Model Entity (can be repeated)
+* `--ownership`: Ownership information for the model (JSON string)
+* `--prompt`: Configuration for prompt engineering. (JSON string)
+* `--spec`: Detailed specification for a model. (JSON string)
+* `--trust-remote-code`: Whether to trust remote code for the checkpoint. Some models without support in certain libraries such as Transformers require additional custom Python code to execute. Due to security ramifications of running arbitrary code, this can only be set to true on one of the following conditions: (1) the model's fileset's source is pre-approved in the platform config, or (2) the user creating this model is an administrator.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo models adapters
+
+Manage adapters
+
+**Usage:**
+
+```shell
+nemo models adapters [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Adds an Adapter to the Model
+* `delete`: Delete Adapter from Model entity.
+* `update`: Update Adapter deployment or description.
+
+##### nemo models adapters create
+
+Adds an Adapter to the Model
+
+**Required fields:** fileset, finetuning_type, name
+
+**Examples:**
+
+```shell
+nemo models adapters create <model_name> <name> --input-file config.json
+nemo models adapters create <model_name> <name> --input-data '{"fileset": "value", "finetuning_type": "value", "name": "value"}'
+echo '{"json": "data"}' | nemo models adapters create <model_name> <name> --input-file -
+nemo models adapters create <model_name> <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo models adapters create [OPTIONS] MODEL_NAME [NAME]
+```
+
+**Arguments:**
+
+* `<MODEL_NAME>`
+* `<NAME>`: Name of the adapter. Name must be unique in the workspace. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots.
+
+**Options:**
+
+* `--workspace`
+* `--fileset`: Location where adapter files are stored - expected format {workspace}/{fileset_name}
+* `--finetuning-type <CHOICE>`: Finetuning types.  [possible values: lora_merged, all_weights, last_layer, top_layers, gradual_unfreezing, bias_only, attention_only, lora, qlora, adalora, dora, lora_plus, prompt_tuning, prefix_tuning, p_tuning, p_tuning_v2, soft_prompt, ppo, dpo, cdpo, ipo, orpo, kto, rrhf, grpo]
+* `--description`: Optional description of the adapter
+* `--enabled`: Whether to make this adapter available for inference post training
+* `--lora-config`: Lora configuration specifics (JSON string)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo models adapters delete
+
+Delete Adapter from Model entity.
+
+Permanently deletes an adapter from a model entity, if it was deployed, it will
+be cleaned up automatically.
+
+**Usage:**
+
+```shell
+nemo models adapters delete [OPTIONS] ADAPTER
+```
+
+**Arguments:**
+
+* `<ADAPTER>`
+
+**Options:**
+
+* `--workspace`
+* `--model-name`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo models adapters update
+
+Update Adapter deployment or description.
+
+**Required fields:** model_name
+
+**Examples:**
+
+```shell
+nemo models adapters update <adapter> --input-file config.json
+nemo models adapters update <adapter> --input-data '{"model_name": "value"}'
+echo '{"json": "data"}' | nemo models adapters update <adapter> --input-file -
+nemo models adapters update <adapter> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo models adapters update [OPTIONS] ADAPTER
+```
+
+**Arguments:**
+
+* `<ADAPTER>`
+
+**Options:**
+
+* `--workspace`
+* `--model-name`: (required)
+* `--description`: Optional description of the adapter
+* `--enabled`: Whether to make this adapter available for inference post training
+* `--fileset`: Updated fileset for the adapter
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo secrets
+
+Manage secrets.
+
+**Usage:**
+
+```shell
+nemo secrets [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `access`: Access the value of a secret.
+* `create`: Create a new secret.
+* `delete`: Delete a secret.
+* `list`: List available secrets
+* `get`: Retrieve a secret by its name.
+* `update`: Update a secret's metadata and/or value.
+* `admin`: Manage admin
+
+#### nemo secrets access
+
+Access the value of a secret.
+
+**Usage:**
+
+```shell
+nemo secrets access [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo secrets create
+
+Create a new secret.
+
+**Examples:**
+
+```shell
+# Pass secret value directly
+nemo secrets create my-secret --value "abc123"
+# Read secret from a file
+nemo secrets create my-secret --from-file ./secret.txt --description "API key for X"
+# Read secret from stdin
+cat secret.txt | nemo secrets create my-secret --from-file -
+# Read secret from environment variable
+echo "$API_KEY" | nemo secrets create my-secret --from-file -
+```
+
+**Usage:**
+
+```shell
+nemo secrets create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: The name of the secret to create
+
+**Options:**
+
+* `--workspace`
+* `--from-file`: Path to file containing the secret value. Use '-' to read from stdin.
+* `--value`: Secret value directly. Use --from-file for large or sensitive input.
+* `--description`: An optional description of the secret
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo secrets delete
+
+Delete a secret.
+
+**Usage:**
+
+```shell
+nemo secrets delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo secrets list
+
+List available secrets
+
+**Usage:**
+
+```shell
+nemo secrets list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--all-pages`: Fetch all pages
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo secrets get
+
+Retrieve a secret by its name.
+
+**Usage:**
+
+```shell
+nemo secrets get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo secrets update
+
+Update a secret's metadata and/or value.
+
+**Examples:**
+
+```shell
+# Update secret value directly
+nemo secrets update my-secret --value "new-value"
+# Read secret from a file
+nemo secrets update my-secret --from-file ./secret.txt --description "Updated!"
+# Read secret from stdin
+cat secret.txt | nemo secrets update my-secret --from-file -
+# Read secret from environment variable
+echo "$API_KEY" | nemo secrets update my-secret --from-file -
+```
+
+**Usage:**
+
+```shell
+nemo secrets update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--from-file`: Path to file containing the secret value. Use '-' to read from stdin.
+* `--value`: Secret value directly. Use --from-file for large or sensitive input.
+* `--description`: An optional description of the secret
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo secrets admin
+
+Manage admin
+
+**Usage:**
+
+```shell
+nemo secrets admin [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `rotate-encryption-keys`: Rotate encryption keys for all platform secrets.
+
+##### nemo secrets admin rotate-encryption-keys
+
+Rotate encryption keys for all platform secrets.
+
+**Usage:**
+
+```shell
+nemo secrets admin rotate-encryption-keys [OPTIONS]
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+### nemo workspaces
+
+Manage workspaces.
+
+**Usage:**
+
+```shell
+nemo workspaces [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new workspace.
+* `delete`: Delete a workspace.
+* `list`: List all workspaces with pagination.
+* `get`: Get a specific workspace by ID.
+* `update`: Update a workspace's description.
+
+#### nemo workspaces create
+
+Create a new workspace.
+
+The creator is automatically granted Admin role on the workspace. By default,
+this endpoint waits for the Admin role to propagate before returning. Use
+`wait_role_propagation=false` to skip waiting (useful for bulk operations).
+
+**Examples:**
+
+
+```
+POST /apis/entities/v2/workspaces
+`{"name": "ml-team", "description": "Machine Learning Team workspace"}`
+```
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo workspaces create <name> --input-file config.json
+nemo workspaces create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo workspaces create <name> --input-file -
+nemo workspaces create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo workspaces create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: Workspace name (unique identifier). Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).
+
+**Options:**
+
+* `--wait-role-propagation`: If true, wait for Admin role to propagate before returning (default: true). Set to false for bulk operations.
+* `--description`: Optional description of the workspace
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo workspaces delete
+
+Delete a workspace.
+
+This marks the workspace for deletion and returns immediately. The workspace
+will no longer be accessible via the API. An asynchronous cleanup controller
+will handle deletion of all entities and external resources.
+
+Role bindings are immediately deleted to revoke access.
+
+**Examples:**
+
+
+```
+DELETE /apis/entities/v2/workspaces/ml-team
+```
+
+**Usage:**
+
+```shell
+nemo workspaces delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo workspaces list
+
+List all workspaces with pagination.
+
+When authentication is enabled, only workspaces the principal has access to are
+returned. Service principals and platform admins have access to all workspaces.
+
+Query Parameters:
+
+- page, page_size: Pagination
+- sort: Sort field
+- filter: Advanced filters (JSON, text, or bracket notation)
+
+**Examples:**
+
+
+```
+GET /apis/entities/v2/workspaces?sort=-created_at&page=1&page_size=10
+```
+
+**Usage:**
+
+```shell
+nemo workspaces list [OPTIONS]
+```
+
+**Options:**
+
+* `--filter`: Query filter expression. Supports text and JSON syntaxes:
+- Text: name:"value" AND status>500 with operators : ~ > >= < <= IN NOT IN AND OR and negation prefix -
+- Object (JSON): `{"name":{"$like":"value"}}` with operators `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`, `$and`, `$or`, `$not`
+* `--page <INTEGER>`: Page number
+* `--page-size <INTEGER>`: Items per page
+* `--sort <CHOICE>`: Sort field [possible values: created_at, -created_at, name, -name]
+* `--all-pages`: Fetch all pages
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+#### nemo workspaces get
+
+Get a specific workspace by ID.
+
+**Examples:**
+
+
+```
+GET /apis/entities/v2/workspaces/ml-team
+```
+
+**Usage:**
+
+```shell
+nemo workspaces get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo workspaces update
+
+Update a workspace's description.
+
+**Examples:**
+
+
+```
+PUT /apis/entities/v2/workspaces/ml-team
+`{"description": "Updated description for ML Team"}`
+```
+
+**Examples:**
+
+```shell
+nemo workspaces update <name> --input-file config.json
+nemo workspaces update <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo workspaces update <name> --input-file -
+nemo workspaces update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo workspaces update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--description`: Updated description
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+## Functional plugins
+
+### nemo guardrail
+
+Manage guardrails.
+
+**Usage:**
+
+```shell
+nemo guardrail [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `check`: Chat completion for the provided conversation.
+* `configs`: Manage configs
+
+#### nemo guardrail check
+
+Chat completion for the provided conversation.
+
+**Required fields:** messages, model
+
+**Examples:**
+
+```shell
+nemo guardrail check --input-file config.json
+nemo guardrail check --input-data '{"messages": {}, "model": "value"}'
+echo '{"json": "data"}' | nemo guardrail check --input-file -
+nemo guardrail check --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo guardrail check [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--messages`: A list of messages comprising the conversation so far (JSON string)
+* `--model`: The model to use for completion. Must be one of the available models.
+* `--frequency-penalty <FLOAT>`: Positive values penalize new tokens based on their existing frequency in the text.
+* `--function-call`: Deprecated in favor of tool_choice. 'none' means the model will not call a function and instead generates a message. 'auto' means the model can pick between generating a message or calling a function. Specifying a particular function via {'name': 'my_function'} forces the model to call that function. (JSON string)
+* `--guardrails`: Guardrails specific options for the request. (JSON string)
+* `--ignore-eos`: Ignore the eos when running
+* `--logit-bias`: Modify the likelihood of specified tokens appearing in the completion. Maps token IDs (as strings) to bias values from -100 to 100. (JSON string)
+* `--logprobs`: Whether to return log probabilities of the output tokens or not. If true, returns the log probabilities of each output token returned in the content of message
+* `--max-completion-tokens <INTEGER>`: An upper bound for the number of tokens that can be generated for a completion, including visible output tokens and reasoning tokens. Preferred over max_tokens for reasoning models.
+* `--max-tokens <INTEGER>`: The maximum number of tokens that can be generated in the chat completion.
+* `--n <INTEGER>`: How many chat completion choices to generate for each input message.
+* `--presence-penalty <FLOAT>`: Positive values penalize new tokens based on whether they appear in the text so far.
+* `--reasoning-effort`: Constrains effort on reasoning for reasoning models. Reducing reasoning effort can result in faster responses and fewer tokens used on reasoning in a response.
+* `--response-format`: Format of the response. Use {'type': 'json_object'} for JSON mode or {'type': 'json_schema', 'json_schema': {...}} for structured outputs. (JSON string)
+* `--seed <INTEGER>`: If specified, attempts to sample deterministically.
+* `--stop`: Up to 4 sequences where the API will stop generating further tokens. (JSON string)
+* `--stream`: If set, partial message deltas will be sent, like in ChatGPT.
+* `--stream-options`: Options for streaming response. Only set this when stream=True. Supports include_usage to receive token usage in the final stream chunk. (JSON string)
+* `--temperature <FLOAT>`: What sampling temperature to use, between 0 and 2.
+* `--tool-choice`: Controls which (if any) tool is called by the model. 'none' means no tool is called, 'auto' lets the model decide, 'required' forces a tool call. (JSON string)
+* `--tools`: A list of tools the model may call. Each tool is an object with a 'type' field and a 'function' definition. (JSON string)
+* `--top-logprobs <INTEGER>`: The number of most likely tokens to return at each token position.
+* `--top-p <FLOAT>`: An alternative to sampling with temperature, called nucleus sampling.
+* `--user`: A unique identifier representing your end-user, used by some providers for abuse monitoring.
+* `--vision`: Whether this is a vision-capable request with image inputs.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo guardrail configs
+
+Manage configs
+
+**Usage:**
+
+```shell
+nemo guardrail configs [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Create a new guardrail config.
+* `delete`: Delete a guardrail config.
+* `list`: List available guardrail configs.
+* `get`: Get info about a guardrail configuration.
+* `update`: Update model metadata.
+
+##### nemo guardrail configs create
+
+Create a new guardrail config.
+
+**Required fields:** name
+
+**Examples:**
+
+```shell
+nemo guardrail configs create <name> --input-file config.json
+nemo guardrail configs create <name> --input-data '{"name": "value"}'
+echo '{"json": "data"}' | nemo guardrail configs create <name> --input-file -
+nemo guardrail configs create <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo guardrail configs create [OPTIONS] [NAME]
+```
+
+**Arguments:**
+
+* `<NAME>`: The name of the guardrail config
+
+**Options:**
+
+* `--workspace`
+* `--data`: Guardrail configuration data (JSON string)
+* `--description`: Description of the guardrail config
+* `--exist-ok`: Do not raise an error if the resource already exists. Returns the existing resource.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo guardrail configs delete
+
+Delete a guardrail config.
+
+**Usage:**
+
+```shell
+nemo guardrail configs delete [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo guardrail configs list
+
+List available guardrail configs.
+
+Lists guardrail configs for a specific workspace.
+
+**Usage:**
+
+```shell
+nemo guardrail configs list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--page <INTEGER>`: Page number.
+* `--page-size <INTEGER>`: Page size.
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, name, -name]
+* `--all-pages`: Fetch all pages
+
+**Filter Options:**
+
+* `--filter FILTER_JSON`: Use --filter with JSON for complex/nested queries, or --filter. FIELD options for simple fields. Both can be combined, with field options taking precedence.
+JSON-only fields:
+  created_at: {gte: str, lte: str}
+  updated_at: {gte: str, lte: str}
+
+Filter guardrail configs by name, description, project, created_at, and updated_at.
+* `--filter.description`
+* `--filter.name`
+* `--filter.project`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo guardrail configs get
+
+Get info about a guardrail configuration.
+
+**Usage:**
+
+```shell
+nemo guardrail configs get [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo guardrail configs update
+
+Update model metadata.
+
+If the request body has an empty field, keep the old
+value.
+
+**Examples:**
+
+```shell
+nemo guardrail configs update <name> --input-file config.json
+nemo guardrail configs update <name> --input-data '{"field": "value"}'
+echo '{"json": "data"}' | nemo guardrail configs update <name> --input-file -
+nemo guardrail configs update <name> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo guardrail configs update [OPTIONS] NAME
+```
+
+**Arguments:**
+
+* `<NAME>`
+
+**Options:**
+
+* `--workspace`
+* `--data`: Guardrail configuration data (JSON string)
+* `--description`: Description of the guardrail config
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
