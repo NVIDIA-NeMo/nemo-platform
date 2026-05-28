@@ -1051,18 +1051,27 @@ def _annotate_generated_project_table(
     table: tomlkit.items.Table,
     generated_names: set[str],
 ) -> tuple[tomlkit.items.Table, bool]:
-    """Strip stale generator markers from a fully-generated scripts/entry-points table.
+    """Annotate a scripts/entry-points table with the generator marker.
 
-    Every key in these tables is currently bundle-generated, so the only thing
-    to do is remove any previously-written marker comments (the parent caller
-    re-adds a single table-level header). Returns ``(table, True)`` when
-    ``generated_names`` indicates the table is owned by the bundle config, or
-    ``(table, False)`` when it isn't (no annotation should be applied).
+    * Empty ``generated_names`` → no annotation.
+    * Every key in the table is bundle-generated → emit a single table-level
+      header marker (the second tuple element ``True`` signals the parent
+      caller to add the marker above the table header).
+    * Mixed table (some generated, some hand-written) → leave the table
+      unannotated. We don't add per-key markers; that mode was only used by
+      legacy code and the rebuild flow now treats hand-written and generated
+      entries equally inside mixed scripts/entry-points tables.
+
+    In all cases, any pre-existing generator marker comments inside the
+    table are stripped so we never carry stale markers across runs.
     """
     if not generated_names:
         return table, False
 
-    return _copy_table_without_comments(table, GENERATED_PROJECT_COMMENTS), True
+    cleaned = _copy_table_without_comments(table, GENERATED_PROJECT_COMMENTS)
+    existing_names = {key.key for key, _ in cleaned._value.body if key is not None}
+    is_wholly_generated = bool(existing_names) and existing_names <= generated_names
+    return cleaned, is_wholly_generated
 
 
 def _annotate_generated_bundle_groups() -> None:
