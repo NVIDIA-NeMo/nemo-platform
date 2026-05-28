@@ -6,13 +6,15 @@
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.spans.clickhouse.dao import ClickHouseDao
+from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import (
     EvaluatorResult,
     EvaluatorResultDataType,
     EvaluatorResultListFilter,
 )
-from nmp.intake.spans.storage import dict_to_row, make_pagination, result_rows
+from nmp.intake.spans.storage import dict_to_row, make_pagination
 
 EVALUATOR_RESULT_COLUMNS = [
     "evaluator_result_id",
@@ -37,28 +39,24 @@ EVALUATOR_RESULT_SORT_COLUMNS = {
 
 class EvaluatorResultsRepository:
     def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+        self._dao = ClickHouseDao(client)
 
     async def save_evaluator_results(self, results: list[EvaluatorResult]) -> None:
         if not results:
             return
         rows = [dict_to_row(_evaluator_result_to_row(result), EVALUATOR_RESULT_COLUMNS) for result in results]
-        await self._client.insert("evaluator_results", rows, column_names=EVALUATOR_RESULT_COLUMNS)
+        await self._dao.insert_rows("evaluator_results", rows, column_names=EVALUATOR_RESULT_COLUMNS)
 
     async def get_evaluator_result(self, *, workspace: str, evaluator_result_id: str) -> EvaluatorResult | None:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("evaluator_results")} FINAL
-            WHERE workspace = %(workspace)s AND evaluator_result_id = %(evaluator_result_id)s
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "evaluator_result_id": evaluator_result_id},
+        where = (
+            WhereBuilder()
+            .eq(column("workspace"), "workspace", workspace)
+            .eq(column("evaluator_result_id"), "evaluator_result_id", evaluator_result_id)
         )
-        rows = result_rows(result)
-        if not rows:
+        row = await self._dao.fetch_one(self._dao.table("evaluator_results"), where, final=True)
+        if row is None:
             return None
-        return _row_to_evaluator_result(rows[0])
+        return _row_to_evaluator_result(row)
 
     async def list_evaluator_results(
         self,
@@ -68,24 +66,18 @@ class EvaluatorResultsRepository:
         page_size: int,
         sort: str,
     ) -> PaginatedResult[EvaluatorResult]:
-        where_sql, parameters = _evaluator_result_where(filters)
-        table = self._client.table("evaluator_results")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}", parameters=parameters
+        rows, total_results = await self._dao.paginate(
+            table=self._dao.table("evaluator_results"),
+            where=_evaluator_result_where(filters),
+            sort=sort,
+            sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
+            tiebreaker="evaluator_result_id",
+            sort_label="evaluator_result",
+            page=page,
+            page_size=page_size,
+            final=True,
         )
-        total_results = int(total_result.result_rows[0][0])
-        offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_evaluator_result_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
-        )
-        results = [_row_to_evaluator_result(row) for row in result_rows(rows_result)]
+        results = [_row_to_evaluator_result(row) for row in rows]
         return PaginatedResult(
             data=results,
             pagination=make_pagination(
@@ -94,58 +86,46 @@ class EvaluatorResultsRepository:
         )
 
     async def list_evaluator_results_for_span(self, *, workspace: str, span_id: str) -> list[EvaluatorResult]:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("evaluator_results")} FINAL
-            WHERE workspace = %(workspace)s AND span_id = %(span_id)s
-            ORDER BY created_at ASC, evaluator_result_id ASC
-            """,
-            parameters={"workspace": workspace, "span_id": span_id},
+        where = WhereBuilder().eq(column("workspace"), "workspace", workspace).eq(column("span_id"), "span_id", span_id)
+        rows = await self._dao.fetch_all(
+            self._dao.table("evaluator_results"),
+            where,
+            order_by="created_at ASC, evaluator_result_id ASC",
+            final=True,
         )
-        return [_row_to_evaluator_result(row) for row in result_rows(result)]
+        return [_row_to_evaluator_result(row) for row in rows]
 
 
-def _evaluator_result_where(filters: EvaluatorResultListFilter) -> tuple[str, dict[str, Any]]:
-    clauses = ["workspace = %(workspace)s"]
-    parameters: dict[str, Any] = {"workspace": filters.workspace}
+def _evaluator_result_where(filters: EvaluatorResultListFilter) -> WhereBuilder:
+    where = WhereBuilder().eq(column("workspace"), "workspace", filters.workspace)
     if filters.span_id is not None:
-        clauses.append("span_id = %(span_id)s")
-        parameters["span_id"] = filters.span_id
+        where.eq(column("span_id"), "span_id", filters.span_id)
     if filters.session_id is not None:
-        clauses.append("session_id = %(session_id)s")
-        parameters["session_id"] = filters.session_id
+        where.eq(column("session_id"), "session_id", filters.session_id)
     if filters.name is not None:
-        clauses.append("name = %(name)s")
-        parameters["name"] = filters.name
+        where.eq(column("name"), "name", filters.name)
     if filters.data_type is not None:
-        clauses.append("data_type = %(data_type)s")
-        parameters["data_type"] = filters.data_type.value
+        where.eq(column("data_type"), "data_type", filters.data_type.value)
     if filters.created_by is not None:
-        clauses.append("created_by = %(created_by)s")
-        parameters["created_by"] = filters.created_by
+        where.eq(column("created_by"), "created_by", filters.created_by)
     if filters.value_gte is not None:
-        clauses.append("value >= %(value_gte)s")
-        parameters["value_gte"] = filters.value_gte
+        where.gte(column("value"), "value_gte", filters.value_gte)
     if filters.value_lte is not None:
-        clauses.append("value <= %(value_lte)s")
-        parameters["value_lte"] = filters.value_lte
+        where.lte(column("value"), "value_lte", filters.value_lte)
     if filters.created_at_gte is not None:
-        clauses.append("created_at >= %(created_at_gte)s")
-        parameters["created_at_gte"] = filters.created_at_gte
+        where.gte(column("created_at"), "created_at_gte", filters.created_at_gte)
     if filters.created_at_lte is not None:
-        clauses.append("created_at <= %(created_at_lte)s")
-        parameters["created_at_lte"] = filters.created_at_lte
-    return " AND ".join(clauses), parameters
+        where.lte(column("created_at"), "created_at_lte", filters.created_at_lte)
+    return where
 
 
 def _evaluator_result_order_by(sort: str) -> str:
-    direction = "DESC" if sort.startswith("-") else "ASC"
-    field = sort.removeprefix("-")
-    column = EVALUATOR_RESULT_SORT_COLUMNS.get(field)
-    if column is None:
-        raise ValueError(f"Unsupported evaluator_result sort field: {field}")
-    return f"{column} {direction}, evaluator_result_id ASC"
+    return order_by_clause(
+        sort,
+        sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
+        tiebreaker="evaluator_result_id",
+        label="evaluator_result",
+    )
 
 
 def _evaluator_result_to_row(result: EvaluatorResult) -> dict[str, Any]:

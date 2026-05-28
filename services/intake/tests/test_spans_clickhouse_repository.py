@@ -94,7 +94,10 @@ async def test_list_spans_counts_final_rows():
         sort="started_at",
     )
 
-    assert client.queries[0] == "SELECT count() FROM spans FINAL WHERE workspace = %(workspace)s AND is_deleted = 0"
+    assert client.queries[0].replace("\n", " ") == (
+        "SELECT count() FROM spans FINAL WHERE workspace = %(workspace)s AND is_deleted = %(is_deleted)s"
+    )
+    assert client.parameters[0] == {"workspace": "workspace-a", "is_deleted": 0}
 
 
 @pytest.mark.asyncio
@@ -125,7 +128,9 @@ async def test_get_span_prefers_external_span_id_over_numeric_internal_id():
     assert span.external_span_id == "123"
     assert len(client.queries) == 1
     assert "external_span_id = %(span_id)s" in client.queries[0]
-    assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
+    assert client.parameters[0]["workspace"] == "workspace-a"
+    assert client.parameters[0]["span_id"] == "123"
+    assert client.parameters[0]["is_deleted"] == 0
 
 
 @pytest.mark.asyncio
@@ -138,7 +143,9 @@ async def test_get_span_does_not_fall_back_to_internal_id_after_external_miss():
     assert span is None
     assert len(client.queries) == 1
     assert "external_span_id = %(span_id)s" in client.queries[0]
-    assert client.parameters[0] == {"workspace": "workspace-a", "span_id": "123"}
+    assert client.parameters[0]["workspace"] == "workspace-a"
+    assert client.parameters[0]["span_id"] == "123"
+    assert client.parameters[0]["is_deleted"] == 0
 
 
 def _span_row(*, internal_id: int, external_span_id: str) -> tuple[object, ...]:

@@ -83,7 +83,7 @@ def _spans_url(endpoint: str) -> str:
     if not parts.path.endswith(suffix):
         raise SystemExit(f"Endpoint must end with {suffix!r} to verify the sample span.")
     query = urlencode(
-        [*parse_qsl(parts.query), ("filter[source_format]", "otel"), ("filter[session_id]", "sample-session")]
+        [*parse_qsl(parts.query), ("filter[source]", "otel"), ("filter[session_id]", "sample-session")]
     )
     return urlunsplit((parts.scheme, parts.netloc, parts.path[: -len(suffix)] + "/spans", query, ""))
 

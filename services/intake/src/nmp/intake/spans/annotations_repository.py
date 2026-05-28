@@ -10,9 +10,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.spans.clickhouse.dao import ClickHouseDao
+from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import Annotation, AnnotationKind, AnnotationListFilter
-from nmp.intake.spans.storage import dict_to_row, make_pagination, result_rows
+from nmp.intake.spans.storage import dict_to_row, make_pagination
 
 ANNOTATION_COLUMNS = [
     "annotation_id",
@@ -38,30 +40,25 @@ ANNOTATION_SORT_COLUMNS = {
 
 class AnnotationsRepository:
     def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+        self._dao = ClickHouseDao(client)
 
     async def save_annotations(self, annotations: list[Annotation]) -> None:
         if not annotations:
             return
         rows = [dict_to_row(_annotation_to_row(item), ANNOTATION_COLUMNS) for item in annotations]
-        await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
+        await self._dao.insert_rows("annotations", rows, column_names=ANNOTATION_COLUMNS)
 
     async def get_annotation(self, *, workspace: str, annotation_id: str) -> Annotation | None:
-        result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {self._client.table("annotations")} FINAL
-            WHERE workspace = %(workspace)s
-              AND annotation_id = %(annotation_id)s
-              AND is_deleted = 0
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "annotation_id": annotation_id},
+        where = (
+            WhereBuilder()
+            .eq(column("workspace"), "workspace", workspace)
+            .eq(column("annotation_id"), "annotation_id", annotation_id)
+            .eq(column("is_deleted"), "is_deleted", 0)
         )
-        rows = result_rows(result)
-        if not rows:
+        row = await self._dao.fetch_one(self._dao.table("annotations"), where, final=True)
+        if row is None:
             return None
-        return _row_to_annotation(rows[0])
+        return _row_to_annotation(row)
 
     async def list_annotations(
         self,
@@ -71,25 +68,18 @@ class AnnotationsRepository:
         page_size: int,
         sort: str,
     ) -> PaginatedResult[Annotation]:
-        where_sql, parameters = _annotation_where(filters)
-        table = self._client.table("annotations")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}",
-            parameters=parameters,
+        rows, total_results = await self._dao.paginate(
+            table=self._dao.table("annotations"),
+            where=_annotation_where(filters),
+            sort=sort,
+            sort_columns=ANNOTATION_SORT_COLUMNS,
+            tiebreaker="annotation_id",
+            sort_label="annotation",
+            page=page,
+            page_size=page_size,
+            final=True,
         )
-        total_results = int(total_result.result_rows[0][0])
-        offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_annotation_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
-        )
-        annotations = [_row_to_annotation(row) for row in result_rows(rows_result)]
+        annotations = [_row_to_annotation(row) for row in rows]
         return PaginatedResult(
             data=annotations,
             pagination=make_pagination(
@@ -111,52 +101,43 @@ class AnnotationsRepository:
         row = _annotation_to_row(annotation, is_deleted=True)
         row["ingested_at"] = datetime.now(timezone.utc)
         rows = [dict_to_row(row, ANNOTATION_COLUMNS)]
-        await self._client.insert("annotations", rows, column_names=ANNOTATION_COLUMNS)
+        await self._dao.insert_rows("annotations", rows, column_names=ANNOTATION_COLUMNS)
 
 
-def _annotation_where(filters: AnnotationListFilter) -> tuple[str, dict[str, Any]]:
-    clauses = ["workspace = %(workspace)s", "is_deleted = 0"]
-    parameters: dict[str, Any] = {"workspace": filters.workspace}
+def _annotation_where(filters: AnnotationListFilter) -> WhereBuilder:
+    where = (
+        WhereBuilder().eq(column("workspace"), "workspace", filters.workspace).eq(column("is_deleted"), "is_deleted", 0)
+    )
     if filters.span_id is not None:
-        clauses.append("span_id = %(span_id)s")
-        parameters["span_id"] = filters.span_id
+        where.eq(column("span_id"), "span_id", filters.span_id)
     if filters.session_id is not None:
-        clauses.append("session_id = %(session_id)s")
-        parameters["session_id"] = filters.session_id
+        where.eq(column("session_id"), "session_id", filters.session_id)
     if filters.kind is not None:
-        clauses.append("kind = %(kind)s")
-        parameters["kind"] = filters.kind.value
+        where.eq(column("kind"), "kind", filters.kind.value)
     if filters.name is not None:
-        clauses.append("name = %(name)s")
-        parameters["name"] = filters.name
+        where.eq(column("name"), "name", filters.name)
     if filters.value_text is not None:
-        clauses.append("value_text = %(value_text)s")
-        parameters["value_text"] = filters.value_text
+        where.eq(column("value_text"), "value_text", filters.value_text)
     if filters.value_numeric_gte is not None:
-        clauses.append("value_numeric >= %(value_numeric_gte)s")
-        parameters["value_numeric_gte"] = filters.value_numeric_gte
+        where.gte(column("value_numeric"), "value_numeric_gte", filters.value_numeric_gte)
     if filters.value_numeric_lte is not None:
-        clauses.append("value_numeric <= %(value_numeric_lte)s")
-        parameters["value_numeric_lte"] = filters.value_numeric_lte
+        where.lte(column("value_numeric"), "value_numeric_lte", filters.value_numeric_lte)
     if filters.created_by is not None:
-        clauses.append("created_by = %(created_by)s")
-        parameters["created_by"] = filters.created_by
+        where.eq(column("created_by"), "created_by", filters.created_by)
     if filters.created_at_gte is not None:
-        clauses.append("created_at >= %(created_at_gte)s")
-        parameters["created_at_gte"] = filters.created_at_gte
+        where.gte(column("created_at"), "created_at_gte", filters.created_at_gte)
     if filters.created_at_lte is not None:
-        clauses.append("created_at <= %(created_at_lte)s")
-        parameters["created_at_lte"] = filters.created_at_lte
-    return " AND ".join(clauses), parameters
+        where.lte(column("created_at"), "created_at_lte", filters.created_at_lte)
+    return where
 
 
 def _annotation_order_by(sort: str) -> str:
-    direction = "DESC" if sort.startswith("-") else "ASC"
-    field = sort.removeprefix("-")
-    column = ANNOTATION_SORT_COLUMNS.get(field)
-    if column is None:
-        raise ValueError(f"Unsupported annotation sort field: {field}")
-    return f"{column} {direction}, annotation_id ASC"
+    return order_by_clause(
+        sort,
+        sort_columns=ANNOTATION_SORT_COLUMNS,
+        tiebreaker="annotation_id",
+        label="annotation",
+    )
 
 
 def _annotation_to_row(annotation: Annotation, *, is_deleted: bool = False) -> dict[str, Any]:

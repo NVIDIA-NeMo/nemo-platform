@@ -9,12 +9,14 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.spans.clickhouse.dao import ClickHouseDao
+from nmp.intake.spans.clickhouse.query import SelectQuery, WhereBuilder, column, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeTrace, TraceEvaluationContext, TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field, where_clause
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
-from nmp.intake.spans.storage import make_pagination, normalize_span_status, result_rows
+from nmp.intake.spans.storage import make_pagination, normalize_span_status
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
@@ -81,7 +83,8 @@ _ZERO_DATETIME_SQL = "toDateTime64(0, 6)"
 
 class TraceRepository:
     def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+        self._dao = ClickHouseDao(client)
+        self._spans_table = self._dao.table("spans")
 
     async def list_traces(
         self,
@@ -92,32 +95,36 @@ class TraceRepository:
         sort: str,
         mode: TraceMode,
     ) -> PaginatedResult[IntakeTrace]:
-        trace_sql, parameters = _trace_rows_sql(self._client.table("spans"), filters, mode=mode)
-        outer_where_sql, outer_parameters = _trace_outer_where(filters)
-        all_parameters = {**parameters, **outer_parameters}
+        trace_sql, trace_parameters = _trace_rows_sql(self._spans_table.qualified_name, filters, mode=mode)
+        outer_where = _trace_outer_where(filters)
+        outer_where_sql, outer_where_parameters = outer_where.build()
+        query_parameters = {**trace_parameters, **outer_where_parameters}
 
-        total_result = await self._client.query(
-            f"""
-            SELECT count()
-            FROM ({trace_sql}) AS traces
-            WHERE {outer_where_sql}
-            """,
-            parameters=all_parameters,
+        total_results = int(
+            await self._dao.execute_scalar(
+                (
+                    f"""
+                    SELECT count()
+                    FROM ({trace_sql}) AS traces
+                    WHERE {outer_where_sql}
+                    """,
+                    query_parameters,
+                )
+            )
+            or 0
         )
-        total_results = int(total_result.result_rows[0][0])
 
         offset = (page - 1) * page_size
-        rows_result = await self._client.query(
-            f"""
-            SELECT *
-            FROM ({trace_sql}) AS traces
-            WHERE {outer_where_sql}
-            ORDER BY {_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**all_parameters, "limit": page_size, "offset": offset},
+        rows = await self._dao.execute(
+            SelectQuery(
+                select_expr="*",
+                from_expr=f"({trace_sql}) AS traces",
+                where_builder=outer_where,
+                order_by=_order_by(sort),
+                limit_param="limit",
+                offset_param="offset",
+            ).with_parameters({**query_parameters, "limit": page_size, "offset": offset})
         )
-        rows = result_rows(rows_result)
         traces = [_row_to_trace(row) for row in rows]
         return PaginatedResult(
             data=traces,
@@ -195,7 +202,8 @@ def _trace_select_columns(*, include_aggregates: bool) -> str:
 
 def _trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
     root_alias = "root_spans"
-    base_where_sql, parameters = _trace_summary_where(table, filters, qualifier=root_alias)
+    where = _trace_summary_where(table, filters, qualifier=root_alias)
+    where_sql, parameters = where.build()
     query = f"""
         SELECT
             {root_alias}.trace_id AS trace_id,
@@ -212,7 +220,7 @@ def _trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[
             {root_alias}.attributes_string AS root_attributes_string,
             {root_alias}.event_ts AS ingested_at
         FROM {_current_spans_sql(table)} AS {root_alias}
-        WHERE {base_where_sql}
+        WHERE {where_sql}
         ORDER BY {root_alias}.start_time ASC, {root_alias}.id ASC
         LIMIT 1 BY {root_alias}.workspace, {root_alias}.source_format, {root_alias}.trace_id
     """
@@ -221,7 +229,8 @@ def _trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[
 
 def _trace_status_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
     source_alias = "trace_spans"
-    base_where_sql, parameters = _trace_rollup_where(table, filters, qualifier=source_alias)
+    where = _trace_rollup_where(table, filters, qualifier=source_alias)
+    where_sql, parameters = where.build()
     query = f"""
         SELECT
             {source_alias}.workspace AS workspace,
@@ -229,7 +238,7 @@ def _trace_status_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[s
             {source_alias}.trace_id AS trace_id,
             {_rolled_up_status_sql(source_alias)} AS status
         FROM {_current_spans_sql(table)} AS {source_alias}
-        WHERE {base_where_sql}
+        WHERE {where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
     return query, parameters
@@ -237,7 +246,8 @@ def _trace_status_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[s
 
 def _trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
     source_alias = "trace_spans"
-    base_where_sql, parameters = _trace_rollup_where(table, filters, qualifier=source_alias)
+    where = _trace_rollup_where(table, filters, qualifier=source_alias)
+    where_sql, parameters = where.build()
     metric_columns, metric_parameters = _metric_columns(source_alias)
     parameters.update(metric_parameters)
 
@@ -266,7 +276,7 @@ def _trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, di
             count() AS span_count,
             countIf({source_alias}.status = 'error') AS error_count
         FROM {_current_spans_sql(table)} AS {source_alias}
-        WHERE {base_where_sql}
+        WHERE {where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
     return query, parameters
@@ -283,26 +293,18 @@ def _rolled_up_status_sql(source_alias: str) -> str:
         """
 
 
-def _trace_summary_where(table: str, filters: TraceListFilter, *, qualifier: str) -> tuple[str, dict[str, Any]]:
-    clauses, parameters = _trace_identity_where(table, filters, qualifier=qualifier)
-
-    def column(name: str) -> str:
-        return f"{qualifier}.{name}"
-
-    clauses.append(f"{column('external_parent_span_id')} = ''")
+def _trace_summary_where(table: str, filters: TraceListFilter, *, qualifier: str) -> WhereBuilder:
+    where = _trace_identity_where(table, filters, qualifier=qualifier)
+    where.add(f"{column('external_parent_span_id', qualifier=qualifier)} = ''")
     if filters.started_at_gte is not None:
-        clauses.append(f"{column('start_time')} >= %(started_at_gte)s")
-        parameters["started_at_gte"] = filters.started_at_gte
+        where.gte(column("start_time", qualifier=qualifier), "started_at_gte", filters.started_at_gte)
     if filters.started_at_lte is not None:
-        clauses.append(f"{column('start_time')} <= %(started_at_lte)s")
-        parameters["started_at_lte"] = filters.started_at_lte
-
-    return " AND ".join(clauses), parameters
+        where.lte(column("start_time", qualifier=qualifier), "started_at_lte", filters.started_at_lte)
+    return where
 
 
-def _trace_rollup_where(table: str, filters: TraceListFilter, *, qualifier: str) -> tuple[str, dict[str, Any]]:
-    clauses, parameters = _trace_identity_where(table, filters, qualifier=qualifier)
-    return " AND ".join(clauses), parameters
+def _trace_rollup_where(table: str, filters: TraceListFilter, *, qualifier: str) -> WhereBuilder:
+    return _trace_identity_where(table, filters, qualifier=qualifier)
 
 
 def _trace_identity_where(
@@ -310,22 +312,19 @@ def _trace_identity_where(
     filters: TraceListFilter,
     *,
     qualifier: str,
-) -> tuple[list[str], dict[str, Any]]:
-    def column(name: str) -> str:
-        return f"{qualifier}.{name}"
-
-    clauses = [f"{column('workspace')} = %(workspace)s", f"{column('is_deleted')} = 0"]
-    parameters: dict[str, Any] = {"workspace": filters.workspace}
+) -> WhereBuilder:
+    where = (
+        WhereBuilder()
+        .eq(column("workspace", qualifier=qualifier), "workspace", filters.workspace)
+        .eq(column("is_deleted", qualifier=qualifier), "is_deleted", 0)
+    )
 
     if filters.trace_id is not None:
-        clauses.append(f"{column('trace_id')} = %(trace_id)s")
-        parameters["trace_id"] = filters.trace_id
+        where.eq(column("trace_id", qualifier=qualifier), "trace_id", filters.trace_id)
     if filters.session_id is not None:
-        clauses.append(f"{column('session_id')} = %(session_id)s")
-        parameters["session_id"] = filters.session_id
+        where.eq(column("session_id", qualifier=qualifier), "session_id", filters.session_id)
     if filters.source_format is not None:
-        clauses.append(f"{column('source_format')} = %(source_format)s")
-        parameters["source_format"] = filters.source_format
+        where.eq(column("source_format", qualifier=qualifier), "source_format", filters.source_format)
 
     root_sql, root_parameters = _candidate_subquery(
         table=table,
@@ -335,8 +334,12 @@ def _trace_identity_where(
         prefix="root_candidate",
     )
     if root_sql:
-        clauses.append(f"({column('workspace')}, {column('source_format')}, {column('trace_id')}) IN ({root_sql})")
-        parameters.update(root_parameters)
+        where.add(
+            f"({column('workspace', qualifier=qualifier)}, "
+            f"{column('source_format', qualifier=qualifier)}, "
+            f"{column('trace_id', qualifier=qualifier)}) IN ({root_sql})",
+            root_parameters,
+        )
 
     span_sql, span_parameters = _candidate_subquery(
         table=table,
@@ -346,10 +349,14 @@ def _trace_identity_where(
         prefix="span_candidate",
     )
     if span_sql:
-        clauses.append(f"({column('workspace')}, {column('source_format')}, {column('trace_id')}) IN ({span_sql})")
-        parameters.update(span_parameters)
+        where.add(
+            f"({column('workspace', qualifier=qualifier)}, "
+            f"{column('source_format', qualifier=qualifier)}, "
+            f"{column('trace_id', qualifier=qualifier)}) IN ({span_sql})",
+            span_parameters,
+        )
 
-    return clauses, parameters
+    return where
 
 
 def _candidate_subquery(
@@ -363,11 +370,10 @@ def _candidate_subquery(
     if not attribute_filters:
         return None, {}
 
-    clauses = ["workspace = %(workspace)s", "is_deleted = 0"]
+    where = WhereBuilder().eq(column("workspace"), "workspace", workspace).eq(column("is_deleted"), "is_deleted", 0)
     if root_only:
-        clauses.append("external_parent_span_id = ''")
+        where.add(f"{column('external_parent_span_id')} = ''")
 
-    parameters: dict[str, Any] = {"workspace": workspace}
     for index, attribute_filter in enumerate(attribute_filters):
         clause, clause_parameters = where_clause(
             attribute_filter.field,
@@ -375,14 +381,14 @@ def _candidate_subquery(
             attribute_filter.value,
             param_prefix=f"{prefix}_{index}",
         )
-        clauses.append(f"({clause})")
-        parameters.update(clause_parameters)
+        where.add(f"({clause})", clause_parameters)
 
+    where_sql, parameters = where.build()
     return (
         f"""
         SELECT workspace, source_format, trace_id
         FROM {_current_spans_sql(table)} AS candidate_spans
-        WHERE {" AND ".join(clauses)}
+        WHERE {where_sql}
         """,
         parameters,
     )
@@ -391,14 +397,14 @@ def _candidate_subquery(
 def _current_spans_sql(table: str) -> str:
     source_alias = "span_versions"
     columns = [
-        *[f"{source_alias}.{column} AS {column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS],
+        *[f"{source_alias}.{column_name} AS {column_name}" for column_name in _CURRENT_SPAN_IDENTITY_COLUMNS],
         *[
-            f"argMax({source_alias}.{column}, ({source_alias}.event_ts, {source_alias}.is_deleted)) AS {column}"
-            for column in _CURRENT_SPAN_VALUE_COLUMNS
+            f"argMax({source_alias}.{column_name}, ({source_alias}.event_ts, {source_alias}.is_deleted)) AS {column_name}"
+            for column_name in _CURRENT_SPAN_VALUE_COLUMNS
         ],
     ]
     columns_sql = ",\n                ".join(columns)
-    group_by_sql = ", ".join(f"{source_alias}.{column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS)
+    group_by_sql = ", ".join(f"{source_alias}.{column_name}" for column_name in _CURRENT_SPAN_IDENTITY_COLUMNS)
     return f"""
         (
             SELECT
@@ -410,15 +416,11 @@ def _current_spans_sql(table: str) -> str:
     """
 
 
-def _trace_outer_where(filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
-    clauses = ["1 = 1"]
-    parameters: dict[str, Any] = {}
-
+def _trace_outer_where(filters: TraceListFilter) -> WhereBuilder:
+    where = WhereBuilder()
     if filters.status is not None:
-        clauses.append("status = %(status)s")
-        parameters["status"] = filters.status.value
-
-    return " AND ".join(clauses), parameters
+        where.eq("status", "status", filters.status.value)
+    return where
 
 
 def _metric_columns(source_alias: str) -> tuple[str, dict[str, Any]]:
@@ -440,12 +442,12 @@ def _metric_columns(source_alias: str) -> tuple[str, dict[str, Any]]:
 
 
 def _order_by(sort: str) -> str:
-    direction = "DESC" if sort.startswith("-") else "ASC"
-    field = sort.removeprefix("-")
-    column = TRACE_SORT_COLUMNS.get(field)
-    if column is None:
-        raise ValueError(f"Unsupported trace sort field: {field}")
-    return f"{column} {direction}, id ASC"
+    return order_by_clause(
+        sort,
+        sort_columns=TRACE_SORT_COLUMNS,
+        tiebreaker="id",
+        label="trace",
+    )
 
 
 def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:

@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.spans.clickhouse.dao import ClickHouseDao
+from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeSpan, SpanListFilter
 from nmp.intake.spans.span_attribute_catalog import where_clause
@@ -17,7 +19,6 @@ from nmp.intake.spans.storage import (
     make_pagination,
     normalize_span_kind,
     normalize_span_status,
-    result_rows,
 )
 
 SPAN_COLUMNS = [
@@ -41,7 +42,7 @@ SPAN_COLUMNS = [
     "event_ts",
     "is_deleted",
 ]
-SPAN_INSERT_COLUMNS = [column for column in SPAN_COLUMNS if column != "id"]
+SPAN_INSERT_COLUMNS = [column_name for column_name in SPAN_COLUMNS if column_name != "id"]
 
 SPAN_SORT_COLUMNS = {
     "started_at": "start_time",
@@ -52,11 +53,11 @@ _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 
 class SpanRepository:
     def __init__(self, client: ClickHouseSpanClient) -> None:
-        self._client = client
+        self._dao = ClickHouseDao(client)
 
     async def save_spans(self, spans: list[IntakeSpan]) -> None:
         rows = [dict_to_row(_span_to_row(span), SPAN_INSERT_COLUMNS) for span in spans]
-        await self._client.insert("spans", rows, column_names=SPAN_INSERT_COLUMNS)
+        await self._dao.insert_rows("spans", rows, column_names=SPAN_INSERT_COLUMNS)
 
     async def list_spans(
         self,
@@ -66,25 +67,19 @@ class SpanRepository:
         page_size: int,
         sort: str,
     ) -> PaginatedResult[IntakeSpan]:
-        where_sql, parameters = _span_where(filters)
-        table = self._client.table("spans")
-        total_result = await self._client.query(
-            f"SELECT count() FROM {table} FINAL WHERE {where_sql}", parameters=parameters
+        where = _span_where(filters)
+        rows, total_results = await self._dao.paginate(
+            table=self._dao.table("spans"),
+            where=where,
+            columns=SPAN_COLUMNS,
+            sort=sort,
+            sort_columns=SPAN_SORT_COLUMNS,
+            tiebreaker="id",
+            sort_label="span",
+            page=page,
+            page_size=page_size,
+            final=True,
         )
-        total_results = int(total_result.result_rows[0][0])
-        offset = (page - 1) * page_size
-        columns_sql = ", ".join(SPAN_COLUMNS)
-        rows_result = await self._client.query(
-            f"""
-            SELECT {columns_sql}
-            FROM {table} FINAL
-            WHERE {where_sql}
-            ORDER BY {_order_by(sort)}
-            LIMIT %(limit)s OFFSET %(offset)s
-            """,
-            parameters={**parameters, "limit": page_size, "offset": offset},
-        )
-        rows = result_rows(rows_result)
         spans = _rows_to_spans(rows)
         return PaginatedResult(
             data=spans,
@@ -94,49 +89,43 @@ class SpanRepository:
         )
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan | None:
-        columns_sql = ", ".join(SPAN_COLUMNS)
-        result = await self._client.query(
-            f"""
-            SELECT {columns_sql}
-            FROM {self._client.table("spans")} FINAL
-            WHERE workspace = %(workspace)s AND external_span_id = %(span_id)s AND is_deleted = 0
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "span_id": span_id},
+        where = (
+            WhereBuilder()
+            .eq(column("workspace"), "workspace", workspace)
+            .eq(column("external_span_id"), "span_id", span_id)
+            .eq(column("is_deleted"), "is_deleted", 0)
         )
-        rows = result_rows(result)
-        if not rows:
+        row = await self._dao.fetch_one(
+            self._dao.table("spans"),
+            where,
+            columns=SPAN_COLUMNS,
+            final=True,
+        )
+        if row is None:
             return None
-        return _row_to_span(rows[0])
+        return _row_to_span(row)
 
 
-def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:
-    clauses = ["workspace = %(workspace)s", "is_deleted = 0"]
-    parameters: dict[str, Any] = {"workspace": filters.workspace}
+def _span_where(filters: SpanListFilter) -> WhereBuilder:
+    where = (
+        WhereBuilder().eq(column("workspace"), "workspace", filters.workspace).eq(column("is_deleted"), "is_deleted", 0)
+    )
     if filters.session_id is not None:
-        clauses.append("session_id = %(session_id)s")
-        parameters["session_id"] = filters.session_id
+        where.eq(column("session_id"), "session_id", filters.session_id)
     if filters.trace_id is not None:
-        clauses.append("trace_id = %(trace_id)s")
-        parameters["trace_id"] = filters.trace_id
+        where.eq(column("trace_id"), "trace_id", filters.trace_id)
     if filters.external_parent_span_id is not None:
-        clauses.append("external_parent_span_id = %(external_parent_span_id)s")
-        parameters["external_parent_span_id"] = filters.external_parent_span_id
+        where.eq(column("external_parent_span_id"), "external_parent_span_id", filters.external_parent_span_id)
     if filters.source_format is not None:
-        clauses.append("source_format = %(source_format)s")
-        parameters["source_format"] = filters.source_format
+        where.eq(column("source_format"), "source_format", filters.source_format)
     if filters.kind is not None:
-        clauses.append("kind = %(kind)s")
-        parameters["kind"] = filters.kind.value
+        where.eq(column("kind"), "kind", filters.kind.value)
     if filters.status is not None:
-        clauses.append("status = %(status)s")
-        parameters["status"] = filters.status.value
+        where.eq(column("status"), "status", filters.status.value)
     if filters.started_at_gte is not None:
-        clauses.append("start_time >= %(started_at_gte)s")
-        parameters["started_at_gte"] = filters.started_at_gte
+        where.gte(column("start_time"), "started_at_gte", filters.started_at_gte)
     if filters.started_at_lte is not None:
-        clauses.append("start_time <= %(started_at_lte)s")
-        parameters["started_at_lte"] = filters.started_at_lte
+        where.lte(column("start_time"), "started_at_lte", filters.started_at_lte)
     for index, attribute_filter in enumerate(filters.attribute_filters):
         clause, clause_parameters = where_clause(
             attribute_filter.field,
@@ -144,18 +133,17 @@ def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:
             attribute_filter.value,
             param_prefix=f"attr_{index}",
         )
-        clauses.append(f"({clause})")
-        parameters.update(clause_parameters)
-    return " AND ".join(clauses), parameters
+        where.add(f"({clause})", clause_parameters)
+    return where
 
 
 def _order_by(sort: str) -> str:
-    direction = "DESC" if sort.startswith("-") else "ASC"
-    field = sort.removeprefix("-")
-    column = SPAN_SORT_COLUMNS.get(field)
-    if column is None:
-        raise ValueError(f"Unsupported span sort field: {field}")
-    return f"{column} {direction}, id ASC"
+    return order_by_clause(
+        sort,
+        sort_columns=SPAN_SORT_COLUMNS,
+        tiebreaker="id",
+        label="span",
+    )
 
 
 def _span_to_row(span: IntakeSpan) -> dict[str, Any]:
