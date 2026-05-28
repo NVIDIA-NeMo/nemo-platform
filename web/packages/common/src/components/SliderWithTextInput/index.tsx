@@ -69,6 +69,7 @@ export const SliderWithTextInput = ({
       return;
     }
     const numberValue = parseFloat(newValue);
+    if (Number.isNaN(numberValue)) return;
     const clampedValue = Math.min(Math.max(numberValue, min), max);
     field.onChange(clampedValue);
     attributes?.TextInput?.onValueChange?.(clampedValue.toString(), event);
