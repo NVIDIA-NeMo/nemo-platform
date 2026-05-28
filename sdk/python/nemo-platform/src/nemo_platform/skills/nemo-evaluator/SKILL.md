@@ -1,140 +1,125 @@
 ---
 name: nemo-evaluator
 description: >
-  NeMo evaluator CLI reference for metrics, evaluations, metric jobs, and benchmarks.
-  Use when the task involves evaluation metrics, string-check, llm-judge, tool-calling
-  metrics, sync/async evaluations, benchmark jobs, or `nemo evaluation` CLI commands.
-user-invocable: true
-allowed-tools: Bash, Read, Grep
+  NeMo Evaluator SDK-first rubric-to-eval guide for BYOB (Bring Your Own
+  Benchmark): parse domain expert rubrics, choose composable evaluation
+  primitives, generate human-reviewable eval configs/artifacts, and run
+  reproducible exact, numeric, LLM-as-judge, code/custom, composite,
+  RAG/agentic, and tool-calling evaluations. Use when a task involves
+  questions/rubrics/responses files, rubric criteria, benchmark scoring,
+  evaluator primitive selection, or reusable evaluation artifacts.
+compatibility: Designed for installed NeMo Platform skill use; repo-relative SDK paths are developer fallbacks when a checkout is available.
+metadata:
+  user-invocable: true
 ---
 
-# NeMo Evaluator CLI Reference
+# NeMo Evaluator
 
-## Environment
+Use this skill to turn a domain-specific benchmark and expert-written rubric
+into a reproducible evaluation. The agent should parse the rubric, choose the
+simplest correct composable primitive for each criterion, generate
+human-reviewable config/artifacts, run the evaluation, and explain both scores
+and reasoning.
 
-- **CLI path**: `/app/.venv/bin/nemo`
-- **API server**: `http://localhost:8080` (default)
+Use the NeMo Evaluator SDK as the source of truth for metric names, fields,
+templates, execution modes, result shapes, and failure behavior. Keep this skill
+focused on SDK guidance. Use CLI commands only when the user explicitly needs a
+remote platform job or an existing platform resource.
 
-## Metric Commands
+## Runtime Context
 
-```bash
-# Create a string-check metric
-nemo evaluation metrics create <name> \
-  --type string-check \
-  --params '{"field": "output", "expected_field": "expected", "operation": "equals"}' \
-  --workspace <workspace>
+This skill can run in two contexts:
 
-# Create a metric from a JSON file (for complex types like llm-judge)
-nemo evaluation metrics create <name> \
-  --workspace <workspace> \
-  --input-file <path-to-json>
+- In the NeMo Platform repo, expect the SDK to be importable through the repo
+  environment, for example with `uv run` commands from the repo root. Use the
+  repo-relative SDK reference paths in `references/sdk-execution.md` when
+  checking exact schemas or tests.
+- As an installed skill outside the repo, do not assume the source tree is
+  present. Use installed Python imports, package metadata, CLI help, or
+  user-provided files first; treat repo paths as developer fallback references.
 
-# List metrics
-nemo evaluation metrics list --workspace <workspace>
+Prefer local SDK runs for iteration and smoke tests. Use remote platform jobs
+only when the user needs platform-managed execution, existing platform
+resources, or a job result from a deployed environment. For local SDK runs,
+`api_key_secret` resolves through the local environment; for remote jobs, the
+same name should refer to a platform secret in the job workspace.
 
-# Get a metric
-nemo evaluation metrics get <name> --workspace <workspace>
-```
+## Reference Files
 
-## Sync Evaluation Commands
+Load these files only when the task needs the detail:
 
-```bash
-# Run sync evaluation with inline data
-nemo evaluation metrics run \
-  --name <metric_name> \
-  --data '<jsonl_rows>' \
-  --workspace <workspace>
-```
+- Metric selection: `references/metric-selection.md`
+  - Read when mapping rubric criteria to SDK metrics, choosing deterministic vs
+    LLM judges, or working with RAG/agentic/tool-calling metrics.
+- SDK execution: `references/sdk-execution.md`
+  - Read before guessing a metric schema, execution parameter, online/offline
+    setup, parser, template, or SDK result shape.
+- Benchmark reproduction: `references/benchmark-reproduction.md`
+  - Read for BYOB protocol, long-running benchmark reproduction, artifact
+    contracts, and external-safe output requirements.
+- Troubleshooting: `references/troubleshooting.md`
+  - Read when SDK runs fail, judge outputs do not parse, provider calls time
+    out, or generated artifacts need recovery.
 
-Each row in `--data` is a JSON object with fields the metric references.
+## Default Loop
 
-## Async Metric Job Commands
+1. Identify the BYOB inputs: questions, rubric criteria, responses or live
+   model endpoints, weights, pass threshold, and desired summary breakdowns.
+2. Clarify the evaluation target: model output quality, judge quality, RAG
+   quality, tool use, benchmark regression, or bring-your-own benchmark
+   reproduction.
+   - Judge-quality evaluation checks whether a judge agrees with labels for
+     existing responses.
+   - Generator-quality evaluation creates fresh responses and scores those
+     responses with a fixed judge or deterministic checker.
+3. Choose the simplest correct SDK metric class or composed set of classes for
+   each criterion. See `references/metric-selection.md`.
+4. Generate a small, human-reviewable config or code artifact instead of
+   burying criterion logic in one-off scripts.
+5. Build a tiny inline dataset with at least one expected pass and one expected
+   fail.
+6. Run locally with `Evaluator().run_sync(...)` or `await Evaluator().run(...)`.
+   See `references/sdk-execution.md`.
+7. Inspect `result.print_summary()`, `row_scores`, and `aggregate_scores`.
+8. When errors arise, fix dataset shape, Jinja templates, parser paths,
+   prompts, model config, or secrets. See `references/troubleshooting.md`.
+9. Move to remote platform jobs only after the local SDK run behaves as
+   expected.
 
-```bash
-# Create an async metric job
-nemo evaluation metric-jobs create <job_name> \
-  --metric-name <metric_name> \
-  --dataset-fileset <fileset_name> \
-  --workspace <workspace>
+Do not stop at "the score is bad." Explain what failed and what evidence
+supports that conclusion.
 
-# Check job status
-nemo evaluation metric-jobs get <job_name> --workspace <workspace>
+## Core Selection Rules
 
-# List jobs
-nemo evaluation metric-jobs list --workspace <workspace>
-```
+Prefer deterministic primitives before LLM calls. Use LLM judges for nuance,
+not for checks that can be expressed as exact, string, numeric, or code logic.
 
-**Note**: Jobs may stay in "created" status if the job controller is not running — that is expected.
+Use online generation only when the evaluator should call a model or agent
+before scoring. Pass `target=Model(...)` or `target=Agent(...)` and a
+`prompt_template`; otherwise keep evaluation offline and put outputs in the
+dataset rows.
 
-## Benchmark Commands
+For external, custom, or bring-your-own benchmarks, keep the protocol explicit
+and reproducible.
 
-```bash
-# List system benchmarks (from system workspace)
-nemo evaluation benchmarks list --workspace system
+Separate judge-quality evaluation from generation-quality evaluation. If the
+target is report generation, generate fresh model responses, score them with a
+fixed judge, and aggregate fulfilment. Do not treat human labels for existing
+baseline responses as labels for new model outputs.
 
-# Get benchmark details
-nemo evaluation benchmarks get <name> --workspace system
+For public or broadly shared skills and reports, avoid internal endpoint names,
+internal model IDs, authentication details, and secret paths. Use placeholders
+such as `<provider-base-url>`, `<generator-model-id>`, `<judge-model-id>`, and
+`<secret-reference>`. Report parameter categories and aliases instead of
+revealing private infrastructure.
 
-# Create a benchmark eval job
-nemo evaluation benchmark-jobs create <job_name> \
-  --benchmark <benchmark_spec_json> \
-  --workspace <workspace>
+## Completion Criteria
 
-# Check benchmark job status
-nemo evaluation benchmark-jobs get <job_name> --workspace <workspace>
-```
+A good evaluator answer includes:
 
-## Metric Types
-
-### string-check
-Compares fields using an operation (equals, contains, etc.):
-```json
-{"field": "output", "expected_field": "expected", "operation": "equals"}
-```
-Dataset rows need `output` and `expected` fields.
-
-### llm-judge
-Uses an LLM to score responses. Create via `--input-file` with this JSON structure:
-```json
-{
-  "type": "llm-judge",
-  "name": "quality-judge",
-  "model": {
-    "url": "https://integrate.api.nvidia.com/v1",
-    "name": "openai/gpt-oss-20b",
-    "format": "openai",
-    "api_key_secret": "<secret-name>"
-  },
-  "scores": [
-    {
-      "name": "relevance",
-      "description": "Relevance score from 1 to 5",
-      "minimum": 1,
-      "maximum": 5,
-      "parser": {"type": "json", "json_path": "relevance"}
-    }
-  ],
-  "prompt_template": {
-    "messages": [
-      {"role": "system", "content": "Rate the response on relevance 1-5. Return JSON: {\"relevance\": <score>}"},
-      {"role": "user", "content": "Question: {{item.input}}\nResponse: {{item.output}}"}
-    ]
-  }
-}
-```
-Requires a secret with the API key (use `nemo-secrets` skill).
-
-### zero-config llm-judge
-Same as llm-judge but without `prompt_template` and score `parser` — the system auto-generates them. Just provide `scores` with `name`, `description`, `minimum`, `maximum`, and a rubric.
-
-### tool-calling
-Evaluates function call accuracy. Dataset rows need `messages`, `tools`, `expected_tool_calls`, `response` fields in OpenAI format.
-
-## Typical Workflow
-
-1. Create workspace: `nemo workspaces create <ws>`
-2. Upload dataset: create fileset + upload JSONL file (use `nemo-files` skill)
-3. Create metric (string-check, llm-judge, etc.)
-4. Run sync eval with inline data to test
-5. Create async metric job against the uploaded dataset
-6. Check job status
+- The evaluation goal and chosen SDK metric class or benchmark shape.
+- The dataset shape and any templates or parser paths.
+- The exact SDK snippet or evaluation spec used.
+- Row-level and aggregate evidence for local runs, or job status/result
+  evidence for remote runs.
+- Any caveats about reproducibility, provider config, or calibration.
