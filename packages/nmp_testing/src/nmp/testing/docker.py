@@ -141,7 +141,7 @@ def create_docker_client(fail_message: str | None = None) -> docker.DockerClient
         client = docker.from_env()
     except DockerException as e:
         msg = fail_message or "Docker client initialization failed"
-        raise pytest.fail.Exception(  # noqa: PT017
+        raise pytest.fail.Exception(
             f"{msg}: {e}\n\n"
             "Please ensure Docker is installed and the Docker daemon is running:\n"
             "  - macOS/Windows: Start Docker Desktop\n"

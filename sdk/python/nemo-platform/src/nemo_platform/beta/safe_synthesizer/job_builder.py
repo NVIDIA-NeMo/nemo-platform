@@ -7,7 +7,7 @@ import random
 import string
 import logging
 import tempfile
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from pathlib import Path
 from typing_extensions import Self
 
@@ -17,6 +17,7 @@ from .job import SafeSynthesizerJob
 
 if TYPE_CHECKING:
     from nemo_platform import NeMoPlatform
+    from nemo_platform.types.safe_synthesizer import SafeSynthesizerJobConfigParam
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -309,7 +310,7 @@ class SafeSynthesizerJobBuilder:
         spec = self._build_job_spec()
         response = self._client.safe_synthesizer.jobs.create(
             workspace=self._workspace,
-            spec=spec,  # type: ignore[invalid-argument-type]
+            spec=cast("SafeSynthesizerJobConfigParam", spec),
             **kwargs,
         )
         return SafeSynthesizerJob(response.name, self._client, workspace=self._workspace)
