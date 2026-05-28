@@ -15,6 +15,7 @@ from nemo_platform.beta.evaluator.metrics.protocol import (
     MetricOutput,
     MetricOutputSpec,
     MetricResult,
+    MetricTypeName,
 )
 from nemo_platform.beta.evaluator.values.agents import Agent
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
@@ -114,6 +115,7 @@ __all__ = [
     "MetricOutput",
     "MetricOutputSpec",
     "MetricResult",
+    "MetricTypeName",
     "MetricScore",
     "Model",
     "DatasetInput",

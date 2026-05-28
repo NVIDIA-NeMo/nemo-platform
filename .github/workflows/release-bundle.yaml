@@ -366,78 +366,27 @@ jobs:
           ref: ${{ needs.plan-release.outputs.source_sha }}
           path: source
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.11"
-          enable-cache: true
-          version-file: source/pyproject.toml
-          cache-dependency-glob: source/uv.lock
-
-      - name: Set up pnpm
-        if: matrix.id == 'nemo-platform'
-        uses: pnpm/action-setup@v4
-        with:
-          package_json_file: source/web/package.json
-
-      - name: Set up Node.js
-        if: matrix.id == 'nemo-platform'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: pnpm
-          cache-dependency-path: source/web/pnpm-lock.yaml
-
-      # Stamp the checked-out source so the wheel metadata matches the planned release label.
-      - name: Stamp SDK version
-        shell: bash
-        env:
-          CADENCE: ${{ inputs.cadence }}
-          RELEASE_LABEL: ${{ needs.plan-release.outputs.release_label }}
-          NIGHTLY_TIMESTAMP: ${{ needs.plan-release.outputs.nightly_timestamp }}
-          SDK_ID: ${{ matrix.id }}
-        run: |
-          set -euo pipefail
-
-          uv run python workflow/.github/scripts/stamp_sdk_version.py \
-            --source-root source \
-            --sdk-id "${SDK_ID}" \
-            --cadence "${CADENCE}" \
-            --release-label "${RELEASE_LABEL}" \
-            --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
-
+      # Toolchain setup + version stamp + `uv build` are factored into the
+      # composite action, which ci.yaml's wheel-test job also calls so the
+      # test wheel and the published wheel come out of one code path. The
+      # action runs out of the workflow checkout above, not the
+      # release-target source checkout.
       - name: Build SDK wheel
         id: build-sdk-wheel
-        shell: bash
-        env:
-          SDK_ID: ${{ matrix.id }}
-        run: |
-          set -euo pipefail
-
-          wheel_dir="${GITHUB_WORKSPACE}/release-sdk-wheel"
-          rm -rf "${wheel_dir}"
-          mkdir -p "${wheel_dir}"
-
-          uv build --wheel \
-            --directory source \
-            --package "${SDK_ID}" \
-            --out-dir "${wheel_dir}"
-
-          shopt -s nullglob
-          wheels=("${wheel_dir}"/*.whl)
-          if [[ "${#wheels[@]}" -ne 1 ]]; then
-            echo "::error::expected exactly one wheel for sdk:${SDK_ID}, found ${#wheels[@]}"
-            exit 1
-          fi
-
-          printf 'wheel_path=%s\n' "${wheels[0]}" >>"${GITHUB_OUTPUT}"
-          echo "Built sdk:${SDK_ID} -> ${wheels[0]}."
+        uses: ./workflow/.github/actions/build-nemo-platform-wheel
+        with:
+          package: ${{ matrix.id }}
+          source-root: source
+          out-dir: ${{ github.workspace }}/release-sdk-wheel
+          cadence: ${{ inputs.cadence }}
+          release-label: ${{ needs.plan-release.outputs.release_label }}
+          nightly-timestamp: ${{ needs.plan-release.outputs.nightly_timestamp }}
 
       - name: Upload SDK wheel
         uses: actions/upload-artifact@v6
         with:
           name: release-sdk-${{ matrix.id }}
-          path: ${{ steps.build-sdk-wheel.outputs.wheel_path }}
+          path: ${{ steps.build-sdk-wheel.outputs.wheel-path }}
           if-no-files-found: error
           overwrite: true
           retention-days: 1

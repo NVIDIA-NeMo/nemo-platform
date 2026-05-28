@@ -16,11 +16,9 @@ import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
-from nmp.guardrails.service import GuardrailsService
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
 from .utils import (
-    DEFAULT_WORKSPACE,
     GUARDRAILS_PLUGIN_NAME,
     make_guardrails_test_data_names,
     make_served_model,
@@ -40,9 +38,20 @@ class MultimodalTestDataNames:
     vision_model_entity_ref: str
 
 
-def _make_test_data_names(*, main_model_prefix: str = "main-model") -> MultimodalTestDataNames:
-    base_test_data_names = make_guardrails_test_data_names(main_model_prefix=main_model_prefix)
-    vision_model = make_served_model(test_id=base_test_data_names.test_id, prefix="vision-model")
+def _make_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str,
+) -> MultimodalTestDataNames:
+    base_test_data_names = make_guardrails_test_data_names(
+        main_model_prefix=main_model_prefix,
+        workspace=workspace,
+    )
+    vision_model = make_served_model(
+        test_id=base_test_data_names.test_id,
+        prefix="vision-model",
+        workspace=workspace,
+    )
 
     return MultimodalTestDataNames(
         main_model_served_name=base_test_data_names.main_model_served_name,
@@ -99,17 +108,17 @@ class TestMultimodalContentSafety:
     }
 
     @staticmethod
-    def _middleware_call(config_name: str) -> MiddlewareCallParam:
+    def _middleware_call(workspace: str, config_name: str) -> MiddlewareCallParam:
         return {
             "name": GUARDRAILS_PLUGIN_NAME,
             "config_type": GUARDRAILS_PLUGIN_CONFIG_TYPE,
-            "config_id": f"{DEFAULT_WORKSPACE}/{config_name}",
+            "config_id": f"{workspace}/{config_name}",
         }
 
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=DEFAULT_WORKSPACE)
+            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -143,10 +152,10 @@ class TestMultimodalContentSafety:
         }
 
     def _setup_entity_backed_vm(self, harness: IGWLoopbackHarness) -> MultimodalTestDataNames:
-        test_data_names = _make_test_data_names()
+        test_data_names = _make_test_data_names(workspace=harness.workspace)
 
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={
                 test_data_names.main_model_served_name: test_data_names.main_model_served_name,
@@ -154,7 +163,7 @@ class TestMultimodalContentSafety:
             },
         )
         harness.sdk.guardrail.configs.create(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed multimodal input rail config for integration tests",
             data=self._config_data(
@@ -163,15 +172,15 @@ class TestMultimodalContentSafety:
             ),
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.request_virtual_model_name,
             default_model_entity=test_data_names.main_model_entity_ref,
-            request_middleware=[self._middleware_call(test_data_names.guardrail_config_name)],
+            request_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
         )
         return test_data_names
 
@@ -197,9 +206,9 @@ class TestMultimodalContentSafety:
             )
 
         response = harness.chat_completions(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             body={
-                "model": f"{DEFAULT_WORKSPACE}/{test_data_names.request_virtual_model_name}",
+                "model": f"{harness.workspace}/{test_data_names.request_virtual_model_name}",
                 "messages": [self._user_message(user_text)],
             },
         )
@@ -209,7 +218,7 @@ class TestMultimodalContentSafety:
         harness.assert_request_messages_contain(test_data_names.vision_model_entity_ref, user_text)
         harness.assert_request_messages_contain(test_data_names.vision_model_entity_ref, self.IMAGE_DATA_URL)
         guardrails_data: dict[str, Any] = response.get("guardrails_data") or {}
-        assert guardrails_data.get("config_ids") == [f"{DEFAULT_WORKSPACE}/{test_data_names.guardrail_config_name}"]
+        assert guardrails_data.get("config_ids") == [f"{harness.workspace}/{test_data_names.guardrail_config_name}"]
 
         if expect_blocked:
             harness.assert_no_calls_to(test_data_names.main_model_served_name)
@@ -237,7 +246,7 @@ class TestMultimodalContentSafety:
         expect_blocked: bool,
     ) -> None:
         """Vision input rails should receive the user's message and image data before the backend runs."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(harness)

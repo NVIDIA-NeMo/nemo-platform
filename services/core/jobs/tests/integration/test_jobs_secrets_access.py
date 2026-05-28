@@ -50,7 +50,11 @@ def _platform_spec_with_secret(secret_ref: str, env_var_name: str = "MY_SECRET")
                 "executor": {
                     "provider": "cpu",
                     "profile": "default",
-                    "container": {"image": "busybox:latest"},
+                    "container": {
+                        "image": "busybox:latest",
+                        "entrypoint": ["entrypoint"],
+                        "command": ["command"],
+                    },
                 },
                 "environment": [
                     {"name": env_var_name, "from_secret": {"name": secret_ref}},

@@ -800,6 +800,12 @@ def test_is_multi_llm_image_random_image_returns_false():
             "org-model-v1-0-main-with-spaces",
             id="mixed_invalid_chars",
         ),
+        # Digit-leading upstream ids (e.g. NVIDIA Build's "01-ai/yi-large") get an
+        # internal "m-" prefix so they satisfy NAME_PATTERN's leading-letter rule.
+        pytest.param("01-ai/yi-large", "m-01-ai-yi-large", id="digit_leading_with_slash"),
+        pytest.param("9model", "m-9model", id="digit_leading_simple"),
+        pytest.param("123", "m-123", id="digit_only"),
+        pytest.param("2pac/rapper-model", "m-2pac-rapper-model", id="digit_leading_alphanumeric"),
     ],
 )
 def test_normalize_model_entity_name_output(input_name, expected):
@@ -812,8 +818,6 @@ def test_normalize_model_entity_name_output(input_name, expected):
     [
         pytest.param("", "cannot be normalized to a valid entity name", id="empty_string"),
         pytest.param("///:::", "cannot be normalized to a valid entity name", id="only_invalid_chars"),
-        pytest.param("123", "not valid", id="starts_with_digit_only"),
-        pytest.param("9model", "not valid", id="starts_with_digit_then_letters"),
         pytest.param("a", "not valid", id="single_char"),
     ],
 )
@@ -875,6 +879,29 @@ def test_normalize_model_entity_name_long_different_names_different_hashes():
     r2 = normalize_model_entity_name(name2)
     assert r1 != r2
     assert len(r1) <= 63 and len(r2) <= 63
+
+
+def test_normalize_model_entity_name_digit_leading_idempotent():
+    """The 'm-' prefix is only added when the result starts with a digit, so re-normalizing
+    a previously normalized digit-leading name is a no-op."""
+    original = "01-ai/yi-large"
+    once = normalize_model_entity_name(original)
+    twice = normalize_model_entity_name(once)
+    assert once == "m-01-ai-yi-large"
+    assert once == twice
+
+
+def test_normalize_model_entity_name_digit_leading_long_truncates():
+    """Digit-leading names that exceed 63 chars after the 'm-' prefix still truncate cleanly
+    via the existing hash-suffix path."""
+    # 70-char digit-leading raw name -> with 'm-' prefix would be 72; truncation must kick in.
+    long_digit_name = "0" + "1" * 69
+    result = normalize_model_entity_name(long_digit_name)
+    assert len(result) <= 63
+    assert result.startswith("m-")
+    # Trailing 8 hex chars after final '-' (the deterministic hash suffix).
+    parts = result.rsplit("-", 1)
+    assert len(parts[1]) == 8 and all(c in "0123456789abcdef" for c in parts[1])
 
 
 # ============================================================================

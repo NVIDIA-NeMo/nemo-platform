@@ -3,11 +3,30 @@
 
 """Pytest fixtures for the IGW middleware test harnesses.
 
-Importing :func:`igw_plugin_harness` (or :func:`igw_loopback_harness`)
-into a test module — or re-exporting from a project ``conftest.py`` —
-registers the fixture for the surrounding scope. Both piggyback on
-``pytest_httpserver``'s function-scoped ``httpserver`` fixture so each
-test gets an isolated socket and clean handler state.
+Import :func:`igw_plugin_harness` or :func:`igw_loopback_harness` into a
+test module (or re-export from a project ``conftest.py``) to register
+the fixture. Both use ``pytest_httpserver``'s function-scoped
+``httpserver`` so each test gets a fresh mock-NIM socket.
+
+The ASGI stack is split across two scopes so each test only pays for
+what changes between tests:
+
+* :func:`_igw_app_context` (**module**) — the heavy
+  ``create_test_client`` call (SQLite DB, FastAPI app, IGW + Models
+  services, ``/health/ready`` polling, workspace seeding). The periodic
+  ``refresh_model_cache_task`` is disabled so it can't wake mid-test
+  and re-pollute the cache.
+* :func:`_igw_loopback_context` (**module**) — a uvicorn thread bound
+  on top of the app context. Only entered when a test asks for the
+  loopback variant.
+* :func:`igw_plugin_harness` / :func:`igw_loopback_harness`
+  (**function**) — a fresh :class:`IGWPluginHarness` per test: mock-NIM
+  handler mount, post-response task list re-init, entity teardown.
+
+**xdist**: only ``--dist=loadfile`` and ``--dist=loadscope`` preserve
+module scope. The default ``--dist=load`` distributes individual tests
+across workers and defeats the speed-up. See the README for the
+recommended command line.
 """
 
 from collections.abc import Callable, Generator
@@ -21,139 +40,224 @@ from nmp.testing.client import ClientContext, ServiceFactory, create_test_client
 from pytest_httpserver import HTTPServer
 
 
+def _app_from(client_context: ClientContext) -> FastAPI:
+    """``TestClient.app`` is typed as bare ``ASGIApp``; we need :class:`FastAPI`.
+
+    Centralised so the cast is justified in one place.
+    """
+    return cast(FastAPI, client_context.test_client.app)
+
+
 def _enable_post_response_task_tracking(client_context: ClientContext) -> None:
-    """Initialise ``app.state.pending_post_response_tasks`` so ``proxy.py`` records them.
+    """Reset the per-test list ``proxy.py`` appends fire-and-forget tasks to.
 
-    ``proxy.py`` checks for this attribute on every request that schedules a
-    fire-and-forget post-response task; production never sets it, so the
-    list-or-None guard keeps the production hot path free of test-only
-    state. Only the test harness initialises it here, and only the harness's
-    :meth:`IGWPluginHarness.aflush_post_response` reads it.
+    Production leaves ``app.state.pending_post_response_tasks`` unset and
+    ``proxy.py`` skips tracking; only the harness sets it (read by
+    :meth:`IGWPluginHarness.aflush_post_response`). Reset per test so a
+    stale list from the previous test can't pin completed tasks or get
+    re-awaited.
     """
-    # ``TestClient.app`` is typed as a bare ``ASGIApp`` callable but is in
-    # fact our :class:`FastAPI` instance — narrow the type so ``state`` is
-    # accessible.
-    app = cast(FastAPI, client_context.test_client.app)
-    app.state.pending_post_response_tasks = []
+    _app_from(client_context).state.pending_post_response_tasks = []
 
 
-def _register_global_state_resets(stack: ExitStack) -> None:
-    """Register IGW global-state resets so they run on fixture teardown.
-
-    The harness's ``_cleanup`` evicts its own VMs and restores its own plugin
-    registrations, but a partial cleanup (e.g. an exception in ``_build``
-    before the harness is fully wired) could leave global state populated.
-    Resetting all three globals on teardown guarantees the next test starts
-    with empty caches and an empty registry, regardless of whether ``_cleanup``
-    ran successfully.
-
-    Each reset is independent (``_GLOBAL = None``), so execution order is
-    irrelevant. Do not pair this with ``igw_mock_provider_mode=True`` in
-    ``create_test_client`` — that mode already registers its own
-    ``reset_global_model_cache`` callback and a double-reset is confusing
-    in a debugger even though it's idempotent.
-    """
-    from nmp.core.inference_gateway.api.dependencies import (
-        reset_global_middleware_registry,
-        reset_global_model_cache,
-        reset_global_virtual_model_cache,
-    )
-
-    stack.callback(reset_global_middleware_registry)
-    stack.callback(reset_global_virtual_model_cache)
-    stack.callback(reset_global_model_cache)
-
-
-def _create_harness_client_context(
-    stack: ExitStack,
+@contextmanager
+def _build_app_context(
     *extra_services: ServiceFactory,
-) -> ClientContext:
-    """Create the shared in-process IGW + Models client context for harness fixtures."""
-    # Local imports keep this module cheap to import for unrelated test files.
+) -> Generator[ClientContext, None, None]:
+    """Yield an IGW + Models + extras :class:`ClientContext` (module-lived).
+
+    Two module-scope hazards are neutralised here:
+
+    1. The 3-second background ``refresh_model_cache_task``. ``on_startup``
+       reads ``refresh_model_cache_interval_sec`` from the module-level
+       config snapshot (captured at first import), so a ``service_configs``
+       override is too late. Patch the snapshot field to 0 *before*
+       entering ``create_test_client`` and ``on_startup`` never schedules
+       the loop.
+    2. The shared SDK HTTP client's ``aclose``. Plugins like
+       ``nemo-guardrails`` call ``await sdk.close()`` in ``on_shutdown``,
+       which would close the shared client for every later test in the
+       module. Patch ``aclose`` to a no-op for the module's lifetime;
+       ``ASGITransport`` is in-process so nothing actually leaks.
+    """
+    from unittest.mock import patch
+
+    from nmp.common import sdk_factory as sdk_factory_module
+    from nmp.core.inference_gateway import config as igw_config_module
     from nmp.core.inference_gateway.service import InferenceGatewayService
     from nmp.core.models.service import ModelsService
 
     service_types: list[ServiceFactory] = [InferenceGatewayService, ModelsService, *extra_services]
 
-    _register_global_state_resets(stack)
-
-    client_context = stack.enter_context(
-        create_test_client(
+    with patch.object(igw_config_module.config, "refresh_model_cache_interval_sec", 0):
+        with create_test_client(
             *service_types,
             client_type=ClientContext,
             igw_mock_provider_mode=False,
-        )
-    )
-    _enable_post_response_task_tracking(client_context)
+        ) as client_context:
+            shared_async_client = sdk_factory_module._test_http_client
+            if shared_async_client is None:
+                yield client_context
+                return
 
-    return client_context
+            original_aclose = shared_async_client.aclose
+
+            async def _noop_aclose() -> None:
+                return None
+
+            shared_async_client.aclose = _noop_aclose  # type: ignore[method-assign]
+            try:
+                yield client_context
+            finally:
+                shared_async_client.aclose = original_aclose  # type: ignore[method-assign]
+
+
+@pytest.fixture(scope="module")
+def _igw_extra_services() -> tuple[ServiceFactory, ...]:
+    """Override in a plugin conftest to mount extra services module-wide.
+
+    Example::
+
+        @pytest.fixture(scope="module")
+        def _igw_extra_services() -> tuple[ServiceFactory, ...]:
+            from nmp.guardrails.service import GuardrailsService
+
+            return (GuardrailsService,)
+
+    Module-scoped because the app it feeds is module-scoped.
+    """
+    return ()
+
+
+@pytest.fixture(scope="module")
+def _igw_app_context(
+    _igw_extra_services: tuple[ServiceFactory, ...],
+) -> Generator[ClientContext, None, None]:
+    """Module-scoped IGW + Models ASGI stack.
+
+    The expensive ``create_test_client`` call runs once per test file;
+    function-scoped fixtures layer per-test concerns on top. Extra
+    services come from :func:`_igw_extra_services` rather than fixture
+    parameters so plugin conftests can declare their needs without
+    rebuilding the app per-test.
+    """
+    with _build_app_context(*_igw_extra_services) as client_context:
+        yield client_context
+
+
+@pytest.fixture(scope="module")
+def _igw_loopback_context(
+    _igw_app_context: ClientContext,
+) -> Generator[str, None, None]:
+    """Run the module app on a real ``127.0.0.1:<port>`` and yield its URL.
+
+    Only entered when a test actually requests :func:`igw_loopback_harness`
+    — plain modules pay nothing for uvicorn.
+
+    The per-request HTTP client override and the ``get_platform_config``
+    patch live in :func:`_build_loopback_harness` instead, so plain
+    ``igw_plugin_harness`` tests in a mixed module don't pay loopback's
+    per-request session cost. Uvicorn is started with ``lifespan="off"``;
+    the TestClient still owns startup/shutdown.
+    """
+    from nmp.core.inference_gateway.testing._loopback import serve_app_in_thread
+
+    with serve_app_in_thread(_app_from(_igw_app_context)) as loopback_base_url:
+        yield loopback_base_url
 
 
 @contextmanager
-def _igw_plugin_harness_context(
+def _per_test_plugin_setup(
+    client_context: ClientContext,
     httpserver: HTTPServer,
-    *extra_services: ServiceFactory,
 ) -> Generator[IGWPluginHarness, None, None]:
-    """IGW + Models in-process via ASGI; mock NIM via ``pytest_httpserver``.
+    """Per-test setup/teardown shared by the plain + loopback fixtures.
 
-    No uvicorn thread, no real port for IGW. The same ``pytest_httpserver``
-    socket serves both the proxy step's outbound HTTP and any plugin-side
-    outbound HTTP (e.g. Guardrails' rail calls).
+    Resets the post-response task list, builds a fresh harness on the
+    per-test ``pytest_httpserver`` socket, and runs
+    :meth:`IGWPluginHarness._cleanup` on teardown to delete this test's
+    entities and rebuild the in-memory caches.
 
-    Includes IGW + Models by default. Pass additional service classes when a
-    test needs their routes mounted in the same app.
+    Note we deliberately don't call the original ``reset_global_*``
+    helpers between tests — the module-scoped app's ``on_startup`` is
+    the only thing that re-initialises those globals, so nulling them
+    would crash the next request.
     """
-    with ExitStack() as stack:
-        client_context = _create_harness_client_context(stack, *extra_services)
-        harness = IGWPluginHarness._build(client_context=client_context, mock_nim=httpserver)
-        stack.callback(harness._cleanup)
+    _enable_post_response_task_tracking(client_context)
+    harness = IGWPluginHarness._build(client_context=client_context, mock_nim=httpserver)
+    try:
         yield harness
+    finally:
+        harness._cleanup()
 
 
 @pytest.fixture
-def igw_plugin_harness(httpserver: HTTPServer) -> Generator[IGWPluginHarness, None, None]:
-    with _igw_plugin_harness_context(httpserver) as harness:
+def igw_plugin_harness(
+    _igw_app_context: ClientContext,
+    httpserver: HTTPServer,
+) -> Generator[IGWPluginHarness, None, None]:
+    """Per-test IGW + Models harness — no real port, mock NIM only.
+
+    Cheap: the heavy ASGI stack comes from the module-scoped
+    :func:`_igw_app_context`. Per test you only pay for the harness
+    construction, the post-response list reset, and the function-scoped
+    mock-NIM socket.
+    """
+    with _per_test_plugin_setup(_igw_app_context, httpserver) as harness:
         yield harness
 
 
 @contextmanager
-def _igw_loopback_harness_context(
+def _build_loopback_harness(
+    client_context: ClientContext,
     httpserver: HTTPServer,
+    igw_loopback_base_url: str,
     *extra_services: ServiceFactory,
 ) -> Generator[IGWLoopbackHarness, None, None]:
-    """IGW + Models in-process *and* reachable on a real ``127.0.0.1:<port>``.
+    """Per-test setup/teardown for the loopback harness.
 
-    Includes IGW + Models by default. Pass additional service classes when a
-    test needs their routes mounted in the same app.
+    Same per-test resets as :func:`_per_test_plugin_setup`, plus two
+    loopback-only patches scoped to this test:
 
-    See :class:`IGWLoopbackHarness` for the two-loop loop-binding caveat.
+    * ``per_request_http_client`` overrides :func:`global_http_client` —
+      loopback runs the app from two loops (TestClient + uvicorn) and
+      a singleton :class:`aiohttp.ClientSession` would be loop-bound to
+      whichever one created it.
+    * ``get_platform_config`` is patched at IGW's middleware-registry
+      import site so :meth:`get_openai_compatible_inference_url_and_model`
+      returns URLs reachable from the test process.
 
-    Three things the loopback shape requires that the default doesn't:
+    Both patches roll back before the next test runs, so a plain
+    ``igw_plugin_harness`` test sharing the module doesn't observe them.
 
-    1. Lifecycle ordering: ASGI client owns the app's startup/shutdown,
-       uvicorn comes up after the app is ready and tears down before it.
-    2. Per-request ``aiohttp.ClientSession`` override — the app now runs on
-       two loops (``TestClient``'s and uvicorn's). Sessions are loop-bound,
-       so a singleton would fail with "attached to a different loop" on
-       whichever loop didn't originate it. Production is unaffected (one
-       loop per process).
-    3. ``platform_config.base_url`` patched to the loopback URL so the
-       plugin resolver
-       (:meth:`get_openai_compatible_inference_url_and_model`) returns URLs
-       reachable from the test process instead of the production default
-       ``http://localhost:8080``.
+    Raises:
+        TypeError: If *extra_services* is non-empty. The module-scoped
+            app is already built by the time this runs; the previous
+            ``igw_loopback_harness(GuardrailsService)`` pattern is dead.
+            Override :func:`_igw_extra_services` in your conftest
+            instead. (Hard error, not a warning, because pytest hides
+            ``DeprecationWarning`` by default and silently-missing
+            routes would be much harder to diagnose.)
     """
+    if extra_services:
+        names = ", ".join(getattr(s, "__name__", repr(s)) for s in extra_services)
+        raise TypeError(
+            f"igw_loopback_harness({names}): extra service args are no longer "
+            "accepted under module-scoped fixtures. Override "
+            "`_igw_extra_services` in your conftest to mount additional "
+            "services for the whole module."
+        )
     from nmp.core.inference_gateway.api.dependencies import global_http_client
     from nmp.core.inference_gateway.testing._loopback import (
         override_platform_base_url,
         per_request_http_client,
-        serve_app_in_thread,
     )
 
-    with ExitStack() as stack:
-        client_context = _create_harness_client_context(stack, *extra_services)
+    _enable_post_response_task_tracking(client_context)
 
-        app = cast(FastAPI, client_context.test_client.app)
+    app = _app_from(client_context)
+
+    with ExitStack() as stack:
         previous_override = app.dependency_overrides.get(global_http_client)
         app.dependency_overrides[global_http_client] = per_request_http_client
 
@@ -164,40 +268,53 @@ def _igw_loopback_harness_context(
                 app.dependency_overrides[global_http_client] = previous_override
 
         stack.callback(_restore_http_client_override)
+        stack.enter_context(override_platform_base_url(igw_loopback_base_url))
 
-        loopback_base_url = stack.enter_context(serve_app_in_thread(app))
-        # Patch goes below uvicorn so it tears down first.
-        stack.enter_context(override_platform_base_url(loopback_base_url))
         harness = cast(
             IGWLoopbackHarness,
             IGWLoopbackHarness._build(
                 client_context=client_context,
                 mock_nim=httpserver,
-                igw_loopback_base_url=loopback_base_url,
+                igw_loopback_base_url=igw_loopback_base_url,
             ),
         )
-        stack.callback(harness._cleanup)
-        yield harness
+        try:
+            yield harness
+        finally:
+            harness._cleanup()
 
 
 @pytest.fixture
 def igw_loopback_harness(
+    _igw_app_context: ClientContext,
+    _igw_loopback_context: str,
     httpserver: HTTPServer,
 ) -> Generator[Callable[..., IGWLoopbackHarness], None, None]:
-    """Factory for an IGW loopback harness.
+    """Factory for an IGW loopback harness — call ``igw_loopback_harness()``.
 
-    Call with no arguments for the default IGW + Models app:
-    ``harness = igw_loopback_harness()``.
-
-    Pass additional service classes to mount them in the same app:
-    ``harness = igw_loopback_harness(GuardrailsService)``.
+    Passing extra service classes raises :class:`TypeError`. Mount extra
+    services by overriding :func:`_igw_extra_services` in the plugin's
+    conftest.
     """
     with ExitStack() as stack:
 
         def factory(*extra_services: ServiceFactory) -> IGWLoopbackHarness:
-            return stack.enter_context(_igw_loopback_harness_context(httpserver, *extra_services))
+            return stack.enter_context(
+                _build_loopback_harness(
+                    _igw_app_context,
+                    httpserver,
+                    _igw_loopback_context,
+                    *extra_services,
+                )
+            )
 
         yield factory
 
 
-__all__ = ["igw_plugin_harness", "igw_loopback_harness"]
+__all__ = [
+    "_igw_app_context",
+    "_igw_extra_services",
+    "_igw_loopback_context",
+    "igw_loopback_harness",
+    "igw_plugin_harness",
+]

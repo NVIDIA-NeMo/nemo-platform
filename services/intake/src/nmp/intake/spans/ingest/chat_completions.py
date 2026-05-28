@@ -13,7 +13,8 @@ from __future__ import annotations
 
 import math
 from datetime import datetime, timezone
-from typing import Any
+from decimal import Decimal, InvalidOperation
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, status
 from nmp.intake.entities.values import FlexibleEntryRequest, FlexibleEntryResponse
@@ -29,6 +30,7 @@ router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
 
 SOURCE_FORMAT = "chat_completions"
+NonNegativeFloat = Annotated[float, Field(ge=0)]
 
 
 class ChatCompletionsIngestRequest(BaseModel):
@@ -50,6 +52,25 @@ class ChatCompletionsIngestRequest(BaseModel):
     )
     evaluation_context: EvaluationContext | None = None
     provider: str | None = None
+    cost_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description=(
+            "Total estimated cost of this model call in USD. This matches ATIF step "
+            "metrics; Intake stores it as semantic cost_total_usd on spans."
+        ),
+    )
+    cost_input_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Estimated input-token cost of this model call in USD.",
+    )
+    cost_output_usd: NonNegativeFloat | None = Field(
+        default=None,
+        description="Estimated output-token cost of this model call in USD.",
+    )
+    cost_details: dict[str, NonNegativeFloat] = Field(
+        default_factory=dict,
+        description="Additional estimated cost breakdown fields in USD.",
+    )
 
 
 class ChatCompletionsIngestResponse(BaseModel):
@@ -128,6 +149,9 @@ def _build_attribute_bags(
 ) -> SpanAttributeBags:
     prompt_details = _dict_or_empty(usage.get("prompt_tokens_details"))
     completion_details = _dict_or_empty(usage.get("completion_tokens_details"))
+    input_tokens = _clean_int(usage.get("prompt_tokens"))
+    output_tokens = _clean_int(usage.get("completion_tokens"))
+    total_tokens = input_tokens + output_tokens if input_tokens is not None and output_tokens is not None else None
 
     error_type: str | None = None
     error_message: str | None = None
@@ -148,15 +172,23 @@ def _build_attribute_bags(
         test_case_id=evaluation_context.test_case_id if evaluation_context is not None else None,
         error_type=error_type,
         error_message=error_message,
-        input_tokens=_clean_int(usage.get("prompt_tokens")),
-        output_tokens=_clean_int(usage.get("completion_tokens")),
-        total_tokens=_clean_int(usage.get("total_tokens")),
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+        total_tokens=total_tokens,
         cached_tokens=_clean_int(prompt_details.get("cached_tokens")),
         prompt_audio_tokens=_clean_int(prompt_details.get("audio_tokens")),
         completion_reasoning_tokens=_clean_int(completion_details.get("reasoning_tokens")),
         completion_audio_tokens=_clean_int(completion_details.get("audio_tokens")),
+        cost_total_usd=_decimal_or_none(body.cost_usd),
+        cost_input_usd=_decimal_or_none(body.cost_input_usd),
+        cost_output_usd=_decimal_or_none(body.cost_output_usd),
     )
     attribute_bags = semantic.to_bags()
+    for key, value in body.cost_details.items():
+        bag_key = f"cost.{key}"
+        if bag_key in attribute_bags.number:
+            continue
+        attribute_bags.put_unhandled_source_attribute(f"llm.cost.{key}", value)
     if evaluation_context is not None:
         attribute_bags.put_json("evaluation.metadata", evaluation_context.metadata)
     return attribute_bags
@@ -214,3 +246,12 @@ def _clean_int(value: Any) -> int | None:
     if not isinstance(value, int) or isinstance(value, bool):
         return None
     return value if value >= 0 else None
+
+
+def _decimal_or_none(value: float | None) -> Decimal | None:
+    if value is None:
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None

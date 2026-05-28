@@ -202,6 +202,136 @@ jobs:
             coverage.xml
             coverage.json
 
+  # One job, one (package x python) matrix — kept as a single job rather
+  # than split per-package because the build path is identical and the
+  # matrix definition is the natural place to change what's covered.
+  # nemo-platform's wheel force-includes auth's policy.wasm at build time;
+  # nemo-platform-plugin doesn't, but plugin rows still wait on policy-wasm
+  # because needs: is per-job. ~5s of harmless wait per plugin row.
+  wheel-test:
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
+    needs: [policy-wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nemo-platform, nemo-platform-plugin]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Download policy WASM
+        if: matrix.package == 'nemo-platform'
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Build ${{ matrix.package }} wheel
+        id: build
+        uses: ./.github/actions/build-nemo-platform-wheel
+        with:
+          package: ${{ matrix.package }}
+          out-dir: ${{ github.workspace }}/dist
+          cadence: nightly
+          # Sentinel epoch — the wheel version is meaningless for a CI test
+          # build, but stamp_sdk_version.py requires \d{14}.
+          nightly-timestamp: "19700101000000"
+          python-version: ${{ matrix.python-version }}
+
+      # The two install+test steps below intentionally share a small preamble
+      # (mkdir + cp). Hoisting it into a separate step would cost more in
+      # workflow indirection than the 3 duplicated lines save.
+      - name: Install + test nemo-platform CLI
+        if: matrix.package == 'nemo-platform'
+        shell: bash
+        env:
+          WHEEL: ${{ steps.build.outputs.wheel-path }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
+        run: |
+          set -euo pipefail
+          # Copy the wheel out of $GITHUB_WORKSPACE so the test cd's away
+          # from the source tree and Python can't reach back into it.
+          mkdir -p "${RUNNER_TEMP}/wheelcheck"
+          cp "${WHEEL}" "${RUNNER_TEMP}/wheelcheck/"
+          uv tool install --force --python "${PYTHON_VERSION}" \
+            "${RUNNER_TEMP}/wheelcheck/$(basename "${WHEEL}")[services]"
+          cd "${RUNNER_TEMP}/wheelcheck"
+          unset PYTHONPATH VIRTUAL_ENV
+          bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
+
+      - name: Install + test nemo-platform-plugin
+        if: matrix.package == 'nemo-platform-plugin'
+        shell: bash
+        env:
+          WHEEL: ${{ steps.build.outputs.wheel-path }}
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/wheelcheck"
+          cp "${WHEEL}" "${RUNNER_TEMP}/wheelcheck/"
+          cd "${RUNNER_TEMP}/wheelcheck"
+          uv venv .venv --python "${PYTHON_VERSION}"
+          uv pip install --python .venv/bin/python "$(basename "${WHEEL}")"
+          unset PYTHONPATH VIRTUAL_ENV
+          # Import the package + a couple of representative submodules
+          # (cli, commands). These are the surfaces a plugin author would
+          # touch first; if any of them fail to import, the wheel is
+          # broken in a way that surfaces immediately on day one. If
+          # the plugin's public API surface changes substantially, this
+          # list should be revisited.
+          .venv/bin/python -c "
+          import nemo_platform_plugin
+          import nemo_platform_plugin.cli
+          import nemo_platform_plugin.commands
+          print('nemo_platform_plugin', getattr(nemo_platform_plugin, '__version__', '<no __version__>'))
+          "
+
+      - name: Upload wheel
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
+          path: ${{ steps.build.outputs.wheel-path }}
+          retention-days: 7
+          if-no-files-found: error
+
+  # Required-check pin: branch protection should reference this aggregator
+  # rather than the per-row matrix jobs, so the matrix can grow or shrink
+  # without admin intervention. Skipped counts as pass.
+  wheel-test-aggregate:
+    name: Wheel build + test
+    needs: [wheel-test]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check matrix result
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.wheel-test.result }}
+          # Per-row results, useful for debugging which (package, python)
+          # combination failed. GitHub doesn't expose individual matrix
+          # results by name; the workflow run UI is the canonical place
+          # to look. We surface a pointer in the failure message.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "${MATRIX_RESULT}" in
+            success|skipped)
+              echo "wheel-test matrix: ${MATRIX_RESULT}"
+              ;;
+            *)
+              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
+              echo "::error::see per-row results: ${RUN_URL}"
+              exit 1
+              ;;
+          esac
+
   coverage-comment:
     name: Post coverage comment
     needs: [python-unit-test, python-integration-test]
@@ -271,7 +401,7 @@ jobs:
 
   notify-ci-consumer:
     name: Notify CI consumer
-    needs: [lint, python-unit-test, opa-policy-test]
+    needs: [lint, python-unit-test, opa-policy-test, wheel-test-aggregate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

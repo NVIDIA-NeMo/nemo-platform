@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import * as readline from 'readline';
 import * as process from 'process';
 import { openBrowser, getBaseUrl } from './git-utils.js';
+
+const git = (...args: string[]) => execFileSync('git', args, { stdio: 'inherit' });
 
 // Helper to prompt the user for input.
 function prompt(question: string): Promise<string> {
@@ -29,9 +31,9 @@ async function handleMergeConflicts() {
     if (response === 'yes') {
       try {
         console.log('Staging resolved changes...');
-        execSync('git add .', { stdio: 'inherit' });
+        git('add', '.');
         console.log('Attempting to continue cherry-pick...');
-        execSync('git cherry-pick --continue', { stdio: 'inherit' });
+        git('cherry-pick', '--continue');
         console.log('Cherry-pick completed successfully after resolving conflicts.');
         resolved = true;
       } catch {
@@ -43,7 +45,7 @@ async function handleMergeConflicts() {
       await prompt('Waiting for you to resolve conflicts. Press enter to check again...');
     } else if (response === 'abort') {
       console.log('Aborting cherry-pick...');
-      execSync('git cherry-pick --abort', { stdio: 'inherit' });
+      git('cherry-pick', '--abort');
       process.exit(1);
     } else {
       console.log("Please answer 'yes', 'no', or 'abort'.");
@@ -63,20 +65,20 @@ async function main() {
 
   try {
     console.log('Fetching latest changes from origin...');
-    execSync('git fetch origin', { stdio: 'inherit' });
+    git('fetch', 'origin');
 
     console.log(`Checking out the release branch: ${releaseBranch}`);
-    execSync(`git checkout ${releaseBranch}`, { stdio: 'inherit' });
-    execSync(`git pull origin ${releaseBranch}`, { stdio: 'inherit' });
+    git('checkout', releaseBranch);
+    git('pull', 'origin', releaseBranch);
 
     // Create a new branch based on the release branch.
     const newBranchName = `cherry-pick-${commitHash.substring(0, 7)}`;
     console.log(`Creating and switching to new branch: ${newBranchName}`);
-    execSync(`git checkout -b ${newBranchName}`, { stdio: 'inherit' });
+    git('checkout', '-b', newBranchName);
 
     console.log(`Attempting to cherry-pick commit: ${commitHash}`);
     try {
-      execSync(`git cherry-pick ${commitHash}`, { stdio: 'inherit' });
+      git('cherry-pick', commitHash);
       console.log('Cherry-pick completed successfully without conflicts.');
     } catch {
       console.error('Merge conflicts detected during cherry-pick!');
@@ -85,10 +87,10 @@ async function main() {
 
     // Push the new branch to origin.
     console.log(`Pushing branch ${newBranchName} to origin...`);
-    execSync(`git push origin ${newBranchName}`, { stdio: 'inherit' });
+    git('push', 'origin', newBranchName);
 
     // Retrieve the remote URL to construct the merge request URL.
-    const remoteUrlRaw = execSync('git remote get-url origin').toString().trim();
+    const remoteUrlRaw = execFileSync('git', ['remote', 'get-url', 'origin']).toString().trim();
     const baseUrl = getBaseUrl(remoteUrlRaw);
     const mergeRequestUrl = `${baseUrl}/-/merge_requests/new?merge_request[source_branch]=${newBranchName}&merge_request[target_branch]=${releaseBranch}`;
 
