@@ -20,6 +20,7 @@ from nemo_platform.beta.evaluator.dataset_schemas.common import empty_object_sch
 from nemo_platform.beta.evaluator.dataset_schemas.compatibility import merge_metric_required_schemas
 from nemo_platform.beta.evaluator.dataset_schemas.templates import infer_required_schema_from_template
 from nemo_platform.beta.evaluator.enums import MetricType
+from nemo_platform.beta.evaluator.metrics.protocol import MetricTypeName
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.dataset_schemas import InputSchema
 from nemo_platform.beta.evaluator.values.models import Model, ReasoningParams
@@ -129,7 +130,7 @@ class MetricBase(BaseModel):
 
     __entity_type__: ClassVar[str] = "metric"
 
-    type: str = Field(description="The type of metric. Used as a discriminator for the metric type.")
+    type: MetricTypeName = Field(description="The type of metric. Used as a discriminator for the metric type.")
     description: str | None = Field(default=None, description="Human-readable description of the metric.")
     labels: dict[str, str] = Field(
         default_factory=dict, description="Labels are key-value pairs that can be used for grouping and filtering."
