@@ -202,6 +202,9 @@ jobs:
             coverage.xml
             coverage.json
 
+  # One job, one (package x python) matrix — kept as a single job rather
+  # than split per-package because the build path is identical and the
+  # matrix definition is the natural place to change what's covered.
   # nemo-platform's wheel force-includes auth's policy.wasm at build time;
   # nemo-platform-plugin doesn't, but plugin rows still wait on policy-wasm
   # because needs: is per-job. ~5s of harmless wait per plugin row.
@@ -238,6 +241,9 @@ jobs:
           nightly-timestamp: "19700101000000"
           python-version: ${{ matrix.python-version }}
 
+      # The two install+test steps below intentionally share a small preamble
+      # (mkdir + cp). Hoisting it into a separate step would cost more in
+      # workflow indirection than the 3 duplicated lines save.
       - name: Install + test nemo-platform CLI
         if: matrix.package == 'nemo-platform'
         shell: bash
@@ -271,6 +277,12 @@ jobs:
           uv venv .venv --python "${PYTHON_VERSION}"
           uv pip install --python .venv/bin/python "$(basename "${WHEEL}")"
           unset PYTHONPATH VIRTUAL_ENV
+          # Import the package + a couple of representative submodules
+          # (cli, commands). These are the surfaces a plugin author would
+          # touch first; if any of them fail to import, the wheel is
+          # broken in a way that surfaces immediately on day one. If
+          # the plugin's public API surface changes substantially, this
+          # list should be revisited.
           .venv/bin/python -c "
           import nemo_platform_plugin
           import nemo_platform_plugin.cli
@@ -283,9 +295,9 @@ jobs:
         uses: actions/upload-artifact@v6
         with:
           name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
-          path: dist/*.whl
+          path: ${{ steps.build.outputs.wheel-path }}
           retention-days: 7
-          if-no-files-found: ignore
+          if-no-files-found: error
 
   # Required-check pin: branch protection should reference this aggregator
   # rather than the per-row matrix jobs, so the matrix can grow or shrink
@@ -302,6 +314,11 @@ jobs:
         shell: bash
         env:
           MATRIX_RESULT: ${{ needs.wheel-test.result }}
+          # Per-row results, useful for debugging which (package, python)
+          # combination failed. GitHub doesn't expose individual matrix
+          # results by name; the workflow run UI is the canonical place
+          # to look. We surface a pointer in the failure message.
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           case "${MATRIX_RESULT}" in
@@ -310,6 +327,7 @@ jobs:
               ;;
             *)
               echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
+              echo "::error::see per-row results: ${RUN_URL}"
               exit 1
               ;;
           esac

@@ -23,7 +23,7 @@ inputs:
     required: false
     default: nemo-platform
   out-dir:
-    description: Absolute path where the wheel is written. Must be absolute.
+    description: Absolute path where the wheel is written.
     required: true
   cadence:
     description: >
@@ -72,6 +72,43 @@ runs:
         version-file: ${{ inputs.source-root }}/pyproject.toml
         cache-dependency-glob: ${{ inputs.source-root }}/uv.lock
 
+    # Stamp early, before pnpm/node setup, so bad cadence/label/timestamp
+    # inputs fail fast instead of after spending ~20s on tool setup. The
+    # version is written into packages/nmp_common/.../version.py and the
+    # generated _version.py before `uv build` runs (hatchling reads
+    # version.py via its regex source but does not write it). The
+    # --print-version flag emits just the resolved version on stdout;
+    # the human banner goes to stderr.
+    - name: Stamp SDK version
+      id: stamp
+      shell: bash
+      env:
+        SOURCE_ROOT: ${{ inputs.source-root }}
+        PACKAGE: ${{ inputs.package }}
+        CADENCE: ${{ inputs.cadence }}
+        RELEASE_LABEL: ${{ inputs.release-label }}
+        NIGHTLY_TIMESTAMP: ${{ inputs.nightly-timestamp }}
+        # Run the stamp script from the action's own checkout (the workflow
+        # ref), not from inputs.source-root. For ci.yaml these are the same;
+        # for release-bundle.yaml the source checkout can be at an older
+        # source_sha (RC/stable rerun of an old tag) and we want today's
+        # stamping logic to apply.
+        STAMP_SCRIPT_PATH: ${{ github.action_path }}/../../scripts/stamp_sdk_version.py
+      run: |
+        set -euo pipefail
+        args=(
+          --source-root "${SOURCE_ROOT}"
+          --sdk-id "${PACKAGE}"
+          --cadence "${CADENCE}"
+          --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
+          --print-version
+        )
+        if [[ -n "${RELEASE_LABEL}" ]]; then
+          args+=(--release-label "${RELEASE_LABEL}")
+        fi
+        wheel_version="$(uv run --no-project python "${STAMP_SCRIPT_PATH}" "${args[@]}")"
+        echo "wheel-version=${wheel_version}" >>"${GITHUB_OUTPUT}"
+
     # Studio assets are only force-included by the nemo-platform wrapper.
     # The hatch hook in packages/nemo-platform/hatch_build.py compiles them
     # via pnpm during `uv build`; we set up pnpm/node here so the hook can
@@ -90,52 +127,13 @@ runs:
         cache: pnpm
         cache-dependency-path: ${{ inputs.source-root }}/web/pnpm-lock.yaml
 
-    # Stamp the version into packages/nmp_common/.../version.py and the
-    # generated _version.py before `uv build` runs (hatchling reads
-    # version.py via its regex source but does not write it). The
-    # --print-version flag emits just the resolved version on stdout;
-    # the human banner goes to stderr.
-    - name: Stamp SDK version
-      id: stamp
-      shell: bash
-      env:
-        SOURCE_ROOT: ${{ inputs.source-root }}
-        SDK_ID: ${{ inputs.package }}
-        CADENCE: ${{ inputs.cadence }}
-        RELEASE_LABEL: ${{ inputs.release-label }}
-        NIGHTLY_TIMESTAMP: ${{ inputs.nightly-timestamp }}
-        # Run the stamp script from the action's own checkout (the workflow
-        # ref), not from inputs.source-root. For ci.yaml these are the same;
-        # for release-bundle.yaml the source checkout can be at an older
-        # source_sha (RC/stable rerun of an old tag) and we want today's
-        # stamping logic to apply.
-        STAMP_SCRIPT: ${{ github.action_path }}/../../scripts/stamp_sdk_version.py
-      run: |
-        set -euo pipefail
-        args=(
-          --source-root "${SOURCE_ROOT}"
-          --sdk-id "${SDK_ID}"
-          --cadence "${CADENCE}"
-          --nightly-timestamp "${NIGHTLY_TIMESTAMP}"
-          --print-version
-        )
-        if [[ -n "${RELEASE_LABEL}" ]]; then
-          args+=(--release-label "${RELEASE_LABEL}")
-        fi
-        wheel_version="$(uv run --no-project python "${STAMP_SCRIPT}" "${args[@]}")"
-        if [[ -z "${wheel_version}" ]]; then
-          echo "::error::stamp_sdk_version.py produced empty output" >&2
-          exit 1
-        fi
-        echo "wheel-version=${wheel_version}" >>"${GITHUB_OUTPUT}"
-
     - name: Build wheel
       id: build
       shell: bash
       env:
         SOURCE_ROOT: ${{ inputs.source-root }}
         OUT_DIR: ${{ inputs.out-dir }}
-        SDK_ID: ${{ inputs.package }}
+        PACKAGE: ${{ inputs.package }}
       run: |
         set -euo pipefail
         if [[ "${OUT_DIR}" != /* ]]; then
@@ -145,13 +143,13 @@ runs:
 
         uv build --wheel \
           --directory "${SOURCE_ROOT}" \
-          --package "${SDK_ID}" \
+          --package "${PACKAGE}" \
           --out-dir "${OUT_DIR}"
 
         shopt -s nullglob
         wheels=("${OUT_DIR}"/*.whl)
         if [[ "${#wheels[@]}" -ne 1 ]]; then
-          echo "::error::expected exactly one wheel for ${SDK_ID}, found ${#wheels[@]}" >&2
+          echo "::error::expected exactly one wheel for ${PACKAGE}, found ${#wheels[@]}" >&2
           printf '  %s\n' "${wheels[@]}" >&2
           exit 1
         fi

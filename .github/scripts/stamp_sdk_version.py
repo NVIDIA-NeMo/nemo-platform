@@ -117,8 +117,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument(
         "--print-version",
         action="store_true",
-        help="Print only the resolved version to stdout (and the human banner to stderr) "
-        "for machine-readable consumption.",
+        help="Print only the resolved version on stdout; send the human banner to stderr.",
     )
     return parser.parse_args(argv)
 

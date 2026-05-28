@@ -368,9 +368,9 @@ jobs:
 
       # Toolchain setup + version stamp + `uv build` are factored into the
       # composite action, which ci.yaml's wheel-test job also calls so the
-      # test wheel and the published wheel come out of one code path.
-      # The action lives in the workflow repo checkout (path: workflow),
-      # not the release-target source checkout.
+      # test wheel and the published wheel come out of one code path. The
+      # action runs out of the workflow checkout above, not the
+      # release-target source checkout.
       - name: Build SDK wheel
         id: build-sdk-wheel
         uses: ./workflow/.github/actions/build-nemo-platform-wheel

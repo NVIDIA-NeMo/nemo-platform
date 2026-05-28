@@ -7,9 +7,11 @@
 # it boots.
 #
 # Used by .github/workflows/ci.yaml's wheel-test job; runs locally too.
+#
+# Env vars:
+#   WHEEL_TEST_TIMEOUT   seconds to wait for platform health (default: 60)
 set -euo pipefail
-
-# bash job control: backgrounded jobs get their own process group, so
+# Job control: backgrounded jobs get their own process group, so
 # `kill -- -$!` later takes down the whole tree (parent + worker
 # subprocesses spawned by `nemo services run`) without depending on
 # `setsid` (which isn't standard on macOS).
@@ -20,11 +22,11 @@ set -m
 export _TYPER_FORCE_DISABLE_TERMINAL="${_TYPER_FORCE_DISABLE_TERMINAL:-1}"
 
 LOG="${RUNNER_TEMP:-/tmp}/nemo-services.log"
-SERVICES_PID=""
+TIMEOUT_SECS="${WHEEL_TEST_TIMEOUT:-60}"
 
 cleanup() {
   set +e
-  if [[ -n "${SERVICES_PID}" ]]; then
+  if [[ -n "${SERVICES_PID:-}" ]]; then
     kill -TERM -- "-${SERVICES_PID}" 2>/dev/null
     for _ in 1 2 3 4 5; do
       kill -0 "${SERVICES_PID}" 2>/dev/null || break
@@ -39,10 +41,14 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! command -v nemo >/dev/null 2>&1; then
-  echo "::error::nemo is not on PATH; install the CLI before running this script" >&2
-  exit 1
-fi
+# Required runtime tools. jq is preinstalled on standard GH runners; surface
+# a clear error for local users running this script with an incomplete env.
+for cmd in nemo jq; do
+  if ! command -v "${cmd}" >/dev/null 2>&1; then
+    echo "::error::${cmd} is not on PATH; install it before running this script" >&2
+    exit 1
+  fi
+done
 
 echo "----- nemo on PATH -----"
 command -v nemo
@@ -70,14 +76,14 @@ SERVICES_PID=$!
 # services/core/entities/.../initialize.py — requiring both catches the
 # case where seeding partially succeeded then crashed. JSON output is
 # used so the assertion survives Rich table rendering changes.
-deadline=$(($(date +%s) + 60))
+deadline=$(($(date +%s) + TIMEOUT_SECS))
 until output="$(nemo workspaces list -f json 2>/dev/null)" \
   && jq -e '
        any(.data[]?; .name == "default")
        and any(.data[]?; .name == "system")
      ' >/dev/null <<<"${output}"; do
   if (($(date +%s) > deadline)); then
-    echo "::error::platform did not become healthy with default+system workspaces in 60s"
+    echo "::error::platform did not become healthy with default+system workspaces in ${TIMEOUT_SECS}s"
     echo "----- last \`nemo workspaces list -f json\` output (stdout+stderr) -----"
     nemo workspaces list -f json 2>&1 || true
     # Full services log is dumped by the EXIT trap.
