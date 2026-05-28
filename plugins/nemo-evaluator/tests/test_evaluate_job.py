@@ -18,6 +18,7 @@ from nemo_evaluator.jobs.evaluate import (
     DEFAULT_FILE_NAME,
     DEFAULT_RESULT_NAME,
     ROW_SCORES_RESULT_NAME,
+    EvaluateInputSpec,
     EvaluateJob,
     EvaluateSpec,
 )
@@ -48,7 +49,9 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
     SecretRef,
+    SupportedJobTypes,
 )
+from nemo_evaluator_sdk.values.llm_judge_defaults import default_judge_prompt_template_chat
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
@@ -319,7 +322,7 @@ def test_metric_bundle_validation_strips_payload_kind_before_payload_validation(
     assert isinstance(bundle.payload, _StrictMetricPayload)
 
 
-def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
+async def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
     tmp_path: Path,
     mocker: MockerFixture,
 ) -> None:
@@ -334,13 +337,21 @@ def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
     mocker.patch.object(LLMJudgeMetric, "compute_scores", compute_scores)
 
     ctx = _make_job_context(tmp_path)
+    spec = await EvaluateJob.to_spec(
+        EvaluateInputSpec.model_validate(
+            {
+                "metrics": [_bundle_payload(_llm_judge_ref_metric())],
+                "dataset": [{"output_text": "hello"}],
+            }
+        ),
+        workspace="default",
+        entity_client=object(),
+        async_sdk=cast(Any, _FakeSDK()),
+        is_local=True,
+    )
     run_result = EvaluateJob().run(
-        {
-            "metrics": [_bundle_payload(_llm_judge_ref_metric())],
-            "dataset": [{"output_text": "hello"}],
-        },
+        spec.model_dump(mode="json"),
         ctx=ctx,
-        sdk=_FakeSDK(),
     )
 
     payload = _load_artifact_payload(run_result)
@@ -369,18 +380,43 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     assert config["dataset"] == _exact_match_spec()["dataset"]
 
 
-async def test_evaluate_job_compile_preserves_bundled_metric_model_refs_for_runtime_resolution() -> None:
-    compiled = await EvaluateJob.compile(
-        workspace="default",
-        spec=EvaluateSpec.model_validate(
+def test_evaluate_spec_rejects_unresolved_bundled_metric_model_refs() -> None:
+    with pytest.raises(ValueError, match="EvaluateSpec metric models must be resolved"):
+        EvaluateSpec.model_validate(
+            {
+                "metrics": [_bundle_payload(_llm_judge_ref_metric())],
+                "dataset": [{"output_text": "hello"}],
+            }
+        )
+
+
+async def test_evaluate_job_to_spec_resolves_bundled_metric_model_refs_before_compile() -> None:
+    canonical = await EvaluateJob.to_spec(
+        EvaluateInputSpec.model_validate(
             {
                 "metrics": [_bundle_payload(_llm_judge_ref_metric())],
                 "dataset": [{"output_text": "hello"}],
             }
         ),
+        workspace="default",
+        entity_client=object(),
+        async_sdk=cast(Any, _FakeSDK()),
+        is_local=False,
+    )
+    assert isinstance(canonical, EvaluateSpec)
+    canonical_metric = unbundle_metric(canonical.metrics[0])
+    assert isinstance(canonical_metric, LLMJudgeMetric)
+    assert isinstance(canonical_metric.model, Model)
+    assert canonical_metric.model.name == "judge"
+    assert canonical_metric.model.url == "https://igw.example.test/v1/chat/completions"
+    assert canonical_metric.model.host_url == "http://nim.example.test:8000"
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=canonical,
         entity_client=object(),
         job_name=None,
-        async_sdk=_FakeSDK(),
+        async_sdk=object(),
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)
@@ -388,8 +424,43 @@ async def test_evaluate_job_compile_preserves_bundled_metric_model_refs_for_runt
     metric_bundle = MetricBundle.model_validate(config["metrics"][0])
     metric = unbundle_metric(metric_bundle)
     assert isinstance(metric, LLMJudgeMetric)
-    assert isinstance(metric.model, ModelRef)
-    assert metric.model.root == "default/judge"
+    assert isinstance(metric.model, Model)
+    assert metric.model.name == "judge"
+
+
+async def test_evaluate_job_to_spec_applies_job_params_without_model_refs() -> None:
+    canonical = await EvaluateJob.to_spec(
+        EvaluateInputSpec.model_validate(
+            {
+                "metrics": [
+                    _bundle_payload(
+                        LLMJudgeMetric(
+                            model=Model(url="http://judge.test/v1/chat/completions", name="judge"),
+                            scores=[
+                                RangeScore(
+                                    name="quality",
+                                    minimum=0,
+                                    maximum=1,
+                                    parser=JSONScoreParser(json_path="quality"),
+                                )
+                            ],
+                        )
+                    )
+                ],
+                "dataset": [{"output_text": "hello"}],
+                "params": RunConfig(),
+            }
+        ),
+        workspace="default",
+        entity_client=object(),
+        async_sdk=cast(Any, _FakeSDK()),
+        is_local=False,
+    )
+
+    assert isinstance(canonical, EvaluateSpec)
+    metric = unbundle_metric(canonical.metrics[0])
+    assert isinstance(metric, LLMJudgeMetric)
+    assert metric.prompt_template == default_judge_prompt_template_chat(SupportedJobTypes.OFFLINE)
 
 
 async def test_evaluate_job_compile_produces_online_model_job() -> None:

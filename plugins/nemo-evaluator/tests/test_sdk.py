@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
     MetricBundlePackagerPolicyError,
@@ -64,11 +64,22 @@ _EXACT_MATCH_EVALUATE_SPEC = EvaluateSpec.model_validate(_EXACT_MATCH_SPEC)
 _EXACT_MATCH_EVALUATE_SPEC_JSON = _EXACT_MATCH_EVALUATE_SPEC.model_dump(mode="json")
 
 
-def _single_metric(spec: EvaluateSpec) -> MetricBundle:
+def _single_metric(spec: EvaluateInputSpec | EvaluateSpec) -> MetricBundle:
     """Return the single metric from an evaluator job spec."""
     if len(spec.metrics) != 1:
         raise AssertionError("Expected a single metric spec.")
     return spec.metrics[0]
+
+
+def _local_run_result(tmp_path: Path, result: EvaluationResult) -> EvaluatorLocalRunResult:
+    result_path = tmp_path / "evaluation-results.json"
+    result_path.write_text(result.model_dump_json(), encoding="utf-8")
+    return EvaluatorLocalRunResult.model_validate(
+        {
+            "status": "completed",
+            "artifact": {"name": "evaluation-results", "artifact_url": f"file://{result_path}"},
+        }
+    )
 
 
 class _RecordingMetricBundlePackager(MetricBundlePackager):
@@ -644,13 +655,14 @@ class TestEvaluatorRun:
         remote_evaluate.assert_not_called()
 
 
-def test_sync_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
+def test_sync_executor_evaluate_runs_local_job_with_packaged_input(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
     platform = _SyncPlatform()
     executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
     expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
-    sdk_evaluator = mocker.Mock()
-    sdk_evaluator.run_sync.return_value = expected
-    sdk_evaluator_cls = mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
+    run_local = mocker.patch.object(executor, "run_local", return_value=_local_run_result(tmp_path, expected))
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     dataset = [{"expected": "a", "output": "a"}]
 
@@ -660,30 +672,24 @@ def test_sync_executor_evaluate_calls_sdk_directly_without_packaging(mocker: Moc
         params=RunConfig(parallelism=2),
     )
 
-    assert result is expected
-    sdk_evaluator_cls.assert_called_once_with()
-    sdk_evaluator.run_sync.assert_called_once_with(
-        metrics=metric,
-        dataset=dataset,
-        config=RunConfig(parallelism=2),
-        target=None,
-        dataset_glob_pattern=None,
-        prompt_template=None,
-    )
+    assert result == expected
+    run_local.assert_called_once()
+    assert run_local.call_args.kwargs["workspace"] == "platform-ws"
+    spec = run_local.call_args.kwargs["spec"]
+    assert isinstance(spec, EvaluateInputSpec)
+    assert _single_metric(spec).metric_type == "exact-match"
+    assert spec.dataset == dataset
+    assert spec.params == RunConfig(parallelism=2)
 
 
-def test_sync_executor_evaluate_resolves_fileset_ref_before_calling_sdk(mocker: MockerFixture) -> None:
+def test_sync_executor_evaluate_encodes_fileset_ref_before_local_job(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
     platform = _SyncPlatform()
     executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
     expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
-    sdk_evaluator = mocker.Mock()
-    sdk_evaluator.run_sync.return_value = expected
-    mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
-    downloaded_path = Path("/tmp/downloaded-dataset")
-    download_dataset_sync = mocker.patch(
-        "nemo_evaluator.sdk._executor.download_dataset_sync",
-        return_value=downloaded_path,
-    )
+    run_local = mocker.patch.object(executor, "run_local", return_value=_local_run_result(tmp_path, expected))
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     dataset = FilesetRef(root="default/helpsteer2")
 
@@ -693,18 +699,11 @@ def test_sync_executor_evaluate_resolves_fileset_ref_before_calling_sdk(mocker: 
         dataset_glob_pattern="validation/*.jsonl",
     )
 
-    assert result is expected
-    download_dataset_sync.assert_called_once()
-    assert download_dataset_sync.call_args.kwargs["sdk"] is platform
-    assert download_dataset_sync.call_args.kwargs["dataset"] == FilesetRef(root="default/helpsteer2#validation/*.jsonl")
-    sdk_evaluator.run_sync.assert_called_once_with(
-        metrics=metric,
-        dataset=downloaded_path,
-        config=RunConfig(),
-        target=None,
-        dataset_glob_pattern=None,
-        prompt_template=None,
-    )
+    assert result == expected
+    run_local.assert_called_once()
+    spec = run_local.call_args.kwargs["spec"]
+    assert isinstance(spec, EvaluateInputSpec)
+    assert spec.dataset == FilesetRef(root="default/helpsteer2#validation/*.jsonl")
 
 
 def test_sync_executor_evaluate_remote_submits_waits_and_downloads(mocker: MockerFixture) -> None:
@@ -1089,13 +1088,18 @@ async def test_async_executor_remote_submit_uses_platform_async_client_headers_a
 
 
 @pytest.mark.asyncio
-async def test_async_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
+async def test_async_executor_evaluate_runs_local_job_with_packaged_input(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
     platform = _AsyncPlatform()
     executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
     expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
-    sdk_evaluator = mocker.Mock()
-    sdk_evaluator.run = AsyncMock(return_value=expected)
-    sdk_evaluator_cls = mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
+    run_local = mocker.patch.object(
+        executor,
+        "run_local",
+        new=AsyncMock(return_value=_local_run_result(tmp_path, expected)),
+    )
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     dataset = [{"expected": "a", "output": "a"}]
 
@@ -1105,16 +1109,14 @@ async def test_async_executor_evaluate_calls_sdk_directly_without_packaging(mock
         params=RunConfig(parallelism=2),
     )
 
-    assert result is expected
-    sdk_evaluator_cls.assert_called_once_with()
-    sdk_evaluator.run.assert_awaited_once_with(
-        metrics=metric,
-        dataset=dataset,
-        config=RunConfig(parallelism=2),
-        target=None,
-        dataset_glob_pattern=None,
-        prompt_template=None,
-    )
+    assert result == expected
+    run_local.assert_awaited_once()
+    assert run_local.call_args.kwargs["workspace"] == "platform-ws"
+    spec = run_local.call_args.kwargs["spec"]
+    assert isinstance(spec, EvaluateInputSpec)
+    assert _single_metric(spec).metric_type == "exact-match"
+    assert spec.dataset == dataset
+    assert spec.params == RunConfig(parallelism=2)
 
 
 @pytest.mark.asyncio
