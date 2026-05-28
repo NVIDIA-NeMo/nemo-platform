@@ -18,6 +18,7 @@ from nemo_evaluator.jobs.evaluate import (
     DEFAULT_FILE_NAME,
     DEFAULT_RESULT_NAME,
     ROW_SCORES_RESULT_NAME,
+    EvaluateInputSpec,
     EvaluateJob,
     EvaluateSpec,
 )
@@ -180,6 +181,7 @@ def test_cli_explain_uses_registered_evaluator_job_key() -> None:
     assert payload["job_key"] == "evaluator.evaluate"
     assert payload["endpoint"] == "/apis/evaluator/v2/workspaces/{workspace}/evaluate/jobs"
     assert payload["spec_schema"]["title"] == "EvaluateSpec"
+    assert payload["input_spec_schema"]["title"] == "EvaluateInputSpec"
 
 
 def test_cli_info_reports_registered_evaluator_job_key() -> None:
@@ -233,13 +235,14 @@ def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
     mocker.patch.object(LLMJudgeMetric, "compute_scores", compute_scores)
 
     ctx = _make_job_context(tmp_path)
-    run_result = EvaluateJob().run(
+    run_result = NemoJobScheduler().run_local(
+        EvaluateJob,
         {
             "metric": _llm_judge_ref_metric().model_dump(mode="json"),
             "dataset": [{"output_text": "hello"}],
         },
         ctx=ctx,
-        sdk=_FakeSDK(),
+        async_sdk=_FakeSDK(),
     )
 
     payload = _load_artifact_payload(run_result)
@@ -250,8 +253,9 @@ def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
 def test_evaluate_job_rejects_model_refs_without_platform_sdk(tmp_path: Path) -> None:
     ctx = _make_job_context(tmp_path)
 
-    with pytest.raises(ValueError, match="ModelRef metrics require `sdk` or `async_sdk`"):
-        EvaluateJob().run(
+    with pytest.raises(ValueError, match="ModelRef metrics require `async_sdk`"):
+        NemoJobScheduler().run_local(
+            EvaluateJob,
             {
                 "metric": _llm_judge_ref_metric().model_dump(mode="json"),
                 "dataset": [{"output_text": "hello"}],
@@ -280,18 +284,33 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
 
 
-async def test_evaluate_job_compile_resolves_metric_model_refs_before_remote_job() -> None:
-    compiled = await EvaluateJob.compile(
-        workspace="default",
-        spec=EvaluateSpec.model_validate(
+async def test_evaluate_job_to_spec_resolves_metric_model_refs_before_remote_job() -> None:
+    canonical = await EvaluateJob.to_spec(
+        EvaluateInputSpec.model_validate(
             {
                 "metric": _llm_judge_ref_metric().model_dump(mode="json"),
                 "dataset": [{"output_text": "hello"}],
             }
         ),
+        workspace="default",
+        entity_client=object(),
+        async_sdk=cast(Any, _FakeSDK()),
+        is_local=False,
+    )
+
+    assert isinstance(canonical, EvaluateSpec)
+    assert isinstance(canonical.metric, LLMJudgeMetric)
+    assert isinstance(canonical.metric.model, Model)
+    assert canonical.metric.model.name == "judge"
+    assert canonical.metric.model.url == "https://igw.example.test/v1/chat/completions"
+    assert canonical.metric.model.host_url == "http://nim.example.test:8000"
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=canonical,
         entity_client=object(),
         job_name=None,
-        async_sdk=_FakeSDK(),
+        async_sdk=object(),
     )
 
     job_spec = PlatformJobSpec.model_validate(compiled)

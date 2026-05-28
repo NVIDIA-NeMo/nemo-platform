@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
@@ -16,7 +15,6 @@ from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution._protocols import JobParamsConfigurableMetric
 from nemo_evaluator_sdk.execution.config import normalize_params
-from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import MetricWithModels
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from nemo_evaluator_sdk.values import (
@@ -36,7 +34,7 @@ from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent
-MetricSpec: TypeAlias = MetricsUnion | Annotated[Sequence[MetricsUnion], Field(min_length=1)]
+MetricSpec: TypeAlias = MetricsUnion | Annotated[list[MetricsUnion], Field(min_length=1)]
 EvaluationArtifactResult: TypeAlias = EvaluationResult | BenchmarkEvaluationResult
 InlineDataset: TypeAlias = Annotated[list[dict[str, object]], Field(min_length=1)]
 DatasetSpec: TypeAlias = InlineDataset | FilesetRef
@@ -61,8 +59,33 @@ class EvaluationResultFiles:
     artifacts_dir: Path
 
 
-class EvaluateSpec(BaseModel):
-    """Inline SDK evaluation input for the first evaluator plugin job."""
+def _unresolved_model_refs(metric: MetricsUnion | list[MetricsUnion]) -> list[str]:
+    metrics = metric if isinstance(metric, list) else [metric]
+    refs = [
+        model_ref.root
+        for item in metrics
+        if isinstance(item, MetricWithModels)
+        for model_ref in item.model_refs().values()
+    ]
+    return sorted(refs)
+
+
+async def _resolve_metric_models(
+    metric: MetricsUnion | list[MetricsUnion],
+    resolver: PlatformModelResolver,
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
+) -> None:
+    """Resolve ModelRef fields on metric configs before SDK execution."""
+    metrics = metric if isinstance(metric, list) else [metric]
+    for item in metrics:
+        if isinstance(item, JobParamsConfigurableMetric):
+            item.apply_evaluation_job_params(params)
+        if isinstance(item, MetricWithModels):
+            await item.resolve_models(resolver)
+
+
+class EvaluateInputSpec(BaseModel):
+    """Submitter-facing SDK evaluation input for the evaluator plugin job."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -84,12 +107,26 @@ class EvaluateSpec(BaseModel):
         return self
 
 
+class EvaluateSpec(EvaluateInputSpec):
+    """Canonical SDK evaluation spec with platform model references resolved."""
+
+    @model_validator(mode="after")
+    def reject_unresolved_metric_model_refs(self) -> Self:
+        unresolved_refs = _unresolved_model_refs(self.metric)
+        if unresolved_refs:
+            raise ValueError(
+                "EvaluateSpec metric models must be resolved before compile/run: " + ", ".join(unresolved_refs)
+            )
+        return self
+
+
 class EvaluateJob(NemoJob):
     """Run one evaluator SDK metric against inline rows."""
 
     name: ClassVar[str] = "evaluate"
     description: ClassVar[str] = "Run an inline evaluator SDK metric against inline dataset rows."
     container: ClassVar[str] = "cpu-tasks"
+    input_spec_schema: ClassVar[type[BaseModel] | None] = EvaluateInputSpec
     spec_schema: ClassVar[type[BaseModel] | None] = EvaluateSpec
     job_collection_path: ClassVar[str | None] = "/evaluate/jobs"
 
@@ -116,30 +153,35 @@ class EvaluateJob(NemoJob):
             artifacts_dir=artifacts_dir,
         )
 
-    @staticmethod
-    async def _resolve_metric_models(
-        metric: MetricsUnion | Sequence[MetricsUnion],
-        resolver: PlatformModelResolver,
-        params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
-    ) -> None:
-        """Resolve ModelRef fields on metric configs before local SDK execution."""
-        metrics = metric if isinstance(metric, Sequence) else (metric,)
-        for item in metrics:
-            if isinstance(item, JobParamsConfigurableMetric):
-                item.apply_evaluation_job_params(params)
-            if isinstance(item, MetricWithModels):
-                await item.resolve_models(resolver)
-
-    @staticmethod
-    def _unresolved_model_refs(metric: MetricsUnion | Sequence[MetricsUnion]) -> list[str]:
-        metrics = metric if isinstance(metric, Sequence) else (metric,)
-        refs = [
-            model_ref.root
-            for item in metrics
-            if isinstance(item, MetricWithModels)
-            for model_ref in item.model_refs().values()
-        ]
-        return sorted(refs)
+    @classmethod
+    async def to_spec(
+        cls,
+        input_spec: BaseModel,
+        *,
+        workspace: str,
+        entity_client: object,
+        async_sdk: AsyncNeMoPlatform,
+        is_local: bool,
+    ) -> BaseModel:
+        """Resolve submitter-facing model references into the canonical evaluation spec."""
+        del workspace, entity_client, is_local
+        submit_spec = (
+            input_spec.model_copy(deep=True)
+            if isinstance(input_spec, EvaluateInputSpec)
+            else EvaluateInputSpec.model_validate(input_spec.model_dump())
+        )
+        unresolved_refs = _unresolved_model_refs(submit_spec.metric)
+        if unresolved_refs:
+            if async_sdk is None:
+                raise ValueError(
+                    "ModelRef metrics require `async_sdk` for spec resolution: " + ", ".join(unresolved_refs)
+                )
+            await _resolve_metric_models(
+                submit_spec.metric,
+                PlatformModelResolver(async_sdk),
+                normalize_params(submit_spec.params, submit_spec.target),
+            )
+        return EvaluateSpec.model_validate(submit_spec.model_dump(mode="python"))
 
     @classmethod
     async def compile(
@@ -162,44 +204,48 @@ class EvaluateJob(NemoJob):
         )
 
         from nmp.evaluator.app.jobs.metrics import compile_metric_job
-        from nmp.evaluator.app.values import MetricOfflineJob, MetricOnlineAgentJob, MetricOnlineJob
+        from nmp.evaluator.app.values import Dataset, MetricOfflineJob, MetricOnlineAgentJob, MetricOnlineJob
 
         dataset, dataset_ref = await resolve_submit_dataset(cast(AsyncNeMoPlatform, async_sdk), canonical_spec.dataset)
+        compiled_dataset = cast(Dataset, dataset)
         params = normalize_params(canonical_spec.params, canonical_spec.target)
-        await cls._resolve_metric_models(canonical_spec.metric, PlatformModelResolver(async_sdk), params)
         metric = remote_compile_metric(canonical_spec.metric)
         if isinstance(canonical_spec.target, Model):
-            if canonical_spec.prompt_template is None:
+            model = canonical_spec.target
+            prompt_template = canonical_spec.prompt_template
+            if prompt_template is None:
                 raise ValueError("prompt_template is required when EvaluateSpec.target is a model")
             if not isinstance(params, RunConfigOnlineModel):
                 raise TypeError("model target requires RunConfigOnlineModel")
             metric_job = MetricOnlineJob(
                 metric=metric,
-                model=canonical_spec.target,
-                dataset=dataset,
+                model=model,
+                dataset=compiled_dataset,
                 dataset_ref=dataset_ref,
                 params=params,
-                prompt_template=canonical_spec.prompt_template,
+                prompt_template=prompt_template,
             )
         elif isinstance(canonical_spec.target, Agent):
-            if canonical_spec.prompt_template is None:
+            agent = canonical_spec.target
+            prompt_template = canonical_spec.prompt_template
+            if prompt_template is None:
                 raise ValueError("prompt_template is required when EvaluateSpec.target is an agent")
             if not isinstance(params, RunConfigOnline):
                 raise TypeError("agent target requires RunConfigOnline")
             metric_job = MetricOnlineAgentJob(
                 metric=metric,
-                agent=canonical_spec.target,
-                dataset=dataset,
+                agent=agent,
+                dataset=compiled_dataset,
                 dataset_ref=dataset_ref,
                 params=params,
-                prompt_template=canonical_spec.prompt_template,
+                prompt_template=prompt_template,
             )
         else:
             if not isinstance(params, RunConfig):
                 raise TypeError("offline evaluation requires RunConfig")
             metric_job = MetricOfflineJob(
                 metric=metric,
-                dataset=dataset,
+                dataset=compiled_dataset,
                 dataset_ref=dataset_ref,
                 params=params,
             )
@@ -209,16 +255,7 @@ class EvaluateJob(NemoJob):
         """Run the evaluator job locally and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()
-        platform_sdk = async_sdk or sdk
         params = normalize_params(spec.params, spec.target)
-        if platform_sdk is None:
-            unresolved_refs = self._unresolved_model_refs(spec.metric)
-            if unresolved_refs:
-                raise ValueError(
-                    "ModelRef metrics require `sdk` or `async_sdk` for local execution: " + ", ".join(unresolved_refs)
-                )
-        else:
-            run_sync(lambda: self._resolve_metric_models(spec.metric, PlatformModelResolver(platform_sdk), params))
         dataset = resolve_run_dataset(
             spec.dataset,
             ctx=ctx,
@@ -231,10 +268,7 @@ class EvaluateJob(NemoJob):
             "target": spec.target,
             "prompt_template": spec.prompt_template,
         }
-        if isinstance(spec.metric, Sequence):
-            result = evaluator.run_sync(metrics=spec.metric, **common_kwargs)
-        else:
-            result = evaluator.run_sync(metrics=cast(MetricsUnion, spec.metric), **common_kwargs)
+        result = evaluator.run_sync(metrics=spec.metric, **common_kwargs)
         result_files = self._write_result_files(result, ctx.storage.persistent)
         artifact = ctx.results.save(DEFAULT_RESULT_NAME, result_files.full_result)
         ctx.results.save(AGGREGATE_SCORES_RESULT_NAME, result_files.aggregate_scores)

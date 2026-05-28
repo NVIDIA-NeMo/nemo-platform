@@ -5,8 +5,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
@@ -17,11 +16,11 @@ from nmp.evaluator.app.datasets.nmp_datasets.fileset import dataset_exists, down
 from nmp.evaluator.app.values import FilesetRef
 
 
-def remote_compile_metric(metric: MetricsUnion | Sequence[MetricsUnion]) -> MetricsUnion:
+def remote_compile_metric(metric: MetricsUnion | list[MetricsUnion]) -> MetricsUnion:
     """Return the single metric supported by remote service metric-job compilation."""
-    if isinstance(metric, Sequence):
+    if isinstance(metric, list):
         raise NotImplementedError("Remote benchmark compilation is not implemented for inline evaluator plugin specs.")
-    return cast(MetricsUnion, metric)
+    return metric
 
 
 async def resolve_submit_dataset(

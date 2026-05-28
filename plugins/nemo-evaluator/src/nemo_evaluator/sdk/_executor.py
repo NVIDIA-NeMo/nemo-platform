@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, TypeAlias, cast, runtime_checkable
 
 import httpx
-from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult, local_result_path
 from nemo_evaluator.sdk.job_resources import (
@@ -22,6 +22,7 @@ from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
+from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -39,6 +40,7 @@ from nmp.evaluator.app.values import FilesetRef
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
+EvaluateRequestSpec: TypeAlias = EvaluateInputSpec | EvaluateSpec
 
 
 @runtime_checkable
@@ -65,7 +67,7 @@ def _dataset_config(request: EvaluationRequest) -> list[dict[str, Any]] | Filese
     )
 
 
-def _build_evaluate_spec(*, metrics: Metric | Sequence[Metric], request: EvaluationRequest) -> EvaluateSpec:
+def _build_evaluate_spec(*, metrics: Metric | Sequence[Metric], request: EvaluationRequest) -> EvaluateInputSpec:
     """Build the evaluator plugin spec shared by local and remote execution."""
     spec = {
         "metric": metrics_config(metrics),
@@ -76,7 +78,30 @@ def _build_evaluate_spec(*, metrics: Metric | Sequence[Metric], request: Evaluat
         spec["target"] = request.target.model_dump(mode="json")
     if request.prompt_template is not None:
         spec["prompt_template"] = request.prompt_template
-    return EvaluateSpec.model_validate(spec)
+    return EvaluateInputSpec.model_validate(spec)
+
+
+def _resolve_sync_local_spec(
+    spec: EvaluateRequestSpec,
+    *,
+    platform: NeMoPlatform,
+    workspace: str,
+) -> EvaluateSpec:
+    """Return a canonical local spec, resolving input-only model references with the sync SDK."""
+    if isinstance(spec, EvaluateSpec):
+        return spec
+    return cast(
+        EvaluateSpec,
+        run_sync(
+            lambda: EvaluateJob.to_spec(
+                spec,
+                workspace=workspace,
+                entity_client=None,
+                async_sdk=cast(AsyncNeMoPlatform, platform),
+                is_local=True,
+            )
+        ),
+    )
 
 
 class _SyncEvaluatorPluginExecutor:
@@ -102,7 +127,7 @@ class _SyncEvaluatorPluginExecutor:
     def create(
         self,
         *,
-        spec: EvaluateSpec,
+        spec: EvaluateRequestSpec,
         workspace: str | None = None,
         wait_until_done: bool = False,
     ) -> EvaluatorJobResource:
@@ -134,12 +159,18 @@ class _SyncEvaluatorPluginExecutor:
             )
         return job_resource
 
-    def run_local(self, *, spec: EvaluateSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
+    def run_local(self, *, spec: EvaluateRequestSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
         """Run an evaluator plugin job locally with a sync platform client."""
+        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
+        canonical_spec = _resolve_sync_local_spec(
+            spec,
+            platform=self._platform,
+            workspace=resolved_workspace,
+        )
         payload = NemoJobScheduler().run_local(
             EvaluateJob,
-            spec.model_dump(mode="json"),
-            workspace=http_utils.resolve_workspace(self._platform, workspace),
+            canonical_spec.model_dump(mode="json"),
+            workspace=resolved_workspace,
             sdk=self._platform,
         )
 
@@ -264,7 +295,7 @@ class _AsyncEvaluatorPluginExecutor:
     async def create(
         self,
         *,
-        spec: EvaluateSpec,
+        spec: EvaluateRequestSpec,
         workspace: str | None = None,
         wait_until_done: bool = False,
     ) -> AsyncEvaluatorJobResource:
@@ -296,7 +327,7 @@ class _AsyncEvaluatorPluginExecutor:
             )
         return job_resource
 
-    async def run_local(self, *, spec: EvaluateSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
+    async def run_local(self, *, spec: EvaluateRequestSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
         """Run an evaluator plugin job locally without blocking the event loop."""
         scheduler = NemoJobScheduler()
         # Leverages programmatic dispatch as described in

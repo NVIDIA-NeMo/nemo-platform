@@ -5,13 +5,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
     _AsyncEvaluatorPluginExecutor,
@@ -25,9 +25,12 @@ from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
+from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel
+from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
+from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
 from nmp.evaluator.app.values import FilesetRef
@@ -46,9 +49,24 @@ _EXACT_MATCH_EVALUATE_SPEC = EvaluateSpec.model_validate(_EXACT_MATCH_SPEC)
 _EXACT_MATCH_EVALUATE_SPEC_JSON = _EXACT_MATCH_EVALUATE_SPEC.model_dump(mode="json")
 
 
+def _llm_judge_ref_metric() -> LLMJudgeMetric:
+    """Return an LLM judge metric using a platform model reference."""
+    return LLMJudgeMetric(
+        model=ModelRef(root="default/judge"),
+        scores=[
+            RangeScore(
+                name="quality",
+                minimum=0,
+                maximum=1,
+                parser=JSONScoreParser(json_path="quality"),
+            )
+        ],
+    )
+
+
 def _single_metric(spec: EvaluateSpec) -> MetricsUnion:
     """Return the single metric from an evaluator job spec."""
-    if isinstance(spec.metric, Sequence):
+    if isinstance(spec.metric, list):
         raise AssertionError("Expected a single metric spec.")
     return spec.metric
 
@@ -60,6 +78,15 @@ class _SyncPlatform:
         self.default_headers = {"Authorization": "Bearer sync-platform-token"}
         self.timeout = httpx.Timeout(42.0)
         self._client = MagicMock(spec=httpx.Client)
+        self.models = SimpleNamespace(
+            retrieve=MagicMock(return_value=SimpleNamespace(model_providers=["default/provider"])),
+            get_model_entity_route_openai_url=MagicMock(return_value="https://igw.example.test/v1/chat/completions"),
+        )
+        self.inference = SimpleNamespace(
+            providers=SimpleNamespace(
+                retrieve=MagicMock(return_value=SimpleNamespace(host_url="http://nim.example.test:8000"))
+            )
+        )
 
 
 class _AsyncPlatform:
@@ -170,6 +197,18 @@ def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
 
     assert spec.target == model
     assert spec.prompt_template == "Answer: {{item.input}}"
+
+
+def test_build_evaluate_spec_allows_unresolved_metric_model_refs() -> None:
+    """SDK convenience specs should preserve input-only ModelRefs for ``to_spec`` resolution."""
+    spec = _build_evaluate_spec(
+        metrics=_llm_judge_ref_metric(),
+        request=EvaluationRequest(dataset=[{"output_text": "hello"}]),
+    )
+
+    assert isinstance(spec, EvaluateInputSpec)
+    assert isinstance(spec.metric, LLMJudgeMetric)
+    assert spec.metric.model == ModelRef(root="default/judge")
 
 
 def test_build_evaluate_spec_excludes_aggregate_fields() -> None:
@@ -432,6 +471,34 @@ def test_sync_executor_runs_evaluator_job_locally(mocker: MockerFixture) -> None
     to_thread.assert_not_called()
 
 
+def test_sync_executor_resolves_input_model_refs_before_local_scheduler(mocker: MockerFixture) -> None:
+    platform = _SyncPlatform()
+    scheduler = mocker.Mock()
+    expected = {"status": "completed", "artifact": {"name": "evaluation-results", "artifact_url": "file:///results"}}
+    scheduler.run_local.return_value = expected
+    mocker.patch("nemo_evaluator.sdk._executor.NemoJobScheduler", return_value=scheduler, create=True)
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    spec = _build_evaluate_spec(
+        metrics=_llm_judge_ref_metric(),
+        request=EvaluationRequest(dataset=[{"output_text": "hello"}]),
+    )
+
+    result = executor.run_local(spec=spec, workspace="ws")
+
+    assert result.status == "completed"
+    platform.models.retrieve.assert_called_once_with("judge", workspace="default")
+    platform.inference.providers.retrieve.assert_called_once_with("provider", workspace="default")
+    scheduler.run_local.assert_called_once()
+    args = scheduler.run_local.call_args.args
+    kwargs = scheduler.run_local.call_args.kwargs
+    assert args[0] is EvaluateJob
+    submitted = args[1]
+    assert submitted["metric"]["model"]["name"] == "judge"
+    assert submitted["metric"]["model"]["url"] == "https://igw.example.test/v1/chat/completions"
+    assert submitted["metric"]["model"]["host_url"] == "http://nim.example.test:8000"
+    assert kwargs == {"workspace": "ws", "sdk": platform}
+
+
 class TestEvaluatorSubmit:
     """Tests for ``Evaluator.submit`` request construction."""
 
@@ -583,7 +650,7 @@ def test_sync_executor_evaluate_remote_submits_waits_and_downloads(mocker: Mocke
 
     assert result == expected
     create.assert_called_once_with(
-        spec=EvaluateSpec.model_validate(
+        spec=EvaluateInputSpec.model_validate(
             {
                 "metric": {
                     "type": "exact-match",
@@ -955,7 +1022,7 @@ async def test_async_executor_evaluate_remote_submits_waits_and_downloads(mocker
 
     assert result == expected
     create.assert_awaited_once_with(
-        spec=EvaluateSpec.model_validate(
+        spec=EvaluateInputSpec.model_validate(
             {
                 "metric": {
                     "type": "exact-match",
