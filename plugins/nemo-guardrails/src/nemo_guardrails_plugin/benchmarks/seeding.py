@@ -243,8 +243,13 @@ def build_guardrail_config_data(
     if not prompts_yaml.is_file():
         raise FileNotFoundError(f"Expected guardrails prompts at {prompts_yaml}")
 
-    config: dict[str, Any] = yaml.safe_load(config_yaml.read_text(encoding="utf-8"))
-    prompts: dict[str, Any] = yaml.safe_load(prompts_yaml.read_text(encoding="utf-8"))
+    config = yaml.safe_load(config_yaml.read_text(encoding="utf-8"))
+    if not isinstance(config, dict):
+        raise ValueError(f"Expected a YAML mapping at {config_yaml}, got {type(config).__name__}")
+
+    prompts = yaml.safe_load(prompts_yaml.read_text(encoding="utf-8")) or {}
+    if not isinstance(prompts, dict):
+        raise ValueError(f"Expected a YAML mapping at {prompts_yaml}, got {type(prompts).__name__}")
 
     config["models"] = [
         {

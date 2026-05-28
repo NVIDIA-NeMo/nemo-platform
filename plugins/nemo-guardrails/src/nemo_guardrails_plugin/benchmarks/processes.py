@@ -91,15 +91,20 @@ class SupervisedProcess:
         self._log_fh = self.log_path.open("wb")
 
         log.info("Starting %s; log=%s", self.name, self.log_path)
-        # Spawn the child process.
-        self._proc = subprocess.Popen(
-            self.cmd,
-            cwd=str(self.cwd),  # Working directory
-            env={**os.environ, **(self.env or {})},  # Extra environment variables
-            stdout=self._log_fh,  # Redirect stdout to the log file
-            stderr=subprocess.STDOUT,  # Redirect stderr to stdout
-            start_new_session=True,  # Create a new session for the child
-        )
+        try:
+            self._proc = subprocess.Popen(
+                self.cmd,
+                cwd=str(self.cwd),
+                env={**os.environ, **(self.env or {})},
+                stdout=self._log_fh,
+                stderr=subprocess.STDOUT,
+                start_new_session=True,
+            )
+        except BaseException:
+            # Popen failed; close the log handle so we don't leak it.
+            self._log_fh.close()
+            self._log_fh = None
+            raise
 
     def stop(self) -> None:
         """Terminate the child's process group and close the log file.

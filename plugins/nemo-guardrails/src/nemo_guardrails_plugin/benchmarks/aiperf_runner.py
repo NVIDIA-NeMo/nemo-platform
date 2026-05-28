@@ -77,7 +77,7 @@ def prepare_runtime_aiperf_config(
 
     config = yaml.safe_load(template_path.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
-        raise ValueError(f"Failed to parse AIPerf template {template_path}. Ensure it is valid YAML.")
+        raise ValueError(f"Expected a YAML mapping at {template_path}, got {type(config).__name__}")
 
     # Point AIPerf's output_base_dir at this run's directory so its results
     # nest under our per-run artifacts tree.
