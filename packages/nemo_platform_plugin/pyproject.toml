@@ -34,7 +34,6 @@ dependencies = [
 license = "Apache-2.0"
 
 [project.optional-dependencies]
-# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-sdk = [
   "httpx>=0.23.0, <1",
   "pydantic>=2.0.0,<3",

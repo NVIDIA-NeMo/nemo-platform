@@ -1,6 +1,6 @@
 # nemo-platform
 
-Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[services]`, this is the wheel they get.
+Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[all]`, this is the wheel they get.
 
 The wheel bundles the SDK, shared runtime packages, default first-party plugins, and services directly from source via hatch force-include. As sub-packages are published independently to PyPI, they'll be removed from the bundle and added as normal dependencies instead.
 
@@ -53,7 +53,7 @@ A dependency with extras and a marker, such as `nemo-platform-sdk[aiohttp] ; pyt
 
 ### `make vendor` (vendor tool)
 
-The vendor tool resets generated wrapper metadata before rebuilding it, so stale generated extras, scripts, and entry-point tables do not persist across runs. Generated sections are annotated with `# Generated from [tool.bundle-package]; do not edit by hand.`.
+The vendor tool resets the wrapper's generated metadata before rebuilding it, so stale generated extras, scripts, and entry-point tables do not persist across runs. The wrapper's `[project.optional-dependencies]` table is fully owned by the rebuild flow — on every run it is wiped, then re-emitted from a single source of truth. Generated `[project.scripts]` and `[project.entry-points.*]` tables get a `# Generated from [tool.bundle-package]; do not edit this table by hand.` header marker.
 
 The `_process_bundle_packages()` phase in `vendor_package.py` reads `[tool.bundle-package]` from every workspace package that has one. For each entry it:
 
@@ -70,6 +70,8 @@ For the wrapper specifically, `make vendor` also creates aggregate extras from `
 - `core-service` references all core service `*-service` extras.
 - `plugins` references all bundled first-party plugin extras whose source lives under `plugins/*/src`.
 - `services` references `core-service`, all non-core service `*-service` extras, and `plugins`.
+
+Hand-written aliases (currently just `all`, which expands to `services`) are declared in the `WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES` constant near the top of `tools/nemo-platform-sdk-tools/src/nemo_platform_sdk_tools/sdk/vendor/vendor_package.py`. The rebuild emits manual aliases first, in the order declared, and then every other extra alphabetically. To add a new manual alias, append an entry there with `name`, `deps`, and an optional `comment`.
 
 ## Dependency groups
 
@@ -98,10 +100,11 @@ Service and plugin dependencies are behind optional extras. They are composed vi
 - `core-service` — aggregates all core service `-service` extras
 - `plugins` — aggregates default first-party plugin extras
 - `services` — aggregates `core-service`, all non-core service `-service` extras, and `plugins`
+- `all` — hand-written alias for the full packaged install; expands to `services`. The recommended user-facing extra (`pip install nemo-platform[all]`).
 
 The `services` extra includes `plugins` because Python entry points are distribution-level metadata and are not conditional on extras. If the wrapper publishes plugin `nemo.services` entry points, installing service discovery dependencies must also install the plugin dependencies needed by those entry points.
 
-The `[project.optional-dependencies]` section is **auto-generated** by `make vendor`. Do not edit it by hand. The wheel rewrite step assumes those generated `deps_group` extras already exist before the build starts.
+The `[project.optional-dependencies]` table is **fully owned** by `make vendor` — the table is wiped and re-emitted from scratch on every run. Do not edit it by hand. To add a new hand-written alias, edit `WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES` in `vendor_package.py` instead. The wheel rewrite step assumes the generated `deps_group` extras already exist before the build starts.
 
 The wrapper's generated `[project.scripts]` currently re-exports only the SDK CLI entry points:
 
@@ -121,7 +124,7 @@ To publish a bundled package independently:
 2. Add it as a normal dependency in `[project.dependencies]` (or in the appropriate optional group)
 3. Run `make vendor` to regenerate the dependency groups
 
-The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[services]` continues to work.
+The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[all]` (and `[services]`) continues to work.
 
 ## Other vendoring (`make vendor`)
 

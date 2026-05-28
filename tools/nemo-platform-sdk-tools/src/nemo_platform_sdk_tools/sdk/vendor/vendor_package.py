@@ -21,11 +21,28 @@ from pydantic import BaseModel
 # Logger for verbose output - writes to file only
 logger = logging.getLogger(__name__)
 logger.propagate = False  # Don't send logs to root logger (prevents console output)
-GENERATED_BUNDLE_GROUP_COMMENT = "# Generated from [tool.bundle-package]; do not edit by hand."
+# Marker the vendor flow writes above whole generated tables (e.g.
+# `[project.scripts]`). We still emit this one.
 GENERATED_BUNDLE_TABLE_COMMENT = "# Generated from [tool.bundle-package]; do not edit this table by hand."
-GENERATED_OPTIONAL_DEPENDENCY_COMMENTS = {GENERATED_BUNDLE_GROUP_COMMENT}
+# Legacy per-entry marker. The vendor flow no longer emits this — the rebuild
+# now owns whole tables — but we still recognize it so old workspace
+# checkouts get cleaned up automatically on the next `make vendor`.
+GENERATED_BUNDLE_GROUP_COMMENT = "# Generated from [tool.bundle-package]; do not edit by hand."
 GENERATED_PROJECT_COMMENTS = {GENERATED_BUNDLE_GROUP_COMMENT, GENERATED_BUNDLE_TABLE_COMMENT}
 VALID_BUNDLE_INHERIT_VALUES = {"entry-points", "optional-dependencies", "scripts"}
+
+# Hand-written optional-dependency extras on the wrapper. These are emitted
+# first (in this order) above the auto-generated extras. Each entry maps an
+# extra name to its dependency list and an optional comment. Update this list
+# when adding new manual aliases — the rest of the rebuild flow handles
+# placement and formatting.
+WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES: list[dict] = [
+    {
+        "name": "all",
+        "deps": ["nemo-platform[services]"],
+        "comment": "Alias for the full packaged install (kept in sync with `services`).",
+    },
+]
 
 
 def _setup_logging() -> None:
@@ -201,35 +218,6 @@ def _find_import_insertion_index(module: cst.Module) -> int:
             break
 
     return last_import_idx + 1 if last_import_idx >= 0 else 0
-
-
-def _merge_client_source_imports(source_module: cst.Module, target_module: cst.Module) -> cst.Module:
-    source_from_imports, source_import_modules, _ = _collect_top_level_imports(source_module)
-    target_from_imports, target_import_modules, target_bound_names = _collect_top_level_imports(target_module)
-
-    missing_statements: list[cst.BaseStatement] = []
-
-    for module_name in sorted(source_import_modules):
-        if module_name in target_import_modules:
-            continue
-        missing_statements.append(cst.parse_statement(f"import {module_name}"))
-
-    for module_name in sorted(source_from_imports):
-        missing_names = sorted(
-            name
-            for name in source_from_imports[module_name] - target_from_imports.get(module_name, set())
-            if name.split(".")[-1] not in target_bound_names
-        )
-        if not missing_names:
-            continue
-        missing_statements.append(cst.parse_statement(f"from {module_name} import {', '.join(missing_names)}"))
-
-    if not missing_statements:
-        return target_module
-
-    insert_at = _find_import_insertion_index(target_module)
-    new_body = list(target_module.body[:insert_at]) + missing_statements + list(target_module.body[insert_at:])
-    return target_module.with_changes(body=new_body)
 
 
 def _ensure_required_client_init_imports(target_module: cst.Module) -> cst.Module:
@@ -512,8 +500,8 @@ def vendor_all_packages_from_configs(packages: list[str]) -> None:
     # Without this, ordering depends on package processing order in the Makefile.
     _sort_wrapper_pyproject_fields()
 
-    # Phase 7: annotate bundle-generated optional-dependency groups after the
-    # final tomlkit rewrite so it's clear which groups are machine-generated.
+    # Phase 6: rewrite optional-dependencies (manual aliases + generated extras)
+    # and annotate generated scripts/entry-point tables.
     _annotate_generated_bundle_groups()
 
     _normalize_static_force_include_spacing(WRAPPER_PATH / "pyproject.toml")
@@ -572,18 +560,6 @@ def _find_package_dir(package_name: str, package_config: dict, parent_dir: Path)
     return None
 
 
-def _merge_project_entrypoints(target_project: dict, source_project: dict) -> None:
-    source_entrypoints = source_project.get("entry-points", {})
-    if not source_entrypoints:
-        return
-
-    target_entrypoints = target_project.setdefault("entry-points", {})
-    for group, entries in source_entrypoints.items():
-        target_group = target_entrypoints.setdefault(group, {})
-        for name, value in entries.items():
-            target_group[name] = value
-
-
 def _matches_any_pattern(value: str, patterns: list[str]) -> bool:
     return any(fnmatchcase(value, pattern) for pattern in patterns)
 
@@ -600,16 +576,6 @@ def _merge_matching_project_entrypoints(target_project: dict, source_project: di
         target_group = target_entrypoints.setdefault(group, {})
         for name, value in entries.items():
             target_group[name] = value
-
-
-def _merge_project_scripts(target_project: dict, source_project: dict) -> None:
-    source_scripts = source_project.get("scripts", {})
-    if not source_scripts:
-        return
-
-    target_scripts = target_project.setdefault("scripts", tomlkit.table())
-    for name, value in source_scripts.items():
-        target_scripts[name] = value
 
 
 def _merge_matching_project_scripts(target_project: dict, source_project: dict, patterns: list[str]) -> None:
@@ -630,20 +596,6 @@ def _should_copy_optional_dependency_extra(extra_name: str, target_project_name:
     if target_project_name and canonical_extra == canonicalize_name(target_project_name):
         return False
     return True
-
-
-def _merge_project_optional_dependencies(target_project: dict, source_project: dict) -> None:
-    source_optional = source_project.get("optional-dependencies", {})
-    if not source_optional:
-        return
-
-    target_project_name = target_project.get("name")
-    target_optional = target_project.setdefault("optional-dependencies", tomlkit.table())
-    for extra_name, deps in source_optional.items():
-        if not _should_copy_optional_dependency_extra(extra_name, target_project_name):
-            continue
-        if extra_name not in target_optional:
-            target_optional[extra_name] = _build_dependency_array(list(deps))
 
 
 def _merge_matching_project_optional_dependencies(
@@ -711,101 +663,6 @@ def _load_bundle_project(package_name: str, package_config: dict, parent_dir: Pa
         return {}
 
     return tomlkit.loads(pkg_pyproject_path.read_text(encoding="utf-8")).get("project", {})
-
-
-def _remove_project_entrypoints(target_project: dict, source_project: dict) -> bool:
-    source_entrypoints = source_project.get("entry-points", {})
-    target_entrypoints = target_project.get("entry-points")
-    if not source_entrypoints or target_entrypoints is None:
-        return False
-
-    changed = False
-    for group, entries in source_entrypoints.items():
-        target_group = target_entrypoints.get(group)
-        if target_group is None:
-            continue
-        for name, value in entries.items():
-            if name in target_group and target_group[name] == value:
-                del target_group[name]
-                changed = True
-        if not target_group:
-            del target_entrypoints[group]
-            changed = True
-
-    if not target_entrypoints:
-        del target_project["entry-points"]
-        changed = True
-
-    return changed
-
-
-def _remove_matching_project_scripts(target_project: dict, source_project: dict, patterns: list[str]) -> bool:
-    source_scripts = source_project.get("scripts", {})
-    target_scripts = target_project.get("scripts")
-    if not source_scripts or target_scripts is None or not patterns:
-        return False
-
-    changed = False
-    for name, value in source_scripts.items():
-        if not _matches_any_pattern(name, patterns):
-            continue
-        if name in target_scripts and target_scripts[name] == value:
-            del target_scripts[name]
-            changed = True
-
-    if not target_scripts:
-        del target_project["scripts"]
-        changed = True
-
-    return changed
-
-
-def _remove_explicit_project_scripts(target_project: dict, scripts: list[dict]) -> bool:
-    target_scripts = target_project.get("scripts")
-    if target_scripts is None or not scripts:
-        return False
-
-    changed = False
-    for script in scripts:
-        script_name = script.get("name")
-        script_value = script.get("value")
-        if script_name and script_name in target_scripts and target_scripts[script_name] == script_value:
-            del target_scripts[script_name]
-            changed = True
-
-    if not target_scripts:
-        del target_project["scripts"]
-        changed = True
-
-    return changed
-
-
-def _remove_matching_project_entrypoints(target_project: dict, source_project: dict, patterns: list[str]) -> bool:
-    source_entrypoints = source_project.get("entry-points", {})
-    target_entrypoints = target_project.get("entry-points")
-    if not source_entrypoints or target_entrypoints is None or not patterns:
-        return False
-
-    changed = False
-    for group, entries in source_entrypoints.items():
-        if not _matches_any_pattern(group, patterns):
-            continue
-        target_group = target_entrypoints.get(group)
-        if target_group is None:
-            continue
-        for name, value in entries.items():
-            if name in target_group and target_group[name] == value:
-                del target_group[name]
-                changed = True
-        if not target_group:
-            del target_entrypoints[group]
-            changed = True
-
-    if not target_entrypoints:
-        del target_project["entry-points"]
-        changed = True
-
-    return changed
 
 
 def _process_bundle_packages() -> None:
@@ -963,52 +820,6 @@ def _add_generated_table_comment(table: tomlkit.items.Table) -> None:
     table.add(_generated_table_comment())
 
 
-def _is_generated_optional_dependency_comment(item: object) -> bool:
-    return (
-        isinstance(item, tomlkit.items.Comment) and item.as_string().strip() in GENERATED_OPTIONAL_DEPENDENCY_COMMENTS
-    )
-
-
-def _remove_marked_optional_dependency_groups(content: str) -> str:
-    """Remove optional-dependency groups immediately preceded by generated markers."""
-    pyproject = tomlkit.loads(content)
-    project = pyproject.get("project")
-    if not isinstance(project, dict):
-        return content
-
-    optional = project.get("optional-dependencies")
-    if optional is None:
-        return content
-
-    cleaned = tomlkit.table()
-    skip_next_group = False
-    changed = False
-
-    for key, item in optional._value.body:
-        if _is_generated_optional_dependency_comment(item):
-            if cleaned._value.body and isinstance(cleaned._value.body[-1][1], tomlkit.items.Whitespace):
-                cleaned._value.body.pop()
-            skip_next_group = True
-            changed = True
-            continue
-
-        if skip_next_group and key is not None:
-            skip_next_group = False
-            changed = True
-            continue
-
-        if key is None:
-            cleaned.add(item)
-        else:
-            cleaned.add(key, item)
-
-    if not changed:
-        return content
-
-    project["optional-dependencies"] = cleaned
-    return tomlkit.dumps(pyproject)
-
-
 def _is_generated_project_comment(item: object) -> bool:
     return isinstance(item, tomlkit.items.Comment) and item.as_string().strip() in GENERATED_PROJECT_COMMENTS
 
@@ -1126,63 +937,68 @@ def _remove_marked_generated_project_tables(content: str) -> str:
     return tomlkit.dumps(pyproject)
 
 
-def _remove_empty_generated_project_tables(content: str) -> str:
+OPTIONAL_DEPENDENCIES_HEADER_COMMENTS: tuple[str, ...] = (
+    "AUTO-GENERATED by `make vendor`. Do not edit by hand.",
+    "Hand-written aliases (e.g. `all`) are declared in",
+    "WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES in",
+    "tools/nemo-platform-sdk-tools/.../vendor/vendor_package.py and emitted first;",
+    "all other extras are derived from [tool.bundle-package].",
+)
+
+
+def _rebuild_optional_dependencies_table(content: str, manual_extras: list[dict]) -> str:
+    """Rewrite the optional-dependencies table with manual-then-generated ordering.
+
+    The table is reconstructed from scratch on every run:
+
+    * A header comment block at the top explains that the table is generated
+      and where hand-written extras live in the source.
+    * Hand-written extras declared in ``manual_extras`` are emitted first, in
+      the order given, each optionally preceded by its declared comment.
+    * Every other key is treated as auto-generated from ``[tool.bundle-package]``
+      and emitted alphabetically.
+
+    A blank line separates each extra so groups don't visually collapse. All
+    existing leading/trailing trivia inside the table is discarded; this
+    function owns the formatting.
+    """
     pyproject = tomlkit.loads(content)
     project = pyproject.get("project")
     if not isinstance(project, dict):
         return content
 
-    scripts = project.get("scripts")
-    if scripts is not None and not scripts:
-        del project["scripts"]
-
-    entrypoints = project.get("entry-points")
-    if entrypoints is not None:
-        for group in list(entrypoints):
-            if not entrypoints[group]:
-                del entrypoints[group]
-        if not entrypoints:
-            del project["entry-points"]
-
-    return tomlkit.dumps(pyproject)
-
-
-def _annotate_optional_dependency_groups(content: str, group_names: set[str]) -> str:
-    """Add generated comments above optional-dependency groups owned by bundle config."""
-    if not group_names:
-        return _remove_marked_optional_dependency_groups(content)
-
-    cleaned = _remove_marked_optional_dependency_groups(content)
-    pyproject = tomlkit.loads(cleaned)
-    project = pyproject.get("project")
-    if not isinstance(project, dict):
-        return cleaned
-
     optional = project.get("optional-dependencies")
     if optional is None:
-        return cleaned
+        return content
 
-    optional = _copy_table_without_comments(optional, GENERATED_OPTIONAL_DEPENDENCY_COMMENTS)
-    annotated = tomlkit.table()
-    generated_group_found = False
-    for key, item in optional._value.body:
-        if key is None:
-            annotated.add(item)
-            continue
+    manual_names = {entry["name"] for entry in manual_extras}
 
-        key_name = key.key
-        if key_name in group_names:
-            if annotated._value.body and not isinstance(annotated._value.body[-1][1], tomlkit.items.Whitespace):
-                annotated.add(tomlkit.nl())
-            annotated.add(tomlkit.comment(GENERATED_BUNDLE_GROUP_COMMENT.removeprefix("# ")))
-            generated_group_found = True
+    # Snapshot existing keys → values. Manual entries are sourced from
+    # `manual_extras`; everything else is treated as bundle-derived.
+    existing: dict[str, object] = {key.key: item for key, item in optional._value.body if key is not None}
 
-        annotated.add(key, item)
+    rebuilt = tomlkit.table()
 
-    if generated_group_found and not isinstance(annotated._value.body[-1][1], tomlkit.items.Whitespace):
-        annotated.add(tomlkit.nl())
+    if manual_extras:
+        for line in OPTIONAL_DEPENDENCIES_HEADER_COMMENTS:
+            rebuilt.add(tomlkit.comment(line))
 
-    project["optional-dependencies"] = annotated
+    is_first = not manual_extras  # header acts as the first item if present
+    for entry in manual_extras:
+        if not is_first:
+            rebuilt.add(tomlkit.nl())
+        if entry.get("comment"):
+            rebuilt.add(tomlkit.comment(entry["comment"].removeprefix("# ")))
+        rebuilt.add(entry["name"], entry["deps"])
+        is_first = False
+
+    for name in sorted((k for k in existing if k not in manual_names), key=str.lower):
+        if not is_first:
+            rebuilt.add(tomlkit.nl())
+        rebuilt.add(name, existing[name])
+        is_first = False
+
+    project["optional-dependencies"] = rebuilt
     return tomlkit.dumps(pyproject)
 
 
@@ -1248,26 +1064,18 @@ def _annotate_generated_project_table(
     table: tomlkit.items.Table,
     generated_names: set[str],
 ) -> tuple[tomlkit.items.Table, bool]:
+    """Strip stale generator markers from a fully-generated scripts/entry-points table.
+
+    Every key in these tables is currently bundle-generated, so the only thing
+    to do is remove any previously-written marker comments (the parent caller
+    re-adds a single table-level header). Returns ``(table, True)`` when
+    ``generated_names`` indicates the table is owned by the bundle config, or
+    ``(table, False)`` when it isn't (no annotation should be applied).
+    """
     if not generated_names:
         return table, False
 
-    existing_names = {key.key for key, _ in table._value.body if key is not None}
-    if existing_names and existing_names <= generated_names:
-        return _copy_table_without_comments(table, GENERATED_PROJECT_COMMENTS), True
-
-    annotated = tomlkit.table()
-    for key, item in table._value.body:
-        if _is_generated_project_comment(item):
-            continue
-        if key is not None and key.key in generated_names:
-            if annotated._value.body and not isinstance(annotated._value.body[-1][1], tomlkit.items.Whitespace):
-                annotated.add(tomlkit.nl())
-            annotated.add(tomlkit.comment(GENERATED_BUNDLE_GROUP_COMMENT.removeprefix("# ")))
-        if key is None:
-            annotated.add(item)
-        else:
-            annotated.add(key, item)
-    return annotated, True
+    return _copy_table_without_comments(table, GENERATED_PROJECT_COMMENTS), True
 
 
 def _annotate_generated_bundle_groups() -> None:
@@ -1290,8 +1098,6 @@ def _annotate_generated_bundle_groups() -> None:
             continue
 
         member_dir = member_pyproject_path.parent
-        member_project_name = member_config.get("project", {}).get("name")
-        group_names: set[str] = set()
         script_names: set[str] = set()
         entrypoint_names: dict[str, set[str]] = {}
         for pkg_name, pkg_config in bundle_config.items():
@@ -1300,16 +1106,7 @@ def _annotate_generated_bundle_groups() -> None:
 
             inherited_script_patterns = _bundle_inherit_patterns(pkg_config, "scripts")
             inherited_entrypoint_patterns = _bundle_inherit_patterns(pkg_config, "entry-points")
-            inherited_optional_patterns = _bundle_inherit_patterns(pkg_config, "optional-dependencies")
-            group_names.add(_bundle_deps_group(pkg_name, pkg_config))
             pkg_project = _load_bundle_project(pkg_name, pkg_config, member_dir)
-            if inherited_optional_patterns:
-                group_names.update(
-                    extra_name
-                    for extra_name in pkg_project.get("optional-dependencies", {})
-                    if _matches_any_pattern(extra_name, inherited_optional_patterns)
-                    if _should_copy_optional_dependency_extra(extra_name, member_project_name)
-                )
             if inherited_script_patterns:
                 script_names.update(
                     name
@@ -1322,12 +1119,10 @@ def _annotate_generated_bundle_groups() -> None:
                     if _matches_any_pattern(group, inherited_entrypoint_patterns):
                         entrypoint_names.setdefault(group, set()).update(entries)
 
-        if member_pyproject_path.parent == WRAPPER_PATH:
-            group_names.add("core-service")
-            group_names.add("plugins")
+        manual_extras = WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES if member_pyproject_path.parent == WRAPPER_PATH else []
 
         content = member_pyproject_path.read_text(encoding="utf-8")
-        annotated = _annotate_optional_dependency_groups(content, group_names)
+        annotated = _rebuild_optional_dependencies_table(content, manual_extras)
         annotated = _annotate_generated_project_entries(annotated, script_names, entrypoint_names)
         if annotated != content:
             member_pyproject_path.write_text(annotated, encoding="utf-8")
@@ -1361,34 +1156,16 @@ def _reset_generated_pyproject_fields() -> None:
         return
 
     cleaned_content = _remove_marked_generated_project_tables(pyproject_path.read_text(encoding="utf-8"))
-    cleaned_content = _remove_marked_optional_dependency_groups(cleaned_content)
     pyproject = tomlkit.loads(cleaned_content)
     project = pyproject["project"]
 
     # Main dependencies are NOT reset — they are hand-written and should not be
-    # touched by the vendor tool.
-    optional = project.setdefault("optional-dependencies", tomlkit.table())
-    project_name = project.get("name")
-    bundle_config = pyproject.get("tool", {}).get("bundle-package", {})
-    for pkg_name, pkg_config in bundle_config.items():
-        if not isinstance(pkg_config, dict):
-            continue
-        pkg_project = _load_bundle_project(pkg_name, pkg_config, WRAPPER_PATH)
-        deps_group = _bundle_deps_group(pkg_name, pkg_config)
-        inherited_optional_patterns = _bundle_inherit_patterns(pkg_config, "optional-dependencies")
-        if deps_group in optional:
-            del optional[deps_group]
-        for extra_name in pkg_project.get("optional-dependencies", {}):
-            if not _matches_any_pattern(extra_name, inherited_optional_patterns):
-                continue
-            if not _should_copy_optional_dependency_extra(extra_name, project_name):
-                continue
-            if extra_name in optional:
-                del optional[extra_name]
-    if "core-service" in optional:
-        del optional["core-service"]
-    if "plugins" in optional:
-        del optional["plugins"]
+    # touched by the vendor tool. The optional-dependencies table is fully
+    # owned by the vendor flow (manual aliases live in
+    # WRAPPER_MANUAL_OPTIONAL_DEPENDENCIES, generated extras come from
+    # [tool.bundle-package]); blow it away wholesale so removed bundle
+    # entries don't leave stale keys behind.
+    project["optional-dependencies"] = tomlkit.table()
 
     pyproject_path.write_text(tomlkit.dumps(pyproject), encoding="utf-8")
 
@@ -1409,39 +1186,19 @@ def _reset_generated_pyproject_fields() -> None:
 
         member_content = member_pyproject_path.read_text(encoding="utf-8")
         cleaned_member_content = _remove_marked_generated_project_tables(member_content)
-        cleaned_member_content = _remove_marked_optional_dependency_groups(cleaned_member_content)
         member_config = tomlkit.loads(cleaned_member_content)
         bundle_config = member_config.get("tool", {}).get("bundle-package")
-        if not bundle_config:
-            if cleaned_member_content != member_content:
-                member_pyproject_path.write_text(cleaned_member_content, encoding="utf-8")
-                rich.print(f"🧹 Reset auto-generated bundle metadata for `{member_config['project']['name']}`")
-            continue
 
-        project = member_config["project"]
-        project_name = project.get("name")
-        optional = project.get("optional-dependencies")
-
+        # For members that participate in [tool.bundle-package], the
+        # optional-dependencies table is fully owned by the rebuild flow —
+        # blow it away so removed bundle entries don't leave stale keys.
+        # Members without bundle config are user-owned and left alone.
         changed = cleaned_member_content != member_content
-        for pkg_name, pkg_config in bundle_config.items():
-            if not isinstance(pkg_config, dict):
-                continue
-
-            pkg_project = _load_bundle_project(pkg_name, pkg_config, member_dir)
-            deps_group = _bundle_deps_group(pkg_name, pkg_config)
-            inherited_optional_patterns = _bundle_inherit_patterns(pkg_config, "optional-dependencies")
-            if deps_group and optional and deps_group in optional:
-                del optional[deps_group]
+        if bundle_config:
+            project = member_config["project"]
+            if "optional-dependencies" in project:
+                project["optional-dependencies"] = tomlkit.table()
                 changed = True
-
-            for extra_name in pkg_project.get("optional-dependencies", {}):
-                if not _matches_any_pattern(extra_name, inherited_optional_patterns):
-                    continue
-                if not _should_copy_optional_dependency_extra(extra_name, project_name):
-                    continue
-                if optional and extra_name in optional:
-                    del optional[extra_name]
-                    changed = True
 
         if changed:
             member_pyproject_path.write_text(tomlkit.dumps(member_config), encoding="utf-8")
@@ -1467,13 +1224,9 @@ def _sort_wrapper_pyproject_fields() -> None:
         deps.sort(key=lambda d: Requirement(d).name.lower())
         project["dependencies"] = _build_dependency_array(deps)
 
-    # Sort optional-dependency group names alphabetically
-    optional = project.get("optional-dependencies")
-    if optional:
-        sorted_optional = tomlkit.table()
-        for key in sorted(optional.keys(), key=str.lower):
-            sorted_optional[key] = optional[key]
-        project["optional-dependencies"] = sorted_optional
+    # Note: optional-dependencies ordering is owned by
+    # `_rebuild_optional_dependencies_table`, which fully rewrites the table
+    # in a later phase from scratch.
 
     # Sort scripts alphabetically
     scripts = project.get("scripts")
@@ -1617,36 +1370,6 @@ def _get_transitive_source_module_name(dependency_name: str) -> str:
         pass
     # Fallback to dependency name with hyphens replaced
     return dependency_name.replace("-", "_")
-
-
-def _build_module_rewrites(
-    source_module: str, target_module_full: str, included_transitive_dependencies: list[dict] | None
-) -> list[tuple[str, str]]:
-    """Build a list of module rewrites from source to target modules."""
-    module_rewrites_dict = {source_module: target_module_full}
-
-    if included_transitive_dependencies:
-        for dep_config in included_transitive_dependencies:
-            if not (isinstance(dep_config, dict) or hasattr(dep_config, "get")):
-                continue
-
-            dependency_name = dep_config.get("dependency")
-            if not dependency_name:
-                continue
-
-            transitive_source_module = _get_transitive_source_module_name(dependency_name)
-            transitive_target_module = target_module_full
-
-            # Only add if it's different from what we already have
-            if transitive_source_module not in module_rewrites_dict:
-                module_rewrites_dict[transitive_source_module] = transitive_target_module
-                logger.debug(f"Will also rewrite imports: `{transitive_source_module}` -> `{transitive_target_module}`")
-            elif module_rewrites_dict[transitive_source_module] != transitive_target_module:
-                logger.warning(
-                    f"Skipping duplicate rewrite for `{transitive_source_module}` (already mapped to `{module_rewrites_dict[transitive_source_module]}`)"
-                )
-
-    return list(module_rewrites_dict.items())
 
 
 def _copy_included_paths(source_path: Path, destination_path: Path, included_paths: list[str]) -> None:

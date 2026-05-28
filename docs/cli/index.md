@@ -20,13 +20,13 @@ The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {
 ### Install in a Virtual Environment
 
 ```bash
-pip install nemo-platform[services]
+pip install nemo-platform[all]
 ```
 
 Or with uv:
 
 ```bash
-uv pip install nemo-platform[services]
+uv pip install nemo-platform[all]
 ```
 
 !!! warning "When installed in a virtual environment, the `nemo` command is only available when the environment is activated."

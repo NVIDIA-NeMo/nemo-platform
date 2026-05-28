@@ -78,7 +78,7 @@ def test_run_shows_services_extra_hint_when_pyleak_missing():
     with patch(f"{_CLI_MODULE}.importlib.util.find_spec", side_effect=_no_pyleak):
         result = runner.invoke(app, ["services", "run"])
     assert result.exit_code == 1
-    assert "nemo-platform[services]" in result.stderr
+    assert "nemo-platform[all]" in result.stderr
 
 
 def test_run_invokes_runner(base_dir: Path):
@@ -188,7 +188,7 @@ def test_start_shows_extra_hint_when_pyleak_missing():
     with patch(f"{_CLI_MODULE}.importlib.util.find_spec", side_effect=_no_pyleak):
         result = runner.invoke(app, ["services", "start"])
     assert result.exit_code == 1
-    assert "nemo-platform[services]" in result.stderr
+    assert "nemo-platform[all]" in result.stderr
 
 
 def test_start_launches_background(base_dir: Path):
@@ -317,7 +317,7 @@ class TestServicesRestart:
         ):
             result = runner.invoke(app, ["services", "restart"])
         assert result.exit_code == 1
-        assert "nemo-platform[services]" in result.stderr
+        assert "nemo-platform[all]" in result.stderr
         mock_stop.assert_not_called()
 
     def test_restart_errors_when_no_prior_instance(self, base_dir: Path):
