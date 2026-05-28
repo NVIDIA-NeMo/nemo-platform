@@ -13,6 +13,7 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from nemo_platform_plugin.entity import NemoEntity
+from nemo_platform_plugin.refs import FilesetRef
 from pydantic import Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
@@ -36,6 +37,16 @@ class Agent(NemoEntity, entity_type="agent"):
             "platform-internal schema version tag for the agent config dict.  "
             "Not read or validated by NAT — used by NeMo Platform for future config migration.  "
             "Currently only 'nat-workflow-v1' is supported."
+        ),
+    )
+    spec_file_ref: FilesetRef | None = Field(
+        default=None,
+        description=(
+            "Reference to the fileset holding this agent's spec (AGENTSpec.md). "
+            "Set by ``nemo-spec`` when the spec is uploaded, then carried forward by "
+            "``nemo agents create``. Optional: agents created via the CLI without an "
+            "onboarding skill will leave this empty, which is queryable ("
+            "'show me agents with no spec')."
         ),
     )
 

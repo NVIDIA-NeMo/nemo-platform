@@ -1,20 +1,30 @@
+---
+name: <canonical-agent-name>
+eval_command: <CLI command to run evaluations against this agent; omit the key entirely if no eval suite is wired yet>
+---
+
 # Agent Spec: <name>
 
-Date: <YYYY-MM-DD>
-Author: <user>
+> This file is the agent's AGENTSpec.md — the durable contract that
+> describes the intended behavior of the agent under test (AUT). The analyst
+> and experimentalist agents in the NeMo optimization loop read this file as
+> their primary context. Keep it accurate; stale entries here directly
+> degrade the quality of generated Insights and PRs.
+>
+> The structured layout below is parseable by `AgentSpec` (Pydantic model in
+> `nemo_agents_plugin.spec`). If you hand-edit this file, preserve the section
+> headers and labeled-bullet format exactly — `nemo-spec` will refuse to load
+> a malformed spec.
 
 ## Job
 
-One sentence describing what the agent does. Concrete, not aspirational.
+<one concrete sentence describing what the agent does>
 
 ## Audience
 
-Who talks to it. Internal employees, external customers, developers, etc.
-Affects tone and what is safe to say.
+<who talks to it — internal employees, external customers, developers, etc.>
 
 ## Categories
-
-Buckets of questions or tasks the agent handles. Aim for 3 to 6.
 
 - <category 1>
 - <category 2>
@@ -22,47 +32,62 @@ Buckets of questions or tasks the agent handles. Aim for 3 to 6.
 
 ## Tools
 
-Tools the agent calls beyond the model itself. Default: `current_datetime`.
+<table of tools the agent calls beyond the model itself, or the literal
+string `Prompt-only.` if none>
 
 | Tool | Purpose | Credentials needed |
 |---|---|---|
 | current_datetime | clock for time-sensitive answers | none |
 
-If no tools beyond clock, write: "Prompt-only. No tools."
-
 ## Model
 
-Inference target. Cloud (NVIDIA Build API) or local NIM. Specific model id.
-
-- Mode: <cloud | host-gpu | byoe>
-- Model: <model id, e.g., nvidia-llama-3-3-nemotron-super-49b-v1>
+- Mode: <cloud | local-nim>
+- Family: <model family or size, e.g. `Nemotron Super 49B`>
 
 ## Framework
 
-The agent will be wrapped in NVIDIA Agent Toolkit (NAT) as a LangGraph workflow.
-If the source agent is not LangGraph (CrewAI, AutoGen, plain LangChain,
-Pydantic AI), note the wrapper work needed here.
+- Resolution: <langgraph-nat | needs-wrapper>
+- Source framework: <only when resolution is `needs-wrapper`; e.g. `crewai`, `autogen`, `langchain`, `pydantic-ai`>
+- Notes: <optional free-form note>
 
 ## Constraints
 
-Negative requirements. Things the agent must not do or say.
+- <negative requirement, e.g. "never give medical advice">
 
-- <constraint>
+(Use `_(none)_` if there are no constraints.)
 
-## Success criteria
+## Success Criteria
 
-How we know it works. Two or three concrete check questions and the kind
-of answer that counts as a pass.
+- <concrete check question with what a pass looks like, OR named metric threshold like `tool_call_accuracy >= 0.85`>
 
-1. Question: <question text>
-   Pass criteria: <what a good answer looks like>
+## Allowed Changes
 
-2. Question: <question text>
-   Pass criteria: <what a good answer looks like>
+A permissions list — what the optimization loop is allowed to modify when
+fixing Insights. Defaults below; flip to `no` to veto.
 
-## Open questions
+- System prompt: yes
+- Tools: yes
+- Middleware: yes
+- Inference params: yes
+- Model swap (within mode): yes
+- Skills: yes
+- Fine-tuning: no
+- Notes: <optional free-form note>
 
-Anything the user could not answer yet. These are the items `nemo-build-agent`
-will ask before scaffolding.
+## Feedback Signals
 
-- <open question>
+<how the analyst should prioritize issues for this agent — e.g. "highest
+priority: thumbs-down on escalation flows; ignore: internal QA traffic". Use
+`defaults` if nothing specific.>
+
+## Eval Command
+
+<free-form notes on eval state when the suite is not well-defined yet
+(coverage gaps, why). The runnable command lives in the `eval_command` front
+matter. Use `_(none)_` if there is nothing to note.>
+
+## Open Questions
+
+- <anything unresolved for the build step>
+
+(Use `_(none)_` if there are none.)

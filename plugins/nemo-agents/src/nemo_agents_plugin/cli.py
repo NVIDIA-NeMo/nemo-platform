@@ -218,6 +218,16 @@ def _register_platform_commands(app: typer.Typer) -> None:
             dir_okay=False,
         ),
         description: str = typer.Option("", "--description"),
+        spec_file_ref: Optional[str] = typer.Option(
+            None,
+            "--spec-file-ref",
+            help=(
+                "Fileset reference (name or workspace/name) for this agent's spec "
+                "(AGENTSpec.md). Typically populated by `nemo-spec` after it "
+                "uploads the spec; you can pass it directly here when wiring an "
+                "existing fileset to a newly-created agent."
+            ),
+        ),
         workspace: str = typer.Option(_DEFAULT_WORKSPACE, "--workspace", "-w"),
         base_url: str = typer.Option(_DEFAULT_BASE_URL, "--base-url", envvar="NEMO_BASE_URL"),
     ) -> None:
@@ -236,7 +246,9 @@ def _register_platform_commands(app: typer.Typer) -> None:
                 err=True,
             )
             raise typer.Exit(code=1)
-        payload = {"name": name, "description": description, "config": config_dict}
+        payload: dict[str, Any] = {"name": name, "description": description, "config": config_dict}
+        if spec_file_ref is not None:
+            payload["spec_file_ref"] = spec_file_ref
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         typer.echo(json.dumps(resp, indent=2))
 

@@ -1,6 +1,6 @@
 ---
 name: nemo-explore
-description: Captures what a new NeMo Platform agent should do before any code or YAML. Walks the user through job, audience, categories, tools, model, and constraints, then hands the answers to nemo-spec. Use over generic brainstorming for any NeMo Platform agent design conversation.
+description: Captures what a NeMo Platform agent should do before any code or YAML. Explores the user's codebase and docs first, fills in every spec field it can infer, then asks the user only for the gaps. Output feeds nemo-spec. Use over generic brainstorming for any NeMo Platform agent design conversation.
 triggers:
   - design my agent
   - what should my agent do
@@ -9,62 +9,208 @@ triggers:
   - agent design
   - explore the agent
   - figure out what my agent needs
+  - bootstrap AGENT_DESCRIPTION
+  - onboard my existing agent
 not-for:
   - nemo-skill-selection (use to dispatch when intent is unclear)
   - nemo-spec (use to write the spec file once explore is done)
   - nemo-build-agent (use after spec exists)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
-compatibility: nemo-platform >= 0.1.0; dialogue-driven with one read-only pre-flight (`ls agents/*.spec.md`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
+compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
 maturity: active
 license: Apache-2.0
 user-invocable: true
-allowed-tools: [Read, Bash]
+allowed-tools: [Read, Glob, Grep, Bash]
 ---
 
 # NeMo Platform agent explore
 
-Capture what the agent should do before any code or YAML. This skill is the questions; nothing else. Output goes to `nemo-spec`.
+Capture what the agent should do before any code or YAML. The output of this
+skill is the data that `nemo-spec` writes into `agents/<name>.spec.md` — the
+durable contract that the analyst and experimentalist agents in the NeMo
+optimization loop read as their primary context. Underspecified input here
+directly degrades the quality of generated Insights and PRs downstream.
+
+This skill is **explore-first, gap-fill second**. You do not interview the
+user from scratch. You scan the codebase and docs, infer what you can against
+the spec schema below, present what you found, and ask the user only for the
+fields you could not fill.
+
+## The schema you are filling
+
+The spec has two front-matter fields and twelve body sections. Two are hard
+requirements: handoff to `nemo-spec` is blocked until both are resolved.
+
+**Front matter**
+
+| Field | Required | Guidance |
+| :---- | :---- | :---- |
+| `name` | yes | Canonical agent name. Use the directory or workflow name if obvious; ask if not. |
+| `eval_command` | optional | CLI to run evals. Leave blank if no eval suite is wired yet; the eval-setup skill (M2) will fill it. |
+
+**Body sections** (in order)
+
+| # | Section | Required | What "good" looks like |
+| :---- | :---- | :---- | :---- |
+| 1 | Job | **yes** | One concrete sentence. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are rejected. |
+| 2 | Audience | yes | Who talks to it: internal employees, external customers, developers. Shapes tone and what is safe to say. |
+| 3 | Categories | yes | 3 to 6 task buckets the agent handles. |
+| 4 | Tools | yes | Table of tools the agent can call, or "Prompt-only." Default is prompt-only plus `current_datetime`. Tools beyond that need a follow-up about credentials. |
+| 5 | Model | yes | Mode (cloud vs local NIM) + model family/size. Example: "cloud, Nemotron Super 49B." `nemo-build-agent` resolves to a specific model entity ID later. |
+| 6 | Framework | **yes** | Must resolve to one of: LangGraph + NAT (supported), or "needs NAT wrapper" with a note naming the source framework (CrewAI, AutoGen, plain LangChain, Pydantic AI). Do not skip. |
+| 7 | Constraints | optional | Negative requirements. "Cannot mention competitors", "must redirect medical questions", response length cap, etc. |
+| 8 | Success Criteria | yes | 2–3 concrete check questions with what a good answer looks like, OR named metric thresholds if evals exist (e.g., `tool_call_accuracy >= 0.85`). |
+| 9 | Allowed Changes | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
+| 10 | Feedback Signals | optional | How the analyst should prioritize issues. High-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
+| 11 | Eval Command (body) | optional | Free-form notes on eval state when evals are not well-defined yet. The bash one-liner lives in front matter; this section is for context (what coverage is missing, why). |
+| 12 | Open Questions | optional | Unresolved items the build skill should know about. |
+
+Known issues / failure patterns are tracked as first-class Insight entities by
+the insights plugin — do not duplicate them into the spec.
 
 ## Pre-flight
 
-Check whether a spec already exists for this agent. If `agents/<name>.spec.md` is present, ask the user whether they want to edit the existing spec or start over. If they want to edit, route to `nemo-spec` directly.
+Check whether a spec already exists for this agent. If `agents/<name>.spec.md`
+is present, ask the user whether they want to edit the existing spec or start
+over. If they want to edit, route to `nemo-spec` directly.
 
 ```bash
 ls agents/*.spec.md 2>/dev/null || echo "no specs yet"
 ```
 
-## What you do
+## Step 1 — Explore the codebase
 
-Ask in this order, one at a time. Wait for each answer.
+Time-box this to ~5 minutes of tool use. Read first, ask second. Greenfield
+projects will turn up nothing here, which is fine — move to step 2 and ask
+the user the full set of unfilled fields.
 
-1. **The job.** "What should this agent do? One sentence." Push back on vague answers ("help with stuff"). A real one-liner: "answer IT helpdesk questions about VPN, password reset, and software access."
+1. **Find agent entry points.** Look for NAT workflow YAMLs, LangGraph
+   builders, system prompts, tool definitions:
 
-2. **The user.** "Who talks to it: internal employees, external customers, developers?" Shapes tone and what is safe to say.
+   ```bash
+   find . -maxdepth 4 -type f \( -name "*.workflow.yaml" -o -name "*.workflow.yml" \) 2>/dev/null
+   find . -maxdepth 4 -type d -name "agents" 2>/dev/null
+   ```
 
-3. **The categories.** "What buckets of questions should it handle?" Aim for 3 to 6.
+   Then use `Glob` / `Grep` to find `langgraph`, `StateGraph`,
+   `create_react_agent`, `system_prompt`, and tool definitions.
 
-4. **The tools.** "Does it need to call anything (search, database, HTTP API), or can it answer from prompt and model alone?" Default: prompt-only with `current_datetime` as the only tool. Tools beyond that need a follow-up about credentials.
+2. **Find design context.** Look for `README.md`, `AGENTS.md`, `PRD*.md`,
+   `design*.md`, anything in `docs/`. Read the ones that look agent-relevant.
 
-5. **The model.** "Cloud (NVIDIA Build API) or a local NIM? Size preference?" Capture the family or size the user wants (e.g., "Nemotron Super 49B", "smallest open-weight that works"). `nemo-build-agent` resolves this to a specific model entity ID via `nemo models list`; this skill is not the place to pin the alias. Default: cloud, Nemotron-Super-49B family. Local NIMs require host-gpu mode.
+3. **Map findings to schema fields.** As you scan, hold a running mental
+   table of what you can fill from the code/docs. Be honest about confidence:
+   "inferred from system prompt" is different from "confirmed by the user."
 
-6. **Constraints.** "Anything off-limits? e.g., cannot mention competitors, must redirect medical questions, response length cap?"
+   Typical inferences per field:
 
-7. **Framework honesty.** If the user has not said yet: ask whether they have an existing agent or want to build from scratch. If existing: confirm it is LangGraph wrapped in NVIDIA NeMo Agent Toolkit (NAT). If the agent is CrewAI, AutoGen, plain LangChain, or Pydantic AI, tell them the build path requires a NAT wrapper first.
+   - **name** — directory name, workflow name, or top-level package name.
+   - **Job** — first paragraph of README, system prompt preamble, or
+     top-level docstring. Often partial; usually needs user confirmation.
+   - **Audience** — sometimes in README ("for internal support staff").
+   - **Categories** — from the system prompt's enumerated capabilities, or
+     from named tool clusters.
+   - **Tools** — from `@tool` decorators, NAT tool registry, or
+     `create_react_agent(tools=[...])`.
+   - **Model** — model id strings in workflow YAML, env vars, config files.
+   - **Framework** — `langgraph` import + NAT workflow YAML → "LangGraph +
+     NAT." `crewai` / `autogen` / `pydantic_ai` imports → flag wrapper work.
+     Plain `langchain` without `langgraph` → flag wrapper work.
+   - **Constraints** — sometimes called out in system prompt ("never give
+     medical advice").
+   - **Success Criteria** — rare in code; look for existing eval suites.
+   - **Allowed Changes** — not in the code; ask the user.
+   - **Feedback Signals** — not in the code; ask the user.
+   - **`eval_command`** — Makefile target, scripts directory, CI config.
+   - **Open Questions** — TODOs / FIXMEs in agent-adjacent code.
 
-Hand the answers to `nemo-spec` for the artifact.
+## Step 2 — One review pass, not a Q&A loop
 
-## Verification
+Keep onboarding lightweight. The codebase scan should have filled most fields
+already. Your goal here is **one round-trip with the user**, not a per-field
+interview.
 
-This skill produces no system change, so verification is conversational: at the end, summarize what the user said in 7 bullets (one per question above) and ask "Did I get this right?" Do not hand off to `nemo-spec` until the user confirms.
+Present the entire spec at once — every field, with inferred values shown
+inline and any required-but-missing fields called out. Pick a sensible
+default for every optional field rather than asking. Then ask the user a
+single question:
 
-## If verification fails
+> "Here's the full spec I'd write. Tell me what to change — and I need the
+> two missing required fields below before I can hand off to `nemo-spec`."
 
-If the user says the summary is wrong, ask which bullet is wrong and re-ask only that question. Do not restart the full sequence. If the user keeps changing their mind on the job statement: stop and tell them the agent will not be useful until they can write one concrete sentence; offer to come back later.
+Show the rendered spec inline in markdown (one `##` section per field, same
+shape as the on-disk file). For fields you defaulted, note the default in
+parentheses so the user knows they can override:
+
+- `Tools: Prompt-only.` *(default — say so if the agent needs tools)*
+- `Allowed Changes:` all defaults on, fine-tuning off *(default — call out
+  anything you want to lock down)*
+- `Feedback Signals: defaults` *(default — replace if you have specific
+  priority/ignore rules)*
+
+**Do not** walk the schema field by field. **Do not** ask for confirmation on
+high-confidence inferences. **Do not** ask one question at a time. The whole
+point of this skill is that the codebase scan paid for the right to skip the
+interrogation.
+
+Allowed exceptions where a follow-up question is justified:
+
+1. A **hard-required field** (`Job`, `Framework`) is missing — list those
+   explicitly and ask for them in the same single round-trip.
+2. The user's reply to the review block surfaces a contradiction that needs
+   one targeted clarification (e.g. they say "drop the search tool" but the
+   codebase shows the agent depends on it).
+
+## Step 3 — Hand off
+
+After the user's reply, apply the corrections and check the two hard
+preconditions:
+
+1. **Job** is a concrete one-sentence answer (not "help with stuff").
+2. **Framework** is resolved (`langgraph-nat` or `needs-wrapper` with a
+   source-framework name).
+
+If either is still unresolved, ask for it in one final message and stop until
+the user provides it. Do not hand off with a hard requirement blank —
+`nemo-spec` will reject the write.
+
+If both are satisfied, announce the handoff in one line ("Handing off to
+`nemo-spec` to write `agents/<name>.spec.md` and upload the canonical copy
+to Filesets") and trigger it.
+
+## If the user pushes back
+
+- **They want to change one or two fields.** Apply the edits, re-show the
+  changed sections only, ask "good now?", proceed.
+- **They want to redo the whole thing.** That usually means the codebase
+  scan got something fundamentally wrong. Re-scan with their correction in
+  mind, then re-present once.
+- **They keep changing their mind on Job.** Stop. Tell them the agent will
+  not be useful until they can write one concrete sentence and offer to
+  come back later. Do not loop on rewording.
 
 ## Gotchas
 
-- **"You decide" means commit to the default and announce it.** Example: "I'll go with cloud and Nemotron Super 49B. Tell me to change if not." Never silently fill in.
-- **Tool over-spec is the most common error.** Users ask for a search tool when prompt-only would work. Probe: "Do you have evidence the model alone fails on these?" If no, drop the tool.
-- **"No constraints" usually means "I haven't thought about it."** Probe once: "Anything that should never appear: names, phone numbers, competitor mentions?" One probe, then move on.
-- **Do not propose a design before the user has answered.** Skipping ahead skips the value of the questions.
-- **NeMo Platform optimizes LangGraph agents wrapped in NAT today.** Other frameworks need a user-written wrapper. Surface that constraint in question 7, not at the build step.
+- **"You decide" means commit to the default and announce it.** Example:
+  "I'll go with cloud and Nemotron Super 49B. Tell me to change if not."
+  Never silently fill in.
+- **Tool over-spec is the most common error.** Users ask for a search tool
+  when prompt-only would work. Probe: "Do you have evidence the model alone
+  fails on these?" If no, drop the tool.
+- **"No constraints" usually means "I haven't thought about it."** Probe
+  once: "Anything that should never appear — names, phone numbers, competitor
+  mentions?" One probe, then move on.
+- **Do not skip the codebase scan even when the user seems eager to dive
+  into questions.** Spending the first five minutes reading earns the right
+  to ask shorter, sharper questions. Asking something the codebase already
+  answers loses trust immediately.
+- **NeMo Platform optimizes LangGraph agents wrapped in NAT today.** Other
+  frameworks need a user-written wrapper. Surface that in the Framework
+  field, not at the build step. This check is expected to relax as NAT
+  expands; do not bake it into anything irreversible.
+- **Allowed Changes is a permissions list, not a wishlist.** It controls
+  what the experimentalist agent will edit. Walk the defaults explicitly so
+  the user knows what they're consenting to.
+- **Do not invent Known Issues fields.** Known issues / recurring failure
+  patterns live in the Insights plugin as first-class entities, not in the
+  spec.
