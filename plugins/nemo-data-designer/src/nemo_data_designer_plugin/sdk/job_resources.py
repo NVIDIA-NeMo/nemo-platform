@@ -58,6 +58,20 @@ def _raise_for_status(resp: httpx.Response) -> None:
         raise DataDesignerJobError(detail, status_code=status_code) from exc
 
 
+def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
+    output_path.mkdir(parents=True, exist_ok=True)
+    base_path = output_path.resolve()
+    for member in tar.getmembers():
+        target_path = (output_path / member.name).resolve()
+        if target_path != base_path and base_path not in target_path.parents:
+            raise DataDesignerJobError(f"Refusing to extract unsafe tar member: {member.name}")
+        if member.issym() or member.islnk():
+            raise DataDesignerJobError(f"Refusing to extract tar link member: {member.name}")
+        if not (member.isfile() or member.isdir()):
+            raise DataDesignerJobError(f"Refusing to extract special tar member: {member.name}")
+        tar.extract(member, path=output_path)
+
+
 @dataclass
 class _WaitLogCollector:
     """Collects and processes log entries emitted during job polling."""
@@ -214,7 +228,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         )
         _raise_for_status(resp)
         with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:*") as tar:
-            tar.extractall(path=output_path)
+            _safe_extract_tar(tar, output_path)
 
         try:
             analysis_resp = self._platform._client.get(
@@ -421,7 +435,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         )
         _raise_for_status(resp)
         with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:*") as tar:
-            tar.extractall(path=output_path)
+            _safe_extract_tar(tar, output_path)
 
         try:
             analysis_resp = await self._platform._client.get(

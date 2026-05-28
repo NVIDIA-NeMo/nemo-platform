@@ -15,6 +15,7 @@ from fastapi import HTTPException, Request
 from fastapi import status as http_status
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from jinja2 import Environment as JinjaEnvironment
+from jinja2 import select_autoescape
 from multidict import CIMultiDict, CIMultiDictProxy
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform import NotFoundError as SDKNotFoundError
@@ -144,7 +145,7 @@ class NextRequestInfo:
 
 
 _DEFAULT_AUTH_HEADER_FORMAT = "Authorization: Bearer {{ auth_secret }}"
-_JINJA_ENV = JinjaEnvironment()
+_JINJA_ENV = JinjaEnvironment(autoescape=select_autoescape())
 
 
 def render_auth_header(secret_value: str, auth_header_format: str | None) -> tuple[str, str]:

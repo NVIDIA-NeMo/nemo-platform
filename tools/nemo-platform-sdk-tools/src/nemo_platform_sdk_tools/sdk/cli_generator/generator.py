@@ -14,7 +14,7 @@ from traceback import print_tb
 from typing import Any
 
 from caseutil.cases import to_kebab
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 from nemo_platform_sdk_tools.sdk.cli_generator.config import (
     CLIConfig,
     _resolve_placeholders,
@@ -58,7 +58,12 @@ class SimpleGenerator:
 
         # Set up Jinja2
         template_dir = get_templates_dir()
-        self._jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
+        self._jinja_env = Environment(
+            loader=FileSystemLoader(template_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+            autoescape=select_autoescape(),
+        )
         self._jinja_env.filters["repr"] = repr
         self._jinja_env.filters["to_kebab"] = to_kebab
 

@@ -21,7 +21,7 @@ def endpoint_identity(base_url: str, model_id: str | None = None, auth_identity:
     """Build a stable endpoint key for scheduler state and accounting."""
     auth_hash = ""
     if auth_identity:
-        auth_hash = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
+        auth_hash = hashlib.sha256(auth_identity.encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"{base_url}|{model_id or '_'}|{auth_hash}"
 
 

@@ -6,7 +6,7 @@ from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Annotated, Any, Dict, List, Optional, Union
 
-from jinja2 import Environment
+from jinja2 import Environment, select_autoescape
 from jinja2 import nodes as jinja_nodes
 from nmp.common.auth import AuthContext
 from nmp.common.entities import Filter, constants
@@ -337,7 +337,7 @@ def _validate_auth_header_format(v: str | None) -> str | None:
     """
     if v is None:
         return v
-    env = Environment()
+    env = Environment(autoescape=select_autoescape())
     try:
         ast = env.parse(v)
     except Exception as exc:

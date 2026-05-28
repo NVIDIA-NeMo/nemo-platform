@@ -55,7 +55,7 @@ def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
             raise AnonymizerJobError(f"Refusing to extract tar link member: {member.name}")
         if not (member.isfile() or member.isdir()):
             raise AnonymizerJobError(f"Refusing to extract special tar member: {member.name}")
-    tar.extractall(path=output_path)
+        tar.extract(member, path=output_path)
 
 
 def _raise_for_status(resp: httpx.Response) -> None:

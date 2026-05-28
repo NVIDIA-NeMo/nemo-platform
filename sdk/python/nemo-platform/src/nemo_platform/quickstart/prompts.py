@@ -48,6 +48,17 @@ class RegistryCredentials:
     password: SecretStr
 
 
+def _image_registry_host_from_ref(image: str) -> str:
+    if not image or "/" not in image:
+        return ""
+    parts = image.split("/")
+    if len(parts) >= 3:
+        return parts[0]
+    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
+        return parts[0]
+    return ""
+
+
 def detect_registry_auth_type(image: str) -> Literal["ngc", "user_pass", "none"]:
     """Detect what type of authentication an image registry requires.
 
@@ -59,14 +70,13 @@ def detect_registry_auth_type(image: str) -> Literal["ngc", "user_pass", "none"]
         "user_pass" for GitHub Container Registry and Docker Hub
         "none" for other registries (assume already logged in)
     """
-    image_lower = image.lower()
+    registry_host = _image_registry_host_from_ref(image).lower()
 
-    if "nvcr.io" in image_lower:
+    if registry_host == "nvcr.io":
         return "ngc"
 
-    for registry in REGISTRIES_REQUIRING_AUTH:
-        if registry in image_lower:
-            return "user_pass"
+    if registry_host in REGISTRIES_REQUIRING_AUTH:
+        return "user_pass"
 
     return "none"
 
@@ -400,7 +410,7 @@ def prompt_for_registry_credentials(
 
     username_value = username.strip() if username else ""
     if not username_value:
-        if "nvcr.io" in registry_value.lower():
+        if registry_value.lower() == "nvcr.io":
             username_value = "$oauthtoken"
         else:
             username_value = prompt_text("Username: ", validator=non_empty_validator("Username")).strip()

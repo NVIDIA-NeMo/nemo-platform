@@ -191,7 +191,7 @@ class ContainerManager:
         registry = _image_registry_host(self.config.image)
 
         auth_config = None
-        if registry and "nvcr.io" in registry:
+        if registry and registry == "nvcr.io":
             if self.config.ngc_api_key:
                 auth_config = {
                     "username": "$oauthtoken",
@@ -228,7 +228,7 @@ class ContainerManager:
                 "username": auth_override["username"],
                 "password": auth_override["password"],
             }
-        elif registry and "nvcr.io" in registry:
+        elif registry and registry == "nvcr.io":
             if self.config.ngc_api_key:
                 auth_config = {
                     "username": "$oauthtoken",

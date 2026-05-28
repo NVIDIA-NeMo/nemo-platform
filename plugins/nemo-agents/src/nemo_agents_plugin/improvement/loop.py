@@ -18,6 +18,7 @@ import os
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlparse
 
 from nemo_agents_plugin.improvement.analysis.llm import generate_gap_analysis
 from nemo_agents_plugin.improvement.baselines import load_baselines, save_baselines, update_baselines
@@ -520,6 +521,14 @@ async def create_mr(
     return mr_output or None
 
 
+def _git_remote_host(url: str) -> str:
+    if "://" in url:
+        return (urlparse(url).hostname or "").lower()
+    if "@" in url and ":" in url:
+        return url.split("@", 1)[1].split(":", 1)[0].lower()
+    return ""
+
+
 async def _detect_forge(worktree_path: Path) -> str | None:
     """Inspect ``git remote -v`` and return 'github', 'gitlab', or None."""
     proc = await asyncio.create_subprocess_exec(
@@ -532,10 +541,10 @@ async def _detect_forge(worktree_path: Path) -> str | None:
         stderr=asyncio.subprocess.PIPE,
     )
     out, _ = await proc.communicate()
-    url = out.decode().strip().lower()
-    if "github.com" in url:
+    host = _git_remote_host(out.decode().strip())
+    if host == "github.com":
         return "github"
-    if "gitlab" in url:
+    if host == "gitlab.com" or host.startswith("gitlab."):
         return "gitlab"
     return None
 

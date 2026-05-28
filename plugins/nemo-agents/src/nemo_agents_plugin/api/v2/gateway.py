@@ -28,6 +28,7 @@ import json
 import logging
 import os
 from typing import AsyncIterator
+from urllib.parse import urljoin, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -156,7 +157,11 @@ async def _proxy(
     ``content-length`` is stripped from forwarded headers because chunked
     transfer encoding makes the original value invalid.
     """
-    target_url = endpoint.rstrip("/") + "/" + trailing_uri
+    endpoint_parsed = urlparse(endpoint)
+    target_url = urljoin(endpoint.rstrip("/") + "/", trailing_uri)
+    target_parsed = urlparse(target_url)
+    if target_parsed.scheme != endpoint_parsed.scheme or target_parsed.netloc != endpoint_parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid proxy target URI.")
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 

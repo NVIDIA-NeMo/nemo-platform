@@ -110,7 +110,7 @@ def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
                 raise ValueError(f"Refusing to extract tar link member: {member.name}")
             if not (member.isfile() or member.isdir()):
                 raise ValueError(f"Refusing to extract special tar member: {member.name}")
-        tar.extractall(path=output_path)
+            tar.extract(member, path=output_path)
 
     return output_path
 
