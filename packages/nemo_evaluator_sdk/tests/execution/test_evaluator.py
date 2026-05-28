@@ -175,8 +175,6 @@ class TestEvaluator:
     def test_rejects_legacy_backend_argument(self):
         backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
 
-        # Use **kwargs indirection so static analyzers (CodeQL, type checkers)
-        # don't flag the deliberately-bad legacy argument name.
         legacy_kwargs: dict = {"backend": backend}
         with pytest.raises(TypeError, match="backend"):
             Evaluator(**legacy_kwargs)

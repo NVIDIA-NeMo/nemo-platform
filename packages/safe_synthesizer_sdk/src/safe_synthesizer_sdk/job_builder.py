@@ -309,7 +309,7 @@ class SafeSynthesizerJobBuilder:
         spec = self._build_job_spec()
         response = self._client.safe_synthesizer.jobs.create(
             workspace=self._workspace,
-            spec=spec,  # type: ignore[invalid-argument-type]  # spec accepts dict at runtime
+            spec=spec,  # type: ignore[invalid-argument-type]
             **kwargs,
         )
         return SafeSynthesizerJob(response.name, self._client, workspace=self._workspace)

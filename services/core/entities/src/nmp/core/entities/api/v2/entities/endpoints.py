@@ -351,9 +351,6 @@ async def list_entities(
             relationship_child_workspaces=accessible_workspaces,
         )
     else:
-        # 422 if the caller doesn't have access to the requested workspace.
-        # raise_if_workspace_inaccessible is a no-op when accessible_workspaces is
-        # None (full access) or the workspace is in the set.
         raise_if_workspace_inaccessible(
             accessible_workspaces,
             workspace,

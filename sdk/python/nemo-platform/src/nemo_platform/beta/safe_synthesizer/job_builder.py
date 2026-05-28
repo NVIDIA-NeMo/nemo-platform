@@ -3,15 +3,15 @@
 
 from __future__ import annotations
 
-import logging
 import random
 import string
+import logging
 import tempfile
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from pathlib import Path
+from typing_extensions import Self
 
 import pandas as pd
-from typing_extensions import Self
 
 from .job import SafeSynthesizerJob
 
@@ -309,7 +309,7 @@ class SafeSynthesizerJobBuilder:
         spec = self._build_job_spec()
         response = self._client.safe_synthesizer.jobs.create(
             workspace=self._workspace,
-            spec=spec,  # type: ignore[invalid-argument-type]  # spec accepts dict at runtime
+            spec=spec,  # type: ignore[invalid-argument-type]
             **kwargs,
         )
         return SafeSynthesizerJob(response.name, self._client, workspace=self._workspace)
