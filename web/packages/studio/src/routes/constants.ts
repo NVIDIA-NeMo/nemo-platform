@@ -3,7 +3,7 @@
 
 export const QUERY_PARAMETERS = {
   completionsTableFilter: 'completionsTableFilter',
-  datasetFolder: 'datasetFolder',
+  filesetFolder: 'filesetFolder',
   file: 'file',
   model: 'model',
   rating: 'rating',

@@ -94,7 +94,7 @@ export interface FilesetFileExplorerProps {
   extraColumns?: ExtraColumn[];
   /** Fires when the user explicitly toggles a folder open or closed (row click).
    *  Does NOT fire for the explorer's own auto-expansion from `currentFolder`.
-   *  Hosts can use this to sync URL state (e.g. drop `?datasetFolder=` when the
+   *  Hosts can use this to sync URL state (e.g. drop `?filesetFolder=` when the
    *  user collapses the folder that was named in the URL). */
   onFolderToggle?: (folderPath: string, isExpanded: boolean) => void;
 }

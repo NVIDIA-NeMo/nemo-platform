@@ -16,7 +16,7 @@ interface Props {
 export const DatasetBreadcrumbs: FC<Props> = ({ datasetName, currentFolder, onFolderChange }) => {
   const folders = useMemo(() => {
     const rootBreadcrumb = { label: datasetName, onClick: () => onFolderChange() };
-    // if no datasetFolder query param, return the root breadcrumb, which is the dataset name
+    // if no filesetFolder query param, return the root breadcrumb, which is the dataset name
     if (!currentFolder) {
       return [rootBreadcrumb];
     }

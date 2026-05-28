@@ -10,8 +10,8 @@ import { MemoryRouter } from 'react-router-dom';
 
 // Stub the file preview content so the FilesTab spec doesn't need handlers
 // for the file-content fetch. The preview component has its own spec.
-vi.mock('@studio/components/DatasetFilePreviewPanel/DatasetFilePreviewContent', () => ({
-  DatasetFilePreviewContent: ({ filePath }: { filePath: string }) => (
+vi.mock('@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent', () => ({
+  FilesetFilePreviewContent: ({ filePath }: { filePath: string }) => (
     <div data-testid="mock-file-preview-content">{filePath}</div>
   ),
 }));
