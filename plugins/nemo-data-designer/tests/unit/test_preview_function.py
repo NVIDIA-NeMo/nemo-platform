@@ -36,7 +36,13 @@ def _config() -> dd.DataDesignerConfig:
 
 
 def _patch_preview_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(preview_module, "get_model_configs", lambda config: [])
+    # Bypass real model-config extraction so the test config's incomplete
+    # ``ModelConfig`` (no provider) doesn't fail provider resolution. The
+    # call site lives inside ``data_designer_nemo.runnable.resolve_runnable_config``
+    # since the cross-call-site refactor.
+    from data_designer_nemo import runnable as runnable_module
+
+    monkeypatch.setattr(runnable_module, "get_model_configs", lambda config: [])
 
 
 @pytest.mark.asyncio

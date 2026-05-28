@@ -25,7 +25,7 @@ import data_designer.config as dd
 from data_designer.config.errors import InvalidConfigError
 from data_designer_nemo.context import create_data_designer_context
 from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
-from data_designer_nemo.model_configs import get_model_configs
+from data_designer_nemo.runnable import resolve_runnable_config
 from data_designer_nemo.sdk_translation import sync_to_async_sdk
 from nemo_data_designer_plugin._data_designer import create_data_designer
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -81,55 +81,30 @@ async def _validate_one_context(
     """Run a full validation pass for one execution context, accumulating all errors.
 
     Mirrors the work ``CreateJob.to_spec`` and ``PreviewFunction.run`` do at
-    submit/preview time, but never short-circuits: every sub-check that *can*
-    be run is run, so a single pass surfaces every problem.
+    submit/preview time — via the shared :func:`resolve_runnable_config` —
+    and additionally runs an engine-level compile check that the runtime
+    callers defer to library-execution time. Never short-circuits: every
+    sub-check that *can* be run is run, so a single pass surfaces every
+    problem.
     """
     is_local = context == "local"
     dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
 
-    errors: list[ValidationError] = []
+    # First run the same resolution that the job and function execute.
+    runnable_errors, _model_configs, model_providers = await resolve_runnable_config(dd_ctx, config)
+    errors: list[ValidationError] = [_to_validation_error(e) for e in runnable_errors]
 
-    # 1. Sub-checks that live inside the data-designer-nemo context (seed type,
-    #    tool configs, IGW personas filesets, etc.).
-    for ctx_err in await dd_ctx.validate(config):
-        errors.append(_to_validation_error(ctx_err))
-
-    # 2. Resolve referenced ModelConfigs. If aliases are unrecognized, we can't
-    #    meaningfully resolve providers, so we skip steps 3 and 4 in that case.
-    model_configs: list[dd.ModelConfig] = []
-    skip_engine_check = False
-    try:
-        model_configs = get_model_configs(config)
-    except NDDInvalidConfigError as e:
-        errors.append(_to_validation_error(e))
-        skip_engine_check = True
-
-    # 3. Resolve providers. Local context falls through to IGW (this is the
-    #    fix for the IGW-reference gap); remote uses IGW exclusively.
-    model_providers: list[dd.ModelProvider] = []
-    if not skip_engine_check:
-        try:
-            model_providers = await dd_ctx.get_model_providers(model_configs)
-        except (NDDInvalidConfigError, NDDInternalError) as e:
-            errors.append(_to_validation_error(e))
-            # NDDInternalError on the registry means we can't run the engine
-            # check below; an NDDInvalidConfigError still leaves us a usable
-            # registry so we *could* proceed, but to keep the diagnostic surface
-            # focused (and match remote behavior), we stop once provider
-            # resolution fails.
-            skip_engine_check = True
-
-    # 4. Engine-level compile check via upstream DataDesigner.validate. This is
-    #    the source of truth on column→alias→provider consistency. We supply
-    #    a registry that knows about IGW for the local case.
+    # Next additionally run engine-level compile via upstream ``DataDesigner.validate``,
+    # the source of truth on column→alias→provider consistency.
     #
-    # If we've already collected config-level errors (e.g. unsupported seed
-    # type, unrecognized aliases), the engine pass is unlikely to succeed in a
-    # diagnostically useful way — the engine surfaces internal failures (e.g.
-    # ``No reader found for seed_type 'df'``) when the config is already known
-    # to be malformed. Skip the engine check in that case so the user-facing
-    # diagnostics stay focused on the actionable problems we've already found.
-    if not skip_engine_check and not errors:
+    # If we've already collected errors above (e.g. unsupported seed type,
+    # unrecognized aliases, unresolved providers), the engine pass is
+    # unlikely to succeed in a diagnostically useful way — the engine
+    # surfaces internal failures (e.g. ``No reader found for seed_type
+    # 'df'``) when the config is already known to be malformed. Skip the
+    # engine check in that case so the user-facing diagnostics stay focused
+    # on the actionable problems we've already found.
+    if not errors:
         try:
             with tempfile.TemporaryDirectory() as artifact_path:
                 data_designer = create_data_designer(

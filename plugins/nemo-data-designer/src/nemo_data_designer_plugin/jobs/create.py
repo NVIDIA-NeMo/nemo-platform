@@ -7,10 +7,9 @@ from __future__ import annotations
 
 from typing import ClassVar, cast
 
-import data_designer.config as dd
-from data_designer_nemo.context import DataDesignerContext, create_data_designer_context
-from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError, raise_if_errors
-from data_designer_nemo.model_configs import get_model_configs
+from data_designer_nemo.context import create_data_designer_context
+from data_designer_nemo.errors import raise_if_errors
+from data_designer_nemo.runnable import resolve_runnable_config
 from nemo_data_designer_plugin.jobs.run import run_step_config_result
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -47,15 +46,9 @@ class CreateJob(NemoJob):
     ) -> BaseModel:  # DataDesignerStepConfig
         async_sdk = cast(AsyncNeMoPlatform, async_sdk)
         input_spec = cast(DataDesignerJobConfig, input_spec)
-        dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
 
-        # Aggregate errors across context validation and model config/provider
-        # resolution. ``errors`` is the per-call buffer; once we've run every
-        # check we either raise (with all errors aggregated) or proceed with
-        # the resolved values.
-        errors: list[NDDError] = []
-        errors.extend(await dd_ctx.validate(input_spec.config))
-        model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, input_spec.config, errors)
+        dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
+        errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, input_spec.config)
         raise_if_errors(errors)
 
         return DataDesignerStepConfig(
@@ -98,25 +91,3 @@ class CreateJob(NemoJob):
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform, is_local: bool = False) -> dict:
         step_config = DataDesignerStepConfig.model_validate(config)
         return run_step_config_result(step_config, ctx, sdk, is_local)
-
-
-async def _get_model_configs_and_providers(
-    dd_ctx: DataDesignerContext,
-    config: dd.DataDesignerConfig,
-    errors: list[NDDError],
-) -> tuple[list[dd.ModelConfig], list[dd.ModelProvider]]:
-    """Resolve referenced model configs / providers, appending failures to ``errors``."""
-    model_configs: list[dd.ModelConfig] = []
-    model_providers: list[dd.ModelProvider] = []
-
-    try:
-        model_configs = get_model_configs(config)
-    except NDDInvalidConfigError as e:
-        errors.append(e)
-    else:
-        try:
-            model_providers = await dd_ctx.get_model_providers(model_configs)
-        except (NDDInvalidConfigError, NDDInternalError) as e:
-            errors.append(e)
-
-    return model_configs, model_providers

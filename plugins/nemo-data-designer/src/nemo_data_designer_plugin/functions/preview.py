@@ -12,10 +12,10 @@ import anyio.to_thread
 import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
-from data_designer_nemo.context import DataDesignerContext, create_data_designer_context
-from data_designer_nemo.errors import NDDError, NDDInternalError, NDDInvalidConfigError, raise_if_errors
+from data_designer_nemo.context import create_data_designer_context
+from data_designer_nemo.errors import NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
-from data_designer_nemo.model_configs import get_model_configs
+from data_designer_nemo.runnable import resolve_runnable_config
 from nemo_data_designer_plugin.config import get_config
 from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 from nemo_data_designer_plugin.functions._types import (
@@ -45,13 +45,11 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         async_sdk: AsyncNeMoPlatform,
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
-        dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
+        # Fail fast on request shape (``num_records``) before doing any config-validation work.
+        num_records = _validate_and_get_num_records(spec.num_records, is_local)
 
-        # Extract/set all necessary values, validating along the way. Raise if any errors were collected.
-        errors: list[NDDError] = []
-        num_records = _validate_and_get_num_records(spec.num_records, is_local, errors)
-        model_configs, model_providers = await _get_model_configs_and_providers(dd_ctx, spec.config, errors)
-        errors.extend(await dd_ctx.validate(spec.config))
+        dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
+        errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, spec.config)
         raise_if_errors(errors)
 
         workspace_cvar.set(ctx.workspace)
@@ -102,12 +100,12 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
                 yield Done()
 
 
-def _validate_and_get_num_records(
-    requested_num_records: int | None,
-    is_local: bool,
-    errors: list[NDDError],
-) -> int:
-    """Resolve the effective ``num_records``, appending to ``errors`` on overflow."""
+def _validate_and_get_num_records(requested_num_records: int | None, is_local: bool) -> int:
+    """Resolve the effective ``num_records``, raising if the user asked for too many.
+
+    Local execution is unconstrained. Remote execution caps at the
+    ``preview_num_records.max`` configured by the operator.
+    """
     if is_local:
         return requested_num_records or DEFAULT_NUM_RECORDS
 
@@ -115,31 +113,7 @@ def _validate_and_get_num_records(
     num_records = config.preview_num_records.default
     if requested_num_records:
         if requested_num_records > config.preview_num_records.max:
-            errors.append(
-                NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
-            )
+            raise NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
         num_records = requested_num_records
 
     return num_records
-
-
-async def _get_model_configs_and_providers(
-    dd_ctx: DataDesignerContext,
-    config: dd.DataDesignerConfig,
-    errors: list[NDDError],
-) -> tuple[list[dd.ModelConfig], list[dd.ModelProvider]]:
-    """Resolve referenced model configs / providers, appending failures to ``errors``."""
-    model_configs: list[dd.ModelConfig] = []
-    model_providers: list[dd.ModelProvider] = []
-
-    try:
-        model_configs = get_model_configs(config)
-    except NDDInvalidConfigError as e:
-        errors.append(e)
-    else:
-        try:
-            model_providers = await dd_ctx.get_model_providers(model_configs)
-        except (NDDInvalidConfigError, NDDInternalError) as e:
-            errors.append(e)
-
-    return model_configs, model_providers
