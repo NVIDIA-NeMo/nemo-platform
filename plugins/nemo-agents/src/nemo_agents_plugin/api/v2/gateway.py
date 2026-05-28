@@ -163,8 +163,6 @@ async def _proxy(
     joined = urlparse(urljoin(endpoint.rstrip("/") + "/", trailing_uri))
     if joined.scheme != endpoint_parsed.scheme or joined.netloc != endpoint_parsed.netloc:
         raise HTTPException(status_code=400, detail="Invalid proxy target URI.")
-    # Rebuild from the trusted endpoint's scheme+netloc so the final URL never
-    # depends directly on user-supplied path text for the host portion.
     target_url = urlunparse(
         (endpoint_parsed.scheme, endpoint_parsed.netloc, joined.path, joined.params, joined.query, "")
     )
