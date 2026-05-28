@@ -4,7 +4,6 @@
 from typing import ClassVar
 
 import nmp.evaluator.app.values as app
-from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.common.entities.client import EntityBase
 from nmp.evaluator.entities.metrics import Metric
 from nmp.evaluator.entities.utils import EmbeddedEntityMixin
@@ -16,11 +15,3 @@ class Benchmark(EmbeddedEntityMixin, app.Benchmark, EntityBase):
 
     __embedded_entity_fields__: ClassVar[dict[str, type]] = {"metrics": Metric}  # ty: ignore[invalid-assignment]
     metrics: list[Metric] = Field(min_length=1, description="List of metrics that comprise this benchmark.")
-
-
-class SystemBenchmark(app.SystemBenchmark, EntityBase):
-    """Base class for inline system benchmarks"""
-
-    __entity_type__: ClassVar[str] = "benchmark"
-
-    workspace: str = Field(default=SYSTEM_WORKSPACE)

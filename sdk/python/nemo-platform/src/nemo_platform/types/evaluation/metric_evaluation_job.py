@@ -22,13 +22,12 @@ from typing_extensions import TypeAlias
 from ..._models import BaseModel
 from .metric_online_job import MetricOnlineJob
 from .metric_offline_job import MetricOfflineJob
-from .metric_retriever_job import MetricRetrieverJob
 from .metric_online_agent_job import MetricOnlineAgentJob
 from ..shared.platform_job_status import PlatformJobStatus
 
 __all__ = ["MetricEvaluationJob", "Spec"]
 
-Spec: TypeAlias = Union[MetricOfflineJob, MetricOnlineJob, MetricOnlineAgentJob, MetricRetrieverJob]
+Spec: TypeAlias = Union[MetricOfflineJob, MetricOnlineJob, MetricOnlineAgentJob]
 
 
 class MetricEvaluationJob(BaseModel):

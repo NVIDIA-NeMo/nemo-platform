@@ -1,11 +1,9 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-from typing import Literal
-
-from nemo_evaluator_sdk.values import FieldMapping, SupportedJobTypes
+from nemo_evaluator_sdk.values import FieldMapping
 from nmp.evaluator.app.values.common import FilesetRef, MetricRef
-from nmp.evaluator.app.values.metrics import Metric, Parameter
+from nmp.evaluator.app.values.metrics import Metric
 from pydantic import BaseModel, Field, model_validator
 from typing_extensions import Self
 
@@ -42,24 +40,3 @@ class Benchmark(BaseModel):
         if len(refs) != len(set(refs)):
             raise ValueError("benchmark metric references must be unique")
         return self
-
-
-class SystemBenchmark(BaseModel):
-    """Inline system benchmarks"""
-
-    name: str = Field(description="Benchmark name")
-
-    description: str | None = Field(default=None, description="Human-readable description of the benchmark.")
-    labels: dict[str, str] = Field(
-        default_factory=dict, description="Labels are key-value pairs that can be used for grouping and filtering."
-    )
-    required_params: list[Parameter] = Field(
-        default_factory=list, description="List of required parameters for running an evaluation with the benchmark."
-    )
-    optional_params: list[Parameter] = Field(
-        default_factory=list, description="List of required parameters for running an evaluation with the benchmark."
-    )
-    supported_job_types: list[Literal[SupportedJobTypes.ONLINE, SupportedJobTypes.OFFLINE]] = Field(
-        default=[SupportedJobTypes.ONLINE],
-        description="A benchmark can evaluate model outputs for online evaluations or pre-generated outputs for offline evaluations.",
-    )

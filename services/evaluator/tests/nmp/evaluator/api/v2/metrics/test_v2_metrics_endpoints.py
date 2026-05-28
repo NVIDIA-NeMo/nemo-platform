@@ -2,21 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import os
-from typing import Any, Generator, cast
+from typing import Generator, cast
 from unittest.mock import AsyncMock, patch
 
 import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 import pytest
 import pytest_asyncio
-import yaml
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from nemo_evaluator_sdk.values import AggregatedMetricResult
 from nemo_evaluator_sdk.values.metrics import default_judge_prompt_template_chat
 from nmp.common.entities import EntityClient
 from nmp.common.jobs.api_factory import _validate_and_resolve_job_output
-from nmp.common.jobs.constants import EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.api.v2.common.query_params import AggregateFieldNameList
 from nmp.evaluator.api.v2.metrics.endpoints import (
@@ -37,9 +35,7 @@ from nmp.evaluator.api.v2.metrics.schemas.evaluation import (
 from nmp.evaluator.api.v2.metrics.schemas.jobs import (
     MetricJob,
     MetricJobAdapter,
-    MetricOfflineJob,
     MetricOnlineJob,
-    MetricRetrieverJob,
 )
 from nmp.evaluator.api.v2.metrics.schemas.metrics import (
     BLEUMetric,
@@ -54,9 +50,6 @@ from nmp.evaluator.api.v2.metrics.schemas.metrics_resp import (
     MetricResponseAdapter,
     MetricsListResponse,
 )
-from nmp.evaluator.app.evalfactory.agentic_eval import AgenticEvalHandler
-from nmp.evaluator.app.evalfactory.retriever import RetrieverHandler
-from nmp.evaluator.app.jobs.fileset import fileset_entrypoint_args
 from nmp.evaluator.config import settings
 from nmp.testing import create_test_client
 
@@ -96,22 +89,6 @@ def test_metric_job_params_reject_aggregate_fields() -> None:
                 "params": {"aggregate_fields": ["mean"]},
             }
         )
-
-
-def _subset_match(expected: dict[str, Any], actual: dict[str, Any], path: str = "") -> list[str]:
-    """Check if expected dict is a subset of actual dict. Returns list of mismatches."""
-    errors = []
-    for key, expected_value in expected.items():
-        current_path = f"{path}.{key}" if path else key
-        if key not in actual:
-            errors.append(f"Missing key: {current_path}")
-            continue
-        actual_value = actual[key]
-        if isinstance(expected_value, dict) and isinstance(actual_value, dict):
-            errors.extend(_subset_match(expected_value, actual_value, current_path))
-        elif expected_value != actual_value:
-            errors.append(f"Mismatch at {current_path}: expected {expected_value!r}, got {actual_value!r}")
-    return errors
 
 
 @pytest.fixture
@@ -426,295 +403,6 @@ async def test_platform_job_config_compiler_llm_judge_metric(mock_entity_client:
     assert platform_job_spec == expected
 
 
-@pytest.mark.asyncio
-async def test_platform_job_config_compiler_unsupported_inline_system_metric(
-    mock_entity_client: EntityClient, mock_sdk
-):
-    """Test system metric cannot be inline and only supports metric ref"""
-
-    original_spec = MetricOfflineJob(
-        metric=app.SystemMetric(
-            name="my-custom-system-metric",
-        ),
-        dataset=app.FilesetRef(root="default/my-dataset"),
-    )
-    with pytest.raises(HTTPException) as exc_info:
-        transformed_spec, _ = _compiler_args(original_spec, WORKSPACE, mock_entity_client)
-        await platform_job_config_compiler(
-            WORKSPACE, original_spec, transformed_spec, mock_entity_client, None, mock_sdk
-        )
-
-    assert isinstance(exc_info.value, HTTPException)
-    assert exc_info.value.status_code == 422
-    assert (
-        "Unsupported job with custom system metric. Use metric reference instead 'system/<metric-name>'"
-        in exc_info.value.detail
-    )
-
-
-@pytest.mark.asyncio
-async def test_platform_job_config_compiler_system_metric(mock_entity_client: EntityClient, mock_sdk):
-    """High level test for compiling a system metric to an EvalFactory job spec"""
-    job: MetricOfflineJob = MetricJobAdapter.validate_python(
-        {
-            "metric": "system/trajectory-evaluation",
-            "dataset": "my-workspace/dataset",
-            "params": {
-                "limit_samples": 5,
-            },
-            "metric_params": {
-                "judge": {"model": {"url": "http://nim.test/v1/chat/completions", "name": "my/judge"}},
-                "trajectory_used_tools": "tool1,tool2",
-            },
-        }
-    )
-
-    metrics_manager = MetricsManager(mock_entity_client)
-    agentic_metric = AgenticEvalHandler._system_metrics[0]
-    agentic_metric_config = agentic_metric.model_dump(mode="json", exclude_none=True)
-    agentic_metric_entity = entities.SystemMetric(**agentic_metric_config)
-    await metrics_manager.create(agentic_metric_entity, sdk=mock_sdk)
-
-    with (
-        patch(
-            "nmp.evaluator.app.datasets.nmp_datasets.fileset.dataset_exists", new_callable=AsyncMock
-        ) as mock_fileset_exists,
-        patch("nmp.evaluator.app.inference.verify_model_reachable", new_callable=AsyncMock) as mock_verify,
-    ):
-        mock_fileset_exists.return_value = True
-        mock_verify.return_value = {"status": "success"}
-
-        transformed_spec, _ = _compiler_args(job, WORKSPACE, mock_entity_client)
-        platform_job_spec = await platform_job_config_compiler(
-            WORKSPACE, job, transformed_spec, mock_entity_client, None, mock_sdk
-        )
-
-    # Verify job can be serialized after resolving metric
-    # emulates Jobs API factory handle_job_spec_mismatch
-    MetricJobAdapter.validate_python(job.model_dump(exclude_none=True))
-
-    expected_evalfactory_config_yaml = f"""config:
-  params:
-    extra:
-      dataset_path: {settings.jobs.dataset_dir}/my-workspace/dataset
-      judge:
-        model:
-          name: my/judge
-          url: http://nim.test/v1/chat/completions
-      judge_model_args: {{}}
-      judge_model_type: nvidia-nim
-      trajectory_used_tools: tool1,tool2
-    limit_samples: 5
-    parallelism: 8
-  type: agentic_eval_trajectory_evaluation
-output_dir: {settings.jobs.results_dir}
-target:
-  api_endpoint:
-    adapter_config:
-      interceptors:
-      - config:
-          log_failed_requests: true
-          output_dir: {settings.jobs.results_dir}
-        name: request_logging
-      - config:
-          cache_dir: {settings.jobs.results_dir}
-          reuse_cached_responses: true
-          save_requests: true
-          save_responses: true
-        name: caching
-      - name: endpoint
-      - config:
-          output_dir: {settings.jobs.results_dir}
-        name: response_logging
-      - name: raise_client_errors
-      - config:
-          progress_tracking_interval: 1
-          progress_tracking_interval_seconds: 60
-          progress_tracking_url: ${{NMP_JOBS_URL}}/apis/jobs/v2/workspaces/${{NEMO_JOB_WORKSPACE}}/jobs/${{NEMO_JOB_ID}}/status-details
-          request_method: PATCH
-        name: progress_tracking
-      post_eval_hooks:
-      - config:
-          report_types:
-          - json
-        name: post_eval_report
-      - config:
-          progress_tracking_interval: 1
-          progress_tracking_interval_seconds: 60
-          progress_tracking_url: ${{NMP_JOBS_URL}}/apis/jobs/v2/workspaces/${{NEMO_JOB_WORKSPACE}}/jobs/${{NEMO_JOB_ID}}/status-details
-          request_method: PATCH
-        name: progress_tracking
-    model_id: my/judge
-    type: chat
-    url: http://nim.test/v1/chat/completions
-"""
-    scratch_path = f"${{{EPHEMERAL_TASK_STORAGE_PATH_ENVVAR}}}"
-    target_download_dir = f"${{{PERSISTENT_JOB_STORAGE_PATH_ENVVAR}}}/datasets"
-    dataset_download_command = fileset_entrypoint_args(
-        app.FilesetRef(root="my-workspace/dataset"),
-        target_download_dir,
-        scratch_path,
-    )
-
-    expected = {
-        "steps": [
-            {
-                "environment": [
-                    {
-                        "name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH",
-                        "value": settings.jobs.volume_path,
-                    },
-                ],
-                "executor": {
-                    "container": {
-                        "command": dataset_download_command,
-                        "entrypoint": [
-                            "python",
-                            "-m",
-                            "nmp.evaluator.tasks.download_fileset",
-                        ],
-                        "image": get_qualified_image("nmp-cpu-tasks"),
-                    },
-                    "provider": "cpu",
-                },
-                "name": "dataset-download",
-            },
-            {
-                "name": "evaluation",
-                "executor": {
-                    "provider": "cpu",
-                    "container": {
-                        "image": settings.evalfactory.agentic_eval,
-                        "command": [
-                            "/bin/sh",
-                            "-c",
-                            f'mkdir -p {settings.jobs.configs_dir} && echo "$NEMO_EVAL_FACTORY_JOB_CONFIG" > {settings.jobs.configs_dir}/evaluation_job_file.yaml && exec nemo-evaluator run_eval --run_config {settings.jobs.configs_dir}/evaluation_job_file.yaml --output_dir {settings.jobs.results_dir} --eval_type agentic_eval_trajectory_evaluation --model_id my/judge --model_url http://nim.test/v1/chat/completions --model_type chat',
-                        ],
-                    },
-                },
-                "config": {
-                    "target": {
-                        "api_endpoint": {
-                            "url": "http://nim.test/v1/chat/completions",
-                            "model_id": "my/judge",
-                            "type": "chat",
-                            "adapter_config": {
-                                "interceptors": [
-                                    {
-                                        "name": "request_logging",
-                                        "config": {
-                                            "output_dir": settings.jobs.results_dir,
-                                            "log_failed_requests": True,
-                                        },
-                                    },
-                                    {
-                                        "name": "caching",
-                                        "config": {
-                                            "cache_dir": settings.jobs.results_dir,
-                                            "reuse_cached_responses": True,
-                                            "save_requests": True,
-                                            "save_responses": True,
-                                        },
-                                    },
-                                    {"name": "endpoint"},
-                                    {
-                                        "name": "response_logging",
-                                        "config": {
-                                            "output_dir": settings.jobs.results_dir,
-                                        },
-                                    },
-                                    {"name": "raise_client_errors"},
-                                    {
-                                        "name": "progress_tracking",
-                                        "config": {
-                                            "progress_tracking_interval": 1,
-                                            "progress_tracking_interval_seconds": 60,
-                                            "progress_tracking_url": "${NMP_JOBS_URL}/apis/jobs/v2/workspaces/${NEMO_JOB_WORKSPACE}/jobs/${NEMO_JOB_ID}/status-details",
-                                            "request_method": "PATCH",
-                                        },
-                                    },
-                                ],
-                                "post_eval_hooks": [
-                                    {"name": "post_eval_report", "config": {"report_types": ["json"]}},
-                                    {
-                                        "name": "progress_tracking",
-                                        "config": {
-                                            "progress_tracking_interval": 1,
-                                            "progress_tracking_interval_seconds": 60,
-                                            "progress_tracking_url": "${NMP_JOBS_URL}/apis/jobs/v2/workspaces/${NEMO_JOB_WORKSPACE}/jobs/${NEMO_JOB_ID}/status-details",
-                                            "request_method": "PATCH",
-                                        },
-                                    },
-                                ],
-                            },
-                        }
-                    },
-                    "config": {
-                        "type": "agentic_eval_trajectory_evaluation",
-                        "params": {
-                            "extra": {
-                                "dataset_path": f"{settings.jobs.dataset_dir}/my-workspace/dataset",
-                                "judge": {"model": {"url": "http://nim.test/v1/chat/completions", "name": "my/judge"}},
-                                "judge_model_args": {},
-                                "judge_model_type": "nvidia-nim",
-                                "trajectory_used_tools": "tool1,tool2",
-                            },
-                            "parallelism": 8,
-                            "limit_samples": 5,
-                        },
-                    },
-                    "output_dir": settings.jobs.results_dir,
-                },
-                "environment": [
-                    {"name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", "value": settings.jobs.volume_path},
-                    {"name": "NEMO_EVAL_FACTORY_JOB_CONFIG", "value": expected_evalfactory_config_yaml},
-                ],
-            },
-            {
-                "name": "results",
-                "config": {
-                    "dataset": "my-workspace/dataset",
-                    "dataset_ref": "my-workspace/dataset",
-                    "metric": agentic_metric_config,
-                    "metric_params": {
-                        "judge": {
-                            "model": {
-                                "name": "my/judge",
-                                "url": "http://nim.test/v1/chat/completions",
-                            },
-                        },
-                        "judge_model_args": {},
-                        "judge_model_type": "nvidia-nim",
-                        "trajectory_used_tools": "tool1,tool2",
-                    },
-                    "metric_ref": "system/trajectory-evaluation",
-                    "params": {
-                        "limit_samples": 5,
-                        "parallelism": 8,
-                    },
-                },
-                "executor": {
-                    "provider": "cpu",
-                    "container": {
-                        "image": get_qualified_image("nmp-cpu-tasks"),
-                        "entrypoint": ["python", "-m", "nmp.evaluator.tasks.metric_results"],
-                        "command": [
-                            "--progress-tracking-url",
-                            "${NMP_JOBS_URL}/apis/jobs/v2/workspaces/${NEMO_JOB_WORKSPACE}/jobs/${NEMO_JOB_ID}/status-details",
-                        ],
-                    },
-                },
-                "environment": [
-                    {"name": "NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH", "value": settings.jobs.volume_path},
-                    {"name": "LOG_FORMAT", "value": "json"},
-                    {"name": "NEMO_EVAL_HARNESS", "value": "agentic_eval"},
-                ],
-            },
-        ]
-    }
-    assert platform_job_spec == expected
-
-
 class TestCreateMetricEndpoint:
     """Tests for the create_metric endpoint function.
 
@@ -797,150 +485,6 @@ class TestCreateMetricEndpoint:
         assert result is not None
         assert result.name == "test-string-check"
         assert result.type == "string-check"
-
-
-@pytest.mark.asyncio
-async def test_platform_job_config_compiler_retriever_metric(
-    mock_entity_client: EntityClient, mock_sdk, metrics_manager: MetricsManager
-):
-    """End-to-end test for compiling a retriever system metric to an EvalFactory job spec.
-
-    This test verifies the complete flow from retriever job input to platform job spec,
-    using a BuiltInDataset (BEIR) for evaluation.
-    """
-    original_spec: MetricRetrieverJob = MetricJobAdapter.validate_python(
-        {
-            "retriever_pipeline": {
-                "embeddings_model": {
-                    "url": "https://integrate.api.nvidia.com/v1",
-                    "name": "nvidia/nv-embedqa-e5-v5",
-                    "format": "nim",
-                    "api_key_secret": "embedding-secret",
-                },
-            },
-            "dataset": "beir/fiqa",  # BuiltInDataset (plain string)
-            "metric": "system/retriever-ndcg-cut-10",
-            "metric_params": {
-                "dataset_format": "beir",
-                "top_k": 10,
-            },
-        }
-    )
-
-    # Register the retriever metric in the entity store
-    retriever_metric = next(m for m in RetrieverHandler._system_metrics if m.name == "retriever-ndcg-cut-10")
-    retriever_metric_entity = entities.SystemMetric(**retriever_metric.model_dump(exclude_none=True))
-    await metrics_manager.create(retriever_metric_entity, sdk=mock_sdk)
-
-    # Mock the fileset check
-    with (
-        patch(
-            "nmp.evaluator.app.datasets.nmp_datasets.fileset.dataset_exists", new_callable=AsyncMock
-        ) as mock_fileset_exists,
-        patch("nmp.evaluator.app.inference.verify_model_reachable", new_callable=AsyncMock) as mock_verify,
-    ):
-        mock_fileset_exists.return_value = True
-        mock_verify.return_value = {"status": "success"}
-
-        transformed_spec, _ = _compiler_args(original_spec, WORKSPACE, mock_entity_client)
-        platform_job_spec = await platform_job_config_compiler(
-            WORKSPACE, original_spec, transformed_spec, mock_entity_client, None, mock_sdk
-        )
-
-    # Verify job can be serialized after resolving metric
-    # emulates Jobs API factory handle_job_spec_mismatch
-    MetricJobAdapter.validate_python(transformed_spec.model_dump(exclude_none=True))
-
-    # Expected evaluation step configuration
-    expected_eval_step = yaml.safe_load(
-        """
-        name: evaluation
-        executor:
-            container:
-                image: {image}
-        config:
-            target:
-                api_endpoint:
-                    type: embedding
-            config:
-                type: retriever
-                params:
-                    extra:
-                        tasks:
-                            retriever:
-                                dataset:
-                                    format: beir
-                                    path: fiqa
-                                metrics:
-                                    ndcg_cut_10:
-                                        type: pytrec_eval
-                        pipeline:
-                            query_embedding_model:
-                                api_endpoint:
-                                    url: https://integrate.api.nvidia.com/v1
-                                    model_id: nvidia/nv-embedqa-e5-v5
-                                    format: nim
-                                    api_key: $QUERY_API_KEY
-                            index_embedding_model:
-                                api_endpoint:
-                                    url: https://integrate.api.nvidia.com/v1
-                                    model_id: nvidia/nv-embedqa-e5-v5
-                                    format: nim
-                                    api_key: $INDEX_API_KEY
-                            top_k: 10
-    """.format(image=settings.evalfactory.rag_retriever)
-    )
-
-    # Expected results step configuration
-    expected_results_step = yaml.safe_load(
-        """
-        name: results
-        executor:
-            container:
-                image: {image}
-                entrypoint:
-                    - python
-                    - -m
-                    - nmp.evaluator.tasks.metric_results
-    """.format(image=get_qualified_image("nmp-cpu-tasks"))
-    )
-
-    # Verify job structure has both evaluation and results steps
-    assert "steps" in platform_job_spec
-    steps = list(platform_job_spec["steps"])
-    assert len(steps) >= 2, "Expected at least evaluation and results steps"
-
-    eval_step = cast(dict[str, Any], steps[0])
-    results_step = cast(dict[str, Any], steps[1])
-
-    # Extract expected path before comparison (BuiltInDataset uses the name directly)
-    expected_dataset_path = expected_eval_step["config"]["config"]["params"]["extra"]["tasks"]["retriever"][
-        "dataset"
-    ].pop("path")
-
-    # Compare evaluation step using subset matching (excluding dynamic path)
-    errors = _subset_match(expected_eval_step, eval_step)
-    assert not errors, "Evaluation step config mismatch:\n" + "\n".join(errors)
-
-    # Compare results step using subset matching
-    errors = _subset_match(expected_results_step, results_step)
-    assert not errors, "Results step config mismatch:\n" + "\n".join(errors)
-
-    # Verify dataset path ends with expected value (path includes output_dir prefix)
-    dataset = eval_step["config"]["config"]["params"]["extra"]["tasks"]["retriever"]["dataset"]
-    assert dataset["path"].endswith(expected_dataset_path), (
-        f"Expected dataset path to end with '{expected_dataset_path}', got: {dataset['path']}"
-    )
-
-    # Verify dense_only yaml files are used (no reranker configured)
-    retriever_params = eval_step["config"]["config"]["params"]["extra"]["pipeline"]["params"]
-    assert "dense_only" in retriever_params["index_pipeline_yaml_file"]
-    assert "dense_only" in retriever_params["query_pipeline_yaml_file"]
-
-    # Verify secrets in environment (only embedding, no reranker)
-    env_names = [e["name"] for e in eval_step["environment"] if "from_secret" in e]
-    assert "QUERY_API_KEY" in env_names
-    assert "INDEX_API_KEY" in env_names
 
 
 class TestAggregateFieldNameList:

@@ -20,19 +20,12 @@ from nmp.evaluator.api.v2.benchmarks.manager import BenchmarksManager
 from nmp.evaluator.api.v2.benchmarks.schemas.jobs import (
     BenchmarkOnlineAgentJob,
     BenchmarkOnlineJob,
-    SystemBenchmarkOnlineJob,
 )
 from nmp.evaluator.api.v2.metrics.manager import MetricsManager
 from nmp.evaluator.api.v2.metrics.schemas.jobs import (
     MetricOfflineJob,
     MetricOnlineJob,
-    MetricRetrieverJob,
-    RetrieverPipeline,
 )
-from nmp.evaluator.app.evalfactory.agentic_eval import AgenticEvalHandler
-from nmp.evaluator.app.evalfactory.bfcl import BFCLHandler
-from nmp.evaluator.app.evalfactory.retriever import RetrieverHandler
-from nmp.evaluator.app.evalfactory.simple_evals import SimpleEvalsHandler
 from nmp.evaluator.app.values import BenchmarkRef, FilesetRef, MetricRef
 from nmp.evaluator.app.values.common import ModelRef
 from pydantic import ValidationError
@@ -275,142 +268,6 @@ class TestMetricJobPrechecks:
             )
 
     @pytest.mark.asyncio
-    async def test_retriever_job_no_model_check(self, mock_entity_client, mock_sdk, mock_fileset_check):
-        """Retriever job should not trigger model check (no job.model)."""
-        # Use metric reference for system metric
-        metric = MetricRef(root="system/retriever-ndcg")
-
-        job = MetricRetrieverJob(
-            metric=metric,
-            retriever_pipeline=RetrieverPipeline(
-                embeddings_model=Model(url="http://embedding.test/v1", name="embed-model"),
-            ),
-            dataset=DatasetRows(rows=[{"query": "test", "relevant_docs": ["doc1"]}]),
-        )
-
-        manager = MetricsManager(mock_entity_client)
-
-        # Mock get_metric to return the actual system metric entity
-        retriever_metric = next(m for m in RetrieverHandler._system_metrics if m.name == "retriever-ndcg")
-
-        with (
-            mock.patch.object(manager, "get_metric", new_callable=mock.AsyncMock) as mock_get_metric,
-            mock.patch(
-                "nmp.evaluator.app.inference.verify_model_reachable",
-                new_callable=mock.AsyncMock,
-            ) as mock_verify,
-            mock.patch(
-                "nmp.evaluator.app.jobs.metrics.compile_metric_job",
-                new_callable=mock.AsyncMock,
-            ) as mock_compile,
-        ):
-            mock_get_metric.return_value = retriever_metric
-            mock_compile.return_value = mock.MagicMock()
-
-            await manager.compile_job("test-workspace", job, sdk=mock_sdk)
-
-            # verify_model_reachable should NOT be called (retriever has no job.model)
-            mock_verify.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_retriever_embeddings_model_ref_resolved_before_compile(
-        self, mock_entity_client, mock_sdk, mock_fileset_check
-    ):
-        """Retriever embeddings ModelRef should be resolved before app-layer job validation."""
-        metric = MetricRef(root="system/retriever-ndcg")
-        resolved_embeddings_model = Model(url="http://embedder.test/v1", name="embed-model")
-
-        job = MetricRetrieverJob.model_validate(
-            {
-                "metric": str(metric.root),
-                "retriever_pipeline": {
-                    "embeddings_model": "test-workspace/embed-model",
-                },
-                "dataset": {"rows": [{"query": "test", "relevant_docs": ["doc1"]}]},
-            }
-        )
-
-        manager = MetricsManager(mock_entity_client)
-        retriever_metric = next(m for m in RetrieverHandler._system_metrics if m.name == "retriever-ndcg")
-
-        with (
-            mock.patch.object(manager, "get_metric", new_callable=mock.AsyncMock) as mock_get_metric,
-            mock.patch(
-                "nmp.evaluator.api.v2.metrics.manager.resolve_model",
-                new_callable=mock.AsyncMock,
-                return_value=resolved_embeddings_model,
-            ) as mock_resolve_model,
-            mock.patch(
-                "nmp.evaluator.app.inference.verify_model_reachable",
-                new_callable=mock.AsyncMock,
-            ) as mock_verify,
-            mock.patch(
-                "nmp.evaluator.app.jobs.metrics.compile_metric_job",
-                new_callable=mock.AsyncMock,
-            ) as mock_compile,
-        ):
-            mock_get_metric.return_value = retriever_metric
-            mock_compile.return_value = mock.MagicMock()
-
-            await manager.compile_job("test-workspace", job, sdk=mock_sdk)
-
-            mock_resolve_model.assert_called_once()
-            assert isinstance(mock_resolve_model.call_args[0][0], ModelRef)
-            mock_verify.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_agentic_eval_job_judge_check_called(self, mock_entity_client, mock_sdk, mock_fileset_check):
-        """Agentic eval metric with judge should trigger judge model check."""
-        metric = MetricRef(root="system/trajectory-evaluation")
-
-        job = MetricOfflineJob(
-            metric=metric,
-            dataset=DatasetRows(rows=[{"input": "test", "output": "test"}]),
-            metric_params={
-                "judge": {
-                    # URL must end in /v1/chat/completions for agentic eval
-                    "model": {"url": "http://judge.test/v1/chat/completions", "name": "judge-model"},
-                },
-                "trajectory_used_tools": "tool1,tool2",
-            },
-        )
-
-        manager = MetricsManager(mock_entity_client)
-
-        # Mock get_metric to return the actual system metric entity
-        agentic_metric = next(m for m in AgenticEvalHandler._system_metrics if m.name == "trajectory-evaluation")
-
-        with (
-            mock.patch.object(manager, "get_metric", new_callable=mock.AsyncMock) as mock_get_metric,
-            mock.patch(
-                "nmp.evaluator.app.inference.verify_model_reachable",
-                new_callable=mock.AsyncMock,
-            ) as mock_verify,
-            mock.patch(
-                "nmp.evaluator.app.jobs.metrics.compile_metric_job",
-                new_callable=mock.AsyncMock,
-            ) as mock_compile,
-        ):
-            mock_get_metric.return_value = agentic_metric
-            mock_verify.return_value = {"status": "ok"}
-            mock_compile.return_value = mock.MagicMock()
-
-            await manager.compile_job("test-workspace", job, sdk=mock_sdk)
-
-            # verify_model_reachable should be called for judge.model
-            mock_verify.assert_called_once()
-            call_args = mock_verify.call_args[0][0]
-            # Handle both Model objects and dicts
-            if isinstance(call_args, dict):
-                # URL may be normalized (e.g., /chat/completions removed)
-                assert "judge.test" in call_args["url"]
-                assert call_args["name"] == "judge-model"
-            else:
-                # URL may be normalized (e.g., /chat/completions removed)
-                assert "judge.test" in call_args.url
-                assert call_args.name == "judge-model"
-
-    @pytest.mark.asyncio
     async def test_model_check_failure_raises_error(self, mock_entity_client, mock_sdk, mock_fileset_check):
         """Model check failure should raise ValueError."""
         # Use a metric reference and mock get_metric to return the entity
@@ -650,96 +507,6 @@ class TestBenchmarkJobPrechecks:
             assert compiled_job.model.url == (
                 "http://container-host:8080/apis/inference-gateway/v2/workspaces/test/model/demo/-/v1"
             )
-
-    @pytest.mark.asyncio
-    async def test_system_benchmark_online_model_and_judge_check(
-        self, mock_entity_client, mock_sdk, mock_fileset_check
-    ):
-        """System benchmark online job with model and judge should check both."""
-        # Get an actual system benchmark that requires judge (simple-evals)
-        benchmark = SimpleEvalsHandler._system_benchmarks[0]  # First benchmark
-
-        job = SystemBenchmarkOnlineJob(
-            benchmark=BenchmarkRef(root=f"system/{benchmark.name}"),
-            model=Model(url="http://model.test/v1", name="test-model"),
-            benchmark_params={
-                "judge": {
-                    "model": {"url": "http://judge.test/v1", "name": "judge-model"},
-                },
-            },
-        )
-
-        manager = BenchmarksManager(mock_entity_client)
-
-        with (
-            mock.patch.object(manager, "get_benchmark", new_callable=mock.AsyncMock) as mock_get_benchmark,
-            mock.patch(
-                "nmp.evaluator.app.inference.verify_model_reachable",
-                new_callable=mock.AsyncMock,
-            ) as mock_verify,
-            mock.patch(
-                "nmp.evaluator.app.jobs.benchmarks.compile_benchmark_job",
-                new_callable=mock.AsyncMock,
-            ) as mock_compile,
-        ):
-            mock_get_benchmark.return_value = benchmark
-            mock_verify.return_value = {"status": "ok"}
-            mock_compile.return_value = mock.MagicMock()
-
-            await manager.compile_job("test-workspace", job, sdk=mock_sdk)
-
-            # verify_model_reachable should be called for both model and judge
-            assert mock_verify.call_count == 2
-
-            checked_urls = []
-            for call in mock_verify.call_args_list:
-                model_arg = call[0][0]
-                if isinstance(model_arg, dict):
-                    checked_urls.append(model_arg["url"])
-                else:
-                    checked_urls.append(model_arg.url)
-            assert "http://model.test/v1" in checked_urls
-            assert "http://judge.test/v1" in checked_urls
-
-    @pytest.mark.asyncio
-    async def test_bfcl_benchmark_model_check_called(self, mock_entity_client, mock_sdk, mock_fileset_check):
-        """BFCL system benchmark should trigger model check."""
-        # Get a BFCL benchmark
-        benchmark = BFCLHandler._system_benchmarks[0]  # First benchmark
-
-        job = SystemBenchmarkOnlineJob(
-            benchmark=BenchmarkRef(root=f"system/{benchmark.name}"),
-            model=Model(url="http://model.test/v1", name="test-model"),
-            benchmark_params={},
-        )
-
-        manager = BenchmarksManager(mock_entity_client)
-
-        with (
-            mock.patch.object(manager, "get_benchmark", new_callable=mock.AsyncMock) as mock_get_benchmark,
-            mock.patch(
-                "nmp.evaluator.app.inference.verify_model_reachable",
-                new_callable=mock.AsyncMock,
-            ) as mock_verify,
-            mock.patch(
-                "nmp.evaluator.app.jobs.benchmarks.compile_benchmark_job",
-                new_callable=mock.AsyncMock,
-            ) as mock_compile,
-        ):
-            mock_get_benchmark.return_value = benchmark
-            mock_verify.return_value = {"status": "ok"}
-            mock_compile.return_value = mock.MagicMock()
-
-            await manager.compile_job("test-workspace", job, sdk=mock_sdk)
-
-            # verify_model_reachable should be called for the job model
-            mock_verify.assert_called_once()
-            call_args = mock_verify.call_args[0][0]
-            # Handle both Model objects and dicts
-            if isinstance(call_args, dict):
-                assert call_args["url"] == "http://model.test/v1"
-            else:
-                assert call_args.url == "http://model.test/v1"
 
     @pytest.mark.asyncio
     async def test_benchmark_model_check_failure_raises_error(self, mock_entity_client, mock_sdk, mock_fileset_check):

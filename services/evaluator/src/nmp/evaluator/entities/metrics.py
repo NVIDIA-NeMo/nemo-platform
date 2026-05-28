@@ -11,22 +11,11 @@ from __future__ import annotations
 
 from typing import Annotated, Union
 
-import nmp.evaluator.app.values as app
 from nemo_evaluator_sdk.values import metrics
 from nmp.common.api.common import SecretRef as ApiSecretRef
-from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.common.entities.client import EntityBase
 from nmp.evaluator.api.v2.common.inline_models import Model
 from pydantic import BaseModel, Field
-
-# =============================================================================
-# System Metric Types
-# =============================================================================
-
-
-class SystemMetric(app.SystemMetric, EntityBase):
-    workspace: str = Field(default=SYSTEM_WORKSPACE)
-
 
 # =============================================================================
 # Field-override mixins
@@ -240,8 +229,6 @@ Metric = Annotated[
         ResponseRelevancyMetric,
         FaithfulnessMetric,
         NoiseSensitivityMetric,
-        # EvalFactory System Metrics
-        SystemMetric,
     ],
     Field(discriminator="type"),
 ]

@@ -26,7 +26,6 @@ from .aggregate_range_score import AggregateRangeScore
 from .rouge_metric_response import RougeMetricResponse
 from .aggregate_rubric_score import AggregateRubricScore
 from .remote_metric_response import RemoteMetricResponse
-from .system_metric_response import SystemMetricResponse
 from .llm_judge_metric_response import LLMJudgeMetricResponse
 from .exact_match_metric_response import ExactMatchMetricResponse
 from .metric_evaluation_row_score import MetricEvaluationRowScore
@@ -75,7 +74,6 @@ Metric: TypeAlias = Annotated[
         RougeMetricResponse,
         StringCheckMetricResponse,
         ToolCallingMetricResponse,
-        SystemMetricResponse,
     ],
     PropertyInfo(discriminator="type"),
 ]

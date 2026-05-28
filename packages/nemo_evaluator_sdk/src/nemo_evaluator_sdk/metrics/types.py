@@ -54,7 +54,7 @@ MetricVariants: TypeAlias = (
     | FaithfulnessMetric
     | NoiseSensitivityMetric
 )
-"""Raw union of SDK metric configuration models, excluding service-only system metrics."""
+"""Raw union of SDK metric configuration models."""
 
 MetricsUnion: TypeAlias = Annotated[MetricVariants, Field(discriminator="type")]
 """Discriminated union of SDK metric configuration models."""

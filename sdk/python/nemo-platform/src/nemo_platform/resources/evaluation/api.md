@@ -82,8 +82,6 @@ from nemo_platform.types.evaluation import (
     BenchmarkRequest,
     BenchmarksListResponse,
     ExtendedBenchmark,
-    SystemBenchmark,
-    SystemMetric,
     BenchmarkCreateResponse,
     BenchmarkRetrieveResponse,
 )
@@ -111,8 +109,6 @@ from nemo_platform.types.evaluation import (
     BenchmarkOnlineAgentJob,
     BenchmarkOnlineJob,
     BenchmarkRef,
-    SystemBenchmarkOfflineJob,
-    SystemBenchmarkOnlineJob,
 )
 ```
 
@@ -213,7 +209,6 @@ from nemo_platform.types.evaluation import (
     RougeMetricResponse,
     RubricScoreStat,
     StringCheckMetricResponse,
-    SystemMetricResponse,
     ToolCallAccuracyMetricResponse,
     ToolCallingMetricResponse,
     TopicAdherenceMetricResponse,
@@ -246,9 +241,6 @@ from nemo_platform.types.evaluation import (
     MetricOfflineJob,
     MetricOnlineAgentJob,
     MetricOnlineJob,
-    MetricRetrieverJob,
-    RetrieverPipeline,
-    SystemMetricParam,
 )
 ```
 

@@ -98,14 +98,6 @@ def test_format_model_reachability_error_404_judge_model_via_inline_metric() -> 
     assert message == MODEL_NO_DEPLOYMENT_MESSAGE.format(label="Judge Model", model_name="judge-7b")
 
 
-def test_format_model_reachability_error_404_benchmark_judge_model() -> None:
-    error = _FakeClientInferenceError(status_code=404)
-    message = format_model_reachability_error(
-        "benchmark_params.judge.model", {"name": "judge-7b", "url": "http://gateway/v1"}, error
-    )
-    assert message == MODEL_NO_DEPLOYMENT_MESSAGE.format(label="Judge Model", model_name="judge-7b")
-
-
 def test_format_model_reachability_error_non_inference_404_falls_back_to_generic_message() -> None:
     """Regression: 404s outside the inference call (e.g. nemo_platform.NotFoundError from
     sdk.secrets.access when api_key_secret is missing) must NOT be reported as a missing

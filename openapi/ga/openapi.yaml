@@ -2274,7 +2274,6 @@ paths:
                 anyOf:
                 - $ref: '#/components/schemas/Benchmark'
                 - $ref: '#/components/schemas/ExtendedBenchmark'
-                - $ref: '#/components/schemas/SystemBenchmark'
                 title: Response Get Benchmark Apis Evaluation V2 Workspaces  Workspace  Benchmarks  Name  Get
         '404':
           description: Benchmark Not Found
@@ -3382,7 +3381,6 @@ paths:
                 - $ref: '#/components/schemas/ROUGEMetricResponse'
                 - $ref: '#/components/schemas/StringCheckMetricResponse'
                 - $ref: '#/components/schemas/ToolCallingMetricResponse'
-                - $ref: '#/components/schemas/SystemMetricResponse'
                 - $ref: '#/components/schemas/LLMJudgeMetricResponse'
                 - $ref: '#/components/schemas/TopicAdherenceMetricResponse'
                 - $ref: '#/components/schemas/AgentGoalAccuracyMetricResponse'
@@ -3405,7 +3403,6 @@ paths:
                 - $ref: '#/components/schemas/ROUGEMetricResponse'
                 - $ref: '#/components/schemas/StringCheckMetricResponse'
                 - $ref: '#/components/schemas/ToolCallingMetricResponse'
-                - $ref: '#/components/schemas/SystemMetricResponse'
                 discriminator:
                   propertyName: type
                   mapping:
@@ -3431,8 +3428,6 @@ paths:
                     rouge: '#/components/schemas/ROUGEMetricResponse'
                     string-check: '#/components/schemas/StringCheckMetricResponse'
                     tool-calling: '#/components/schemas/ToolCallingMetricResponse'
-                    system: '#/components/schemas/SystemMetricResponse'
-                    system-retriever: '#/components/schemas/SystemMetricResponse'
                 title: Response 200 Get Metric Apis Evaluation V2 Workspaces  Workspace  Metrics  Name  Get
         '404':
           description: Metric Not Found
@@ -3559,7 +3554,6 @@ paths:
                 - $ref: '#/components/schemas/ROUGEMetricResponse'
                 - $ref: '#/components/schemas/StringCheckMetricResponse'
                 - $ref: '#/components/schemas/ToolCallingMetricResponse'
-                - $ref: '#/components/schemas/SystemMetricResponse'
                 discriminator:
                   propertyName: type
                   mapping:
@@ -3585,8 +3579,6 @@ paths:
                     rouge: '#/components/schemas/ROUGEMetricResponse'
                     string-check: '#/components/schemas/StringCheckMetricResponse'
                     tool-calling: '#/components/schemas/ToolCallingMetricResponse'
-                    system: '#/components/schemas/SystemMetricResponse'
-                    system-retriever: '#/components/schemas/SystemMetricResponse'
                 title: Response Create Metric Apis Evaluation V2 Workspaces  Workspace  Metrics  Name  Post
         '201':
           description: Metric Created Successfully
@@ -3616,7 +3608,6 @@ paths:
                 - $ref: '#/components/schemas/ROUGEMetricResponse'
                 - $ref: '#/components/schemas/StringCheckMetricResponse'
                 - $ref: '#/components/schemas/ToolCallingMetricResponse'
-                - $ref: '#/components/schemas/SystemMetricResponse'
                 discriminator:
                   propertyName: type
                   mapping:
@@ -3642,8 +3633,6 @@ paths:
                     rouge: '#/components/schemas/ROUGEMetricResponse'
                     string-check: '#/components/schemas/StringCheckMetricResponse'
                     tool-calling: '#/components/schemas/ToolCallingMetricResponse'
-                    system: '#/components/schemas/SystemMetricResponse'
-                    system-retriever: '#/components/schemas/SystemMetricResponse'
                 title: Response 201 Create Metric Apis Evaluation V2 Workspaces  Workspace  Metrics  Name  Post
         '400':
           description: Invalid Request Body
@@ -12540,8 +12529,6 @@ components:
           - $ref: '#/components/schemas/BenchmarkOfflineJob'
           - $ref: '#/components/schemas/BenchmarkOnlineJob'
           - $ref: '#/components/schemas/BenchmarkOnlineAgentJob'
-          - $ref: '#/components/schemas/SystemBenchmarkOfflineJob'
-          - $ref: '#/components/schemas/SystemBenchmarkOnlineJob'
           title: Spec
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
@@ -12582,8 +12569,6 @@ components:
           - $ref: '#/components/schemas/BenchmarkOfflineJob'
           - $ref: '#/components/schemas/BenchmarkOnlineJob'
           - $ref: '#/components/schemas/BenchmarkOnlineAgentJob'
-          - $ref: '#/components/schemas/SystemBenchmarkOfflineJob'
-          - $ref: '#/components/schemas/SystemBenchmarkOnlineJob'
           title: Spec
         ownership:
           title: Ownership
@@ -13014,7 +12999,6 @@ components:
             anyOf:
             - $ref: '#/components/schemas/Benchmark'
             - $ref: '#/components/schemas/ExtendedBenchmark'
-            - $ref: '#/components/schemas/SystemBenchmark'
           type: array
           title: Data
         pagination:
@@ -13034,34 +13018,6 @@ components:
       required:
       - data
       title: BenchmarksListResponse
-    BuiltInDataset:
-      type: string
-      enum:
-      - beir/climate-fever
-      - beir/cqadupstack
-      - beir/dbpedia-entity
-      - beir/fever
-      - beir/fiqa
-      - beir/germanquad
-      - beir/hotpotqa
-      - beir/mmarco
-      - beir/mrtydi
-      - beir/msmarco-v2
-      - beir/msmarco
-      - beir/nfcorpus
-      - beir/nq-train
-      - beir/nq
-      - beir/quora
-      - beir/scidocs
-      - beir/scifact
-      - beir/trec-covid-beir
-      - beir/trec-covid-v2
-      - beir/trec-covid
-      - beir/vihealthqa
-      - beir/webis-touche2020
-      - ragas/amnesty_qa
-      title: BuiltInDataset
-      description: Well-known dataset (BEIR or RAGAS) referenced by its identifier.
     CPUExecutionProviderInput:
       properties:
         provider:
@@ -17183,7 +17139,6 @@ components:
             - $ref: '#/components/schemas/ResponseRelevancyMetric'
             - $ref: '#/components/schemas/FaithfulnessMetric'
             - $ref: '#/components/schemas/NoiseSensitivityMetric'
-            - $ref: '#/components/schemas/SystemMetric'
             discriminator:
               propertyName: type
               mapping:
@@ -17206,8 +17161,6 @@ components:
                 response_relevancy: '#/components/schemas/ResponseRelevancyMetric'
                 rouge: '#/components/schemas/ROUGEMetric'
                 string-check: '#/components/schemas/StringCheckMetric'
-                system: '#/components/schemas/SystemMetric'
-                system-retriever: '#/components/schemas/SystemMetric'
                 tool-calling: '#/components/schemas/ToolCallingMetric'
                 tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetric'
                 topic_adherence: '#/components/schemas/TopicAdherenceMetric'
@@ -20919,7 +20872,6 @@ components:
           - $ref: '#/components/schemas/MetricOfflineJob'
           - $ref: '#/components/schemas/MetricOnlineJob'
           - $ref: '#/components/schemas/MetricOnlineAgentJob'
-          - $ref: '#/components/schemas/MetricRetrieverJob'
           title: Spec
         status:
           $ref: '#/components/schemas/PlatformJobStatus'
@@ -20960,7 +20912,6 @@ components:
           - $ref: '#/components/schemas/MetricOfflineJob'
           - $ref: '#/components/schemas/MetricOnlineJob'
           - $ref: '#/components/schemas/MetricOnlineAgentJob'
-          - $ref: '#/components/schemas/MetricRetrieverJob'
           title: Spec
         ownership:
           title: Ownership
@@ -21128,7 +21079,6 @@ components:
           - $ref: '#/components/schemas/ROUGEMetricResponse'
           - $ref: '#/components/schemas/StringCheckMetricResponse'
           - $ref: '#/components/schemas/ToolCallingMetricResponse'
-          - $ref: '#/components/schemas/SystemMetricResponse'
           title: Metric
           description: The metric definition that was used for evaluation.
           discriminator:
@@ -21153,8 +21103,6 @@ components:
               response_relevancy: '#/components/schemas/ResponseRelevancyMetricResponse'
               rouge: '#/components/schemas/ROUGEMetricResponse'
               string-check: '#/components/schemas/StringCheckMetricResponse'
-              system: '#/components/schemas/SystemMetricResponse'
-              system-retriever: '#/components/schemas/SystemMetricResponse'
               tool-calling: '#/components/schemas/ToolCallingMetricResponse'
               tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetricResponse'
               topic_adherence: '#/components/schemas/TopicAdherenceMetricResponse'
@@ -21388,15 +21336,13 @@ components:
                 tool-calling: '#/components/schemas/ToolCallingMetricInput'
                 tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetricInput'
                 topic_adherence: '#/components/schemas/TopicAdherenceMetricInput'
-          - $ref: '#/components/schemas/SystemMetricInput'
           title: Metric
           description: The metric for evaluation.
         metric_params:
           additionalProperties: true
           type: object
           title: Metric Params
-          description: Additional parameters for the metric. Required for system metrics,
-            optional overrides for custom metrics.
+          description: Additional parameter overrides for the metric.
         field_mapping:
           allOf:
           - $ref: '#/components/schemas/FieldMapping'
@@ -21474,15 +21420,13 @@ components:
                 tool-calling: '#/components/schemas/ToolCallingMetricInput'
                 tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetricInput'
                 topic_adherence: '#/components/schemas/TopicAdherenceMetricInput'
-          - $ref: '#/components/schemas/SystemMetricInput'
           title: Metric
           description: The metric for evaluation.
         metric_params:
           additionalProperties: true
           type: object
           title: Metric Params
-          description: Additional parameters for the metric. Required for system metrics,
-            optional overrides for custom metrics.
+          description: Additional parameter overrides for the metric.
         field_mapping:
           allOf:
           - $ref: '#/components/schemas/FieldMapping'
@@ -21596,15 +21540,13 @@ components:
                 tool-calling: '#/components/schemas/ToolCallingMetricInput'
                 tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetricInput'
                 topic_adherence: '#/components/schemas/TopicAdherenceMetricInput'
-          - $ref: '#/components/schemas/SystemMetricInput'
           title: Metric
           description: The metric for evaluation.
         metric_params:
           additionalProperties: true
           type: object
           title: Metric Params
-          description: Additional parameters for the metric. Required for system metrics,
-            optional overrides for custom metrics.
+          description: Additional parameter overrides for the metric.
         field_mapping:
           allOf:
           - $ref: '#/components/schemas/FieldMapping'
@@ -21695,49 +21637,6 @@ components:
         for the
 
         general entity reference pattern used across the platform.'
-    MetricRetrieverJob:
-      properties:
-        metric:
-          anyOf:
-          - $ref: '#/components/schemas/MetricRef'
-          - $ref: '#/components/schemas/SystemMetricInput'
-          title: Metric
-          description: The metric for evaluation.
-        metric_params:
-          additionalProperties: true
-          type: object
-          title: Metric Params
-          description: Additional parameters for the metric. Required for system metrics,
-            optional overrides for custom metrics.
-        field_mapping:
-          allOf:
-          - $ref: '#/components/schemas/FieldMapping'
-          description: Maps canonical evaluator fields such as 'input' and 'output'
-            to dataset column paths for this job.
-        retriever_pipeline:
-          allOf:
-          - $ref: '#/components/schemas/RetrieverPipelineInput'
-          description: The pipeline configuration for retriever-based evaluation.
-        dataset:
-          anyOf:
-          - $ref: '#/components/schemas/BuiltInDataset'
-          - $ref: '#/components/schemas/DatasetRows'
-          - $ref: '#/components/schemas/FilesetRef'
-          - $ref: '#/components/schemas/FilesetInput'
-          title: Dataset
-          description: The dataset to use for evaluation.
-        params:
-          allOf:
-          - $ref: '#/components/schemas/RunConfigOnline'
-          description: Execution parameters for the metric job.
-      additionalProperties: false
-      type: object
-      required:
-      - metric
-      - retriever_pipeline
-      - dataset
-      title: MetricRetrieverJob
-      description: Evaluation with a retriever-based metric.
     MetricType:
       description: The predefined metric types.
       enum:
@@ -21763,8 +21662,6 @@ components:
       - response_relevancy
       - faithfulness
       - noise_sensitivity
-      - system
-      - system-retriever
       title: MetricType
       type: string
     MetricsListResponse:
@@ -21794,7 +21691,6 @@ components:
             - $ref: '#/components/schemas/ROUGEMetricResponse'
             - $ref: '#/components/schemas/StringCheckMetricResponse'
             - $ref: '#/components/schemas/ToolCallingMetricResponse'
-            - $ref: '#/components/schemas/SystemMetricResponse'
             discriminator:
               propertyName: type
               mapping:
@@ -21817,8 +21713,6 @@ components:
                 response_relevancy: '#/components/schemas/ResponseRelevancyMetricResponse'
                 rouge: '#/components/schemas/ROUGEMetricResponse'
                 string-check: '#/components/schemas/StringCheckMetricResponse'
-                system: '#/components/schemas/SystemMetricResponse'
-                system-retriever: '#/components/schemas/SystemMetricResponse'
                 tool-calling: '#/components/schemas/ToolCallingMetricResponse'
                 tool_call_accuracy: '#/components/schemas/ToolCallAccuracyMetricResponse'
                 topic_adherence: '#/components/schemas/TopicAdherenceMetricResponse'
@@ -24276,45 +24170,6 @@ components:
       - recipe
       title: PangeaRailOptions
       description: Configuration data for the Pangea AI Guard API
-    Parameter:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Name of the parameter.
-        type:
-          type: string
-          enum:
-          - boolean
-          - string
-          - number
-          - integer
-          - object
-          - secret
-          title: Type
-          description: The value type of the parameter.
-        description:
-          title: Description
-          description: Description of the parameter.
-          type: string
-        default:
-          anyOf:
-          - type: boolean
-          - type: string
-          - type: number
-          - type: integer
-          title: Default
-          description: The default value of the parameter.
-        schema:
-          title: Schema
-          description: The JSON schema for parameters with object type.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - name
-      - type
-      title: Parameter
     PatronusEvaluateApiParams:
       properties:
         success_strategy:
@@ -27354,20 +27209,6 @@ components:
       type: object
       title: RetrievalRails
       description: Configuration of retrieval rails.
-    RetrieverPipelineInput:
-      properties:
-        embeddings_model:
-          anyOf:
-          - $ref: '#/components/schemas/Evaluator.Model'
-          - $ref: '#/components/schemas/ModelRef'
-          title: Embeddings Model
-          description: The embeddings model configuration.
-      additionalProperties: false
-      type: object
-      required:
-      - embeddings_model
-      title: RetrieverPipelineInput
-      description: Pipeline configuration for retriever-based evaluations.
     ReviewerAnnotationEvent:
       properties:
         id:
@@ -29114,401 +28955,6 @@ components:
           default: 10
       type: object
       title: SubprocessJobExecutionProfileConfig
-    SystemBenchmark:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Benchmark name
-        workspace:
-          type: string
-          title: Workspace
-          default: system
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
-        description:
-          title: Description
-          description: Human-readable description of the benchmark.
-          type: string
-        labels:
-          additionalProperties:
-            type: string
-          type: object
-          title: Labels
-          description: Labels are key-value pairs that can be used for grouping and
-            filtering.
-        required_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Required Params
-          description: List of required parameters for running an evaluation with
-            the benchmark.
-        optional_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Optional Params
-          description: List of required parameters for running an evaluation with
-            the benchmark.
-        supported_job_types:
-          items:
-            type: string
-            enum:
-            - online
-            - offline
-          type: array
-          title: Supported Job Types
-          description: A benchmark can evaluate model outputs for online evaluations
-            or pre-generated outputs for offline evaluations.
-          default:
-          - online
-        id:
-          type: string
-          title: Id
-          readOnly: true
-        created_at:
-          title: Created At
-          readOnly: true
-          type: string
-          format: date-time
-        created_by:
-          title: Created By
-          readOnly: true
-          nullable: true
-          type: string
-        updated_at:
-          title: Updated At
-          readOnly: true
-          type: string
-          format: date-time
-        updated_by:
-          title: Updated By
-          readOnly: true
-          nullable: true
-          type: string
-        entity_id:
-          type: string
-          title: Entity Id
-          description: Alias for id for backwards compatibility.
-          readOnly: true
-        parent:
-          title: Parent
-          description: Parent entity ID for nested entities.
-          readOnly: true
-          type: string
-      type: object
-      required:
-      - name
-      - id
-      - created_at
-      - created_by
-      - updated_at
-      - updated_by
-      - entity_id
-      - parent
-      title: SystemBenchmark
-      description: System Benchmark response schema.
-    SystemBenchmarkOfflineJob:
-      properties:
-        benchmark:
-          allOf:
-          - $ref: '#/components/schemas/BenchmarkRef'
-          description: 'Reference to the benchmark for evaluation (format: workspace/name).'
-        dataset:
-          allOf:
-          - $ref: '#/components/schemas/FilesetRef'
-          description: 'Reference to a Fileset in the Files API (format: workspace/fileset-name).
-            The fileset contains the pre-generated outputs to evaluate this benchmark
-            on.'
-        params:
-          allOf:
-          - $ref: '#/components/schemas/RunConfig'
-          description: Execution parameters for the benchmark job.
-        benchmark_params:
-          additionalProperties: true
-          type: object
-          title: Benchmark Params
-          description: Additional parameters specific to the benchmark.
-      additionalProperties: false
-      type: object
-      required:
-      - benchmark
-      - dataset
-      title: SystemBenchmarkOfflineJob
-      description: 'Input for an offline system benchmark evaluation job.
-
-
-        Evaluates the benchmark''s standard dataset against all pre-defined metrics
-        in the benchmark.'
-    SystemBenchmarkOnlineJob:
-      properties:
-        benchmark:
-          allOf:
-          - $ref: '#/components/schemas/BenchmarkRef'
-          description: 'Reference to the benchmark for evaluation (format: workspace/name).'
-        model:
-          anyOf:
-          - $ref: '#/components/schemas/Evaluator.Model'
-          - $ref: '#/components/schemas/ModelRef'
-          title: Model
-          description: The model to evaluate.
-        params:
-          allOf:
-          - $ref: '#/components/schemas/RunConfigOnlineModel'
-          description: Execution parameters for the benchmark job.
-        benchmark_params:
-          additionalProperties: true
-          type: object
-          title: Benchmark Params
-          description: Additional parameters specific to the benchmark.
-      additionalProperties: false
-      type: object
-      required:
-      - benchmark
-      - model
-      title: SystemBenchmarkOnlineJob
-      description: 'Input for an online system benchmark evaluation job.
-
-
-        Evaluates the benchmark''s standard dataset against all pre-defined metrics
-        in the benchmark.'
-    SystemMetric:
-      properties:
-        name:
-          type: string
-          title: Name
-          default: Metric name
-        workspace:
-          type: string
-          title: Workspace
-          default: system
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
-        type:
-          type: string
-          enum:
-          - system
-          - system-retriever
-          title: Type
-          default: system
-        description:
-          title: Description
-          description: Human-readable description of the metric.
-          type: string
-        labels:
-          additionalProperties:
-            type: string
-          type: object
-          title: Labels
-          description: Labels are key-value pairs that can be used for grouping and
-            filtering.
-        supported_job_types:
-          items:
-            type: string
-            enum:
-            - online
-            - offline
-            - retriever
-          type: array
-          title: Supported Job Types
-          description: A metric can evaluate model outputs for online evaluations
-            or pre-generated outputs for offline evaluations.
-          default:
-          - online
-        required_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Required Params
-          description: List of required parameters for running an evaluation with
-            the metric.
-        optional_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Optional Params
-          description: List of optional parameters for running an evaluation with
-            the metric.
-        id:
-          type: string
-          title: Id
-          readOnly: true
-        created_at:
-          title: Created At
-          readOnly: true
-          type: string
-          format: date-time
-        created_by:
-          title: Created By
-          readOnly: true
-          nullable: true
-          type: string
-        updated_at:
-          title: Updated At
-          readOnly: true
-          type: string
-          format: date-time
-        updated_by:
-          title: Updated By
-          readOnly: true
-          nullable: true
-          type: string
-        entity_id:
-          type: string
-          title: Entity Id
-          description: Alias for id for backwards compatibility.
-          readOnly: true
-        parent:
-          title: Parent
-          description: Parent entity ID for nested entities.
-          readOnly: true
-          type: string
-      type: object
-      required:
-      - id
-      - created_at
-      - created_by
-      - updated_at
-      - updated_by
-      - entity_id
-      - parent
-      title: SystemMetric
-    SystemMetricInput:
-      properties:
-        type:
-          type: string
-          enum:
-          - system
-          - system-retriever
-          title: Type
-          default: system
-        description:
-          title: Description
-          description: Human-readable description of the metric.
-          type: string
-        labels:
-          additionalProperties:
-            type: string
-          type: object
-          title: Labels
-          description: Labels are key-value pairs that can be used for grouping and
-            filtering.
-        supported_job_types:
-          items:
-            type: string
-            enum:
-            - online
-            - offline
-            - retriever
-          type: array
-          title: Supported Job Types
-          description: A metric can evaluate model outputs for online evaluations
-            or pre-generated outputs for offline evaluations.
-          default:
-          - online
-        name:
-          type: string
-          title: Name
-          default: Metric name
-        required_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Required Params
-          description: List of required parameters for running an evaluation with
-            the metric.
-        optional_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Optional Params
-          description: List of optional parameters for running an evaluation with
-            the metric.
-      type: object
-      title: SystemMetricInput
-      description: Metric entity for system metric that have pre-defined dataset.
-    SystemMetricResponse:
-      properties:
-        name:
-          type: string
-          title: Name
-          default: Metric name
-        workspace:
-          title: Workspace
-          description: Workspace identifier
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
-        id:
-          title: Id
-          description: Entity name within the workspace
-          type: string
-        created_at:
-          title: Created At
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          type: string
-          format: date-time
-        parent:
-          title: Parent
-          type: string
-        type:
-          type: string
-          enum:
-          - system
-          - system-retriever
-          title: Type
-          default: system
-        description:
-          title: Description
-          description: Human-readable description of the metric.
-          type: string
-        labels:
-          additionalProperties:
-            type: string
-          type: object
-          title: Labels
-          description: Labels are key-value pairs that can be used for grouping and
-            filtering.
-        supported_job_types:
-          items:
-            type: string
-            enum:
-            - online
-            - offline
-            - retriever
-          type: array
-          title: Supported Job Types
-          description: A metric can evaluate model outputs for online evaluations
-            or pre-generated outputs for offline evaluations.
-          default:
-          - online
-        required_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Required Params
-          description: List of required parameters for running an evaluation with
-            the metric.
-        optional_params:
-          items:
-            $ref: '#/components/schemas/Parameter'
-          type: array
-          title: Optional Params
-          description: List of optional parameters for running an evaluation with
-            the metric.
-      type: object
-      title: SystemMetricResponse
-      description: Response type for SystemMetric.
     Task:
       properties:
         id:

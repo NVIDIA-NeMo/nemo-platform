@@ -202,7 +202,7 @@ class TestAuthHeaderPropagationWithAccessLog:
 
         test_principal = "job-creator@example.com"
 
-        # Job request using custom LLM judge metric (not a system metric)
+        # Job request using custom LLM judge metric.
         # Based on services/evaluator/tests/data/metric-jobs/llm-judge-offline.json
         # Wrapped in 'spec' envelope as required by the job route factory
         job_request = {

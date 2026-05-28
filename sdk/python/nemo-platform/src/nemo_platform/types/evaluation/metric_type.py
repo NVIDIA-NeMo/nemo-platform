@@ -42,6 +42,4 @@ MetricType: TypeAlias = Literal[
     "response_relevancy",
     "faithfulness",
     "noise_sensitivity",
-    "system",
-    "system-retriever",
 ]

@@ -461,9 +461,8 @@ async def main(
             await handle_results_async(job, results_handler_config, results_dir, sdk=effective_sdk)
 
         if no_aggregated_metric_scores(evaluation_result):
-            # EvalFactory can complete successfully with no metrics when retries are configured.
-            # This edge case happens when inference fails and no outputs can be evaluated on to
-            # generate metrics.
+            # This edge case happens when inference fails and no outputs can be
+            # evaluated to generate metrics.
             raise ValueError(
                 f"Job {results_handler_config.NEMO_JOB_ID} completed but no evaluation results detected. Job marked as failed: {evaluation_result}"
             )

@@ -150,8 +150,7 @@ def verify_job_completed_successfully(
     Args:
         outputs: Job outputs from get_job_outputs.
         require_row_scores: If True, assert row_scores are present and non-empty.
-            Set to False for EvalFactory-based metrics (e.g. retriever) that only
-            produce aggregate-scores.
+            Set to False for jobs that only produce aggregate-scores.
     """
     if outputs.job.status != "completed":
         error_msg = f"Job status is '{outputs.job.status}', expected 'completed'"

@@ -330,7 +330,7 @@ class TestBenchmarksFilterEndpoints:
         """Test unknown top-level query params are rejected with 400."""
         client = new_test_client(benchmarks_manager)
 
-        resp = client.get("/apis/evaluation/v2/workspaces/default/benchmarks?labels=eval_harness.bfcl")
+        resp = client.get("/apis/evaluation/v2/workspaces/default/benchmarks?labels=custom.bfcl")
         assert resp.status_code == 400, resp.json()
         detail = resp.json().get("detail", "")
         assert "unsupported query parameter" in detail.lower()

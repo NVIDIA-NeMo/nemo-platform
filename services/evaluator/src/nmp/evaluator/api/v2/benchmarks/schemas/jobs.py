@@ -13,11 +13,9 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnlineModel,
     SupportedJobTypes,
 )
-from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.evaluator.api.v2.common.inline_models import Agent, Model
 from nmp.evaluator.app.values import (
     BenchmarkRef,
-    FilesetRef,
     ModelRef,
 )
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter
@@ -47,23 +45,6 @@ class BenchmarkOfflineJob(_BenchmarkJobBase):
         default_factory=RunConfig, description="Execution parameters for the benchmark job."
     )
     __job_type__: ClassVar[Literal[SupportedJobTypes.OFFLINE]] = SupportedJobTypes.OFFLINE
-
-
-class SystemBenchmarkOfflineJob(_BenchmarkJobBase):
-    """Input for an offline system benchmark evaluation job.
-
-    Evaluates the benchmark's standard dataset against all pre-defined metrics in the benchmark.
-    """
-
-    __job_type__: ClassVar[Literal[SupportedJobTypes.OFFLINE]] = SupportedJobTypes.OFFLINE
-
-    dataset: FilesetRef = Field(
-        description="Reference to a Fileset in the Files API (format: workspace/fileset-name). The fileset contains the pre-generated outputs to evaluate this benchmark on."
-    )
-    params: RunConfig | None = Field(
-        default_factory=RunConfig, description="Execution parameters for the benchmark job."
-    )
-    benchmark_params: dict = Field(default_factory=dict, description="Additional parameters specific to the benchmark.")
 
 
 class _BenchmarkOnlineJob(_BenchmarkJobBase):
@@ -148,17 +129,6 @@ class BenchmarkOnlineAgentJob(_BenchmarkJobBase):
     __job_type__: ClassVar[Literal[SupportedJobTypes.ONLINE]] = SupportedJobTypes.ONLINE
 
 
-class SystemBenchmarkOnlineJob(_BenchmarkOnlineJob):
-    """Input for an online system benchmark evaluation job.
-
-    Evaluates the benchmark's standard dataset against all pre-defined metrics in the benchmark.
-    """
-
-    __job_type__: ClassVar[Literal[SupportedJobTypes.ONLINE]] = SupportedJobTypes.ONLINE
-
-    benchmark_params: dict = Field(default_factory=dict, description="Additional parameters specific to the benchmark.")
-
-
 def _benchmark_job_discriminator(data: Any) -> str:
     """
     Discriminate union type specifically for API input job spec which has benchmark references.
@@ -177,15 +147,7 @@ def _benchmark_job_discriminator(data: Any) -> str:
         return "online-agent"
 
     if has_model:
-        if ("prompt_template" in data) if isinstance(data, dict) else hasattr(data, "prompt_template"):
-            return "online"
-        return "system-online"
-
-    benchmark_ref = data.get("benchmark", "") if isinstance(data, dict) else getattr(data, "benchmark", "")
-    if isinstance(benchmark_ref, BenchmarkRef):
-        benchmark_ref = benchmark_ref.root
-    if benchmark_ref.split("/", 1)[0] == SYSTEM_WORKSPACE:
-        return "system-offline"
+        return "online"
     return "offline"
 
 
@@ -194,8 +156,6 @@ BenchmarkJob = Annotated[
         Annotated[BenchmarkOfflineJob, Tag("offline")]
         | Annotated[BenchmarkOnlineJob, Tag("online")]
         | Annotated[BenchmarkOnlineAgentJob, Tag("online-agent")]
-        | Annotated[SystemBenchmarkOfflineJob, Tag("system-offline")]
-        | Annotated[SystemBenchmarkOnlineJob, Tag("system-online")]
     ),
     Discriminator(_benchmark_job_discriminator),
 ]
@@ -204,7 +164,7 @@ BenchmarkJobAdapter = TypeAdapter(BenchmarkJob)
 
 def benchmark_job_type(job: BenchmarkJob) -> SupportedJobTypes:
     """Return the supported evaluator job type for a benchmark job schema."""
-    if isinstance(job, BenchmarkOnlineJob | BenchmarkOnlineAgentJob | SystemBenchmarkOnlineJob):
+    if isinstance(job, BenchmarkOnlineJob | BenchmarkOnlineAgentJob):
         return SupportedJobTypes.ONLINE
     return SupportedJobTypes.OFFLINE
 

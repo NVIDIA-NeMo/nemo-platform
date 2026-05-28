@@ -135,15 +135,6 @@ def sample_metric_request():
     )
 
 
-@pytest.fixture
-def sample_system_metric_entity() -> entities.SystemMetric:
-    """Sample SystemMetric entity for testing internal system metric helpers."""
-    return entities.SystemMetric(
-        name="system-metric",
-        description="System metric",
-    )
-
-
 class TestMetricsServiceGetAll:
     """Tests for MetricsManager.get_all method."""
 
@@ -459,59 +450,6 @@ class TestMetricsServiceDelete:
         assert isinstance(exc_info.value, MetricDeletionError)
         assert exc_info.value.error_code == "METRIC_NOT_FOUND"
         assert "default/nonexistent" in exc_info.value.detail
-
-
-class TestGetRegisteredSystemMetrics:
-    """Tests for MetricsManager._get_registered_system_metrics method."""
-
-    @pytest.mark.asyncio
-    async def test_returns_only_system_metric_entities(
-        self,
-        metrics_service,
-        mock_entity_client,
-        sample_metric_entity,
-        sample_system_metric_entity,
-    ):
-        """Test helper returns typed system metrics scoped to the system workspace."""
-        await mock_entity_client.create(sample_metric_entity)
-        await mock_entity_client.create(sample_system_metric_entity)
-
-        result = await metrics_service._get_registered_system_metrics()
-
-        assert len(result.data) == 1
-        assert isinstance(result.data[0], entities.SystemMetric)
-        assert result.data[0].name == sample_system_metric_entity.name
-        assert result.data[0].workspace == SYSTEM_WORKSPACE
-
-
-class TestDeleteAllSystemMetrics:
-    """Tests for MetricsManager.delete_all_system_metrics method."""
-
-    @pytest.mark.asyncio
-    async def test_deletes_only_system_metrics(
-        self,
-        metrics_service,
-        mock_entity_client,
-        sample_metric_entity,
-        sample_system_metric_entity,
-    ):
-        """Test helper deletes all system metrics without touching regular metrics."""
-        second_system_metric = entities.SystemMetric(
-            name="system-metric-2",
-            description="Second system metric",
-        )
-        await mock_entity_client.create(sample_metric_entity)
-        await mock_entity_client.create(sample_system_metric_entity)
-        await mock_entity_client.create(second_system_metric)
-
-        await metrics_service.delete_all_system_metrics()
-
-        remaining_system_metrics = await mock_entity_client.list(entities.SystemMetric, workspace=SYSTEM_WORKSPACE)
-        remaining_regular_metrics = await mock_entity_client.list(entities.Metric, workspace="default")
-
-        assert remaining_system_metrics.data == []
-        assert len(remaining_regular_metrics.data) == 1
-        assert remaining_regular_metrics.data[0].name == sample_metric_entity.name
 
 
 class TestMetricsServiceExists:

@@ -209,7 +209,6 @@ _MODEL_FIELD_LABELS: dict[str, str] = {
     "job.model": "Evaluation Model",
     "job.metric.model": "Judge Model",
     "metric_params.judge.model": "Judge Model",
-    "benchmark_params.judge.model": "Judge Model",
 }
 
 

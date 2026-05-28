@@ -114,5 +114,5 @@ undeploying the candidate.
   telemetry for sensitive data.
 - [Plugins and Skills](plugins.md): understand how agent, middleware, and
   coding-agent integrations extend the local platform.
-- [Agentic Metrics](../evaluator/metrics/agentic.md): evaluate tool use, goal completion, topic adherence, answer accuracy, and trajectories.
+- [Agentic Metrics](../evaluator/metrics/agentic.md): evaluate tool use, goal completion, topic adherence, and answer accuracy.
 - [Agent Configuration](../evaluator/metrics/agent-configuration.md): use agents as online evaluation targets.

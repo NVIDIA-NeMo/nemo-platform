@@ -4,7 +4,6 @@
 # Benchmarks
 from nmp.evaluator.entities.benchmarks import (
     Benchmark,
-    SystemBenchmark,
 )
 
 # Metrics
@@ -29,7 +28,6 @@ from nmp.evaluator.entities.metrics import (
     ResponseRelevancyMetric,
     ROUGEMetric,
     StringCheckMetric,
-    SystemMetric,
     ToolCallAccuracyMetric,
     ToolCallingMetric,
     TopicAdherenceMetric,
@@ -44,11 +42,8 @@ from nmp.evaluator.entities.results import (
 __all__ = [
     # Benchmarks
     "Benchmark",
-    "SystemBenchmark",
     # Metrics
     "Metric",
-    # System Metric Types (still needed for metric definitions)
-    "SystemMetric",
     # Custom Metric Types
     "BLEUMetric",
     "ExactMatchMetric",

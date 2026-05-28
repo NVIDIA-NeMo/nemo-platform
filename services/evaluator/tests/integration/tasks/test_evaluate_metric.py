@@ -29,7 +29,6 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_platform import NeMoPlatform
 from nmp.common.jobs.constants import NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
-from nmp.evaluator.app.evalfactory.convert import INLINE_DATASET_FILENAME
 from nmp.evaluator.app.jobs.constants import (
     EVALUATION_RESULTS_AGG_SCORES_FILE_NAME,
     EVALUATION_RESULTS_ROW_SCORES_FILE_NAME,
@@ -50,6 +49,7 @@ from pytest_mock import MockerFixture
 
 # Test workspace - must match conftest.py
 TEST_WORKSPACE = "test-workspace"
+INLINE_DATASET_FILENAME = "dataset.json"
 
 
 # =============================================================================

@@ -15,8 +15,7 @@ from nemo_evaluator_sdk.values import (
     SupportedJobTypes,
 )
 from nmp.evaluator.app.values.common import FilesetRef, MetricRef, ModelRef
-from nmp.evaluator.app.values.datasets import Dataset, PipelineDataset
-from nmp.evaluator.app.values.jobs import RetrieverPipeline
+from nmp.evaluator.app.values.datasets import Dataset
 from nmp.evaluator.app.values.metrics import Metric
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter
 
@@ -29,7 +28,7 @@ class _MetricJob(BaseModel):
     metric_ref: MetricRef | None = Field(default=None)
     metric_params: dict = Field(
         default_factory=dict,
-        description="Additional parameters for the metric. Required for system metrics, optional overrides for custom metrics.",
+        description="Additional parameter overrides for the metric.",
     )
     field_mapping: FieldMapping | None = Field(
         default=None,
@@ -121,26 +120,10 @@ class MetricOnlineAgentJob(_MetricJob):
     )
 
 
-class MetricRetrieverJob(_MetricJob):
-    """Job for evaluation with a retriever-based metric."""
-
-    __job_type__: ClassVar[Literal[SupportedJobTypes.RETRIEVER]] = SupportedJobTypes.RETRIEVER
-
-    retriever_pipeline: RetrieverPipeline = Field(
-        description="The pipeline configuration for retriever-based evaluation."
-    )
-    dataset: PipelineDataset = Field(description="The dataset to use for evaluation.")
-    dataset_ref: FilesetRef | None = Field(default=None)
-    params: RunConfigOnline = Field(
-        default_factory=RunConfigOnline, description="Execution parameters for the metric job."
-    )
-
-
 def _discriminate_job_type_from_fields(data: dict) -> str:
     """Determine job type from field presence in a dict.
 
     Logic:
-    - retriever_pipeline (no model/agent) -> Retriever job
     - agent only (no model) -> Online agent job
     - model or agent (with or without prompt_template) -> Online job
     - otherwise -> Offline job
@@ -148,14 +131,11 @@ def _discriminate_job_type_from_fields(data: dict) -> str:
     Note: Routing 'model'/'agent' without 'prompt_template' to Online gives a
     better validation error ("missing prompt_template") vs Offline ("extra field model").
     """
-    has_retriever = "retriever_pipeline" in data
     has_model = "model" in data
     has_agent = "agent" in data
 
     if has_agent and has_model:
         raise ValueError("Only one of 'model' or 'agent' may be specified, not both.")
-    if has_retriever:
-        return "retriever"
     if has_agent:
         return "online-agent"
     if has_model:
@@ -175,8 +155,7 @@ def _metric_job_discriminator(v: Any) -> str:
 MetricJob = Annotated[
     Annotated[MetricOfflineJob, Tag("offline")]
     | Annotated[MetricOnlineJob, Tag("online")]
-    | Annotated[MetricOnlineAgentJob, Tag("online-agent")]
-    | Annotated[MetricRetrieverJob, Tag("retriever")],
+    | Annotated[MetricOnlineAgentJob, Tag("online-agent")],
     Discriminator(_metric_job_discriminator),
 ]
 MetricJobAdapter = TypeAdapter(MetricJob)

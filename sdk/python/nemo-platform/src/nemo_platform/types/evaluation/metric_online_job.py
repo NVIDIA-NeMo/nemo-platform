@@ -30,7 +30,6 @@ from .f1_metric_param import F1MetricParam
 from .bleu_metric_param import BleuMetricParam
 from .rouge_metric_param import RougeMetricParam
 from .remote_metric_param import RemoteMetricParam
-from .system_metric_param import SystemMetricParam
 from .llm_judge_metric_param import LLMJudgeMetricParam
 from .run_config_online_model import RunConfigOnlineModel
 from .exact_match_metric_param import ExactMatchMetricParam
@@ -79,7 +78,6 @@ Metric: TypeAlias = Union[
     RougeMetricParam,
     StringCheckMetricParam,
     ToolCallingMetricParam,
-    SystemMetricParam,
 ]
 
 Model: TypeAlias = Union[model.Model, ModelRef]
@@ -112,10 +110,7 @@ class MetricOnlineJob(BaseModel):
     """
 
     metric_params: Optional[Dict[str, object]] = None
-    """Additional parameters for the metric.
-
-    Required for system metrics, optional overrides for custom metrics.
-    """
+    """Additional parameter overrides for the metric."""
 
     optional_fields: Optional[List[str]] = None
     """

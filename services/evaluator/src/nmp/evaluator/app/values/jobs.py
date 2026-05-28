@@ -6,14 +6,7 @@
 from __future__ import annotations
 
 from nemo_evaluator_sdk.enums import TaskStatus
-from nemo_evaluator_sdk.values import Model
 from pydantic import BaseModel, Field
-
-
-class RetrieverPipeline(BaseModel):
-    """Pipeline configuration for retriever-based evaluations."""
-
-    embeddings_model: Model = Field(description="The embeddings model used for retrieval.")
 
 
 class EvaluationStatusDetails(BaseModel):

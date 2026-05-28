@@ -55,8 +55,6 @@ export const LINK_GITHUB_ISSUES = `https://github.com/NVIDIA-NeMo/${PLATFORM_DOC
 export const LINK_EVAL_DOCS_METRICS = `${DOCS_BASE_URL}evaluator/metrics/`;
 export const LINK_EVAL_DOCS_BENCHMARKS =
   'https://docs.nvidia.com/nemo/microservices/latest/evaluator/benchmarks/index.html';
-export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY =
-  'https://docs.nvidia.com/nemo/microservices/latest/evaluator/benchmarks/industry.html';
 
 // Jobs documentation links
 export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio/?#jobs`;

@@ -19,9 +19,8 @@ from typing import Union
 from typing_extensions import TypeAlias
 
 from .benchmark import Benchmark
-from .system_benchmark import SystemBenchmark
 from .extended_benchmark import ExtendedBenchmark
 
 __all__ = ["BenchmarkRetrieveResponse"]
 
-BenchmarkRetrieveResponse: TypeAlias = Union[Benchmark, ExtendedBenchmark, SystemBenchmark]
+BenchmarkRetrieveResponse: TypeAlias = Union[Benchmark, ExtendedBenchmark]

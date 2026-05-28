@@ -794,26 +794,6 @@ evaluator:
     results_dir: /jobs/results
     # Directory path in the job container for dataset files to be downloaded to and loaded from. | default: '/jobs/datasets'
     dataset_dir: /jobs/datasets
-  # Configuration for EvalFactory integration with {{platform_name}}.
-  evalfactory:
-    # default: 'nvcr.io/nvidia/eval-factory/agentic_eval:26.01'
-    agentic_eval: nvcr.io/nvidia/eval-factory/agentic_eval:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/bfcl:26.01'
-    bfcl: nvcr.io/nvidia/eval-factory/bfcl:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/lm-evaluation-harness:26.01'
-    lm_eval_harness: nvcr.io/nvidia/eval-factory/lm-evaluation-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/bigcode-evaluation-harness:26.01'
-    bigcode_evaluation_harness: nvcr.io/nvidia/eval-factory/bigcode-evaluation-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/rag_retriever_eval:26.01'
-    rag_retriever: nvcr.io/nvidia/eval-factory/rag_retriever_eval:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/safety-harness:26.01'
-    safety_harness: nvcr.io/nvidia/eval-factory/safety-harness:26.01
-    # default: 'nvcr.io/nvidia/eval-factory/simple-evals:26.01'
-    simple_evals: nvcr.io/nvidia/eval-factory/simple-evals:26.01
-    # Connect to a hosted Milvus server for retrieval evaluations
-    milvus_url:
-  # Upsert system metrics and benchmarks on app startup | default: False
-  recreate_existing_system_entities: false
 ```
 
 ### `safe_synthesizer`

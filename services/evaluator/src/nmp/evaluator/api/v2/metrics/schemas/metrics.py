@@ -291,7 +291,6 @@ Metric = Annotated[
         ROUGEMetric,
         StringCheckMetric,
         ToolCallingMetric,
-        # SystemMetric is not in input type for users via API
     ],
     Field(discriminator="type"),
 ]

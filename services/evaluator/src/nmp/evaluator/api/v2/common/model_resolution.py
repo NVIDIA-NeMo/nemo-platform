@@ -118,10 +118,8 @@ async def resolve_model(
         # The gateway will rewrite the model field in requests to the correct served_model_name
         endpoint = sdk.models.get_model_entity_route_openai_url(model_entity)
 
-        # Resolve the direct NIM host URL from the first model provider.
-        # Some EvalFactory containers (e.g., rag_retriever_eval) use Haystack components
-        # that only accept http://host:port URLs without path components, so we need
-        # the direct NIM endpoint rather than the IGW-proxied URL.
+        # Resolve the direct NIM host URL from the first model provider for
+        # callers that need provider-level connectivity details.
         host_url = await _resolve_provider_host_url(sdk, model_entity)
 
         resolved = Model(
@@ -191,7 +189,6 @@ async def resolve_model_field(value: SDKModel | ModelRef | None, resolver: Model
 # =============================================================================
 
 # Known param names that contain a nested `model` field needing resolution.
-# These are system metric/benchmark params that accept model config.
 _MODEL_PARAM_KEYS = ("judge", "judge_embeddings")
 
 
@@ -201,7 +198,7 @@ async def resolve_params_model_refs(params: dict) -> dict:
     Scans known param keys for nested `model` fields that are string references.
 
     Args:
-        params: The metric_params or benchmark_params dict from job input.
+        params: The metric_params dict from job input.
 
     Returns:
         A new dict with all model references resolved to Model.

@@ -10,21 +10,9 @@ Use benchmarks when you want to:
 - Compare multiple model versions using the same scoring criteria and dataset
 - Package validated metrics with domain-specific test data for repeatable evaluation
 
-{{platform_name}} provides two types of benchmarks:
+{{platform_name}} supports custom benchmarks: user-defined evaluation suites that combine your choice of metrics with domain-specific datasets.
 
--   **Industry Benchmarks**: Industry-standard academic benchmarks such as MMLU, HumanEval, and GSM8K for comparing model capabilities against published baselines
--   **Custom Benchmarks**: User-defined evaluation suites that combine your choice of metrics with domain-specific datasets
-
-Custom benchmarks are valuable for domain-specific evaluation where standard benchmarks might not capture the nuances of your application, such as legal document analysis, medical terminology accuracy, or enterprise-specific terminology adherence.
-
-## Industry Benchmarks vs Custom Benchmarks
-
-| Type | Use Case | Dataset | Metrics |
-|------|----------|---------|---------|
-| [**Industry Benchmarks**](industry.md) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
-| [**Custom Benchmarks**](custom.md) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
-
---8<-- "evaluator/benchmarks/discover-industry-benchmarks.md"
+Custom benchmarks are valuable when standard metrics alone do not capture the nuances of your application, such as legal document analysis, medical terminology accuracy, or enterprise-specific terminology adherence.
 
 ## Create Custom Benchmarks
 
@@ -76,7 +64,7 @@ from nemo_platform.types.evaluation import BenchmarkOnlineJobParam
 job = client.evaluation.benchmark_jobs.create(
     workspace="my-workspace",
     spec=BenchmarkOnlineJobParam(
-        benchmark="system/mmlu-pro",
+        benchmark="my-workspace/my-qa-benchmark",
         model={
             "url": "<your-nim-url>/v1/completions",
             "name": "meta/llama-3.1-8b-instruct",
@@ -89,7 +77,7 @@ print(f"Job created: {job.name}")
 
 ## Manage Benchmarks
 
-List, retrieve, and delete evaluation benchmarks using the Python SDK. You can discover industry benchmarks in the `system` workspace, list custom benchmarks in your workspace, retrieve detailed benchmark configurations, and delete custom benchmarks when no longer needed.
+List, retrieve, and delete evaluation benchmarks using the Python SDK. You can list custom benchmarks in your workspace, retrieve detailed benchmark configurations, and delete custom benchmarks when no longer needed.
 
 Refer to [Manage Benchmarks](manage-benchmarks.md) for complete SDK examples including pagination, sorting, filtering, and extended response options.
 
@@ -107,22 +95,6 @@ After successfully creating a job, refer to [Benchmark Job Management](job-manag
 
     Compose a custom benchmark with a collection of metrics to evaluate tasks bespoke to your needs.
 
-    <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
-
--   **[Agentic Benchmarks](agentic.md)**
-
-    ---
-
-    Evaluate agent workflows including tool calling, goal accuracy, topic adherence, and trajectory evaluation.
-
-    <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
-
--   **[Industry Benchmarks](industry.md)**
-
-    ---
-
-    Ready-to-use benchmarks for reasoning, code generation, safety, and language understanding with published datasets.
-
-    <small><span class="md-tag">LM Harness</span> <span class="md-tag">BigCode</span></small>
+    <small><span class="md-tag">RAGAS</span> <span class="md-tag">LLM-as-a-Judge</span></small>
 
 </div>

@@ -8,7 +8,6 @@ Covers:
 - MetricOnlineAgentJob accepts agent only (dedicated agent job type)
 - BenchmarkOnlineJob accepts model or agent (mutually exclusive)
 - BenchmarkOnlineAgentJob accepts agent only (dedicated agent job type)
-- SystemBenchmarkOnlineJob accepts model or agent (mutually exclusive)
 - Discriminator routing to the correct job type
 """
 
@@ -23,7 +22,6 @@ from nmp.evaluator.app.values import (
     MetricOfflineJob,
     MetricOnlineAgentJob,
     MetricOnlineJob,
-    SystemBenchmarkOnlineJob,
 )
 from pydantic import ValidationError
 
@@ -267,30 +265,3 @@ class TestBenchmarkJobDiscriminator:
         data = {"benchmark": self._CUSTOM_BENCH}
         job = BenchmarkJobAdapter.validate_python(data)
         assert isinstance(job, BenchmarkOfflineJob)
-
-
-# ============================================================================
-# SystemBenchmarkOnlineJob (model or agent, mutually exclusive)
-# ============================================================================
-
-
-class TestSystemBenchmarkOnlineJob:
-    _SYS_BENCH = {"name": "aegis-v2"}
-
-    def test_accepts_model(self):
-        job = SystemBenchmarkOnlineJob.model_validate(
-            {"benchmark": self._SYS_BENCH, "model": _MODEL, "benchmark_params": {}}
-        )
-        assert job.model is not None
-
-    def test_rejects_agent(self):
-        with pytest.raises(ValidationError):
-            SystemBenchmarkOnlineJob.model_validate(
-                {"benchmark": self._SYS_BENCH, "agent": _NAT_AGENT, "benchmark_params": {}}
-            )
-
-    def test_rejects_both(self):
-        with pytest.raises(ValidationError):
-            SystemBenchmarkOnlineJob.model_validate(
-                {"benchmark": self._SYS_BENCH, "model": _MODEL, "agent": _NAT_AGENT, "benchmark_params": {}}
-            )

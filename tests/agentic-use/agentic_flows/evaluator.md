@@ -1,6 +1,6 @@
 # Evaluator Service Agentic Flows
 
-The Evaluator service provides comprehensive evaluation capabilities for language models, including standard metrics, LLM-as-a-Judge, academic benchmarks, and tool calling evaluation.
+The Evaluator service provides comprehensive evaluation capabilities for language models, including standard metrics, LLM-as-a-Judge, and tool calling evaluation.
 
 **PIC**: Sandy Chapman
 **Priority**: Medium
@@ -14,7 +14,6 @@ The Evaluator service provides comprehensive evaluation capabilities for languag
 | 12 | Simple Custom Evaluation Job | 3 | No | `evaluator-simple-job-cli` | Launch a custom evaluation with a simple metric (BLEU, ROUGE, or string-check) against a dataset stored in Files service, targeting a model via IGW. | POR; tests/e2e/evaluator/test_metric_jobs.py |
 | 13 | LLM-as-a-Judge Evaluation | 3 | No | `evaluator-llm-judge-cli` | Configure and run an LLM-as-a-judge evaluation job that uses an LLM (via IGW) to score model outputs based on rubric criteria. | POR; tests/e2e/evaluator/test_llm_judge_jobs.py |
 | 14 | Zero-Config LLM-as-a-Judge | 3 | No | No | Run the new zero-config LLM-as-a-Judge flow that requires minimal configuration, using sensible defaults. | POR (new v2 feature) |
-| 15 | Academic Benchmark Evaluation | 3 | No | `evaluator-academic-benchmark-cli` | Trigger an academic benchmark evaluation using lm_eval_harness or MMLU against a model. Verify results with expected score ranges. | POR |
 | 16 | Tool Calling Evaluation (BFCL) | 3 | No | `evaluator-tool-calling-cli` | Run a BFCL-style evaluation for function calling/tool use. Verify function_name_accuracy and function_name_and_args_accuracy metrics. | POR |
 
 ---
@@ -93,33 +92,6 @@ The Evaluator service provides comprehensive evaluation capabilities for languag
 - Evaluation runs with minimal config
 - Default judge produces meaningful scores
 - Results comparable to full configuration
-
----
-
-### 15. Academic Benchmark Evaluation
-
-**Complexity**: 3 (Moderate)
-
-**Operations**:
-1. Select benchmark (MMLU, HellaSwag, TruthfulQA, etc.)
-2. Configure evaluation with lm_eval_harness
-3. Run benchmark against model
-4. Verify scores against expected ranges
-
-**Supported Benchmarks**:
-- MMLU (Massive Multitask Language Understanding)
-- HellaSwag
-- TruthfulQA
-- Custom lm_eval_harness tasks
-
-**Prerequisites**:
-- Model accessible via IGW
-- Benchmark configuration
-
-**Success Criteria**:
-- Benchmark runs to completion
-- Scores within expected ranges for model
-- Results formatted correctly
 
 ---
 

@@ -204,6 +204,6 @@ result = job.get_result()
 ## Related
 
 - [Model Configuration](model-configuration.md) - Inline model targets for LLM endpoints.
-- [Agentic Evaluation Metrics](agentic.md) - Metrics for evaluating agent tool calling, goal accuracy, and trajectory.
+- [Agentic Evaluation Metrics](agentic.md) - Metrics for evaluating agent tool calling, goal accuracy, and answer quality.
 - [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation with flexible scoring criteria.
 - [Bring Your Own Metric](remote.md) - Integrate custom evaluation endpoints.

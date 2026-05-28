@@ -32,7 +32,6 @@ from .bleu_metric_param_param import BleuMetricParamParam
 from .run_config_online_param import RunConfigOnlineParam
 from .rouge_metric_param_param import RougeMetricParamParam
 from .remote_metric_param_param import RemoteMetricParamParam
-from .system_metric_param_param import SystemMetricParamParam
 from .llm_judge_metric_param_param import LLMJudgeMetricParamParam
 from .exact_match_metric_param_param import ExactMatchMetricParamParam
 from .faithfulness_metric_param_param import FaithfulnessMetricParamParam
@@ -80,7 +79,6 @@ Metric: TypeAlias = Union[
     RougeMetricParamParam,
     StringCheckMetricParamParam,
     ToolCallingMetricParamParam,
-    SystemMetricParamParam,
 ]
 
 
@@ -120,10 +118,7 @@ class MetricOnlineAgentJobParam(TypedDict, total=False):
     """
 
     metric_params: Dict[str, object]
-    """Additional parameters for the metric.
-
-    Required for system metrics, optional overrides for custom metrics.
-    """
+    """Additional parameter overrides for the metric."""
 
     optional_fields: SequenceNotStr[str]
     """

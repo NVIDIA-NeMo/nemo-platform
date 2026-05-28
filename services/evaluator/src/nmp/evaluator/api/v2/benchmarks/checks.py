@@ -13,7 +13,6 @@ import nmp.evaluator.entities as entities
 from nemo_platform import AsyncNeMoPlatform
 from nmp.evaluator.api.v2.benchmarks.schemas.jobs import (
     BenchmarkJob,
-    SystemBenchmarkOfflineJob,
     benchmark_job_type,
     is_online_benchmark_job,
 )
@@ -45,8 +44,6 @@ log = logging.getLogger(__name__)
 
 async def job_fileset_exists_check(job: BenchmarkJob, sdk: AsyncNeMoPlatform) -> ValidationResult:
     """Check if the job's fileset dataset exists.
-
-    Used for SystemBenchmarkOfflineJob which may have a dataset.
 
     Args:
         job: The benchmark job input to validate.
@@ -84,7 +81,7 @@ async def job_fileset_exists_check(job: BenchmarkJob, sdk: AsyncNeMoPlatform) ->
 
 async def benchmark_fileset_exists_check(
     job: BenchmarkJob,
-    benchmark: entities.Benchmark | entities.SystemBenchmark | app.SystemBenchmark,
+    benchmark: entities.Benchmark,
     sdk: AsyncNeMoPlatform,
 ) -> ValidationResult:
     """Check if the fileset dataset exists for benchmark jobs.
@@ -104,17 +101,7 @@ async def benchmark_fileset_exists_check(
     # Determine which dataset to check based on job/benchmark type
     dataset: app.Dataset | None = None
 
-    if isinstance(benchmark, (entities.SystemBenchmark, app.SystemBenchmark)):
-        # System benchmarks have dataset download step included in the container
-        # Only verify fileset if it's an offline job with a dataset
-        if isinstance(job, SystemBenchmarkOfflineJob):
-            dataset = getattr(job, "dataset", None)
-        else:
-            # Online system benchmarks don't need fileset check
-            return ValidationResult(True)
-    elif isinstance(benchmark, entities.Benchmark):
-        # Custom benchmarks always have a dataset on the benchmark entity
-        dataset = benchmark.dataset
+    dataset = benchmark.dataset
 
     if dataset is None:
         return ValidationResult(True)
@@ -139,7 +126,7 @@ async def benchmark_fileset_exists_check(
 
 async def benchmark_model_check(
     job: BenchmarkJob,
-    benchmark: entities.Benchmark | entities.SystemBenchmark | app.SystemBenchmark,
+    benchmark: entities.Benchmark,
     workspace: str,
     sdk: AsyncNeMoPlatform,
 ) -> ValidationResult:
@@ -164,17 +151,6 @@ async def benchmark_model_check(
         model_dict = model.model_dump() if hasattr(model, "model_dump") else model
         if isinstance(model_dict, dict) and "url" in model_dict and "name" in model_dict:
             models_to_check.append(("job.model", model_dict))
-
-    # Check benchmark_params.judge.model if present (for benchmarks requiring judge)
-    benchmark_params = getattr(job, "benchmark_params", None)
-    if benchmark_params and isinstance(benchmark_params, dict):
-        judge = benchmark_params.get("judge")
-        if judge and isinstance(judge, dict):
-            judge_model = judge.get("model")
-            if judge_model:
-                judge_model_dict = judge_model.model_dump() if hasattr(judge_model, "model_dump") else judge_model
-                if isinstance(judge_model_dict, dict) and "url" in judge_model_dict and "name" in judge_model_dict:
-                    models_to_check.append(("benchmark_params.judge.model", judge_model_dict))
 
     if not models_to_check:
         return ValidationResult(True)
@@ -232,13 +208,10 @@ async def benchmark_creation_schema_check(
 
 async def benchmark_job_schema_check(
     job: BenchmarkJob,
-    benchmark: entities.Benchmark | entities.SystemBenchmark | app.SystemBenchmark,
+    benchmark: entities.Benchmark,
     sdk: AsyncNeMoPlatform,
 ) -> ValidationResult:
     """Validate a custom benchmark's dataset schema for the requested job type."""
-    if not isinstance(benchmark, entities.Benchmark):
-        return ValidationResult(True)
-
     job_type = benchmark_job_type(job)
     if job_type not in {app.SupportedJobTypes.ONLINE, app.SupportedJobTypes.OFFLINE}:
         return ValidationResult(True)

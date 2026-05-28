@@ -15,7 +15,6 @@ from nemo_evaluator_sdk.values import (
 from nmp.evaluator.api.v2.common.inline_models import Agent
 from nmp.evaluator.api.v2.metrics.schemas.metrics import (
     Metric,
-    WithEmbeddingsModel,
     WithModel,
 )
 from nmp.evaluator.app.values.metrics_job import _discriminate_job_type_from_fields
@@ -26,12 +25,10 @@ class _MetricJobBase(BaseModel):
     """A metric job."""
 
     model_config = ConfigDict(extra="forbid", json_schema_mode_override="validation")
-    # SystemMetric is needed for job response but job types represent input+response
-    # We return 422 invalid payload when request contains inline system metrics until supported.
-    metric: app.MetricRef | Metric | app.SystemMetric = Field(description="The metric for evaluation.")
+    metric: app.MetricRef | Metric = Field(description="The metric for evaluation.")
     metric_params: dict = Field(
         default_factory=dict,
-        description="Additional parameters for the metric. Required for system metrics, optional overrides for custom metrics.",
+        description="Additional parameter overrides for the metric.",
     )
     field_mapping: app.FieldMapping | None = Field(
         default=None,
@@ -128,27 +125,6 @@ class MetricOnlineAgentJob(_MetricJobBase):
     )
 
 
-class RetrieverPipeline(WithEmbeddingsModel, BaseModel):
-    """Pipeline configuration for retriever-based evaluations."""
-
-    model_config = ConfigDict(extra="forbid")
-
-
-class MetricRetrieverJob(_MetricJobBase):
-    """Evaluation with a retriever-based metric."""
-
-    __job_type__: ClassVar[Literal[SupportedJobTypes.RETRIEVER]] = SupportedJobTypes.RETRIEVER
-
-    metric: app.MetricRef | app.SystemMetric = Field(description="The metric for evaluation.")
-    retriever_pipeline: RetrieverPipeline = Field(
-        description="The pipeline configuration for retriever-based evaluation."
-    )
-    dataset: app.PipelineDataset = Field(description="The dataset to use for evaluation.")
-    params: RunConfigOnline | None = Field(
-        default_factory=RunConfigOnline, description="Execution parameters for the metric job."
-    )
-
-
 def _metric_job_input_discriminator(v: Any) -> str:
     """Discriminator for MetricJob union types."""
     if isinstance(v, dict):
@@ -161,8 +137,7 @@ def _metric_job_input_discriminator(v: Any) -> str:
 MetricJob = Annotated[
     Annotated[MetricOfflineJob, Tag("offline")]
     | Annotated[MetricOnlineJob, Tag("online")]
-    | Annotated[MetricOnlineAgentJob, Tag("online-agent")]
-    | Annotated[MetricRetrieverJob, Tag("retriever")],
+    | Annotated[MetricOnlineAgentJob, Tag("online-agent")],
     Discriminator(_metric_job_input_discriminator),
 ]
 MetricJobAdapter = TypeAdapter(MetricJob)

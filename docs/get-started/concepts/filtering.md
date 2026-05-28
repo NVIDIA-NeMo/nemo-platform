@@ -16,13 +16,13 @@ Prefer the form that's most natural for the caller:
 Generated CLI list commands expose each simple filter field as its own option:
 
 ```bash
-nemo evaluation benchmarks list --filter.name mmlu --filter.project my-project
+nemo evaluation benchmarks list --filter.name qa-benchmark --filter.project my-project
 ```
 
 Dot flags cover exact-match on scalar fields. For operators (`$gte`, `$like`, …) or boolean combinations, fall through to `--filter` with text or JSON:
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>="2025-01-01"'
+nemo evaluation benchmarks list --filter 'name:"qa-benchmark" AND created_at>="2025-01-01"'
 nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 ```
 
@@ -31,13 +31,13 @@ nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 The preferred form for REST query strings. Each `?filter[field][$op]=value` pair is URL-encoding-friendly and composable:
 
 ```
-GET /v2/workspaces/{ws}/benchmarks?filter[name][$like]=mmlu&filter[created_at][$gte]=2025-01-01
+GET /v2/workspaces/{ws}/benchmarks?filter[name][$like]=qa-benchmark&filter[created_at][$gte]=2025-01-01
 ```
 
 When no operator is specified, the default is `$eq`:
 
 ```
-?filter[name]=mmlu # equivalent to filter[name][$eq]=mmlu
+?filter[name]=qa-benchmark # equivalent to filter[name][$eq]=qa-benchmark
 ```
 
 !!! note
@@ -48,7 +48,7 @@ When no operator is specified, the default is `$eq`:
 A compact, human-readable query string. Handy for CLI and SDK string filters; in URLs you need to URL-encode spaces and quotes, so bracket notation is usually easier there.
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>"2025-01-01"'
+nemo evaluation benchmarks list --filter 'name:"qa-benchmark" AND created_at>"2025-01-01"'
 ```
 
 ```python
@@ -59,7 +59,7 @@ projects = client.projects.list(filter='name~"eval" AND created_at>"2025-01-01"'
 
 | Operator | Meaning | Example |
 |----------|---------|---------|
-| `:` | Exact match (case-sensitive) | `name:"mmlu"` |
+| `:` | Exact match (case-sensitive) | `name:"qa-benchmark"` |
 | `~` | Substring match (case-insensitive) | `name~"llam"` |
 | `>` | Greater than | `created_at>"2025-01-01"` |
 | `>=` | Greater than or equal | `created_at>="2025-01-01"` |
@@ -85,15 +85,15 @@ Pass a dictionary to the `filter` parameter. Keys are field names; values are ei
 
 ```python
 # Exact match
-results = client.evaluation.benchmarks.list(filter={"name": "mmlu"})
+results = client.evaluation.benchmarks.list(filter={"name": "qa-benchmark"})
 
 # Operator syntax
-results = client.evaluation.benchmarks.list(filter={"name": {"$like": "mmlu"}})
+results = client.evaluation.benchmarks.list(filter={"name": {"$like": "qa-benchmark"}})
 
 # Multiple conditions
 results = client.evaluation.benchmarks.list(
     filter={
-        "$and": [{"name": {"$like": "mmlu"}}, {"description": {"$like": "reasoning"}}]
+        "$and": [{"name": {"$like": "qa-benchmark"}}, {"description": {"$like": "reasoning"}}]
     }
 )
 
@@ -117,8 +117,8 @@ client.files.filesets.list(filter={"purpose": {"$eq": "dataset"}})
 
 | Operator | Meaning | Example (JSON) |
 |----------|---------|----------------|
-| `$eq` | Exact match (case-sensitive) | `{"name": {"$eq": "mmlu"}}` |
-| `$like` | Substring match (case-insensitive) | `{"name": {"$like": "mmlu"}}` |
+| `$eq` | Exact match (case-sensitive) | `{"name": {"$eq": "qa-benchmark"}}` |
+| `$like` | Substring match (case-insensitive) | `{"name": {"$like": "qa-benchmark"}}` |
 | `$lt` | Less than | `{"created_at": {"$lt": "2025-06-01"}}` |
 | `$lte` | Less than or equal | `{"created_at": {"$lte": "2025-06-01"}}` |
 | `$gt` | Greater than | `{"created_at": {"$gt": "2025-01-01"}}` |

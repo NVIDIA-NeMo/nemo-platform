@@ -24,7 +24,6 @@ from .f1_metric_response import F1MetricResponse
 from .bleu_metric_response import BleuMetricResponse
 from .rouge_metric_response import RougeMetricResponse
 from .remote_metric_response import RemoteMetricResponse
-from .system_metric_response import SystemMetricResponse
 from ..shared.pagination_data import PaginationData
 from .llm_judge_metric_response import LLMJudgeMetricResponse
 from .exact_match_metric_response import ExactMatchMetricResponse
@@ -71,7 +70,6 @@ Data: TypeAlias = Annotated[
         RougeMetricResponse,
         StringCheckMetricResponse,
         ToolCallingMetricResponse,
-        SystemMetricResponse,
     ],
     PropertyInfo(discriminator="type"),
 ]

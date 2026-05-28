@@ -3,9 +3,8 @@
 
 import logging
 import textwrap
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
-import nmp.evaluator.app.values as app
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.routing import APIRoute
 from nemo_evaluator_sdk.values import AggregatedMetricResult, RowScore
@@ -17,6 +16,7 @@ from nmp.common.jobs.api_factory import (
     FileResultSerializer,
     PlatformJobResultRoute,
     PlatformJobSpec,
+    PlatformJobSpecCompilerAsync,
     PydanticJSONLResultSerializer,
     PydanticResultSerializer,
     job_route_factory,
@@ -96,12 +96,6 @@ async def platform_job_config_compiler(
         job_name: The resolved job name (user-provided or auto-generated).
         sdk: SDK instance for accessing secrets with user context.
     """
-    if isinstance(transformed_spec.metric, app.SystemMetric):
-        # SystemMetric is needed for job response but job types represent input+response
-        # We return 422 invalid payload when request contains inline system metrics until supported.
-        err_msg = f"Unsupported job with custom system metric. Use metric reference instead 'system/<metric-name>': {transformed_spec.metric}"
-        raise HTTPException(status_code=422, detail=err_msg)
-
     metrics_manager = get_metrics_manager(entity_client)
 
     try:
@@ -121,7 +115,10 @@ _jobs_router = job_route_factory(
     service_name="evaluator-metrics",
     job_type="MetricEvaluation",
     job_input=MetricJob,
-    platform_job_config_compiler=platform_job_config_compiler,
+    platform_job_config_compiler=cast(
+        PlatformJobSpecCompilerAsync[MetricJob, MetricJob],
+        platform_job_config_compiler,
+    ),
     job_result_routes=[
         PlatformJobResultRoute(
             name=JOB_RESULTS_AGGREGATE_SCORES,

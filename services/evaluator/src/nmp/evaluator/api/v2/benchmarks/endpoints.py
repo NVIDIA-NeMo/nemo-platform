@@ -4,7 +4,7 @@
 import logging
 import textwrap
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.routing import APIRoute
@@ -17,6 +17,7 @@ from nmp.common.jobs.api_factory import (
     FileResultSerializer,
     PlatformJobResultRoute,
     PlatformJobSpec,
+    PlatformJobSpecCompilerAsync,
     PydanticJSONLResultSerializer,
     PydanticResultSerializer,
     job_route_factory,
@@ -37,7 +38,6 @@ from nmp.evaluator.api.v2.benchmarks.schemas.benchmarks import (
     BenchmarksListFilter,
     BenchmarksListResponse,
     ExtendedBenchmark,
-    SystemBenchmark,
 )
 from nmp.evaluator.api.v2.benchmarks.schemas.jobs import BenchmarkJob
 from nmp.evaluator.api.v2.common.query_params import AggregateFieldsQuery, validate_list_query_params
@@ -109,7 +109,10 @@ _jobs_router = job_route_factory(
     service_name="evaluator-benchmarks",
     job_type="BenchmarkEvaluation",
     job_input=BenchmarkJob,
-    platform_job_config_compiler=platform_job_config_compiler,
+    platform_job_config_compiler=cast(
+        PlatformJobSpecCompilerAsync[BenchmarkJob, BenchmarkJob],
+        platform_job_config_compiler,
+    ),
     job_result_routes=[
         PlatformJobResultRoute(
             name=JOB_RESULTS_AGGREGATE_SCORES,
@@ -244,7 +247,7 @@ async def list_benchmarks(
 @router.get(
     "/v2/workspaces/{workspace}/benchmarks/{name}",
     description="Get a specific evaluation benchmark by workspace and benchmark name.",
-    response_model=Benchmark | ExtendedBenchmark | SystemBenchmark,
+    response_model=Benchmark | ExtendedBenchmark,
     tags=[API_TAG],
     response_model_exclude_none=True,
     responses={

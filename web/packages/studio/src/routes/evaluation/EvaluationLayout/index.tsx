@@ -5,7 +5,7 @@ import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { Loading } from '@studio/components/Layouts/Loading';
-import { LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY } from '@studio/constants/links';
+import { LINK_EVAL_DOCS_BENCHMARKS } from '@studio/constants/links';
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -54,8 +54,8 @@ export const EvaluationLayout: FC = () => {
             ) : hubTitle === 'Benchmarks' ? (
               <Stack className="grow" align="end">
                 <DocumentationButton
-                  href={LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY}
-                  text="Browse Benchmarks"
+                  href={LINK_EVAL_DOCS_BENCHMARKS}
+                  text="Benchmark Docs"
                   attributes={{
                     Button: {
                       kind: 'secondary',

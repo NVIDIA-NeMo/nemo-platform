@@ -28,7 +28,6 @@ from .dataset_rows import DatasetRows
 from .rouge_metric import RougeMetric
 from .field_mapping import FieldMapping
 from .remote_metric import RemoteMetric
-from .system_metric import SystemMetric
 from ..files.fileset import Fileset
 from .llm_judge_metric import LLMJudgeMetric
 from .exact_match_metric import ExactMatchMetric
@@ -77,7 +76,6 @@ Metric: TypeAlias = Annotated[
         ResponseRelevancyMetric,
         FaithfulnessMetric,
         NoiseSensitivityMetric,
-        SystemMetric,
     ],
     PropertyInfo(discriminator="type"),
 ]

@@ -392,9 +392,6 @@ nav:
       - Metric Results: evaluator/metrics/results.md
     - Benchmarks:
       - Overview: evaluator/benchmarks/index.md
-      - Industry Benchmarks: evaluator/benchmarks/industry.md
-      - Discover Industry Benchmarks: evaluator/benchmarks/discover-industry-benchmarks.md
-      - Agentic Benchmarks: evaluator/benchmarks/agentic.md
       - Custom Benchmarks: evaluator/benchmarks/custom.md
       - Manage Benchmarks: evaluator/benchmarks/manage-benchmarks.md
       - HuggingFace Secret: evaluator/benchmarks/hf-secret.md

@@ -61,7 +61,7 @@ describe('evaluationConfig selectors', () => {
         const tasks = getCustomConfigTaskEntries(mockEvalConfigCustom);
         expect(tasks).toHaveLength(1);
         expect(tasks[0][0]).toBe('default');
-        expect(tasks[0][1].type).toBe('humaneval');
+        expect(tasks[0][1].type).toBe('default');
       });
     });
 
@@ -80,7 +80,7 @@ describe('evaluationConfig selectors', () => {
       it('should return default task from single-task config', () => {
         const task = getCustomConfigTaskByName(mockEvalConfigCustom, 'default');
         expect(task).toBeDefined();
-        expect(task?.type).toBe('humaneval');
+        expect(task?.type).toBe('default');
       });
     });
 
@@ -96,7 +96,7 @@ describe('evaluationConfig selectors', () => {
         const firstTask = getFirstCustomConfigTask(mockEvalConfigCustom);
         expect(firstTask).toBeDefined();
         expect(firstTask![0]).toBe('default');
-        expect(firstTask![1].type).toBe('humaneval');
+        expect(firstTask![1].type).toBe('default');
       });
 
       it('should return undefined when no tasks exist', () => {

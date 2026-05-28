@@ -9,34 +9,27 @@ import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.values import AggregatedMetricResult
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient
+from nmp.common.entities import EntityClient
 from nmp.common.jobs.result_manager import result_manager_factory
 from nmp.evaluator.app.jobs.constants import (
     JOB_RESULTS_AGGREGATE_SCORES,
     JOB_RESULTS_ROW_SCORES,
     JOBS_RESULTS_ARTIFACTS,
-    EvalHarness,
-    normalize_eval_harness,
 )
 from nmp.evaluator.app.jobs.result_parsers.base import ResultsParser
 from nmp.evaluator.app.jobs.result_parsers.custom import CustomResultsParser
-from nmp.evaluator.app.jobs.result_parsers.evalfactory import EvalFactoryResultsParser
 from pydantic import Field
 from pydantic_settings import BaseSettings
 
 log = logging.getLogger(__name__)
 
-ignore_patterns = [
-    "cache.db",  # EvalFactory 25.08.1+ cache adapter
-    "cache/",  # EvalFactory 25.07.1 cache adapter
-]
+ignore_patterns: list[str] = []
 
 
 class ResultsHandlerConfig(BaseSettings):
     # Jobs MS environment variable
     NEMO_JOB_ID: str = Field(description="Jobs MS job ID")
     NEMO_JOB_WORKSPACE: str = Field(description="Jobs MS job workspace")
-    NEMO_EVAL_HARNESS: str | None = Field(default=None, description="Evaluation harness name")
 
 
 def handle_results(
@@ -54,7 +47,7 @@ def handle_results(
         sdk: Async SDK instance for API operations. Useful for testing.
 
     Steps:
-    1. Select results parser from the configured eval harness.
+    1. Select the custom evaluator results parser.
     2. Normalize aggregate/row outputs into evaluator schema when needed.
     3. Upload artifacts, aggregate-scores, and optional row-scores to Jobs API.
     """
@@ -83,7 +76,7 @@ async def handle_results_async(
         jobs_sdk=sdk,
     )
 
-    parser = _get_results_parser(config.NEMO_JOB_ID, local_results_dir_path, eval_harness=config.NEMO_EVAL_HARNESS)
+    parser = _get_results_parser()
     prepared_results = parser.prepare_results(local_results_dir_path)
 
     # Build list of tasks to run in parallel
@@ -105,19 +98,8 @@ async def handle_results_async(
     await asyncio.gather(*tasks)
 
 
-def _get_results_parser(job_id: str, local_results_dir_path: str, *, eval_harness: str | None = None) -> ResultsParser:
-    normalized_harness: EvalHarness = normalize_eval_harness(eval_harness)
-    if normalized_harness == "evaluator":
-        return CustomResultsParser()
-    log.info(
-        "Using EvalFactory parser from configured harness",
-        extra={
-            "job_id": job_id,
-            "results_dir": local_results_dir_path,
-            "eval_harness": normalized_harness,
-        },
-    )
-    return EvalFactoryResultsParser(job_id, normalized_harness)
+def _get_results_parser() -> ResultsParser:
+    return CustomResultsParser()
 
 
 async def register_result_entity(
@@ -128,9 +110,9 @@ async def register_result_entity(
 ) -> entities.BenchmarkJobResult | entities.MetricJobResult:
     log.info("Registering result entity", extra={"aggregate_scores_path": aggregate_scores_path})
 
-    if getattr(job, "metric", None):
+    if isinstance(job, app.MetricOfflineJob | app.MetricOnlineJob | app.MetricOnlineAgentJob):
         result_entity = load_metric_result_entity(aggregate_scores_path, job, config)
-    elif getattr(job, "benchmark", None):
+    elif isinstance(job, app.BenchmarkOfflineJob | app.BenchmarkOnlineJob | app.BenchmarkOnlineAgentJob):
         result_entity = load_benchmark_result_entity(aggregate_scores_path, job, config)
     else:
         raise ValueError(f"unsupported job {type(job)}")
@@ -162,14 +144,9 @@ def load_benchmark_result_entity(
     with open(aggregate_scores_path, "r") as f:
         scores = json.load(f)
 
-    metric_refs = None
-    dataset_ref = None
-    if isinstance(job.benchmark, app.Benchmark):
-        metric_refs = [metric.metric_ref for metric in job.benchmark.metrics]
-        dataset_ref = job.benchmark.dataset
-        benchmark_ref = job.benchmark.name
-    elif isinstance(job.benchmark, app.SystemBenchmark):
-        benchmark_ref = f"{SYSTEM_WORKSPACE}/{job.benchmark.name}"
+    metric_refs = [metric.metric_ref for metric in job.benchmark.metrics]
+    dataset_ref = job.benchmark.dataset
+    benchmark_ref = app.BenchmarkRef(root=job.benchmark.name)
 
     return entities.BenchmarkJobResult(
         name=config.NEMO_JOB_ID,

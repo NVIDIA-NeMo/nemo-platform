@@ -22,7 +22,6 @@ from typing_extensions import Required, TypeAlias, TypedDict
 
 from .metric_online_job_param import MetricOnlineJobParam
 from .metric_offline_job_param import MetricOfflineJobParam
-from .metric_retriever_job_param import MetricRetrieverJobParam
 from .metric_online_agent_job_param import MetricOnlineAgentJobParam
 
 __all__ = ["MetricJobCreateParams", "Spec"]
@@ -45,4 +44,4 @@ class MetricJobCreateParams(TypedDict, total=False):
     project: str
 
 
-Spec: TypeAlias = Union[MetricOfflineJobParam, MetricOnlineJobParam, MetricOnlineAgentJobParam, MetricRetrieverJobParam]
+Spec: TypeAlias = Union[MetricOfflineJobParam, MetricOnlineJobParam, MetricOnlineAgentJobParam]

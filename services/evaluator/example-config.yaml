@@ -27,9 +27,6 @@ auth:
 entities:
   backend: memory
 
-evaluator:
-  recreate_existing_system_entities: True
-
 # Jobs service settings
 jobs:
   executor_defaults:

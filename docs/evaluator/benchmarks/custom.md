@@ -4,7 +4,7 @@
 Custom benchmarks allow you to create reusable evaluation suites tailored to your specific use case. A benchmark combines one or more [metrics](../metrics/index.md) with a dataset, enabling consistent evaluation across multiple models or pipeline versions.
 
 !!! note
-    Custom benchmarks can only include custom metrics that you create in your workspace. System metrics (in the `system` workspace) cannot be included in custom benchmarks at this time. To use system metrics, refer to [Industry Benchmarks](industry.md).
+    Custom benchmarks include metrics that you create in your workspace.
 
 ## Prerequisites
 
@@ -302,7 +302,6 @@ if status.status == "completed":
 **"Metric not found"**
 
 - Ensure all metrics referenced in the benchmark exist in your workspace
-- Remember that system metrics (`system/...`) cannot be used in custom benchmarks
 - Verify metric names match exactly (case-sensitive)
 
 **"Fileset not found"**

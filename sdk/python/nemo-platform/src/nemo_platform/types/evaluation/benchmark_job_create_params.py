@@ -23,8 +23,6 @@ from typing_extensions import Required, TypeAlias, TypedDict
 from .benchmark_online_job_param import BenchmarkOnlineJobParam
 from .benchmark_offline_job_param import BenchmarkOfflineJobParam
 from .benchmark_online_agent_job_param import BenchmarkOnlineAgentJobParam
-from .system_benchmark_online_job_param import SystemBenchmarkOnlineJobParam
-from .system_benchmark_offline_job_param import SystemBenchmarkOfflineJobParam
 
 __all__ = ["BenchmarkJobCreateParams", "Spec"]
 
@@ -49,10 +47,4 @@ class BenchmarkJobCreateParams(TypedDict, total=False):
     project: str
 
 
-Spec: TypeAlias = Union[
-    BenchmarkOfflineJobParam,
-    BenchmarkOnlineJobParam,
-    BenchmarkOnlineAgentJobParam,
-    SystemBenchmarkOfflineJobParam,
-    SystemBenchmarkOnlineJobParam,
-]
+Spec: TypeAlias = Union[BenchmarkOfflineJobParam, BenchmarkOnlineJobParam, BenchmarkOnlineAgentJobParam]

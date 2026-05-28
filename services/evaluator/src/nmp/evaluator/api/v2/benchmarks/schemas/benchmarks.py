@@ -92,14 +92,8 @@ class ExtendedBenchmark(entities.Benchmark):
     )
 
 
-class SystemBenchmark(entities.SystemBenchmark):
-    """System Benchmark response schema."""
-
-    ...
-
-
 # This is needed to ensure the generated OAS has a better name than UnionsPage.
-class BenchmarksListResponse(Page[Benchmark | ExtendedBenchmark | SystemBenchmark]): ...
+class BenchmarksListResponse(Page[Benchmark | ExtendedBenchmark]): ...
 
 
 # =============================================================================

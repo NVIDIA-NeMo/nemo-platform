@@ -1,67 +1,6 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-export const mockEvalConfigBigCode = {
-  id: 'eval-config-DptKNnopfGLCSGuKHksGPp',
-  namespace: '-',
-  name: 'bigcode evaluation harness cfg',
-  custom_fields: { 'bigcode_evaluation_harness-evaluation-config': '' },
-  type: 'bigcode_evaluation_harness',
-  tasks: {
-    default: {
-      type: 'humaneval',
-      dataset: {
-        files_url: 'input.json',
-      },
-      params: {
-        batch_size: 1,
-        max_length_generation: 512,
-        temperature: 1.0,
-        top_k: 1,
-        top_p: 0.0,
-        n_samples: 1,
-        num_chunks: 1,
-      },
-      metrics: { bleu: { type: 'bleu' } },
-    },
-  },
-  params: {},
-};
-
-export const mockEvalConfigLmHarness = {
-  id: 'eval-config-Sp6oJ264eR7MQTepRoaPAh',
-  namespace: '-',
-  name: 'eval-config-Sp6oJ264eR7MQTepRoaPAh',
-  custom_fields: { 'lm_eval_harness-evaluation-config': '' },
-  type: 'lm_eval_harness',
-  params: {
-    use_greedy: true,
-    temperature: 1.0,
-    top_k: 1,
-    top_p: 0.0,
-    stop: ['<|endoftext|>', '<extra_id_1>'],
-    tokens_to_generate: 1024,
-  },
-  tasks: {
-    default: {
-      type: 'humaneval',
-      dataset: {
-        files_url: 'input.json',
-      },
-      params: {
-        batch_size: 1,
-        max_length_generation: 512,
-        temperature: 1.0,
-        top_k: 1,
-        top_p: 0.0,
-        n_samples: 1,
-        num_chunks: 1,
-      },
-      metrics: { bleu: { type: 'bleu' } },
-    },
-  },
-};
-
 export const mockEvalConfigCustom = {
   id: 'eval-config-K8Kb4x7McMQqco1SAAk5VG',
   namespace: '-',
@@ -74,7 +13,7 @@ export const mockEvalConfigCustom = {
 
   tasks: {
     default: {
-      type: 'humaneval',
+      type: 'default',
       params: {
         tokens_to_generate: 200,
         temperature: 0.7,
@@ -335,8 +274,6 @@ export const mockEvalConfigRag = {
 };
 
 export const mockEvalConfigs = [
-  mockEvalConfigBigCode,
-  mockEvalConfigLmHarness,
   mockEvalConfigCustom,
   mockEvalConfigLLMAsJudge,
   mockEvalConfigRetriever,

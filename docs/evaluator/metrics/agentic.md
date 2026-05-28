@@ -22,9 +22,6 @@ Evaluates the quality of the agent's final output using:
 - **Answer Accuracy**: Evaluates the factual correctness of agent answers. Refer to [Answer Accuracy](#answer-accuracy).
 - **Custom Metrics**: For domain-specific or custom evaluation criteria, use [LLM-as-a-Judge](llm-as-a-judge.md) with the `data` task type.
 
-**3. Trajectory Evaluation**
-Evaluates the agent's decision-making process by analyzing the entire sequence of actions taken to accomplish a goal. This includes assessing whether the agent chose appropriate tools in the correct order. Refer to [Trajectory Evaluation](#trajectory-evaluation) for the expected data format and current plugin SDK support.
-
 ---
 
 ## Online vs Offline Evaluation
@@ -64,7 +61,6 @@ Agentic metrics evaluate different aspects of agent behavior:
 | [**Topic Adherence**](#topic-adherence) | Measures topic focus in multi-turn conversations | Yes | `run` + `submit` |
 | [**Agent Goal Accuracy**](#agent-goal-accuracy) | Assesses goal completion, with or without reference. | Yes | `run` + `submit` |
 | [**Answer Accuracy**](#answer-accuracy) | Checks factual correctness | Yes | `run` + `submit` |
-| [**Trajectory Evaluation**](#trajectory-evaluation) | Evaluates decision-making across action sequence | Yes | Not exposed as a typed plugin SDK metric |
 
 !!! note
     Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
@@ -1066,69 +1062,6 @@ Evaluates the factual correctness of an agent's answer by comparing it against a
 
 ---
 
-### Trajectory Evaluation
-
-Evaluates the agent's decision-making process by analyzing the entire sequence of actions (trajectory) taken to accomplish a goal. This **system metric** assesses whether the agent chose appropriate tools in the correct order.
-
-!!! info
-    **NAT Format Requirement**: This metric supports the NVIDIA Agent Toolkit format with `intermediate_steps` containing detailed event traces.
-
-    **Current plugin SDK support**: The current plugin SDK does not expose a typed trajectory-evaluation metric class. Use the data-format details below when preparing datasets for environments where the system metric is enabled, but do not use the old generated evaluator job APIs for plugin SDK execution.
-
-#### Data Format
-
-Each data entry must follow the [NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/index.html) format:
-
-```json
-{
-  "question": "What are LLMs",
-  "generated_answer": "LLMs, or Large Language Models, are a type of artificial intelligence designed to process and generate human-like language. They are trained on vast amounts of text data and can be fine-tuned for specific tasks or guided by prompt engineering.",
-  "answer": "LLMs stand for Large Language Models, which are a type of machine learning model designed for natural language processing tasks such as language generation.",
-  "intermediate_steps": [
-    {
-      "payload": {
-        "event_type": "LLM_END",
-        "name": "nvidia/llama-3.3-nemotron-super-49b-v1",
-        "data": {
-          "input": "\nPrevious conversation history:\n\n\nQuestion: What are LLMs\n",
-          "output": "Thought: I need to find information about LLMs to answer this question.\n\nAction: wikipedia_search\nAction Input: {'question': 'LLMs'}\n\n"
-        }
-      }
-    },
-    {
-      "payload": {
-        "event_type": "TOOL_END",
-        "name": "wikipedia_search",
-        "data": {
-          "input": "{'question': 'LLMs'}",
-          "output": "<Document source=\"https://en.wikipedia.org/wiki/Large_language_model\" page=\"\"/>\nA large language model (LLM) is a language model trained with self-supervised machine learning..."
-        }
-      }
-    },
-    {
-      "payload": {
-        "event_type": "LLM_END",
-        "name": "meta/llama-3.1-70b-instruct",
-        "data": {
-          "input": "...",
-          "output": "Thought: I now know the final answer\n\nFinal Answer: LLMs, or Large Language Models, are a type of artificial intelligence..."
-        }
-      }
-    }
-  ]
-}
-```
-
-#### Parameters
-
-| Parameter | Required | Type | Description |
-|-----------|----------|------|-------------|
-| `judge` | required | object | Judge LLM configuration |
-| `trajectory_used_tools` | required | string | Comma-separated list of tools available to the agent. Example: `"wikipedia_search,current_datetime,code_generation"` |
-| `trajectory_custom_tools` | optional | object | JSON mapping custom tool names to descriptions for non-default tools |
-
----
-
 ## Judge Configuration
 
 Most agentic metrics require a judge LLM. Configure the judge model in the metric definition:
@@ -1229,7 +1162,6 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 !!! info
     - [Agent Configuration](agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation jobs
-    - [Agentic Benchmarks](../benchmarks/agentic.md) - BFCL benchmark for tool-calling evaluation
     - [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
     - [Evaluation Results](results.md) - Understanding results
     - [RAG Metrics](rag.md) - RAGAS metrics for RAG pipelines

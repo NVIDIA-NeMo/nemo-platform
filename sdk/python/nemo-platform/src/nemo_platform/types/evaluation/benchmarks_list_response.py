@@ -20,13 +20,12 @@ from typing_extensions import TypeAlias
 
 from ..._models import BaseModel
 from .benchmark import Benchmark
-from .system_benchmark import SystemBenchmark
 from .extended_benchmark import ExtendedBenchmark
 from ..shared.pagination_data import PaginationData
 
 __all__ = ["BenchmarksListResponse", "Data"]
 
-Data: TypeAlias = Union[Benchmark, ExtendedBenchmark, SystemBenchmark]
+Data: TypeAlias = Union[Benchmark, ExtendedBenchmark]
 
 
 class BenchmarksListResponse(BaseModel):

@@ -171,17 +171,17 @@ class TestMetricEvaluationRequestMetricUnion:
         assert isinstance(request.metric, MetricRef)
         assert request.metric.root == "my-workspace/my-metric"
 
-    def test_accepts_metric_ref_system_workspace(self):
-        """MetricEvaluationRequest accepts system workspace metric references."""
+    def test_accepts_metric_ref_with_hyphenated_name(self):
+        """MetricEvaluationRequest accepts hyphenated metric references."""
         request = MetricEvaluationRequest.model_validate(
             {
-                "metric": "system/exact-match",
+                "metric": "default/exact-match",
                 "dataset": {"rows": [{"input": "test"}]},
             }
         )
 
         assert isinstance(request.metric, MetricRef)
-        assert request.metric.root == "system/exact-match"
+        assert request.metric.root == "default/exact-match"
 
     def test_accepts_inline_string_check_metric(self):
         """MetricEvaluationRequest accepts inline string-check metric definition."""

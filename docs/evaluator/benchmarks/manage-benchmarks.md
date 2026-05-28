@@ -109,12 +109,12 @@ and logical operators `$and`, `$or`, `$not`.
 
 ```python
 # Filter by name (substring match)
-benchmarks = client.evaluation.benchmarks.list(filter={"name": {"$like": "mmlu"}})
+benchmarks = client.evaluation.benchmarks.list(filter={"name": {"$like": "qa-benchmark"}})
 
 # Combine multiple conditions
 benchmarks = client.evaluation.benchmarks.list(
     filter={
-        "$and": [{"name": {"$like": "mmlu"}}, {"description": {"$like": "reasoning"}}]
+        "$and": [{"name": {"$like": "qa-benchmark"}}, {"description": {"$like": "reasoning"}}]
     }
 )
 

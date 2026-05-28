@@ -303,8 +303,6 @@ resources:
           benchmark_request: BenchmarkRequest
           benchmarks_list_response: BenchmarksListResponse
           extended_benchmark: ExtendedBenchmark
-          system_benchmark: SystemBenchmark
-          system_metric: SystemMetric
         methods:
           create: post /apis/evaluation/v2/workspaces/{workspace}/benchmarks
           retrieve: get /apis/evaluation/v2/workspaces/{workspace}/benchmarks/{name}
@@ -321,8 +319,6 @@ resources:
           benchmark_online_agent_job: BenchmarkOnlineAgentJob
           benchmark_online_job: BenchmarkOnlineJob
           benchmark_ref: BenchmarkRef
-          system_benchmark_offline_job: SystemBenchmarkOfflineJob
-          system_benchmark_online_job: SystemBenchmarkOnlineJob
         methods:
           retrieve: get /apis/evaluation/v2/workspaces/{workspace}/benchmark-jobs/{name}
           delete: delete /apis/evaluation/v2/workspaces/{workspace}/benchmark-jobs/{name}
@@ -397,7 +393,6 @@ resources:
           rouge_metric_response: ROUGEMetricResponse
           rubric_score_stat: RubricScoreStat
           string_check_metric_response: StringCheckMetricResponse
-          system_metric_response: SystemMetricResponse
           tool_call_accuracy_metric_response: ToolCallAccuracyMetricResponse
           tool_calling_metric_response: ToolCallingMetricResponse
           topic_adherence_metric_response: TopicAdherenceMetricResponse
@@ -419,9 +414,6 @@ resources:
           metric_offline_job: MetricOfflineJob
           metric_online_agent_job: MetricOnlineAgentJob
           metric_online_job: MetricOnlineJob
-          metric_retriever_job: MetricRetrieverJob
-          retriever_pipeline: RetrieverPipelineInput
-          system_metric_param: SystemMetricInput
         methods:
           retrieve: get /apis/evaluation/v2/workspaces/{workspace}/metric-jobs/{name}
           delete: delete /apis/evaluation/v2/workspaces/{workspace}/metric-jobs/{name}

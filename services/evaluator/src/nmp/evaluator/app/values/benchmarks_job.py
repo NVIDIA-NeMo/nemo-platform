@@ -19,9 +19,8 @@ from nemo_evaluator_sdk.values import (
 from nemo_evaluator_sdk.values.multi_metric_results import (
     BenchmarkEvaluationResult as SDKBenchmarkEvaluationResult,
 )
-from nmp.evaluator.app.values.benchmarks import Benchmark, BenchmarkMetric, SystemBenchmark
-from nmp.evaluator.app.values.common import FilesetRef, MetricRef, ModelRef
-from nmp.evaluator.app.values.datasets import Dataset
+from nmp.evaluator.app.values.benchmarks import Benchmark, BenchmarkMetric
+from nmp.evaluator.app.values.common import MetricRef, ModelRef
 from pydantic import BaseModel, ConfigDict, Discriminator, Field, Tag, TypeAdapter
 
 # =============================================================================
@@ -79,63 +78,10 @@ class BenchmarkOnlineAgentJob(_BenchmarkJob):
     )
 
 
-class _SystemBenchmarkJob(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    benchmark: SystemBenchmark = Field(description="The benchmark for evaluation.")
-    benchmark_params: dict = Field(default_factory=dict, description="Additional parameters specific to the benchmark.")
-
-
-class SystemBenchmarkOfflineJob(_SystemBenchmarkJob):
-    __job_type__: ClassVar[Literal[SupportedJobTypes.OFFLINE]] = SupportedJobTypes.OFFLINE
-
-    dataset: Dataset = Field(
-        description="The dataset to evaluate which may represent generated outputs from a model or agent trace."
-    )
-    dataset_ref: FilesetRef | None = Field(default=None)
-    params: RunConfig | None = Field(
-        default_factory=RunConfig, description="Execution parameters for the benchmark job."
-    )
-
-
-class SystemBenchmarkOnlineJob(_SystemBenchmarkJob):
-    __job_type__: ClassVar[Literal[SupportedJobTypes.ONLINE]] = SupportedJobTypes.ONLINE
-
-    model: Model = Field(description="The model to evaluate.")
-    model_ref: ModelRef | None = Field(default=None)
-    params: RunConfigOnlineModel | None = Field(
-        default_factory=RunConfigOnlineModel, description="Execution parameters for the benchmark job."
-    )
-
-
-SystemBenchmarkJob = SystemBenchmarkOfflineJob | SystemBenchmarkOnlineJob
-
-
-def _is_system_benchmark(benchmark: Any) -> bool:
-    """Check whether the benchmark value represents a system benchmark.
-
-    The benchmark can arrive as a ``SystemBenchmark`` instance, a plain dict,
-    or a ``Benchmark`` model instance – depending on whether the caller already
-    converted it.
-
-    Custom benchmarks are distinguished by having a ``metrics`` field
-    (a list of metric configurations), which system benchmarks lack.
-    """
-    if isinstance(benchmark, SystemBenchmark):
-        return True
-    if isinstance(benchmark, Benchmark):
-        return False
-    if isinstance(benchmark, dict):
-        return "metrics" not in benchmark
-    # Unknown model instance – fall back to checking for the metrics attribute
-    return not hasattr(benchmark, "metrics")
-
-
 def _benchmark_job_discriminator(data: Any) -> str:
     """
     Discriminate union type specifically for internal job spec which has benchmark reference resolved.
     """
-    benchmark = data.get("benchmark", {}) if isinstance(data, dict) else getattr(data, "benchmark", {})
-
     if isinstance(data, dict):
         has_model = "model" in data
         has_agent = "agent" in data
@@ -150,12 +96,8 @@ def _benchmark_job_discriminator(data: Any) -> str:
         return "online-agent"
 
     if has_model:
-        if _is_system_benchmark(benchmark):
-            return "system-online"
         return "online"
 
-    if _is_system_benchmark(benchmark):
-        return "system-offline"
     return "offline"
 
 
@@ -164,8 +106,6 @@ BenchmarkJob = Annotated[
         Annotated[BenchmarkOfflineJob, Tag("offline")]
         | Annotated[BenchmarkOnlineJob, Tag("online")]
         | Annotated[BenchmarkOnlineAgentJob, Tag("online-agent")]
-        | Annotated[SystemBenchmarkOfflineJob, Tag("system-offline")]
-        | Annotated[SystemBenchmarkOnlineJob, Tag("system-online")]
     ),
     Discriminator(_benchmark_job_discriminator),
 ]

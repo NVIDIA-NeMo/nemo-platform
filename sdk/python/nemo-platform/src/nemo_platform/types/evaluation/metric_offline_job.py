@@ -29,7 +29,6 @@ from .f1_metric_param import F1MetricParam
 from .bleu_metric_param import BleuMetricParam
 from .rouge_metric_param import RougeMetricParam
 from .remote_metric_param import RemoteMetricParam
-from .system_metric_param import SystemMetricParam
 from .llm_judge_metric_param import LLMJudgeMetricParam
 from .exact_match_metric_param import ExactMatchMetricParam
 from .faithfulness_metric_param import FaithfulnessMetricParam
@@ -77,7 +76,6 @@ Metric: TypeAlias = Union[
     RougeMetricParam,
     StringCheckMetricParam,
     ToolCallingMetricParam,
-    SystemMetricParam,
 ]
 
 
@@ -97,10 +95,7 @@ class MetricOfflineJob(BaseModel):
     """
 
     metric_params: Optional[Dict[str, object]] = None
-    """Additional parameters for the metric.
-
-    Required for system metrics, optional overrides for custom metrics.
-    """
+    """Additional parameter overrides for the metric."""
 
     params: Optional[RunConfig] = None
     """Job parameters."""

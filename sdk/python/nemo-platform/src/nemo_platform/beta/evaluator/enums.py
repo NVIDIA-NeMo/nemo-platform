@@ -35,9 +35,6 @@ class MetricType(str, Enum):
     FAITHFULNESS = "faithfulness"
     NOISE_SENSITIVITY = "noise_sensitivity"
 
-    SYSTEM = "system"
-    SYSTEM_RETRIEVER = "system-retriever"
-
 
 class TaskStatus(str, Enum):
     """Status of an evaluation task."""

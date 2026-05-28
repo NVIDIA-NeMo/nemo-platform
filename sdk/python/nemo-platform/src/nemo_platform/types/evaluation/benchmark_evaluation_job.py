@@ -24,18 +24,10 @@ from .benchmark_online_job import BenchmarkOnlineJob
 from .benchmark_offline_job import BenchmarkOfflineJob
 from .benchmark_online_agent_job import BenchmarkOnlineAgentJob
 from ..shared.platform_job_status import PlatformJobStatus
-from .system_benchmark_online_job import SystemBenchmarkOnlineJob
-from .system_benchmark_offline_job import SystemBenchmarkOfflineJob
 
 __all__ = ["BenchmarkEvaluationJob", "Spec"]
 
-Spec: TypeAlias = Union[
-    BenchmarkOfflineJob,
-    BenchmarkOnlineJob,
-    BenchmarkOnlineAgentJob,
-    SystemBenchmarkOfflineJob,
-    SystemBenchmarkOnlineJob,
-]
+Spec: TypeAlias = Union[BenchmarkOfflineJob, BenchmarkOnlineJob, BenchmarkOnlineAgentJob]
 
 
 class BenchmarkEvaluationJob(BaseModel):

@@ -14,7 +14,6 @@ Results across two runs. First batch had 7 infra failures (agent ran as root) wh
 | auth-authorization-cli | - | **1.0** | 4:40 | nemo-auth |
 | data-designer-config-cli | - | **1.0** | 2:28 | nemo-secrets, nemo-inference-providers |
 | entities-basic-cli | - | **1.0** | 2:24 | nemo-entities |
-| evaluator-academic-benchmark-cli | - | 0.0 | 10:28 | (genuine failure) |
 | evaluator-llm-judge-cli | - | **1.0** | 7:43 | nemo-evaluator, nemo-files, nemo-secrets |
 | evaluator-simple-job-cli | 0.0 (1:10) | **1.0** | 4:11 | nemo-evaluator, nemo-files, nemo-auth |
 | files-crud-cli | 0.0 (3:05) | **1.0** | 4:34 | nemo-files |

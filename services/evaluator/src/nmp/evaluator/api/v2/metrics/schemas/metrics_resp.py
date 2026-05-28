@@ -182,12 +182,6 @@ class ToolCallingMetricResponse(schema_metrics.ToolCallingMetric, _OptionalEntit
     pass
 
 
-class SystemMetricResponse(app.SystemMetric, _OptionalEntity):
-    """Response type for SystemMetric."""
-
-    pass
-
-
 MetricResponse = Annotated[
     Union[
         # Metrics with models (may be ref or inline)
@@ -214,7 +208,6 @@ MetricResponse = Annotated[
         ROUGEMetricResponse,
         StringCheckMetricResponse,
         ToolCallingMetricResponse,
-        SystemMetricResponse,
     ],
     Field(discriminator="type"),
 ]
