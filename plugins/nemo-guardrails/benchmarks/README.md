@@ -16,17 +16,15 @@ plugins/nemo-guardrails/benchmarks/
   configs/
     nmp_igw_guardrails_sweep_concurrency.yaml   # AIPerf sweep template
   artifacts/                                    # per-run outputs (gitignored)
-  generated/                                    # placeholder; per-run artifacts live under artifacts/runs/
 plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/
-  run.py             # entry point: `python -m nemo_guardrails_plugin.benchmarks.run`
+  run.py             # entrypoint: `python -m nemo_guardrails_plugin.benchmarks.run`
   paths.py           # filesystem layout
   constants.py       # workspace / VM / provider names
   processes.py       # subprocess supervision (process groups + ExitStack)
-  seeding.py         # NMP SDK calls (workspace, providers, GuardrailConfig, VM)
+  seeding.py         # NMP SDK calls to create the required entities
   aiperf_runner.py   # rewrite AIPerf config + invoke upstream sweep + collect results
   bootstrap.py       # manage the isolated venv that hosts the `aiperf` CLI
   shim.py            # tiny HTTP shim that satisfies AIPerf's `/v1/models` pre-check
-  report.py          # emit JUnit XML
 ```
 
 ## Prerequisites
@@ -41,7 +39,7 @@ plugins/nemo-guardrails/src/nemo_guardrails_plugin/benchmarks/
   used by an internal shim that satisfies AIPerf's hard-coded `/v1/models`
   health probe.
 
-The harness has its own `pyyaml` + `httpx` requirements that are declared as
+The harness has its own dependencies that are declared as
 the `bench` extra on `nemo-guardrails-plugin`. The `make benchmark-guardrails`
 target installs them automatically via `uv run --extra bench`; they are not
 part of the plugin's runtime install.
@@ -79,8 +77,7 @@ The default sweep runs concurrency levels:
 1, 2, 4, 8, 16, 32, 64
 ```
 
-With the default 60-second benchmark duration, expect ~10 minutes after
-service bootstrap.
+With the default 60-second benchmark duration, expect the benchmark to run for ~10 minutes after service bootstrap.
 
 ## What the harness starts
 
@@ -97,7 +94,7 @@ It then seeds NMP via the SDK with:
 - VirtualModel `benchmark/guardrails-vm` with `nemo-guardrails` attached to
   both request and response middleware.
 
-The benchmark target is:
+The benchmark target for inference requests is:
 
 ```text
 http://localhost:8080/apis/inference-gateway/v2/workspaces/benchmark/openai/-/v1/chat/completions
@@ -113,11 +110,10 @@ The harness accepts both CLI flags and environment variables:
 | `--reuse-services`                | `NMP_BENCHMARK_REUSE_SERVICES=1` | start `nemo services run` |
 | `--keep-running`                  | `NMP_BENCHMARK_KEEP_RUNNING=1`   | tear down on exit      |
 | `--mock-workers`                  | `NMP_BENCHMARK_MOCK_WORKERS`     | `4`                    |
-| `--junit-path`                    | _n/a_                            | `<repo-root>/report.xml` |
 | `--run-id`                        | _n/a_                            | current timestamp      |
 
 `--keep-running` leaves child processes alive for post-mortem inspection; the
-list of PIDs is recorded in the per-run directory's `pids.txt`.
+harness logs each child's PID as it starts.
 
 ## Outputs
 
@@ -140,32 +136,45 @@ plugins/nemo-guardrails/benchmarks/artifacts/runs/<timestamp>/
     run_metadata.json
     process_result.json
     profile_export*.json                         # written by aiperf
-  pids.txt
 ```
-
-`report.xml` is written to the repo root by default so CI's
-`actions/upload-artifact` step picks it up at the same path as other test
-suites. Override with `--junit-path`.
 
 ## CI
 
 A `benchmark-guardrails` job in `.github/workflows/ci.yaml` checks out both
 this repo and `NVIDIA/NeMo-Guardrails`, runs `make bootstrap-python` and
-`make benchmark-guardrails`, and uploads the per-run artifacts directory plus
-`report.xml` (so GitHub renders sweep pass/fail in the PR view).
+`make benchmark-guardrails`, and uploads the per-run artifacts directory
+(`logs/`, `generated/`, `aiperf_results/`) on success or failure.
 
-Pass/fail is currently driven purely by `aiperf` exit code; no latency
-thresholds are enforced.
+Pass/fail is driven by the harness's exit code, which is non-zero if `aiperf`
+itself exits non-zero or any sweep returns a non-zero exit code. No latency
+thresholds are enforced — those can be layered on later by a separate
+analyzer that reads the per-sweep CSVs.
 
 ## Cleanup
 
-By default the harness only stops processes it started. It does not kill
-unrelated processes on ports `8000`, `8001`, or `8080`.
+The harness only stops the processes it started. It will not kill unrelated
+processes on ports `8000`, `8001`, `8080`, or `8090`.
 
-Local NMP state is isolated by default under:
+Across runs, NMP's data dir is reused so subsequent benchmarks start
+faster. The harness redirects NMP's writes via the `NMP_DATA_DIR` env var to
+a per-checkout directory:
 
 ```text
 plugins/nemo-guardrails/benchmarks/artifacts/nmp-data
 ```
 
-Delete that directory for a completely fresh local benchmark state.
+This holds NMP's SQLite database, Secrets vault, and other persistent
+service state. It is gitignored and isolated from `~/.nmp/`, so the
+benchmark will not pollute your normal local NMP setup. Reuse is what
+lets repeat runs skip the workspace / provider / VirtualModel creation
+work (the harness treats `409 Conflict` as "already exists, carry on").
+
+If a benchmark misbehaves and you suspect stale state (ex. after pulling
+a schema change), delete that directory for a fully fresh run:
+
+```bash
+rm -rf plugins/nemo-guardrails/benchmarks/artifacts/nmp-data
+```
+
+In CI this is automatic — every job gets a fresh runner, so `nmp-data`
+does not exist.

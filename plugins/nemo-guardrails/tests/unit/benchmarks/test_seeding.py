@@ -123,7 +123,7 @@ class TestSeedBenchmark:
 
         seeded = seed_benchmark(
             fake_client,
-            ng_repo_root=ng_root,
+            nemoguardrails_repo_root=ng_root,
             generated_dir=generated_dir,
             provider_wait_timeout=1.0,
         )
@@ -168,7 +168,7 @@ class TestSeedBenchmark:
 
         seed_benchmark(
             fake_client,
-            ng_repo_root=ng_root,
+            nemoguardrails_repo_root=ng_root,
             generated_dir=generated_dir,
             provider_wait_timeout=1.0,
         )
@@ -190,7 +190,7 @@ class TestSeedBenchmark:
 
         seeded = seed_benchmark(
             fake_client,
-            ng_repo_root=ng_root,
+            nemoguardrails_repo_root=ng_root,
             generated_dir=tmp_path / "generated",
             provider_wait_timeout=1.0,
         )
@@ -211,7 +211,7 @@ class TestSeedBenchmark:
         with pytest.raises(TimeoutError, match="served model"):
             seed_benchmark(
                 client,
-                ng_repo_root=ng_root,
+                nemoguardrails_repo_root=ng_root,
                 generated_dir=tmp_path / "generated",
                 provider_wait_timeout=0.1,
             )

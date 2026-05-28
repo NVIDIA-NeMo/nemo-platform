@@ -28,11 +28,26 @@ log = logging.getLogger(__name__)
 class SweepRunResult:
     """Outcome of a single ``aiperf profile`` invocation (one concurrency level)."""
 
+    # Name of the per-sweep subdirectory AIPerf created, e.g. ``"concurrency16"``.
+    # Surfaced in the harness's summary log so failures point at a directory name.
     sweep_label: str
+    # Absolute path to the sweep's output directory under
+    # ``aiperf_results/<batch>/<timestamp>/<sweep_label>/``. Contains the AIPerf
+    # CSV, per-request JSONL, run metadata, and the wrapper's process_result.json.
     output_dir: Path
+    # Exit code of the AIPerf subprocess for this sweep (0 = success). Sourced from
+    # ``process_result.json``; defaults to 1 if that file is missing or unparseable
+    # so a crashed subprocess does not silently pass.
     return_code: int
+    # Wall-clock duration of the sweep in seconds, read from ``run_metadata.json``.
+    # 0.0 when AIPerf never wrote metadata (typically because it crashed early).
     duration_seconds: float
+    # Path to ``run_metadata.json`` if AIPerf wrote it, else ``None``. Kept on the
+    # result for downstream analyzers that want to inspect AIPerf's view of the run.
     metadata_path: Path | None
+    # Path to ``process_result.json`` if AIPerf wrote it, else ``None``. This is
+    # the upstream wrapper's record of the subprocess exit; useful when
+    # ``return_code`` itself looks suspicious.
     process_result_path: Path | None
 
     @property
@@ -40,26 +55,42 @@ class SweepRunResult:
         return self.return_code == 0
 
 
-def rewrite_aiperf_config(*, template: Path, output: Path, output_base_dir: Path) -> dict[str, Any]:
-    """Copy the checked-in template to ``output`` with ``output_base_dir`` overridden.
+def prepare_runtime_aiperf_config(
+    *,
+    template_path: Path,
+    runtime_config_path: Path,
+    aiperf_output_dir: Path,
+) -> dict[str, Any]:
+    """Materialize the AIPerf config this run will use.
 
-    The runtime copy is written under the per-run directory so concurrent or
-    historical runs cannot stomp on each other. Returns the parsed config dict.
+    Reads the checked-in ``template_path`` config, overrides its
+    ``output_base_dir`` to point inside the current run's directory, and writes
+    the result to ``runtime_config_path``. AIPerf is later invoked with
+    ``--config-file <runtime_config_path>`` so every artifact lands under a
+    separate per-run directory.
+
+    Returns the parsed config dict so callers can log fields (sweep params,
+    benchmark_duration) without re-reading the file.
     """
-    if not template.is_file():
-        raise FileNotFoundError(f"AIPerf template not found: {template}")
-    config = yaml.safe_load(template.read_text(encoding="utf-8"))
+    if not template_path.is_file():
+        raise FileNotFoundError(f"AIPerf template not found: {template_path}")
+
+    config = yaml.safe_load(template_path.read_text(encoding="utf-8"))
     if not isinstance(config, dict):
-        raise ValueError(f"AIPerf template {template} did not parse as a mapping")
-    config["output_base_dir"] = str(output_base_dir)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    output.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+        raise ValueError(f"Failed to parse AIPerf template {template_path}. Ensure it is valid YAML.")
+
+    # Point AIPerf's output_base_dir at this run's directory so its results
+    # nest under our per-run artifacts tree.
+    config["output_base_dir"] = str(aiperf_output_dir)
+    runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_config_path.write_text(yaml.safe_dump(config, sort_keys=False), encoding="utf-8")
+
     return config
 
 
 def run_aiperf_sweep(
     *,
-    ng_repo_root: Path,
+    nemoguardrails_repo_root: Path,
     runtime_config: Path,
     log_path: Path,
     python_executable: str | None = None,
@@ -77,7 +108,7 @@ def run_aiperf_sweep(
 
     Note: AIPerf's built-in pre-flight check does a GET on
     ``urljoin(config.base_config.url, "/v1/models")`` with no override
-    available upstream. The harness runs a tiny shim that satisfies this
+    available upstream yet. The harness runs a tiny shim that satisfies this
     probe; see :mod:`nemo_guardrails_plugin.benchmarks.shim`.
     """
     python_bin = python_executable or sys.executable
@@ -92,20 +123,24 @@ def run_aiperf_sweep(
         str(runtime_config),
     ]
 
-    env = {**os.environ, "PYTHONPATH": str(ng_repo_root)}
+    env = {**os.environ, "PYTHONPATH": str(nemoguardrails_repo_root)}
     if extra_env:
         env.update(extra_env)
+
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log.info("Running aiperf sweep: %s (cwd=%s)", " ".join(cmd), ng_repo_root)
+
+    log.info("Running aiperf sweep: %s (cwd=%s)", " ".join(cmd), nemoguardrails_repo_root)
+
     with log_path.open("wb") as log_fh:
         proc = subprocess.run(  # noqa: S603 - command is constructed internally
             cmd,
-            cwd=str(ng_repo_root),
+            cwd=str(nemoguardrails_repo_root),
             env=env,
             stdout=log_fh,
             stderr=subprocess.STDOUT,
             check=False,
         )
+
     return proc.returncode
 
 
@@ -130,6 +165,11 @@ def collect_sweep_results(aiperf_output_dir: Path) -> list[SweepRunResult]:
 
 
 def _load_sweep_result(sweep_dir: Path) -> SweepRunResult:
+    """Load the sweep result from the given directory.
+
+    Layout:
+    ``<aiperf_output_dir>/<batch>/<timestamp>/<sweep-label>/{run_metadata.json,process_result.json}``
+    """
     metadata_path = sweep_dir / "run_metadata.json"
     process_result_path = sweep_dir / "process_result.json"
 

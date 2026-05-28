@@ -6,16 +6,13 @@ output_base_dir: plugins/nemo-guardrails/benchmarks/artifacts/aiperf_results
 base_config:
   model: benchmark/guardrails-vm
   # AIPerf only needs the tokenizer to count input/output tokens for its
-  # metrics; the actual model under test is the IGW VirtualModel above. We
-  # use Qwen3-8B (Apache-2.0, ungated) instead of Llama 3.3 so CI can fetch
-  # the tokenizer without an HF_TOKEN. Token counts will differ slightly
-  # from Llama, but middleware-overhead and latency trends remain valid as
-  # long as the tokenizer stays consistent across runs.
+  # metrics; the actual model under test is the mock IGW VirtualModel above.
+  # We use Qwen3-8B (instead of Llama 3.3, which is gated) so CI can fetch
+  # the tokenizer without an HF Token.
   tokenizer: Qwen/Qwen3-8B
-  # AIPerf's pre-check does GET urljoin(url, "/v1/models"); we run a thin
-  # shim on :8090 that satisfies that probe and reverse-proxies
-  # /v1/chat/completions through to NMP's IGW. See
-  # nemo_guardrails_plugin.benchmarks.shim for the implementation.
+  # The benchmark runs a required health check at `/v1/models`. Until this
+  # endpoint is configurable, we run a thin shim on :8090 that satisfies that probe.
+  # See nemo_guardrails_plugin.benchmarks.shim for the implementation.
   url: "http://localhost:8090"
   endpoint: "/v1/chat/completions"
   endpoint_type: chat

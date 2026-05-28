@@ -3,8 +3,22 @@
 
 """Process supervision for the benchmark harness.
 
-Each child runs in its own session/process group so termination cleans up forked
-worker processes (notably ``uvicorn --workers N`` and ``nemo services run``).
+The harness fans out several long-lived child processes per run (two mock LLM
+``uvicorn`` servers, ``nemo services run``, and the AIPerf shim) and must clean
+them all up — including any workers they fork — even when the parent dies
+mid-run. This module wraps ``subprocess.Popen`` in a context-managed
+``SupervisedProcess`` that:
+
+* runs each child in a new session (``start_new_session=True``) so we can send
+  signals to the whole process group via ``os.killpg`` and reap workers that
+  ``uvicorn --workers N`` and ``nemo services`` fork off,
+* merges stdout/stderr into a per-process log file under ``run_dir/logs/``,
+* escalates SIGTERM → SIGKILL on shutdown if the child doesn't exit in time.
+
+``supervised_processes`` starts the children in order and guarantees every
+already-started child is stopped if a later one fails to come up. ``wait_http``
+is the readiness probe the caller uses between starts, so we only move on to
+the next child once the previous one is actually serving requests.
 """
 
 from __future__ import annotations
@@ -23,6 +37,8 @@ import httpx
 
 log = logging.getLogger(__name__)
 
+# How long to wait for a child (and its process group) to exit after SIGTERM
+# before we escalate to SIGKILL.
 _TERMINATE_TIMEOUT_SECONDS = 20
 
 
@@ -35,107 +51,144 @@ class SupervisedProcess:
     it forks.
     """
 
+    # Human-readable identifier used in log messages (e.g. ``"mock-llama"``,
+    # ``"nmp-services"``). Also drives the log filename via ``log_path``.
     name: str
+    # The argv list passed to ``subprocess.Popen``. Constructed by the caller;
+    # never assembled from user input here (hence the ``noqa: S603`` in ``start``).
     cmd: list[str]
+    # File to merge stdout + stderr into. Parent dirs are created on ``start``.
+    # The harness uploads these as CI artifacts on failure.
     log_path: Path
+    # Working directory for the child process. Set per-process so e.g. the mock
+    # LLM servers run from inside the NeMo-Guardrails checkout where their
+    # configs live.
     cwd: Path
+    # Extra env vars to overlay on top of the parent's ``os.environ`` (e.g.
+    # ``PYTHONPATH``, ``NMP_DATA_DIR``). ``None`` means "inherit unchanged".
     env: dict[str, str] | None = None
+    # The live ``Popen`` handle, populated by ``start()`` and consulted by
+    # ``stop()``. Excluded from ``__init__`` and ``repr`` since it's pure state.
     _proc: subprocess.Popen[bytes] | None = field(default=None, init=False, repr=False)
+    # Open file handle for ``log_path``, held so ``stop()`` can close it in a
+    # ``finally`` block regardless of how termination unwinds.
     _log_fh: IO[bytes] | None = field(default=None, init=False, repr=False)
 
-    @property
-    def pid(self) -> int | None:
-        return self._proc.pid if self._proc else None
-
     def start(self) -> None:
+        """Spawn the child, redirecting stdout+stderr to ``log_path``.
+
+        Raises ``RuntimeError`` if called twice on the same instance. A
+        ``SupervisedProcess`` wraps exactly one child process over its lifetime;
+        to restart, build a new ``SupervisedProcess`` rather than calling
+        ``start()`` again on a stopped one.
+        """
         if self._proc is not None:
             raise RuntimeError(f"Process {self.name!r} already started")
 
+        # Ensure the log file's parent directory exists.
         self.log_path.parent.mkdir(parents=True, exist_ok=True)
+        # Open the log file for writing.
         self._log_fh = self.log_path.open("wb")
 
-        merged_env = {**os.environ, **(self.env or {})}
         log.info("Starting %s; log=%s", self.name, self.log_path)
-        self._proc = subprocess.Popen(  # noqa: S603 - command is constructed internally
+        # Spawn the child process.
+        self._proc = subprocess.Popen(
             self.cmd,
-            cwd=str(self.cwd),
-            env=merged_env,
-            stdout=self._log_fh,
-            stderr=subprocess.STDOUT,
-            start_new_session=True,
+            cwd=str(self.cwd),  # Working directory
+            env={**os.environ, **(self.env or {})},  # Extra environment variables
+            stdout=self._log_fh,  # Redirect stdout to the log file
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout
+            start_new_session=True,  # Create a new session for the child
         )
 
     def stop(self) -> None:
+        """Terminate the child's process group and close the log file.
+
+        Sends SIGTERM to the whole group, waits up to ``_TERMINATE_TIMEOUT_SECONDS``,
+        then escalates to SIGKILL. Safe to call when the child was never started,
+        has already exited on its own, or races with us between signals — every
+        such case becomes a no-op that still closes the log handle.
+        """
         proc = self._proc
         if proc is None:
             return
-        if proc.poll() is not None:
-            self._close_log()
-            return
 
         try:
-            pgid = os.getpgid(proc.pid)
-        except ProcessLookupError:
-            self._close_log()
-            return
+            # Child already exited on its own (crashed, finished early, etc.) —
+            # nothing to signal, just fall through to the log-close in `finally`.
+            if proc.poll() is not None:
+                return
 
-        log.info("Stopping %s pid=%d (pgid=%d)", self.name, proc.pid, pgid)
-        try:
-            os.killpg(pgid, signal.SIGTERM)
-        except ProcessLookupError:
-            self._close_log()
-            return
-
-        try:
-            proc.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
-        except subprocess.TimeoutExpired:
-            log.warning(
-                "%s did not exit after %ds; sending SIGKILL",
-                self.name,
-                _TERMINATE_TIMEOUT_SECONDS,
-            )
+            # Look up the process group id so we can signal the child *and*
+            # every worker it forked (uvicorn --workers, nemo services).
             try:
-                os.killpg(pgid, signal.SIGKILL)
+                pgid = os.getpgid(proc.pid)
+                log.info("Stopping %s pid=%d (pgid=%d)", self.name, proc.pid, pgid)
+                os.killpg(pgid, signal.SIGTERM)
             except ProcessLookupError:
-                pass
-            proc.wait()
+                return
 
-        self._close_log()
-
-    def _close_log(self) -> None:
-        if self._log_fh is not None:
-            self._log_fh.close()
-            self._log_fh = None
+            # Give the group a chance to shut down gracefully. If SIGTERM
+            # doesn't take effect in time, escalate to SIGKILL on the whole
+            # group and then wait unconditionally.
+            try:
+                proc.wait(timeout=_TERMINATE_TIMEOUT_SECONDS)
+            except subprocess.TimeoutExpired:
+                log.warning(
+                    "%s did not exit after %ds; sending SIGKILL",
+                    self.name,
+                    _TERMINATE_TIMEOUT_SECONDS,
+                )
+                try:
+                    os.killpg(pgid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+        finally:
+            # Always close the log handle, even if we returned early above or
+            # the wait/signal calls raised something unexpected. Idempotent:
+            # subsequent stop() calls (ex. via __exit__ after manual stop) are
+            # no-ops once the handle is None.
+            if self._log_fh is not None:
+                self._log_fh.close()
+                self._log_fh = None
 
     def __enter__(self) -> "SupervisedProcess":
+        """Context-manager entry: start the child and return ``self``."""
         self.start()
         return self
 
     def __exit__(self, *exc: object) -> None:
+        """Context-manager exit: stop the child regardless of exception state."""
         self.stop()
 
 
 @contextmanager
 def supervised_processes(specs: list[SupervisedProcess]) -> Iterator[list[SupervisedProcess]]:
-    """Enter every process spec in order; stop them in reverse on exit."""
+    """Start every spec in order; stop them in reverse on exit.
+
+    Backed by ``ExitStack`` so that if any spec's ``start()`` raises, every
+    already-started child gets ``stop()``-ed before the exception propagates.
+    On clean exit, children are torn down in LIFO order (i.e. NMP services
+    stop before the mock LLMs they depend on).
+    """
     with ExitStack() as stack:
         for spec in specs:
             stack.enter_context(spec)
         yield specs
 
 
-def write_pids_file(pids_file: Path, processes: list[SupervisedProcess]) -> None:
-    pids_file.parent.mkdir(parents=True, exist_ok=True)
-    with pids_file.open("w", encoding="utf-8") as f:
-        for p in processes:
-            if p.pid is not None:
-                f.write(f"{p.name}:{p.pid}\n")
-
-
 def wait_http(url: str, *, timeout_seconds: float, label: str, poll_interval: float = 1.0) -> None:
-    """Poll ``url`` until it returns 2xx or ``timeout_seconds`` elapses."""
+    """Poll ``url`` until it returns < 400 or ``timeout_seconds`` elapses.
+
+    Used as a readiness gate between starting one supervised process and the
+    next. ``label`` is included in the ``TimeoutError`` message so it's clear
+    which dependency failed to come up. Raises ``TimeoutError`` with the last
+    HTTP error or transport exception attached.
+    """
     deadline = time.monotonic() + timeout_seconds
     last_error: Exception | None = None
+
     while time.monotonic() < deadline:
         try:
             r = httpx.get(url, timeout=5.0)
@@ -145,4 +198,5 @@ def wait_http(url: str, *, timeout_seconds: float, label: str, poll_interval: fl
         except httpx.HTTPError as exc:
             last_error = exc
         time.sleep(poll_interval)
+
     raise TimeoutError(f"Timed out waiting for {label} at {url}: {last_error}")

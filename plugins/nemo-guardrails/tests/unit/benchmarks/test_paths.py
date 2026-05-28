@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from nemo_guardrails_plugin.benchmarks.paths import (
     build_run_paths,
-    default_ng_repo_root,
+    default_nemoguardrails_repo_root,
     discover_nmp_repo_root,
 )
 
@@ -40,7 +40,7 @@ class TestDefaultNgRepoRoot:
         nmp = _make_fake_repo(tmp_path / "nemo-platform")
         ng = tmp_path / "NeMo-Guardrails"
 
-        assert default_ng_repo_root(nmp) == ng.resolve()
+        assert default_nemoguardrails_repo_root(nmp) == ng.resolve()
 
 
 class TestBuildRunPaths:
@@ -49,37 +49,25 @@ class TestBuildRunPaths:
         ng = tmp_path / "NeMo-Guardrails"
         ng.mkdir()
 
-        paths = build_run_paths(nmp_repo_root=nmp, ng_repo_root=ng, run_id="20260527_120000")
+        paths = build_run_paths(nmp_repo_root=nmp, nemoguardrails_repo_root=ng, run_id="20260527_120000")
 
         assert paths.run_dir == nmp / "plugins/nemo-guardrails/benchmarks/artifacts/runs/20260527_120000"
         assert paths.log_dir == paths.run_dir / "logs"
         assert paths.generated_dir == paths.run_dir / "generated"
         assert paths.aiperf_output_dir == paths.run_dir / "aiperf_results"
-        assert paths.pids_file == paths.run_dir / "pids.txt"
         assert paths.nmp_data_dir == nmp / "plugins/nemo-guardrails/benchmarks/artifacts/nmp-data"
         assert (
             paths.config_template
             == nmp / "plugins/nemo-guardrails/benchmarks/configs/nmp_igw_guardrails_sweep_concurrency.yaml"
         )
         assert paths.runtime_config == paths.generated_dir / "nmp_igw_guardrails_sweep_concurrency.yaml"
-        assert paths.junit_path == nmp / "report.xml"
-
-    def test_junit_dir_override(self, tmp_path: Path) -> None:
-        nmp = _make_fake_repo(tmp_path / "nemo-platform")
-        ng = tmp_path / "NeMo-Guardrails"
-        ng.mkdir()
-        junit_dir = tmp_path / "ci-artifacts"
-
-        paths = build_run_paths(nmp_repo_root=nmp, ng_repo_root=ng, junit_dir=junit_dir, run_id="x")
-
-        assert paths.junit_path == junit_dir / "report.xml"
 
     def test_ensure_directories_creates_required_dirs(self, tmp_path: Path) -> None:
         nmp = _make_fake_repo(tmp_path / "nemo-platform")
         ng = tmp_path / "NeMo-Guardrails"
         ng.mkdir()
 
-        paths = build_run_paths(nmp_repo_root=nmp, ng_repo_root=ng, run_id="x")
+        paths = build_run_paths(nmp_repo_root=nmp, nemoguardrails_repo_root=ng, run_id="x")
         paths.ensure_directories()
 
         assert paths.log_dir.is_dir()
@@ -92,7 +80,7 @@ class TestBuildRunPaths:
         ng = tmp_path / "NeMo-Guardrails"
         ng.mkdir()
 
-        paths = build_run_paths(nmp_repo_root=nmp, ng_repo_root=ng)
+        paths = build_run_paths(nmp_repo_root=nmp, nemoguardrails_repo_root=ng)
         # Timestamp format: YYYYmmdd_HHMMSS = 15 chars including underscore.
         assert len(paths.run_id) == 15
         assert paths.run_id[8] == "_"
@@ -103,6 +91,6 @@ class TestBuildRunPaths:
         ng = tmp_path / "NeMo-Guardrails"
         ng.mkdir()
 
-        paths = build_run_paths(nmp_repo_root=nmp, ng_repo_root=ng, run_id="x")
+        paths = build_run_paths(nmp_repo_root=nmp, nemoguardrails_repo_root=ng, run_id="x")
         assert paths.run_dir not in paths.aiperf_venv_dir.parents
         assert paths.aiperf_venv_dir.parent.name == "venvs"

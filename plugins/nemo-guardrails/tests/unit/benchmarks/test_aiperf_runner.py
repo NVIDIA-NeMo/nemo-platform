@@ -9,7 +9,7 @@ import yaml
 from nemo_guardrails_plugin.benchmarks.aiperf_runner import (
     SweepRunResult,
     collect_sweep_results,
-    rewrite_aiperf_config,
+    prepare_runtime_aiperf_config,
 )
 
 
@@ -28,37 +28,41 @@ def _write_template(path: Path) -> None:
     )
 
 
-class TestRewriteAiperfConfig:
+class TestPrepareRuntimeAiperfConfig:
     def test_overrides_output_base_dir(self, tmp_path: Path) -> None:
-        template = tmp_path / "template.yaml"
-        _write_template(template)
-        output = tmp_path / "out" / "runtime.yaml"
-        target_dir = tmp_path / "results"
+        template_path = tmp_path / "template.yaml"
+        _write_template(template_path)
+        runtime_config_path = tmp_path / "out" / "runtime.yaml"
+        aiperf_output_dir = tmp_path / "results"
 
-        config = rewrite_aiperf_config(template=template, output=output, output_base_dir=target_dir)
+        config = prepare_runtime_aiperf_config(
+            template_path=template_path,
+            runtime_config_path=runtime_config_path,
+            aiperf_output_dir=aiperf_output_dir,
+        )
 
-        assert config["output_base_dir"] == str(target_dir)
-        written = yaml.safe_load(output.read_text(encoding="utf-8"))
-        assert written["output_base_dir"] == str(target_dir)
+        assert config["output_base_dir"] == str(aiperf_output_dir)
+        written = yaml.safe_load(runtime_config_path.read_text(encoding="utf-8"))
+        assert written["output_base_dir"] == str(aiperf_output_dir)
         assert written["base_config"]["model"] == "benchmark/guardrails-vm"
         assert written["sweeps"]["concurrency"] == [1, 2, 4]
 
     def test_missing_template_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
-            rewrite_aiperf_config(
-                template=tmp_path / "absent.yaml",
-                output=tmp_path / "out.yaml",
-                output_base_dir=tmp_path / "results",
+            prepare_runtime_aiperf_config(
+                template_path=tmp_path / "absent.yaml",
+                runtime_config_path=tmp_path / "out.yaml",
+                aiperf_output_dir=tmp_path / "results",
             )
 
     def test_non_mapping_template_raises(self, tmp_path: Path) -> None:
-        template = tmp_path / "bad.yaml"
-        template.write_text("- just\n- a\n- list\n", encoding="utf-8")
+        template_path = tmp_path / "bad.yaml"
+        template_path.write_text("- just\n- a\n- list\n", encoding="utf-8")
         with pytest.raises(ValueError, match="mapping"):
-            rewrite_aiperf_config(
-                template=template,
-                output=tmp_path / "out.yaml",
-                output_base_dir=tmp_path / "results",
+            prepare_runtime_aiperf_config(
+                template_path=template_path,
+                runtime_config_path=tmp_path / "out.yaml",
+                aiperf_output_dir=tmp_path / "results",
             )
 
 

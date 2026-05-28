@@ -12,7 +12,7 @@ single Python orchestrator. Phases:
 4. Start (or reuse) ``nemo services run``.
 5. Wait for health, seed NMP resources via the SDK, smoke-test the VirtualModel.
 6. Invoke ``python -m benchmark.aiperf run --config-file ...`` for the sweep.
-7. Collect per-sweep results, emit ``report.xml``, exit non-zero on any failure.
+7. Collect per-sweep results and exit non-zero on any failure.
 
 Process supervision uses session-scoped subprocesses and an ``ExitStack`` so a
 ``SIGTERM`` from CI cleans up forked workers (e.g. ``uvicorn --workers 4``).
@@ -28,11 +28,9 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-import httpx
-import yaml
 from nemo_guardrails_plugin.benchmarks.aiperf_runner import (
     collect_sweep_results,
-    rewrite_aiperf_config,
+    prepare_runtime_aiperf_config,
     run_aiperf_sweep,
 )
 from nemo_guardrails_plugin.benchmarks.bootstrap import (
@@ -42,28 +40,23 @@ from nemo_guardrails_plugin.benchmarks.bootstrap import (
 from nemo_guardrails_plugin.benchmarks.constants import (
     AIPERF_SHIM_BASE_URL,
     IGW_CHAT_PATH,
-    JUNIT_SUITE_NAME,
     NMP_BASE_URL,
     NMP_HEALTH_PATH,
+    WORKSPACE,
 )
 from nemo_guardrails_plugin.benchmarks.paths import (
     RunPaths,
     build_run_paths,
-    default_ng_repo_root,
+    default_nemoguardrails_repo_root,
     discover_nmp_repo_root,
 )
 from nemo_guardrails_plugin.benchmarks.processes import (
     SupervisedProcess,
     supervised_processes,
     wait_http,
-    write_pids_file,
-)
-from nemo_guardrails_plugin.benchmarks.report import (
-    cases_from_sweep_results,
-    write_junit_report,
 )
 from nemo_guardrails_plugin.benchmarks.seeding import SeededResources, seed_benchmark
-from nemo_platform import NeMoPlatform
+from nemo_platform import APIStatusError, NeMoPlatform
 
 log = logging.getLogger("nemo_guardrails_plugin.benchmarks")
 
@@ -71,7 +64,7 @@ _MOCK_START_TIMEOUT_SECONDS = 60
 _NMP_START_TIMEOUT_SECONDS = 180
 
 
-_REQUIRED_NG_FILES = (
+_REQUIRED_NEMOGUARDRAILS_FILES = (
     Path("benchmark/aiperf/__main__.py"),
     Path("benchmark/aiperf/run_aiperf.py"),
     Path("benchmark/mock_llm_server/run_server.py"),
@@ -90,22 +83,27 @@ def _configure_logging(verbose: bool) -> None:
     )
 
 
-def _validate_ng_repo(ng_repo_root: Path) -> None:
-    missing = [p for p in _REQUIRED_NG_FILES if not (ng_repo_root / p).is_file()]
+def _validate_nemoguardrails_repo(nemoguardrails_repo_root: Path) -> None:
+    """Fail fast if the upstream checkout is missing files the harness depends on.
+    """
+    missing = [p for p in _REQUIRED_NEMOGUARDRAILS_FILES if not (nemoguardrails_repo_root / p).is_file()]
     if missing:
-        bullet = "\n  - ".join(str(ng_repo_root / p) for p in missing)
-        raise FileNotFoundError(f"NeMo Guardrails checkout at {ng_repo_root} is missing required files:\n  - {bullet}")
+        bullet = "\n  - ".join(str(p) for p in missing)
+        raise FileNotFoundError(
+            f"NeMo Guardrails checkout at {nemoguardrails_repo_root} is missing required files:\n  - {bullet}"
+        )
 
 
-def _build_mock_processes(paths: RunPaths, workers: int) -> list[SupervisedProcess]:
+def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedProcess]:
     """Spawn ``python -m benchmark.mock_llm_server.run_server`` for both mocks.
 
     Each child is given its own log file and a ``PYTHONPATH`` pointing at the
     upstream checkout so its imports resolve.
     """
-    env = {"PYTHONPATH": str(paths.ng_repo_root)}
-    workdir = paths.ng_repo_root / "benchmark"
+    env = {"PYTHONPATH": str(paths.nemoguardrails_repo_root)}
+    workdir = paths.nemoguardrails_repo_root / "benchmark"
 
+    # Helper to build a ``SupervisedProcess`` for one of the mock LLM servers.
     def spec(name: str, port: int, env_file: Path) -> SupervisedProcess:
         return SupervisedProcess(
             name=name,
@@ -126,20 +124,27 @@ def _build_mock_processes(paths: RunPaths, workers: int) -> list[SupervisedProce
         )
 
     return [
+        # Main LLM mock server
         spec(
             "mock-app-llm",
             8000,
-            paths.ng_repo_root / "benchmark/mock_llm_server/configs/meta-llama-3.3-70b-instruct.env",
+            paths.nemoguardrails_repo_root / "benchmark/mock_llm_server/configs/meta-llama-3.3-70b-instruct.env",
         ),
+        # Content-safety LLM mock server
         spec(
             "mock-content-safety-llm",
             8001,
-            paths.ng_repo_root / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
+            paths.nemoguardrails_repo_root / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
         ),
     ]
 
 
 def _build_nmp_process(paths: RunPaths) -> SupervisedProcess:
+    """Start ``nemo services run`` in a supervised process.
+
+    The harness sets ``NMP_BASE_URL`` and ``NMP_DATA_DIR`` env vars so the
+    child process can talk to NMP over HTTP and write state to the per-run data dir.
+    """
     return SupervisedProcess(
         name="nmp-services",
         cmd=["nemo", "services", "run"],
@@ -152,8 +157,8 @@ def _build_nmp_process(paths: RunPaths) -> SupervisedProcess:
 def _build_aiperf_shim_process(paths: RunPaths) -> SupervisedProcess:
     """Run the shim that satisfies AIPerf's `/v1/models` pre-check.
 
-    Without this, AIPerf's hard-coded `urljoin(base_url, "/v1/models")` probe
-    would 404 against NMP and the sweep would never start. See
+    Without this, AIPerf's hard-coded health check against the `/v1/models`
+    endpoint would 404, and the sweep would never start. See
     `nemo_guardrails_plugin.benchmarks.shim` for details.
     """
     return SupervisedProcess(
@@ -164,51 +169,34 @@ def _build_aiperf_shim_process(paths: RunPaths) -> SupervisedProcess:
     )
 
 
-_SMOKE_TEST_TIMEOUT_SECONDS = 60
-_SMOKE_TEST_POLL_INTERVAL_SECONDS = 1.0
-
-
-def _smoke_test(seeded: SeededResources) -> None:
-    """POST one chat-completion through the IGW VirtualModel before sweeping.
-
-    Catches misconfigured guardrails / middleware wiring early so a sweep
-    failure isn't ambiguous between "harness broken" and "benchmark regressed".
-    We hit the IGW URL directly with ``httpx`` rather than going through the
-    NMP SDK so the smoke test exercises the same path AIPerf will.
-
-    IGW's VirtualModel cache refreshes asynchronously after creation, so the
-    first few requests can 404 even though seeding succeeded. We retry on
-    404/503 for up to ~60s before failing.
+def _smoke_test(client: NeMoPlatform, seeded: SeededResources) -> None:
+    """Verify the VirtualModel is reachable and returns a chat completion,
+    before running the AIPerf sweep.
     """
-    url = f"{NMP_BASE_URL}{IGW_CHAT_PATH}"
     payload = {
         "model": seeded.vm_ref,
-        "messages": [{"role": "user", "content": "Hello, what can you do?"}],
-        "max_tokens": 64,
-        "stream": False,
+        "messages": [{"role": "user", "content": "Hello"}],
+        "max_tokens": 16,
     }
 
-    deadline = time.monotonic() + _SMOKE_TEST_TIMEOUT_SECONDS
-    last_response: httpx.Response | None = None
-    while time.monotonic() < deadline:
-        last_response = httpx.post(url, json=payload, timeout=60.0)
-        if last_response.status_code < 400:
-            body = last_response.json()
-            if not body.get("choices"):
-                raise RuntimeError(f"Smoke test response missing choices: {body}")
-            return
-        if last_response.status_code in (404, 503):
-            log.info(
-                "Smoke test got HTTP %d; waiting for IGW cache refresh",
-                last_response.status_code,
-            )
-            time.sleep(_SMOKE_TEST_POLL_INTERVAL_SECONDS)
-            continue
-        break
+    last_error: str = "no attempts made"
 
-    code = last_response.status_code if last_response is not None else "no response"
-    text = last_response.text[:500] if last_response is not None else ""
-    raise RuntimeError(f"Smoke test failed with HTTP {code}: {text}")
+    for attempt in range(60):
+        try:
+            body = client.inference.gateway.openai.post(
+                "v1/chat/completions",
+                workspace=WORKSPACE,
+                body=payload,
+            )
+            if body.get("choices"):
+                return
+            last_error = f"response missing choices: {body}"
+        except APIStatusError as exc:
+            last_error = f"HTTP {exc.status_code}: {str(exc)[:500]}"
+            log.info("Smoke test attempt %d: %s; retrying", attempt + 1, last_error)
+        time.sleep(1.0)
+
+    raise RuntimeError(f"Smoke test failed after 60 attempts: {last_error}")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -222,7 +210,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path(
             os.environ.get(
                 "NEMO_GUARDRAILS_REPO_ROOT",
-                str(default_ng_repo_root(discover_nmp_repo_root())),
+                str(default_nemoguardrails_repo_root(discover_nmp_repo_root())),
             )
         ),
         help="Path to a local NeMo Guardrails checkout (default: $NEMO_GUARDRAILS_REPO_ROOT or ../NeMo-Guardrails).",
@@ -246,12 +234,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="uvicorn worker count for each mock LLM server.",
     )
     parser.add_argument(
-        "--junit-path",
-        type=Path,
-        default=None,
-        help="Path to write report.xml (default: <repo-root>/report.xml for CI compatibility).",
-    )
-    parser.add_argument(
         "--run-id",
         default=None,
         help="Override the per-run directory name (default: current timestamp).",
@@ -264,29 +246,28 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     _configure_logging(args.verbose)
 
-    nmp_repo_root = discover_nmp_repo_root()
-    ng_repo_root = args.nemo_guardrails_repo_root.resolve()
-    _validate_ng_repo(ng_repo_root)
+    # Validate the NeMo Guardrails checkout before attempting to run the benchmark.
+    nemoguardrails_repo_root = args.nemo_guardrails_repo_root.resolve()
+    _validate_nemoguardrails_repo(nemoguardrails_repo_root)
 
+    log.info("Validated NeMo Guardrails local checkout at: %s", nemoguardrails_repo_root)
+
+    # Build the directory structure that will contain the benchmark results.
+    nmp_repo_root = discover_nmp_repo_root()
     paths = build_run_paths(
         nmp_repo_root=nmp_repo_root,
-        ng_repo_root=ng_repo_root,
-        junit_dir=args.junit_path.parent if args.junit_path else None,
+        nemoguardrails_repo_root=nemoguardrails_repo_root,
         run_id=args.run_id,
     )
-    if args.junit_path:
-        paths = RunPaths(**{**paths.__dict__, "junit_path": args.junit_path.resolve()})
     paths.ensure_directories()
 
-    log.info("Run directory: %s", paths.run_dir)
-    log.info("NeMo Guardrails repo: %s", paths.ng_repo_root)
+    log.info("Created directory for benchmark results at: %s", paths.run_dir)
 
-    rewrite_aiperf_config(
-        template=paths.config_template,
-        output=paths.runtime_config,
-        output_base_dir=paths.aiperf_output_dir,
+    sweep_config = prepare_runtime_aiperf_config(
+        template_path=paths.config_template,
+        runtime_config_path=paths.runtime_config,
+        aiperf_output_dir=paths.aiperf_output_dir,
     )
-    sweep_config = yaml.safe_load(paths.runtime_config.read_text(encoding="utf-8"))
     log.info(
         "AIPerf sweep: concurrency=%s, duration=%ss",
         sweep_config.get("sweeps", {}).get("concurrency"),
@@ -294,25 +275,24 @@ def main(argv: list[str] | None = None) -> int:
     )
 
     # Ensure the dedicated aiperf venv exists *before* we start any supervised
-    # processes. A first-time install can take ~30s and we'd rather pay that
-    # cost up front than during the NMP-services startup race.
+    # processes.
     aiperf_python = ensure_aiperf_venv(paths.aiperf_venv_dir)
     log.info("Using aiperf python at %s", aiperf_python)
 
-    processes_to_start: list[SupervisedProcess] = _build_mock_processes(paths, args.mock_workers)
+    processes = _build_mock_nim_processes(paths, args.mock_workers)
     if not args.reuse_services:
-        processes_to_start.append(_build_nmp_process(paths))
-    # The AIPerf shim is harness-local; we always start it (it talks to NMP
-    # over HTTP, so it doesn't care whether nemo services run is supervised
-    # by us or already running externally).
-    processes_to_start.append(_build_aiperf_shim_process(paths))
+        processes.append(_build_nmp_process(paths))
 
+    processes.append(_build_aiperf_shim_process(paths))
+
+    # Start the processes and wait for them to be ready before seeding NMP.
     with ExitStack() as stack:
-        started = stack.enter_context(supervised_processes(processes_to_start))
-        write_pids_file(paths.pids_file, started)
+        stack.enter_context(supervised_processes(processes))
         if args.keep_running:
             # Pop the cleanup so processes outlive this script.
             stack.pop_all()
+        
+        log.info("Waiting for all services to be ready...")
 
         wait_http(
             "http://localhost:8000/health",
@@ -335,15 +315,17 @@ def main(argv: list[str] | None = None) -> int:
             label="AIPerf shim",
         )
 
+        log.info(f"All services are ready. Seeding benchmark resources in workspace {WORKSPACE}...")
+
         client = NeMoPlatform(base_url=NMP_BASE_URL)
         seeded = seed_benchmark(
             client,
-            ng_repo_root=paths.ng_repo_root,
+            nemoguardrails_repo_root=paths.nemoguardrails_repo_root,
             generated_dir=paths.generated_dir,
         )
 
-        log.info("Smoke testing %s", seeded.vm_ref)
-        _smoke_test(seeded)
+        log.info("Waiting for VirtualModel %s to be ready...", seeded.vm_ref)
+        _smoke_test(client, seeded)
 
         log.info(
             "Starting AIPerf sweep against %s -> shim -> %s%s",
@@ -352,37 +334,35 @@ def main(argv: list[str] | None = None) -> int:
             IGW_CHAT_PATH,
         )
         aiperf_exit = run_aiperf_sweep(
-            ng_repo_root=paths.ng_repo_root,
+            nemoguardrails_repo_root=paths.nemoguardrails_repo_root,
             runtime_config=paths.runtime_config,
             log_path=paths.log_dir / "aiperf.log",
             python_executable=str(aiperf_python),
-            extra_env=env_with_venv_on_path(paths.aiperf_venv_dir, {}),
+            extra_env=env_with_venv_on_path(paths.aiperf_venv_dir),
         )
 
     sweep_results = collect_sweep_results(paths.aiperf_output_dir)
-    cases = cases_from_sweep_results(sweep_results)
-    if not cases:
-        # AIPerf failed before producing per-sweep dirs; emit a synthetic failure
-        # so CI surfaces something actionable instead of an empty report.
-        from nemo_guardrails_plugin.benchmarks.report import JUnitCase
+    failures = sum(1 for r in sweep_results if not r.passed)
 
-        cases = [
-            JUnitCase(
-                name="aiperf",
-                classname=JUNIT_SUITE_NAME,
-                time_seconds=0.0,
-                passed=aiperf_exit == 0,
-                failure_message=(f"aiperf exited with code {aiperf_exit} and produced no per-sweep results"),
-                system_out=f"aiperf_output_dir={paths.aiperf_output_dir}",
-            )
-        ]
-    write_junit_report(paths.junit_path, suite_name=JUNIT_SUITE_NAME, cases=cases)
-    log.info("Wrote JUnit report to %s", paths.junit_path)
+    if not sweep_results:
+        # AIPerf exited before producing any per-sweep dirs. Surface that
+        # explicitly so the log isn't ambiguous about why we're failing.
+        log.error(
+            "aiperf exited with code %d and produced no per-sweep results in %s",
+            aiperf_exit,
+            paths.aiperf_output_dir,
+        )
+    else:
+        log.info(
+            "Sweep summary: %d run(s), %d failure(s); per-sweep outputs under %s",
+            len(sweep_results),
+            failures,
+            paths.aiperf_output_dir,
+        )
 
-    failures = sum(1 for c in cases if not c.passed)
-    log.info("Sweep summary: %d run(s), %d failure(s)", len(cases), failures)
-    if failures or aiperf_exit != 0:
+    if failures or aiperf_exit != 0 or not sweep_results:
         return 1
+
     return 0
 
 

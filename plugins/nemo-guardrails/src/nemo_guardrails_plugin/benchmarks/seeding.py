@@ -65,7 +65,7 @@ class SeededResources:
 def seed_benchmark(
     client: NeMoPlatform,
     *,
-    ng_repo_root: Path,
+    nemoguardrails_repo_root: Path,
     generated_dir: Path,
     provider_wait_timeout: float = _PROVIDER_WAIT_TIMEOUT_SECONDS,
 ) -> SeededResources:
@@ -123,9 +123,9 @@ def seed_benchmark(
     _dump_model(generated_dir / "app_provider.json", app_provider)
     _dump_model(generated_dir / "content_safety_provider.json", cs_provider)
 
-    log.info("Building GuardrailConfig payload from %s", ng_repo_root)
+    log.info("Building GuardrailConfig payload from %s", nemoguardrails_repo_root)
     config_data = build_guardrail_config_data(
-        source_config_dir=ng_repo_root / "examples" / "configs" / "content_safety_local",
+        source_config_dir=nemoguardrails_repo_root / "examples" / "configs" / "content_safety_local",
         content_safety_model_entity=cs_entity,
     )
     # Persist the same payload shape the old shell harness produced for debuggability.

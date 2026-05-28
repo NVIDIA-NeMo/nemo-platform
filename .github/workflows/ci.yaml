@@ -422,7 +422,6 @@ jobs:
           name: benchmark-guardrails-results
           retention-days: 30
           path: |
-            nemo-platform/report.xml
             nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
 
   coverage-comment:

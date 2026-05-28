@@ -32,5 +32,3 @@ AIPERF_SHIM_BASE_URL = f"http://{AIPERF_SHIM_HOST}:{AIPERF_SHIM_PORT}"
 
 GUARDRAILS_MIDDLEWARE_NAME = "nemo-guardrails"
 GUARDRAILS_MIDDLEWARE_CONFIG_TYPE = "guardrail_config"
-
-JUNIT_SUITE_NAME = "nemo_guardrails_plugin.benchmarks"
