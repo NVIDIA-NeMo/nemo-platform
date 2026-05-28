@@ -108,10 +108,10 @@ def test_llm_judge_metric_config() -> None:
     model = metric.model
     assert hasattr(model, "url"), f"Model is a reference string, expected inline config: {model}"
     parsed_model_url = urlparse(model.url)
+    trusted_igw_host = urlparse(os.environ.get("NMP_BASE_URL", "http://localhost:8080")).hostname
     valid_url = (
-        "inference/providers" in (parsed_model_url.path or "")
-        or parsed_model_url.hostname == "inference-api.nvidia.com"
-    )
+        parsed_model_url.hostname == trusted_igw_host and "inference/providers" in (parsed_model_url.path or "")
+    ) or parsed_model_url.hostname == "inference-api.nvidia.com"
     assert valid_url, f"Model URL should use IGW provider proxy or NVIDIA inference API, got: {model.url}"
     assert model.api_key_secret == "nvidia-api-key", (
         f"Model api_key_secret should be 'nvidia-api-key', got: {model.api_key_secret}"
