@@ -3,8 +3,7 @@
 
 """Top-level entry point for the nemo-guardrails IGW benchmark harness.
 
-Replaces the previous ``run_igw_guardrails_benchmark.sh`` shell flow with a
-single Python orchestrator. Phases:
+The harness orchestrates the entire benchmark run by running the following steps:
 
 1. Resolve paths and validate the upstream NeMo Guardrails checkout.
 2. Write a per-run AIPerf config under ``runs/<id>/generated/``.
