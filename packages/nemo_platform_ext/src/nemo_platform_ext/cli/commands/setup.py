@@ -615,12 +615,28 @@ def _start_services_background(base_url: str, data_dir: str | None = None) -> su
     instance tracking.  If *data_dir* is provided, it's forwarded so the
     subprocess inherits ``NMP_DATA_DIR`` (unless the parent shell already
     exported it).
+
+    The subprocess is started with ``--service-group all --controller-group
+    all`` so the streamlined ``nemo setup`` path produces a platform that can
+    handle every documented workflow without follow-up restarts.  In
+    particular, the agent-onboarding skill chain
+    (``nemo-explore`` → ``nemo-spec`` → ``nemo-build-agent``) needs the
+    ``files`` and ``agents`` services plus the ``agents`` plugin controller
+    that reconciles ``AgentDeployment`` entities — none of which are in the
+    narrower ``core`` group.  See ``SETUP.md`` for the rationale and for the
+    inference-only opt-out.
     """
     from nemo_platform_ext.cli.commands.services._process import compute_scope, start_background
 
     port = _resolve_services_port(base_url)
     scope = compute_scope(port=port)
-    return start_background(scope=scope, port=port, data_dir=data_dir)
+    return start_background(
+        scope=scope,
+        port=port,
+        data_dir=data_dir,
+        service_group="all",
+        controller_group="all",
+    )
 
 
 def _last_startup_service(log_path: Path | None) -> str:

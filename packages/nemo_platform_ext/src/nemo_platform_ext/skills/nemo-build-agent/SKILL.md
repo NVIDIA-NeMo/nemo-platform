@@ -34,7 +34,15 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 1. Confirm the platform is up. Run `nemo-status`'s platform probe (canonical lsof + curl check) and stop if it reports `PLATFORM_DOWN` or `PLATFORM_WEDGED`; route to `nemo-setup` and return when it clears. Do not reimplement the probe here — `nemo-status` owns it so changes (new components, new ports) land in one place.
 
 2. Confirm a spec exists at `agents/$AGENT_NAME.spec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
-3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
+3. Confirm the agents plugin is loaded **and its service backend is deployed**. The CLI command can exist even when the platform was started without the agents service — the resulting failure is a 404 from `nemo agents create`, with the local YAML written but no entity. With the default `--service-group all` startup both checks always pass; this remains a defensive guard for narrower service sets.
+
+   ```bash
+   .venv/bin/nemo agents --help 2>&1 | grep -q "create" || { echo "agents_cli_missing — install plugins/nemo-agents"; exit 1; }
+   curl -fsS -o /dev/null -w "%{http_code}\n" \
+     "${NMP_BASE_URL:-http://localhost:8080}/apis/agents/v2/workspaces/default/agents" \
+     | grep -qE "^2[0-9][0-9]$" \
+     || { echo "agents_service_unreachable — restart the platform with --service-group all (see SETUP.md)"; exit 1; }
+   ```
 4. Read the spec. Extract: name, categories, tools, model, constraints, success criteria.
 5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENTSpec.md` — there is no ref to thread through, just a one-shot presence check:
 

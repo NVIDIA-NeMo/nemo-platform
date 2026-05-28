@@ -526,6 +526,20 @@ class TestLocalDataDirHelpers:
         assert kwargs["data_dir"] == "/chosen/data/dir"
         assert kwargs["port"] == 9090
 
+    def test_start_services_background_uses_all_groups(self):
+        """The streamlined setup path must start the full service + controller
+        sets so the agent-onboarding skill chain can complete without a
+        follow-up restart. Narrower groups omit ``files`` / ``agents`` services
+        or the ``AgentDeploymentController`` plugin controller, which silently
+        break the chain mid-flow."""
+        with patch("nemo_platform.cli.commands.services._process.start_background") as mock_start:
+            mock_start.return_value = MagicMock(pid=42)
+            _start_services_background("http://localhost:8080")
+        mock_start.assert_called_once()
+        _, kwargs = mock_start.call_args
+        assert kwargs["service_group"] == "all"
+        assert kwargs["controller_group"] == "all"
+
     def test_auto_mode_skips_prompt_and_uses_persisted(self, tmp_path, monkeypatch):
         """`--auto` must not prompt but should still honor any persisted data dir."""
         config_path = tmp_path / "config.yaml"

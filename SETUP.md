@@ -115,10 +115,15 @@ If `nemo agents invoke …` fails with HTTP 422 in under a second on the first c
 If `make bootstrap` has already run, just start the services. `nemo setup` does this for you; the manual equivalent is:
 
 ```bash
-uv run nemo services run \
-  --services entities,models,inference-gateway,secrets \
-  --controllers models
+uv run nemo services run --service-group all --controller-group all
 ```
+
+> **Why both `all` groups:**
+>
+> * `--service-group all` = `core` (auth, entities, files, inference-gateway, jobs, models, secrets) + `api` (evaluation, guardrails, intake, studio, hello-world) + **plugin services** like `agents`. Without it the onboarding chain (`nemo-explore` → `nemo-spec` → `nemo-build-agent`) stops mid-flow with a 404 against a service it assumed was up — for example `nemo agents create` returns 404 if `agents` isn't running.
+> * `--controller-group all` = `core` controllers (jobs, models, entities) + **plugin controllers** like `AgentDeploymentController`. Without the plugin controllers, `nemo agents deploy` writes an `AgentDeployment` entity that never reconciles past `pending` because nothing is driving the lifecycle.
+>
+> Use the narrower `--service-group core --controllers models` set only for inference-only setups where you'll never run the agent-onboarding skills.
 
 ### Starting the platform with Switchyard middleware
 
@@ -126,9 +131,7 @@ uv run nemo services run \
 
 ```bash
 # Start with LOG_LEVEL=DEBUG to see routing decisions.
-LOG_LEVEL=DEBUG uv run nemo services run \
-  --services entities,models,inference-gateway,secrets \
-  --controllers models
+LOG_LEVEL=DEBUG uv run nemo services run --service-group all --controller-group all
 ```
 
 `nemo-switchyard` is auto-discovered via its `nemo.inference_middleware` entry point once dependencies are installed.

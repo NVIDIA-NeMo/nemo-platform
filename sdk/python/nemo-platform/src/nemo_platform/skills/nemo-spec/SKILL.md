@@ -76,14 +76,30 @@ clear gap-question rather than a stack trace.
    `support-triage`, `code-reviewer`. If the user has not named it, propose
    two options based on the job. Must match `[a-z][a-z0-9-]*`.
 
-2. **Pre-flight: check the local file.** If `agents/${NAME}.spec.md` exists,
+2. **Pre-flight: confirm the Files service is reachable.** This skill
+   uploads the canonical copy of the spec to a NeMo Filesets fileset, so the
+   Files API must be live before writing anything. With the default
+   `--service-group all --controller-group all` startup this is always true;
+   the check here exists as a defensive guard for environments started with
+   a narrower service set. If it returns 404, stop and report that exact
+   diagnosis — do not write the spec only to discover you can't upload it.
+
+   ```bash
+   curl -fsS -o /dev/null -w "%{http_code}\n" \
+     "${NMP_BASE_URL:-http://localhost:8080}/apis/files/v2/workspaces/default/filesets" \
+     | grep -qE "^2[0-9][0-9]$" \
+     && echo "files_ok" \
+     || { echo "files_unreachable — restart the platform with --service-group all (see SETUP.md)"; exit 1; }
+   ```
+
+3. **Pre-flight: check the local file.** If `agents/${NAME}.spec.md` exists,
    ask the user whether to overwrite or pick a different name.
 
    ```bash
    ls "agents/${NAME}.spec.md" 2>/dev/null && echo "spec_exists" || echo "spec_new"
    ```
 
-3. **Pre-flight: check the Fileset.** If the canonical copy exists, surface
+4. **Pre-flight: check the Fileset.** If the canonical copy exists, surface
    it before overwriting (it may be ahead of the local file).
 
    ```bash
@@ -99,7 +115,7 @@ clear gap-question rather than a stack trace.
      --local-path "agents/${NAME}.spec.md"
    ```
 
-4. **Render the spec.** Use the template at
+5. **Render the spec.** Use the template at
    `references/templates/agent-spec.md` as the starting point. Substitute
    every section from the `nemo-explore` answers. Keep section headers and
    labeled-bullet format **exactly** — the file is parsed back into
@@ -107,10 +123,10 @@ clear gap-question rather than a stack trace.
    parser rejects unknown sections, duplicate sections, and malformed
    labeled bullets. The template comments name every field.
 
-5. **Write the file.** Path: `agents/<name>.spec.md`. Create the `agents/`
+6. **Write the file.** Path: `agents/<name>.spec.md`. Create the `agents/`
    directory if it does not exist.
 
-6. **Validate before upload.** Round-trip the file through the parser. A
+7. **Validate before upload.** Round-trip the file through the parser. A
    parse failure here means the file is malformed; fix it before uploading,
    because the analyst agent will reject the same content server-side.
 
@@ -123,7 +139,7 @@ clear gap-question rather than a stack trace.
    " || { echo "spec_invalid"; exit 1; }
    ```
 
-7. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
+8. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
    needed and upload `AGENTSpec.md`:
 
    ```bash
@@ -137,11 +153,11 @@ clear gap-question rather than a stack trace.
    `agent_spec_file_ref(workspace, name)` to compute
    `<workspace>/<name>-spec#AGENTSpec.md` when they need it.
 
-8. **Show the spec to the user.** Print the full file contents and ask:
+9. **Show the spec to the user.** Print the full file contents and ask:
    "Does this match what we agreed? Edit anything you want to change." If
-   the user edits, repeat steps 5–7.
+   the user edits, repeat steps 6–8.
 
-9. **Hand off.** Once confirmed, tell the user the next skill:
+10. **Hand off.** Once confirmed, tell the user the next skill:
 
     - `nemo-build-agent` will read `agents/<name>.spec.md`, produce the
       workflow YAML, and call `nemo agents create`. It does not need a
