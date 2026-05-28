@@ -109,8 +109,16 @@ def _make_test_data_names(
     )
 
 
+# Jinja branch the prompt template uses for its trailing directive. At
+# request time, nemoguardrails substitutes ``reasoning_enabled`` from
+# ``rails.config.content_safety.reasoning.enabled`` and the prompt ends
+# with either ``/think`` or ``/no_think`` (the token the model was
+# trained to read to switch between reasoning-on and reasoning-off).
+THINK_DIRECTIVE_JINJA = "{% if reasoning_enabled %}/think{% else %}/no_think{% endif %}"
+
+
 def _think_directive(reasoning_enabled: bool) -> str:
-    """The trailing token the Jinja gate in the prompt renders to at request time."""
+    """Return the ``/think`` or ``/no_think`` token ``THINK_DIRECTIVE_JINJA`` renders to."""
     return "/think" if reasoning_enabled else "/no_think"
 
 
@@ -149,7 +157,7 @@ class TestContentSafetyReasoning:
         "task": "content_safety_check_input $model=content_safety_reasoning",
         "content": CONTENT_SAFETY_INPUT_PROMPT_TEMPLATE.format(
             user_input="{{ user_input }}",
-            think_directive="{% if reasoning_enabled %}/think{% else %}/no_think{% endif %}",
+            think_directive=THINK_DIRECTIVE_JINJA,
         ),
         "output_parser": "nemotron_reasoning_parse_prompt_safety",
         "max_tokens": 400,
@@ -159,7 +167,7 @@ class TestContentSafetyReasoning:
         "content": CONTENT_SAFETY_OUTPUT_PROMPT_TEMPLATE.format(
             user_input="{{ user_input }}",
             bot_response="{{ bot_response }}",
-            think_directive="{% if reasoning_enabled %}/think{% else %}/no_think{% endif %}",
+            think_directive=THINK_DIRECTIVE_JINJA,
         ),
         "output_parser": "nemotron_reasoning_parse_response_safety",
         "max_tokens": 400,
@@ -270,7 +278,7 @@ class TestContentSafetyReasoning:
 
         A drift in the ``reasoning_enabled`` Jinja variable name or the
         directive itself would silently leave the model running in the
-        wrong mode — the parser tolerates both verdict shapes — so we
+        wrong mode. The parser tolerates both verdict shapes, so we
         pin the rendered prompt directly.
         """
         harness = igw_plugin_harness
@@ -354,9 +362,13 @@ class TestContentSafetyReasoning:
     ) -> None:
         """Input rails should block unsafe user messages in both reasoning modes.
 
-        Both modes are covered because the reasoning verdict is wrapped
-        in ``<think>...</think>``; a parser regression on either path
-        would surface here as the wrong block/pass decision.
+        Both modes are covered because the rail verdict shape differs:
+        reasoning-on prepends a ``<think>...</think>`` block to the
+        ``Prompt harm: ...`` line, reasoning-off omits it. The parser
+        (``nemotron_reasoning_parse_prompt_safety``) has to strip the
+        think block in one case and accept the bare verdict in the
+        other, so a regression on either path would surface here as the
+        wrong block/pass decision.
         """
         harness = igw_plugin_harness
         test_data_names = _make_test_data_names(workspace=harness.workspace)
