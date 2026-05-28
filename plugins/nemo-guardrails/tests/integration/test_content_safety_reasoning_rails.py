@@ -131,7 +131,7 @@ class TestContentSafetyReasoning:
         "{user_input}\n\n"
         "AI assistant:\n"
         "None\n\n"
-        f"{PROMPT_OUTPUT_FORMAT_BLOCK} {{think_directive}}\n"
+        f"{PROMPT_OUTPUT_FORMAT_BLOCK} {{think_directive}}"
     )
     CONTENT_SAFETY_OUTPUT_PROMPT_TEMPLATE = (
         f"{PROMPT_INTRO}\n"
@@ -140,7 +140,7 @@ class TestContentSafetyReasoning:
         "{user_input}\n\n"
         "AI assistant:\n"
         "{bot_response}\n\n"
-        f"{PROMPT_OUTPUT_FORMAT_BLOCK} {{think_directive}}\n"
+        f"{PROMPT_OUTPUT_FORMAT_BLOCK} {{think_directive}}"
     )
 
     # Prompt configuration for the guardrail config. The prompt content should use Jinja-style
@@ -519,9 +519,7 @@ class TestContentSafetyReasoning:
 
         harness.assert_called_once(test_data_names.main_model_served_name)
         harness.assert_called_once(test_data_names.content_safety_entity_ref)
-        harness.assert_call_order(
-            [test_data_names.main_model_served_name, test_data_names.content_safety_entity_ref]
-        )
+        harness.assert_call_order([test_data_names.main_model_served_name, test_data_names.content_safety_entity_ref])
         harness.assert_request_messages_contain(
             test_data_names.content_safety_entity_ref,
             self._expected_output_rail_prompt(
