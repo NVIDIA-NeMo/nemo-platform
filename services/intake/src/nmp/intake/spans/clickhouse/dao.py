@@ -5,20 +5,21 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 from nmp.intake.spans.clickhouse._where import WhereClause
 from nmp.intake.spans.clickhouse.identifiers import validate_clickhouse_identifier
 from nmp.intake.spans.clickhouse.query import (
     SelectQuery,
+    SortSpec,
     TableRef,
     count_query,
     order_by_clause,
     select_from_table,
     subquery_from,
 )
-from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query
+from nmp.intake.spans.clickhouse.sql import BuiltQuery
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.storage import result_rows
 
@@ -96,22 +97,13 @@ class ClickHouseDao:
         *,
         columns: Sequence[str] | str = "*",
         sort: str,
-        sort_columns: Mapping[str, str],
-        tiebreaker: str,
-        sort_label: str,
+        sort_spec: SortSpec,
         final: bool = False,
     ) -> list[dict[str, Any]]:
         query = (
             select_from_table(table, columns=columns, final=final)
             .where(where)
-            .order_by_clause(
-                order_by_clause(
-                    sort,
-                    sort_columns=sort_columns,
-                    tiebreaker=tiebreaker,
-                    label=sort_label,
-                )
-            )
+            .order_by_clause(order_by_clause(sort, sort_spec))
         )
         return await self._execute_raw(query)
 
@@ -122,9 +114,7 @@ class ClickHouseDao:
         where: WhereClause,
         columns: Sequence[str] | str = "*",
         sort: str,
-        sort_columns: Mapping[str, str],
-        tiebreaker: str,
-        sort_label: str,
+        sort_spec: SortSpec,
         page: int,
         page_size: int,
         final: bool = False,
@@ -134,14 +124,7 @@ class ClickHouseDao:
         query = (
             select_from_table(table, columns=columns, final=final)
             .where(where)
-            .order_by_clause(
-                order_by_clause(
-                    sort,
-                    sort_columns=sort_columns,
-                    tiebreaker=tiebreaker,
-                    label=sort_label,
-                )
-            )
+            .order_by_clause(order_by_clause(sort, sort_spec))
             .limit(limit_param="limit", offset_param="offset")
             .with_parameters({"limit": page_size, "offset": offset})
         )
@@ -154,27 +137,21 @@ class ClickHouseDao:
         subquery: BuiltQuery,
         outer_where: WhereClause,
         sort: str,
-        sort_columns: Mapping[str, str],
-        tiebreaker: str,
-        sort_label: str,
+        sort_spec: SortSpec,
         page: int,
         page_size: int,
     ) -> tuple[list[dict[str, Any]], int]:
         if not isinstance(subquery, BuiltQuery):
             raise TypeError("paginate_subquery requires a built query")
-        outer_where_sql, outer_where_parameters = outer_where.build()
-        query_parameters = {**subquery.parameters, **outer_where_parameters}
+        from_traces = subquery_from(subquery, alias="traces")
 
         total_results = int(
             await self._execute_scalar_raw(
-                _trusted_query(
-                    f"""
-                    SELECT count()
-                    FROM ({subquery.sql}) AS traces
-                    WHERE {outer_where_sql}
-                    """,
-                    query_parameters,
-                )
+                SelectQuery(
+                    select_expr="count()",
+                    from_expr=from_traces,
+                    where_clause=outer_where,
+                ).with_parameters(subquery.parameters)
             )
             or 0
         )
@@ -183,14 +160,9 @@ class ClickHouseDao:
         rows = await self._execute_raw(
             SelectQuery(
                 select_expr="*",
-                from_expr=subquery_from(subquery, alias="traces"),
+                from_expr=from_traces,
                 where_clause=outer_where,
-                order_by=order_by_clause(
-                    sort,
-                    sort_columns=sort_columns,
-                    tiebreaker=tiebreaker,
-                    label=sort_label,
-                ),
+                order_by=order_by_clause(sort, sort_spec),
                 limit_param="limit",
                 offset_param="offset",
             ).with_parameters({**subquery.parameters, "limit": page_size, "offset": offset})

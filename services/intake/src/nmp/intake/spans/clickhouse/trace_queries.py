@@ -10,7 +10,7 @@ from typing import Any
 from nmp.intake.spans.clickhouse._where import _as_clause, _new_where
 from nmp.intake.spans.clickhouse.identifiers import column
 from nmp.intake.spans.clickhouse.query import TableRef
-from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query, merge_parameters
 from nmp.intake.spans.domain import TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 
@@ -77,7 +77,7 @@ def trace_rows_sql(table: TableRef, filters: TraceListFilter, *, mode: TraceMode
             AND traces.source_format = rollups.source_format
             AND traces.trace_id = rollups.trace_id
     """
-    return _trusted_query(sql, {**summary_query.parameters, **rollup_query.parameters})
+    return _trusted_query(sql, merge_parameters(summary_query.parameters, rollup_query.parameters))
 
 
 def trace_summary_sql(table: TableRef, filters: TraceListFilter) -> BuiltQuery:

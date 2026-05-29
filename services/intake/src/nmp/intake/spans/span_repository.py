@@ -11,7 +11,7 @@ from typing import Any
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
 from nmp.intake.spans.clickhouse.filters import span_list_where, span_lookup_where
-from nmp.intake.spans.clickhouse.query import order_by_clause
+from nmp.intake.spans.clickhouse.query import SortSpec, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeSpan, SpanListFilter
 from nmp.intake.spans.storage import (
@@ -44,9 +44,7 @@ SPAN_COLUMNS = [
 ]
 SPAN_INSERT_COLUMNS = [column_name for column_name in SPAN_COLUMNS if column_name != "id"]
 
-SPAN_SORT_COLUMNS = {
-    "started_at": "start_time",
-}
+SPAN_SORT = SortSpec(columns={"started_at": "start_time"}, tiebreaker="id", label="span")
 
 _ZERO_DATETIME = datetime.fromtimestamp(0, tz=timezone.utc)
 
@@ -72,9 +70,7 @@ class SpanRepository:
             where=span_list_where(filters),
             columns=SPAN_COLUMNS,
             sort=sort,
-            sort_columns=SPAN_SORT_COLUMNS,
-            tiebreaker="id",
-            sort_label="span",
+            sort_spec=SPAN_SORT,
             page=page,
             page_size=page_size,
             final=True,
@@ -100,12 +96,7 @@ class SpanRepository:
 
 
 def _order_by(sort: str) -> str:
-    return order_by_clause(
-        sort,
-        sort_columns=SPAN_SORT_COLUMNS,
-        tiebreaker="id",
-        label="span",
-    )
+    return order_by_clause(sort, SPAN_SORT)
 
 
 def _span_to_row(span: IntakeSpan) -> dict[str, Any]:

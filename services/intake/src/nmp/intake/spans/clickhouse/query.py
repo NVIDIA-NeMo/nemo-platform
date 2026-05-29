@@ -11,7 +11,7 @@ from typing import Any
 
 from nmp.intake.spans.clickhouse._where import WhereClause
 from nmp.intake.spans.clickhouse.identifiers import validate_clickhouse_identifier
-from nmp.intake.spans.clickhouse.sql import BuiltQuery, TrustedSql, _trusted_query, _trusted_sql
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, TrustedSql, _trusted_query, _trusted_sql, merge_parameters
 
 
 def format_columns(columns: Sequence[str]) -> str:
@@ -20,23 +20,30 @@ def format_columns(columns: Sequence[str]) -> str:
     return ", ".join(validate_clickhouse_identifier(column_name) for column_name in columns)
 
 
-def order_by_clause(
-    sort: str,
-    *,
-    sort_columns: Mapping[str, str],
-    tiebreaker: str,
-    label: str,
-) -> str:
+@dataclass(frozen=True)
+class SortSpec:
+    """Whitelisted sort configuration for a repository's list endpoints.
+
+    Bundles the column whitelist, the deterministic tiebreaker, and the error label
+    so call sites pass a single value instead of repeating the three together.
+    """
+
+    columns: Mapping[str, str]
+    tiebreaker: str
+    label: str
+
+
+def order_by_clause(sort: str, spec: SortSpec) -> str:
     """Build an ORDER BY clause from a whitelisted API sort key."""
 
     direction = "DESC" if sort.startswith("-") else "ASC"
     field = sort.removeprefix("-")
-    mapped_column = sort_columns.get(field)
+    mapped_column = spec.columns.get(field)
     if mapped_column is None:
-        raise ValueError(f"Unsupported {label} sort field: {field}")
+        raise ValueError(f"Unsupported {spec.label} sort field: {field}")
     validate_clickhouse_identifier(mapped_column)
-    validate_clickhouse_identifier(tiebreaker)
-    return f"{mapped_column} {direction}, {tiebreaker} ASC"
+    validate_clickhouse_identifier(spec.tiebreaker)
+    return f"{mapped_column} {direction}, {spec.tiebreaker} ASC"
 
 
 @dataclass(frozen=True)
@@ -77,7 +84,7 @@ class SelectQuery:
         return self
 
     def with_parameters(self, parameters: Mapping[str, Any]) -> SelectQuery:
-        self.extra_parameters.update(parameters)
+        self.extra_parameters = merge_parameters(self.extra_parameters, parameters)
         return self
 
     def build(self) -> tuple[str, dict[str, Any]]:
@@ -94,7 +101,7 @@ class SelectQuery:
         if self.where_clause is not None:
             where_sql, where_parameters = self.where_clause.build()
             clauses.append(f"WHERE {where_sql}")
-            parameters.update(where_parameters)
+            parameters = merge_parameters(parameters, where_parameters)
         if self.order_by is not None:
             clauses.append(f"ORDER BY {self.order_by}")
         if self.limit_param is not None:

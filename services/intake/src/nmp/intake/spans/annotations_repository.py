@@ -12,7 +12,7 @@ from typing import Any
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
 from nmp.intake.spans.clickhouse.filters import annotation_list_where, annotation_lookup_where
-from nmp.intake.spans.clickhouse.query import order_by_clause
+from nmp.intake.spans.clickhouse.query import SortSpec, order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import Annotation, AnnotationKind, AnnotationListFilter
 from nmp.intake.spans.storage import dict_to_row, make_pagination
@@ -34,9 +34,7 @@ ANNOTATION_COLUMNS = [
     "is_deleted",
 ]
 
-ANNOTATION_SORT_COLUMNS = {
-    "created_at": "created_at",
-}
+ANNOTATION_SORT = SortSpec(columns={"created_at": "created_at"}, tiebreaker="annotation_id", label="annotation")
 
 
 class AnnotationsRepository:
@@ -71,9 +69,7 @@ class AnnotationsRepository:
             table=self._dao.table("annotations"),
             where=annotation_list_where(filters),
             sort=sort,
-            sort_columns=ANNOTATION_SORT_COLUMNS,
-            tiebreaker="annotation_id",
-            sort_label="annotation",
+            sort_spec=ANNOTATION_SORT,
             page=page,
             page_size=page_size,
             final=True,
@@ -104,12 +100,7 @@ class AnnotationsRepository:
 
 
 def _annotation_order_by(sort: str) -> str:
-    return order_by_clause(
-        sort,
-        sort_columns=ANNOTATION_SORT_COLUMNS,
-        tiebreaker="annotation_id",
-        label="annotation",
-    )
+    return order_by_clause(sort, ANNOTATION_SORT)
 
 
 def _annotation_to_row(annotation: Annotation, *, is_deleted: bool = False) -> dict[str, Any]:

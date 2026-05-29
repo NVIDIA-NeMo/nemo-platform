@@ -50,3 +50,23 @@ def _trusted_sql(sql: str) -> TrustedSql:
 
 def _trusted_query(sql: str, parameters: Mapping[str, Any] | None = None) -> BuiltQuery:
     return BuiltQuery._from_parts(sql, parameters)
+
+
+def merge_parameters(*parameter_sets: Mapping[str, Any]) -> dict[str, Any]:
+    """Merge bound-parameter dicts, rejecting conflicting values for a shared name.
+
+    Identical re-bindings are allowed because subqueries legitimately share parameters
+    (e.g. ``workspace``); a name bound to two *different* values signals an accidental
+    collision between independently-built fragments and is raised rather than silently
+    overwritten.
+    """
+
+    merged: dict[str, Any] = {}
+    for parameters in parameter_sets:
+        for name, value in parameters.items():
+            if name in merged and merged[name] != value:
+                raise ValueError(
+                    f"Conflicting bound values for query parameter {name!r}: {merged[name]!r} != {value!r}"
+                )
+            merged[name] = value
+    return merged

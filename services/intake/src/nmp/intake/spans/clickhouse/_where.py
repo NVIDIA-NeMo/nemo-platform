@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nmp.intake.spans.clickhouse.identifiers import column
-from nmp.intake.spans.clickhouse.sql import BuiltQuery
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, merge_parameters
 from nmp.intake.spans.span_attribute_catalog import where_clause as attribute_where_clause
 
 
@@ -62,7 +62,7 @@ class _WhereBuilder:
     def _append(self, clause: str, parameters: Mapping[str, Any] | None = None) -> Self:
         self._clauses.append(clause)
         if parameters:
-            self._parameters.update(parameters)
+            self._parameters = merge_parameters(self._parameters, parameters)
         return self
 
     def build(self, *, default: str = "1 = 1") -> tuple[str, dict[str, Any]]:

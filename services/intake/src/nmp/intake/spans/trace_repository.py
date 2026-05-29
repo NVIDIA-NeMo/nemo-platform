@@ -11,7 +11,7 @@ from typing import Any
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
 from nmp.intake.spans.clickhouse.filters import trace_outer_where
-from nmp.intake.spans.clickhouse.query import order_by_clause
+from nmp.intake.spans.clickhouse.query import SortSpec, order_by_clause
 from nmp.intake.spans.clickhouse.trace_queries import METRIC_ATTRIBUTE_FIELDS, trace_rows_sql
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeTrace, TraceEvaluationContext, TraceListFilter, TraceMode
@@ -19,9 +19,7 @@ from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import make_pagination, normalize_span_status
 
-TRACE_SORT_COLUMNS = {
-    "started_at": "started_at",
-}
+TRACE_SORT = SortSpec(columns={"started_at": "started_at"}, tiebreaker="id", label="trace")
 
 TRACE_COLUMNS = [
     "id",
@@ -66,9 +64,7 @@ class TraceRepository:
             subquery=trace_query,
             outer_where=trace_outer_where(filters),
             sort=sort,
-            sort_columns=TRACE_SORT_COLUMNS,
-            tiebreaker="id",
-            sort_label="trace",
+            sort_spec=TRACE_SORT,
             page=page,
             page_size=page_size,
         )
@@ -95,12 +91,7 @@ class TraceRepository:
 
 
 def _order_by(sort: str) -> str:
-    return order_by_clause(
-        sort,
-        sort_columns=TRACE_SORT_COLUMNS,
-        tiebreaker="id",
-        label="trace",
-    )
+    return order_by_clause(sort, TRACE_SORT)
 
 
 def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:

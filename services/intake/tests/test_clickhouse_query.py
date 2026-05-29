@@ -12,6 +12,7 @@ from nmp.intake.spans.clickhouse.filters import span_list_where, span_lookup_whe
 from nmp.intake.spans.clickhouse.identifiers import column, validate_clickhouse_identifier
 from nmp.intake.spans.clickhouse.query import (
     SelectQuery,
+    SortSpec,
     TableRef,
     count_query,
     format_columns,
@@ -19,6 +20,7 @@ from nmp.intake.spans.clickhouse.query import (
     select_from_table,
     subquery_from,
 )
+from nmp.intake.spans.clickhouse.sql import merge_parameters
 from nmp.intake.spans.clickhouse.trace_queries import trace_rows_sql
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanListFilter, TraceListFilter
@@ -87,26 +89,16 @@ def test_span_lookup_where_parameterizes_external_span_id():
     assert parameters["is_deleted"] == 0
 
 
+_SPAN_SORT_SPEC = SortSpec(columns={"started_at": "start_time"}, tiebreaker="id", label="span")
+
+
 def test_order_by_clause_whitelists_sort_keys():
-    assert (
-        order_by_clause(
-            "-started_at",
-            sort_columns={"started_at": "start_time"},
-            tiebreaker="id",
-            label="span",
-        )
-        == "start_time DESC, id ASC"
-    )
+    assert order_by_clause("-started_at", _SPAN_SORT_SPEC) == "start_time DESC, id ASC"
 
 
 def test_order_by_clause_rejects_unsupported_sort_keys():
     with pytest.raises(ValueError, match="Unsupported span sort field"):
-        order_by_clause(
-            "started_at DESC; DROP TABLE spans",
-            sort_columns={"started_at": "start_time"},
-            tiebreaker="id",
-            label="span",
-        )
+        order_by_clause("started_at DESC; DROP TABLE spans", _SPAN_SORT_SPEC)
 
 
 def test_select_from_table_supports_final_modifier():
@@ -171,15 +163,13 @@ async def test_fetch_all_uses_validated_sort_key():
     client = _Client()
     dao = ClickHouseDao(cast(ClickHouseSpanClient, client))
     where = _as_clause(_new_where().eq("workspace", "workspace", "workspace-a"))
-
-    await dao.fetch_all(
-        dao.table("evaluator_results"),
-        where,
-        sort="created_at",
-        sort_columns={"created_at": "created_at"},
+    sort_spec = SortSpec(
+        columns={"created_at": "created_at"},
         tiebreaker="evaluator_result_id",
-        sort_label="evaluator_result",
+        label="evaluator_result",
     )
+
+    await dao.fetch_all(dao.table("evaluator_results"), where, sort="created_at", sort_spec=sort_spec)
 
     assert "ORDER BY created_at ASC, evaluator_result_id ASC" in client.queries[0]
     with pytest.raises(ValueError, match="Unsupported evaluator_result sort field"):
@@ -187,9 +177,7 @@ async def test_fetch_all_uses_validated_sort_key():
             dao.table("evaluator_results"),
             where,
             sort="created_at DESC; DROP TABLE evaluator_results",
-            sort_columns={"created_at": "created_at"},
-            tiebreaker="evaluator_result_id",
-            sort_label="evaluator_result",
+            sort_spec=sort_spec,
         )
 
 
@@ -202,3 +190,16 @@ def test_trace_rows_sql_requires_table_ref_and_returns_built_query():
     assert query.parameters["workspace"] == "workspace-a"
     with pytest.raises(TypeError, match="TableRef"):
         trace_rows_sql(cast(Any, "spans"), TraceListFilter(workspace="workspace-a"), mode="summary")
+
+
+def test_merge_parameters_allows_identical_rebinding():
+    assert merge_parameters({"workspace": "a", "limit": 10}, {"workspace": "a", "offset": 0}) == {
+        "workspace": "a",
+        "limit": 10,
+        "offset": 0,
+    }
+
+
+def test_merge_parameters_rejects_conflicting_values():
+    with pytest.raises(ValueError, match="Conflicting bound values for query parameter 'workspace'"):
+        merge_parameters({"workspace": "a"}, {"workspace": "b"})

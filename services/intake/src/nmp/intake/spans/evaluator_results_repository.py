@@ -12,6 +12,7 @@ from nmp.intake.spans.clickhouse.filters import (
     evaluator_result_lookup_where,
     evaluator_results_for_span_where,
 )
+from nmp.intake.spans.clickhouse.query import SortSpec
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import (
     EvaluatorResult,
@@ -35,10 +36,11 @@ EVALUATOR_RESULT_COLUMNS = [
     "ingested_at",
 ]
 
-EVALUATOR_RESULT_SORT_COLUMNS = {
-    "created_at": "created_at",
-    "value": "value",
-}
+EVALUATOR_RESULT_SORT = SortSpec(
+    columns={"created_at": "created_at", "value": "value"},
+    tiebreaker="evaluator_result_id",
+    label="evaluator_result",
+)
 
 
 class EvaluatorResultsRepository:
@@ -73,9 +75,7 @@ class EvaluatorResultsRepository:
             table=self._dao.table("evaluator_results"),
             where=evaluator_result_list_where(filters),
             sort=sort,
-            sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
-            tiebreaker="evaluator_result_id",
-            sort_label="evaluator_result",
+            sort_spec=EVALUATOR_RESULT_SORT,
             page=page,
             page_size=page_size,
             final=True,
@@ -93,9 +93,7 @@ class EvaluatorResultsRepository:
             self._dao.table("evaluator_results"),
             evaluator_results_for_span_where(workspace=workspace, span_id=span_id),
             sort="created_at",
-            sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
-            tiebreaker="evaluator_result_id",
-            sort_label="evaluator_result",
+            sort_spec=EVALUATOR_RESULT_SORT,
             final=True,
         )
         return [_row_to_evaluator_result(row) for row in rows]
