@@ -12,7 +12,7 @@ By default it reports both contexts independently:
 nemo data-designer validate <path>
 ```
 
-```
+```text
 Local execution
   ✔ Configuration is valid
 
