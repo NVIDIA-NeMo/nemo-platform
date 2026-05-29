@@ -14,7 +14,7 @@ This eval uses a **mock inference backend** instead of a real LLM:
 - The Inference Gateway runs in mock provider mode (`igw-mock-` prefix)
 - A mock provider is created that always responds "Yes" to any prompt
 - When used with a self-check input rail, this causes ALL content to be blocked
-  with the canned refusal: "I'm sorry, I can't respond to that."
+  with a blocked guardrail status.
 
 The mock provider setup is handled by `environment/setup-mock.py`, which runs after
 the NeMo Platform API is healthy but before the agent starts. The agent is responsible for
@@ -31,7 +31,7 @@ creating the guardrail configuration itself.
 
 The verifier checks:
 1. At least one guardrail configuration exists (the agent should have created it)
-2. Content sent through guardrails returns the canned refusal message
+2. Content sent through guardrails returns a blocked status
 3. The guardrails pipeline works end-to-end (even safe content is blocked by the mock)
 
 ## Building and Running
