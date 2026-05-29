@@ -20,6 +20,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
 import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
+import type * as React from 'react';
 
 import { ChatEmptyState } from '../Chat/ChatEmptyState';
 import { MessageContent } from '../Chat/MessageContent';
@@ -28,6 +29,12 @@ interface AssistantChatThreadProps {
   disabled?: boolean;
   placeholder: string;
   onReset: () => void;
+  /** When true, suppresses the bottom composer — message thread still renders. */
+  hideComposer?: boolean;
+  /** Content rendered in a sub-row directly above the composer, INSIDE the
+   *  same outer card. Used for seed-prompt chips so they read as part of the
+   *  composer affordance rather than a separate block. */
+  slotAboveComposer?: React.ReactNode;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;
@@ -172,7 +179,7 @@ const UserEditComposer = () => (
 
 type AssistantComposerProps = Pick<
   AssistantChatThreadProps,
-  'disabled' | 'placeholder' | 'onReset'
+  'disabled' | 'placeholder' | 'onReset' | 'slotAboveComposer'
 > & {
   className?: string;
 };
@@ -181,55 +188,62 @@ const AssistantComposer = ({
   disabled,
   placeholder,
   onReset,
+  slotAboveComposer,
   className,
 }: AssistantComposerProps) => (
-  <ComposerPrimitive.Root
-    className={cn(
-      'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
-      className
-    )}
-  >
-    <ComposerPrimitive.Input
-      aria-label="Task prompt"
-      addAttachmentOnPaste={false}
-      disabled={disabled}
-      placeholder={placeholder}
-      submitMode="enter"
-      className="max-h-64 min-h-16 flex-1 resize-none border-0 bg-transparent p-density-sm text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
-    />
-    <Tooltip slotContent="Clear chat thread">
-      <Button
-        aria-label="Reset"
-        kind="tertiary"
-        size="small"
-        onClick={onReset}
-        type="button"
+  <div className="flex flex-col gap-2">
+    {slotAboveComposer && <div className="shrink-0">{slotAboveComposer}</div>}
+    <ComposerPrimitive.Root
+      className={cn(
+        'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
+        className
+      )}
+    >
+      <ComposerPrimitive.Input
+        aria-label="Task prompt"
+        addAttachmentOnPaste={false}
         disabled={disabled}
-      >
-        <RotateCcw />
-      </Button>
-    </Tooltip>
-    <ThreadPrimitive.If running>
-      <ComposerPrimitive.Cancel asChild>
-        <Button aria-label="Stop" color="danger" size="small">
-          <Square />
+        placeholder={placeholder}
+        submitMode="enter"
+        rows={1}
+        className="max-h-64 flex-1 resize-none border-0 bg-transparent p-density-sm text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
+      />
+      <Tooltip slotContent="Clear chat thread">
+        <Button
+          aria-label="Reset"
+          kind="tertiary"
+          size="small"
+          onClick={onReset}
+          type="button"
+          disabled={disabled}
+        >
+          <RotateCcw />
         </Button>
-      </ComposerPrimitive.Cancel>
-    </ThreadPrimitive.If>
-    <ThreadPrimitive.If running={false}>
-      <ComposerPrimitive.Send asChild>
-        <Button aria-label="Submit" color="brand" size="small">
-          <Send />
-        </Button>
-      </ComposerPrimitive.Send>
-    </ThreadPrimitive.If>
-  </ComposerPrimitive.Root>
+      </Tooltip>
+      <ThreadPrimitive.If running>
+        <ComposerPrimitive.Cancel asChild>
+          <Button aria-label="Stop" color="danger" size="small">
+            <Square />
+          </Button>
+        </ComposerPrimitive.Cancel>
+      </ThreadPrimitive.If>
+      <ThreadPrimitive.If running={false}>
+        <ComposerPrimitive.Send asChild>
+          <Button aria-label="Submit" color="brand" size="small">
+            <Send />
+          </Button>
+        </ComposerPrimitive.Send>
+      </ThreadPrimitive.If>
+    </ComposerPrimitive.Root>
+  </div>
 );
 
 export const AssistantChatThread = ({
   disabled,
   placeholder,
   onReset,
+  hideComposer,
+  slotAboveComposer,
   emptyState,
   contentClassName,
   composerContainerClassName,
@@ -260,8 +274,15 @@ export const AssistantChatThread = ({
         Scroll to bottom
       </ThreadPrimitive.ScrollToBottom>
     </ThreadPrimitive.Viewport>
-    <Flex className={cn('w-full', composerContainerClassName)}>
-      <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
-    </Flex>
+    {!hideComposer && (
+      <Flex className={cn('w-full', composerContainerClassName)}>
+        <AssistantComposer
+          disabled={disabled}
+          placeholder={placeholder}
+          onReset={onReset}
+          slotAboveComposer={slotAboveComposer}
+        />
+      </Flex>
+    )}
   </ThreadPrimitive.Root>
 );

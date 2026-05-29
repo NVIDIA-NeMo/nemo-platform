@@ -23,6 +23,12 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   className,
   initialMessages = [],
   onError,
+  onMessageComplete,
+  onRunningChange,
+  hideComposer,
+  broadcast,
+  cancelNonce,
+  slotAboveComposer,
   emptyState,
 }) => {
   const { handleReset, runtime } = useAssistantChatRuntime({
@@ -34,6 +40,10 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     disabled,
     initialMessages,
     onError,
+    onMessageComplete,
+    onRunningChange,
+    broadcast,
+    cancelNonce,
   });
 
   const composerPlaceholder = useMemo(
@@ -48,6 +58,8 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           disabled={disabled}
           placeholder={composerPlaceholder}
           onReset={handleReset}
+          hideComposer={hideComposer}
+          slotAboveComposer={slotAboveComposer}
           emptyState={emptyState}
         />
       </div>

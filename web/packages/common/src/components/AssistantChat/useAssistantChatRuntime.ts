@@ -7,7 +7,7 @@ import {
   type ThreadMessageLike,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { getCompletionText, isAbortError, isChatCompletionStream } from './completionUtils';
 import { CANCELLED_STATUS, COMPLETE_STATUS, RUNNING_STATUS } from './constants';
@@ -24,10 +24,14 @@ import { useChatCompletion } from '../../hooks/useChatCompletion';
 type UseAssistantChatRuntimeOptions = Pick<
   AssistantChatProps,
   | 'baseURL'
+  | 'broadcast'
+  | 'cancelNonce'
   | 'disabled'
   | 'initialMessages'
   | 'model'
   | 'onError'
+  | 'onMessageComplete'
+  | 'onRunningChange'
   | 'promptData'
   | 'tools'
   | 'workspace'
@@ -42,6 +46,10 @@ export const useAssistantChatRuntime = ({
   disabled = false,
   initialMessages = [],
   onError,
+  onMessageComplete,
+  onRunningChange,
+  broadcast,
+  cancelNonce,
 }: UseAssistantChatRuntimeOptions) => {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const [isRunning, setIsRunning] = useState(false);
@@ -84,6 +92,12 @@ export const useAssistantChatRuntime = ({
       setThreadMessages([...conversationMessages, assistantMessage]);
       setIsRunning(true);
       let responseText = '';
+      // Timing for per-message metrics (TTFT, total, tokens/sec). Emitted via
+      // onMessageComplete so callers (e.g. Studio's Chat route) can render a
+      // stats badge without owning the runtime.
+      const startMs = performance.now();
+      let ttftMs = 0;
+      let chunkCount = 0;
 
       try {
         const result = await createChatCompletion({
@@ -111,16 +125,49 @@ export const useAssistantChatRuntime = ({
           if (runController.signal.aborted) streamController.abort();
           for await (const chunk of result) {
             if (runController.signal.aborted || !isCurrentRun()) break;
-            responseText += chunk.choices[0]?.delta.content ?? '';
-            updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+            const delta = chunk.choices[0]?.delta.content ?? '';
+            if (delta) {
+              if (ttftMs === 0) ttftMs = Math.round(performance.now() - startMs);
+              responseText += delta;
+              chunkCount += 1;
+              updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+            }
           }
           updateAssistantMessage(
             assistantMessage.id!,
             responseText,
             runController.signal.aborted ? CANCELLED_STATUS : COMPLETE_STATUS
           );
+          if (!runController.signal.aborted && onMessageComplete) {
+            const totalMs = Math.round(performance.now() - startMs);
+            const streamMs = Math.max(1, totalMs - ttftMs);
+            const completionTokens = Math.max(chunkCount, Math.round(responseText.length / 4));
+            onMessageComplete({
+              assistantMessageId: assistantMessage.id!,
+              text: responseText,
+              ttftMs,
+              totalMs,
+              chunkCount,
+              tokensPerSec: (completionTokens * 1000) / streamMs,
+              completionTokens,
+            });
+          }
         } else {
-          updateAssistantMessage(assistantMessage.id!, getCompletionText(result), COMPLETE_STATUS);
+          const text = getCompletionText(result);
+          updateAssistantMessage(assistantMessage.id!, text, COMPLETE_STATUS);
+          if (onMessageComplete) {
+            const totalMs = Math.round(performance.now() - startMs);
+            const completionTokens = Math.round(text.length / 4);
+            onMessageComplete({
+              assistantMessageId: assistantMessage.id!,
+              text,
+              ttftMs: totalMs,
+              totalMs,
+              chunkCount: 1,
+              tokensPerSec: (completionTokens * 1000) / Math.max(1, totalMs),
+              completionTokens,
+            });
+          }
         }
       } catch (error: unknown) {
         if (runController.signal.aborted || isAbortError(error)) {
@@ -149,6 +196,7 @@ export const useAssistantChatRuntime = ({
       disabled,
       model,
       onError,
+      onMessageComplete,
       promptData?.inference_params?.max_tokens,
       promptData?.inference_params?.temperature,
       promptData?.system_prompt,
@@ -226,6 +274,40 @@ export const useAssistantChatRuntime = ({
     setIsRunning(false);
     setThreadMessages([]);
   }, [setThreadMessages]);
+
+  // External broadcast — when the caller bumps `broadcast.nonce`, append the
+  // payload text as a new user message and run a completion. The ref is seeded
+  // with whatever nonce is present at mount, so an AssistantChat that mounts
+  // mid-flight (with a non-null broadcast prop) doesn't re-fire the last
+  // broadcast it sees on first render. Subsequent changes fire.
+  const broadcastSeenNonceRef = useRef<number | undefined>(broadcast?.nonce);
+  useEffect(() => {
+    if (!broadcast) return;
+    if (broadcast.nonce === broadcastSeenNonceRef.current) return;
+    broadcastSeenNonceRef.current = broadcast.nonce;
+    const text = broadcast.text.trim();
+    if (!text || disabled) return;
+    const synthetic: AppendMessage = {
+      role: 'user',
+      content: [{ type: 'text', text }],
+    } as unknown as AppendMessage;
+    void handleNewMessage(synthetic);
+  }, [broadcast, disabled, handleNewMessage]);
+
+  // External cancel — same nonce pattern.
+  const cancelSeenNonceRef = useRef<number | undefined>(cancelNonce);
+  useEffect(() => {
+    if (cancelNonce === undefined) return;
+    if (cancelNonce === cancelSeenNonceRef.current) return;
+    cancelSeenNonceRef.current = cancelNonce;
+    void handleCancel();
+  }, [cancelNonce, handleCancel]);
+
+  // Surface running-state transitions so a parent can aggregate Stop logic
+  // across multiple AssistantChat instances.
+  useEffect(() => {
+    onRunningChange?.(isRunning);
+  }, [isRunning, onRunningChange]);
 
   const runtime = useExternalStoreRuntime<ThreadMessageLike>({
     messages,
