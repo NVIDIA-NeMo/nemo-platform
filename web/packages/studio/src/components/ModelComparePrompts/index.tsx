@@ -4,12 +4,15 @@
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { useChatCompletion } from '@nemo/common/src/hooks/useChatCompletion';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { resolveKeyPath } from '@nemo/common/src/utils/file';
+import { FileFormat, InputFileSchemaType } from '@nemo/common/src/types';
+import { extractUserFriendlyKeysFromRow, resolveKeyPath } from '@nemo/common/src/utils/file';
+import { detectFileStructure, validateFileFormat } from '@nemo/common/src/utils/fileValidation';
 import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { type FileSampleMethod, sampleIndices } from '@nemo/common/src/utils/sampleTextLines';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Modal, Stack, Text } from '@nvidia/foundations-react-core';
-import { DatasetInputFile, type DatasetInputFileResult } from '@studio/components/DatasetInputFile';
+import { Button, Flex, Modal, Select, Stack, Text } from '@nvidia/foundations-react-core';
+import { SAMPLE_DATASETS } from '@studio/components/chat/sampleDatasets';
+import type { DatasetInputFileResult } from '@studio/components/DatasetInputFile';
 import { FileSamplingMethodSelect } from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 import { Loader2, Maximize2, Play, Trash2 } from 'lucide-react';
@@ -20,13 +23,34 @@ const DEFAULT_SAMPLE_SIZE = 5;
 /** Number of inference requests to run concurrently; the rest queue. */
 const INFERENCE_BATCH_SIZE = 10;
 
+/** Sentinel item values for the dataset picker. */
+const UPLOAD_ACTION_VALUE = '__upload__';
+const UPLOADED_FILE_VALUE = '__uploaded__';
+
+/** Brand green — matches the Chat tab StatsBadge. */
+const STATS_GREEN = '#76b900';
+
+interface ResponseStats {
+  /** Wall-clock time from request fire to response, in ms. */
+  totalMs: number;
+  /** From `usage.completion_tokens` when the gateway returns it; otherwise estimated from text length. */
+  completionTokens: number;
+  /** Derived: completionTokens / (totalMs / 1000). */
+  tokensPerSec: number;
+}
+
+interface ResponseResult {
+  text: string;
+  stats: ResponseStats;
+}
+
 interface PromptRow {
   /** Index in the parsed dataset. */
   sourceIndex: number;
   /** Resolved prompt text */
   prompt: string;
-  /** Model id -> response text (null = error, undefined = not yet run) */
-  responses: Record<number, string | null | undefined>;
+  /** Model id -> response data (null = error, undefined = not yet run) */
+  responses: Record<number, ResponseResult | null | undefined>;
 }
 
 interface ExpandedCellState {
@@ -62,6 +86,68 @@ function buildPromptRowsFromParsedRows(
   return rows;
 }
 
+/**
+ * Inline upload parser. Mirrors `DatasetInputFile`'s file path but runs without
+ * its full validation UI — errors surface as a small inline banner under the
+ * picker. We can't reuse `DatasetInputFile` here because we want a single
+ * dropdown that owns both sample selection and upload.
+ */
+async function parseUploadedFile(file: File): Promise<DatasetInputFileResult | { error: string }> {
+  const validation = await validateFileFormat(file);
+  if (!validation.isValid || !validation.format) {
+    return { error: validation.error ?? 'Invalid file format' };
+  }
+  const detection = await detectFileStructure(file, validation.format);
+  const text = await file.text();
+  let parsedRows: Record<string, unknown>[];
+  try {
+    if (validation.format === FileFormat.JSONL) {
+      parsedRows = text
+        .trim()
+        .split('\n')
+        .filter((line) => line.length > 0)
+        .map((line) => JSON.parse(line) as Record<string, unknown>);
+    } else {
+      const parsed: unknown = JSON.parse(text);
+      parsedRows = Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [parsed as Record<string, unknown>];
+    }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Failed to parse file contents' };
+  }
+  if (parsedRows.length === 0) {
+    return { error: 'File contains no rows' };
+  }
+  const firstRow = (detection?.firstRow as Record<string, unknown> | undefined) ?? parsedRows[0];
+  const availableKeys = firstRow ? extractUserFriendlyKeysFromRow(firstRow) : [];
+
+  // Auto-detect prompt key: prefer the detector's answer, then fall back to common keys.
+  let promptKey: string | null = null;
+  if (detection?.schemaType === InputFileSchemaType.COMPLETION) {
+    promptKey = detection.detectedFields.prompt ?? null;
+  } else if (detection?.schemaType === InputFileSchemaType.CHAT_COMPLETION) {
+    promptKey = detection.detectedMessages.user?.selector ?? null;
+  }
+  if (!promptKey) {
+    const candidates = ['prompt', 'question', 'input', 'text'];
+    promptKey =
+      candidates.find((k) => typeof firstRow[k] === 'string') ?? null;
+  }
+  if (!promptKey) {
+    return { error: 'Could not detect a prompt column. Expected one of: prompt, question, input, text.' };
+  }
+  return {
+    fileUrl: `upload://${file.name}`,
+    format: validation.format,
+    validationResult: validation,
+    detectionResult: detection,
+    availableKeys,
+    keyMapping: { promptKey, completionKey: null, idealResponseKey: null },
+    firstRow,
+    parsedRows,
+    rowCount: parsedRows.length,
+  };
+}
+
 interface ModelComparePromptsProps {
   workspace: string;
   availableModels: ModelEntity[];
@@ -88,6 +174,10 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const [sampleSize, setSampleSize] = useState<number>(DEFAULT_SAMPLE_SIZE);
   const [sampleMethod, setSampleMethod] = useState<FileSampleMethod>('random');
   const [expandedCell, setExpandedCell] = useState<ExpandedCellState | null>(null);
+  const [pickerValue, setPickerValue] = useState<string | undefined>(undefined);
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
+  const [parseError, setParseError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { mutateAsync: createCompletion } = useChatCompletion();
 
@@ -146,13 +236,13 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     setIsRunning(true);
     clearResponses();
 
-    // Writes a single cell's response, but only if this run is still current.
-    const writeCell = (sourceIndex: number, modelId: number, content: string | null) => {
+    // Writes a single cell's result, but only if this run is still current.
+    const writeCell = (sourceIndex: number, modelId: number, result: ResponseResult | null) => {
       if (runIdRef.current !== myRunId) return;
       setPromptRows((prev) =>
         prev.map((row) =>
           row.sourceIndex === sourceIndex
-            ? { ...row, responses: { ...row.responses, [modelId]: content } }
+            ? { ...row, responses: { ...row.responses, [modelId]: result } }
             : row
         )
       );
@@ -163,25 +253,40 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     const taskFactories: Array<() => Promise<void>> = [];
     snapshotActiveModels.forEach((model) => {
       snapshotPromptRows.forEach((row) => {
-        taskFactories.push(() =>
-          createCompletion({
+        taskFactories.push(() => {
+          const startTime = performance.now();
+          return createCompletion({
             model: model.name,
             workspace: model.modelWorkspace || workspace,
             messages: [{ role: 'user', content: row.prompt }],
             stream: false,
           })
             .then((result) => {
+              const totalMs = performance.now() - startTime;
               const content =
                 result && 'choices' in result
                   ? (result.choices[0]?.message?.content ?? null)
                   : null;
-              writeCell(row.sourceIndex, model.id, content);
+              if (content === null) {
+                writeCell(row.sourceIndex, model.id, null);
+                return;
+              }
+              const usage = result && 'usage' in result ? result.usage : undefined;
+              // Fallback estimate: ~4 chars per token. Good enough for the badge when
+              // the gateway elides usage stats.
+              const completionTokens =
+                usage?.completion_tokens ?? Math.max(1, Math.round(content.length / 4));
+              const tokensPerSec = totalMs > 0 ? completionTokens / (totalMs / 1000) : 0;
+              writeCell(row.sourceIndex, model.id, {
+                text: content,
+                stats: { totalMs, completionTokens, tokensPerSec },
+              });
             })
             .catch((error) => {
               console.error('Inference request failed:', error);
               writeCell(row.sourceIndex, model.id, null);
-            })
-        );
+            });
+        });
       });
     });
 
@@ -216,16 +321,84 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     setPromptRows(buildPromptRowsFromParsedRows(fileResult, sampleSize, sampleMethod));
   }, [fileResult, sampleSize, sampleMethod]);
 
+  /**
+   * Single picker handler. Three branches:
+   *  - sample id → synthesize the result via `sample.build()` (in-memory)
+   *  - upload sentinel → click the hidden native file input
+   *  - uploaded sentinel → no-op (it's the displayed value after a successful upload)
+   */
+  const handleDatasetSelect = useCallback(
+    (value: string) => {
+      if (!value) return;
+      if (value === UPLOAD_ACTION_VALUE) {
+        fileInputRef.current?.click();
+        return;
+      }
+      if (value === UPLOADED_FILE_VALUE) return;
+      const sample = SAMPLE_DATASETS.find((s) => s.id === value);
+      if (!sample) return;
+      setParseError(null);
+      setUploadedFileName(null);
+      setPickerValue(value);
+      handleFileChange(sample.build());
+    },
+    [handleFileChange]
+  );
+
+  const handleFileUploadInput = useCallback(
+    async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      // Reset the input so the same file can be re-picked later.
+      event.target.value = '';
+      if (!file) return;
+      setParseError(null);
+      const result = await parseUploadedFile(file);
+      if ('error' in result) {
+        setParseError(result.error);
+        return;
+      }
+      setUploadedFileName(file.name);
+      setPickerValue(UPLOADED_FILE_VALUE);
+      handleFileChange(result);
+    },
+    [handleFileChange]
+  );
+
+  const datasetItems = useMemo(() => {
+    const items: { value: string; children: string }[] = SAMPLE_DATASETS.map((s) => ({
+      value: s.id,
+      children: s.label,
+    }));
+    if (uploadedFileName) {
+      items.push({ value: UPLOADED_FILE_VALUE, children: `Uploaded: ${uploadedFileName}` });
+    }
+    items.push({ value: UPLOAD_ACTION_VALUE, children: 'Upload from disk…' });
+    return items;
+  }, [uploadedFileName]);
+
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-6 py-4">
-      <Stack gap="density-lg" className="max-w-lg min-w-0 shrink-0">
-        <DatasetInputFile
-          onChange={handleFileChange}
-          label="Dataset File"
+      <Stack gap="density-xs" className="max-w-lg min-w-0 shrink-0">
+        <Text kind="label/bold/sm">Dataset</Text>
+        <Select
+          items={datasetItems}
+          value={pickerValue}
+          onValueChange={handleDatasetSelect}
+          placeholder="Pick a sample or upload your own…"
           disabled={isRunning}
-          requirePromptKey
-          requireCompletionKey={false}
-          requireIdealResponseKey={false}
+          className="w-full"
+        />
+        {parseError && (
+          <Text kind="label/regular/sm" className="text-fg-error">
+            {parseError}
+          </Text>
+        )}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".json,.jsonl"
+          className="hidden"
+          onChange={handleFileUploadInput}
         />
       </Stack>
 
@@ -338,9 +511,10 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   return (
                     <td key={m.id} className="border-b border-r border-base p-0 align-top">
                       <ExpandableCell
-                        content={response}
+                        content={response.text}
                         title={`${modelName} response (dataset row ${row.sourceIndex})`}
                         onExpand={setExpandedCell}
+                        footer={<CellStats stats={response.stats} />}
                       />
                     </td>
                   );
@@ -376,12 +550,27 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   );
 };
 
+/** Compact stats line — brand green, same look as the Chat tab's StatsBadge. */
+const CellStats: FC<{ stats: ResponseStats }> = ({ stats }) => {
+  const seconds = (stats.totalMs / 1000).toFixed(1);
+  const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
+  return (
+    <div
+      className="px-3 pb-2 text-xs font-mono"
+      style={{ color: STATS_GREEN }}
+    >
+      {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
+    </div>
+  );
+};
+
 /** Table cell with vertical scroll and an expand-to-modal button */
 const ExpandableCell: FC<{
   content: string;
   title: string;
   onExpand: (state: ExpandedCellState) => void;
-}> = ({ content, title, onExpand }) => {
+  footer?: React.ReactNode;
+}> = ({ content, title, onExpand, footer }) => {
   return (
     <div className="group relative">
       <button
@@ -396,6 +585,7 @@ const ExpandableCell: FC<{
           {content}
         </Text>
       </div>
+      {footer}
     </div>
   );
 };
