@@ -12,46 +12,5 @@
       "The agent included PEP 723 inline metadata with data-designer as a dependency",
       "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
     ]
-  },
-  {
-    "id": "nemo-data-designer-plugin-002",
-    "question": "I need to create a fake dataset of 500 employee records with realistic names, job titles, departments, and salary ranges. Can you build a data generation pipeline for that?",
-    "expected_skill": "nemo-data-designer-plugin",
-    "expected_script": "get_person_object_schema.py",
-    "ground_truth": "The agent used nemo-data-designer-plugin to build a synthetic data generation pipeline producing employee records with person-based fields (names, demographics) and categorical fields (job titles, departments, salary ranges).",
-    "expected_behavior": [
-      "The agent read the nemo-data-designer-plugin SKILL.md to understand the workflow",
-      "The agent followed the interactive workflow by reading workflows/interactive.md",
-      "The agent read references/person-sampling.md since the dataset involves person names and demographics",
-      "The agent wrote a descriptively named Python file with a load_config_builder() function",
-      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
-    ]
-  },
-  {
-    "id": "nemo-data-designer-plugin-003",
-    "question": "I'm building a chatbot training pipeline and I need diverse multi-turn conversation data between customers and agents across different industries like healthcare, finance, and retail. Just build it — be opinionated and make reasonable assumptions.",
-    "expected_skill": "nemo-data-designer-plugin",
-    "expected_script": "get_person_object_schema.py",
-    "ground_truth": "The agent used nemo-data-designer-plugin in autopilot mode to generate a synthetic multi-turn conversation dataset spanning healthcare, finance, and retail industries, making autonomous design decisions without asking the user clarifying questions.",
-    "expected_behavior": [
-      "The agent read the nemo-data-designer-plugin SKILL.md and identified autopilot mode based on the user's phrasing",
-      "The agent read workflows/autopilot.md to follow the autopilot workflow",
-      "The agent made design decisions autonomously without asking clarifying questions",
-      "The agent produced a Python script with a load_config_builder() function using category samplers for industry types",
-      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
-    ]
-  },
-  {
-    "id": "nemo-data-designer-plugin-004",
-    "question": "How do I configure nginx as a reverse proxy for my Flask application running on port 5000?",
-    "expected_skill": null,
-    "expected_script": null,
-    "ground_truth": "The agent recognized this as a web server configuration question unrelated to synthetic data generation and provided nginx reverse proxy configuration guidance without invoking nemo-data-designer-plugin.",
-    "expected_behavior": [
-      "The agent did not read or reference the nemo-data-designer-plugin SKILL.md",
-      "The agent provided nginx configuration advice relevant to proxying a Flask app",
-      "The agent did not attempt to create a DataDesignerConfigBuilder or any synthetic data pipeline",
-      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
-    ]
   }
 ]
