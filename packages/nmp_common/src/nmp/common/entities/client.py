@@ -14,7 +14,6 @@ from __future__ import annotations
 # consumers through this module's path.
 from nemo_platform_plugin.entities import EntityBase as EntityBase
 from nemo_platform_plugin.entities import EntityClient as _PluginEntityClient
-from nemo_platform_plugin.entities import EntityClientProtocol as EntityClientProtocol
 from nemo_platform_plugin.entities import EntityConflictError as EntityConflictError
 from nemo_platform_plugin.entities import EntityNotFoundError as EntityNotFoundError
 from nemo_platform_plugin.entities import EntityStoreError as EntityStoreError
