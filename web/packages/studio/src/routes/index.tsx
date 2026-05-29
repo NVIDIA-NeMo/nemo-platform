@@ -4,6 +4,7 @@
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { Stack } from '@nvidia/foundations-react-core';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
+import { PlaygroundRedirect } from '@studio/components/chat/PlaygroundRedirect';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
   AGENTS_ENABLED,
@@ -753,7 +754,17 @@ export const routes: RouteObject[] = [
                       <ModelCompareRoute />
                     </Suspense>
                   ) : null,
-                  errorElement: <ErrorPanel title="Model Compare" />,
+                  errorElement: <ErrorPanel title="Chat" />,
+                },
+                {
+                  // Legacy /playground URL kept so any deep links keep working.
+                  path: ROUTES.workspace.playground,
+                  element: (
+                    <Suspense fallback={<Loading />}>
+                      <PlaygroundRedirect />
+                    </Suspense>
+                  ),
+                  errorElement: <ErrorPanel title="Chat" />,
                 },
               ]),
               ...gateMembersRoutes([
