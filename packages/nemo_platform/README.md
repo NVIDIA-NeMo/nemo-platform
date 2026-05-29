@@ -53,12 +53,26 @@ nemo services status
 
 The recommended developer setup is to clone the repo and use `make bootstrap` instead of installing from PyPI — see the [setup playbook](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md) for the full walkthrough, including local data dir, DB reset, and troubleshooting.
 
-## Quick tour
+## Where to go next
+
+After `nemo setup` completes, the CLI prompts you to pick one of two paths. The same two paths are the recommended starting points if you came in via PyPI:
+
+- **Build and optimize agents.** Open a coding agent session inside your agent's project directory and ask: _"Build and optimize an agent using NeMo Platform."_ The shipped skills will scaffold the agent, deploy it, run evaluations, suggest optimizations, and add guardrails on request.
+- **Explore the platform.** From any coding agent session, ask: _"What can I do with NeMo Platform?"_ to get a guided tour of the capabilities surfaced through skills.
+
+NeMo skills work with Claude Code, Codex, Cursor, OpenCode, and other coding agents. Install or refresh them with:
+
+```bash
+nemo skills install --agent claude
+```
+
+## Operating the platform
+
+A few useful CLI commands once setup completes:
 
 ```bash
 nemo --help                # All commands
 nemo models list           # Available models
-nemo chat <model-name>     # Chat directly with a model
 nemo services status       # Platform health
 nemo skills list           # Skills installed on the platform
 ```
@@ -67,23 +81,6 @@ Every capability is also available via REST API. Model inference uses the model 
 
 ```text
 http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions
-```
-
-## Use NeMo Platform from your coding agent
-
-After installation, launch your coding agent (Claude Code, Codex, Cursor, OpenCode, etc) from inside a NeMo Platform workspace. NeMo ships agent skills that let you drive the platform conversationally:
-
-- "Scaffold an agent from this spec and deploy it."
-- "Run an evaluation against my agent."
-- "Add content-safety guardrails to my agent."
-- "Help me optimize my agent."
-- "Show me what's running on the platform."
-- "Shut down NeMo cleanly."
-
-Install or refresh skills with:
-
-```bash
-nemo skills install --agent claude
 ```
 
 ## Links
