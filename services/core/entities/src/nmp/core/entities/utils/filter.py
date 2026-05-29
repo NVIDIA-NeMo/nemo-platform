@@ -34,15 +34,13 @@ from collections.abc import Awaitable
 from typing import Annotated, Any, Callable, Dict, Optional
 
 from fastapi import Depends, HTTPException, Query, Request
+from nemo_platform_plugin.api.filter import _normalize_value, _parse_field_operation, _wrap_operations
 from nmp.common.api.filter import (
     ComparisonOperation,
     FilterOperation,
     FilterOperator,
     FilterRepository,
     LogicalOperation,
-    _normalize_value,
-    _parse_field_operation,
-    _wrap_operations,
 )
 from nmp.core.entities.utils.relationships import Relationship, get_relationships, resolve_child_field
 from pydantic import ConfigDict
