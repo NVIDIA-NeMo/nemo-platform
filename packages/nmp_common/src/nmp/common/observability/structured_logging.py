@@ -72,7 +72,7 @@ def _drop_console_hidden_fields(logger: logging.Logger, method_name: str, event_
 
 # CR, LF, NEL, line/paragraph separators. Anything that a multi-line log
 # rendering pass could turn into a fake new log entry.
-_LOG_NEWLINE_CHARS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85  "
+_LOG_NEWLINE_CHARS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
 _LOG_NEWLINE_TABLE = {ord(c): " " for c in _LOG_NEWLINE_CHARS}
 
 
@@ -186,11 +186,11 @@ def initialize_logging(resource: Resource | None = None):
         structlog.stdlib.add_logger_name,
         structlog.stdlib.ExtraAdder(),
         _drop_color_message,
-        _sanitize_log_strings,
         timestamp_processor,
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        _sanitize_log_strings,
         structlog.processors.CallsiteParameterAdder(
             {
                 structlog.processors.CallsiteParameter.FILENAME,

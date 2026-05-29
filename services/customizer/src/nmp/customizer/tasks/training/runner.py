@@ -149,7 +149,10 @@ class TrainingRunner:
                 self._progress.report_error(error_details)
         finally:
             # === Phase 5: Write result (coordinator only) ===
-            self._write_result(result)
+            try:
+                self._write_result(result)
+            except Exception:
+                logger.exception("Failed to write training result")
         return result
 
     # --- Helper methods ---

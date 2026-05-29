@@ -38,3 +38,40 @@ def test_sanitize_log_strings_skips_clean_strings() -> None:
     event = {"event": "test", "name": "default/workspace"}
     result = _sanitize_log_strings(logging.getLogger(), "info", event)
     assert result["name"] == "default/workspace"
+
+
+def test_sanitize_log_strings_sanitizes_event_key() -> None:
+    """The 'event' key carries the primary log message — must be sanitized too."""
+    event = {"event": "user input was: bad\ninjected line"}
+    result = _sanitize_log_strings(logging.getLogger(), "info", event)
+    assert result["event"] == "user input was: bad injected line"
+
+
+def test_sanitize_log_strings_sanitizes_exception_field() -> None:
+    """structlog.format_exc_info writes a multi-line traceback into 'exception'.
+
+    The sanitizer must run after format_exc_info so attacker-controlled
+    exception messages can't forge log entries.
+    """
+    event = {"event": "boom", "exception": "Traceback (most recent call last):\n  ...\nValueError: pwn"}
+    result = _sanitize_log_strings(logging.getLogger(), "info", event)
+    assert "\n" not in result["exception"]
+
+
+def test_initialize_logging_wires_sanitizer_into_chain() -> None:
+    """Regression guard: 177 dismissed py/log-injection alerts depend on the sanitizer being in the chain."""
+    import logging as stdlib_logging
+
+    from nmp.common.observability.structured_logging import _sanitize_log_strings, initialize_logging
+
+    initialize_logging()
+    try:
+        root = stdlib_logging.getLogger()
+        assert root.handlers, "initialize_logging() did not attach a handler"
+        formatter = root.handlers[0].formatter
+        chain = getattr(formatter, "foreign_pre_chain", None) or []
+        assert _sanitize_log_strings in chain, (
+            "_sanitize_log_strings missing from structlog chain — log-injection defense is disabled"
+        )
+    finally:
+        stdlib_logging.getLogger().handlers.clear()

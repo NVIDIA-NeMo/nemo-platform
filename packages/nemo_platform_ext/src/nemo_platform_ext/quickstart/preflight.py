@@ -196,7 +196,7 @@ class PreflightChecker:
 
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.bind(("127.0.0.1", self.config.host_port))
+            sock.bind(("0.0.0.0", self.config.host_port))  # noqa: S104  # nosec B104
             sock.close()
             self.results.append(
                 PreflightResult(
