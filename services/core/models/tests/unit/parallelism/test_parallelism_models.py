@@ -20,6 +20,7 @@ from nmp.core.models.schemas import (
     ModelSpec,
     MoEConfig,
 )
+from pydantic import ValidationError
 
 # =================================================================================================
 # PYDANTIC MODEL TESTS
@@ -383,7 +384,7 @@ def test_precision_in_model_config_serialization():
 def test_precision_required():
     """Test that precision field is required and must be provided."""
     # Test that precision is required
-    with pytest.raises(Exception):  # noqa: B017
+    with pytest.raises(ValidationError):
         ModelSpec(
             checkpoint_model_name="test-model",
             family="test",
