@@ -314,6 +314,41 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const hasAssignedModel = models.some((m) => m.modelURN !== null);
   const hasPrompts = promptRows.length > 0;
 
+  /**
+   * Per-column averages across all completed responses. `tokensPerSec` is
+   * weighted (sum tokens / sum seconds) rather than a mean-of-means so short
+   * responses don't over-influence the rate. Returns null for columns with
+   * zero completed responses so the footer can render an em-dash.
+   */
+  const averagesByModelId = useMemo(() => {
+    const result: Record<number, ResponseStats & { count: number } | null> = {};
+    models.forEach((m) => {
+      let totalMs = 0;
+      let totalTokens = 0;
+      let count = 0;
+      promptRows.forEach((row) => {
+        const r = row.responses[m.id];
+        if (!r) return;
+        totalMs += r.stats.totalMs;
+        totalTokens += r.stats.completionTokens;
+        count += 1;
+      });
+      if (count === 0) {
+        result[m.id] = null;
+        return;
+      }
+      result[m.id] = {
+        totalMs: totalMs / count,
+        completionTokens: totalTokens / count,
+        tokensPerSec: totalMs > 0 ? totalTokens / (totalMs / 1000) : 0,
+        count,
+      };
+    });
+    return result;
+  }, [models, promptRows]);
+
+  const anyAverages = Object.values(averagesByModelId).some((a) => a !== null);
+
   // Notify parent when readiness changes. "Ready" means the table is active
   // (file is loaded and has a valid prompt key mapped).
   const isReady = !!fileResult && hasPromptKey;
@@ -542,7 +577,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                         content={response.text}
                         title={`${modelName} response (dataset row ${row.sourceIndex})`}
                         onExpand={setExpandedCell}
-                        footer={<CellStats stats={response.stats} />}
+                        footer={<CellStats stats={response.stats} className="px-3 pb-2" />}
                       />
                     </td>
                   );
@@ -550,6 +585,32 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
               </tr>
             ))}
           </tbody>
+          {hasPrompts && anyAverages && (
+            <tfoot className="sticky bottom-0 z-10 bg-surface-sunken">
+              <tr>
+                <td className="border-l border-t border-b border-r border-base px-3 py-2 align-middle font-medium">
+                  Average
+                </td>
+                {models.map((m) => {
+                  const avg = averagesByModelId[m.id];
+                  return (
+                    <td
+                      key={m.id}
+                      className="border-t border-b border-r border-base px-3 py-2 align-middle"
+                    >
+                      {avg ? (
+                        <CellStats stats={avg} />
+                      ) : (
+                        <Text kind="body/regular/md" className="text-fg-subdued">
+                          —
+                        </Text>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            </tfoot>
+          )}
         </table>
       </div>
 
@@ -578,13 +639,18 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   );
 };
 
-/** Compact stats line — brand green, same look as the Chat tab's StatsBadge. */
-const CellStats: FC<{ stats: ResponseStats }> = ({ stats }) => {
+/**
+ * Compact stats line — brand green, same look as the Chat tab's StatsBadge.
+ * No padding by default; parents wrap with the padding that fits their slot
+ * (response cells add their own horizontal padding; the footer row's td
+ * already pads). Pass `className` to override.
+ */
+const CellStats: FC<{ stats: ResponseStats; className?: string }> = ({ stats, className }) => {
   const seconds = (stats.totalMs / 1000).toFixed(1);
   const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
   return (
     <div
-      className="px-3 pb-2 text-xs font-mono"
+      className={`text-xs font-mono ${className ?? ''}`}
       style={{ color: STATS_GREEN }}
     >
       {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
