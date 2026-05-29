@@ -23,6 +23,7 @@ from nemo_evaluator.sdk.utils import filter_aggregate_scores
 from nemo_evaluator_sdk.execution.job_poll import async_poll_until_terminal
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, AggregateFieldName, EvaluationResult, RowScore
 from nemo_platform_plugin.jobs.api_factory import BaseJob
+from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatusResponse
 from pydantic import BaseModel
 
@@ -99,19 +100,8 @@ def _extract_artifacts_tarball(payload: bytes, output_path: Path) -> Path:
     serializer. Validate every member before extraction so a malformed archive
     cannot write outside the selected destination or create links/special files.
     """
-    output_path.mkdir(parents=True, exist_ok=True)
-    base_path = output_path.resolve()
     with tarfile.open(fileobj=BytesIO(payload), mode="r:*") as tar:
-        for member in tar.getmembers():
-            target_path = (output_path / member.name).resolve()
-            if target_path != base_path and base_path not in target_path.parents:
-                raise ValueError(f"Refusing to extract unsafe tar member: {member.name}")
-            if member.issym() or member.islnk():
-                raise ValueError(f"Refusing to extract tar link member: {member.name}")
-            if not (member.isfile() or member.isdir()):
-                raise ValueError(f"Refusing to extract special tar member: {member.name}")
-        tar.extractall(path=output_path)
-
+        safe_extract_tar(tar, output_path, error_cls=ValueError)
     return output_path
 
 

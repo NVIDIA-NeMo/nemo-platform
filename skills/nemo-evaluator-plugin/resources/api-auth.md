@@ -8,6 +8,6 @@ Use the correct `model.api_key_secret` (if `model` is used) for the evaluator ex
 The remote job runtime cannot read local environment variables. In remote mode, if a model sets `api_key_secret`, create or verify the platform secret before submitting the job:
 
 ```bash
-nemo secrets create nvidia-api-key --value "$NVIDIA_API_KEY"
+printf '%s' "$NVIDIA_API_KEY" | nemo secrets create nvidia-api-key --from-file -
 nemo secrets list
 ```

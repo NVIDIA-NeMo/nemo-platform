@@ -259,6 +259,28 @@ class TestProxyByDeploymentName:
         assert resp.status_code == 503
         assert "not running" in resp.json()["detail"].lower()
 
+    @pytest.mark.parametrize(
+        "malicious_path",
+        [
+            "%2F%2Fevil.example.com/x",
+            "http:%2F%2Fevil.example.com/x",
+        ],
+    )
+    def test_cross_origin_trailing_uri_rejected(
+        self, client: TestClient, mock_entity_client: AsyncMock, malicious_path: str
+    ) -> None:
+        """SSRF guard rejects trailing_uri values that resolve to a different host."""
+        dep = _make_deployment(status="running", endpoint="http://localhost:9001")
+        mock_entity_client.get = AsyncMock(return_value=dep)
+
+        resp = client.post(
+            f"/apis/agents/v2/workspaces/default/deployments/calc-dep/-/{malicious_path}",
+            json={},
+        )
+
+        assert resp.status_code == 400
+        assert "invalid proxy target" in resp.json()["detail"].lower()
+
 
 # ---------------------------------------------------------------------------
 # Proxy by agent name — endpoint resolution

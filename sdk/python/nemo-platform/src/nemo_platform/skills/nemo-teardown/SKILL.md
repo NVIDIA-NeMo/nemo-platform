@@ -121,7 +121,7 @@ case "$DATA_DIR" in
 esac
 # Verify the platform is fully down BEFORE wiping; otherwise the running process keeps
 # its file descriptors open against the old inode (the "macOS unlinked-inode gotcha"
-# in SETUP.md) and the next run sees ghost state.
+# in skills/nemo-setup/SKILL.md) and the next run sees ghost state.
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && { echo "PLATFORM_STILL_RUNNING — abort before wipe"; exit 1; }
 rm -rf "$DATA_DIR"
 ```

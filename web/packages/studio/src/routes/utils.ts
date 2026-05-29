@@ -336,14 +336,14 @@ export const getModelCompareRoute = (workspace: string) => {
 export const getFilesetDetailsRoute = (
   workspace: string,
   filesetId: string,
-  datasetFolder?: string,
+  filesetFolder?: string,
   resetPage?: boolean
 ) => {
   const searchParams = new URLSearchParams(window.location.search);
-  if (datasetFolder) {
-    searchParams.set('datasetFolder', datasetFolder);
+  if (filesetFolder) {
+    searchParams.set(QUERY_PARAMETERS.filesetFolder, filesetFolder);
   } else {
-    searchParams.delete('datasetFolder');
+    searchParams.delete(QUERY_PARAMETERS.filesetFolder);
   }
   const baseUrl = generatePath(ROUTES.workspace.filesetDetails, {
     workspace,

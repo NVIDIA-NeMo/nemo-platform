@@ -36,6 +36,7 @@ from nemo_agents_plugin.improvement.runners.base import Runner
 from nemo_agents_plugin.improvement.runners.detect import detect_runner
 from nemo_agents_plugin.improvement.traces.claude_code_parser import ClaudeCodeTraceParser
 from nemo_agents_plugin.improvement.worktree import create_worktree, remove_worktree
+from nemo_platform_plugin.git_url import git_remote_host
 from rich.console import Console
 
 # ``discover_evals`` and ``parse_batch_results`` are imported directly because
@@ -532,10 +533,12 @@ async def _detect_forge(worktree_path: Path) -> str | None:
         stderr=asyncio.subprocess.PIPE,
     )
     out, _ = await proc.communicate()
-    url = out.decode().strip().lower()
-    if "github.com" in url:
+    host = git_remote_host(out.decode().strip())
+    if host == "github.com":
         return "github"
-    if "gitlab" in url:
+    # Match gitlab.com, self-hosted instances (gitlab.example.com), and
+    # variants whose first label contains 'gitlab' (gitlab-master.nvidia.com).
+    if host == "gitlab.com" or host.startswith("gitlab.") or "gitlab" in host.split(".", 1)[0]:
         return "gitlab"
     return None
 

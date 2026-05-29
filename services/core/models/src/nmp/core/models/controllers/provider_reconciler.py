@@ -836,8 +836,9 @@ class ModelProviderReconciler:
                 served.append(ServedModelMapping(model_entity_id=model_entity_id, served_model_name=mid))
                 continue
 
-            # Prompt-tuned: parent is null, root equals base, id != base
-            if parent is None and root == base_id and mid != base_id:
+            # Prompt-tuned: parent is null, root equals base, id != base (the
+            # ``mid == base_id`` case was already handled by the base branch above).
+            if parent is None and root == base_id:
                 model_entity_id = f"{workspace}/{mid.removeprefix(f'{workspace}/')}"
                 served.append(ServedModelMapping(model_entity_id=model_entity_id, served_model_name=mid))
                 continue

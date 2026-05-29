@@ -1,6 +1,6 @@
 # nemo-platform
 
-Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[services]`, this is the wheel they get.
+Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[all]`, this is the wheel they get.
 
 The wheel bundles the SDK, shared runtime packages, default first-party plugins, and services directly from source via hatch force-include. As sub-packages are published independently to PyPI, they'll be removed from the bundle and added as normal dependencies instead.
 
@@ -53,7 +53,7 @@ A dependency with extras and a marker, such as `nemo-platform-sdk[aiohttp] ; pyt
 
 ### `make vendor` (vendor tool)
 
-The vendor tool resets generated wrapper metadata before rebuilding it, so stale generated extras, scripts, and entry-point tables do not persist across runs. Generated sections are annotated with `# Generated from [tool.bundle-package]; do not edit by hand.`.
+The vendor tool refreshes auto-generated metadata in workspace pyprojects without disturbing hand-written content. In `[project.optional-dependencies]`, each vendor-owned extra is preceded by a `# Generated from [tool.bundle-package]; do not edit by hand.` marker comment — that marker is the load-bearing signal that distinguishes vendor-owned extras (refreshed or removed by `make vendor`) from hand-written extras (preserved untouched). Generated `[project.scripts]` and `[project.entry-points.*]` tables get a `# Generated from [tool.bundle-package]; do not edit this table by hand.` header marker on the table itself, since those tables are wholly owned by the vendor flow.
 
 The `_process_bundle_packages()` phase in `vendor_package.py` reads `[tool.bundle-package]` from every workspace package that has one. For each entry it:
 
@@ -70,6 +70,8 @@ For the wrapper specifically, `make vendor` also creates aggregate extras from `
 - `core-service` references all core service `*-service` extras.
 - `plugins` references all bundled first-party plugin extras whose source lives under `plugins/*/src`.
 - `services` references `core-service`, all non-core service `*-service` extras, and `plugins`.
+
+Hand-written extras (e.g. the wrapper's `all` alias, or a plugin's `test` group) live directly in the pyproject's `[project.optional-dependencies]` table without the generator marker. The vendor tool will preserve them on every run; only extras with the `# Generated from [tool.bundle-package]; do not edit by hand.` marker are touched by `make vendor`.
 
 ## Dependency groups
 
@@ -98,10 +100,11 @@ Service and plugin dependencies are behind optional extras. They are composed vi
 - `core-service` — aggregates all core service `-service` extras
 - `plugins` — aggregates default first-party plugin extras
 - `services` — aggregates `core-service`, all non-core service `-service` extras, and `plugins`
+- `all` — hand-written alias for the full packaged install; expands to `services`. The recommended user-facing extra (`pip install nemo-platform[all]`).
 
 The `services` extra includes `plugins` because Python entry points are distribution-level metadata and are not conditional on extras. If the wrapper publishes plugin `nemo.services` entry points, installing service discovery dependencies must also install the plugin dependencies needed by those entry points.
 
-The `[project.optional-dependencies]` section is **auto-generated** by `make vendor`. Do not edit it by hand. The wheel rewrite step assumes those generated `deps_group` extras already exist before the build starts.
+Vendor-owned extras (those generated from `[tool.bundle-package]`) are marked with a `# Generated from [tool.bundle-package]; do not edit by hand.` comment immediately above the key, and `make vendor` will overwrite them on every run. Extras without the marker are hand-written — add new ones (like `all`) directly in the pyproject and they will be left alone. The wheel rewrite step assumes the generated `deps_group` extras already exist before the build starts.
 
 The wrapper's generated `[project.scripts]` currently re-exports only the SDK CLI entry points:
 
@@ -121,7 +124,7 @@ To publish a bundled package independently:
 2. Add it as a normal dependency in `[project.dependencies]` (or in the appropriate optional group)
 3. Run `make vendor` to regenerate the dependency groups
 
-The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[services]` continues to work.
+The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[all]` (and `[services]`) continues to work.
 
 ## Other vendoring (`make vendor`)
 

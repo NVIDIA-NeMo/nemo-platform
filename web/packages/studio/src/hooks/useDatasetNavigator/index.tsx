@@ -11,7 +11,7 @@ import { useMemo } from 'react';
 
 export function useDatasetNavigator(
   filesList: FilesetFileOutput[] | undefined,
-  datasetFolder: string
+  currentFolder: string
 ) {
   const fileTree = useMemo(() => {
     if (!filesList) return mapFileListToFileTree([]);
@@ -19,8 +19,8 @@ export function useDatasetNavigator(
     return mapFileListToFileTree(entries);
   }, [filesList]);
   const { entries } = useMemo(
-    () => getFoldersFilesAtPath(fileTree, datasetFolder),
-    [fileTree, datasetFolder]
+    () => getFoldersFilesAtPath(fileTree, currentFolder),
+    [fileTree, currentFolder]
   );
   return entries;
 }

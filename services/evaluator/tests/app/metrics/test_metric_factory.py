@@ -11,6 +11,7 @@ from nemo_evaluator_sdk.metrics.llm_judge import (
     ModelFormat,
     RangeScore,
     SupportedJobTypes,
+    default_judge_prompt_template_chat,
 )
 from nmp.evaluator.app.metrics.metric import metric_runtime_kwargs, new_metric
 from pytest_mock import MockerFixture
@@ -24,12 +25,23 @@ def _judge_metric_config() -> LLMJudgeMetric:
 
 
 class TestMetricRuntimeKwargs:
-    def test_llm_judge_drops_default_prompt_template_when_not_explicitly_set(self):
+    def test_llm_judge_omits_unset_prompt_template(self):
         params = _judge_metric_config()
 
         kwargs = metric_runtime_kwargs(params, LLMJudgeMetric)
 
         assert "prompt_template" not in kwargs
+
+    def test_llm_judge_preserves_explicit_default_shaped_prompt_template(self):
+        params = LLMJudgeMetric(
+            model=Model(url="https://judge.example.test/v1/chat/completions", name="judge", format=ModelFormat.OPEN_AI),
+            scores=[RangeScore(name="quality", minimum=1, maximum=5, parser=JSONScoreParser(json_path="quality"))],
+            prompt_template=default_judge_prompt_template_chat(),
+        )
+
+        kwargs = metric_runtime_kwargs(params, LLMJudgeMetric)
+
+        assert kwargs["prompt_template"] == default_judge_prompt_template_chat()
 
 
 class TestNewMetric:

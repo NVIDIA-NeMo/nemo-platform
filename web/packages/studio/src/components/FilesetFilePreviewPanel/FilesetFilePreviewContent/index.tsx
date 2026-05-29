@@ -5,18 +5,18 @@ import { FileContentPreview } from '@nemo/common/src/components/FileContentPrevi
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { DatasetFilePreviewHeader } from '@studio/components/DatasetFilePreviewPanel/components/DatasetFilePreviewHeader';
+import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { useMemo, type FC } from 'react';
 
-export interface DatasetFilePreviewContentProps {
-  // Dataset context
-  datasetWorkspace: string;
-  datasetName: string;
+export interface FilesetFilePreviewContentProps {
+  // Fileset context
+  workspace: string;
+  filesetName: string;
   filePath: string;
 
   // Navigation callbacks
-  onDatasetClick?: () => void;
+  onFilesetClick?: () => void;
   onFolderClick?: (folderPath: string) => void;
 
   // File actions
@@ -41,17 +41,17 @@ export interface DatasetFilePreviewContentProps {
 }
 
 /**
- * Content-only variant of the dataset file preview:
+ * Content-only variant of the fileset file preview:
  * breadcrumbs + file actions header + read-only file viewer.
  *
- * No panel chrome. Used inline from FilesTab on the dataset detail page,
- * and composed by `DatasetFilePreviewPanel` (the side-panel wrapper).
+ * No panel chrome. Used inline from the dataset / model detail Files tabs,
+ * and composed by `FilesetFilePreviewPanel` (the side-panel wrapper).
  */
-export const DatasetFilePreviewContent: FC<DatasetFilePreviewContentProps> = ({
-  datasetWorkspace,
-  datasetName,
+export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
+  workspace,
+  filesetName,
   filePath,
-  onDatasetClick,
+  onFilesetClick,
   onFolderClick,
   onDeleteSuccess,
   onRenameSuccess,
@@ -67,18 +67,15 @@ export const DatasetFilePreviewContent: FC<DatasetFilePreviewContentProps> = ({
     isLoading: internalLoading,
     error: internalError,
   } = useDatasetFileContent({
-    workspace: datasetWorkspace,
-    name: datasetName,
+    workspace,
+    name: filesetName,
     path: filePath,
     enabled: !externalContent && enabled,
   });
 
-  const { data: allFilesResponse } = useFilesListFilesetFiles(
-    datasetWorkspace,
-    datasetName,
-    undefined,
-    { query: { enabled: !externalFile && enabled } }
-  );
+  const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {
+    query: { enabled: !externalFile && enabled },
+  });
   const allFiles = allFilesResponse?.data;
 
   const fileContent = externalContent ?? internalContent;
@@ -105,12 +102,12 @@ export const DatasetFilePreviewContent: FC<DatasetFilePreviewContentProps> = ({
 
   return (
     <Stack gap="density-sm" className="h-full min-h-0">
-      <DatasetFilePreviewHeader
-        datasetWorkspace={datasetWorkspace}
-        datasetName={datasetName}
+      <FilesetFilePreviewHeader
+        workspace={workspace}
+        filesetName={filesetName}
         filePath={filePath}
         file={file}
-        onDatasetClick={onDatasetClick}
+        onFilesetClick={onFilesetClick}
         onFolderClick={onFolderClick}
         onDeleteSuccess={onDeleteSuccess}
         onRenameSuccess={onRenameSuccess}

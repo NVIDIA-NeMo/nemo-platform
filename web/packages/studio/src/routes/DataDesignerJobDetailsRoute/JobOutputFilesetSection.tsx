@@ -16,7 +16,7 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput } from '@nemo/sdk/generated/platform/schema';
 import { Anchor, Banner, Card, Stack, Text } from '@nvidia/foundations-react-core';
-import { DatasetFilePreviewPanel } from '@studio/components/DatasetFilePreviewPanel';
+import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { getFilesetDetailsRoute } from '@studio/routes/utils';
 import { getHumanReadableFileSize } from '@studio/util/files';
@@ -312,15 +312,15 @@ export const JobOutputFilesetSection: FC<JobOutputFilesetSectionProps> = ({
         </Stack>
       </Card>
 
-      <DatasetFilePreviewPanel
+      <FilesetFilePreviewPanel
         open={previewFile != null}
         onCloseClick={handlePreviewClose}
         onOutsideClick={handlePreviewClose}
-        datasetWorkspace={filesetWorkspace}
-        datasetName={filesetName}
+        workspace={filesetWorkspace}
+        filesetName={filesetName}
         filePath={previewFile?.path ?? ''}
         file={previewFile ?? undefined}
-        onDatasetClick={handleDatasetClickFromPreview}
+        onFilesetClick={handleDatasetClickFromPreview}
         onFolderClick={handleFolderClickFromPreview}
         onDeleteSuccess={handleFileDeleteSuccess}
         onRenameSuccess={handleFileRenameSuccess}

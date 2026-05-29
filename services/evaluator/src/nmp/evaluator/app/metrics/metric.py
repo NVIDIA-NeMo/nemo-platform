@@ -8,6 +8,7 @@ from nemo_evaluator_sdk import (
     ExactMatchMetric,
     F1Metric,
     LLMJudgeMetric,
+    Model,
     NumberCheckMetric,
     ROUGEMetric,
     StringCheckMetric,
@@ -77,13 +78,8 @@ def metric_runtime_kwargs(metric_params: MetricParams, metric_cls: type[MetricBa
         field_name: value for field_name, value in config_dict.items() if field_name in metric_cls.model_fields
     }
 
-    # LLM judge prompt defaults depend on online vs offline execution. The
-    # service value model eagerly materializes the default prompt template, so
-    # drop it when the caller did not set it explicitly and let the runtime
-    # metric recompute the correct default for the selected job type.
-    if metric_params.type == MetricType.LLM_JUDGE:
-        if "prompt_template" not in metric_params.model_fields_set:
-            runtime_kwargs.pop("prompt_template", None)
+    if metric_params.type == MetricType.LLM_JUDGE and "prompt_template" not in metric_params.model_fields_set:
+        runtime_kwargs.pop("prompt_template", None)
 
     return runtime_kwargs
 
@@ -132,7 +128,7 @@ async def new_metric(
 
     metric = cast(Metric, metric_model)
 
-    if isinstance(metric, LLMJudgeMetric):
+    if isinstance(metric, LLMJudgeMetric) and isinstance(metric.model, Model):
         custom_headers = app_inference.get_platform_headers(metric.model.url)
         metric.model = metric.model.with_default_headers(headers=custom_headers)
 

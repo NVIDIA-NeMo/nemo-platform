@@ -33,6 +33,11 @@ dependencies = [
 ]
 license = "Apache-2.0"
 
+[project.urls]
+Homepage = "https://github.com/NVIDIA-NeMo/nemo-platform"
+Source = "https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin"
+Documentation = "https://github.com/NVIDIA-NeMo/nemo-platform/tree/main/packages/nemo_platform_plugin/src/nemo_platform_plugin/docs"
+
 [project.optional-dependencies]
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-platform-sdk = [

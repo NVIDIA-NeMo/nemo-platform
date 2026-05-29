@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { DatasetFilePreviewContent } from '@studio/components/DatasetFilePreviewPanel/DatasetFilePreviewContent';
+import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { fireEvent, render, screen } from '@testing-library/react';
 
@@ -10,16 +10,16 @@ vi.mock('@studio/providers/workers/useWorkers', () => ({
 }));
 
 const baseProps = {
-  datasetWorkspace: 'default',
-  datasetName: 'test-dataset',
+  workspace: 'default',
+  filesetName: 'test-dataset',
   filePath: 'folder/data.json',
 };
 
-describe('DatasetFilePreviewContent', () => {
+describe('FilesetFilePreviewContent', () => {
   it('renders breadcrumbs + editor in the inline (default) mode', async () => {
     render(
       <TestProviders>
-        <DatasetFilePreviewContent
+        <FilesetFilePreviewContent
           {...baseProps}
           fileContent='{"key": "value"}'
           isLoading={false}
@@ -27,7 +27,7 @@ describe('DatasetFilePreviewContent', () => {
         />
       </TestProviders>
     );
-    // Breadcrumbs render with dataset name, folder, and file segments.
+    // Breadcrumbs render with fileset name, folder, and file segments.
     expect(screen.getByText('test-dataset')).toBeInTheDocument();
     expect(screen.getByText('folder')).toBeInTheDocument();
     expect(screen.getByText('data.json')).toBeInTheDocument();
@@ -38,7 +38,7 @@ describe('DatasetFilePreviewContent', () => {
   it('hides the inline header when hideHeader is true (for SidePanel-wrapper hosts)', () => {
     render(
       <TestProviders>
-        <DatasetFilePreviewContent
+        <FilesetFilePreviewContent
           {...baseProps}
           fileContent="content"
           isLoading={false}
@@ -46,7 +46,7 @@ describe('DatasetFilePreviewContent', () => {
         />
       </TestProviders>
     );
-    // Header content does NOT render: no dataset name, no folder, no filename anywhere.
+    // Header content does NOT render: no fileset name, no folder, no filename anywhere.
     expect(screen.queryByText('test-dataset')).toBeNull();
     expect(screen.queryByText('folder')).toBeNull();
     expect(screen.queryByText('data.json')).toBeNull();
@@ -55,7 +55,7 @@ describe('DatasetFilePreviewContent', () => {
   it('shows the loading state', () => {
     render(
       <TestProviders>
-        <DatasetFilePreviewContent {...baseProps} isLoading />
+        <FilesetFilePreviewContent {...baseProps} isLoading />
       </TestProviders>
     );
     // Loading + error UI now lives inside FileContentPreview (the spinner has aria-label="Loading...").
@@ -65,7 +65,7 @@ describe('DatasetFilePreviewContent', () => {
   it('shows the error state', () => {
     render(
       <TestProviders>
-        <DatasetFilePreviewContent {...baseProps} isLoading={false} error={new Error('boom')} />
+        <FilesetFilePreviewContent {...baseProps} isLoading={false} error={new Error('boom')} />
       </TestProviders>
     );
     expect(screen.getByText('Error: boom')).toBeInTheDocument();
@@ -75,7 +75,7 @@ describe('DatasetFilePreviewContent', () => {
     const onFolderClick = vi.fn();
     render(
       <TestProviders>
-        <DatasetFilePreviewContent
+        <FilesetFilePreviewContent
           {...baseProps}
           filePath="folder1/folder2/file.txt"
           fileContent=""
@@ -88,19 +88,19 @@ describe('DatasetFilePreviewContent', () => {
     expect(onFolderClick).toHaveBeenCalledWith('folder1/folder2');
   });
 
-  it('invokes onDatasetClick on dataset breadcrumb click', () => {
-    const onDatasetClick = vi.fn();
+  it('invokes onFilesetClick on fileset breadcrumb click', () => {
+    const onFilesetClick = vi.fn();
     render(
       <TestProviders>
-        <DatasetFilePreviewContent
+        <FilesetFilePreviewContent
           {...baseProps}
           fileContent=""
           isLoading={false}
-          onDatasetClick={onDatasetClick}
+          onFilesetClick={onFilesetClick}
         />
       </TestProviders>
     );
     fireEvent.click(screen.getByText('test-dataset'));
-    expect(onDatasetClick).toHaveBeenCalledTimes(1);
+    expect(onFilesetClick).toHaveBeenCalledTimes(1);
   });
 });

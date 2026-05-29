@@ -107,9 +107,8 @@ class _NoOutputsMetric(_ScriptedMetric):
 class _NoOpProgressReporter:
     """Progress reporter stub for structural protocol checks."""
 
-    def increment_work(self, increment: int = 1, /) -> None:
+    def increment_work(self, _increment: int = 1, /) -> None:
         """Accept progress increments without side effects."""
-        del increment
 
 
 class _CorpusMetric(_ScriptedMetric):

@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field, SecretStr, field_serializer, model_valida
 from pydantic.functional_serializers import SerializationInfo
 from typing_extensions import Self
 
+from ._registry import image_registry_host
 from .gpu_config import parse_comma_separated_non_negative_integers
 
 InferenceProviderType = Literal["nvidia-build", "host-gpu"]
@@ -265,18 +266,12 @@ class QuickstartConfig(BaseModel):
 
     def is_ngc_registry(self) -> bool:
         """Check if the configured image uses NGC registry."""
-        return "nvcr.io" in self.image.lower()
+        # Strip explicit port (e.g. "nvcr.io:443") before matching.
+        return self.get_registry_host().lower().split(":", 1)[0] == "nvcr.io"
 
     def get_registry_host(self) -> str:
         """Extract registry host from image name."""
-        if not self.image or "/" not in self.image:
-            return ""
-        parts = self.image.split("/")
-        if len(parts) >= 3:
-            return parts[0]
-        if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-            return parts[0]
-        return ""
+        return image_registry_host(self.image)
 
     def has_registry_credentials_for_image(self) -> bool:
         """Return True when stored registry credentials match the configured image host."""

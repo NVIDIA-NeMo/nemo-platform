@@ -84,7 +84,7 @@ nemo jobs results download row-scores --job <job-name> --output-file row-scores.
 Use the mounted platform SDK accessor, `client.evaluator`:
 
 ```python
-from nemo_evaluator_sdk import EvaluationConfig, ExactMatchMetric
+from nemo_evaluator_sdk import ExactMatchMetric, RunConfig
 from nemo_platform import NeMoPlatform
 
 
@@ -103,13 +103,13 @@ dataset = [
 local_result = client.evaluator.run(
     metric=metric,
     dataset=dataset,
-    config=EvaluationConfig(parallelism=2),
+    config=RunConfig(parallelism=2),
 )
 
 job = client.evaluator.submit(
     metric=metric,
     dataset=dataset,
-    config=EvaluationConfig(parallelism=2),
+    config=RunConfig(parallelism=2),
 )
 job.wait_until_done()
 submitted_result = job.get_result()

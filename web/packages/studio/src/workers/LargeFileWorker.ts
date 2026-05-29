@@ -20,6 +20,10 @@ export interface LargeFileWorkerMessage {
  * not whatever URL the caller passes in.
  */
 self.onmessage = async function (e: MessageEvent<LargeFileWorkerMessage>) {
+  if (e.origin !== '' && e.origin !== self.location.origin) {
+    return;
+  }
+
   const { dataset, workspace, action, path, accessToken } = e.data;
 
   if (accessToken) {
