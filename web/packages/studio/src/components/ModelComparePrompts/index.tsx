@@ -157,6 +157,13 @@ interface ModelComparePromptsProps {
   onSetModel: (id: number, modelURN: string | null) => void;
   /** Called when the view's readiness to add models changes (i.e. file is loaded with a valid prompt key) */
   onReadyChange?: (ready: boolean) => void;
+  /**
+   * When set, default-select the matching `SAMPLE_DATASETS` entry on mount so
+   * the user lands on the agent's golden-prompts dataset without a click.
+   * Matching is by id equality (e.g. agent name "calculator-agent" matches the
+   * "calculator-agent" sample). Other samples remain pickable.
+   */
+  agentName?: string | null;
 }
 
 export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
@@ -167,6 +174,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   onRemoveModel,
   onSetModel,
   onReadyChange,
+  agentName,
 }) => {
   const [fileResult, setFileResult] = useState<DatasetInputFileResult | null>(null);
   const [promptRows, setPromptRows] = useState<PromptRow[]>([]);
@@ -320,6 +328,26 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     runIdRef.current += 1;
     setPromptRows(buildPromptRowsFromParsedRows(fileResult, sampleSize, sampleMethod));
   }, [fileResult, sampleSize, sampleMethod]);
+
+  // Auto-select the agent's matching sample when the user lands on Run Prompts
+  // via the agent overlay. Tracks the last-auto-selected agent in a ref so we
+  // don't re-fire after the user clears the picker or picks a different file.
+  const autoSelectedAgentRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!agentName) {
+      autoSelectedAgentRef.current = null;
+      return;
+    }
+    if (autoSelectedAgentRef.current === agentName) return;
+    const match = SAMPLE_DATASETS.find((s) => s.id === agentName);
+    if (!match) return;
+    autoSelectedAgentRef.current = agentName;
+    setPickerValue(match.id);
+    setUploadedFileName(null);
+    setParseError(null);
+    handleFileChange(match.build());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [agentName]);
 
   /**
    * Single picker handler. Three branches:

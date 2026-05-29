@@ -81,7 +81,7 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1 gap-2 overflow-x-auto px-2 pt-4 pb-2">
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-6 pt-2 pb-2">
         {panels.map((panel) => (
           <ModelChatPanel
             key={panel.id}

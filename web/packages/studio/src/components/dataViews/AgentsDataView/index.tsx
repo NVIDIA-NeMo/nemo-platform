@@ -28,9 +28,11 @@ import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationMo
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { ROUTES } from '@studio/constants/routes';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses } from 'lucide-react';
 import { ComponentProps, FC, useMemo, useState } from 'react';
+import { generatePath, useNavigate } from 'react-router-dom';
 
 export type { Agent, AgentDeployment };
 
@@ -92,6 +94,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   onCreateDeployment,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const toast = useToast();
   const [deleteState, setDeleteState] = useState<DeleteState>(null);
@@ -241,6 +244,13 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         {
           children: 'Deploy',
           onSelect: () => onCreateDeployment?.(row.name),
+        },
+        {
+          children: 'Test models',
+          onSelect: () => {
+            const target = generatePath(ROUTES.workspace.modelCompare, { workspace });
+            navigate(`${target}?agent=${encodeURIComponent(row.name)}`);
+          },
         },
         { kind: 'divider' as const },
         {
