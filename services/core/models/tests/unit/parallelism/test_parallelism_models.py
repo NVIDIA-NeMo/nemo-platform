@@ -383,8 +383,8 @@ def test_precision_in_model_config_serialization():
 def test_precision_required():
     """Test that precision field is required and must be provided."""
     # Test that precision is required
-    try:
-        config = ModelSpec(
+    with pytest.raises(Exception):  # noqa: B017 - any validation error is acceptable here
+        ModelSpec(
             checkpoint_model_name="test-model",
             family="test",
             num_layers=32,
@@ -398,10 +398,6 @@ def test_precision_required():
             base_num_parameters=7_000_000_000,
             # precision not provided - should fail
         )
-        assert False, "Expected validation error for missing precision field"
-    except Exception:
-        # Expected - precision is required
-        pass
 
     # Test that precision can be provided
     config = ModelSpec(

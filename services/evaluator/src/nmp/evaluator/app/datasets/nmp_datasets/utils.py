@@ -52,7 +52,6 @@ async def to_dataset(dataset: str | URN | Dataset | None) -> Dataset:
                 return Dataset.model_validate(await response.json())
     else:
         raise ValueError(f"Unsupported dataset type: {type(dataset)}")
-    return dataset
 
 
 def extract_path(dataset_files_url: str) -> str:

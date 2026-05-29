@@ -887,8 +887,7 @@ def fix_schema(
 
     except Exception as e:
         print_verbose(f"Error: {str(e)}", style="bold red")
-        raise e
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def rename_schema_references(spec: dict, old_name: str, new_name: str) -> None:
