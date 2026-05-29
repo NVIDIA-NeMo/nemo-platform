@@ -5,6 +5,7 @@
 
 from fastapi import APIRouter
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -12,7 +13,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobStep,
     job_route_factory,
 )
-from nmp.common.entities import EntityClient
 from nmp.common.jobs.image import get_qualified_image
 from nmp.hello_world.api.v2.jobs.schemas import HelloWorldJobConfig
 
@@ -65,8 +65,7 @@ jobs_router = job_route_factory(
     service_name="hello-world",
     job_type="HelloWorld",
     job_input=HelloWorldJobConfig,
-    # compiler pins the nmp.common EntityClient subclass; the factory protocol wants the base.
-    platform_job_config_compiler=compile_hello_world_job,  # ty: ignore[invalid-argument-type]
+    platform_job_config_compiler=compile_hello_world_job,
 )
 
 # Create a router for jobs (prefix will be added at service level)

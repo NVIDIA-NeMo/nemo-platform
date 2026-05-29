@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.routing import APIRoute
 from nemo_evaluator_sdk.values import RowScore
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     FileResultSerializer,
     PlatformJobResultRoute,
@@ -20,7 +21,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nmp.common.api.common import DeleteResponse, Page, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient
+from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.common.service.dependencies import get_entity_client, get_sdk_client
 from nmp.evaluator.api.v2.benchmarks.manager import (
     BenchmarkCreationError,
@@ -109,8 +110,7 @@ _jobs_router = job_route_factory(
     service_name="evaluator-benchmarks",
     job_type="BenchmarkEvaluation",
     job_input=BenchmarkJob,
-    # compiler pins the nmp.common EntityClient subclass; the factory protocol wants the base.
-    platform_job_config_compiler=platform_job_config_compiler,  # ty: ignore[invalid-argument-type]
+    platform_job_config_compiler=platform_job_config_compiler,
     job_result_routes=[
         PlatformJobResultRoute(
             name=JOB_RESULTS_AGGREGATE_SCORES,
