@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from nemo_evaluator_sdk.execution.scoring import build_metric_input
+from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.metrics.protocol import CorpusMetric, Metric
 from nemo_evaluator_sdk.values import MetricInput, MetricResult
 

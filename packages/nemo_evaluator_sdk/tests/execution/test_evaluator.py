@@ -18,6 +18,7 @@ from nemo_evaluator_sdk.execution.config import (
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.values import FieldMapping
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
@@ -40,9 +41,27 @@ class _CustomMetric:
         return [MetricOutputSpec.continuous_score("string-check")]
 
 
+class _CandidateOutputMetric:
+    @property
+    def type(self) -> str:
+        return "candidate-output-check"
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        score = 1.0 if input.candidate.output_text == input.row.data["reference"] else 0.0
+        return MetricResult(outputs=[MetricOutput(name="match", value=score)])
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("match")]
+
+
 _DATASET = [
     {"expected": "blue", "model_output": "Blue"},
     {"expected": "Jupiter", "model_output": "Saturn"},
+]
+
+_MAPPED_DATASET = [
+    {"expected": "blue", "prediction": "blue"},
+    {"expected": "Jupiter", "prediction": "Saturn"},
 ]
 
 
@@ -212,6 +231,21 @@ class TestEvaluator:
         assert request.aggregate_fields == ("mean",)
 
     @pytest.mark.asyncio
+    async def test_run_preserves_field_mapping_on_request(self):
+        backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
+        evaluator = Evaluator(client=backend)
+        field_mapping = FieldMapping(output="prediction", reference="expected")
+
+        await evaluator.run(
+            metrics=_CustomMetric(),
+            dataset=_MAPPED_DATASET,
+            field_mapping=field_mapping,
+        )
+
+        request = backend.single_calls[0][1]
+        assert request.field_mapping == field_mapping
+
+    @pytest.mark.asyncio
     async def test_run_preserves_ignored_online_request_failure_params(self):
         backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
         evaluator = Evaluator(client=backend)
@@ -320,6 +354,32 @@ class TestEvaluator:
         assert result.aggregate_scores.scores[0].name == "string-check.string-check"
         assert result.row_scores[0].metrics["string-check"][0].value == 0.0
         assert result.row_scores[1].metrics["string-check"][0].value == 0.0
+
+    def test_run_sync_field_mapping_populates_offline_candidate_output(self):
+        evaluator = Evaluator()
+
+        result = evaluator.run_sync(
+            metrics=_CandidateOutputMetric(),
+            dataset=_MAPPED_DATASET,
+            field_mapping=FieldMapping(output="prediction", reference="expected"),
+        )
+
+        assert result.aggregate_scores.scores[0].mean == 0.5
+        assert result.row_scores[0].item["output"] == "blue"
+        assert result.row_scores[0].sample["output_text"] == "blue"
+        assert result.row_scores[0].metrics["candidate-output-check"][0].value == 1.0
+
+    def test_run_sync_field_mapping_populates_benchmark_offline_candidate_output(self):
+        evaluator = Evaluator()
+
+        result = evaluator.run_sync(
+            metrics=[ExactMatchMetric(reference="{{reference}}")],
+            dataset=_MAPPED_DATASET,
+            field_mapping=FieldMapping(output="prediction", reference="expected"),
+        )
+
+        assert result.aggregate_scores.scores[0].mean == 0.5
+        assert result.row_scores[0].sample["output_text"] == "blue"
 
     @pytest.mark.asyncio
     async def test_run_uses_sync_backend_adapter_thread_bridge(self, mocker: MockerFixture):

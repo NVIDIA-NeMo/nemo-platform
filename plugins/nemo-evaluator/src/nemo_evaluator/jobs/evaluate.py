@@ -22,6 +22,7 @@ from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_evaluator_sdk.values import (
     Agent,
+    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -76,6 +77,9 @@ class EvaluateSpec(BaseModel):
     target: TargetSpec | None = Field(default=None, description="Optional model or agent target for online evaluation.")
     prompt_template: str | dict[str, Any] | None = Field(
         default=None, description="Optional prompt template for online target generation."
+    )
+    field_mapping: FieldMapping | None = Field(
+        default=None, description="Optional mapping from canonical evaluator fields to dataset columns."
     )
 
     @model_validator(mode="after")
@@ -189,6 +193,8 @@ class EvaluateJob(NemoJob):
             "target": spec.target,
             "prompt_template": spec.prompt_template,
         }
+        if spec.field_mapping is not None:
+            common_kwargs["field_mapping"] = spec.field_mapping
         runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
         result = evaluator.run_sync(metrics=runtime_metrics, **common_kwargs)
         result_files = self._write_result_files(result, ctx.storage.persistent)

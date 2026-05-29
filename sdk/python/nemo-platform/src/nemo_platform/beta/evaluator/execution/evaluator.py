@@ -15,6 +15,7 @@ import nemo_platform.beta.evaluator.inference as inference
 from nemo_platform.beta.evaluator.execution.metric_execution import run_sync
 from nemo_platform.beta.evaluator.metrics.protocol import Metric
 from nemo_platform.beta.evaluator.values.agents import Agent
+from nemo_platform.beta.evaluator.values.dataset_schemas import FieldMapping
 from nemo_platform.beta.evaluator.values.datasets import DatasetInput
 from nemo_platform.beta.evaluator.values.models import Model
 from nemo_platform.beta.evaluator.values.multi_metric_results import BenchmarkEvaluationResult
@@ -143,6 +144,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -158,6 +160,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -172,6 +175,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -185,6 +189,7 @@ class Evaluator:
             config: Optional run-level execution configuration.
             model: Optional model used for online generation.
             dataset_glob_pattern: Optional file selector within the provided dataset path.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
             prompt_template: Optional prompt template to use for online model generation.
             aggregate_fields: Optional aggregate score fields to keep in the returned result.
             preprocess_hooks: Optional request preprocess hooks for online execution.
@@ -199,6 +204,7 @@ class Evaluator:
             params=normalize_params(config, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
             preprocess_hooks=tuple(preprocess_hooks) if preprocess_hooks is not None else None,
@@ -223,6 +229,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -238,6 +245,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -252,6 +260,7 @@ class Evaluator:
         config: RunConfig | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
@@ -265,6 +274,7 @@ class Evaluator:
             config: Optional run-level execution configuration.
             model: Optional model used for online generation.
             dataset_glob_pattern: Optional file selector within the provided dataset path.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
             prompt_template: Optional prompt template for online execution.
             aggregate_fields: Optional aggregate score fields to keep in the returned result.
             preprocess_hooks: Optional request preprocess hooks for online execution.
@@ -281,6 +291,7 @@ class Evaluator:
                 config=config,
                 target=target,
                 dataset_glob_pattern=dataset_glob_pattern,
+                field_mapping=field_mapping,
                 prompt_template=prompt_template,
                 aggregate_fields=aggregate_fields,
                 preprocess_hooks=preprocess_hooks,

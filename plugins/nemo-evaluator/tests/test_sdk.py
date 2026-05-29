@@ -35,7 +35,7 @@ from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBu
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric
-from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import FieldMapping, Model, RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -245,6 +245,22 @@ def test_build_evaluate_spec_excludes_aggregate_fields() -> None:
 
     assert spec.params is not None
     assert "aggregate_fields" not in spec.params.model_dump(mode="json")
+
+
+def test_build_evaluate_spec_preserves_field_mapping() -> None:
+    """Evaluator specs should preserve dataset field mappings for local and remote jobs."""
+    field_mapping = FieldMapping(output="prediction", reference="expected")
+
+    spec = _build_evaluate_spec(
+        metrics=ExactMatchMetric(reference="{{reference}}"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
+        request=EvaluationRequest(
+            dataset=[{"expected": "a", "prediction": "a"}],
+            field_mapping=field_mapping,
+        ),
+    )
+
+    assert spec.field_mapping == field_mapping
 
 
 def test_build_evaluate_spec_preserves_fileset_ref_dataset() -> None:
@@ -528,6 +544,7 @@ class TestEvaluatorSubmit:
             params=config,
             target=model,
             dataset_glob_pattern="*.jsonl",
+            field_mapping=None,
             prompt_template={"template": "Answer {{item.input}}"},
             metric_bundle_packager=packager,
         )
@@ -552,6 +569,7 @@ class TestEvaluatorSubmit:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             metric_bundle_packager=packager,
         )
@@ -593,6 +611,7 @@ class TestEvaluatorRun:
             params=RunConfig(parallelism=2),
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=("mean", "max"),
         )
@@ -615,6 +634,7 @@ class TestEvaluatorRun:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=None,
         )
@@ -638,6 +658,7 @@ class TestEvaluatorRun:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=("mean",),
         )
@@ -668,6 +689,7 @@ def test_sync_executor_evaluate_calls_sdk_directly_without_packaging(mocker: Moc
         config=RunConfig(parallelism=2),
         target=None,
         dataset_glob_pattern=None,
+        field_mapping=None,
         prompt_template=None,
     )
 
@@ -703,6 +725,7 @@ def test_sync_executor_evaluate_resolves_fileset_ref_before_calling_sdk(mocker: 
         config=RunConfig(),
         target=None,
         dataset_glob_pattern=None,
+        field_mapping=None,
         prompt_template=None,
     )
 
@@ -942,6 +965,7 @@ class TestAsyncEvaluatorSubmit:
             params=config,
             target=model,
             dataset_glob_pattern="*.jsonl",
+            field_mapping=None,
             prompt_template={"template": "Answer {{item.input}}"},
             metric_bundle_packager=packager,
         )
@@ -967,6 +991,7 @@ class TestAsyncEvaluatorSubmit:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             metric_bundle_packager=packager,
         )
@@ -1010,6 +1035,7 @@ class TestAsyncEvaluatorRun:
             params=RunConfig(parallelism=2),
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=("mean", "max"),
         )
@@ -1033,6 +1059,7 @@ class TestAsyncEvaluatorRun:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=None,
         )
@@ -1057,6 +1084,7 @@ class TestAsyncEvaluatorRun:
             params=None,
             target=None,
             dataset_glob_pattern=None,
+            field_mapping=None,
             prompt_template=None,
             aggregate_fields=("mean",),
         )
@@ -1113,6 +1141,7 @@ async def test_async_executor_evaluate_calls_sdk_directly_without_packaging(mock
         config=RunConfig(parallelism=2),
         target=None,
         dataset_glob_pattern=None,
+        field_mapping=None,
         prompt_template=None,
     )
 
