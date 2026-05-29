@@ -101,9 +101,7 @@ def get_job_outputs(
     job = sdk.evaluation.metric_jobs.retrieve(job_name, workspace=workspace)
     job_status = sdk.evaluation.metric_jobs.get_status(job_name, workspace=workspace)
 
-    # Verify file download is functional: exercise the generic results.download
-    # endpoint for each known result name (content is validated below via the
-    # typed accessors).
+    # Verify file download is functional
     results = sdk.evaluation.metric_jobs.results.list(job_name, workspace=workspace)
     for result in results.data:
         if result.name in (AGGREGATE_SCORES_RESULT, ROW_SCORES_RESULT):

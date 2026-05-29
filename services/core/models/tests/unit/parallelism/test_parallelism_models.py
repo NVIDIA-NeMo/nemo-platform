@@ -383,7 +383,7 @@ def test_precision_in_model_config_serialization():
 def test_precision_required():
     """Test that precision field is required and must be provided."""
     # Test that precision is required
-    with pytest.raises(Exception):  # noqa: B017 - any validation error is acceptable here
+    with pytest.raises(Exception):  # noqa: B017
         ModelSpec(
             checkpoint_model_name="test-model",
             family="test",

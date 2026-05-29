@@ -472,7 +472,7 @@ def detect_mamba_config_from_cfg(
     if has_ssm_config and "_h" in family:
         return detect_hybrid_mamba_via_introspection(cfg, n_layers, is_trusted)
 
-    # Priority 4: Pure Mamba model (has_ssm_config is guaranteed True here)
+    # Priority 4: Pure Mamba model
     return detect_pure_mamba_from_cfg(cfg, n_layers)
 
 
