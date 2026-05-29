@@ -246,6 +246,7 @@ def test_validate_json_output_reports_failures(tmp_path: Path) -> None:
         )
 
     # Pull JSON from the output, ignoring any leading non-JSON cruft.
+    assert result.exit_code == 1
     payload = json.loads(result.output.strip().splitlines()[-1])
     assert payload["ok"] is False
     [remote_result] = payload["results"]

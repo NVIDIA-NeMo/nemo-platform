@@ -310,7 +310,7 @@ async def test_to_spec_aggregates_multiple_config_errors() -> None:
     msg = str(exc_info.value)
     # Both messages must surface together (no short-circuit on the first failure).
     assert "Tool configs" in msg
-    assert ("seed data" in msg) or ("DataFrameSeedSource" in msg) or ("df" in msg)
+    assert "seed data" in msg
 
 
 @pytest.mark.asyncio
