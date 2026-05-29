@@ -11,7 +11,8 @@ from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
-from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
+from nmp.intake.spans.clickhouse.filters import annotation_list_where, annotation_lookup_where
+from nmp.intake.spans.clickhouse.query import order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import Annotation, AnnotationKind, AnnotationListFilter
 from nmp.intake.spans.storage import dict_to_row, make_pagination
@@ -49,13 +50,11 @@ class AnnotationsRepository:
         await self._dao.insert_rows("annotations", rows, column_names=ANNOTATION_COLUMNS)
 
     async def get_annotation(self, *, workspace: str, annotation_id: str) -> Annotation | None:
-        where = (
-            WhereBuilder()
-            .eq(column("workspace"), "workspace", workspace)
-            .eq(column("annotation_id"), "annotation_id", annotation_id)
-            .eq(column("is_deleted"), "is_deleted", 0)
+        row = await self._dao.fetch_one(
+            self._dao.table("annotations"),
+            annotation_lookup_where(workspace=workspace, annotation_id=annotation_id),
+            final=True,
         )
-        row = await self._dao.fetch_one(self._dao.table("annotations"), where, final=True)
         if row is None:
             return None
         return _row_to_annotation(row)
@@ -70,7 +69,7 @@ class AnnotationsRepository:
     ) -> PaginatedResult[Annotation]:
         rows, total_results = await self._dao.paginate(
             table=self._dao.table("annotations"),
-            where=_annotation_where(filters),
+            where=annotation_list_where(filters),
             sort=sort,
             sort_columns=ANNOTATION_SORT_COLUMNS,
             tiebreaker="annotation_id",
@@ -102,33 +101,6 @@ class AnnotationsRepository:
         row["ingested_at"] = datetime.now(timezone.utc)
         rows = [dict_to_row(row, ANNOTATION_COLUMNS)]
         await self._dao.insert_rows("annotations", rows, column_names=ANNOTATION_COLUMNS)
-
-
-def _annotation_where(filters: AnnotationListFilter) -> WhereBuilder:
-    where = (
-        WhereBuilder().eq(column("workspace"), "workspace", filters.workspace).eq(column("is_deleted"), "is_deleted", 0)
-    )
-    if filters.span_id is not None:
-        where.eq(column("span_id"), "span_id", filters.span_id)
-    if filters.session_id is not None:
-        where.eq(column("session_id"), "session_id", filters.session_id)
-    if filters.kind is not None:
-        where.eq(column("kind"), "kind", filters.kind.value)
-    if filters.name is not None:
-        where.eq(column("name"), "name", filters.name)
-    if filters.value_text is not None:
-        where.eq(column("value_text"), "value_text", filters.value_text)
-    if filters.value_numeric_gte is not None:
-        where.gte(column("value_numeric"), "value_numeric_gte", filters.value_numeric_gte)
-    if filters.value_numeric_lte is not None:
-        where.lte(column("value_numeric"), "value_numeric_lte", filters.value_numeric_lte)
-    if filters.created_by is not None:
-        where.eq(column("created_by"), "created_by", filters.created_by)
-    if filters.created_at_gte is not None:
-        where.gte(column("created_at"), "created_at_gte", filters.created_at_gte)
-    if filters.created_at_lte is not None:
-        where.lte(column("created_at"), "created_at_lte", filters.created_at_lte)
-    return where
 
 
 def _annotation_order_by(sort: str) -> str:

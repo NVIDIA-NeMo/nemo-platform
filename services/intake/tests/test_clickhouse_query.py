@@ -4,17 +4,18 @@
 """Tests for Intake ClickHouse query builder."""
 
 import pytest
+from nmp.intake.spans.clickhouse._where import _new_where
+from nmp.intake.spans.clickhouse.filters import span_list_where, span_lookup_where
+from nmp.intake.spans.clickhouse.identifiers import column, validate_clickhouse_identifier
 from nmp.intake.spans.clickhouse.query import (
     SelectQuery,
     TableRef,
-    WhereBuilder,
-    column,
     count_query,
     format_columns,
     order_by_clause,
     select_from_table,
-    validate_clickhouse_identifier,
 )
+from nmp.intake.spans.domain import SpanListFilter
 
 
 def test_validate_clickhouse_identifier_accepts_safe_names():
@@ -36,7 +37,7 @@ def test_format_columns_joins_validated_names():
 
 
 def test_where_builder_parameterizes_predicates():
-    where = WhereBuilder().eq("workspace", "workspace", "workspace-a").gte("start_time", "started_at_gte", "2026-01-01")
+    where = _new_where().eq("workspace", "workspace", "workspace-a").gte("start_time", "started_at_gte", "2026-01-01")
 
     sql, parameters = where.build()
 
@@ -44,11 +45,21 @@ def test_where_builder_parameterizes_predicates():
     assert parameters == {"workspace": "workspace-a", "started_at_gte": "2026-01-01"}
 
 
-def test_where_builder_default_clause():
-    sql, parameters = WhereBuilder().build()
+def test_span_list_where_parameterizes_workspace_filter():
+    sql, parameters = span_list_where(SpanListFilter(workspace="workspace-a")).build()
 
-    assert sql == "1 = 1"
-    assert parameters == {}
+    assert "workspace = %(workspace)s" in sql
+    assert "is_deleted = %(is_deleted)s" in sql
+    assert parameters == {"workspace": "workspace-a", "is_deleted": 0}
+
+
+def test_span_lookup_where_parameterizes_external_span_id():
+    sql, parameters = span_lookup_where(workspace="workspace-a", span_id="123").build()
+
+    assert "external_span_id = %(span_id)s" in sql
+    assert parameters["workspace"] == "workspace-a"
+    assert parameters["span_id"] == "123"
+    assert parameters["is_deleted"] == 0
 
 
 def test_order_by_clause_whitelists_sort_keys():
@@ -76,7 +87,7 @@ def test_order_by_clause_rejects_unsupported_sort_keys():
 def test_select_from_table_supports_final_modifier():
     table = TableRef(qualified_name="intake.spans", logical_name="spans")
     query = select_from_table(table, columns=["workspace", "trace_id"], final=True).where(
-        WhereBuilder().eq("workspace", "workspace", "workspace-a")
+        span_list_where(SpanListFilter(workspace="workspace-a"))
     )
 
     sql, parameters = query.build()
@@ -84,19 +95,19 @@ def test_select_from_table_supports_final_modifier():
     assert "SELECT workspace, trace_id" in sql
     assert "FROM intake.spans FINAL" in sql
     assert "WHERE workspace = %(workspace)s" in sql
-    assert parameters == {"workspace": "workspace-a"}
+    assert parameters == {"workspace": "workspace-a", "is_deleted": 0}
 
 
 def test_count_query_builds_parameterized_count():
     table = TableRef(qualified_name="intake.annotations", logical_name="annotations")
-    where = WhereBuilder().eq("workspace", "workspace", "workspace-a")
+    where = span_list_where(SpanListFilter(workspace="workspace-a"))
 
     sql, parameters = count_query(table, where, final=True).build()
 
     assert sql.startswith("SELECT count()")
     assert "FROM intake.annotations FINAL" in sql
     assert "WHERE workspace = %(workspace)s" in sql
-    assert parameters == {"workspace": "workspace-a"}
+    assert parameters == {"workspace": "workspace-a", "is_deleted": 0}
 
 
 def test_select_query_supports_pagination_parameters():

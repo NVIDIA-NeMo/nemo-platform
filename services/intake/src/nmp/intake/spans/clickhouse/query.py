@@ -5,30 +5,12 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
-
-
-def validate_clickhouse_identifier(identifier: str) -> str:
-    """Return identifier after validating it is safe for SQL interpolation."""
-
-    if not _IDENTIFIER_RE.fullmatch(identifier):
-        raise ValueError(f"Invalid ClickHouse identifier: {identifier!r}")
-    return identifier
-
-
-def column(name: str, *, qualifier: str | None = None) -> str:
-    """Build a validated column reference, optionally qualified by table alias."""
-
-    validate_clickhouse_identifier(name)
-    if qualifier is None:
-        return name
-    validate_clickhouse_identifier(qualifier)
-    return f"{qualifier}.{name}"
+from nmp.intake.spans.clickhouse._where import WhereClause
+from nmp.intake.spans.clickhouse.identifiers import validate_clickhouse_identifier
 
 
 def format_columns(columns: Sequence[str]) -> str:
@@ -56,51 +38,6 @@ def order_by_clause(
     return f"{mapped_column} {direction}, {tiebreaker} ASC"
 
 
-@dataclass
-class WhereBuilder:
-    """Accumulates parameterized WHERE predicates."""
-
-    _clauses: list[str] = field(default_factory=list)
-    _parameters: dict[str, Any] = field(default_factory=dict)
-
-    def add(self, clause: str, parameters: Mapping[str, Any] | None = None) -> WhereBuilder:
-        """Append a pre-validated SQL predicate and optional bound parameters."""
-
-        self._clauses.append(clause)
-        if parameters:
-            self._parameters.update(parameters)
-        return self
-
-    def eq(self, column_expr: str, param_name: str, value: Any) -> WhereBuilder:
-        """Append `column = %(param)s`."""
-
-        return self.add(f"{column_expr} = %({param_name})s", {param_name: value})
-
-    def gte(self, column_expr: str, param_name: str, value: Any) -> WhereBuilder:
-        """Append `column >= %(param)s`."""
-
-        return self.add(f"{column_expr} >= %({param_name})s", {param_name: value})
-
-    def lte(self, column_expr: str, param_name: str, value: Any) -> WhereBuilder:
-        """Append `column <= %(param)s`."""
-
-        return self.add(f"{column_expr} <= %({param_name})s", {param_name: value})
-
-    def extend(self, other: WhereBuilder) -> WhereBuilder:
-        """Merge another builder's clauses and parameters."""
-
-        self._clauses.extend(other._clauses)
-        self._parameters.update(other._parameters)
-        return self
-
-    def build(self, *, default: str = "1 = 1") -> tuple[str, dict[str, Any]]:
-        """Return `(where_sql, parameters)` for use in a query."""
-
-        if not self._clauses:
-            return default, dict(self._parameters)
-        return " AND ".join(self._clauses), dict(self._parameters)
-
-
 @dataclass(frozen=True)
 class TableRef:
     """Qualified ClickHouse table reference."""
@@ -115,14 +52,14 @@ class SelectQuery:
 
     select_expr: str
     from_expr: str
-    where_builder: WhereBuilder | None = None
+    where_clause: WhereClause | None = None
     order_by: str | None = None
     limit_param: str | None = None
     offset_param: str | None = None
     extra_parameters: dict[str, Any] = field(default_factory=dict)
 
-    def where(self, builder: WhereBuilder) -> SelectQuery:
-        self.where_builder = builder
+    def where(self, clause: WhereClause) -> SelectQuery:
+        self.where_clause = clause
         return self
 
     def order_by_clause(self, clause: str) -> SelectQuery:
@@ -143,8 +80,8 @@ class SelectQuery:
 
         clauses = [f"SELECT {self.select_expr}", f"FROM {self.from_expr}"]
         parameters = dict(self.extra_parameters)
-        if self.where_builder is not None:
-            where_sql, where_parameters = self.where_builder.build()
+        if self.where_clause is not None:
+            where_sql, where_parameters = self.where_clause.build()
             clauses.append(f"WHERE {where_sql}")
             parameters.update(where_parameters)
         if self.order_by is not None:
@@ -172,8 +109,8 @@ def select_from_table(
     return SelectQuery(select_expr=select_expr, from_expr=from_expr)
 
 
-def count_query(table: TableRef, where_builder: WhereBuilder, *, final: bool = False) -> SelectQuery:
+def count_query(table: TableRef, where_clause: WhereClause, *, final: bool = False) -> SelectQuery:
     """Build `SELECT count()` with optional FINAL."""
 
     from_expr = f"{table.qualified_name} FINAL" if final else table.qualified_name
-    return SelectQuery(select_expr="count()", from_expr=from_expr, where_builder=where_builder)
+    return SelectQuery(select_expr="count()", from_expr=from_expr, where_clause=where_clause)

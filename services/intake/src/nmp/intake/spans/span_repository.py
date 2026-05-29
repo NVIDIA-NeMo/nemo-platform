@@ -10,10 +10,10 @@ from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
-from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
+from nmp.intake.spans.clickhouse.filters import span_list_where, span_lookup_where
+from nmp.intake.spans.clickhouse.query import order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import IntakeSpan, SpanListFilter
-from nmp.intake.spans.span_attribute_catalog import where_clause
 from nmp.intake.spans.storage import (
     dict_to_row,
     make_pagination,
@@ -67,10 +67,9 @@ class SpanRepository:
         page_size: int,
         sort: str,
     ) -> PaginatedResult[IntakeSpan]:
-        where = _span_where(filters)
         rows, total_results = await self._dao.paginate(
             table=self._dao.table("spans"),
-            where=where,
+            where=span_list_where(filters),
             columns=SPAN_COLUMNS,
             sort=sort,
             sort_columns=SPAN_SORT_COLUMNS,
@@ -89,52 +88,15 @@ class SpanRepository:
         )
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan | None:
-        where = (
-            WhereBuilder()
-            .eq(column("workspace"), "workspace", workspace)
-            .eq(column("external_span_id"), "span_id", span_id)
-            .eq(column("is_deleted"), "is_deleted", 0)
-        )
         row = await self._dao.fetch_one(
             self._dao.table("spans"),
-            where,
+            span_lookup_where(workspace=workspace, span_id=span_id),
             columns=SPAN_COLUMNS,
             final=True,
         )
         if row is None:
             return None
         return _row_to_span(row)
-
-
-def _span_where(filters: SpanListFilter) -> WhereBuilder:
-    where = (
-        WhereBuilder().eq(column("workspace"), "workspace", filters.workspace).eq(column("is_deleted"), "is_deleted", 0)
-    )
-    if filters.session_id is not None:
-        where.eq(column("session_id"), "session_id", filters.session_id)
-    if filters.trace_id is not None:
-        where.eq(column("trace_id"), "trace_id", filters.trace_id)
-    if filters.external_parent_span_id is not None:
-        where.eq(column("external_parent_span_id"), "external_parent_span_id", filters.external_parent_span_id)
-    if filters.source_format is not None:
-        where.eq(column("source_format"), "source_format", filters.source_format)
-    if filters.kind is not None:
-        where.eq(column("kind"), "kind", filters.kind.value)
-    if filters.status is not None:
-        where.eq(column("status"), "status", filters.status.value)
-    if filters.started_at_gte is not None:
-        where.gte(column("start_time"), "started_at_gte", filters.started_at_gte)
-    if filters.started_at_lte is not None:
-        where.lte(column("start_time"), "started_at_lte", filters.started_at_lte)
-    for index, attribute_filter in enumerate(filters.attribute_filters):
-        clause, clause_parameters = where_clause(
-            attribute_filter.field,
-            attribute_filter.operator,
-            attribute_filter.value,
-            param_prefix=f"attr_{index}",
-        )
-        where.add(f"({clause})", clause_parameters)
-    return where
 
 
 def _order_by(sort: str) -> str:

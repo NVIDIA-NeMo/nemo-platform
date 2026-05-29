@@ -8,14 +8,14 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
+from nmp.intake.spans.clickhouse._where import WhereClause
+from nmp.intake.spans.clickhouse.identifiers import validate_clickhouse_identifier
 from nmp.intake.spans.clickhouse.query import (
     SelectQuery,
     TableRef,
-    WhereBuilder,
     count_query,
     order_by_clause,
     select_from_table,
-    validate_clickhouse_identifier,
 )
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.storage import result_rows
@@ -44,7 +44,7 @@ class ClickHouseDao:
             validate_clickhouse_identifier(column_name)
         await self._client.insert(table_name, rows, column_names=column_names)
 
-    async def execute(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
+    async def _execute_raw(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
         if isinstance(query, SelectQuery):
             sql, parameters = query.build()
         else:
@@ -52,7 +52,7 @@ class ClickHouseDao:
         result = await self._client.query(sql, parameters=dict(parameters))
         return result_rows(result)
 
-    async def execute_scalar(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> Any:
+    async def _execute_scalar_raw(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> Any:
         if isinstance(query, SelectQuery):
             sql, parameters = query.build()
         else:
@@ -62,14 +62,14 @@ class ClickHouseDao:
             return None
         return result.result_rows[0][0]
 
-    async def count(self, table: TableRef, where: WhereBuilder, *, final: bool = False) -> int:
-        value = await self.execute_scalar(count_query(table, where, final=final))
+    async def count(self, table: TableRef, where: WhereClause, *, final: bool = False) -> int:
+        value = await self._execute_scalar_raw(count_query(table, where, final=final))
         return int(value or 0)
 
     async def fetch_one(
         self,
         table: TableRef,
-        where: WhereBuilder,
+        where: WhereClause,
         *,
         columns: Sequence[str] | str = "*",
         final: bool = False,
@@ -80,26 +80,26 @@ class ClickHouseDao:
             .limit(limit_param="limit")
             .with_parameters({"limit": 1})
         )
-        rows = await self.execute(query)
+        rows = await self._execute_raw(query)
         return rows[0] if rows else None
 
     async def fetch_all(
         self,
         table: TableRef,
-        where: WhereBuilder,
+        where: WhereClause,
         *,
         columns: Sequence[str] | str = "*",
         order_by: str,
         final: bool = False,
     ) -> list[dict[str, Any]]:
         query = select_from_table(table, columns=columns, final=final).where(where).order_by_clause(order_by)
-        return await self.execute(query)
+        return await self._execute_raw(query)
 
     async def paginate(
         self,
         *,
         table: TableRef,
-        where: WhereBuilder,
+        where: WhereClause,
         columns: Sequence[str] | str = "*",
         sort: str,
         sort_columns: Mapping[str, str],
@@ -125,5 +125,53 @@ class ClickHouseDao:
             .limit(limit_param="limit", offset_param="offset")
             .with_parameters({"limit": page_size, "offset": offset})
         )
-        rows = await self.execute(query)
+        rows = await self._execute_raw(query)
+        return rows, total_results
+
+    async def paginate_subquery(
+        self,
+        *,
+        subquery_sql: str,
+        subquery_parameters: Mapping[str, Any],
+        outer_where: WhereClause,
+        sort: str,
+        sort_columns: Mapping[str, str],
+        tiebreaker: str,
+        sort_label: str,
+        page: int,
+        page_size: int,
+    ) -> tuple[list[dict[str, Any]], int]:
+        outer_where_sql, outer_where_parameters = outer_where.build()
+        query_parameters = {**subquery_parameters, **outer_where_parameters}
+
+        total_results = int(
+            await self._execute_scalar_raw(
+                (
+                    f"""
+                    SELECT count()
+                    FROM ({subquery_sql}) AS traces
+                    WHERE {outer_where_sql}
+                    """,
+                    query_parameters,
+                )
+            )
+            or 0
+        )
+
+        offset = (page - 1) * page_size
+        rows = await self._execute_raw(
+            SelectQuery(
+                select_expr="*",
+                from_expr=f"({subquery_sql}) AS traces",
+                where_clause=outer_where,
+                order_by=order_by_clause(
+                    sort,
+                    sort_columns=sort_columns,
+                    tiebreaker=tiebreaker,
+                    label=sort_label,
+                ),
+                limit_param="limit",
+                offset_param="offset",
+            ).with_parameters({**query_parameters, "limit": page_size, "offset": offset})
+        )
         return rows, total_results

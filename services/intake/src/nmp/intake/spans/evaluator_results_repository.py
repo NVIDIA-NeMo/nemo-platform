@@ -7,7 +7,12 @@ from typing import Any
 
 from nmp.common.api.common import PaginatedResult
 from nmp.intake.spans.clickhouse.dao import ClickHouseDao
-from nmp.intake.spans.clickhouse.query import WhereBuilder, column, order_by_clause
+from nmp.intake.spans.clickhouse.filters import (
+    evaluator_result_list_where,
+    evaluator_result_lookup_where,
+    evaluator_results_for_span_where,
+)
+from nmp.intake.spans.clickhouse.query import order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import (
     EvaluatorResult,
@@ -48,12 +53,11 @@ class EvaluatorResultsRepository:
         await self._dao.insert_rows("evaluator_results", rows, column_names=EVALUATOR_RESULT_COLUMNS)
 
     async def get_evaluator_result(self, *, workspace: str, evaluator_result_id: str) -> EvaluatorResult | None:
-        where = (
-            WhereBuilder()
-            .eq(column("workspace"), "workspace", workspace)
-            .eq(column("evaluator_result_id"), "evaluator_result_id", evaluator_result_id)
+        row = await self._dao.fetch_one(
+            self._dao.table("evaluator_results"),
+            evaluator_result_lookup_where(workspace=workspace, evaluator_result_id=evaluator_result_id),
+            final=True,
         )
-        row = await self._dao.fetch_one(self._dao.table("evaluator_results"), where, final=True)
         if row is None:
             return None
         return _row_to_evaluator_result(row)
@@ -68,7 +72,7 @@ class EvaluatorResultsRepository:
     ) -> PaginatedResult[EvaluatorResult]:
         rows, total_results = await self._dao.paginate(
             table=self._dao.table("evaluator_results"),
-            where=_evaluator_result_where(filters),
+            where=evaluator_result_list_where(filters),
             sort=sort,
             sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
             tiebreaker="evaluator_result_id",
@@ -86,37 +90,13 @@ class EvaluatorResultsRepository:
         )
 
     async def list_evaluator_results_for_span(self, *, workspace: str, span_id: str) -> list[EvaluatorResult]:
-        where = WhereBuilder().eq(column("workspace"), "workspace", workspace).eq(column("span_id"), "span_id", span_id)
         rows = await self._dao.fetch_all(
             self._dao.table("evaluator_results"),
-            where,
+            evaluator_results_for_span_where(workspace=workspace, span_id=span_id),
             order_by="created_at ASC, evaluator_result_id ASC",
             final=True,
         )
         return [_row_to_evaluator_result(row) for row in rows]
-
-
-def _evaluator_result_where(filters: EvaluatorResultListFilter) -> WhereBuilder:
-    where = WhereBuilder().eq(column("workspace"), "workspace", filters.workspace)
-    if filters.span_id is not None:
-        where.eq(column("span_id"), "span_id", filters.span_id)
-    if filters.session_id is not None:
-        where.eq(column("session_id"), "session_id", filters.session_id)
-    if filters.name is not None:
-        where.eq(column("name"), "name", filters.name)
-    if filters.data_type is not None:
-        where.eq(column("data_type"), "data_type", filters.data_type.value)
-    if filters.created_by is not None:
-        where.eq(column("created_by"), "created_by", filters.created_by)
-    if filters.value_gte is not None:
-        where.gte(column("value"), "value_gte", filters.value_gte)
-    if filters.value_lte is not None:
-        where.lte(column("value"), "value_lte", filters.value_lte)
-    if filters.created_at_gte is not None:
-        where.gte(column("created_at"), "created_at_gte", filters.created_at_gte)
-    if filters.created_at_lte is not None:
-        where.lte(column("created_at"), "created_at_lte", filters.created_at_lte)
-    return where
 
 
 def _evaluator_result_order_by(sort: str) -> str:
