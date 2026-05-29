@@ -8,8 +8,8 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
-from dataclasses import dataclass
 from enum import Enum
+from dataclasses import dataclass
 
 from .config import QuickstartConfig
 
@@ -196,6 +196,7 @@ class PreflightChecker:
 
         try:
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(("0.0.0.0", self.config.host_port))  # noqa: S104  # nosec B104
             self.results.append(
                 PreflightResult(
@@ -252,7 +253,7 @@ class PreflightChecker:
 
         try:
             import docker
-            from docker.errors import DockerException, ImageNotFound
+            from docker.errors import ImageNotFound, DockerException
 
             from .container import ContainerManager
 
@@ -334,7 +335,7 @@ class PreflightChecker:
             return
 
         from .prompts import detect_registry_auth_type
-        from .validators import validate_image_registry_access, validate_registry_credentials
+        from .validators import validate_registry_credentials, validate_image_registry_access
 
         if detect_registry_auth_type(self.config.image) == "user_pass":
             registry = self.config.get_registry_host()

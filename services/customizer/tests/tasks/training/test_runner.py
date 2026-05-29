@@ -544,3 +544,53 @@ class TestRunFlow:
             assert result.success is False
             assert result.error_message is not None
             assert "internal error" in result.error_message.lower()
+
+    def test_run_marks_result_failed_when_write_raises(
+        self,
+        mock_job_ctx: NMPJobContext,
+        mock_dist_ctx_coordinator: MagicMock,
+        mock_backend: MagicMock,
+        mock_progress: MagicMock,
+    ):
+        """If _write_result fails inside finally, the returned TrainingResult is marked failed."""
+        with (
+            patch.object(NMPJobContext, "from_env", return_value=mock_job_ctx),
+            patch.object(DistributedContext, "from_env", return_value=mock_dist_ctx_coordinator),
+            patch("nmp.customizer.tasks.training.runner.JobsServiceProgressReporter", return_value=mock_progress),
+            patch("nmp.customizer.tasks.training.runner.get_gpu_info", return_value=None),
+            patch.object(TrainingRunner, "_write_result", side_effect=IOError("disk full")),
+        ):
+            runner = TrainingRunner(backend=mock_backend)
+            result = runner.run()
+
+            assert result.success is False
+            assert result.error_message is not None
+            assert "failed to persist training result" in result.error_message.lower()
+            assert "disk full" in result.error_message.lower()
+
+    def test_run_appends_persist_error_to_existing_training_error(
+        self,
+        mock_job_ctx: NMPJobContext,
+        mock_dist_ctx_coordinator: MagicMock,
+        mock_backend: MagicMock,
+        mock_progress: MagicMock,
+    ):
+        """When both training and _write_result fail, the persist error is appended to the training error."""
+        mock_backend.execute_training.side_effect = RuntimeError("Training failed!")
+        with (
+            patch.object(NMPJobContext, "from_env", return_value=mock_job_ctx),
+            patch.object(DistributedContext, "from_env", return_value=mock_dist_ctx_coordinator),
+            patch("nmp.customizer.tasks.training.runner.JobsServiceProgressReporter", return_value=mock_progress),
+            patch("nmp.customizer.tasks.training.runner.get_gpu_info", return_value=None),
+            patch.object(TrainingRunner, "_write_result", side_effect=IOError("disk full")),
+        ):
+            runner = TrainingRunner(backend=mock_backend)
+            result = runner.run()
+
+            assert result.success is False
+            assert result.error_message is not None
+            # Original training error should still be visible
+            assert "internal error" in result.error_message.lower()
+            # Persist error appended
+            assert "failed to persist training result" in result.error_message.lower()
+            assert "disk full" in result.error_message.lower()

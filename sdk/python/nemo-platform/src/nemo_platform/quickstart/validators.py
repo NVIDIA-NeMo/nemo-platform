@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
+from dataclasses import dataclass
 
 from .config import QuickstartConfig
 
@@ -216,6 +216,7 @@ def validate_port_available(port: int, config: QuickstartConfig | None = None) -
 
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             sock.bind(("0.0.0.0", port))  # noqa: S104  # nosec B104
         return ValidationResult(True, f"Port {port} is available")
     except OSError:

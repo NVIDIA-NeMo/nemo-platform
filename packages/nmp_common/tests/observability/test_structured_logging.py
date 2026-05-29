@@ -19,7 +19,8 @@ from nmp.common.observability.structured_logging import _sanitize_log_strings
         ("tab\tis fine", "tab\tis fine"),
         ("plain string", "plain string"),
         ("nel\x85next", "nel next"),
-        ("ls lsep", "ls lsep"),
+        ("ls\u2028lsep", "ls lsep"),
+        ("ps\u2029psep", "ps psep"),
     ],
 )
 def test_sanitize_log_strings_replaces_newline_variants(raw: str, expected: str) -> None:
@@ -62,6 +63,7 @@ def test_initialize_logging_wires_sanitizer_into_chain() -> None:
     """Regression guard: 177 dismissed py/log-injection alerts depend on the sanitizer being in the chain."""
     import logging as stdlib_logging
 
+    import structlog
     from nmp.common.observability.structured_logging import _sanitize_log_strings, initialize_logging
 
     root = stdlib_logging.getLogger()
@@ -70,9 +72,13 @@ def test_initialize_logging_wires_sanitizer_into_chain() -> None:
     try:
         root.handlers.clear()
         initialize_logging()
-        assert root.handlers, "initialize_logging() did not attach a handler"
-        formatter = root.handlers[0].formatter
-        chain = getattr(formatter, "foreign_pre_chain", None) or []
+        # Locate the ProcessorFormatter by type, not handler index, so a future
+        # refactor that reorders or adds handlers doesn't silently false-pass.
+        formatters = [
+            h.formatter for h in root.handlers if isinstance(h.formatter, structlog.stdlib.ProcessorFormatter)
+        ]
+        assert formatters, "initialize_logging() did not attach a structlog ProcessorFormatter"
+        chain = getattr(formatters[0], "foreign_pre_chain", None) or []
         assert _sanitize_log_strings in chain, (
             "_sanitize_log_strings missing from structlog chain — log-injection defense is disabled"
         )
