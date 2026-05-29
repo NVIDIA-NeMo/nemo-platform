@@ -10,7 +10,7 @@ import pytest
 from httpx import Response
 from nemo_evaluator_sdk.enums import MetricType, ModelFormat
 from nemo_evaluator_sdk.metrics.llm_judge import default_judge_prompt_template_chat
-from nemo_evaluator_sdk.values import Model, Rubric, RubricScore, SecretRef
+from nemo_evaluator_sdk.values import Model, RemoteScore, Rubric, RubricScore, SecretRef
 from nmp.common.entities import SYSTEM_WORKSPACE
 from nmp.common.entities.client import EntityClient
 from nmp.evaluator.api.v2.metrics.manager import (
@@ -345,6 +345,22 @@ class TestMetricsServiceCreate:
         assert "default/my-secret" in exc_info.value.detail
         assert "test-metric-with-secret" in exc_info.value.detail
         mock_sdk.secrets.retrieve.assert_called_once_with("my-secret", workspace="default")
+
+    @pytest.mark.asyncio
+    async def test_create_remote_metric_validates_api_key_secret(self, metrics_service, mock_sdk):
+        """Test create validates remote metric API key secrets."""
+        metric_entity = entities.RemoteMetric(
+            name="remote-metric-with-secret",
+            workspace="default",
+            url="https://remote.example.test/score",
+            api_key_secret="remote-secret",
+            body={"input": "{{sample.output_text}}"},
+            scores=[RemoteScore(name="score")],
+        )
+
+        await metrics_service.create(metric_entity, sdk=mock_sdk)
+
+        mock_sdk.secrets.retrieve.assert_called_once_with("remote-secret", workspace="default")
 
 
 class TestMetricsServiceCreateFromRequest:

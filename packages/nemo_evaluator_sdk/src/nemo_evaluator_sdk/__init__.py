@@ -7,6 +7,7 @@ from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _package_version
 
 from nemo_evaluator_sdk.datasets import DatasetLoadError, load_dataset, load_dataset_as_dicts
+from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.execution.values import (
     EvaluationError,
@@ -26,6 +27,8 @@ from nemo_evaluator_sdk.metrics.remote import NemoAgentToolkitRemoteMetric, Remo
 from nemo_evaluator_sdk.metrics.rouge import ROUGEMetric
 from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.metrics.tool_calling import ToolCallingMetric
+from nemo_evaluator_sdk.resolver_protocols import ModelResolver, SecretResolver
+from nemo_evaluator_sdk.resolvers import LocalModelResolver, LocalSecretResolver
 from nemo_evaluator_sdk.structured_output import (
     InferenceFn,
     InferenceStructuredOutput,
@@ -52,6 +55,7 @@ from nemo_evaluator_sdk.values import (
     MetricOutputSpec,
     MetricResult,
     Model,
+    ModelRef,
     RangeScore,
     ReasoningParams,
     RemoteScore,
@@ -99,7 +103,12 @@ __all__ = [
     "DatasetRow",
     "DiscreteScore",
     "Label",
+    "LocalBackend",
+    "LocalModelResolver",
+    "LocalSecretResolver",
     "Model",
+    "ModelRef",
+    "ModelResolver",
     "NemoAgentToolkitRemoteMetric",
     "NumberCheckMetric",
     "RangeScore",
@@ -109,6 +118,7 @@ __all__ = [
     "ROUGEMetric",
     "RubricScore",
     "SecretRef",
+    "SecretResolver",
     "StringCheckMetric",
     "StructuredOutput",
     "StructuredOutputMode",
