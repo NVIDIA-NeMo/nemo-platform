@@ -149,20 +149,7 @@ class TrainingRunner:
                 self._progress.report_error(error_details)
         finally:
             # === Phase 5: Write result (coordinator only) ===
-            if self._dist_ctx.is_coordinator:
-                try:
-                    self._write_result(result)
-                except Exception as write_exc:
-                    logger.exception("Failed to write training result")
-                    original_error = result.error_message if not result.success else None
-                    persist_error = f"Failed to persist training result: {write_exc}"
-                    combined_error = f"{original_error}; {persist_error}" if original_error else persist_error
-                    result = TrainingResult(
-                        success=False,
-                        error_message=combined_error,
-                        gpu_info=gpu_info,
-                        training_duration_seconds=time.time() - start_time,
-                    )
+            self._write_result(result)
         return result
 
     # --- Helper methods ---
