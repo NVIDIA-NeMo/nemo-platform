@@ -5,7 +5,7 @@
 
 import logging
 
-from nmp.common.jobs.api_factory import JobRouteOption, job_route_factory
+from nemo_platform_plugin.jobs.api_factory import JobRouteOption, job_route_factory
 from nmp.customizer.api.v2.jobs.schemas import CustomizationJobInput, CustomizationJobOutput
 from nmp.customizer.app.jobs.compiler import platform_job_config_compiler
 from nmp.customizer.utils import generate_customization_id, transform_input_to_output

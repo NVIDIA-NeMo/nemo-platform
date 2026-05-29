@@ -10,10 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.routing import APIRoute
 from nemo_evaluator_sdk.values import AggregatedMetricResult, RowScore
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.api.common import DeleteResponse
-from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     FileResultSerializer,
     PlatformJobResultRoute,
     PlatformJobSpec,
@@ -21,6 +18,9 @@ from nmp.common.jobs.api_factory import (
     PydanticResultSerializer,
     job_route_factory,
 )
+from nmp.common.api.common import DeleteResponse
+from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
+from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient
 from nmp.common.service.dependencies import get_entity_client, get_sdk_client
 from nmp.evaluator.api.v2.common.query_params import AggregateFieldsQuery, validate_list_query_params
 from nmp.evaluator.api.v2.common.schemas import ErrorResponse
@@ -121,7 +121,8 @@ _jobs_router = job_route_factory(
     service_name="evaluator-metrics",
     job_type="MetricEvaluation",
     job_input=MetricJob,
-    platform_job_config_compiler=platform_job_config_compiler,
+    # compiler pins the nmp.common EntityClient subclass; the factory protocol wants the base.
+    platform_job_config_compiler=platform_job_config_compiler,  # ty: ignore[invalid-argument-type]
     job_result_routes=[
         PlatformJobResultRoute(
             name=JOB_RESULTS_AGGREGATE_SCORES,

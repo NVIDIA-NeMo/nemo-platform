@@ -13,11 +13,7 @@ from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
-from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
-from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
-from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
-from nmp.common.entities import EntityClient
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
@@ -32,6 +28,10 @@ from nmp.common.jobs.api_factory import (
     ResourcesSpec,
     job_route_factory,
 )
+from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
+from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
+from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
+from nmp.common.entities import EntityClient
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.image import get_qualified_image
 from nmp.safe_synthesizer.config import config

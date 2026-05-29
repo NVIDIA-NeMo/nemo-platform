@@ -98,7 +98,7 @@ For example:
 from nemo_platform import AsyncNeMoPlatform
 from pydantic import BaseModel
 # Import the job compiling building blocks
-from nmp_common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     PlatformJobSpec,
