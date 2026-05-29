@@ -163,7 +163,7 @@ def verify_job_completed_successfully(
         f"Expect 100% progress completed for successful jobs: {outputs.job_status}"
     )
     if require_samples_processed:
-        samples_processed = cast("int", outputs.job_status.status_details.get("samples_processed", 0))
+        samples_processed = cast(int, outputs.job_status.status_details.get("samples_processed", 0))
         assert samples_processed > 0, (
             f"Expect samples_processed for custom jobs and industry metrics with limit_samples: {outputs.job_status}"
         )
@@ -176,7 +176,7 @@ def verify_job_completed_successfully(
         len_row_scores = len(outputs.row_scores)
         assert len_row_scores > 0, "Row scores should not be empty"
         if require_samples_processed:
-            samples_processed = cast("int", outputs.job_status.status_details.get("samples_processed", 0))
+            samples_processed = cast(int, outputs.job_status.status_details.get("samples_processed", 0))
             assert samples_processed >= len_row_scores, (
                 f"Expect samples_processed to match number of rows: {outputs.job_status}"
             )
