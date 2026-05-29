@@ -20,7 +20,9 @@ class AuditorResourceParent(Protocol):
 
     _http_client: httpx.Client
 
-    def _url(self, path: str) -> str: ...
+    def _url(self, path: str) -> str:
+        """Build the absolute request URL for ``path``."""
+        raise NotImplementedError
 
 
 class AsyncAuditorResourceParent(Protocol):
@@ -28,4 +30,6 @@ class AsyncAuditorResourceParent(Protocol):
 
     _http_client: httpx.AsyncClient
 
-    def _url(self, path: str) -> str: ...
+    def _url(self, path: str) -> str:
+        """Build the absolute request URL for ``path``."""
+        raise NotImplementedError
