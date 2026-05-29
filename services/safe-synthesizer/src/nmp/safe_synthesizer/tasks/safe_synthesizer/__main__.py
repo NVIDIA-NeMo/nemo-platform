@@ -302,12 +302,10 @@ def run_task():
     enable_synthesis: bool = job_config.get("enable_synthesis", True)
     logger.info(f"enable_synthesis={enable_synthesis}")
 
-    nss_job_config: SafeSynthesizerJobConfig
-    match job_config:
-        case dict():
-            nss_job_config = SafeSynthesizerJobConfig.model_validate(job_config)
-        case _:
-            raise ValueError(f"Config must be a dictionary or a string: {job_config}")
+    if isinstance(job_config, dict):
+        nss_job_config = SafeSynthesizerJobConfig.model_validate(job_config)
+    else:
+        raise ValueError(f"Config must be a dictionary: {job_config}")
     logger.info(f"Nemo Safe Synthesizer runtime job config: {nss_job_config.model_dump_json(indent=2)}")
 
     save_path = Path(os.environ.get(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, DEFAULT_TASK_STORAGE_PATH))

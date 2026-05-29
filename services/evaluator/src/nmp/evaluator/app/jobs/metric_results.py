@@ -4,6 +4,7 @@
 import asyncio
 import json
 import logging
+from typing import cast
 
 import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
@@ -129,9 +130,17 @@ async def register_result_entity(
     log.info("Registering result entity", extra={"aggregate_scores_path": aggregate_scores_path})
 
     if getattr(job, "metric", None):
-        result_entity = load_metric_result_entity(aggregate_scores_path, job, config)
+        result_entity = load_metric_result_entity(
+            aggregate_scores_path,
+            cast("app.MetricJob", job),
+            config,
+        )
     elif getattr(job, "benchmark", None):
-        result_entity = load_benchmark_result_entity(aggregate_scores_path, job, config)
+        result_entity = load_benchmark_result_entity(
+            aggregate_scores_path,
+            cast("app.BenchmarkJob", job),
+            config,
+        )
     else:
         raise ValueError(f"unsupported job {type(job)}")
 
@@ -167,9 +176,11 @@ def load_benchmark_result_entity(
     if isinstance(job.benchmark, app.Benchmark):
         metric_refs = [metric.metric_ref for metric in job.benchmark.metrics]
         dataset_ref = job.benchmark.dataset
-        benchmark_ref = job.benchmark.name
+        benchmark_ref = app.BenchmarkRef(root=job.benchmark.name)
     elif isinstance(job.benchmark, app.SystemBenchmark):
-        benchmark_ref = f"{SYSTEM_WORKSPACE}/{job.benchmark.name}"
+        benchmark_ref = app.BenchmarkRef(root=f"{SYSTEM_WORKSPACE}/{job.benchmark.name}")
+    else:
+        raise ValueError(f"Unsupported benchmark type: {type(job.benchmark).__name__}")
 
     return entities.BenchmarkJobResult(
         name=config.NEMO_JOB_ID,

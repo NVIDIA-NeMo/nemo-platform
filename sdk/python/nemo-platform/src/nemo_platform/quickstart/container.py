@@ -13,6 +13,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
 
+from ._registry import image_registry_host
 from .config import QuickstartConfig
 from .platform_config import PlatformConfig
 
@@ -33,18 +34,6 @@ class PullProgress(TypedDict):
     layer_id: str | None
     current: int | None  # bytes downloaded for this layer
     total: int | None  # total bytes for this layer
-
-
-def _image_registry_host(image: str) -> str | None:
-    """Extract the registry host from an image reference."""
-    if not image or "/" not in image:
-        return None
-    parts = image.split("/")
-    if len(parts) >= 3:
-        return parts[0]
-    if len(parts) == 2 and ("." in parts[0] or ":" in parts[0]):
-        return parts[0]
-    return None
 
 
 class ContainerManager:
@@ -188,10 +177,10 @@ class ContainerManager:
             return
 
         # Parse registry from image name
-        registry = _image_registry_host(self.config.image)
+        registry = image_registry_host(self.config.image) or None
 
         auth_config = None
-        if registry and "nvcr.io" in registry:
+        if registry and registry.split(":", 1)[0] == "nvcr.io":
             if self.config.ngc_api_key:
                 auth_config = {
                     "username": "$oauthtoken",
@@ -220,7 +209,7 @@ class ContainerManager:
             return
 
         # Build auth config (same logic as _pull_image)
-        registry = _image_registry_host(self.config.image)
+        registry = image_registry_host(self.config.image) or None
 
         auth_config = None
         if auth_override and registry == auth_override["registry"]:
@@ -228,7 +217,7 @@ class ContainerManager:
                 "username": auth_override["username"],
                 "password": auth_override["password"],
             }
-        elif registry and "nvcr.io" in registry:
+        elif registry and registry.split(":", 1)[0] == "nvcr.io":
             if self.config.ngc_api_key:
                 auth_config = {
                     "username": "$oauthtoken",
@@ -375,7 +364,7 @@ class ContainerManager:
         from .prompts import detect_registry_auth_type
 
         auth_type = detect_registry_auth_type(self.config.image)
-        jobs_registry_host = _image_registry_host(self.config.image)
+        jobs_registry_host = image_registry_host(self.config.image) or None
         if auth_type == "ngc" and jobs_registry_host and self.config.ngc_api_key:
             # NGC uses $oauthtoken as username and NGC API key as password
             env["NEMO_JOBS_IMAGE_REGISTRY"] = jobs_registry_host

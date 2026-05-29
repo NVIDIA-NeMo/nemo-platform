@@ -6,6 +6,7 @@
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import urlparse
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -370,7 +371,7 @@ def test_model_router_routes_cross_workspace_lora(
     assert sent_body["model"] == "ws-b--adapter"
 
     # Upstream URL hits the provider in workspace ``ws-a``, never anything keyed off ``ws-b``.
-    assert "nim.workspace-a.example.com" in call_args.kwargs["url"]
+    assert urlparse(call_args.kwargs["url"]).hostname == "nim.workspace-a.example.com"
     assert "ws-b" not in call_args.kwargs["url"]
 
 
@@ -431,7 +432,7 @@ def test_model_router_routes_url_encoded_cross_workspace_lora(
 
     sent_body = json.loads(call_args.kwargs["data"])
     assert sent_body["model"] == "ws-b--adapter"
-    assert "nim.workspace-a.example.com" in call_args.kwargs["url"]
+    assert urlparse(call_args.kwargs["url"]).hostname == "nim.workspace-a.example.com"
     assert "ws-b" not in call_args.kwargs["url"]
 
 

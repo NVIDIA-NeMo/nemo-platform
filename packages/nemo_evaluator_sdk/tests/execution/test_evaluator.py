@@ -175,8 +175,9 @@ class TestEvaluator:
     def test_rejects_legacy_backend_argument(self):
         backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
 
+        legacy_kwargs: dict = {"backend": backend}
         with pytest.raises(TypeError, match="backend"):
-            Evaluator(backend=backend)  # type: ignore[call-arg]
+            Evaluator(**legacy_kwargs)
 
     @pytest.mark.asyncio
     async def test_run_uses_offline_params_without_request_fail_fast(self):

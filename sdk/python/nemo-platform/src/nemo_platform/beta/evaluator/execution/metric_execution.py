@@ -35,10 +35,12 @@ from nemo_platform.beta.evaluator.execution.scoring import (
     nan_metric_result,
     score_row,
 )
-from nemo_platform.beta.evaluator.execution.utils import prepare_metric_for_local_execution
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import InferenceMetricBase
-from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricResult
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    Metric,
+    MetricResult,
+)
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.resilience.api import run_indexed_tasks, use_resilience_session
 from nemo_platform.beta.evaluator.resilience.errors import get_evaluation_error
@@ -792,14 +794,12 @@ async def evaluate_metric(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
 ) -> EvaluationResult:
-    """Generate model outputs for prepared rows and evaluate the metric online."""
+    """Generate model outputs for prepared rows and evaluate a prepared metric."""
     if not rows:
         log.warning("No rows found in dataset, returning empty evaluation result")
         return empty_evaluation_result()
 
     params = normalize_params(params, target)
-
-    metric = await prepare_metric_for_local_execution(metric, params)
 
     client_close_fn = None
 

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -20,9 +21,13 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateJob,
     EvaluateSpec,
 )
+from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
+from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values.models import ModelRef
+from nemo_evaluator_sdk.values.scores import JSONScoreParser, RangeScore
 from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
@@ -116,6 +121,44 @@ def _load_artifact_payload(run_result: dict[str, Any]) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(artifact_path.read_text(encoding="utf-8")))
 
 
+class _FakeModels:
+    def __init__(self) -> None:
+        self.retrieved: list[tuple[str, str]] = []
+
+    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
+        self.retrieved.append((workspace, name))
+        return SimpleNamespace(model_providers=["default/provider"])
+
+    def get_model_entity_route_openai_url(self, model_entity: object) -> str:
+        del model_entity
+        return "https://igw.example.test/v1/chat/completions"
+
+
+class _FakeProviders:
+    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
+        return SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
+
+
+class _FakeSDK:
+    def __init__(self) -> None:
+        self.models = _FakeModels()
+        self.inference = SimpleNamespace(providers=_FakeProviders())
+
+
+def _llm_judge_ref_metric() -> LLMJudgeMetric:
+    return LLMJudgeMetric(
+        model=ModelRef(root="default/judge"),
+        scores=[
+            RangeScore(
+                name="quality",
+                minimum=0,
+                maximum=1,
+                parser=JSONScoreParser(json_path="quality"),
+            )
+        ],
+    )
+
+
 def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
 
@@ -163,6 +206,65 @@ def test_cli_run_executes_evaluator_job() -> None:
     assert _load_artifact_payload(payload)["aggregate_scores"]["scores"][0]["mean"] == 0.5
 
 
+async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
+    sdk = _FakeSDK()
+    resolver = PlatformModelResolver(sdk)
+
+    model = await resolver.resolve_model(ModelRef(root="default/judge"))
+
+    assert sdk.models.retrieved == [("default", "judge")]
+    assert model.name == "judge"
+    assert model.url == "https://igw.example.test/v1/chat/completions"
+    assert model.host_url == "http://nim.example.test:8000"
+
+
+def test_parse_required_workspace_name_rejects_extra_separator() -> None:
+    with pytest.raises(ValueError, match="ModelRef must be in format 'workspace/model_name'"):
+        _parse_required_workspace_name("default/judge/extra", label="ModelRef", expected_format="workspace/model_name")
+
+
+def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
+    tmp_path: Path,
+    mocker: MockerFixture,
+) -> None:
+    async def compute_scores(metric: LLMJudgeMetric, input) -> MetricResult:
+        del input
+        assert isinstance(metric.model, Model)
+        assert metric.model.name == "judge"
+        assert metric.model.host_url == "http://nim.example.test:8000"
+        return MetricResult(outputs=[MetricOutput(name="quality", value=1.0)])
+
+    mocker.patch.object(LLMJudgeMetric, "preflight", mocker.AsyncMock(return_value=None))
+    mocker.patch.object(LLMJudgeMetric, "compute_scores", compute_scores)
+
+    ctx = _make_job_context(tmp_path)
+    run_result = EvaluateJob().run(
+        {
+            "metric": _llm_judge_ref_metric().model_dump(mode="json"),
+            "dataset": [{"output_text": "hello"}],
+        },
+        ctx=ctx,
+        sdk=_FakeSDK(),
+    )
+
+    payload = _load_artifact_payload(run_result)
+    assert payload["aggregate_scores"]["scores"][0]["name"] == "llm-judge.quality"
+    assert payload["aggregate_scores"]["scores"][0]["mean"] == 1.0
+
+
+def test_evaluate_job_rejects_model_refs_without_platform_sdk(tmp_path: Path) -> None:
+    ctx = _make_job_context(tmp_path)
+
+    with pytest.raises(ValueError, match="ModelRef metrics require `sdk` or `async_sdk`"):
+        EvaluateJob().run(
+            {
+                "metric": _llm_judge_ref_metric().model_dump(mode="json"),
+                "dataset": [{"output_text": "hello"}],
+            },
+            ctx=ctx,
+        )
+
+
 async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     spec = EvaluateSpec.model_validate(_exact_match_spec())
     compiled = await EvaluateJob.compile(
@@ -181,6 +283,27 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     config = cast(dict[str, Any], step.config)
     assert config["metric"]["type"] == "exact-match"
     assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
+
+
+async def test_evaluate_job_compile_resolves_metric_model_refs_before_remote_job() -> None:
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=EvaluateSpec.model_validate(
+            {
+                "metric": _llm_judge_ref_metric().model_dump(mode="json"),
+                "dataset": [{"output_text": "hello"}],
+            }
+        ),
+        entity_client=object(),
+        job_name=None,
+        async_sdk=_FakeSDK(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    config = cast(dict[str, Any], job_spec.steps[0].config)
+    assert config["metric"]["model"]["name"] == "judge"
+    assert config["metric"]["model"]["url"] == "https://igw.example.test/v1/chat/completions"
+    assert config["metric"]["model"]["host_url"] == "http://nim.example.test:8000"
 
 
 async def test_evaluate_job_compile_produces_online_model_job() -> None:
@@ -315,6 +438,7 @@ class TestEvaluateSpec:
         )
 
         assert isinstance(spec.metric, LLMJudgeMetric)
+        assert isinstance(spec.metric.model, Model)
         assert isinstance(spec.target, Model)
         assert spec.metric.model.api_key_secret is not None
         assert spec.target.api_key_secret is not None

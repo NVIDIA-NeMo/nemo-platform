@@ -8,9 +8,10 @@ import random
 import string
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import pandas as pd
+from nemo_platform.types.safe_synthesizer import SafeSynthesizerJobConfigParam
 from typing_extensions import Self
 
 from .job import SafeSynthesizerJob
@@ -227,13 +228,12 @@ class SafeSynthesizerJobBuilder:
     def _resolve_datasource(self, **kwargs) -> None:
         if self._data_source_path is not None:
             return  # already uploaded; reuse the cached result
-        match self._data_source:
-            case pd.DataFrame() as df:
-                pass
-            case str(url):
-                df = pd.read_csv(url, **kwargs)
-            case _:
-                raise ValueError("Data source must be a pandas DataFrame or a URL")
+        if isinstance(self._data_source, pd.DataFrame):
+            df = self._data_source
+        elif isinstance(self._data_source, str):
+            df = pd.read_csv(self._data_source, **kwargs)
+        else:
+            raise ValueError("Data source must be a pandas DataFrame or a URL")
 
         tmp_path: Path | None = None
         try:
@@ -310,8 +310,8 @@ class SafeSynthesizerJobBuilder:
         spec = self._build_job_spec()
         response = self._client.safe_synthesizer.jobs.create(
             workspace=self._workspace,
-            spec=spec,
-            **kwargs,  # type: ignore  # spec accepts dict at runtime
+            spec=cast(SafeSynthesizerJobConfigParam, spec),
+            **kwargs,
         )
         return SafeSynthesizerJob(response.name, self._client, workspace=self._workspace)
 

@@ -21,6 +21,7 @@ from nemo_anonymizer_plugin.sdk.job_results import AnonymizerJobResults
 from nemo_anonymizer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.jobs.archive import safe_extract_tar
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +46,7 @@ def _job_path(job_name: str, suffix: str = "") -> str:
 
 
 def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
-    output_path.mkdir(parents=True, exist_ok=True)
-    base_path = output_path.resolve()
-    for member in tar.getmembers():
-        target_path = (output_path / member.name).resolve()
-        if target_path != base_path and base_path not in target_path.parents:
-            raise AnonymizerJobError(f"Refusing to extract unsafe tar member: {member.name}")
-        if member.issym() or member.islnk():
-            raise AnonymizerJobError(f"Refusing to extract tar link member: {member.name}")
-        if not (member.isfile() or member.isdir()):
-            raise AnonymizerJobError(f"Refusing to extract special tar member: {member.name}")
-    tar.extractall(path=output_path)
+    safe_extract_tar(tar, output_path, error_cls=AnonymizerJobError)
 
 
 def _raise_for_status(resp: httpx.Response) -> None:

@@ -19,10 +19,10 @@ _TRANSIENT_STATUS_CODES = frozenset({408, 500, 502, 504})
 
 def endpoint_identity(base_url: str, model_id: str | None = None, auth_identity: str | None = None) -> str:
     """Build a stable endpoint key for scheduler state and accounting."""
-    auth_hash = ""
+    auth_fingerprint = ""
     if auth_identity:
-        auth_hash = hashlib.sha256(auth_identity.encode("utf-8")).hexdigest()[:16]
-    return f"{base_url}|{model_id or '_'}|{auth_hash}"
+        auth_fingerprint = hashlib.blake2b(auth_identity.encode("utf-8"), digest_size=8).hexdigest()
+    return f"{base_url}|{model_id or '_'}|{auth_fingerprint}"
 
 
 def _status_code_from_exception(exc: Exception) -> int | None:

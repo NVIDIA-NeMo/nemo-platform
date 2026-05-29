@@ -144,7 +144,9 @@ class NextRequestInfo:
 
 
 _DEFAULT_AUTH_HEADER_FORMAT = "Authorization: Bearer {{ auth_secret }}"
-_JINJA_ENV = JinjaEnvironment()
+# Renders HTTP header values, not HTML. Autoescape would corrupt secrets
+# containing characters like `&`, `<`, `>`, or quotes.
+_JINJA_ENV = JinjaEnvironment(autoescape=False)  # noqa: S701  # nosec B701
 
 
 def render_auth_header(secret_value: str, auth_header_format: str | None) -> tuple[str, str]:

@@ -52,14 +52,6 @@ from typing import Callable, Iterator
 CONTEXT_WINDOW = 80
 
 
-@dataclass(frozen=True)
-class PatternSpec:
-    name: str
-    regex: re.Pattern[str]
-    guard: Callable[[str, re.Match[str]], bool] | None = None
-    mask: Callable[[str], str] = lambda s: _mask_middle(s)
-
-
 # --------------------------------------------------------------------------- #
 # Masking helpers
 # --------------------------------------------------------------------------- #
@@ -70,6 +62,14 @@ def _mask_middle(value: str, keep: int = 2) -> str:
     if len(value) <= keep * 2:
         return "*" * len(value)
     return f"{value[:keep]}{'*' * (len(value) - keep * 2)}{value[-keep:]}"
+
+
+@dataclass(frozen=True)
+class PatternSpec:
+    name: str
+    regex: re.Pattern[str]
+    guard: Callable[[str, re.Match[str]], bool] | None = None
+    mask: Callable[[str], str] = _mask_middle
 
 
 def _mask_email(value: str) -> str:

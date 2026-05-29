@@ -281,8 +281,10 @@ def test_configs_and_targets_properties_are_cached() -> None:
     platform = _SyncPlatform()
     resource = AuditorPluginResource(cast(NeMoPlatform, platform))
 
-    assert resource.configs is resource.configs
-    assert resource.targets is resource.targets
+    cached_configs = resource.configs
+    cached_targets = resource.targets
+    assert resource.configs is cached_configs
+    assert resource.targets is cached_targets
 
 
 # ---------------------------------------------------------------------------

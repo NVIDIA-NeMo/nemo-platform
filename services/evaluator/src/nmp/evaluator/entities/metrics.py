@@ -93,7 +93,11 @@ class F1Metric(metrics.F1, EntityBase):
 class LLMJudgeMetric(WithModel, metrics.LLMJudge, EntityBase):
     """Persisted LLM-as-a-Judge metric."""
 
-    pass
+    prompt_template: str | dict = Field(
+        default_factory=lambda data: metrics.default_judge_prompt_template_for_model(data["model"]),
+        description=metrics.LLMJudge.model_fields["prompt_template"].description,
+        examples=metrics.LLMJudge.model_fields["prompt_template"].examples,
+    )
 
 
 class NumberCheckMetric(metrics.NumberCheck, EntityBase):

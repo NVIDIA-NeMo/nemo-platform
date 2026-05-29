@@ -94,7 +94,7 @@ Both `HEAD~n` and `git rebase -i HEAD~n` are safe because they only operate on c
 
 ## Setting up the local platform
 
-Before doing anything that requires a running NeMo platform (`nemo services`, `nemo agents invoke`, etc.), follow [SETUP.md](SETUP.md). It covers `make bootstrap`, the data-dir layout, DB reset, and the manual `nemo services run` path. The same content is symlinked into `.agents/skills/nemo-setup/SKILL.md` so coding agents pick it up automatically — you do not need to install it via `nemo skills install`.
+Before doing anything that requires a running NeMo platform (`nemo services`, `nemo agents invoke`, etc.), follow [skills/nemo-setup/SKILL.md](skills/nemo-setup/SKILL.md). It covers `make bootstrap`, the data-dir layout, DB reset, and the manual `nemo services run` path. You do not need to install it via `nemo skills install`.
 
 ## NeMo CLI
 
