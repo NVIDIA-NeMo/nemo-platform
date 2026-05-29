@@ -8,8 +8,8 @@ from __future__ import annotations
 import os
 import socket
 import subprocess
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 
 from .config import QuickstartConfig
 
@@ -253,7 +253,7 @@ class PreflightChecker:
 
         try:
             import docker
-            from docker.errors import ImageNotFound, DockerException
+            from docker.errors import DockerException, ImageNotFound
 
             from .container import ContainerManager
 
@@ -335,7 +335,7 @@ class PreflightChecker:
             return
 
         from .prompts import detect_registry_auth_type
-        from .validators import validate_registry_credentials, validate_image_registry_access
+        from .validators import validate_image_registry_access, validate_registry_credentials
 
         if detect_registry_auth_type(self.config.image) == "user_pass":
             registry = self.config.get_registry_host()
