@@ -38,6 +38,10 @@ export const ROUTE_PARAMS = {
   jobName: 'jobName',
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
+  /** Experiment Group id segment under experiments/:experimentGroupId */
+  experimentGroupId: 'experimentGroupId',
+  /** Candidate id segment under experiments/candidates/:candidateId */
+  candidateId: 'candidateId',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -82,6 +86,11 @@ export const ROUTES = {
     deployments: `/workspaces/:${P.workspace}/deployments`,
     /** Deployments list with details side panel (deployment name + panel segment, e.g. `details`). */
     deploymentsDeployment: `/workspaces/:${P.workspace}/deployments/:${P.deploymentName}/:${P.deploymentPanelView}`,
+    experiments: `/workspaces/:${P.workspace}/experiments`,
+    experimentRuns: `/workspaces/:${P.workspace}/experiments/runs`,
+    experimentBenchmarks: `/workspaces/:${P.workspace}/experiments/benchmarks`,
+    experimentCandidate: `/workspaces/:${P.workspace}/experiments/candidates/:${P.candidateId}`,
+    experimentGroup: `/workspaces/:${P.workspace}/experiments/:${P.experimentGroupId}`,
     intake: `/workspaces/:${P.workspace}/intake`,
     intakeTraces: `/workspaces/:${P.workspace}/intake/traces`,
     intakeSpans: `/workspaces/:${P.workspace}/intake/spans`,

@@ -27,6 +27,7 @@ import {
   gateDataDesignerRoutes,
   gateEvaluationBenchmarksRoutes,
   gateEvaluationRoutes,
+  gateExperimentsRoutes,
   gateFilesetDetailsRoutes,
   gateGuardrailsRoutes,
   gateInferenceProviderRoutes,
@@ -76,6 +77,31 @@ const IntakeTraceDetailRoute = lazy(() =>
 const IntakeSpanDetailRoute = lazy(() =>
   import('@studio/routes/IntakeSpanDetailRoute').then((module) => ({
     default: module.IntakeSpanDetailRoute,
+  }))
+);
+const ExperimentsListRoute = lazy(() =>
+  import('@studio/routes/ExperimentsListRoute').then((module) => ({
+    default: module.ExperimentsListRoute,
+  }))
+);
+const ExperimentGroupDetailRoute = lazy(() =>
+  import('@studio/routes/ExperimentGroupDetailRoute').then((module) => ({
+    default: module.ExperimentGroupDetailRoute,
+  }))
+);
+const ExperimentRunsRoute = lazy(() =>
+  import('@studio/routes/ExperimentRunsRoute').then((module) => ({
+    default: module.ExperimentRunsRoute,
+  }))
+);
+const ExperimentBenchmarksRoute = lazy(() =>
+  import('@studio/routes/ExperimentBenchmarksRoute').then((module) => ({
+    default: module.ExperimentBenchmarksRoute,
+  }))
+);
+const ExperimentCandidateDetailRoute = lazy(() =>
+  import('@studio/routes/ExperimentCandidateDetailRoute').then((module) => ({
+    default: module.ExperimentCandidateDetailRoute,
   }))
 );
 const CustomizationJobDetailsRoute = lazy(() =>
@@ -599,6 +625,37 @@ export const routes: RouteObject[] = [
                   path: ROUTES.workspace.jobDetail,
                   element: <JobDetailRoute />,
                   errorElement: <ErrorPanel title="Job Details" />,
+                },
+              ]),
+              ...gateExperimentsRoutes([
+                {
+                  path: ROUTES.workspace.experiments,
+                  element: <ExperimentsListRoute />,
+                  errorElement: <ErrorPanel title="Experiments" />,
+                },
+                {
+                  // Must come before experimentGroup so `runs` doesn't match `:experimentGroupId`.
+                  path: ROUTES.workspace.experimentRuns,
+                  element: <ExperimentRunsRoute />,
+                  errorElement: <ErrorPanel title="Runs" />,
+                },
+                {
+                  // Same reason — explicit path must come before :experimentGroupId.
+                  path: ROUTES.workspace.experimentBenchmarks,
+                  element: <ExperimentBenchmarksRoute />,
+                  errorElement: <ErrorPanel title="Benchmarks" />,
+                },
+                {
+                  // Candidate detail lives under /experiments/candidates/:candidateId,
+                  // so no conflict with :experimentGroupId.
+                  path: ROUTES.workspace.experimentCandidate,
+                  element: <ExperimentCandidateDetailRoute />,
+                  errorElement: <ErrorPanel title="Candidate" />,
+                },
+                {
+                  path: ROUTES.workspace.experimentGroup,
+                  element: <ExperimentGroupDetailRoute />,
+                  errorElement: <ErrorPanel title="Experiments" />,
                 },
               ]),
               ...gateIntakeRoutes([

@@ -12,6 +12,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  EXPERIMENTS_ENABLED,
   FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
@@ -56,6 +57,9 @@ export const gateSettingsRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateIntakeRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(INTAKE_ENABLED, routes);
+
+export const gateExperimentsRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(EXPERIMENTS_ENABLED, routes);
 
 export const gateSafeSynthesizerRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(SAFE_SYNTHESIZER_ENABLED, routes);
@@ -396,6 +400,26 @@ export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
 
 export const getIntakeSpanRoute = (workspace: string, spanId: string) => {
   return generatePath(ROUTES.workspace.intakeSpan, { workspace, spanId });
+};
+
+export const getExperimentsRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.experiments, { workspace });
+};
+
+export const getExperimentRunsRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.experimentRuns, { workspace });
+};
+
+export const getExperimentBenchmarksRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.experimentBenchmarks, { workspace });
+};
+
+export const getExperimentCandidateRoute = (workspace: string, candidateId: string) => {
+  return generatePath(ROUTES.workspace.experimentCandidate, { workspace, candidateId });
+};
+
+export const getExperimentGroupRoute = (workspace: string, experimentGroupId: string) => {
+  return generatePath(ROUTES.workspace.experimentGroup, { workspace, experimentGroupId });
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {

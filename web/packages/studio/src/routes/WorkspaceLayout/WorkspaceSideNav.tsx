@@ -13,6 +13,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  EXPERIMENTS_ENABLED,
   GUARDRAILS_ENABLED,
   INTAKE_ENABLED,
   JOBS_ENABLED,
@@ -29,6 +30,9 @@ import {
   getAgentOptimizationsRoute,
   getDataDesignerJobListRoute,
   getEvaluationBenchmarkListRoute,
+  getExperimentBenchmarksRoute,
+  getExperimentRunsRoute,
+  getExperimentsRoute,
   getModelCompareRoute,
   getEvaluationMetricsRoute,
   getEvaluationResultsRoute,
@@ -44,9 +48,12 @@ import {
   getWorkspaceSettingsRoute,
 } from '@studio/routes/utils';
 import {
+  Award,
+  Beaker,
   Boxes,
   ChartBar,
   Database,
+  ListOrdered,
   HatGlasses,
   LayoutList,
   ListChecks,
@@ -216,6 +223,29 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
     ];
     const evaluateItems = [...evalNav, ...intakeNav];
 
+    const experimentItems = EXPERIMENTS_ENABLED
+      ? [
+          {
+            id: 'experiments',
+            slotIcon: <Beaker className={iconColorClass} />,
+            slotLabel: 'Groups',
+            href: getExperimentsRoute(workspace),
+          },
+          {
+            id: 'experiment-runs',
+            slotIcon: <ListOrdered className={iconColorClass} />,
+            slotLabel: 'Runs',
+            href: getExperimentRunsRoute(workspace),
+          },
+          {
+            id: 'experiment-benchmarks',
+            slotIcon: <Award className={iconColorClass} />,
+            slotLabel: 'Benchmarks',
+            href: getExperimentBenchmarksRoute(workspace),
+          },
+        ]
+      : [];
+
     const safetyItems = GUARDRAILS_ENABLED
       ? [
           {
@@ -278,6 +308,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
         : []),
       ...(dataItems.length > 0 ? [{ group: 'Data', items: dataItems }] : []),
       ...(evaluateItems.length > 0 ? [{ group: 'Evaluate', items: evaluateItems }] : []),
+      ...(experimentItems.length > 0 ? [{ group: 'Experiments', items: experimentItems }] : []),
       ...(safetyItems.length > 0 ? [{ group: 'Safety', items: safetyItems }] : []),
     ];
   }, [workspace]);
