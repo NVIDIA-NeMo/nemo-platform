@@ -15,23 +15,17 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, List, Optional
+from __future__ import annotations
 
-from ...._models import BaseModel
-from .export_job import ExportJob
-from ...shared.pagination_data import PaginationData
+from typing import Dict, Iterable
+from typing_extensions import TypedDict
 
-__all__ = ["ExportJobsPage"]
+__all__ = ["CapturedChatCompletionsResponseParam"]
 
 
-class ExportJobsPage(BaseModel):
-    data: List[ExportJob]
+class CapturedChatCompletionsResponseParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+    """Flexible captured chat-completions response."""
 
-    filter: Optional[Dict[str, object]] = None
-    """Filtering information."""
+    choices: Iterable[Dict[str, object]]
 
-    pagination: Optional[PaginationData] = None
-    """Pagination information."""
-
-    sort: Optional[str] = None
-    """The field on which the results are sorted."""
+    error: Dict[str, object]

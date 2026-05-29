@@ -15,23 +15,8 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing_extensions import Literal, TypeAlias
 
-from typing_extensions import Required, TypedDict
+__all__ = ["ChatMessageRole"]
 
-__all__ = ["TaskPatchParams"]
-
-
-class TaskPatchParams(TypedDict, total=False):
-    workspace: str
-
-    app: Required[str]
-
-    description: str
-    """Task description"""
-
-    locked: bool
-    """Lock status"""
-
-    project: str
-    """The name of the project associated with this task"""
+ChatMessageRole: TypeAlias = Literal["user", "system", "assistant", "developer", "tool", "function"]

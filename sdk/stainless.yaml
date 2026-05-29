@@ -1023,73 +1023,6 @@ resources:
   intake:
     standalone_api: true
     subresources:
-      apps:
-        models:
-          app: App
-          app_filter: AppFilter
-          app_param: AppInput
-          app_sort_field: AppSortField
-          app_update: AppUpdate
-          apps_page: AppsPage
-        methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/apps
-          create: post /apis/intake/v2/workspaces/{workspace}/apps
-          retrieve: get /apis/intake/v2/workspaces/{workspace}/apps/{name}
-          patch: patch /apis/intake/v2/workspaces/{workspace}/apps/{name}
-          delete: delete /apis/intake/v2/workspaces/{workspace}/apps/{name}
-        subresources:
-          tasks:
-            models:
-              task: Task
-              task_filter: TaskFilter
-              task_param: TaskInput
-              task_sort_field: TaskSortField
-              task_update: TaskUpdate
-              tasks_page: TasksPage
-            methods:
-              list: get /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks
-              create: post /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks
-              retrieve: get /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-              patch: patch /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-              delete: delete /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-      entries:
-        models:
-          entry: Entry
-          entry_context: EntryContext
-          entry_context_filter: EntryContextFilter
-          entry_data: EntryDataOutput
-          entry_data_param: EntryDataInput
-          entry_filter: EntryFilter
-          entry_param: EntryInput
-          entry_sort_field: EntrySortField
-          entry_update: EntryUpdate
-          entry_user_rating_filter: EntryUserRatingFilter
-          entrys_page: EntrysPage
-          evaluator_result_event: EvaluatorResultEvent
-          flexible_entry_request: FlexibleEntryRequestOutput
-          flexible_entry_request_param: FlexibleEntryRequestInput
-          flexible_entry_response: FlexibleEntryResponse
-          flexible_message: FlexibleMessage
-          message_role: MessageRole
-          reviewer_annotation_event: ReviewerAnnotationEvent
-          thumb_direction: ThumbDirection
-          usage: Usage
-          user_action_event: UserActionEvent
-          user_feedback_event: UserFeedbackEvent
-          user_rating: UserRating
-        methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/entries
-          create: post /apis/intake/v2/workspaces/{workspace}/entries
-          retrieve: get /apis/intake/v2/workspaces/{workspace}/entries/{name}
-          patch: patch /apis/intake/v2/workspaces/{workspace}/entries/{name}
-          delete: delete /apis/intake/v2/workspaces/{workspace}/entries/{name}
-        subresources:
-          events:
-            models:
-              events_create_request: EventsCreateRequest
-            methods:
-              create: post /apis/intake/v2/workspaces/{workspace}/entries/{name}/events
-              delete: delete /apis/intake/v2/workspaces/{workspace}/entries/{entry}/events/{name}
       evaluator_results:
         models:
           evaluator_result: EvaluatorResult
@@ -1125,28 +1058,6 @@ resources:
           list: get /apis/intake/v2/workspaces/{workspace}/annotations
           retrieve: get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
           delete: delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
-      exports:
-        models:
-          export_config_param: ExportConfigInput
-          export_preview_request: ExportPreviewRequest
-          export_preview_response: ExportPreviewResponse
-        methods:
-          preview: post /apis/intake/v2/workspaces/{workspace}/export/preview
-        subresources:
-          jobs:
-            models:
-              export_config: ExportConfig
-              export_job: ExportJob
-              export_job_filter: ExportJobFilter
-              export_job_param: ExportJobInput
-              export_job_sort_field: ExportJobSortField
-              export_jobs_page: ExportJobsPage
-              export_status_details: ExportStatusDetails
-              job_status: JobStatus
-            methods:
-              list: get /apis/intake/v2/workspaces/{workspace}/export/jobs
-              create: post /apis/intake/v2/workspaces/{workspace}/export/jobs
-              retrieve: get /apis/intake/v2/workspaces/{workspace}/export/jobs/{name}
       ingest:
         models:
           evaluation_context: EvaluationContext
@@ -1173,8 +1084,12 @@ resources:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/atif
           chat_completions:
             models:
+              captured_chat_completions_request: CapturedChatCompletionsRequest
+              captured_chat_completions_response: CapturedChatCompletionsResponse
+              captured_chat_message: CapturedChatMessage
               chat_completions_ingest_param: ChatCompletionsIngestRequest
               chat_completions_ingest_response: ChatCompletionsIngestResponse
+              chat_message_role: ChatMessageRole
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions
           otlp:

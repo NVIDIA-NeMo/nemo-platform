@@ -10,7 +10,6 @@
 {"name": "aiosignal", "license": "APACHE-2.0", "compatible": true}
 {"name": "aiosqlite", "license": "MIT", "compatible": true}
 {"name": "alembic", "license": "MIT", "compatible": true}
-{"name": "amqp", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "annotated-doc", "license": "MIT", "compatible": true}
 {"name": "annotated-types", "license": "MIT", "compatible": true}
 {"name": "annoy", "license": "APACHE-2.0", "compatible": true}
@@ -19,7 +18,6 @@
 {"name": "anyio", "license": "MIT", "compatible": true}
 {"name": "appdirs", "license": "MIT", "compatible": true}
 {"name": "asgiref", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "async-timeout", "license": "APACHE-2.0", "compatible": true}
 {"name": "asyncpg", "license": "APACHE-2.0", "compatible": true}
 {"name": "attrs", "license": "MIT", "compatible": true}
 {"name": "authlib", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -27,22 +25,17 @@
 {"name": "base58", "license": "MIT", "compatible": true}
 {"name": "beartype", "license": "MIT", "compatible": true}
 {"name": "beautifulsoup4", "license": "MIT", "compatible": true}
-{"name": "billiard", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "boto3", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore", "license": "APACHE-2.0", "compatible": true}
 {"name": "botocore-stubs", "license": "MIT", "compatible": true}
 {"name": "cachetools", "license": "MIT", "compatible": true}
 {"name": "caio", "license": "APACHE-2.0", "compatible": true}
-{"name": "celery", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "certifi", "license": "LGPL", "compatible": true}
 {"name": "cffi", "license": "MIT", "compatible": true}
 {"name": "chardet", "license": "LGPL-2.1-OR-LATER", "compatible": true}
 {"name": "charset-normalizer", "license": "MIT", "compatible": true}
 {"name": "circuitbreaker", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "click", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "click-didyoumean", "license": "MIT", "compatible": true}
-{"name": "click-plugins", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "click-repl", "license": "MIT", "compatible": true}
 {"name": "clickhouse-connect", "license": "APACHE-2.0", "compatible": true}
 {"name": "colorama", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "colorlog", "license": "MIT", "compatible": true}
@@ -78,7 +71,6 @@
 {"name": "filelock", "license": "UNLICENSE", "compatible": true}
 {"name": "filetype", "license": "MIT", "compatible": true}
 {"name": "flatbuffers", "license": "APACHE-2.0", "compatible": true}
-{"name": "flower", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
@@ -95,7 +87,6 @@
 {"name": "httpx-retries", "license": "MIT", "compatible": true}
 {"name": "httpx-sse", "license": "MIT", "compatible": true}
 {"name": "huggingface-hub", "license": "APACHE-2.0", "compatible": true}
-{"name": "humanize", "license": "MIT", "compatible": true}
 {"name": "hvac", "license": "APACHE-2.0", "compatible": true}
 {"name": "idna", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "importlib-metadata", "license": "APACHE-2.0", "compatible": true}
@@ -121,7 +112,6 @@
 {"name": "jsonschema-path", "license": "APACHE-2.0", "compatible": true}
 {"name": "jsonschema-specifications", "license": "MIT", "compatible": true}
 {"name": "keyring", "license": "MIT", "compatible": true}
-{"name": "kombu", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "kubernetes", "license": "APACHE-2.0", "compatible": true}
 {"name": "langchain", "license": "MIT", "compatible": true}
 {"name": "langchain-aws", "license": "MIT", "compatible": true}
@@ -196,7 +186,6 @@
 {"name": "opentelemetry-instrumentation-asgi", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-instrumentation-fastapi", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-instrumentation-httpx", "license": "APACHE-2.0", "compatible": true}
-{"name": "opentelemetry-instrumentation-openai", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-instrumentation-requests", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-instrumentation-sqlalchemy", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-instrumentation-system-metrics", "license": "APACHE-2.0", "compatible": true}
@@ -204,7 +193,6 @@
 {"name": "opentelemetry-proto", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-sdk", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-semantic-conventions", "license": "APACHE-2.0", "compatible": true}
-{"name": "opentelemetry-semantic-conventions-ai", "license": "APACHE-2.0", "compatible": true}
 {"name": "opentelemetry-util-http", "license": "APACHE-2.0", "compatible": true}
 {"name": "optuna", "license": "MIT", "compatible": true}
 {"name": "orjson", "license": "APACHE-2.0", "compatible": true}
@@ -252,7 +240,6 @@
 {"name": "pytz", "license": "MIT", "compatible": true}
 {"name": "pyyaml", "license": "MIT", "compatible": true}
 {"name": "ragas", "license": "APACHE-2.0", "compatible": true}
-{"name": "redis", "license": "MIT", "compatible": true}
 {"name": "referencing", "license": "MIT", "compatible": true}
 {"name": "regex", "license": "APACHE-2.0", "compatible": true}
 {"name": "requests", "license": "APACHE-2.0", "compatible": true}
@@ -302,7 +289,6 @@
 {"name": "types-aiobotocore", "license": "MIT", "compatible": true}
 {"name": "types-aiobotocore-s3", "license": "MIT", "compatible": true}
 {"name": "types-awscrt", "license": "MIT", "compatible": true}
-{"name": "types-requests", "license": "APACHE-2.0", "compatible": true}
 {"name": "types-s3transfer", "license": "MIT", "compatible": true}
 {"name": "typing-extensions", "license": "PSF-2.0", "compatible": true}
 {"name": "typing-inspect", "license": "MIT", "compatible": true}
@@ -315,7 +301,6 @@
 {"name": "uvicorn", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "uvloop", "license": "MIT", "compatible": true}
 {"name": "validators", "license": "MIT", "compatible": true}
-{"name": "vine", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "wasmtime", "license": "APACHE-2.0 WITH LLVM-EXCEPTION", "compatible": true}
 {"name": "watchdog", "license": "APACHE-2.0", "compatible": true}
 {"name": "watchfiles", "license": "MIT", "compatible": true}

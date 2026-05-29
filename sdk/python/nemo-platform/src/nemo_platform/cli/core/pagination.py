@@ -124,7 +124,6 @@ def _fetch_all_pages_page_number(
     This is used for endpoints with `default_pagination` in the stainless config.
     """
     all_items: list[Any] = []
-    page_num = 1
     total_pages_count = 0
     total_results = 0
     original_page_size = None

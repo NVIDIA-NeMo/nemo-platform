@@ -17,34 +17,19 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Iterable
+from typing_extensions import Required, TypedDict
 
-from .job_status import JobStatus
-from ...shared_params.datetime_filter import DatetimeFilter
+from .captured_chat_message_param import CapturedChatMessageParam
 
-__all__ = ["ExportJobFilterParam"]
+__all__ = ["CapturedChatCompletionsRequestParam"]
 
 
-class ExportJobFilterParam(TypedDict, total=False):
-    """Filter for ExportJobs."""
+class CapturedChatCompletionsRequestParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+    """Flexible captured chat-completions request."""
 
-    id: str
-    """Filter by export job ID."""
+    messages: Required[Iterable[CapturedChatMessageParam]]
+    """Messages comprising the conversation."""
 
-    created_at: DatetimeFilter
-    """Filter entities based on creation date."""
-
-    name: str
-    """Filter by export job name."""
-
-    output_file_url: str
-    """Filter by output file URL."""
-
-    status: JobStatus
-    """Job status enum."""
-
-    updated_at: DatetimeFilter
-    """Filter entities based on update date."""
-
-    workspace: str
-    """Filter by workspace id."""
+    model: Required[str]
+    """The model identifier used for this request."""

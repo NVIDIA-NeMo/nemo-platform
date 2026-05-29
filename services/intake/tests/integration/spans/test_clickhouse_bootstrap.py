@@ -29,7 +29,7 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
     ]
 
 
-def test_intake_service_defers_service_owned_clickhouse_bootstrap(client: TestClient, run_async):
+def test_intake_service_readiness_does_not_bootstrap_service_owned_clickhouse(client: TestClient, run_async):
     app = cast(FastAPI, client.app)
     service = cast(IntakeService, app.state.intake_service)
 
