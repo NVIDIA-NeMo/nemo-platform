@@ -64,9 +64,12 @@ def test_initialize_logging_wires_sanitizer_into_chain() -> None:
 
     from nmp.common.observability.structured_logging import _sanitize_log_strings, initialize_logging
 
-    initialize_logging()
+    root = stdlib_logging.getLogger()
+    saved_handlers = list(root.handlers)
+    saved_level = root.level
     try:
-        root = stdlib_logging.getLogger()
+        root.handlers.clear()
+        initialize_logging()
         assert root.handlers, "initialize_logging() did not attach a handler"
         formatter = root.handlers[0].formatter
         chain = getattr(formatter, "foreign_pre_chain", None) or []
@@ -74,4 +77,6 @@ def test_initialize_logging_wires_sanitizer_into_chain() -> None:
             "_sanitize_log_strings missing from structlog chain — log-injection defense is disabled"
         )
     finally:
-        stdlib_logging.getLogger().handlers.clear()
+        root.handlers.clear()
+        root.handlers.extend(saved_handlers)
+        root.setLevel(saved_level)

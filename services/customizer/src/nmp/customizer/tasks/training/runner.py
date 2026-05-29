@@ -151,8 +151,14 @@ class TrainingRunner:
             # === Phase 5: Write result (coordinator only) ===
             try:
                 self._write_result(result)
-            except Exception:
+            except Exception as write_exc:
                 logger.exception("Failed to write training result")
+                result = TrainingResult(
+                    success=False,
+                    error_message=f"Failed to persist training result: {write_exc}",
+                    gpu_info=gpu_info,
+                    training_duration_seconds=time.time() - start_time,
+                )
         return result
 
     # --- Helper methods ---

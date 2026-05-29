@@ -214,10 +214,9 @@ def validate_port_available(port: int, config: QuickstartConfig | None = None) -
     """
     import socket
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
-        sock.bind(("0.0.0.0", port))  # noqa: S104  # nosec B104
-        sock.close()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("0.0.0.0", port))  # noqa: S104  # nosec B104
         return ValidationResult(True, f"Port {port} is available")
     except OSError:
         # Port is in use - check if it's the quickstart container
