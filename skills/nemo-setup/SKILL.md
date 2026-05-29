@@ -8,7 +8,7 @@ version: "0.1"
 
 Get a local NeMo platform running on `localhost:8080`. Work through the prereq questions below before bootstrapping — they shape which services start and what state survives the run. When setup is finished, [What's next?](#whats-next) maps the user's stated goal to the right follow-up skill.
 
-> This document is the canonical setup guide. It lives at the repository root as `SETUP.md` and is symlinked into `.agents/skills/nemo-setup/SKILL.md` so coding agents (Claude Code, Cursor, Codex, OpenCode) load the same content. Unlike the other skills, it is **not** installed by `nemo skills install` — it has to be available before the platform is bootstrapped, when the CLI may not yet exist.
+> This document is the canonical setup guide at `skills/nemo-setup/SKILL.md`. Unlike the other skills, it is **not** installed by `nemo skills install` — it has to be available before the platform is bootstrapped, when the CLI may not yet exist.
 
 ## Question 1 — Is a NeMo platform already running locally?
 
@@ -177,7 +177,7 @@ CLI built-ins (always present):
 
 - **`inference`** — ModelProvider + VirtualModel + Switchyard reference. End-to-end inference flow, routing patterns, middleware ordering, troubleshooting.
 
-> Setup itself (this document) lives at the repo root as `SETUP.md` rather than as a CLI-installable skill, since coding agents need it before the platform is bootstrapped. After `make bootstrap`, agents pick it up via `.agents/skills/nemo-setup/SKILL.md` (a symlink to `SETUP.md`).
+> Setup lives at `skills/nemo-setup/SKILL.md` rather than as a CLI-installable skill, since coding agents need it before the platform is bootstrapped.
 
 Plugin-provided (appear once the plugin is installed):
 

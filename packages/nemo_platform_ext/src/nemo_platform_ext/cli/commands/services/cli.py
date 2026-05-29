@@ -56,7 +56,7 @@ def services_callback(ctx: typer.Context) -> None:
 
 
 def _require_services_extra() -> None:
-    """Ensure the ``[services]`` extra (e.g. ``pyleak``) is installed."""
+    """Ensure the ``[all]`` extra (e.g. ``pyleak``) is installed."""
     if importlib.util.find_spec("pyleak") is not None:
         return
     typer.echo(

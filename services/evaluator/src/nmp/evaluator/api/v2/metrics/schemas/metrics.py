@@ -123,6 +123,11 @@ class LLMJudgeMetric(WithModel, metrics.LLMJudge):
     """Request type for creating LLM Judge metrics."""
 
     model_config = ConfigDict(extra="forbid")
+    prompt_template: str | dict = Field(
+        default_factory=lambda data: metrics.default_judge_prompt_template_for_model(data["model"]),
+        description=metrics.LLMJudge.model_fields["prompt_template"].description,
+        examples=metrics.LLMJudge.model_fields["prompt_template"].examples,
+    )
 
 
 # =============================================================================

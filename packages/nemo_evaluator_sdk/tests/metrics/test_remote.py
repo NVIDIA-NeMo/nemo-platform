@@ -14,6 +14,14 @@ from nemo_evaluator_sdk.values.scores import JSONScoreParser, RemoteScore
 from pytest_mock import MockerFixture
 
 
+class _SecretResolver:
+    def __init__(self, secrets: dict[str, str] | None = None) -> None:
+        self._secrets = secrets or {}
+
+    async def resolve_secret(self, secret_ref: SecretRef) -> str | None:
+        return self._secrets.get(secret_ref.root)
+
+
 class TestRemoteMetric:
     @pytest.mark.asyncio
     async def test_post_to_remote_endpoint_includes_auth_header(self, mocker: MockerFixture):
@@ -137,7 +145,9 @@ class TestRemoteMetric:
 
         await compute_scores(metric, {"prompt": "hello"}, {})
 
-        assert mock_post.await_args.kwargs["payload"] == {"input": "hello"}
+        await_args = mock_post.await_args
+        assert await_args is not None
+        assert await_args.kwargs["payload"] == {"input": "hello"}
 
     @pytest.mark.asyncio
     async def test_compute_scores_logs_and_reraises_invalid_score_values(self, mocker: MockerFixture):
@@ -234,10 +244,7 @@ class TestRemoteMetric:
             api_key_secret=SecretRef(root="remote-api-key"),
         )
 
-        async def fake_resolver(_: str) -> str:
-            return "secret-value"
-
-        await metric.resolve_secrets(fake_resolver)
+        await metric.resolve_secrets(_SecretResolver({"remote-api-key": "secret-value"}))
         await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert captured_api_keys == ["secret-value"]
@@ -251,11 +258,8 @@ class TestRemoteMetric:
             api_key_secret=SecretRef(root="remote-api-key"),
         )
 
-        async def fake_resolver(_: str) -> str | None:
-            return None
-
         with pytest.raises(ValueError, match="Missing secret 'remote-api-key'"):
-            await metric.resolve_secrets(fake_resolver)
+            await metric.resolve_secrets(_SecretResolver())
 
     def test_secrets_returns_expected_mapping(self):
         metric = RemoteMetric(
@@ -339,7 +343,9 @@ class TestNemoAgentToolkitRemoteMetric:
 
         result = await compute_scores(metric, {"prompt": "hello"}, {})
 
-        payload = mock_post.await_args.kwargs["payload"]
+        await_args = mock_post.await_args
+        assert await_args is not None
+        payload = await_args.kwargs["payload"]
         assert payload["evaluator_name"] == "tool-accuracy"
         assert payload["item"] == {"prompt": "hello"}
         assert result.outputs[0].name == "tool-accuracy"
@@ -387,10 +393,7 @@ class TestNemoAgentToolkitRemoteMetric:
             api_key_secret=SecretRef(root="remote-api-key"),
         )
 
-        async def fake_resolver(_: str) -> str:
-            return "secret-value"
-
-        await metric.resolve_secrets(fake_resolver)
+        await metric.resolve_secrets(_SecretResolver({"remote-api-key": "secret-value"}))
         await compute_scores(metric, {"prompt": "hello"}, {})
 
         assert metric._get_api_key() == "secret-value"

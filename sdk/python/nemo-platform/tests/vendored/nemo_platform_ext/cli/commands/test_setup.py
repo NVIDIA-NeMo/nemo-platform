@@ -499,6 +499,21 @@ class TestMaybeStartServices:
         mock_start.assert_called_once_with("http://localhost:8080", data_dir="/tmp/test-data")
         mock_db_prompt.assert_called_once()
 
+    def test_exits_early_when_services_extra_missing(self, capsys):
+        """Preflight aborts with install hint before spawning a subprocess."""
+        with (
+            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+            patch(f"{SETUP_MOD}.importlib.util.find_spec", return_value=None),
+            patch(f"{SETUP_MOD}._start_services_background") as mock_start,
+            patch(f"{SETUP_MOD}.prompt_choice", return_value="yes"),
+            patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/data"),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        mock_start.assert_not_called()
+        captured = capsys.readouterr()
+        assert "nemo-platform[all]" in captured.err
+
 
 class TestLocalDataDirHelpers:
     """Tests for the XDG-default data-dir helpers used by `nemo setup`."""

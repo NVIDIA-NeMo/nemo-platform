@@ -106,10 +106,12 @@ def test_schedule_uses_allowlisted_host_environment(mock_nmp_client, tmp_path, m
         [
             "/bin/sh",
             "-c",
-            'test "$PATH" = "/bin" && '
-            'test "$VIRTUAL_ENV" = "/venv" && '
-            'test -z "${HOME+x}" && '
-            'test -z "${SECRET_TOKEN+x}"',
+            (
+                'test "$PATH" = "/bin" && '
+                'test "$VIRTUAL_ENV" = "/venv" && '
+                'test -z "${HOME+x}" && '
+                'test -z "${SECRET_TOKEN+x}"'
+            ),
         ],
     )
 

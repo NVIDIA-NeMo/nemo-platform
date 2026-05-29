@@ -20,77 +20,35 @@ from nemo_platform.beta.evaluator.dataset_schemas.common import empty_object_sch
 from nemo_platform.beta.evaluator.dataset_schemas.compatibility import merge_metric_required_schemas
 from nemo_platform.beta.evaluator.dataset_schemas.templates import infer_required_schema_from_template
 from nemo_platform.beta.evaluator.enums import MetricType
-from nemo_platform.beta.evaluator.metrics.protocol import MetricTypeName
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.dataset_schemas import InputSchema
-from nemo_platform.beta.evaluator.values.models import Model, ReasoningParams
+from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
+    LLM_JUDGE_SCORES_CONTEXT_KEY,
+    default_judge_prompt_template_for_model,
+)
+from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
+    default_judge_prompt_template_chat as default_judge_prompt_template_chat,
+)
+from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
+    default_judge_prompt_template_completions as default_judge_prompt_template_completions,
+)
+from nemo_platform.beta.evaluator.values.llm_judge_defaults import (
+    is_chat_inference as is_chat_inference,
+)
+from nemo_platform.beta.evaluator.values.models import Model, ModelRef, ReasoningParams
 from nemo_platform.beta.evaluator.values.params import InferenceParams
+from nemo_platform.beta.evaluator.values.protocol import MetricTypeName
 from nemo_platform.beta.evaluator.values.scores import RemoteScore, Score
 
 # =============================================================================
 # Prompt Template Constants and Helpers
 # =============================================================================
 
-DEFAULT_PROMPT_TEMPLATE = "{{item}}"
-LLM_JUDGE_SCORES_CONTEXT_KEY = "scores"
 # TODO: Align optional_fields with template path semantics.
 # Keep support for dataset-relative nested paths (for example "reference.text")
 # and runtime sample paths (for example "sample.output_text"), while avoiding
 # dependence on the "item." alias form (normalize "item.foo" -> "foo").
 OptionalFieldName = Annotated[str, Field(min_length=1)]
-
-DEFAULT_JUDGE_SYSTEM_PROMPT_TEMPLATE = """You are an expert evaluator for answers to user queries. Your task is to assess responses to user queries based on {{ scores.keys() | join(", ") }}
-{% if scores | length > 1 %}Scores:{% endif %}
-{%- for score_name, score in scores.items() %}
-{{ score_name }}{%- if "minimum" in score %} with a score range from {{ score.minimum }} to {{ score.maximum }}{%- endif %}{% if score.description %}: {{score.description}}{% endif %}
-{%- if "rubric" in score %}
-{%- for rubric in score.rubric %}
-* {{ rubric.label }}{% if rubric.description %}: {{rubric.description}}{% endif %}
-{%- endfor -%}
-{%- endif -%}
-{%- endfor -%}
-"""
-DEFAULT_JUDGE_PROMPT_TEMPLATE_WITH_TARGET_MODEL = "{{sample.output_text}}"
-
-
-def is_chat_inference(url: str) -> bool:
-    """Check if the URL is for chat inference (vs completions)."""
-    return "/v1/completions" not in url
-
-
-def default_judge_prompt_template_chat(job_type: SupportedJobTypes = SupportedJobTypes.ONLINE) -> dict:
-    prompt = (
-        DEFAULT_JUDGE_PROMPT_TEMPLATE_WITH_TARGET_MODEL
-        if job_type == SupportedJobTypes.ONLINE
-        else DEFAULT_PROMPT_TEMPLATE
-    )
-    return {
-        "messages": [
-            {"role": "system", "content": DEFAULT_JUDGE_SYSTEM_PROMPT_TEMPLATE},
-            {"role": "user", "content": prompt},
-        ]
-    }
-
-
-def default_judge_prompt_template_completions(job_type: SupportedJobTypes = SupportedJobTypes.ONLINE) -> dict:
-    prompt = (
-        DEFAULT_JUDGE_PROMPT_TEMPLATE_WITH_TARGET_MODEL
-        if job_type == SupportedJobTypes.ONLINE
-        else DEFAULT_PROMPT_TEMPLATE
-    )
-    return {"prompt": f"{DEFAULT_JUDGE_SYSTEM_PROMPT_TEMPLATE}\n{prompt}"}
-
-
-def _model_url_for_prompt_defaults(model: Model | dict[str, Any]) -> str:
-    """Normalize model URL access for default prompt-template selection."""
-    if isinstance(model, Model):
-        return model.url
-
-    url = model.get("url")
-    if isinstance(url, str):
-        return url
-
-    raise ValueError("model.url is required to infer the default prompt template")
 
 
 def _input_schema_from_template(
@@ -213,7 +171,7 @@ class LLMJudge(MetricBase):
     """LLM-as-a-Judge metric configuration."""
 
     type: Literal[MetricType.LLM_JUDGE] = MetricType.LLM_JUDGE
-    model: Model = Field(
+    model: Model | ModelRef = Field(
         description="The judge model to use for the metric.",
         examples=[
             {
@@ -227,12 +185,8 @@ class LLMJudge(MetricBase):
     scores: list[Score] = Field(
         description="Definitions of scores that will be extracted from the judge's output.", min_length=1
     )
-    prompt_template: str | dict = Field(
-        default_factory=lambda data: (
-            default_judge_prompt_template_chat()
-            if is_chat_inference(_model_url_for_prompt_defaults(data["model"]))
-            else default_judge_prompt_template_completions()
-        ),
+    prompt_template: str | dict | None = Field(
+        default=None,
         description="The prompt template for the judge. Can be either a simple string or a structured object (e.g., OpenAI messages format). Use Jinja template variables like {{sample.output_text}} to use the model output within the template or {{item.xxx}} to reference input columns from the dataset.",
         examples=[
             {"type": "string", "content": "You are an expert judge evaluating the correctness of AI responses."},
@@ -295,7 +249,7 @@ class LLMJudge(MetricBase):
     @model_validator(mode="after")
     def reject_reserved_prompt_template_keys(self) -> Self:
         """Fail fast on misplaced evaluator controls in `prompt_template`."""
-        if not isinstance(self.prompt_template, dict):
+        if self.prompt_template is None or not isinstance(self.prompt_template, dict):
             return self
 
         reserved_keys = {"system_prompt", "reasoning"}
@@ -309,8 +263,14 @@ class LLMJudge(MetricBase):
         return self
 
     def input_schema(self) -> InputSchema:
+        job_type = getattr(self, "job_type", SupportedJobTypes.ONLINE)
+        prompt_template = (
+            self.prompt_template
+            if self.prompt_template is not None
+            else default_judge_prompt_template_for_model(self.model, job_type)
+        )
         return _input_schema_from_template(
-            self.prompt_template,
+            prompt_template,
             ignored_roots={LLM_JUDGE_SCORES_CONTEXT_KEY},
             optional_fields=set(self.optional_fields),
         )
@@ -477,7 +437,7 @@ class ToolCalling(MetricBase):
 class _RAGASJudgeConfig(BaseModel):
     """Configuration for the LLM judge used by RAGAS metrics."""
 
-    judge_model: Model = Field(description="The LLM model to use as judge.")
+    judge_model: Model | ModelRef = Field(description="The LLM model to use as judge.")
     inference: InferenceParams = Field(
         default_factory=InferenceParams, description="Inference parameters for the judge."
     )
@@ -491,7 +451,7 @@ class _RAGASJudgeConfig(BaseModel):
 class _RAGASEmbeddingsConfig(BaseModel):
     """Configuration for embeddings used by RAGAS metrics."""
 
-    embeddings_model: Model = Field(description="The embeddings model to use.")
+    embeddings_model: Model | ModelRef = Field(description="The embeddings model to use.")
 
 
 class _RAGASBase(MetricBase):
