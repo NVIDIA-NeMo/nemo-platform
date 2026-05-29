@@ -75,6 +75,19 @@ def _get_score_value(result: MetricResult, score_name: str) -> float:
     raise KeyError(f"Output '{score_name}' not found in result")
 
 
+class _SecretResolver:
+    def __init__(self, secrets: dict[str, str] | None = None) -> None:
+        self._secrets = secrets or {}
+
+    async def resolve_secret(self, secret_ref: SecretRef) -> str | None:
+        return self._secrets.get(secret_ref.root)
+
+
+class _UnexpectedSecretResolver:
+    async def resolve_secret(self, secret_ref: SecretRef) -> str | None:
+        raise AssertionError(f"Resolver should not be called for {secret_ref.root}")
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "metric_class,expected_type,params",
@@ -636,14 +649,8 @@ async def test_resolve_secrets_with_api_key_secret():
     assert metric._llm_model["api_key"] is None
     assert "my_secret" in metric.secrets()  # Underscores in env var name
 
-    # Create mock resolver
-    async def mock_resolver(secret_name: str) -> str | None:
-        if secret_name == "my-secret":
-            return "resolved-api-key-12345"
-        return None
-
     # Resolve secrets
-    await metric.resolve_secrets(mock_resolver)
+    await metric.resolve_secrets(_SecretResolver({"my-secret": "resolved-api-key-12345"}))
 
     # After resolve_secrets, api_key should be populated
     assert metric._llm_model is not None
@@ -666,13 +673,9 @@ async def test_resolve_secrets_raises_when_secret_not_found():
         judge_model=judge_model_with_secret,
     )
 
-    # Mock resolver that returns None (secret not found)
-    async def mock_resolver(secret_name: str) -> str | None:
-        return None
-
     # Should raise ValueError
     with pytest.raises(ValueError, match="Missing secret 'missing-secret'"):
-        await metric.resolve_secrets(mock_resolver)
+        await metric.resolve_secrets(_SecretResolver())
 
 
 @pytest.mark.asyncio
@@ -689,12 +692,8 @@ async def test_resolve_secrets_skipped_when_no_api_key_secret():
     assert metric._llm_model["api_key"] == PLACEHOLDER_INFERENCE_API_KEY
     assert metric.secrets() == {}  # No secrets to resolve
 
-    # Mock resolver - should never be called
-    async def mock_resolver(secret_name: str) -> str | None:
-        raise AssertionError("Resolver should not be called")
-
     # Should complete without calling resolver
-    await metric.resolve_secrets(mock_resolver)
+    await metric.resolve_secrets(_UnexpectedSecretResolver())
 
     # API key should still be the placeholder
     assert metric._llm_model is not None
@@ -731,16 +730,15 @@ async def test_resolve_secrets_with_embeddings_model():
     assert "judge_secret" in metric.secrets()
     assert "embeddings_secret" in metric.secrets()
 
-    # Create mock resolver
-    async def mock_resolver(secret_name: str) -> str | None:
-        secrets = {
-            "judge-secret": "judge-key-123",
-            "embeddings-secret": "embeddings-key-456",
-        }
-        return secrets.get(secret_name)
-
     # Resolve secrets
-    await metric.resolve_secrets(mock_resolver)
+    await metric.resolve_secrets(
+        _SecretResolver(
+            {
+                "judge-secret": "judge-key-123",
+                "embeddings-secret": "embeddings-key-456",
+            }
+        )
+    )
 
     # After resolve_secrets, both api_keys should be populated
     assert metric._llm_model is not None

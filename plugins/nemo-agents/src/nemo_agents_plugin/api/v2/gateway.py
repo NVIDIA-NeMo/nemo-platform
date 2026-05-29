@@ -28,7 +28,7 @@ import json
 import logging
 import os
 from typing import AsyncIterator
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -158,10 +158,14 @@ async def _proxy(
     transfer encoding makes the original value invalid.
     """
     endpoint_parsed = urlparse(endpoint)
-    target_url = urljoin(endpoint.rstrip("/") + "/", trailing_uri)
-    target_parsed = urlparse(target_url)
-    if target_parsed.scheme != endpoint_parsed.scheme or target_parsed.netloc != endpoint_parsed.netloc:
+    if not endpoint_parsed.scheme or not endpoint_parsed.netloc:
+        raise HTTPException(status_code=500, detail="Deployment endpoint is misconfigured.")
+    joined = urlparse(urljoin(endpoint.rstrip("/") + "/", trailing_uri))
+    if joined.scheme != endpoint_parsed.scheme or joined.netloc != endpoint_parsed.netloc:
         raise HTTPException(status_code=400, detail="Invalid proxy target URI.")
+    target_url = urlunparse(
+        (endpoint_parsed.scheme, endpoint_parsed.netloc, joined.path, joined.params, joined.query, "")
+    )
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 

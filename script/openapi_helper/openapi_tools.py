@@ -418,7 +418,7 @@ def schema_tree(spec_file: str = typer.Argument(..., help="Path to OpenAPI speci
         print_verbose("\n[bold magenta]Schema Dependency Tree[/bold magenta]")
         print_verbose("Top-level schemas (used directly in endpoints) are shown at the root level")
         print_verbose("Dependent schemas are shown as children\n")
-        print_verbose("Unused schemas: ", ", ".join(sorted(unused_schemas)), style="bold yellow")
+        print_verbose(f"Unused schemas: {', '.join(sorted(unused_schemas))}", style="bold yellow")
 
         print_schema_tree(tree)
 

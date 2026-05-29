@@ -118,6 +118,7 @@ def test_agent_polled_status() -> None:
         commands = session.get_bash_commands()
     except Exception:
         pytest.skip("trace_reader not available")
+        return
 
     status_checks = [
         cmd for cmd in commands if "jobs" in cmd and ("get-status" in cmd or "get_status" in cmd or "status" in cmd)
@@ -134,6 +135,7 @@ def test_agent_investigated_failure() -> None:
         commands = session.get_bash_commands()
     except Exception:
         pytest.skip("trace_reader not available")
+        return
 
     fail_investigation = [cmd for cmd in commands if "gpu-fail-job" in cmd or "fail-job" in cmd or "fail_job" in cmd]
     assert len(fail_investigation) >= 2, (

@@ -15,7 +15,7 @@ from typing import Any, Literal, Self
 import pyarrow as pa
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_serializer
 
-from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
+from nemo_evaluator_sdk.values.protocol import MetricOutput, MetricResult
 
 ResultView = Literal["rows", "aggregate"]
 AggregateFieldName = Literal[
