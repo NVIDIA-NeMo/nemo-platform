@@ -61,10 +61,9 @@ class TraceRepository:
         sort: str,
         mode: TraceMode,
     ) -> PaginatedResult[IntakeTrace]:
-        trace_sql, trace_parameters = trace_rows_sql(self._spans_table.qualified_name, filters, mode=mode)
+        trace_query = trace_rows_sql(self._spans_table, filters, mode=mode)
         rows, total_results = await self._dao.paginate_subquery(
-            subquery_sql=trace_sql,
-            subquery_parameters=trace_parameters,
+            subquery=trace_query,
             outer_where=trace_outer_where(filters),
             sort=sort,
             sort_columns=TRACE_SORT_COLUMNS,

@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Any, Self
 
 from nmp.intake.spans.clickhouse.identifiers import column
+from nmp.intake.spans.clickhouse.sql import BuiltQuery
 from nmp.intake.spans.span_attribute_catalog import where_clause as attribute_where_clause
 
 
@@ -53,8 +54,10 @@ class _WhereBuilder:
     def is_empty_parent_span(self, *, qualifier: str | None = None) -> Self:
         return self._append(f"{column('external_parent_span_id', qualifier=qualifier)} = ''")
 
-    def in_subquery(self, columns_expr: str, subquery_sql: str, parameters: Mapping[str, Any]) -> Self:
-        return self._append(f"({columns_expr}) IN ({subquery_sql})", parameters)
+    def in_subquery(self, columns_expr: str, subquery: BuiltQuery) -> Self:
+        if not isinstance(subquery, BuiltQuery):
+            raise TypeError("in_subquery requires a built query")
+        return self._append(f"({columns_expr}) IN ({subquery.sql})", subquery.parameters)
 
     def _append(self, clause: str, parameters: Mapping[str, Any] | None = None) -> Self:
         self._clauses.append(clause)

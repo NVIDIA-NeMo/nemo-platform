@@ -11,6 +11,7 @@ from typing import Any
 
 from nmp.intake.spans.clickhouse._where import WhereClause
 from nmp.intake.spans.clickhouse.identifiers import validate_clickhouse_identifier
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, TrustedSql, _trusted_query, _trusted_sql
 
 
 def format_columns(columns: Sequence[str]) -> str:
@@ -51,12 +52,16 @@ class SelectQuery:
     """Composable SELECT statement with bound parameters."""
 
     select_expr: str
-    from_expr: str
+    from_expr: TrustedSql
     where_clause: WhereClause | None = None
     order_by: str | None = None
     limit_param: str | None = None
     offset_param: str | None = None
     extra_parameters: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.from_expr, TrustedSql):
+            raise TypeError("SelectQuery requires a trusted FROM expression")
 
     def where(self, clause: WhereClause) -> SelectQuery:
         self.where_clause = clause
@@ -78,7 +83,13 @@ class SelectQuery:
     def build(self) -> tuple[str, dict[str, Any]]:
         """Render SQL and merge all bound parameters."""
 
-        clauses = [f"SELECT {self.select_expr}", f"FROM {self.from_expr}"]
+        built_query = self.render()
+        return built_query.sql, dict(built_query.parameters)
+
+    def render(self) -> BuiltQuery:
+        """Render SQL into a reusable trusted query object."""
+
+        clauses = [f"SELECT {self.select_expr}", f"FROM {self.from_expr.sql}"]
         parameters = dict(self.extra_parameters)
         if self.where_clause is not None:
             where_sql, where_parameters = self.where_clause.build()
@@ -90,7 +101,7 @@ class SelectQuery:
             clauses.append(f"LIMIT %({self.limit_param})s")
         if self.offset_param is not None:
             clauses.append(f"OFFSET %({self.offset_param})s")
-        return "\n".join(clauses), parameters
+        return _trusted_query("\n".join(clauses), parameters)
 
 
 def select_from_table(
@@ -102,15 +113,26 @@ def select_from_table(
     """Start a SELECT against a table, optionally with ClickHouse FINAL."""
 
     if isinstance(columns, str):
+        if columns != "*":
+            validate_clickhouse_identifier(columns)
         select_expr = columns
     else:
         select_expr = format_columns(columns)
-    from_expr = f"{table.qualified_name} FINAL" if final else table.qualified_name
+    from_expr = _trusted_sql(f"{table.qualified_name} FINAL" if final else table.qualified_name)
     return SelectQuery(select_expr=select_expr, from_expr=from_expr)
 
 
 def count_query(table: TableRef, where_clause: WhereClause, *, final: bool = False) -> SelectQuery:
     """Build `SELECT count()` with optional FINAL."""
 
-    from_expr = f"{table.qualified_name} FINAL" if final else table.qualified_name
+    from_expr = _trusted_sql(f"{table.qualified_name} FINAL" if final else table.qualified_name)
     return SelectQuery(select_expr="count()", from_expr=from_expr, where_clause=where_clause)
+
+
+def subquery_from(query: BuiltQuery, *, alias: str) -> TrustedSql:
+    """Build a trusted FROM expression from a rendered subquery and validated alias."""
+
+    if not isinstance(query, BuiltQuery):
+        raise TypeError("subquery_from requires a built query")
+    alias = validate_clickhouse_identifier(alias)
+    return _trusted_sql(f"({query.sql}) AS {alias}")

@@ -12,7 +12,6 @@ from nmp.intake.spans.clickhouse.filters import (
     evaluator_result_lookup_where,
     evaluator_results_for_span_where,
 )
-from nmp.intake.spans.clickhouse.query import order_by_clause
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import (
     EvaluatorResult,
@@ -93,19 +92,13 @@ class EvaluatorResultsRepository:
         rows = await self._dao.fetch_all(
             self._dao.table("evaluator_results"),
             evaluator_results_for_span_where(workspace=workspace, span_id=span_id),
-            order_by="created_at ASC, evaluator_result_id ASC",
+            sort="created_at",
+            sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
+            tiebreaker="evaluator_result_id",
+            sort_label="evaluator_result",
             final=True,
         )
         return [_row_to_evaluator_result(row) for row in rows]
-
-
-def _evaluator_result_order_by(sort: str) -> str:
-    return order_by_clause(
-        sort,
-        sort_columns=EVALUATOR_RESULT_SORT_COLUMNS,
-        tiebreaker="evaluator_result_id",
-        label="evaluator_result",
-    )
 
 
 def _evaluator_result_to_row(result: EvaluatorResult) -> dict[str, Any]:

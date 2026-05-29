@@ -9,6 +9,8 @@ from typing import Any
 
 from nmp.intake.spans.clickhouse._where import _as_clause, _new_where
 from nmp.intake.spans.clickhouse.identifiers import column
+from nmp.intake.spans.clickhouse.query import TableRef
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query
 from nmp.intake.spans.domain import TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 
@@ -49,33 +51,40 @@ METRIC_ATTRIBUTE_FIELDS = {
 }
 
 
-def trace_rows_sql(table: str, filters: TraceListFilter, *, mode: TraceMode) -> tuple[str, dict[str, Any]]:
-    summary_sql, summary_parameters = trace_summary_sql(table, filters)
+def _require_table_ref(table: TableRef) -> None:
+    if not isinstance(table, TableRef):
+        raise TypeError("trace query builders require a TableRef")
+
+
+def trace_rows_sql(table: TableRef, filters: TraceListFilter, *, mode: TraceMode) -> BuiltQuery:
+    _require_table_ref(table)
+    summary_query = trace_summary_sql(table, filters)
     if mode == "detailed":
-        rollup_sql, rollup_parameters = trace_aggregates_sql(table, filters)
+        rollup_query = trace_aggregates_sql(table, filters)
         include_aggregates = True
     elif mode == "summary":
-        rollup_sql, rollup_parameters = trace_status_sql(table, filters)
+        rollup_query = trace_status_sql(table, filters)
         include_aggregates = False
     else:
         raise ValueError(f"Unsupported trace mode: {mode}")
 
-    query = f"""
+    sql = f"""
         SELECT
             {_trace_select_columns(include_aggregates=include_aggregates)}
-        FROM ({summary_sql}) AS traces
-        ANY INNER JOIN ({rollup_sql}) AS rollups
+        FROM ({summary_query.sql}) AS traces
+        ANY INNER JOIN ({rollup_query.sql}) AS rollups
             ON traces.workspace = rollups.workspace
             AND traces.source_format = rollups.source_format
             AND traces.trace_id = rollups.trace_id
     """
-    return query, {**summary_parameters, **rollup_parameters}
+    return _trusted_query(sql, {**summary_query.parameters, **rollup_query.parameters})
 
 
-def trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
+def trace_summary_sql(table: TableRef, filters: TraceListFilter) -> BuiltQuery:
     root_alias = "root_spans"
+    current_spans = current_spans_sql(table)
     where_sql, parameters = _trace_summary_where(table, filters, qualifier=root_alias).build()
-    query = f"""
+    sql = f"""
         SELECT
             {root_alias}.trace_id AS trace_id,
             {root_alias}.trace_id AS id,
@@ -90,32 +99,34 @@ def trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[s
             nullIf({root_alias}.end_time, {_ZERO_DATETIME_SQL}) AS ended_at,
             {root_alias}.attributes_string AS root_attributes_string,
             {root_alias}.event_ts AS ingested_at
-        FROM {current_spans_sql(table)} AS {root_alias}
+        FROM {current_spans.sql} AS {root_alias}
         WHERE {where_sql}
         ORDER BY {root_alias}.start_time ASC, {root_alias}.id ASC
         LIMIT 1 BY {root_alias}.workspace, {root_alias}.source_format, {root_alias}.trace_id
     """
-    return query, parameters
+    return _trusted_query(sql, parameters)
 
 
-def trace_status_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
+def trace_status_sql(table: TableRef, filters: TraceListFilter) -> BuiltQuery:
     source_alias = "trace_spans"
+    current_spans = current_spans_sql(table)
     where_sql, parameters = _trace_rollup_where(table, filters, qualifier=source_alias).build()
-    query = f"""
+    sql = f"""
         SELECT
             {source_alias}.workspace AS workspace,
             {source_alias}.source_format AS source_format,
             {source_alias}.trace_id AS trace_id,
             {_rolled_up_status_sql(source_alias)} AS status
-        FROM {current_spans_sql(table)} AS {source_alias}
+        FROM {current_spans.sql} AS {source_alias}
         WHERE {where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
-    return query, parameters
+    return _trusted_query(sql, parameters)
 
 
-def trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[str, Any]]:
+def trace_aggregates_sql(table: TableRef, filters: TraceListFilter) -> BuiltQuery:
     source_alias = "trace_spans"
+    current_spans = current_spans_sql(table)
     where_sql, parameters = _trace_rollup_where(table, filters, qualifier=source_alias).build()
     metric_columns, metric_parameters = _metric_columns(source_alias)
     parameters.update(metric_parameters)
@@ -125,7 +136,7 @@ def trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, dic
     parameters["model_key"] = model_spec.bag_key
     parameters["provider_key"] = provider_spec.bag_key
 
-    query = f"""
+    sql = f"""
         SELECT
             {source_alias}.workspace AS workspace,
             {source_alias}.source_format AS source_format,
@@ -144,14 +155,15 @@ def trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, dic
             )) AS providers,
             count() AS span_count,
             countIf({source_alias}.status = 'error') AS error_count
-        FROM {current_spans_sql(table)} AS {source_alias}
+        FROM {current_spans.sql} AS {source_alias}
         WHERE {where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
-    return query, parameters
+    return _trusted_query(sql, parameters)
 
 
-def current_spans_sql(table: str) -> str:
+def current_spans_sql(table: TableRef) -> BuiltQuery:
+    _require_table_ref(table)
     source_alias = "span_versions"
     columns = [
         *[f"{source_alias}.{column_name} AS {column_name}" for column_name in _CURRENT_SPAN_IDENTITY_COLUMNS],
@@ -162,18 +174,18 @@ def current_spans_sql(table: str) -> str:
     ]
     columns_sql = ",\n                ".join(columns)
     group_by_sql = ", ".join(f"{source_alias}.{column_name}" for column_name in _CURRENT_SPAN_IDENTITY_COLUMNS)
-    return f"""
+    return _trusted_query(f"""
         (
             SELECT
                 {columns_sql}
-            FROM {table} AS {source_alias}
+            FROM {table.qualified_name} AS {source_alias}
             WHERE {source_alias}.workspace = %(workspace)s
             GROUP BY {group_by_sql}
         )
-    """
+    """)
 
 
-def _trace_summary_where(table: str, filters: TraceListFilter, *, qualifier: str):
+def _trace_summary_where(table: TableRef, filters: TraceListFilter, *, qualifier: str):
     where = _trace_identity_where(table, filters, qualifier=qualifier)
     where.is_empty_parent_span(qualifier=qualifier)
     if filters.started_at_gte is not None:
@@ -183,12 +195,12 @@ def _trace_summary_where(table: str, filters: TraceListFilter, *, qualifier: str
     return _as_clause(where)
 
 
-def _trace_rollup_where(table: str, filters: TraceListFilter, *, qualifier: str):
+def _trace_rollup_where(table: TableRef, filters: TraceListFilter, *, qualifier: str):
     return _as_clause(_trace_identity_where(table, filters, qualifier=qualifier))
 
 
 def _trace_identity_where(
-    table: str,
+    table: TableRef,
     filters: TraceListFilter,
     *,
     qualifier: str,
@@ -206,36 +218,34 @@ def _trace_identity_where(
     if filters.source_format is not None:
         where.eq(column("source_format", qualifier=qualifier), "source_format", filters.source_format)
 
-    root_sql, root_parameters = _trace_candidate_subquery_sql(
+    root_query = _trace_candidate_subquery_sql(
         table=table,
         workspace=filters.workspace,
         attribute_filters=filters.root_attribute_filters,
         root_only=True,
         prefix="root_candidate",
     )
-    if root_sql:
+    if root_query:
         where.in_subquery(
             f"{column('workspace', qualifier=qualifier)}, "
             f"{column('source_format', qualifier=qualifier)}, "
             f"{column('trace_id', qualifier=qualifier)}",
-            root_sql,
-            root_parameters,
+            root_query,
         )
 
-    span_sql, span_parameters = _trace_candidate_subquery_sql(
+    span_query = _trace_candidate_subquery_sql(
         table=table,
         workspace=filters.workspace,
         attribute_filters=filters.span_attribute_filters,
         root_only=False,
         prefix="span_candidate",
     )
-    if span_sql:
+    if span_query:
         where.in_subquery(
             f"{column('workspace', qualifier=qualifier)}, "
             f"{column('source_format', qualifier=qualifier)}, "
             f"{column('trace_id', qualifier=qualifier)}",
-            span_sql,
-            span_parameters,
+            span_query,
         )
 
     return where
@@ -243,14 +253,14 @@ def _trace_identity_where(
 
 def _trace_candidate_subquery_sql(
     *,
-    table: str,
+    table: TableRef,
     workspace: str,
     attribute_filters: list[Any],
     root_only: bool,
     prefix: str,
-) -> tuple[str | None, dict[str, Any]]:
+) -> BuiltQuery | None:
     if not attribute_filters:
-        return None, {}
+        return None
 
     where = _new_where().eq(column("workspace"), "workspace", workspace).eq(column("is_deleted"), "is_deleted", 0)
     if root_only:
@@ -264,10 +274,11 @@ def _trace_candidate_subquery_sql(
         )
 
     where_sql, parameters = where.build()
-    return (
+    current_spans = current_spans_sql(table)
+    return _trusted_query(
         f"""
         SELECT workspace, source_format, trace_id
-        FROM {current_spans_sql(table)} AS candidate_spans
+        FROM {current_spans.sql} AS candidate_spans
         WHERE {where_sql}
         """,
         parameters,

@@ -16,7 +16,9 @@ from nmp.intake.spans.clickhouse.query import (
     count_query,
     order_by_clause,
     select_from_table,
+    subquery_from,
 )
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.storage import result_rows
 
@@ -44,19 +46,23 @@ class ClickHouseDao:
             validate_clickhouse_identifier(column_name)
         await self._client.insert(table_name, rows, column_names=column_names)
 
-    async def _execute_raw(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> list[dict[str, Any]]:
+    async def _execute_raw(self, query: SelectQuery | BuiltQuery) -> list[dict[str, Any]]:
         if isinstance(query, SelectQuery):
             sql, parameters = query.build()
+        elif isinstance(query, BuiltQuery):
+            sql, parameters = query.sql, query.parameters
         else:
-            sql, parameters = query
+            raise TypeError("query must be a trusted SelectQuery or BuiltQuery")
         result = await self._client.query(sql, parameters=dict(parameters))
         return result_rows(result)
 
-    async def _execute_scalar_raw(self, query: SelectQuery | tuple[str, Mapping[str, Any]]) -> Any:
+    async def _execute_scalar_raw(self, query: SelectQuery | BuiltQuery) -> Any:
         if isinstance(query, SelectQuery):
             sql, parameters = query.build()
+        elif isinstance(query, BuiltQuery):
+            sql, parameters = query.sql, query.parameters
         else:
-            sql, parameters = query
+            raise TypeError("query must be a trusted SelectQuery or BuiltQuery")
         result = await self._client.query(sql, parameters=dict(parameters))
         if not result.result_rows:
             return None
@@ -89,10 +95,24 @@ class ClickHouseDao:
         where: WhereClause,
         *,
         columns: Sequence[str] | str = "*",
-        order_by: str,
+        sort: str,
+        sort_columns: Mapping[str, str],
+        tiebreaker: str,
+        sort_label: str,
         final: bool = False,
     ) -> list[dict[str, Any]]:
-        query = select_from_table(table, columns=columns, final=final).where(where).order_by_clause(order_by)
+        query = (
+            select_from_table(table, columns=columns, final=final)
+            .where(where)
+            .order_by_clause(
+                order_by_clause(
+                    sort,
+                    sort_columns=sort_columns,
+                    tiebreaker=tiebreaker,
+                    label=sort_label,
+                )
+            )
+        )
         return await self._execute_raw(query)
 
     async def paginate(
@@ -131,8 +151,7 @@ class ClickHouseDao:
     async def paginate_subquery(
         self,
         *,
-        subquery_sql: str,
-        subquery_parameters: Mapping[str, Any],
+        subquery: BuiltQuery,
         outer_where: WhereClause,
         sort: str,
         sort_columns: Mapping[str, str],
@@ -141,15 +160,17 @@ class ClickHouseDao:
         page: int,
         page_size: int,
     ) -> tuple[list[dict[str, Any]], int]:
+        if not isinstance(subquery, BuiltQuery):
+            raise TypeError("paginate_subquery requires a built query")
         outer_where_sql, outer_where_parameters = outer_where.build()
-        query_parameters = {**subquery_parameters, **outer_where_parameters}
+        query_parameters = {**subquery.parameters, **outer_where_parameters}
 
         total_results = int(
             await self._execute_scalar_raw(
-                (
+                _trusted_query(
                     f"""
                     SELECT count()
-                    FROM ({subquery_sql}) AS traces
+                    FROM ({subquery.sql}) AS traces
                     WHERE {outer_where_sql}
                     """,
                     query_parameters,
@@ -162,7 +183,7 @@ class ClickHouseDao:
         rows = await self._execute_raw(
             SelectQuery(
                 select_expr="*",
-                from_expr=f"({subquery_sql}) AS traces",
+                from_expr=subquery_from(subquery, alias="traces"),
                 where_clause=outer_where,
                 order_by=order_by_clause(
                     sort,
@@ -172,6 +193,6 @@ class ClickHouseDao:
                 ),
                 limit_param="limit",
                 offset_param="offset",
-            ).with_parameters({**query_parameters, "limit": page_size, "offset": offset})
+            ).with_parameters({**subquery.parameters, "limit": page_size, "offset": offset})
         )
         return rows, total_results
