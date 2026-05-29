@@ -7,6 +7,7 @@ import logging
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
@@ -18,7 +19,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
 )
 from nmp.common.auth import AuthClient, auth_client_context
-from nmp.common.entities import EntityClient
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
