@@ -730,6 +730,12 @@ def _maybe_start_services(
     else:
         data_dir = _prompt_data_dir()
 
+    if importlib.util.find_spec("pyleak") is None:
+        console.print(f"{CROSS} Local services require extra dependencies that aren't installed.")
+        console.print("  Install them with:")
+        console.print("    [cyan]pip install 'nemo-platform\\[all]'[/cyan]")
+        raise typer.Exit(1)
+
     if already_running:
         console.print("  Restarting platform services...")
         _kill_existing_services(base_url)

@@ -8,9 +8,9 @@ from __future__ import annotations
 import logging
 import os
 from functools import cached_property
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, RootModel, field_validator
 from pydantic.config import JsonDict
 
 from nemo_platform.beta.evaluator.enums import ModelFormat
@@ -28,6 +28,24 @@ _AUTH_HEADER_PATTERNS: tuple[str, ...] = (
     "cookie",
     "set-cookie",
 )
+# Keep this aligned with nmp.common.entities.constants.NAME_PATTERN without adding an SDK dependency on nmp_common.
+# This pydantic-core-compatible form avoids lookarounds while preserving the naming syntax:
+# start with lowercase alpha, require at least one more valid character, allow single hyphens between non-hyphen chars,
+# and do not end in hyphen.
+_ENTITY_NAME_SEGMENT = r"[a-z](?:[a-z0-9@.+_]|-[a-z0-9@.+_]){1,62}"
+_QUALIFIED_MODEL_REF_PATTERN = rf"^{_ENTITY_NAME_SEGMENT}/{_ENTITY_NAME_SEGMENT}$"
+
+
+_ModelRefRoot = Annotated[
+    str,
+    Field(
+        pattern=_QUALIFIED_MODEL_REF_PATTERN,
+        description="Reference to a model (format: workspace/name).",
+        examples=[
+            "workspace/model_name",
+        ],
+    ),
+]
 
 
 class ReasoningParams(BaseModel):
@@ -45,6 +63,10 @@ class ReasoningParams(BaseModel):
         default=None,
         description="Option for OpenAI models to specify low, medium, or high reasoning effort.",
     )
+
+
+class ModelRef(RootModel[_ModelRefRoot]):
+    """Reference to a model that can be resolved by an evaluator backend."""
 
 
 def _strip_internal_fields(schema: JsonDict) -> None:

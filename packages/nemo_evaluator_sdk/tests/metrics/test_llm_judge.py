@@ -28,8 +28,8 @@ from nemo_evaluator_sdk.metrics.llm_judge import (
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
 from nemo_evaluator_sdk.structured_output import InferenceStructuredOutput, StructuredOutputMode
 from nemo_evaluator_sdk.values.common import SecretRef, SupportedJobTypes
-from nemo_evaluator_sdk.values.models import Model
-from nemo_evaluator_sdk.values.params import InferenceParams
+from nemo_evaluator_sdk.values.models import Model, ModelRef
+from nemo_evaluator_sdk.values.params import InferenceParams, RunConfig
 from nemo_evaluator_sdk.values.scores import (
     JSONScoreParser,
     RangeScore,
@@ -49,6 +49,18 @@ def _make_metric_score(name: str = "helpfulness") -> RangeScore:
         maximum=5,
         parser=JSONScoreParser(json_path=name),
     )
+
+
+class _MissingSecretResolver:
+    async def resolve_secret(self, secret_ref: SecretRef) -> str | None:
+        del secret_ref
+        return None
+
+
+class _RegisteredModelResolver:
+    async def resolve_model(self, model_ref: ModelRef) -> Model:
+        assert model_ref == ModelRef(root="workspace/judge")
+        return _make_model().model_copy(update={"name": "resolved-judge"})
 
 
 def _make_model(model_format: ModelFormat = ModelFormat.OPEN_AI) -> Model:
@@ -430,8 +442,18 @@ class TestLLMJudgeMetric:
             scores=[_make_metric_score()],
             job_type=SupportedJobTypes.OFFLINE,
         )
+        metric.apply_evaluation_job_params(RunConfig())
 
         assert metric.prompt_template == default_judge_prompt_template_chat(SupportedJobTypes.OFFLINE)
+
+    def test_offline_input_schema_uses_offline_default_prompt_template(self):
+        metric = LLMJudgeMetric(
+            model=_make_model(),
+            scores=[_make_metric_score()],
+            job_type=SupportedJobTypes.OFFLINE,
+        )
+
+        assert metric.input_schema().model_dump()["schema"]["required"] == []
 
     def test_offline_completion_prompt_template_uses_completion_default(self):
         metric = LLMJudgeMetric(
@@ -439,6 +461,7 @@ class TestLLMJudgeMetric:
             scores=[_make_metric_score()],
             job_type=SupportedJobTypes.OFFLINE,
         )
+        metric.apply_evaluation_job_params(RunConfig())
 
         assert metric.prompt_template == default_judge_prompt_template_completions(SupportedJobTypes.OFFLINE)
 
@@ -605,11 +628,33 @@ class TestLLMJudgeMetric:
             scores=[_make_metric_score()],
         )
 
-        async def resolver(_: str) -> str | None:
-            return None
-
         with pytest.raises(ValueError, match="Missing secret 'judge-secret'"):
-            await metric.resolve_secrets(resolver)
+            await metric.resolve_secrets(_MissingSecretResolver())
+
+    @pytest.mark.asyncio
+    async def test_resolve_models_clears_cached_auth_and_client(self):
+        metric = LLMJudgeMetric(model=ModelRef(root="workspace/judge"), scores=[_make_metric_score()])
+        assert metric.__pydantic_private__ is not None
+        metric.__pydantic_private__["_client"] = SimpleNamespace(copy=lambda: object())
+        metric._api_key = "old-key"
+
+        await metric.resolve_models(_RegisteredModelResolver())
+
+        assert isinstance(metric.model, Model)
+        assert metric.model.name == "resolved-judge"
+        assert metric._client is None
+        assert metric._api_key is None
+
+    def test_deepcopy_clears_cached_auth_and_client(self):
+        metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
+        assert metric.__pydantic_private__ is not None
+        metric.__pydantic_private__["_client"] = SimpleNamespace(copy=lambda: object())
+        metric._api_key = "old-key"
+
+        copied = deepcopy(metric)
+
+        assert copied._client is None
+        assert copied._api_key is None
 
     def test_secrets_returns_mapping_when_model_has_api_key_secret(self):
         metric = LLMJudgeMetric(
