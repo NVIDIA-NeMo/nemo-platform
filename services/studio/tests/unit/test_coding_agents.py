@@ -3,13 +3,14 @@
 
 """Unit tests for the Studio local coding-agent bridge."""
 
+import asyncio
 import json
 import uuid
 from pathlib import Path
 from typing import Any
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from nmp.studio import coding_agents
 from nmp.studio.config import StudioConfig
@@ -161,6 +162,40 @@ def test_mcp_initialize_and_tools_list(service_client: TestClient):
     assert tools_response.json()["result"]["tools"][0]["name"] == "approval_prompt"
 
 
+def test_mcp_rejects_malformed_json(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        content="{",
+        headers={"content-type": "application/json"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "invalid JSON body"
+
+
+def test_mcp_rejects_non_object_json(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(f"/v2/coding-agents/mcp/{session_id}", json=[])
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "JSON body must be an object"
+
+
+def test_mcp_rejects_non_object_params(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}",
+        json={"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": []},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "JSON-RPC params must be an object"
+
+
 def test_mcp_tools_call_denies_without_active_stream(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
@@ -183,6 +218,40 @@ def test_mcp_tools_call_denies_without_active_stream(service_client: TestClient)
         "behavior": "deny",
         "message": "no active Studio coding-agent session",
     }
+
+
+async def test_resolve_permission_rejects_cross_session_request():
+    owner_session_id = str(uuid.uuid4())
+    other_session_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
+    future = asyncio.get_running_loop().create_future()
+    coding_agents._pending_permissions[request_id] = (owner_session_id, future)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await coding_agents.resolve_permission(
+            other_session_id,
+            request_id,
+            coding_agents.PermissionDecision(approved=True),
+        )
+
+    assert exc_info.value.status_code == 404
+    assert not future.done()
+
+
+async def test_resolve_permission_sets_result_for_owning_session():
+    session_id = str(uuid.uuid4())
+    request_id = str(uuid.uuid4())
+    future = asyncio.get_running_loop().create_future()
+    coding_agents._pending_permissions[request_id] = (session_id, future)
+
+    response = await coding_agents.resolve_permission(
+        session_id,
+        request_id,
+        coding_agents.PermissionDecision(approved=True),
+    )
+
+    assert response == {"ok": True}
+    assert future.result() == {"approved": True, "reason": None, "updated_input": None}
 
 
 def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):

@@ -69,7 +69,7 @@ class SessionHistoryResponse(BaseModel):
 
 _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
-_pending_permissions: dict[str, asyncio.Future[dict[str, Any]]] = {}
+_pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
 
 
 _APPROVAL_TOOL = {
@@ -303,7 +303,7 @@ async def _request_permission(session_id: str, args: dict[str, Any]) -> dict[str
     request_id = str(uuid.uuid4())
     loop = asyncio.get_running_loop()
     future: asyncio.Future[dict[str, Any]] = loop.create_future()
-    _pending_permissions[request_id] = future
+    _pending_permissions[request_id] = (session_id, future)
 
     payload = json.dumps(
         {
@@ -454,9 +454,12 @@ async def send_message(session_id: str, body: MessageRequest, request: Request) 
 @router.post("/sessions/{session_id}/permissions/{request_id}")
 async def resolve_permission(session_id: str, request_id: str, body: PermissionDecision) -> dict[str, bool]:
     """Resolve a pending Claude tool permission request."""
-    _validate_session_id(session_id)
-    future = _pending_permissions.get(request_id)
-    if future is None or future.done():
+    sid = _validate_session_id(session_id)
+    pending = _pending_permissions.get(request_id)
+    if pending is None:
+        raise HTTPException(status_code=404, detail="no such pending permission")
+    pending_session_id, future = pending
+    if pending_session_id != sid or future.done():
         raise HTTPException(status_code=404, detail="no such pending permission")
     future.set_result(body.model_dump())
     return {"ok": True}
@@ -466,13 +469,22 @@ async def resolve_permission(session_id: str, request_id: str, body: PermissionD
 async def mcp_endpoint(session_id: str, request: Request) -> Response:
     """Minimal MCP endpoint used by Claude's permission-prompt tool."""
     sid = _validate_session_id(session_id)
-    body = await request.json()
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse(status_code=400, content={"detail": "invalid JSON body"})
+    if not isinstance(body, dict):
+        return JSONResponse(status_code=400, content={"detail": "JSON body must be an object"})
+
     request_id = body.get("id")
 
     if request_id is None:
         return Response(status_code=202)
 
     method = body.get("method")
+    raw_params = body.get("params")
+    if raw_params is not None and not isinstance(raw_params, dict):
+        return JSONResponse(status_code=400, content={"detail": "JSON-RPC params must be an object"})
     params = body.get("params") or {}
 
     if method == "initialize":
