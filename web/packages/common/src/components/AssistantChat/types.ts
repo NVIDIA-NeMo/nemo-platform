@@ -41,9 +41,69 @@ export interface AssistantChatProps {
   className?: string;
   initialMessages?: readonly ThreadMessageLike[];
   onError?: (error: Error) => void;
+  /**
+   * Called once per assistant message after the stream completes (or after
+   * the non-stream completion lands). Surfaces per-message timing so callers
+   * can render their own latency/throughput UI without owning the runtime.
+   * Not invoked on cancellation or error.
+   */
+  onMessageComplete?: (info: AssistantMessageCompletion) => void;
+  /**
+   * Fires whenever the runtime's "is currently streaming" state changes.
+   * Lets a parent (e.g. a page that hosts many AssistantChats) aggregate the
+   * running state across instances — used by the Chat route to drive a global
+   * Stop button in Compare mode.
+   */
+  onRunningChange?: (isRunning: boolean) => void;
+  /**
+   * When true, suppresses the internal composer at the bottom of the thread.
+   * The message thread still renders, including the empty state. Used by the
+   * Chat route's Compare mode where a single page-level composer drives every
+   * AssistantChat in parallel.
+   */
+  hideComposer?: boolean;
+  /**
+   * External broadcast trigger. Whenever `nonce` changes (excluding initial
+   * mount), the runtime appends `text` as a new user message and runs a
+   * completion — same code path as a user typing into the composer.
+   */
+  broadcast?: BroadcastSignal;
+  /**
+   * Monotonic counter — when it changes, the runtime aborts any in-flight
+   * stream. Lets a parent cancel many AssistantChats at once.
+   */
+  cancelNonce?: number;
+  /**
+   * Content rendered immediately above the composer, inside the same outer
+   * frame. Use for seed-prompt chips or any prefatory hint that should read
+   * as part of the composer affordance rather than a separate block.
+   */
+  slotAboveComposer?: ReactNode;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;
   };
   composerOverride?: ReactNode;
+}
+
+export interface BroadcastSignal {
+  /** Monotonically increasing; on change, runtime fires a send. */
+  nonce: number;
+  /** Text to inject as the user's next message. */
+  text: string;
+}
+
+export interface AssistantMessageCompletion {
+  assistantMessageId: string;
+  text: string;
+  /** ms from request start to first delta (0 if non-stream). */
+  ttftMs: number;
+  /** ms from request start to final delta. */
+  totalMs: number;
+  /** Number of delta chunks (1 for non-stream). */
+  chunkCount: number;
+  /** Approximate; chars/4 fallback when the API doesn't return a usage block. */
+  completionTokens: number;
+  /** Completion tokens per second of streaming wall-time (excludes TTFT). */
+  tokensPerSec: number;
 }
