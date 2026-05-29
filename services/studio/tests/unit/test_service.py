@@ -49,13 +49,20 @@ class TestStudioService:
     def test_service_description(self):
         """Test that the service has the correct description."""
         service = StudioService()
-        assert service.description == "Serves the NeMo Studio web application"
+        assert service.description == "Serves the NeMo Studio web application and local coding-agent bridge"
 
-    def test_get_routers_returns_empty_list(self):
-        """Test that the service returns no API routers (it serves static files)."""
+    def test_get_routers_returns_empty_list_by_default(self):
+        """Test that exploratory coding-agent routes are disabled by default."""
         service = StudioService()
         routers = service.get_routers()
         assert routers == []
+
+    def test_get_routers_returns_coding_agent_router_when_enabled(self):
+        """Test that the service exposes the local coding-agent API router when enabled."""
+        service = StudioService().with_config(StudioConfig(feature_flags={"coding_agents_enabled": True}))
+        routers = service.get_routers()
+        assert len(routers) == 1
+        assert routers[0].tag == "Studio Coding Agents"
 
     def test_module_name(self):
         """Test that the service has the correct module name."""
