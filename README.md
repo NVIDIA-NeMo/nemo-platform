@@ -29,7 +29,7 @@ nemo setup
 
 `nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and deploys a sample agent (see more below).
 
-See **[SETUP.md](SETUP.md)** for the full setup playbook (local data dir, DB reset, manual service start, troubleshooting). Coding agents pick the same playbook up automatically via `.agents/skills/nemo-setup/SKILL.md`.
+See **[skills/nemo-setup/SKILL.md](skills/nemo-setup/SKILL.md)** for the full setup playbook (local data dir, DB reset, manual service start, troubleshooting).
 
 Verify:
 
