@@ -17,12 +17,6 @@ NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, a
 - **Generate synthetic data.** Generate synthetic data for training or evaluation purposes using Data Designer.
 - **NeMo Studio (alpha).** Browser UI for chat, monitoring, and reviewing optimization suggestions. Studio's agent-focused features are still a work in progress; the CLI is the primary surface today.
 
-## What's coming soon
-
-- Fine-tuning
-- Safe Synthesizer (synthetic data with privacy guarantees)
-- Broader agent framework support. Today NeMo Platform optimizes LangGraph agents wrapped in NAT. If your agent is in another framework, you need to write the NAT wrapper.
-
 ## Install
 
 **Prerequisites:** Python 3.11–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
