@@ -1,0 +1,57 @@
+[
+  {
+    "id": "nemo-setup-001",
+    "question": "Can you run the nemo-setup skill to get my local NeMo Platform running?",
+    "expected_skill": "nemo-setup",
+    "expected_script": null,
+    "ground_truth": "The agent initiated the NeMo Platform setup process, checking for existing instances on port 8080, confirming data directory preferences, and proceeding with bootstrap and setup steps.",
+    "expected_behavior": [
+      "The agent read the nemo-setup SKILL.md to understand the setup procedure",
+      "The agent checked for an existing NeMo platform by running lsof or ps commands to detect port 8080 usage",
+      "The agent asked the user about local data directory preferences before proceeding",
+      "The agent executed or guided the user through make bootstrap and nemo setup commands",
+      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+    ]
+  },
+  {
+    "id": "nemo-setup-002",
+    "question": "I want to get a local NeMo platform running on my machine from scratch. Can you help me bootstrap it and get all the services started?",
+    "expected_skill": "nemo-setup",
+    "expected_script": null,
+    "ground_truth": "The agent performed a full local NeMo Platform setup including prerequisite checks, bootstrapping, service startup, provider configuration, and default model setup.",
+    "expected_behavior": [
+      "The agent checked whether a NeMo platform was already running on port 8080 before starting a new one",
+      "The agent ran make bootstrap as part of the setup process",
+      "The agent ran nemo setup to configure services, providers, plugins, and default model",
+      "The agent confirmed the platform was accessible on localhost:8080 after setup completed",
+      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+    ]
+  },
+  {
+    "id": "nemo-setup-003",
+    "question": "I just cloned the NeMo repo and I need to get the platform up so I can start building an agent. Something is already listening on port 8080 though — not sure if it's an old instance or something else.",
+    "expected_skill": "nemo-setup",
+    "expected_script": null,
+    "ground_truth": "The agent detected the existing process on port 8080, surfaced the PIDs and command details to the user, offered options to kill and restart or reuse the existing platform, and then completed setup based on the user's choice.",
+    "expected_behavior": [
+      "The agent ran lsof -iTCP:8080 -sTCP:LISTEN or equivalent to identify what is using port 8080",
+      "The agent presented the user with options: kill and restart, keep existing, or abort",
+      "The agent followed the SKILL.md procedure for handling an existing platform instance",
+      "The agent proceeded with bootstrap and setup steps after resolving the port conflict",
+      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+    ]
+  },
+  {
+    "id": "nemo-setup-004",
+    "question": "How do I fine-tune a model using NeMo Framework on a multi-GPU cluster?",
+    "expected_skill": null,
+    "expected_script": null,
+    "ground_truth": "The agent recognized this as a model training/fine-tuning question unrelated to local NeMo Platform setup and provided guidance on NeMo Framework fine-tuning without invoking the nemo-setup skill.",
+    "expected_behavior": [
+      "The agent did not attempt to run make bootstrap or nemo setup commands",
+      "The agent did not check for existing NeMo platform instances on port 8080",
+      "The agent addressed the fine-tuning question as a separate topic from local platform setup",
+      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+    ]
+  }
+]

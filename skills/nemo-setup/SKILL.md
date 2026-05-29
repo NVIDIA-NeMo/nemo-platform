@@ -2,6 +2,10 @@
 name: nemo-setup
 description: Set up a local NeMo Platform (`make bootstrap` + `nemo setup`) — services, providers, plugins, default model, and an optional demo agent. Use when the user asks to install, bootstrap, set up, run, or start a local NeMo Platform.
 version: "0.1"
+metadata:
+  owner: nemo-platform
+  maturity: active
+license: Apache-2.0
 ---
 
 # NeMo Platform Setup
@@ -159,8 +163,8 @@ The platform is running. Don't leave the user with "you're good to go" — offer
 | "Optimize my agent", "my agent is too slow / using too many tokens" | Cost / latency optimization via routing or skill tuning | `nemo-agents-optimize` |
 | "Secure my agent", "my agent is producing dangerous output" | Content safety / red-team / leak audit | `nemo-agents-secure`, `nemo-guardrails`, `nemo-auditor` |
 | "Can my agent use multiple models?", "split traffic across N backends" | Multi-backend routing via Switchyard | (inline; see `inference` skill) |
-| "Evaluate my model / agent on \<benchmark\>" | Eval against a dataset / harness | `nemo-evaluator`, `evaluator-plugin` |
-| "Generate synthetic data", "I have sensitive data and need…" | Data generation / anonymization / safe synthesis | `data-designer`, `nemo-anonymizer`, `nemo-safe-synthesizer` |
+| "Evaluate my model / agent on \<benchmark\>" | Eval against a dataset / harness | `nemo-evaluator`, `nemo-evaluator-plugin` |
+| "Generate synthetic data", "I have sensitive data and need…" | Data generation / anonymization / safe synthesis | `nemo-data-designer-plugin`, `nemo-anonymizer`, `nemo-safe-synthesizer` |
 | "Just deploy / invoke an agent" | Deploy the demo calculator agent or your own | `nemo-agents-optimize` (later, if needed) |
 | "Chat with a model", "call \<model\> via inference" | Plain inference through IGW | `inference` skill |
 | "Register an inference provider" (no further use case) | Provider registration only | `inference` skill |
@@ -185,8 +189,8 @@ Plugin-provided (appear once the plugin is installed):
 - **`nemo-agents-secure`** — audit a deployed agent for missing guardrails, PII exposure, leaked secrets/keys. From `plugins/nemo-agents`.
 - **`nemo-guardrails`** — guardrail config CRUD, content-safety rails, the `nemo-guardrails` middleware. From `plugins/nemo-guardrails`.
 - **`nemo-auditor`** — vulnerability scanning, audit configs/targets/jobs, red-team probes. From `plugins/nemo-auditor`.
-- **`nemo-evaluator`** / **`evaluator-plugin`** — metrics, sync/async evaluations, llm-judge, benchmark jobs. From `plugins/nemo-evaluator`.
-- **`data-designer`** — synthetic dataset generation pipelines. From `plugins/nemo-data-designer`.
+- **`nemo-evaluator`** / **`nemo-evaluator-plugin`** — metrics, sync/async evaluations, llm-judge, benchmark jobs. From `plugins/nemo-evaluator`.
+- **`nemo-data-designer-plugin`** — synthetic dataset generation pipelines. From `plugins/nemo-data-designer`.
 - **`nemo-entities`**, **`nemo-files`**, **`nemo-secrets`**, **`nemo-auth`**, **`nemo-inference-gateway`** — CLI references for the matching services.
 
 ### Installing skills into the coding agent on demand
