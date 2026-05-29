@@ -12,7 +12,7 @@ from evaluator_agent_eval.metrics.surface import (
     SurfaceAdherenceMetric,
 )
 from evaluator_agent_eval.metrics.trajectory import TrajectoryEvidenceMetric
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 
 SURFACE_FIELD_KEYS = {
     "observed_surfaces_key": "observed_surfaces",

@@ -13,7 +13,7 @@ from evaluator_agent_eval.runner import score_evaluator_rows
 from evaluator_agent_eval.schemas import CapturedAgentAttempt
 from evaluator_agent_eval.task_config import AgenticUseTaskConfig, load_agentic_use_task_config
 from evaluator_agent_eval.task_metric_utils import extract_marker_json_object
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 
 
 def _load_task_metrics(task_name: str) -> ModuleType:
@@ -538,9 +538,10 @@ required_terms = [
   "Metric",
   "type",
   "compute_scores",
-  "score_names",
+  "output_spec",
   "MetricResult",
-  "MetricScore",
+  "MetricOutput",
+  "MetricOutputSpec",
   "surface_adherence",
   "surface_violation_count",
   "observed_surfaces",
@@ -553,10 +554,10 @@ required_terms = [
     (task_dir / "instruction.md").write_text("Author a surface-adherence metric.", encoding="utf-8")
     (agent_log_dir / "final_message.txt").write_text(
         """
-Use packages/nemo_evaluator_sdk and implement a Metric-compatible class with compute_scores and score_names.
+Use packages/nemo_evaluator_sdk and implement a Metric-compatible class with compute_scores and output_spec.
 
 ```python
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class SurfaceAdherenceMetric:
@@ -564,19 +565,23 @@ class SurfaceAdherenceMetric:
     def type(self) -> str:
         return "agent_eval/surface_adherence"
 
-    def score_names(self) -> list[str]:
-        return ["surface_adherence", "surface_violation_count"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("surface_adherence"),
+            MetricOutputSpec.continuous_score("surface_violation_count"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         observed_surfaces = set(item["observed_surfaces"])
         allowed_surfaces = set(item["allowed_surfaces"])
         forbidden_surfaces = set(item["forbidden_surfaces"])
         violations = (observed_surfaces - allowed_surfaces) | (observed_surfaces & forbidden_surfaces)
         adherence = 1.0 if not violations else 0.0
         return MetricResult(
-            scores=[
-                MetricScore(name="surface_adherence", value=adherence),
-                MetricScore(name="surface_violation_count", value=float(len(violations))),
+            outputs=[
+                MetricOutput(name="surface_adherence", value=adherence),
+                MetricOutput(name="surface_violation_count", value=float(len(violations))),
             ]
         )
 ```
@@ -605,10 +610,12 @@ def test_surface_adherence_metric_reads_workspace_python_artifact(tmp_path: Path
     workspace_dir = tmp_path / "workspace"
     workspace_dir.mkdir()
     (workspace_dir / "surface_adherence_metric.py").write_text(
-        "from nemo_evaluator_sdk.values.results import MetricResult, MetricScore\n"
+        "from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult\n"
         "class SurfaceAdherenceMetric:\n"
-        "    async def compute_scores(self, item, sample):\n"
-        "        return MetricResult(scores=[MetricScore(name='surface_adherence', value=1.0)])\n",
+        "    def output_spec(self):\n"
+        "        return [MetricOutputSpec.continuous_score('surface_adherence')]\n"
+        "    async def compute_scores(self, input: MetricInput):\n"
+        "        return MetricResult(outputs=[MetricOutput(name='surface_adherence', value=1.0)])\n",
         encoding="utf-8",
     )
     artifacts = AgentArtifacts.from_dir(agent_log_dir, workspace_dir=workspace_dir)
@@ -618,7 +625,7 @@ def test_surface_adherence_metric_reads_workspace_python_artifact(tmp_path: Path
 
     assert code is not None
     assert "compute_scores" in code
-    assert "MetricScore" in code
+    assert "MetricOutput" in code
 
 
 def test_extract_marker_json_object_skips_trailing_malformed_marker():

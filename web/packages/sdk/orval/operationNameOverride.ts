@@ -3,9 +3,6 @@
 
 // Example operationIds and their generated names:
 // With apis_ prefix (most common):
-// - create_benchmark_apis_evaluation_v2_workspaces__workspace__benchmarks_post -> evaluationCreateBenchmark
-// - create_job_apis_evaluation_v2_workspaces__workspace__benchmark_jobs_post   -> evaluationCreateBenchmarkJob
-// - create_job_apis_evaluation_v2_workspaces__workspace__metric_jobs_post      -> evaluationCreateMetricJob
 // - list_jobs_apis_customization_v2_workspaces__workspace__jobs_get              -> customizationListJobs
 // - create_job_apis_data_designer_v2_workspaces__workspace__jobs_post         -> dataDesignerCreateJob
 // - list_workspaces_apis_entities_v2_workspaces_get                           -> entitiesListWorkspaces
@@ -54,7 +51,7 @@ const dedupeAdjacentWords = (words: string[]): string[] => {
  * Extracts the primary resource from the path portion of an operationId.
  * Returns the first path segment before any path parameters (marked by __).
  *
- * e.g., "workspaces__workspace__benchmark_jobs__name__results_get" -> "benchmark_jobs"
+ * e.g., "workspaces__workspace__customization_jobs__name__results_get" -> "customization_jobs"
  * e.g., "workspaces_get" -> "workspaces"
  * e.g., "info_get" -> "info"
  */
@@ -66,10 +63,10 @@ const extractPrimaryResource = (pathPart: string): string => {
  * Extracts all resource segments from the path portion of an operationId.
  * Resource segments alternate with path parameter segments (separated by __).
  *
- * e.g., "workspaces__workspace__metric_jobs__name__results_get" -> ["metric_jobs", "results"]
- * e.g., "workspaces__workspace__metric_job_results_get" -> ["metric_job_results"]
- * e.g., "workspaces__workspace__metric_jobs__job__results__name__download_get"
- *        -> ["metric_jobs", "results", "download"]
+ * e.g., "workspaces__workspace__customization_jobs__name__results_get" -> ["customization_jobs", "results"]
+ * e.g., "workspaces__workspace__customization_job_results_get" -> ["customization_job_results"]
+ * e.g., "workspaces__workspace__customization_jobs__job__results__name__download_get"
+ *        -> ["customization_jobs", "results", "download"]
  */
 const extractAllPathResources = (pathPart: string): string[] => {
   // Remove workspace prefix
@@ -88,10 +85,10 @@ const extractAllPathResources = (pathPart: string): string[] => {
  * Qualifies the action resource using path information for disambiguation.
  * When the path is more specific than the action, the path qualifier is prepended.
  *
- * e.g., actionResource="job", pathResource="benchmark_jobs" -> "benchmark_job"
- * e.g., actionResource="benchmark", pathResource="benchmarks" -> "benchmark"
- * e.g., actionResource="job_result_aggregate_scores", pathResource="benchmark_jobs"
- *       -> "benchmark_job_result_aggregate_scores"
+ * e.g., actionResource="job", pathResource="customization_jobs" -> "customization_job"
+ * e.g., actionResource="customization", pathResource="customizations" -> "customization"
+ * e.g., actionResource="job_result_artifacts", pathResource="customization_jobs"
+ *       -> "customization_job_result_artifacts"
  */
 const qualifyResource = (actionResource: string, pathResource: string): string => {
   if (!actionResource || !pathResource) return actionResource;
@@ -149,7 +146,7 @@ const generatedNames = new Set<string>();
  * for disambiguation.
  *
  * @param operation - The operation object containing operationId
- * @returns Unique camelCase operation name (e.g., "evaluatorCreateBenchmarkV2")
+ * @returns Unique camelCase operation name (e.g., "customizerCreateJobV2")
  */
 export const operationNameOverride = (operation: { operationId?: string }) => {
   const operationId = operation.operationId ?? '';
@@ -186,7 +183,7 @@ export const operationNameOverride = (operation: { operationId?: string }) => {
   // This handles collisions between flat endpoints (e.g., /metric-job-results) and
   // sub-resource endpoints (e.g., /metric-jobs/{name}/results) that qualify to the
   // same name. Using all path resource segments (with original pluralization)
-  // produces a distinct name after dedup — e.g., "MetricJobResults" vs "MetricJobsResults".
+  // produces a distinct name after dedup, such as "JobResults" vs "JobsResults".
   if (generatedNames.has(name)) {
     const allPathResources = extractAllPathResources(pathPart);
     if (allPathResources.length > 1) {

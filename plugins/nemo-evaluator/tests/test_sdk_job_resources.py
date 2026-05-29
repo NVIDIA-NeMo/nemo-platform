@@ -207,7 +207,7 @@ def test_score_coercion_accepts_existing_models_and_base_models() -> None:
     )
 
 
-def test_get_job_status_delegates_to_metric_jobs_resource(
+def test_get_job_status_uses_plugin_status_route(
     job_resource: EvaluatorJobResource,
     http_client: Mock,
 ) -> None:
@@ -740,7 +740,7 @@ async def test_async_resource_with_sync_platform_downloads_artifacts(
 
 
 @pytest.mark.asyncio
-async def test_async_get_job_status_delegates_to_metric_jobs_resource(
+async def test_async_get_job_status_uses_plugin_status_route(
     async_job_resource: AsyncEvaluatorJobResource,
     async_http_client: httpx.AsyncClient,
 ) -> None:

@@ -11,7 +11,7 @@ apply_git_patch()
 
 RAGAS and its dependencies (langchain, etc.) take 20-30 seconds to import.
 This module provides lazy loading so that the import cost is only paid when
-RAGAS metrics are actually used, not when the evaluator service starts.
+RAGAS metrics are actually used, not when the SDK is imported.
 
 Usage:
     # Instead of: from ragas import EvaluationDataset

@@ -19,7 +19,7 @@ from evaluator_agent_eval.task_metric_utils import (
     score_checks,
     string_list,
 )
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 HARNESS_RESULT_MARKER = "__SURFACE_METRIC_RESULT__="
 
@@ -31,22 +31,26 @@ class SurfaceAdherenceMetricAuthoringMetric:
     def type(self) -> str:
         return "agent_eval/surface_adherence_metric_authoring"
 
-    def score_names(self) -> list[str]:
+    def output_spec(self) -> list[MetricOutputSpec]:
         return [
-            "task_success",
-            "verification_score",
-            "output_schema_valid",
-            "code_block_present",
-            "code_ran",
-            "required_terms_present",
-            "protocol_compatible",
-            "type_property_valid",
-            "emits_expected_scores",
-            "pass_case_correct",
-            "fail_case_correct",
+            MetricOutputSpec.continuous_score(name)
+            for name in [
+                "task_success",
+                "verification_score",
+                "output_schema_valid",
+                "code_block_present",
+                "code_ran",
+                "required_terms_present",
+                "protocol_compatible",
+                "type_property_valid",
+                "emits_expected_scores",
+                "pass_case_correct",
+                "fail_case_correct",
+            ]
         ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         final_text = str(item.get("output_text", ""))
         artifacts = _artifacts_from_item(item)
         code = _extract_python_code(final_text) or _extract_workspace_python_code(artifacts)
@@ -57,7 +61,7 @@ class SurfaceAdherenceMetricAuthoringMetric:
         text_to_check = f"{final_text}\n{code or ''}"
         required_terms_present = contains_all(text_to_check, _required_terms(item))
         code_ran = process is not None and process.returncode == 0
-        score_names = string_list(harness_result.get("score_names")) if harness_result else []
+        score_names = string_list(harness_result.get("output_names")) if harness_result else []
         pass_scores = object_dict(harness_result.get("pass_scores")) if harness_result else {}
         fail_scores = object_dict(harness_result.get("fail_scores")) if harness_result else {}
 
@@ -101,18 +105,18 @@ class SurfaceAdherenceMetricAuthoringMetric:
         ]
 
         return MetricResult(
-            scores=[
-                MetricScore(name="task_success", value=float(task_success)),
-                MetricScore(name="verification_score", value=score_checks(checks)),
-                MetricScore(name="output_schema_valid", value=float(output_schema_valid)),
-                MetricScore(name="code_block_present", value=float(code is not None)),
-                MetricScore(name="code_ran", value=float(code_ran)),
-                MetricScore(name="required_terms_present", value=float(required_terms_present)),
-                MetricScore(name="protocol_compatible", value=float(protocol_compatible)),
-                MetricScore(name="type_property_valid", value=float(type_property_valid)),
-                MetricScore(name="emits_expected_scores", value=float(emits_expected_scores)),
-                MetricScore(name="pass_case_correct", value=float(pass_case_correct)),
-                MetricScore(name="fail_case_correct", value=float(fail_case_correct)),
+            outputs=[
+                MetricOutput(name="task_success", value=float(task_success)),
+                MetricOutput(name="verification_score", value=score_checks(checks)),
+                MetricOutput(name="output_schema_valid", value=float(output_schema_valid)),
+                MetricOutput(name="code_block_present", value=float(code is not None)),
+                MetricOutput(name="code_ran", value=float(code_ran)),
+                MetricOutput(name="required_terms_present", value=float(required_terms_present)),
+                MetricOutput(name="protocol_compatible", value=float(protocol_compatible)),
+                MetricOutput(name="type_property_valid", value=float(type_property_valid)),
+                MetricOutput(name="emits_expected_scores", value=float(emits_expected_scores)),
+                MetricOutput(name="pass_case_correct", value=float(pass_case_correct)),
+                MetricOutput(name="fail_case_correct", value=float(fail_case_correct)),
             ]
         )
 
@@ -157,7 +161,7 @@ def _run_candidate_code_with_harness(code: str) -> subprocess.CompletedProcess[s
 
 
 def _looks_like_surface_metric_code(code: str) -> bool:
-    return "compute_scores" in code and "MetricResult" in code and "MetricScore" in code
+    return "compute_scores" in code and "MetricResult" in code and "MetricOutput" in code
 
 
 def _extract_harness_result(stdout: str) -> dict[str, object] | None:
@@ -169,11 +173,11 @@ import asyncio
 import inspect
 import json
 
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, Metric, MetricInput
 
 
 def __scores_to_dict(metric_result):
-    return {score.name: float(score.value) for score in metric_result.scores}
+    return {output.name: float(output.value) for output in metric_result.outputs}
 
 
 async def __surface_metric_harness():
@@ -183,29 +187,37 @@ async def __surface_metric_harness():
             continue
         if value.__module__ != "__main__":
             continue
-        if hasattr(value, "compute_scores") and hasattr(value, "score_names"):
+        if hasattr(value, "compute_scores") and hasattr(value, "output_spec"):
             metric_class = value
             break
 
     if metric_class is None:
-        raise RuntimeError("No candidate metric class with compute_scores and score_names was found")
+        raise RuntimeError("No candidate metric class with compute_scores and output_spec was found")
 
     metric = metric_class()
     pass_result = await metric.compute_scores(
-        {
-            "observed_surfaces": ["standalone_sdk"],
-            "allowed_surfaces": ["standalone_sdk"],
-            "forbidden_surfaces": ["legacy_service"],
-        },
-        {},
+        MetricInput(
+            row=DatasetRow(
+                data={
+                    "observed_surfaces": ["standalone_sdk"],
+                    "allowed_surfaces": ["standalone_sdk"],
+                    "forbidden_surfaces": ["legacy_service"],
+                }
+            ),
+            candidate=CandidateOutput(),
+        )
     )
     fail_result = await metric.compute_scores(
-        {
-            "observed_surfaces": ["standalone_sdk", "legacy_service"],
-            "allowed_surfaces": ["standalone_sdk"],
-            "forbidden_surfaces": ["legacy_service"],
-        },
-        {},
+        MetricInput(
+            row=DatasetRow(
+                data={
+                    "observed_surfaces": ["standalone_sdk", "legacy_service"],
+                    "allowed_surfaces": ["standalone_sdk"],
+                    "forbidden_surfaces": ["legacy_service"],
+                }
+            ),
+            candidate=CandidateOutput(),
+        )
     )
     print(
         "__SURFACE_METRIC_RESULT__="
@@ -214,7 +226,7 @@ async def __surface_metric_harness():
                 "class_name": metric_class.__name__,
                 "protocol_compatible": isinstance(metric, Metric),
                 "metric_type": metric.type,
-                "score_names": list(metric.score_names()),
+                "output_names": [output.name for output in metric.output_spec()],
                 "pass_scores": __scores_to_dict(pass_result),
                 "fail_scores": __scores_to_dict(fail_result),
             },

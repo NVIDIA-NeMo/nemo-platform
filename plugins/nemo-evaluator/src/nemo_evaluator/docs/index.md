@@ -1,6 +1,6 @@
 # Evaluator Plugin Reference
 
-The evaluator plugin is a first-party for evaluator functionality. It keeps the plugin identity separate from the legacy `/apis/evaluation` service while proving the basic surfaces needed for SDK-backed jobs.
+The evaluator plugin is the first-party platform surface for evaluator functionality and SDK-backed jobs.
 
 ## Registered Surfaces
 

@@ -6,33 +6,15 @@ import { describe, it, expect } from 'vitest';
 import { operationNameOverride } from './operationNameOverride';
 
 describe('operationNameOverride', () => {
-  // --- Existing behavior (should not change) ---
-
-  it('create benchmark', () => {
+  it('creates customization job names', () => {
     expect(
       operationNameOverride({
-        operationId: 'create_benchmark_apis_evaluation_v2_workspaces__workspace__benchmarks_post',
+        operationId: 'create_job_apis_customization_v2_workspaces__workspace__jobs_post',
       })
-    ).toBe('evaluationCreateBenchmark');
+    ).toBe('customizationCreateJob');
   });
 
-  it('create benchmark job', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'create_job_apis_evaluation_v2_workspaces__workspace__benchmark_jobs_post',
-      })
-    ).toBe('evaluationCreateBenchmarkJob');
-  });
-
-  it('create metric job', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'create_job_apis_evaluation_v2_workspaces__workspace__metric_jobs_post',
-      })
-    ).toBe('evaluationCreateMetricJob');
-  });
-
-  it('list customization jobs', () => {
+  it('lists customization jobs', () => {
     expect(
       operationNameOverride({
         operationId: 'list_jobs_apis_customization_v2_workspaces__workspace__jobs_get',
@@ -40,7 +22,7 @@ describe('operationNameOverride', () => {
     ).toBe('customizationListJobs');
   });
 
-  it('create data designer job', () => {
+  it('creates data designer job names', () => {
     expect(
       operationNameOverride({
         operationId: 'create_job_apis_data_designer_v2_workspaces__workspace__jobs_post',
@@ -48,7 +30,7 @@ describe('operationNameOverride', () => {
     ).toBe('dataDesignerCreateJob');
   });
 
-  it('list workspaces', () => {
+  it('lists workspaces', () => {
     expect(
       operationNameOverride({
         operationId: 'list_workspaces_apis_entities_v2_workspaces_get',
@@ -56,111 +38,52 @@ describe('operationNameOverride', () => {
     ).toBe('entitiesListWorkspaces');
   });
 
-  it('gateway proxy get (non-apis)', () => {
+  it('keeps health endpoints unchanged', () => {
+    expect(operationNameOverride({ operationId: 'health_health_get' })).toBe('health_health_get');
+  });
+
+  it('camel cases non-apis routes', () => {
     expect(operationNameOverride({ operationId: 'gateway_proxy_get' })).toBe('gatewayProxyGet');
   });
 
-  // --- Flat collection endpoints (should keep original names) ---
-
-  it('list metric job results (flat)', () => {
+  it('keeps flat job result endpoint names', () => {
     expect(
       operationNameOverride({
-        operationId:
-          'list_metric_job_results_apis_evaluation_v2_workspaces__workspace__metric_job_results_get',
-      })
-    ).toBe('evaluationListMetricJobResults');
-  });
-
-  it('list benchmark job results (flat)', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'list_benchmark_job_results_apis_evaluation_v2_workspaces__workspace__benchmark_job_results_get',
-      })
-    ).toBe('evaluationListBenchmarkJobResults');
-  });
-
-  it('get metric job result (flat)', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'get_metric_job_result_apis_evaluation_v2_workspaces__workspace__metric_job_results__result__get',
-      })
-    ).toBe('evaluationGetMetricJobResult');
-  });
-
-  it('get benchmark job result (flat)', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'get_benchmark_job_result_apis_evaluation_v2_workspaces__workspace__benchmark_job_results__result__get',
-      })
-    ).toBe('evaluationGetBenchmarkJobResult');
-  });
-
-  // --- Sub-resource endpoints (previously collided, should now be unique) ---
-
-  it('list metric job results (sub-resource) — disambiguated', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'list_job_results_apis_evaluation_v2_workspaces__workspace__metric_jobs__name__results_get',
-      })
-    ).toBe('evaluationListMetricJobsResults');
-  });
-
-  it('list benchmark job results (sub-resource) — disambiguated', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'list_job_results_apis_evaluation_v2_workspaces__workspace__benchmark_jobs__name__results_get',
-      })
-    ).toBe('evaluationListBenchmarkJobsResults');
-  });
-
-  it('get metric job result (sub-resource) — disambiguated', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'get_job_result_apis_evaluation_v2_workspaces__workspace__metric_jobs__job__results__name__get',
-      })
-    ).toBe('evaluationGetMetricJobsResults');
-  });
-
-  it('get benchmark job result (sub-resource) — disambiguated', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'get_job_result_apis_evaluation_v2_workspaces__workspace__benchmark_jobs__job__results__name__get',
-      })
-    ).toBe('evaluationGetBenchmarkJobsResults');
-  });
-
-  // --- Other sub-resource endpoints (should not change) ---
-
-  it('audit list job results (sub-resource, no collision)', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'list_job_results_apis_audit_v2_workspaces__workspace__jobs__name__results_get',
+        operationId: 'list_job_results_apis_audit_v2_workspaces__workspace__job_results_get',
       })
     ).toBe('auditListJobResults');
   });
 
-  it('audit get job logs (sub-resource, no collision)', () => {
+  it('disambiguates sub-resource job result endpoint names', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'list_job_results_apis_audit_v2_workspaces__workspace__jobs__name__results_get',
+      })
+    ).toBe('auditListJobsResults');
+  });
+
+  it('gets flat job result endpoint names', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'get_job_result_apis_audit_v2_workspaces__workspace__job_results__result__get',
+      })
+    ).toBe('auditGetJobResult');
+  });
+
+  it('disambiguates sub-resource get job result endpoint names', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'get_job_result_apis_audit_v2_workspaces__workspace__jobs__job__results__name__get',
+      })
+    ).toBe('auditGetJobsResults');
+  });
+
+  it('gets audit job logs', () => {
     expect(
       operationNameOverride({
         operationId: 'get_job_logs_apis_audit_v2_workspaces__workspace__jobs__name__logs_get',
       })
     ).toBe('auditGetJobLogs');
-  });
-
-  it('audit get job status (sub-resource, no collision)', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'get_job_status_apis_audit_v2_workspaces__workspace__jobs__name__status_get',
-      })
-    ).toBe('auditGetJobStatus');
   });
 
   it('drops the redundant intake prefix', () => {
@@ -174,16 +97,14 @@ describe('operationNameOverride', () => {
   it('checks collisions after dropping the intake prefix', () => {
     expect(
       operationNameOverride({
-        operationId:
-          'list_metric_job_results_apis_intake_v2_workspaces__workspace__metric_job_results_get',
+        operationId: 'list_entry_results_apis_intake_v2_workspaces__workspace__entry_results_get',
       })
-    ).toBe('listMetricJobResults');
+    ).toBe('listEntryResults');
 
     expect(
       operationNameOverride({
-        operationId:
-          'list_job_results_apis_intake_v2_workspaces__workspace__metric_jobs__name__results_get',
+        operationId: 'list_entry_results_apis_intake_v2_workspaces__workspace__entries__name__results_get',
       })
-    ).toBe('listMetricJobsResults');
+    ).toBe('listEntriesResults');
   });
 });

@@ -3,8 +3,6 @@
 
 """Dataset-related value types for evaluator SDK runtime."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/values/datasets.py
-
 from typing import Any, TypeAlias
 
 import pyarrow as pa

@@ -5,7 +5,7 @@
 
 from math import nan
 
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class TrajectoryEvidenceMetric:
@@ -28,10 +28,16 @@ class TrajectoryEvidenceMetric:
     def type(self) -> str:
         return "agent_eval/trajectory_evidence"
 
-    def score_names(self) -> list[str]:
-        return ["trajectory_present", "tool_call_count", "failed_command_count", "recovery_event_count"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("trajectory_present"),
+            MetricOutputSpec.continuous_score("tool_call_count"),
+            MetricOutputSpec.continuous_score("failed_command_count"),
+            MetricOutputSpec.continuous_score("recovery_event_count"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         try:
             summary = item[self.trajectory_summary_key]
             if summary is None:
@@ -64,10 +70,10 @@ class TrajectoryEvidenceMetric:
             failed_command_count = nan
             recovery_event_count = nan
         return MetricResult(
-            scores=[
-                MetricScore(name="trajectory_present", value=trajectory_present),
-                MetricScore(name="tool_call_count", value=tool_call_count),
-                MetricScore(name="failed_command_count", value=failed_command_count),
-                MetricScore(name="recovery_event_count", value=recovery_event_count),
+            outputs=[
+                MetricOutput(name="trajectory_present", value=trajectory_present),
+                MetricOutput(name="tool_call_count", value=tool_call_count),
+                MetricOutput(name="failed_command_count", value=failed_command_count),
+                MetricOutput(name="recovery_event_count", value=recovery_event_count),
             ]
         )

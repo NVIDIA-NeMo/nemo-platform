@@ -673,23 +673,23 @@ class TestIGWScopeChecks:
 class TestIGWServicePrincipalAccess:
     """Service principals (service:*) are evaluated by the PDP; policy allows these calls.
 
-    The evaluator calls the IGW with X-NMP-Principal-Id: service:evaluator instead of
-    a user JWT. These tests verify that service principals are allowed through without
-    workspace membership and without a Bearer token.
+    Plugin-backed jobs can call the IGW with a service principal instead of a user JWT.
+    These tests verify that service principals are allowed through without workspace
+    membership and without a Bearer token.
     """
 
-    SERVICE_PRINCIPAL_EVALUATOR = "service:evaluator"
+    SERVICE_PRINCIPAL_PLUGIN = "service:nemo-evaluator"
 
     def test_service_principal_can_list_openai_models(self, sdk: NeMoPlatform):
         workspace = short_unique_name("igw-svc-l")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        # Intentionally no workspace membership granted to service:evaluator
+        # Intentionally no workspace membership granted to the plugin service principal.
 
         response = sdk._client.get(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models",
-            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_EVALUATOR},
+            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_PLUGIN},
         )
         assert response.status_code == 200
 
@@ -705,12 +705,12 @@ class TestIGWServicePrincipalAccess:
             name=model_name,
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        # Intentionally no workspace membership granted to service:evaluator
+        # Intentionally no workspace membership granted to the plugin service principal.
 
         response = sdk._client.post(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/chat/completions",
             json={"model": f"{workspace}/{model_name}", "messages": [{"role": "user", "content": "hi"}]},
-            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_EVALUATOR},
+            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_PLUGIN},
         )
         assert response.status_code == 200
 
@@ -730,7 +730,7 @@ class TestIGWServicePrincipalAccess:
         response = sdk._client.post(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/model/{model_name}/-/v1/chat/completions",
             json={"model": model_name, "messages": [{"role": "user", "content": "hi"}]},
-            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_EVALUATOR},
+            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_PLUGIN},
         )
         assert response.status_code == 200
 
@@ -749,7 +749,7 @@ class TestIGWServicePrincipalAccess:
         response = sdk._client.post(
             f"/apis/inference-gateway/v2/workspaces/{workspace}/provider/{provider.name}/-/v1/chat/completions",
             json={"model": "test", "messages": [{"role": "user", "content": "hi"}]},
-            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_EVALUATOR},
+            headers={"X-NMP-Principal-Id": self.SERVICE_PRINCIPAL_PLUGIN},
         )
         assert response.status_code == 200
 

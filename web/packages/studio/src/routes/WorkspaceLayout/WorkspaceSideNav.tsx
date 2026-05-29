@@ -11,8 +11,6 @@ import {
   DATA_DESIGNER_ENABLED,
   DATASETS_ENABLED,
   DEPLOYMENTS_ENABLED,
-  EVALUATOR_BENCHMARKS_ENABLED,
-  EVALUATOR_ENABLED,
   GUARDRAILS_ENABLED,
   INTAKE_ENABLED,
   JOBS_ENABLED,
@@ -28,10 +26,7 @@ import {
   getAgentMonitorRoute,
   getAgentOptimizationsRoute,
   getDataDesignerJobListRoute,
-  getEvaluationBenchmarkListRoute,
   getModelCompareRoute,
-  getEvaluationMetricsRoute,
-  getEvaluationResultsRoute,
   getGuardrailsRoute,
   getIntakeTracesRoute,
   getWorkspaceBaseModelsRoute,
@@ -45,7 +40,6 @@ import {
 } from '@studio/routes/utils';
 import {
   Boxes,
-  ChartBar,
   Database,
   HatGlasses,
   LayoutList,
@@ -57,7 +51,6 @@ import {
   Cog,
   Columns3,
   Rocket,
-  ClipboardList,
   Lightbulb,
   Activity,
   FlaskConical,
@@ -96,33 +89,6 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             slotLabel: 'Custom Models',
             href: getWorkspaceCustomizationJobListRoute(workspace),
           },
-        ]
-      : [];
-
-    const evalNav = EVALUATOR_ENABLED
-      ? [
-          {
-            id: 'evaluation-results',
-            slotIcon: <ChartBar className={iconColorClass} />,
-            slotLabel: 'Evaluations',
-            href: getEvaluationResultsRoute(workspace),
-          },
-          {
-            id: 'metrics',
-            slotIcon: <ChartBar className={iconColorClass} />,
-            slotLabel: 'Metrics',
-            href: getEvaluationMetricsRoute(workspace),
-          },
-          ...(EVALUATOR_BENCHMARKS_ENABLED
-            ? [
-                {
-                  id: 'benchmarks',
-                  slotIcon: <ClipboardList className={iconColorClass} />,
-                  slotLabel: 'Benchmarks',
-                  href: getEvaluationBenchmarkListRoute(workspace),
-                },
-              ]
-            : []),
         ]
       : [];
 
@@ -214,7 +180,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...safeSynthesizerNav,
       ...dataDesignerNav,
     ];
-    const evaluateItems = [...evalNav, ...intakeNav];
+    const evaluateItems = [...intakeNav];
 
     const safetyItems = GUARDRAILS_ENABLED
       ? [

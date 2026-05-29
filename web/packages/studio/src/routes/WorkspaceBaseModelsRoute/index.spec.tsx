@@ -21,7 +21,6 @@ import { MemoryRouter, Route, Routes } from 'react-router-dom';
 const mockNavigate = vi.fn();
 const mockEnvironment = vi.hoisted(() => ({
   customizerEnabled: false,
-  evaluatorEnabled: true,
 }));
 
 vi.mock('@studio/constants/environment', async (importOriginal) => {
@@ -30,9 +29,6 @@ vi.mock('@studio/constants/environment', async (importOriginal) => {
     ...actual,
     get CUSTOMIZER_ENABLED() {
       return mockEnvironment.customizerEnabled;
-    },
-    get EVALUATOR_ENABLED() {
-      return mockEnvironment.evaluatorEnabled;
     },
   };
 });

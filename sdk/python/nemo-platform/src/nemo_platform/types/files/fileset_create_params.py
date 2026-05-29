@@ -21,10 +21,10 @@ from typing import Dict, Union
 from typing_extensions import Required, TypeAlias, TypedDict
 
 from .fileset_purpose import FilesetPurpose
+from .fileset_metadata_param import FilesetMetadataParam
 from .s3_storage_config_param import S3StorageConfigParam
 from .ngc_storage_config_param import NGCStorageConfigParam
 from .local_storage_config_param import LocalStorageConfigParam
-from .fileset_metadata_param_param import FilesetMetadataParamParam
 from .huggingface_storage_config_param import HuggingfaceStorageConfigParam
 
 __all__ = ["FilesetCreateParams", "Storage"]
@@ -49,7 +49,7 @@ class FilesetCreateParams(TypedDict, total=False):
     description: str
     """The description of the fileset."""
 
-    metadata: FilesetMetadataParamParam
+    metadata: FilesetMetadataParam
     """Tagged metadata container - the key indicates the type.
 
     Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(

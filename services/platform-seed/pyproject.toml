@@ -1,7 +1,7 @@
 [project]
 name = "nmp-platform-seed"
 version = "0.0.1"
-description = "Platform seed service and task - runs centralized seeding (guardrails, evaluator, data designer) after dependencies are ready"
+description = "Platform seed service and task - runs centralized seeding after dependencies are ready"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 
@@ -9,7 +9,6 @@ dependencies = [
   "nmp-common",
   "nmp-auth",
   "nmp-guardrails",
-  "nmp-evaluator",
 ]
 
 [project.scripts]
@@ -19,7 +18,6 @@ platform-seed = "nmp.platform_seed.__main__:main"
 nmp-common = { workspace = true }
 nmp-auth = { workspace = true }
 nmp-guardrails = { workspace = true }
-nmp-evaluator = { workspace = true }
 
 [dependency-groups]
 dev = [

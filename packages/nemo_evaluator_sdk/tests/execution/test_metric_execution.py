@@ -1062,12 +1062,12 @@ class TestComputeMetricPipeline:
             prompt_template={"messages": [{"role": "user", "content": "{{item.input}}"}]},
             inference_fn=_fake_agent_inference,
             params=RunConfigOnline(ignore_request_failure=True),
-            default_headers={"X-NMP-Principal-Id": "service:evaluator"},
+            default_headers={"X-NMP-Principal-Id": "service:nemo-evaluator"},
         )
 
         await pipeline.generate_sample(0, {"input": "row"})
 
-        assert captured_headers == {"X-NMP-Principal-Id": "service:evaluator"}
+        assert captured_headers == {"X-NMP-Principal-Id": "service:nemo-evaluator"}
 
     @pytest.mark.parametrize(
         ("row", "expected_message"),

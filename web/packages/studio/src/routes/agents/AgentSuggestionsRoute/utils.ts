@@ -366,11 +366,11 @@ const buildDataSafetySuggestion = (
 const buildNewModelSuggestion = (modelName: string): OptimizationSuggestion => ({
   type: 'new_model_scan',
   title: `New model available: ${modelName}`,
-  detail: `Model "${modelName}" appeared since the last optimizer run. Consider running Auditor and Evaluator against it.`,
+  detail: `Model "${modelName}" appeared since the last optimizer run. Consider running Auditor and agent evaluation against it.`,
   model: modelName,
   suggested_actions: [
     `nemo audit jobs create --model ${modelName}`,
-    `nemo evaluation jobs create --model ${modelName}`,
+    `nemo agents evaluate --model ${modelName}`,
   ],
 });
 

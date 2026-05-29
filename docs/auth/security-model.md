@@ -114,9 +114,9 @@ Whichever component performs the initial authentication and authorization — th
 
 ### Service Principals
 
-Not all requests originate from human users. Platform services that need cross-workspace access — for example, the jobs controller monitoring jobs across all users, or the evaluator coordinating evaluations — authenticate as **service principals**.
+Not all requests originate from human users. Platform services that need cross-workspace access — for example, the jobs controller monitoring jobs across all users, or plugin-backed job workers coordinating evaluations — authenticate as **service principals**.
 
-A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `service:evaluator`). Service principals are auto-authorized without a PDP call and have access to all workspaces and all operations. They are created internally by the platform and are never exposed to external callers.
+A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `service:nemo-evaluator`). Service principals are auto-authorized without a PDP call and have access to all workspaces and all operations. They are created internally by the platform and are never exposed to external callers.
 
 **Internal endpoints** (`/internal/*`) are also auto-authorized — they bypass PDP checks entirely and are reserved for service-to-service communication.
 

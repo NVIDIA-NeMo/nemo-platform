@@ -19,7 +19,7 @@ from evaluator_agent_eval.task_metric_utils import (
     run_python_code,
     score_checks,
 )
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class AgentTargetConfigurationMetric:
@@ -29,23 +29,27 @@ class AgentTargetConfigurationMetric:
     def type(self) -> str:
         return "agent_eval/agent_target_configuration"
 
-    def score_names(self) -> list[str]:
+    def output_spec(self) -> list[MetricOutputSpec]:
         return [
-            "task_success",
-            "verification_score",
-            "output_schema_valid",
-            "code_block_present",
-            "code_ran",
-            "required_terms_present",
-            "agent_target_terms_present",
-            "agent_target_used",
-            "extracted_answer",
-            "score_correct",
-            "trajectory_captured",
-            "candidate_metadata_present",
+            MetricOutputSpec.continuous_score(name)
+            for name in [
+                "task_success",
+                "verification_score",
+                "output_schema_valid",
+                "code_block_present",
+                "code_ran",
+                "required_terms_present",
+                "agent_target_terms_present",
+                "agent_target_used",
+                "extracted_answer",
+                "score_correct",
+                "trajectory_captured",
+                "candidate_metadata_present",
+            ]
         ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         final_text = str(item.get("output_text", ""))
         artifacts = _artifacts_from_item(item)
         code = _extract_python_code(final_text) or _extract_workspace_python_code(artifacts)
@@ -101,19 +105,19 @@ class AgentTargetConfigurationMetric:
         ]
 
         return MetricResult(
-            scores=[
-                MetricScore(name="task_success", value=float(task_success)),
-                MetricScore(name="verification_score", value=score_checks(checks)),
-                MetricScore(name="output_schema_valid", value=float(output_schema_valid)),
-                MetricScore(name="code_block_present", value=float(code is not None)),
-                MetricScore(name="code_ran", value=float(code_ran)),
-                MetricScore(name="required_terms_present", value=float(required_terms_present)),
-                MetricScore(name="agent_target_terms_present", value=float(agent_target_terms_present)),
-                MetricScore(name="agent_target_used", value=float(agent_target_used)),
-                MetricScore(name="extracted_answer", value=float(extracted_answer)),
-                MetricScore(name="score_correct", value=float(score_correct)),
-                MetricScore(name="trajectory_captured", value=float(trajectory_captured)),
-                MetricScore(name="candidate_metadata_present", value=float(candidate_metadata_present)),
+            outputs=[
+                MetricOutput(name="task_success", value=float(task_success)),
+                MetricOutput(name="verification_score", value=score_checks(checks)),
+                MetricOutput(name="output_schema_valid", value=float(output_schema_valid)),
+                MetricOutput(name="code_block_present", value=float(code is not None)),
+                MetricOutput(name="code_ran", value=float(code_ran)),
+                MetricOutput(name="required_terms_present", value=float(required_terms_present)),
+                MetricOutput(name="agent_target_terms_present", value=float(agent_target_terms_present)),
+                MetricOutput(name="agent_target_used", value=float(agent_target_used)),
+                MetricOutput(name="extracted_answer", value=float(extracted_answer)),
+                MetricOutput(name="score_correct", value=float(score_correct)),
+                MetricOutput(name="trajectory_captured", value=float(trajectory_captured)),
+                MetricOutput(name="candidate_metadata_present", value=float(candidate_metadata_present)),
             ]
         )
 

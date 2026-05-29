@@ -45,8 +45,6 @@ from nemo_microservices.types import (
 
 # [Entities](src/nemo_microservices/resources/entities/api.md)
 
-# [Evaluation](src/nemo_microservices/resources/evaluation/api.md)
-
 # [Files](src/nemo_microservices/resources/files/api.md)
 
 # [Guardrail](src/nemo_microservices/resources/guardrail/api.md)

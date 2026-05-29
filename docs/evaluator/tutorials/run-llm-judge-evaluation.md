@@ -158,7 +158,7 @@ from nemo_evaluator_sdk.values import (
     Model,
     RangeScore,
 )
-from nmp.evaluator.app.values import FilesetRef
+from nemo_evaluator.sdk import FilesetRef
 
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"

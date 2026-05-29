@@ -58,14 +58,14 @@ class TestPrincipalFromHeaders:
     def test_from_nmp_headers_with_on_behalf_of_groups_and_email(self):
         """On-behalf-of groups and email are parsed when the on-behalf-of header is present."""
         headers = {
-            "x-nmp-principal-id": "service:evaluator",
+            "x-nmp-principal-id": "service:nemo-evaluator",
             "x-nmp-principal-on-behalf-of": "user@example.com",
             "x-nmp-principal-on-behalf-of-groups": "team-a, team-b",
             "x-nmp-principal-on-behalf-of-email": "user@example.com",
         }
         principal = Principal.from_headers(headers)
         assert principal is not None
-        assert principal.id == "service:evaluator"
+        assert principal.id == "service:nemo-evaluator"
         assert principal.on_behalf_of == "user@example.com"
         assert principal.on_behalf_of_groups == ["team-a", "team-b"]
         assert principal.on_behalf_of_email == "user@example.com"
@@ -212,7 +212,7 @@ class TestPrincipalEffectiveId:
         assert principal.effective_id == "user@example.com"
 
     def test_returns_on_behalf_of_when_set(self):
-        principal = Principal(id="service:evaluator", on_behalf_of="user@example.com")
+        principal = Principal(id="service:nemo-evaluator", on_behalf_of="user@example.com")
         assert principal.effective_id == "user@example.com"
 
     def test_returns_id_when_on_behalf_of_is_none(self):
@@ -281,7 +281,7 @@ class TestPrincipalToOnBehalfOf:
     def test_to_on_behalf_of_success(self):
         """Delegated principal carries on-behalf-of id, email, and groups only."""
         principal = Principal(
-            id="service:evaluator",
+            id="service:nemo-evaluator",
             email="svc@example.com",
             groups=["service-metadata"],
             on_behalf_of="user@example.com",

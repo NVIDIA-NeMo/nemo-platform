@@ -1229,7 +1229,7 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 !!! info
     - [Agent Configuration](agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation jobs
-    - [Agentic Benchmarks](../benchmarks/agentic.md) - BFCL benchmark for tool-calling evaluation
+    - [Agent Configuration](agent-configuration.md) - Use agents as online evaluation targets
     - [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
     - [Evaluation Results](results.md) - Understanding results
     - [RAG Metrics](rag.md) - RAGAS metrics for RAG pipelines

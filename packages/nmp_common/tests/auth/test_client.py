@@ -59,7 +59,7 @@ def principal_with_delegate():
 def principal_service_delegating():
     """Service principal acting on behalf of a user with delegate-specific claims."""
     return Principal(
-        id="service:evaluator",
+        id="service:nemo-evaluator",
         email="svc@example.com",
         groups=["platform-admin"],
         on_behalf_of="user@example.com",
@@ -142,7 +142,7 @@ class TestHasPermissionsPdpPayloadWithDelegation:
             assert await auth_client.has_permissions("ws", ["models.read"]) is True
 
         body = mock_post.call_args[1]["json"]["input"]
-        assert body["principal_id"] == "service:evaluator"
+        assert body["principal_id"] == "service:nemo-evaluator"
         assert body["on_behalf_of_principal_id"] == "user@example.com"
         assert body["principal_email"] == "user@example.com"
         assert body["principal_groups"] == ["workspace-editors"]

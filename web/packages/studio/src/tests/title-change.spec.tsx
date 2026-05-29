@@ -7,13 +7,11 @@ import { customizationJob1 } from '@studio/mocks/customizer/customization-jobs';
 import { dataset1 } from '@studio/mocks/entity-store/datasets';
 import { entityStorePromptTunedModel1 } from '@studio/mocks/entity-store/models';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
-import { metricEvaluationJob1 } from '@studio/mocks/evaluation/v1/evaluations';
 import { renderWithRouter, waitFor } from '@studio/tests/util/render';
 import { generatePath } from 'react-router';
 
 const pathParams = {
   [RP.workspace]: workspace1.name!,
-  [RP.evaluationJobId]: metricEvaluationJob1.id!,
   [RP.customizationJobName]: customizationJob1.name!,
   [RP.modelNamespace]: entityStorePromptTunedModel1.workspace!,
   [RP.modelName]: entityStorePromptTunedModel1.name!,
@@ -21,8 +19,6 @@ const pathParams = {
   [RP.datasetName]: dataset1.name!,
   [RP.filePathEncoded]: '',
   [RP.folderPathEncoded]: '',
-  [RP.evalConfigNamespace]: '',
-  [RP.evalConfigName]: '',
   [RP.safeSynthesizerJobName]: '',
   [RP.dataDesignerJobName]: '',
   [RP.traceId]: 'trace-1',
@@ -33,7 +29,6 @@ const pathParams = {
   [RP.agentDeploymentName]: '',
   [RP.agentEvalJobName]: 'test-agent-eval-job',
   [RP.jobName]: 'test-job',
-  [RP.benchmarkName]: 'test-benchmark',
 };
 
 describe('AccessibleTitleE2E', () => {

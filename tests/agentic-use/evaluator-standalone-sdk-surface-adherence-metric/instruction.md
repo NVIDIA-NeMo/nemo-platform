@@ -8,7 +8,7 @@ Your final answer must include:
 
 - The package/path `packages/nemo_evaluator_sdk`.
 - A directly runnable Python snippet defining a zero-argument metric class compatible with the SDK `Metric` protocol, including a `type` property.
-- The API symbols `compute_scores`, `score_names`, `MetricResult`, and `MetricScore`.
+- The API symbols `compute_scores`, `output_spec`, `MetricResult`, `MetricOutput`, and `MetricOutputSpec`.
 - Score names `surface_adherence` and `surface_violation_count`.
 - Logic that reads `observed_surfaces`, `allowed_surfaces`, and `forbidden_surfaces` from the dataset item.
 - Treat `observed_surfaces` as the integration surfaces the evaluated path actually used, `allowed_surfaces` as the surfaces permitted for the task, and `forbidden_surfaces` as surfaces that should always count as violations.

@@ -52,9 +52,9 @@ const getErrorCode = (error: unknown): string | undefined => {
  * ```tsx
  * // In your route configuration:
  * {
- *   path: ROUTES.workspace.evaluation,
- *   element: <EvaluationLayout />,
- *   errorElement: <ErrorPanel title="Evaluator" />,
+ *   path: ROUTES.workspace.filesets,
+ *   element: <FilesetLayout />,
+ *   errorElement: <ErrorPanel title="Data Store" />,
  * }
  *
  * // With custom error message props:

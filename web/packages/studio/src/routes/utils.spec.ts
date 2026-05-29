@@ -2,65 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  getEvaluationBenchmarkDetailsRoute,
-  getEvaluationBenchmarkListRoute,
-  getEvaluationMetricDetailsRoute,
-  getEvaluationMetricRunRoute,
-  getEvaluationMetricsRunRoute,
   getPromptTuningFormRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceInferenceProvidersRoute,
 } from '@studio/routes/utils';
-
-describe('Evaluation route helpers', () => {
-  const workspace = 'test-namespace/test-project';
-
-  describe('getEvaluationMetricDetailsRoute', () => {
-    it('should generate correct evaluation metric details URL', () => {
-      const jobId = 'job-123';
-
-      const result = getEvaluationMetricDetailsRoute(workspace, jobId);
-
-      expect(result).toBe('/workspaces/test-namespace/test-project/evaluation/metrics/job-123');
-    });
-  });
-
-  describe('getEvaluationMetricsRunRoute', () => {
-    it('appends an encoded model query param when a model is provided', () => {
-      expect(getEvaluationMetricsRunRoute(workspace, { model: 'test-namespace/model-a' })).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/run?model=test-namespace%2Fmodel-a'
-      );
-    });
-  });
-
-  describe('getEvaluationMetricRunRoute', () => {
-    it('appends an encoded model query param when a metric and model are provided', () => {
-      expect(
-        getEvaluationMetricRunRoute(workspace, 'toxicity', {
-          model: 'test-namespace/model-a',
-        })
-      ).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/metrics/toxicity/run?model=test-namespace%2Fmodel-a'
-      );
-    });
-  });
-
-  describe('getEvaluationBenchmarkListRoute', () => {
-    it('should generate the benchmarks list URL', () => {
-      expect(getEvaluationBenchmarkListRoute(workspace)).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks'
-      );
-    });
-  });
-
-  describe('getEvaluationBenchmarkDetailsRoute', () => {
-    it('should generate a benchmark details URL', () => {
-      expect(getEvaluationBenchmarkDetailsRoute(workspace, 'my-benchmark')).toBe(
-        '/workspaces/test-namespace/test-project/evaluation/benchmarks/my-benchmark'
-      );
-    });
-  });
-});
 
 describe('getWorkspaceInferenceProvidersRoute', () => {
   const workspace = 'test-namespace/test-project';

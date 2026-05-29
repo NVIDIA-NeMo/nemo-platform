@@ -36,11 +36,11 @@ class TestHeaderNameHelpers:
             {
                 "Authorization": "Bearer secret-token",
                 "X-Trace-Id": "trace-123",
-                "X-NMP-Principal-Id": "service:evaluator",
+                "X-NMP-Principal-Id": "service:nemo-evaluator",
             }
         ) == {
             "X-Trace-Id": "trace-123",
-            "X-NMP-Principal-Id": "service:evaluator",
+            "X-NMP-Principal-Id": "service:nemo-evaluator",
         }
 
     def test_filter_auth_headers_returns_none_when_all_headers_are_filtered(self):
@@ -55,20 +55,20 @@ class TestModelDefaultHeaders:
             default_headers={"X-Existing": "model"},
         )
 
-        updated = model.with_default_headers({"X-NMP-Principal-Id": "service:evaluator"})
+        updated = model.with_default_headers({"X-NMP-Principal-Id": "service:nemo-evaluator"})
 
         assert updated is not model
         assert model.default_headers == {"X-Existing": "model"}
         assert updated.default_headers == {
             "X-Existing": "model",
-            "X-NMP-Principal-Id": "service:evaluator",
+            "X-NMP-Principal-Id": "service:nemo-evaluator",
         }
 
     def test_model_dump_excludes_default_headers(self):
         model = Model(
             url="https://judge.example.test/v1/chat/completions",
             name="judge-model",
-            default_headers={"X-NMP-Principal-Id": "service:evaluator"},
+            default_headers={"X-NMP-Principal-Id": "service:nemo-evaluator"},
         )
 
         assert "default_headers" not in model.model_dump(mode="python")

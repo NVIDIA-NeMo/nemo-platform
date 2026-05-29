@@ -12,7 +12,7 @@ from pathlib import Path
 from evaluator_agent_eval.task_config import load_agentic_use_task_config
 from evaluator_agent_eval.task_metric_utils import contains_all, run_python_file, score_checks
 from nemo_evaluator_sdk import Evaluator, ExactMatchMetric
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class ExactMatchEvaluationMetric:
@@ -22,10 +22,15 @@ class ExactMatchEvaluationMetric:
     def type(self) -> str:
         return "agent_eval/exact_match_evaluation"
 
-    def score_names(self) -> list[str]:
-        return ["task_success", "verification_score", "output_schema_valid"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("task_success"),
+            MetricOutputSpec.continuous_score("verification_score"),
+            MetricOutputSpec.continuous_score("output_schema_valid"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         final_text = str(item.get("output_text", ""))
         solution_path = _solution_path(item)
         code = _read_solution(solution_path)
@@ -56,10 +61,10 @@ class ExactMatchEvaluationMetric:
             ]
         )
         return MetricResult(
-            scores=[
-                MetricScore(name="task_success", value=float(task_success)),
-                MetricScore(name="verification_score", value=verification_score),
-                MetricScore(name="output_schema_valid", value=float(output_schema_valid)),
+            outputs=[
+                MetricOutput(name="task_success", value=float(task_success)),
+                MetricOutput(name="verification_score", value=verification_score),
+                MetricOutput(name="output_schema_valid", value=float(output_schema_valid)),
             ]
         )
 

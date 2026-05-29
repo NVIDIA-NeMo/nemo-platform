@@ -9,14 +9,9 @@ export const E2E_PROJECT_URL = `projects/${E2E_NAMESPACE}/${E2E_PROJECT_NAME}`;
 export const E2E_MODELS_URL = `${E2E_PROJECT_URL}/models`;
 export const E2E_DATASETS_URL = `${E2E_PROJECT_URL}/datasets`;
 export const E2E_CUSTOMIZATIONS_URL = `${E2E_PROJECT_URL}/customizations`;
-export const E2E_EVALUATIONS_URL = `${E2E_PROJECT_URL}/evaluations`;
-export const E2E_EVALUATION_CONFIGS_URL = `${E2E_PROJECT_URL}/configs`;
 
 // Default model to use when creating a PromptTuned model
 export const DEFAULT_BASE_MODEL = 'llama-3.2-3b-instruct';
-
-// Full model ID with namespace for LLM-as-a-judge API calls
-export const LLM_JUDGE_MODEL_ID = 'meta/llama-3.2-3b-instruct';
 
 // Platform: Training options are part of hyperparameters, not a separate type
 export const DEFAULT_TRAINING_OPTIONS = {

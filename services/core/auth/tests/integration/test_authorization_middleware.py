@@ -145,7 +145,7 @@ class TestAuthorizationMiddleware:
             "X-NMP-Principal-Email": TEST_USER_EMAIL,
         }
         response = http_client.get(
-            "/apis/entities/v2/workspaces/default/entities/evaluation_config",
+            "/apis/entities/v2/workspaces/default/entities/generic_config",
             headers=headers,
         )
         assert response.status_code == 403, f"Expected 403, got {response.status_code}: {response.text}"

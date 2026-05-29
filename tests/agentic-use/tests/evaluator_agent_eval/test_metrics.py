@@ -13,7 +13,7 @@ from evaluator_agent_eval.metrics import (
     default_agent_eval_metrics,
 )
 from evaluator_agent_eval.schemas import EvaluatorScoringRow
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, Metric, MetricInput
 
 SURFACE_FIELD_KEYS = {
     "observed_surfaces_key": "observed_surfaces",
@@ -46,17 +46,22 @@ def _row(**overrides: object) -> EvaluatorScoringRow:
 
 
 def _scores_by_name(result) -> dict[str, float]:
-    return {score.name: score.value for score in result.scores}
+    return {output.name: output.value for output in result.outputs}
+
+
+def _metric_input(row: dict) -> MetricInput:
+    return MetricInput(row=DatasetRow(data=row), candidate=CandidateOutput())
 
 
 @pytest.mark.asyncio
 async def test_surface_adherence_penalizes_forbidden_surface_hits():
     metric = SurfaceAdherenceMetric(**SURFACE_FIELD_KEYS)
     result = await metric.compute_scores(
-        _row(
-            observed_surfaces=["standalone_sdk", "legacy_service"], forbidden_surface_hits=["services/"]
-        ).to_dataset_row(),
-        {},
+        _metric_input(
+            _row(
+                observed_surfaces=["standalone_sdk", "legacy_service"], forbidden_surface_hits=["services/"]
+            ).to_dataset_row()
+        )
     )
 
     scores = _scores_by_name(result)
@@ -74,7 +79,7 @@ async def test_legacy_surface_avoidance_scans_output_text():
         legacy_text_patterns=("services/", "services\\"),
     )
     result = await metric.compute_scores(
-        _row(output_text="I inspected services/evaluator to solve it.").to_dataset_row(), {}
+        _metric_input(_row(output_text="I inspected services/evaluator to solve it.").to_dataset_row())
     )
 
     scores = _scores_by_name(result)
@@ -92,8 +97,7 @@ async def test_legacy_surface_avoidance_ignores_negated_mentions():
         legacy_text_patterns=("services/", "services\\"),
     )
     result = await metric.compute_scores(
-        _row(output_text="Do not use services/evaluator or any legacy services path.").to_dataset_row(),
-        {},
+        _metric_input(_row(output_text="Do not use services/evaluator or any legacy services path.").to_dataset_row())
     )
 
     scores = _scores_by_name(result)
@@ -110,13 +114,14 @@ async def test_surface_metrics_can_use_configured_field_keys():
         forbidden_surface_hits_key="blocked_hits",
     )
     result = await metric.compute_scores(
-        {
-            "actual": ["standalone_sdk", "legacy_service"],
-            "allowed": ["standalone_sdk"],
-            "blocked": ["legacy_service"],
-            "blocked_hits": ["services/"],
-        },
-        {},
+        _metric_input(
+            {
+                "actual": ["standalone_sdk", "legacy_service"],
+                "allowed": ["standalone_sdk"],
+                "blocked": ["legacy_service"],
+                "blocked_hits": ["services/"],
+            }
+        )
     )
 
     scores = _scores_by_name(result)
@@ -128,8 +133,7 @@ async def test_surface_metrics_can_use_configured_field_keys():
 async def test_surface_adherence_returns_nan_for_malformed_surface_fields():
     metric = SurfaceAdherenceMetric(**SURFACE_FIELD_KEYS)
     result = await metric.compute_scores(
-        _row().to_dataset_row() | {"observed_surfaces": "standalone_sdk"},
-        {},
+        _metric_input(_row().to_dataset_row() | {"observed_surfaces": "standalone_sdk"})
     )
 
     scores = _scores_by_name(result)
@@ -146,10 +150,7 @@ async def test_legacy_surface_avoidance_returns_nan_for_malformed_fields():
         legacy_surface="legacy_service",
         legacy_text_patterns=("services/", "services\\"),
     )
-    result = await metric.compute_scores(
-        _row().to_dataset_row() | {"output_text": 123},
-        {},
-    )
+    result = await metric.compute_scores(_metric_input(_row().to_dataset_row() | {"output_text": 123}))
 
     scores = _scores_by_name(result)
     assert isnan(scores["legacy_surface_avoidance"])
@@ -164,10 +165,9 @@ def test_metrics_implement_sdk_protocol():
 @pytest.mark.asyncio
 async def test_trajectory_metric_requires_summary_not_just_path():
     metric = TrajectoryEvidenceMetric(**TRAJECTORY_FIELD_KEYS)
-    with_summary = await metric.compute_scores(_row().to_dataset_row(), {})
+    with_summary = await metric.compute_scores(_metric_input(_row().to_dataset_row()))
     path_only = await metric.compute_scores(
-        _row(trajectory_summary=None, atif_trajectory_path="/tmp/trajectory.json").to_dataset_row(),
-        {},
+        _metric_input(_row(trajectory_summary=None, atif_trajectory_path="/tmp/trajectory.json").to_dataset_row())
     )
 
     assert _scores_by_name(with_summary)["trajectory_present"] == 1.0
@@ -182,10 +182,7 @@ async def test_trajectory_metric_can_use_configured_field_keys():
         failed_command_count_key="failures",
         recovery_event_count_key="recoveries",
     )
-    result = await metric.compute_scores(
-        {"trace_counts": {"tools": 2, "failures": 1, "recoveries": 1}},
-        {},
-    )
+    result = await metric.compute_scores(_metric_input({"trace_counts": {"tools": 2, "failures": 1, "recoveries": 1}}))
 
     scores = _scores_by_name(result)
     assert scores["trajectory_present"] == 1.0
@@ -198,8 +195,7 @@ async def test_trajectory_metric_can_use_configured_field_keys():
 async def test_trajectory_metric_returns_nan_for_malformed_summary():
     metric = TrajectoryEvidenceMetric(**TRAJECTORY_FIELD_KEYS)
     result = await metric.compute_scores(
-        _row().to_dataset_row() | {"trajectory_summary": {"tool_call_count": -1}},
-        {},
+        _metric_input(_row().to_dataset_row() | {"trajectory_summary": {"tool_call_count": -1}})
     )
 
     scores = _scores_by_name(result)

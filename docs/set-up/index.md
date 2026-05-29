@@ -51,10 +51,4 @@ Review and manage other cluster settings.
 
     Review and configure how {{platform_name}} use Open Telemetry for observability.
 
--   **[Milvus](milvus.md)**
-
-    ---
-
-    Review and configure how {{platform_name}} uses Milvus for vector database storage.
-
 </div>

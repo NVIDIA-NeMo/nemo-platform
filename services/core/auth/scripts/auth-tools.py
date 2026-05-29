@@ -297,7 +297,7 @@ def infer_resource_from_path(path: str) -> str:
                 return "inference"
             return "inference"
 
-        # Handle sub-resources (e.g., /v1/evaluation/configs)
+        # Handle sub-resources (e.g., /v1/customization/jobs)
         if parts[0] in _NESTED_RESOURCE_SEGMENTS:
             return parts[0]
 
@@ -335,7 +335,7 @@ def infer_permissions(path: str, method: str) -> List[str]:
 
     # Determine the sub-resource. For /apis/<area>/v<n>/[workspaces/{ws}/]<sub>/...
     # the sub-resource is the first segment after the shell. For legacy paths like
-    # /v1/evaluation/configs, it's parts[1] under a known nested resource.
+    # /v1/customization/jobs, it's parts[1] under a known nested resource.
     apis = _strip_apis_shell(path)
     sub_resource = None
     if apis is not None:

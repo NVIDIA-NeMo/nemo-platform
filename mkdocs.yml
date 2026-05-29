@@ -212,12 +212,10 @@ extra:
     paths:
       - auth/**
       - customizer/**
-      - evaluator/benchmarks/**
       - evaluator/metrics/job-management.md
       - evaluator/metrics/results.md
       - evaluator/metrics/retriever.md
       - evaluator/tutorials/run-an-evaluation.md
-      - example-applications/tool-calling.ipynb
       - get-started/quickstart.md
       - helm/**
       - run-inference/tutorials/deploy-models.md
@@ -298,7 +296,6 @@ nav:
       - Workspaces: get-started/concepts/workspaces.md
   - Example Applications:
     - About: example-applications/about.md
-    - Tool Calling: example-applications/tool-calling.ipynb
   - Models and Inference:
     - About: run-inference/about.md
     - Tutorials:
@@ -390,16 +387,6 @@ nav:
       - Model Configuration: evaluator/metrics/model-configuration.md
       - Job Management: evaluator/metrics/job-management.md
       - Metric Results: evaluator/metrics/results.md
-    - Benchmarks:
-      - Overview: evaluator/benchmarks/index.md
-      - Industry Benchmarks: evaluator/benchmarks/industry.md
-      - Discover Industry Benchmarks: evaluator/benchmarks/discover-industry-benchmarks.md
-      - Agentic Benchmarks: evaluator/benchmarks/agentic.md
-      - Custom Benchmarks: evaluator/benchmarks/custom.md
-      - Manage Benchmarks: evaluator/benchmarks/manage-benchmarks.md
-      - HuggingFace Secret: evaluator/benchmarks/hf-secret.md
-      - Job Management: evaluator/benchmarks/job-management.md
-      - Benchmark Results: evaluator/benchmarks/results.md
   - Vulnerability Scanning:
     - About: auditor/index.md
     - Tutorials:
@@ -476,7 +463,6 @@ nav:
     - Jobs: set-up/manage-jobs.md
     - Observability: set-up/opentelemetry.md
     - Security: set-up/security.md
-    - Milvus: set-up/milvus.md
   - Studio (alpha):
     - About: studio/index.md
     - Agents: studio/agents.md

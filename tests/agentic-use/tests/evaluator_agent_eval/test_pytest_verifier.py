@@ -7,7 +7,7 @@ import pytest
 from evaluator_agent_eval.pytest_verifier import _assert_evaluator_scores
 from evaluator_agent_eval.runner import score_evaluator_rows
 from evaluator_agent_eval.schemas import EvaluatorScoringRow
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class ScriptedTaskMetric:
@@ -30,15 +30,19 @@ class ScriptedTaskMetric:
     def type(self) -> str:
         return self._type
 
-    def score_names(self) -> list[str]:
-        return ["task_success", "verification_score", "output_schema_valid"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("task_success"),
+            MetricOutputSpec.continuous_score("verification_score"),
+            MetricOutputSpec.continuous_score("output_schema_valid"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         return MetricResult(
-            scores=[
-                MetricScore(name="task_success", value=self._task_success),
-                MetricScore(name="verification_score", value=self._verification_score),
-                MetricScore(name="output_schema_valid", value=self._output_schema_valid),
+            outputs=[
+                MetricOutput(name="task_success", value=self._task_success),
+                MetricOutput(name="verification_score", value=self._verification_score),
+                MetricOutput(name="output_schema_valid", value=self._output_schema_valid),
             ]
         )
 
@@ -50,11 +54,11 @@ class MissingRequiredScoreMetric:
     def type(self) -> str:
         return "agent_eval/missing_required_score"
 
-    def score_names(self) -> list[str]:
-        return ["unrelated_score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("unrelated_score")]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        return MetricResult(scores=[MetricScore(name="unrelated_score", value=1.0)])
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        return MetricResult(outputs=[MetricOutput(name="unrelated_score", value=1.0)])
 
 
 def _row() -> EvaluatorScoringRow:

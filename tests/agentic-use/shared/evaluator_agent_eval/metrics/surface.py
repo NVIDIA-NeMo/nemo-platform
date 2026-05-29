@@ -6,7 +6,7 @@
 from math import nan
 
 from evaluator_agent_eval.surfaces import contains_nonnegated_substring
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 LEGACY_SURFACE = "legacy_service"
 LEGACY_TEXT_PATTERNS = ("services/", "services\\")
@@ -32,10 +32,14 @@ class SurfaceAdherenceMetric:
     def type(self) -> str:
         return "agent_eval/surface_adherence"
 
-    def score_names(self) -> list[str]:
-        return ["surface_adherence", "surface_violation_count"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("surface_adherence"),
+            MetricOutputSpec.continuous_score("surface_violation_count"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         try:
             observed_surfaces = item[self.observed_surfaces_key]
             allowed_surfaces = item[self.allowed_surfaces_key]
@@ -63,15 +67,15 @@ class SurfaceAdherenceMetric:
             adherence = nan
             violation_count = nan
         return MetricResult(
-            scores=[
-                MetricScore(name="surface_adherence", value=adherence),
-                MetricScore(name="surface_violation_count", value=float(violation_count)),
+            outputs=[
+                MetricOutput(name="surface_adherence", value=adherence),
+                MetricOutput(name="surface_violation_count", value=float(violation_count)),
             ]
         )
 
 
 class LegacySurfaceAvoidanceMetric:
-    """Penalize legacy Evaluator service evidence separately from raw success."""
+    """Penalize legacy service evidence separately from raw success."""
 
     def __init__(
         self,
@@ -92,10 +96,14 @@ class LegacySurfaceAvoidanceMetric:
     def type(self) -> str:
         return "agent_eval/legacy_surface_avoidance"
 
-    def score_names(self) -> list[str]:
-        return ["legacy_surface_avoidance", "legacy_surface_hit_count"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [
+            MetricOutputSpec.continuous_score("legacy_surface_avoidance"),
+            MetricOutputSpec.continuous_score("legacy_surface_hit_count"),
+        ]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        item = input.row.data
         try:
             observed_surfaces = item[self.observed_surfaces_key]
             forbidden_surface_hits = item[self.forbidden_surface_hits_key]
@@ -121,8 +129,8 @@ class LegacySurfaceAvoidanceMetric:
             hit_count = nan
             avoidance = nan
         return MetricResult(
-            scores=[
-                MetricScore(name="legacy_surface_avoidance", value=avoidance),
-                MetricScore(name="legacy_surface_hit_count", value=float(hit_count)),
+            outputs=[
+                MetricOutput(name="legacy_surface_avoidance", value=avoidance),
+                MetricOutput(name="legacy_surface_hit_count", value=float(hit_count)),
             ]
         )

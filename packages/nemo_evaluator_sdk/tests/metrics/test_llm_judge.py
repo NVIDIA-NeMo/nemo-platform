@@ -859,7 +859,7 @@ class TestLLMJudgeMetric:
     async def test_preflight_selects_structured_output_mode_for_nim(self, mocker: MockerFixture):
         metric = LLMJudgeMetric(
             model=_make_model()
-            .with_default_headers({"X-NMP-Principal-Id": "service:evaluator"})
+            .with_default_headers({"X-NMP-Principal-Id": "service:nemo-evaluator"})
             .model_copy(update={"format": ModelFormat.NVIDIA_NIM}),
             scores=[_make_metric_score()],
         )
@@ -872,7 +872,7 @@ class TestLLMJudgeMetric:
         await metric.preflight()
 
         detect.assert_awaited_once()
-        assert detect.await_args.kwargs["model"].default_headers == {"X-NMP-Principal-Id": "service:evaluator"}
+        assert detect.await_args.kwargs["model"].default_headers == {"X-NMP-Principal-Id": "service:nemo-evaluator"}
         structured_hook = next(hook for hook in metric._preprocess_hooks if hasattr(hook, "mode"))
         assert structured_hook.mode == StructuredOutputMode.ROOT_GUIDED_JSON
 

@@ -27,7 +27,6 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import {
   CUSTOMIZER_ENABLED,
   DATA_DESIGNER_ENABLED,
-  EVALUATOR_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
 import { LINK_DOCS_JOBS } from '@studio/constants/links';
@@ -36,13 +35,12 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { iconColorClass } from '@studio/routes/constants';
 import {
   getDataDesignerJobDetailsRoute,
-  getEvaluationResultDetailsRoute,
   getSafeSynthesizerJobRoute,
   getWorkspaceCustomizationJobDetailsRoute,
   getWorkspaceJobDetailRoute,
 } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ChartBar, Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
+import { Cog, LayoutList, ListChecks, Sliders, Sparkles } from 'lucide-react';
 import { ComponentProps, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -58,10 +56,6 @@ const SOURCE_DISPLAY: Record<string, { label: string; icon: ReactNode }> = {
   [JOB_SOURCE.SAFE_SYNTHESIZER]: {
     label: 'Safe Synthesizer',
     icon: <Sparkles className={iconColorClass} size={14} />,
-  },
-  [JOB_SOURCE.EVALUATOR_METRICS]: {
-    label: 'Evaluator',
-    icon: <ChartBar className={iconColorClass} size={14} />,
   },
 };
 
@@ -82,10 +76,6 @@ const SOURCE_DETAIL_ROUTE: Record<
   [JOB_SOURCE.SAFE_SYNTHESIZER]: {
     enabled: SAFE_SYNTHESIZER_ENABLED,
     getRoute: getSafeSynthesizerJobRoute,
-  },
-  [JOB_SOURCE.EVALUATOR_METRICS]: {
-    enabled: EVALUATOR_ENABLED,
-    getRoute: getEvaluationResultDetailsRoute,
   },
 };
 

@@ -3,7 +3,6 @@
 
 import { CustomizationsAPI } from '@e2e-tests/api/customizations';
 import { DatasetsAPI } from '@e2e-tests/api/datasets';
-import { EvaluationsAPI } from '@e2e-tests/api/evaluations';
 import { ModelsAPI } from '@e2e-tests/api/models';
 import { ProjectsAPI } from '@e2e-tests/api/projects';
 import {
@@ -19,10 +18,6 @@ import { APIRequestContext } from '@playwright/test';
 
 /** Dataset shape for e2e fixtures. */
 type Dataset = { files_url?: string; name?: string; namespace?: string; [key: string]: unknown };
-/** Evaluation config shape for e2e fixtures. */
-type EvaluationConfig = Record<string, unknown>;
-/** Evaluation config input for create. */
-type EvaluationConfigInput = Record<string, unknown>;
 
 export interface TestProjectFixture {
   project: Project;
@@ -183,37 +178,4 @@ export const testCustomizationJobFixture = async (
     project,
     customizationJob,
   });
-};
-
-export interface TestEvaluationConfigFixture {
-  project: Project;
-  evaluationConfig: EvaluationConfig;
-}
-
-/**
- * Common fixture that creates an evaluation config.
- * The test will receive an argument of type `TestEvaluationConfigFixture`.
- */
-
-export const testEvaluationConfigFixture = async (
-  request: APIRequestContext,
-  runFixture: (returnValue: TestEvaluationConfigFixture) => Promise<void>,
-  project: Project,
-  evaluationConfigRequestBody: EvaluationConfigInput
-) => {
-  // Create the evaluation config
-  const evaluationsApi = new EvaluationsAPI(request);
-  const evaluationConfig = await evaluationsApi.createEvaluationConfig(evaluationConfigRequestBody);
-
-  // Execute test
-  await runFixture({
-    project,
-    evaluationConfig,
-  });
-
-  // Clean up the evaluation config
-  await evaluationsApi.deleteEvaluationConfig(
-    String((evaluationConfig as { namespace?: string }).namespace ?? ''),
-    String((evaluationConfig as { name?: string }).name ?? '')
-  );
 };

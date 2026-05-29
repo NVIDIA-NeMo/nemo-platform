@@ -555,11 +555,11 @@ class TestGenericEntitiesApiBlocked:
     # /apis/entities/v2/entities/{id} is excluded because it has no workspace segment,
     # so the cross-workspace GET rule allows any authenticated user (tracked in #3992).
     ENTITY_ENDPOINTS: ClassVar[list[tuple[str, str]]] = [
-        ("GET", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config"),
-        ("POST", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config"),
+        ("GET", "/apis/entities/v2/workspaces/my-ws/entities/generic_config"),
+        ("POST", "/apis/entities/v2/workspaces/my-ws/entities/generic_config"),
         ("GET", "/apis/entities/v2/workspaces/my-ws/entities/guardrail_config/cfg-1"),
         ("PUT", "/apis/entities/v2/workspaces/my-ws/entities/role_binding/rb-1"),
-        ("DELETE", "/apis/entities/v2/workspaces/my-ws/entities/evaluation_config/eval-1"),
+        ("DELETE", "/apis/entities/v2/workspaces/my-ws/entities/generic_config/eval-1"),
     ]
 
     def _setup_principals(self, static_authz_data, principals):
@@ -602,7 +602,7 @@ class TestGenericEntitiesApiBlocked:
     @pytest.mark.parametrize("method,path", ENTITY_ENDPOINTS)
     def test_service_principal_allowed(self, static_authz_data, method, path):
         set_policy_data(static_authz_data)
-        result = evaluate("allow", {"principal_id": "service:evaluator", "method": method, "path": path})
+        result = evaluate("allow", {"principal_id": "service:platform-seed", "method": method, "path": path})
         assert result["allowed"] is True, f"Service principal should be allowed {method} {path}"
 
     def test_viewer_can_still_list_workspaces(self, static_authz_data):
@@ -646,7 +646,6 @@ class TestPerAreaScopes:
         "/apis/auth/": "auth",
         "/apis/data-designer/": "data-designer",
         "/apis/entities/": "entities",
-        "/apis/evaluation/": "evaluation",
         "/apis/files/": "files",
         "/apis/guardrails/": "guardrails",
         "/apis/inference-gateway/": "inference",

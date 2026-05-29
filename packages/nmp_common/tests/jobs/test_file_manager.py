@@ -73,8 +73,8 @@ class TestFilterFilesByPatterns:
         result = _filter_files_by_patterns(files, "cache/")
         assert result == ["results.json", "metrics.json"]
 
-    def test_combined_patterns_from_evaluator(self):
-        """Test the actual patterns used by the evaluator service."""
+    def test_combined_patterns_from_plugin_jobs(self):
+        """Test patterns used by plugin-backed jobs."""
         files = [
             "aggregate-scores.json",
             "metrics.json",

@@ -34,7 +34,6 @@ The answer is *mostly* yes. The one counter example is inference-chat-completion
 | auth-authorization | PASS | 4:17 | 1.3M | 30 | PASS | 2:25 | 602.6k | 19 | -44% | -53% | -37% |
 | data-designer-config | PASS | 2:35 | 943.2k | 20 | PASS | 1:23 | 484.6k | 11 | -46% | -49% | -45% |
 | entities-basic | PASS | 4:02 | 1.1M | 25 | PASS | 2:58 | 758.6k | 19 | -27% | -31% | -24% |
-| evaluator-simple-job | PASS | 9:18 | - | 84 | PASS | 5:39 | 2.3M | 41 | -39% | - | -51% |
 | files-crud | PASS | 3:34 | 1.1M | 30 | PASS | 2:29 | 839.8k | 21 | -30% | -25% | -30% |
 | files-upload-dataset | PASS | 3:05 | 944.3k | 24 | PASS | 1:55 | 578.9k | 18 | -38% | -39% | -25% |
 | guardrails-content-safety | PASS | 1:56 | 690.4k | 15 | PASS | 0:53 | 252.2k | 6 | -54% | -63% | -60% |
@@ -53,7 +52,6 @@ auditor-target-crud-cli                        PASS       PASS
 auth-authorization-cli                         PASS       PASS
 data-designer-config-cli                       PASS       PASS
 entities-basic-cli                             PASS       PASS
-evaluator-simple-job-cli                       PASS       PASS
 files-crud-cli                                 PASS       PASS
 files-upload-dataset-cli                       PASS       PASS
 guardrails-content-safety-cli                  PASS       PASS

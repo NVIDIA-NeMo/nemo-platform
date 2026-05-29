@@ -1,7 +1,7 @@
 <a id="nemo-ms-evaluator-about"></a>
 # About Evaluating
 
-Evaluation is powered by {{platform_name}}, a cloud-native platform for evaluating large language models (LLMs), RAG pipelines, and AI agents at enterprise scale. The evaluation API provides automated workflows for over 100 industry benchmarks, LLM-as-a-judge scoring, and specialized metrics for RAG and agent systems.
+Evaluation is powered by the {{platform_name}} Evaluator plugin and the open source `nemo_evaluator_sdk` library. Together they provide LLM-as-a-judge scoring, deterministic metrics, and specialized metrics for RAG and agent systems.
 
 {{platform_name}} enables real-time evaluations of your LLM application through APIs, guiding you in refining and optimizing LLMs for enhanced performance and real-world applicability. The {{nem_short_name}} APIs can be seamlessly automated within development pipelines, enabling faster iterations without the need for live data. It is cost-effective and suitable for pre-deployment checks and regression testing.
 
@@ -49,7 +49,7 @@ config = RunConfig(limit_samples=100, parallelism=8)
 
 ### 2. Execute on the Platform
 
-Submit your evaluation to the Evaluator service using the {{platform_name}} SDK:
+Submit your evaluation to the Evaluator plugin using the {{platform_name}} SDK:
 
 ```python
 from nemo_evaluator.sdk import Evaluator
@@ -104,7 +104,7 @@ For deeper details, see [Evaluation Metrics](metrics/index.md).
 
 ## Tutorials
 
-After [setting up a local instance of the platform](../get-started/setup.md), use the following tutorials to learn how to accomplish common evaluation tasks. These step-by-step guides help you evaluate models using different benchmarks and metrics.
+After [setting up a local instance of the platform](../get-started/setup.md), use the following tutorials to learn how to accomplish common evaluation tasks. These step-by-step guides help you evaluate models using plugin-backed metrics.
 
 <div class="grid cards" markdown>
 
@@ -122,14 +122,14 @@ After [setting up a local instance of the platform](../get-started/setup.md), us
 
 ## Recommended Evaluation Journey
 
-Most teams get the best results by starting metric-first, then moving to benchmarks:
+Most teams get the best results by starting metric-first, then scaling the validated metric workflow:
 
 1. **Develop and validate your metrics first**
  - Start with [Metrics](metrics/index.md) to define how quality should be scored for your use case.
- - Use live evaluation (`POST /v2/workspaces/{workspace}/evaluation/metric-evaluate`) with small `DatasetRows` payloads to iterate quickly.
+ - Use `client.evaluator.run(...)` with small `DatasetRows` payloads to iterate quickly.
 
 1. **Scale metric evaluation to jobs**
- - When metrics are validated, run async metric jobs (`/evaluation/metric-jobs`) on larger datasets.
+ - When metrics are validated, submit durable plugin jobs with `client.evaluator.submit(...)` on larger datasets.
  - Use filesets for production-scale inputs. See [Manage Files](../get-started/concepts/manage-files.md).
 
 1. **Monitor and analyze results**
@@ -141,7 +141,7 @@ Most teams get the best results by starting metric-first, then moving to benchma
 ## Where to Go Next
 
 - For metric workflows, see [Metric Jobs](metrics/index.md) and [Metric Results](metrics/results.md).
-- For full endpoint details, see the [Evaluator API Reference](../api/index.md#tag-evaluator).
+- For platform execution details, see [SDK Resources](sdk-resources.md).
 
 ---
 

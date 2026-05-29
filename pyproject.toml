@@ -40,7 +40,6 @@ dependencies = [
   "tornado>=6.5.5",                  # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
   "nmp-customizer",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nmp-hello-world",
   "nmp-intake",
@@ -131,7 +130,6 @@ dev = [
   "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nmp-hello-world",
   "nmp-intake",
@@ -204,7 +202,6 @@ core-services = [
 functional-services = [
   { include-group = "core-services" },
   "nmp-studio",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nmp-customizer",
   "nemo-data-designer-plugin",
@@ -220,7 +217,7 @@ functional-services = [
 cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
-  "nmp-evaluator",
+  "nemo-evaluator-plugin",
   "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
@@ -393,7 +390,6 @@ nmp-auth = { workspace = true }
 nemo-anonymizer-plugin = { workspace = true }
 nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
-nmp-evaluator = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
 nmp-guardrails = { workspace = true }
 nmp-intake = { workspace = true }
@@ -459,7 +455,6 @@ members = [
   "services/hello-world",
   "services/studio",
   "services/guardrails",
-  "services/evaluator",
   "services/customizer",
   "services/intake",
   "plugins/nemo-anonymizer",

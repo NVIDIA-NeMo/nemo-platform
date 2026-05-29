@@ -61,8 +61,6 @@ export const flagDefinitions = {
   dataDesignerEnabled: previewFlag('VITE_FF_DATA_DESIGNER_ENABLED'),
   datasetsEnabled: previewFlag('VITE_FF_DATASETS_ENABLED', true),
   deploymentsEnabled: previewFlag('VITE_FF_DEPLOYMENTS_ENABLED'),
-  evaluatorBenchmarksEnabled: previewFlag('VITE_FF_EVALUATOR_BENCHMARKS_ENABLED', false),
-  evaluatorEnabled: previewFlag('VITE_FF_EVALUATOR_ENABLED', true),
   filesetDetailsEnabled: previewFlag('VITE_FF_FILESET_DETAILS_ENABLED'),
   guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED'),
   inferenceProviderEnabled: previewFlag('VITE_FF_INFERENCE_PROVIDER_ENABLED'),

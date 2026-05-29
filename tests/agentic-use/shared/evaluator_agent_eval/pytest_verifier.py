@@ -12,7 +12,7 @@ from evaluator_agent_eval.artifacts import AgentArtifacts
 from evaluator_agent_eval.factory import AgentRunMetadata, build_evaluator_scoring_row, capture_agent_attempt
 from evaluator_agent_eval.runner import score_evaluator_rows
 from evaluator_agent_eval.task_config import load_agentic_use_task_config
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 
 AGENT_LOG_DIR = Path("/logs/agent")

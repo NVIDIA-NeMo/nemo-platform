@@ -15,18 +15,6 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 |------------|-------------|:------:|:------:|:-----:|
 | `entities.(read \| create \| update \| delete)` | Read, create, update, delete entities |  |  |  |
 
-## Evaluation API
-
-| Permission | Description | Viewer | Editor | Admin |
-|------------|-------------|:------:|:------:|:-----:|
-| `evaluation.benchmarks.(read \| list)` | Read, list evaluation benchmarks | ✓ | ✓ | ✓ |
-| `evaluation.benchmarks.(create \| delete)` | Create, delete evaluation benchmarks |  | ✓ | ✓ |
-| `evaluation.jobs.(read \| list)` | Read, list evaluation jobs | ✓ | ✓ | ✓ |
-| `evaluation.jobs.(create \| delete \| cancel)` | Create, delete, cancel evaluation jobs |  | ✓ | ✓ |
-| `evaluation.live.exec` | Execute live evaluations |  | ✓ | ✓ |
-| `evaluation.metrics.(read \| list)` | Read, list evaluation metrics | ✓ | ✓ | ✓ |
-| `evaluation.metrics.(create \| delete)` | Create, delete evaluation metrics |  | ✓ | ✓ |
-
 ## Files API
 
 | Permission | Description | Viewer | Editor | Admin |

@@ -22,6 +22,7 @@ from nemo_evaluator.sdk._executor import (
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
+from nemo_evaluator.sdk.types import FilesetRef
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -30,7 +31,6 @@ from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
-from nmp.evaluator.app.values import FilesetRef
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
 

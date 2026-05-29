@@ -22,6 +22,7 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateSpec,
 )
 from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
+from nemo_evaluator.sdk.types import FilesetRef
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricOutput, MetricResult
@@ -33,7 +34,6 @@ from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
@@ -57,13 +57,8 @@ def _exact_match_spec() -> dict:
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     step = job_spec.steps[0]
     container = cast(Any, step.executor).container
-    assert container.entrypoint == ["python", "-m", "nmp.evaluator.tasks.evaluate_metric"]
-    command = container.command
-    assert command is not None
-    assert command == [
-        "--progress-tracking-url",
-        "${NMP_JOBS_URL}/apis/jobs/v2/workspaces/${NEMO_JOB_WORKSPACE}/jobs/${NEMO_JOB_ID}/status-details",
-    ]
+    assert container.entrypoint == ["python", "-m"]
+    assert container.command == ["nemo_evaluator.tasks.evaluate"]
 
 
 def _load_cli_run_payload(output: str) -> dict[str, Any]:
@@ -282,7 +277,7 @@ async def test_evaluate_job_compile_produces_cpu_task_step() -> None:
     assert step.config is not None
     config = cast(dict[str, Any], step.config)
     assert config["metric"]["type"] == "exact-match"
-    assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
+    assert config["dataset"] == _exact_match_spec()["dataset"]
 
 
 async def test_evaluate_job_compile_resolves_metric_model_refs_before_remote_job() -> None:
@@ -328,7 +323,7 @@ async def test_evaluate_job_compile_produces_online_model_job() -> None:
     step = job_spec.steps[0]
     config = cast(dict[str, Any], step.config)
     _assert_metric_step_entrypoint(job_spec)
-    assert config["model"]["name"] == "test-model"
+    assert config["target"]["name"] == "test-model"
     assert config["prompt_template"] == "Question: {{item.question}}"
     assert config["params"]["parallelism"] == 3
 
@@ -360,7 +355,7 @@ async def test_evaluate_job_compile_produces_online_agent_job() -> None:
     step = job_spec.steps[0]
     config = cast(dict[str, Any], step.config)
     _assert_metric_step_entrypoint(job_spec)
-    assert config["agent"]["name"] == "test-agent"
+    assert config["target"]["name"] == "test-agent"
     assert config["prompt_template"] == {"question": "{{item.question}}"}
 
 
@@ -497,10 +492,10 @@ class TestEvaluateJobCompile:
         step = job_spec.steps[0]
         config = cast(dict[str, Any], step.config)
         assert config["metric"]["type"] == "exact-match"
-        assert config["dataset"]["rows"] == _exact_match_spec()["dataset"]
+        assert config["dataset"] == _exact_match_spec()["dataset"]
         assert config["params"]["parallelism"] == 2
 
-    async def test_rejects_remote_compile_for_metrics_sequence(self) -> None:
+    async def test_accepts_remote_compile_for_metrics_sequence(self) -> None:
         spec = EvaluateSpec.model_validate(
             {
                 **_exact_match_spec(),
@@ -515,14 +510,18 @@ class TestEvaluateJobCompile:
             }
         )
 
-        with pytest.raises(NotImplementedError, match="Remote benchmark.*not implemented"):
-            await EvaluateJob.compile(
-                workspace="default",
-                spec=spec,
-                entity_client=object(),
-                job_name=None,
-                async_sdk=object(),
-            )
+        compiled = await EvaluateJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=object(),
+            job_name=None,
+            async_sdk=object(),
+        )
+
+        job_spec = PlatformJobSpec.model_validate(compiled)
+        assert len(job_spec.steps) == 1
+        config = cast(dict[str, Any], job_spec.steps[0].config)
+        assert [metric["type"] for metric in config["metric"]] == ["exact-match", "f1"]
 
     @pytest.mark.parametrize(
         ("target", "expected_message"),
@@ -611,7 +610,7 @@ class TestEvaluateJobCompile:
                 async_sdk=object(),
             )
 
-    async def test_fileset_ref_dataset_validates_and_compiles_with_download_step(self, mocker: MockerFixture) -> None:
+    async def test_fileset_ref_dataset_validates_and_compiles_evaluation_step(self, mocker: MockerFixture) -> None:
         dataset = FilesetRef(root="default/helpsteer2#validation/*.jsonl")
         dataset_exists = mocker.patch(
             "nemo_evaluator.jobs.utils.dataset_exists",
@@ -629,10 +628,9 @@ class TestEvaluateJobCompile:
         )
 
         job_spec = PlatformJobSpec.model_validate(compiled)
-        assert [step.name for step in job_spec.steps] == ["dataset-download", "evaluation"]
-        config = cast(dict[str, Any], job_spec.steps[1].config)
+        assert [step.name for step in job_spec.steps] == ["evaluation"]
+        config = cast(dict[str, Any], job_spec.steps[0].config)
         assert config["dataset"] == dataset.root
-        assert config["dataset_ref"] == dataset.root
         dataset_exists.assert_awaited_once_with(async_sdk, dataset)
 
     async def test_fileset_ref_dataset_compile_raises_when_dataset_does_not_exist(self, mocker: MockerFixture) -> None:

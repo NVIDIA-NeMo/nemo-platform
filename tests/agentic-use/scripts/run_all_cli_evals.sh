@@ -33,7 +33,7 @@ EASY_ONLY=false
 STANDARD_ONLY=false
 DRY_RUN=false
 
-# All 19 eval base names (each has a standard and -easy variant)
+# All CLI eval base names (each has a standard and -easy variant)
 EVAL_BASES=(
     auditor-config-crud-cli
     auditor-default-job-cli
@@ -41,9 +41,6 @@ EVAL_BASES=(
     auth-authorization-cli
     data-designer-config-cli
     entities-basic-cli
-    evaluator-academic-benchmark-cli
-    evaluator-llm-judge-cli
-    evaluator-simple-job-cli
     files-crud-cli
     files-upload-dataset-cli
     guardrails-content-safety-cli

@@ -8,7 +8,7 @@ from collections.abc import Iterable, Sequence
 from evaluator_agent_eval.metrics import default_agent_eval_metrics
 from evaluator_agent_eval.schemas import EvaluatorScoringRow
 from nemo_evaluator_sdk import Evaluator
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 
 

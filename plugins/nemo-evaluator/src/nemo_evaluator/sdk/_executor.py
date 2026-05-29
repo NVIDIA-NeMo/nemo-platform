@@ -18,7 +18,7 @@ from nemo_evaluator.sdk.job_resources import (
     EvaluatorJob,
     EvaluatorJobResource,
 )
-from nemo_evaluator.sdk.types import PluginDatasetInput
+from nemo_evaluator.sdk.types import FilesetRef, PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
@@ -34,7 +34,6 @@ from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationRe
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nmp.evaluator.app.values import FilesetRef
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0

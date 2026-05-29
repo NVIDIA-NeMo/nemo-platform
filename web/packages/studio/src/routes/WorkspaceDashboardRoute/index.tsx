@@ -2,14 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
-import ModelEvaluationIcon from '@nemo/common/src/svgs/model_evaluation.svg?react';
 import ModelPromptTuningIcon from '@nemo/common/src/svgs/model_prompt_tuning.svg?react';
 import SafeSynthesizerLogo from '@nemo/common/src/svgs/safe_synthesizer_logo.svg?react';
 import { Grid, PageHeader, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import {
   CUSTOMIZER_ENABLED,
-  EVALUATOR_ENABLED,
   MODEL_COMPARE_ENABLED,
   SAFE_SYNTHESIZER_ENABLED,
 } from '@studio/constants/environment';
@@ -17,12 +15,11 @@ import {
   LINK_DOCS_MODELS,
   LINK_DOCS_SAFE_SYNTHESIZER,
   LINK_DOCS_STUDIO_CUSTOMIZATION,
-  LINK_DOCS_STUDIO_EVALUATION,
 } from '@studio/constants/links';
 import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationMetricsRunRoute, getModelCompareRoute } from '@studio/routes/utils';
+import { getModelCompareRoute } from '@studio/routes/utils';
 import { DashboardCard } from '@studio/routes/WorkspaceDashboardRoute/DashboardCard';
 import { ResourcesSection } from '@studio/routes/WorkspaceDashboardRoute/ResourcesSection';
 import { Sliders, Boxes } from 'lucide-react';
@@ -87,18 +84,6 @@ export const WorkspaceDashboardRoute: FC = () => {
                   docsUrl={LINK_DOCS_MODELS}
                   actionLabel="Prompt Tune"
                   actionHref={generatePath(ROUTES.workspace.promptTuningForm, { workspace })}
-                />
-              )}
-
-              {/* Evaluate a Model or Dataset */}
-              {EVALUATOR_ENABLED && (
-                <DashboardCard
-                  icon={<ModelEvaluationIcon className="w-8 h-8" />}
-                  title="Evaluate a Model or Dataset"
-                  description="Assess models or datasets with automated metrics and workflows."
-                  docsUrl={LINK_DOCS_STUDIO_EVALUATION}
-                  actionLabel="Evaluate"
-                  actionHref={getEvaluationMetricsRunRoute(workspace)}
                 />
               )}
 

@@ -16,14 +16,14 @@ Prefer the form that's most natural for the caller:
 Generated CLI list commands expose each simple filter field as its own option:
 
 ```bash
-nemo evaluation benchmarks list --filter.name mmlu --filter.project my-project
+nemo models list --filter.name llama --filter.project my-project
 ```
 
 Dot flags cover exact-match on scalar fields. For operators (`$gte`, `$like`, …) or boolean combinations, fall through to `--filter` with text or JSON:
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>="2025-01-01"'
-nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
+nemo models list --filter 'name:"llama" AND created_at>="2025-01-01"'
+nemo models list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 ```
 
 ### Bracket notation
@@ -31,7 +31,7 @@ nemo evaluation benchmarks list --filter '{"created_at":{"$gte":"2025-01-01"}}'
 The preferred form for REST query strings. Each `?filter[field][$op]=value` pair is URL-encoding-friendly and composable:
 
 ```
-GET /v2/workspaces/{ws}/benchmarks?filter[name][$like]=mmlu&filter[created_at][$gte]=2025-01-01
+GET /v2/workspaces/{ws}/models?filter[name][$like]=llama&filter[created_at][$gte]=2025-01-01
 ```
 
 When no operator is specified, the default is `$eq`:
@@ -48,7 +48,7 @@ When no operator is specified, the default is `$eq`:
 A compact, human-readable query string. Handy for CLI and SDK string filters; in URLs you need to URL-encode spaces and quotes, so bracket notation is usually easier there.
 
 ```bash
-nemo evaluation benchmarks list --filter 'name:"mmlu" AND created_at>"2025-01-01"'
+nemo models list --filter 'name:"llama" AND created_at>"2025-01-01"'
 ```
 
 ```python
@@ -85,20 +85,20 @@ Pass a dictionary to the `filter` parameter. Keys are field names; values are ei
 
 ```python
 # Exact match
-results = client.evaluation.benchmarks.list(filter={"name": "mmlu"})
+results = client.models.list(filter={"name": "llama"})
 
 # Operator syntax
-results = client.evaluation.benchmarks.list(filter={"name": {"$like": "mmlu"}})
+results = client.models.list(filter={"name": {"$like": "llama"}})
 
 # Multiple conditions
-results = client.evaluation.benchmarks.list(
+results = client.models.list(
     filter={
-        "$and": [{"name": {"$like": "mmlu"}}, {"description": {"$like": "reasoning"}}]
+        "$and": [{"name": {"$like": "llama"}}, {"description": {"$like": "chat"}}]
     }
 )
 
 # Date range
-results = client.evaluation.benchmarks.list(
+results = client.models.list(
     filter={
         "created_at": {"$gte": "2025-01-01T00:00:00", "$lte": "2025-06-30T23:59:59"}
     }
@@ -135,7 +135,7 @@ The API supports filtering on nested `data.*` fields (e.g., custom labels). Thes
 
 ```python
 # Filter by a custom label
-benchmarks = client.evaluation.benchmarks.list(
+filesets = client.files.filesets.list(
     extra_query={"filter[data.labels.eval_category]": "agentic"}
 )
 ```
@@ -151,7 +151,7 @@ The equivalent REST call:
 ### Date range
 
 ```python
-results = client.evaluation.metrics.list(
+results = client.models.list(
     filter={
         "created_at": {"$gte": "2025-01-01T00:00:00", "$lte": "2025-06-30T23:59:59"}
     }
@@ -167,8 +167,8 @@ models = client.models.list(filter={"name": {"$like": "llama"}})
 ### Multiple conditions
 
 ```python
-metrics = client.evaluation.metrics.list(
-    filter={"$and": [{"name": {"$like": "bleu"}}, {"type": "llm-as-a-judge"}]}
+filesets = client.files.filesets.list(
+    filter={"$and": [{"name": {"$like": "eval"}}, {"purpose": "dataset"}]}
 )
 ```
 

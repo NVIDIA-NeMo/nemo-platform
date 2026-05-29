@@ -1,149 +1,65 @@
 <a id="evaluator-troubleshooting"></a>
-# Troubleshooting {{nem_short_name}}
+# Troubleshooting Evaluator
 
-Use this documentation to troubleshoot issues that can arise when you work with [{{nem_long_name}}](../evaluator/index.md).
+Use this documentation to troubleshoot issues that can arise when you work with the [Evaluator plugin](../evaluator/index.md).
 
 !!! tip
-    You can [get metric logs](../evaluator/metrics/job-management.md) or [get benchmark logs](../evaluator/benchmarks/job-management.md) for `COMPLETED` or `FAILED` jobs and use them to help troubleshoot.
+    For durable evaluator jobs, use the returned job resource to wait for completion and download artifacts. See [Metric Job Management](../evaluator/metrics/job-management.md).
 
 ---
-
-<a id="evaluator-hugging-face-error"></a>
-## Hugging Face Error
-
-Some benchmark evaluations may require Hugging Face access to the respective dataset or model tokenizer. If your job fails with the following errors, visit [https://huggingface.co/](https://huggingface.co/) and log in to request access to the dataset or model.
-
-```
-datasets.exceptions.DatasetNotFoundError: Dataset 'allenai/wildguardmix' is a gated dataset on the Hub. Visit the dataset page at https://huggingface.co/datasets/allenai/wildguardmix to ask for access.
-```
-
-```
-GatedRepoError: 403 Client Error.
-
-Cannot access gated repo for url https://huggingface.co/<model>/resolve/main/tokenizer_config.json.
-Your request to access model <model> is awaiting a review from the repo authors.
-```
 
 <a id="unsupported-judge-model"></a>
 ## Unsupported Judge Model
 
-LLM-as-a-Judge evaluates the quality of another model's output using an evaluation prompt and an evaluation criteria. The prompt applies structure to the judge's output which is then parsed by the evaluation criteria to generate a metrics score.
+LLM-as-a-Judge evaluates the quality of another model's output using an evaluation prompt and scoring criteria. The prompt applies structure to the judge's output, which is then parsed to generate metric scores.
 
-Not all models make good judges. If the judge produces inconsistent output and does not follow the format expected by the evaluation criteria, the evaluation can fail with parsing errors. This is commonly observed for smaller models.
+Not all models make good judges. If the judge produces inconsistent output or does not follow the expected format, the evaluation can fail with parsing errors. This is commonly observed for smaller models.
 
 ```
-Incoming request body={'messages': [{'content': 'The output string did not satisfy the constraints given in the prompt. Fix the output string and return it.\nPlease return the output in a JSON format that complies with the following schema as specified in JSON Schema:\n{"properties": {"text": {"title": "Text", "type": "string"}}, "required": ["text"], "title": "StringIO", "type": "object"}
+The output string did not satisfy the constraints given in the prompt.
+Please return the output in a JSON format that complies with the schema.
 ```
 
-## Dataset {dataset} is not in the expected format; it needs to have the files_url property set
+Use a stronger judge model, simplify the rubric, or test locally with `client.evaluator.run(...)` before submitting a durable job.
 
-This means that either the `files_url` is not provided as part of the dataset specification in the config, 
-or that the `files_url` is not provided in the expected format. 
-The dataset must be a JSON object with the `files_url` property set, 
-pointing to the path of the file in the {{nds_short_name}} in the format: `hf://datasets/<dataset-namespace>/<dataset-namespace>/<file-path>`.
+## Dataset Reference Cannot Be Resolved
 
+If a job fails before evaluation starts, verify that the dataset reference is available to the execution mode you selected:
 
-## Error connecting to inference server
+- Local runs can use inline rows or local paths that exist in the current process.
+- Durable platform jobs can use inline rows or platform `FilesetRef` values.
+- Fileset paths must point at files that exist in the Files service for the selected workspace.
 
-This means that for a custom evaluation, the target LLM endpoint is unable to connect.
+If the error says the datastore is unavailable, verify that the Files service is reachable. If the datastore is reachable but the file is missing, upload or re-register the fileset before resubmitting the job.
+
+## Error Connecting to Inference Server
+
+This means the evaluator could not reach the model, agent, or judge endpoint used by the metric.
+
+Check that the endpoint URL is reachable from the job runtime, that any required API key is available, and that the model name matches the endpoint provider. For durable jobs, use a platform secret name in `api_key_secret`; for local runs, make sure the matching environment variable is exported.
 
 ## Inference SSL Error
 
 An evaluation job that uses an HTTPS model endpoint can fail if the endpoint certificate or DNS name is not trusted by the local environment. Verify that the model URL is reachable from the host running {{platform_name}} and that the endpoint presents a valid certificate for its hostname.
 
 ```
-Error: HTTPSConnectionPool(host="<NIM Proxy URL>", port=443): Max retries exceeded with url: /v1/chat/completions (Caused by SSLError(SSLError))
+HTTPSConnectionPool(host="<model endpoint>", port=443): Max retries exceeded with url: /v1/chat/completions (Caused by SSLError)
 ```
-
-## Error occurred while checking the existence of file {file_ref} on {{nds_short_name}}
-
-This could mean that the dataset is not specified correctly, or that the {{nds_short_name}} itself is unresponsive.
-
-- Verify that the files URL is correct and that the dataset and file exists in the {{nds_short_name}}.
-- Verify that the {{nds_short_name}} is responsive and reachable. 
-
-If the error contains the string `Dataset {file_ref} is not present on datastore`, 
-it means that the datastore is responsive, but the file reference does not exist.
-
 
 ## Evaluation Job Takes a Long Time
 
-The time that an Evaluation job takes can vary from a few minutes to many hours, 
-depending on the target model, config, and other factors. 
-As long as the status is `RUNNING`, your job is still running.
-If there is a problem with your job, you will see `UNAVAILABLE` or `FAILED`.
+Evaluation job duration depends on dataset size, target model latency, judge latency, and `RunConfig(parallelism=...)`. As long as the status is `RUNNING`, the job is still active.
 
-
-## Job cannot be launched 
-
-This means that one of the pre-launch validations has failed. 
-The error contains the details about the checks that failed.
-
-## What is EVALUATOR_BASE_URL?
-
-`EVALUATOR_BASE_URL` is a placeholder for the URL of the evaluator API in examples.
-For local setup, the platform API defaults to `http://localhost:8080`.
-If you changed the platform URL, use the value configured in `NMP_BASE_URL` or in your CLI context.
-
-
+If a job is unexpectedly slow, lower the dataset size with `RunConfig(limit_samples=...)`, increase `parallelism` only within the model endpoint's rate limits, or run a small local sample first with `client.evaluator.run(...)`.
 
 ## Advanced Troubleshooting
 
-To troubleshoot an evaluation job that has failed, download the evaluation result archive and inspect the job logs.
+To troubleshoot a failed durable job, download the job artifacts and inspect the generated logs and result files:
 
-!!! warning "These are advanced troubleshooting steps that should only be done after all other troubleshooting fails."
-
-### Evaluation Job Logs
-
-To download the log files, use the `download-results` endpoint. 
-This endpoint downloads the result directory containing configuration files, logs, and evaluation results for a specific evaluation run. 
-The result directory is packaged and provided as a downloadable archive.
-
-To download the evaluation results directory, use the following code.
-
-```bash
-curl -X 'GET' \
- '<BASE_URL>/v1/evaluation/jobs/<job-id>/download-results' \
- -H 'accept: application/json' \
- -o result.zip
+```python
+job = client.evaluator.get_job_resource("my-job-name")
+artifacts_dir = job.download_artifacts(path="evaluation_artifacts")
+print(artifacts_dir)
 ```
 
-After the download is complete, the log files are available inside the result.zip file. 
-Log files can be found in the results folder with the file extension `*.log`.
-
-
-## Skip validation checks
-
-When you launch an evaluation job, {{nem_short_name}} performs availability checks (for example, checking if the dataset and files exist in {{nds_short_name}}). 
-To speed up job launch, or due to strict constraints of validation checks, you can pass the query parameter `skip_validation_checks` during job launch. 
-
-Use the following code to create an evaluation job that skips validation checks.
-
-
-=== "curl"
-    ```bash
-    curl -X 'POST' \
-    'https://${EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True' \
-    -H 'accept: application/json' \
-    -H 'Content-Type: application/json' \
-    -d '{
-    "namespace": "my-organization",
-    "target": "<my-target-namespace/my-target-name>",
-    "config": "<my-config-namespace/my-config-name>"
-    }'
-    ```
-
-=== "Python"
-    ```python
-    data = {
-        "namespace": "my-organization",
-        "target": "<my-target-namespace/my-target-name>",
-        "config": "<my-config-namespace/my-config-name>",
-    }
-
-    endpoint = f"{EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True"
-
-    response = requests.post(endpoint, json=data).json()
-    ```
-
-<!-- end of tab set -->
+The artifacts directory contains the runtime files produced by the evaluator plugin job, including logs when the job runtime emitted them.

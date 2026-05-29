@@ -264,7 +264,7 @@ def extract_helpfulness_scores(
 
     Args:
         row_scores: Row-level metric-job results returned by ``Evaluator.run``
-            or ``client.evaluation.metric_jobs.results.row_scores.download``.
+            or ``EvaluatorJobResource.get_result``.
         dimension: Dataset field and judge JSON key to compare.
         metric_ref: Optional metric key for benchmark rows where scores are
             already materialized in ``row.metrics``.

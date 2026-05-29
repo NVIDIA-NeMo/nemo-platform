@@ -171,7 +171,7 @@ def wait_for_job_completion(
 
     Args:
         sdk: The NeMo Platform SDK client.
-        service: The service name (e.g., "hello-world", "evaluator", "customizer").
+        service: The service name (e.g., "hello-world", "customizer", "safe-synthesizer").
         workspace: The workspace name.
         job_name: The name of the job to wait for.
         timeout: Maximum time to wait in seconds (excluding image pull time).

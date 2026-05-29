@@ -464,7 +464,7 @@ describe('analyze — new model scan', () => {
       'nemo audit jobs create --model new-model-7b'
     );
     expect(newModel?.suggested_actions?.[1]).toContain(
-      'nemo evaluation jobs create --model new-model-7b'
+      'nemo agents evaluate --model new-model-7b'
     );
   });
 

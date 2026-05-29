@@ -436,7 +436,7 @@ class TestInternalServiceOnlyRoutes:
         with patch("nmp.common.auth.client.AuthClient.authorize_request") as mock_authorize:
             mock_authorize.return_value = MagicMock(allowed=False)
             response = client.get(
-                "/apis/entities/v2/workspaces/ws1/entities/evaluation_config",
+                "/apis/entities/v2/workspaces/ws1/entities/generic_config",
                 headers={"X-NMP-Principal-Id": "user@example.com"},
             )
         assert response.status_code == 403

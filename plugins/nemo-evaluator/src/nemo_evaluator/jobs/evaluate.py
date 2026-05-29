@@ -11,13 +11,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
-from nemo_evaluator.jobs.utils import remote_compile_metric, resolve_run_dataset, resolve_submit_dataset
+from nemo_evaluator.jobs.utils import resolve_run_dataset, resolve_submit_dataset
 from nemo_evaluator.resolvers import PlatformModelResolver
+from nemo_evaluator.sdk.types import FilesetRef
 from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.execution._protocols import JobParamsConfigurableMetric
 from nemo_evaluator_sdk.execution.config import normalize_params
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.metrics.protocol import MetricWithModels
+from nemo_evaluator_sdk.metrics.protocol import MetricWithModels, MetricWithSecrets
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -31,8 +32,16 @@ from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
-from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nmp.evaluator.app.values import FilesetRef
+from nemo_platform_plugin.jobs.api_factory import (
+    ContainerSpec,
+    CPUExecutionProviderSpec,
+    EnvironmentVariable,
+    EnvironmentVariableFromSecret,
+    PlatformJobSpec,
+    PlatformJobStep,
+)
+from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
+from nmp.common.jobs.image import get_qualified_image
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent
@@ -141,6 +150,34 @@ class EvaluateJob(NemoJob):
         ]
         return sorted(refs)
 
+    @staticmethod
+    def _secret_envs(spec: EvaluateSpec) -> list[EnvironmentVariable]:
+        """Return platform secret environment variables needed at task runtime."""
+        secret_envs: list[EnvironmentVariable] = []
+        target = spec.target
+        if isinstance(target, (Model, Agent)) and target.api_key_secret:
+            api_key_env = target.api_key_env
+            if api_key_env is None:
+                raise ValueError("target.api_key_env must be set when target.api_key_secret is configured")
+            secret_envs.append(
+                EnvironmentVariable(
+                    name=api_key_env,
+                    from_secret=EnvironmentVariableFromSecret(name=target.api_key_secret.root),
+                )
+            )
+
+        metrics = spec.metric if isinstance(spec.metric, Sequence) else (spec.metric,)
+        for metric in metrics:
+            if isinstance(metric, MetricWithSecrets):
+                for secret_env, secret_ref in metric.secrets().items():
+                    secret_envs.append(
+                        EnvironmentVariable(
+                            name=secret_env,
+                            from_secret=EnvironmentVariableFromSecret(name=secret_ref.root),
+                        )
+                    )
+        return secret_envs
+
     @classmethod
     async def compile(
         cls,
@@ -153,57 +190,55 @@ class EvaluateJob(NemoJob):
         profile: str | None = None,
         options: dict | None = None,
     ) -> PlatformJobSpec:
-        """Compile canonical spec using the evaluator service metric job compiler."""
-        del workspace, entity_client, job_name, profile, options
+        """Compile an evaluator plugin job into a single platform task step."""
+        del entity_client, job_name, options
         canonical_spec = (
             spec.model_copy(deep=True)
             if isinstance(spec, EvaluateSpec)
             else EvaluateSpec.model_validate(spec.model_dump())
         )
 
-        from nmp.evaluator.app.jobs.metrics import compile_metric_job
-        from nmp.evaluator.app.values import MetricOfflineJob, MetricOnlineAgentJob, MetricOnlineJob
-
-        dataset, dataset_ref = await resolve_submit_dataset(cast(AsyncNeMoPlatform, async_sdk), canonical_spec.dataset)
+        await resolve_submit_dataset(cast(AsyncNeMoPlatform, async_sdk), canonical_spec.dataset)
         params = normalize_params(canonical_spec.params, canonical_spec.target)
         await cls._resolve_metric_models(canonical_spec.metric, PlatformModelResolver(async_sdk), params)
-        metric = remote_compile_metric(canonical_spec.metric)
         if isinstance(canonical_spec.target, Model):
             if canonical_spec.prompt_template is None:
                 raise ValueError("prompt_template is required when EvaluateSpec.target is a model")
             if not isinstance(params, RunConfigOnlineModel):
                 raise TypeError("model target requires RunConfigOnlineModel")
-            metric_job = MetricOnlineJob(
-                metric=metric,
-                model=canonical_spec.target,
-                dataset=dataset,
-                dataset_ref=dataset_ref,
-                params=params,
-                prompt_template=canonical_spec.prompt_template,
-            )
         elif isinstance(canonical_spec.target, Agent):
             if canonical_spec.prompt_template is None:
                 raise ValueError("prompt_template is required when EvaluateSpec.target is an agent")
             if not isinstance(params, RunConfigOnline):
                 raise TypeError("agent target requires RunConfigOnline")
-            metric_job = MetricOnlineAgentJob(
-                metric=metric,
-                agent=canonical_spec.target,
-                dataset=dataset,
-                dataset_ref=dataset_ref,
-                params=params,
-                prompt_template=canonical_spec.prompt_template,
-            )
         else:
             if not isinstance(params, RunConfig):
                 raise TypeError("offline evaluation requires RunConfig")
-            metric_job = MetricOfflineJob(
-                metric=metric,
-                dataset=dataset,
-                dataset_ref=dataset_ref,
-                params=params,
-            )
-        return await compile_metric_job(metric_job)
+        canonical_spec.params = params
+        spec_dict = canonical_spec.model_dump(mode="json", exclude_none=True)
+
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="evaluation",
+                    executor=CPUExecutionProviderSpec(
+                        provider="cpu",
+                        profile=profile or "default",
+                        container=ContainerSpec(
+                            image=get_qualified_image("nmp-cpu-tasks"),
+                            entrypoint=["python", "-m"],
+                            command=["nemo_evaluator.tasks.evaluate"],
+                        ),
+                    ),
+                    config=spec_dict,
+                    environment=[
+                        EnvironmentVariable(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=DEFAULT_JOB_STORAGE_PATH),
+                        EnvironmentVariable(name="LOG_FORMAT", value="json"),
+                        *cls._secret_envs(canonical_spec),
+                    ],
+                ),
+            ],
+        )
 
     def run(self, config: dict, *, ctx: JobContext, sdk: object | None = None, async_sdk: object | None = None) -> dict:
         """Run the evaluator job locally and persist its result artifact."""

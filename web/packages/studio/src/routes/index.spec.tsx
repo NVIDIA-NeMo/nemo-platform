@@ -60,18 +60,6 @@ const customizationRoutes = [
   ROUTES.workspace.newCustomizationJob,
 ];
 
-const evalRoutes = [
-  ROUTES.workspace.evaluation,
-  ROUTES.workspace.evaluationMetrics,
-  ROUTES.workspace.evaluationMetricNew,
-  ROUTES.workspace.evaluationMetricDetails,
-  ROUTES.workspace.evaluationMetricRun,
-  ROUTES.workspace.evaluationBenchmarks,
-  ROUTES.workspace.evaluationBenchmarkDetails,
-  ROUTES.workspace.evaluationResults,
-  ROUTES.workspace.evaluationResultDetails,
-];
-
 const intakeRoutes = [
   ROUTES.workspace.intake,
   ROUTES.workspace.intakeTraces,
@@ -131,20 +119,6 @@ describe('Routes', () => {
       const { routes } = await import('./index');
       const { getWorkspaceDetailsDefaultRoute } = await import('./utils');
       customizationRoutes.forEach((route) => {
-        expect(findIfRouteExists(routes, route)).toBe(false);
-      });
-      expect(
-        findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
-      ).toBe(true);
-    });
-
-    it('should exclude evaluation routes if evaluator is disabled', async () => {
-      vi.stubEnv('VITE_FF_CUSTOMIZER_ENABLED', 'true');
-      vi.stubEnv('VITE_FF_EVALUATOR_ENABLED', 'false');
-      vi.stubEnv('VITE_FF_INTAKE_ENABLED', 'true');
-      const { routes } = await import('./index');
-      const { getWorkspaceDetailsDefaultRoute } = await import('./utils');
-      evalRoutes.forEach((route) => {
         expect(findIfRouteExists(routes, route)).toBe(false);
       });
       expect(

@@ -5,7 +5,7 @@
 
 from evaluator_agent_eval.runner import score_evaluator_rows
 from evaluator_agent_eval.schemas import EvaluatorScoringRow
-from nemo_evaluator_sdk.values.results import MetricResult, MetricScore
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
 class ExtraMetric:
@@ -13,11 +13,11 @@ class ExtraMetric:
     def type(self) -> str:
         return "agent_eval/extra"
 
-    def score_names(self) -> list[str]:
-        return ["extra_score"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("extra_score")]
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        return MetricResult(scores=[MetricScore(name="extra_score", value=1.0)])
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        return MetricResult(outputs=[MetricOutput(name="extra_score", value=1.0)])
 
 
 def _row(**overrides: object) -> EvaluatorScoringRow:

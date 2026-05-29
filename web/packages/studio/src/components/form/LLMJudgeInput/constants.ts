@@ -4,11 +4,13 @@
 import { buildModelConfig } from '@nemo/common/src/utils/models';
 import { DEFAULT_MODEL_NAME } from '@studio/constants/constants';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
-import { defaultIdealMessage, defaultOutputText } from '@studio/constants/evaluationDefaults';
 import {
   ChatCompletionSystemMessageParam,
   ChatCompletionUserMessageParam,
 } from 'openai/resources/index.mjs';
+
+const defaultIdealMessage = 'The answer is accurate and complete.';
+const defaultOutputText = 'The answer is mostly accurate.';
 
 export interface LLMJudgeConfig {
   model: {

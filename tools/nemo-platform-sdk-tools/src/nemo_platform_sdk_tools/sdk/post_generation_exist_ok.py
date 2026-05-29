@@ -38,15 +38,13 @@ SKIP_RESOURCES = {
     "tasks",
     "results",
     "gateway",
-    "benchmark_jobs",
-    "metric_jobs",
     "secrets",
 }
 
 
 def _has_param(func: cst.FunctionDef, param_name: str) -> bool:
     """Check whether a FunctionDef has a keyword-only parameter with the given name."""
-    for param in func.params.params + func.params.kwonly_params:
+    for param in (*func.params.params, *func.params.kwonly_params):
         if isinstance(param.name, cst.Name) and param.name.value == param_name:
             return True
     return False
@@ -196,7 +194,9 @@ def _wrap_return_in_try_except(
         stmts = list(body.body)
         prefix = []
         while stmts and _is_docstring(stmts[0]):
-            prefix.append(_inject_exist_ok_into_docstring(stmts.pop(0)))
+            stmt = stmts.pop(0)
+            if isinstance(stmt, cst.SimpleStatementLine):
+                prefix.append(_inject_exist_ok_into_docstring(stmt))
         try_body = body.with_changes(body=stmts)
 
     try_stmt = cst.Try(
@@ -319,7 +319,7 @@ class _ConflictErrorImportAdder(cst.CSTTransformer):
         self._file_path = file_path
 
     def visit_ImportFrom(self, node: cst.ImportFrom) -> None:
-        if isinstance(node.names, (list, tuple)):
+        if not isinstance(node.names, cst.ImportStar):
             for alias in node.names:
                 name = alias.name.value if isinstance(alias.name, cst.Name) else None
                 if name == "ConflictError":
@@ -333,9 +333,9 @@ class _ConflictErrorImportAdder(cst.CSTTransformer):
         if module and isinstance(module, cst.Attribute):
             full = _module_to_str(module)
             if full and full.startswith("_"):
-                self._relative_dots = node.relative
+                self._relative_dots = tuple(node.relative)
         elif module and isinstance(module, cst.Name) and module.value.startswith("_"):
-            self._relative_dots = node.relative
+            self._relative_dots = tuple(node.relative)
 
     def leave_Module(self, original_node: cst.Module, updated_node: cst.Module) -> cst.Module:
         if self._has_conflict_import:

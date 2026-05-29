@@ -19,6 +19,7 @@ from nemo_evaluator.sdk.resources import AsyncEvaluator
 from nemo_evaluator.sdk.resources import Evaluator as SyncEvaluator
 from nemo_evaluator.sdk.types import (
     ExecutionMode,
+    FilesetRef,
     PluginDatasetInput,
     RunConfig,
     RunConfigOnlineModel,
@@ -37,7 +38,6 @@ from nemo_evaluator_sdk.values import (
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform, NotFoundError
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
-from nmp.evaluator.app.values import FilesetRef
 
 if TYPE_CHECKING:
     import numpy as np
@@ -544,7 +544,7 @@ async def run_nmp_online_metric_local_file_example(
     )
     client = await _new_client()
     try:
-        with TemporaryDirectory(prefix="nmp-evaluator-plugin-") as dataset_dir:
+        with TemporaryDirectory(prefix="nemo-evaluator-plugin-") as dataset_dir:
             dataset_path = Path(dataset_dir) / "helpsteer2-local.jsonl"
             write_local_helpsteer2_dataset(dataset_path, row_count=limit_samples)
             await _run_online_metric_example_body(

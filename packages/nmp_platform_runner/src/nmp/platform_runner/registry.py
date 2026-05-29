@@ -21,7 +21,6 @@ AVAILABLE_SERVICES: dict[str, str] = {
     "auth": "nmp.core.auth.main:service",
     "safe-synthesizer": "nmp.safe_synthesizer.main:service",
     "jobs": "nmp.core.jobs.main:service",
-    "evaluation": "nmp.evaluator.main:service",
     "files": "nmp.core.files.main:service",
     "guardrails": "nmp.guardrails.main:service",
     "intake": "nmp.intake.main:service",
@@ -53,7 +52,6 @@ CORE_SERVICES = [
 
 API_SERVICES = [
     "studio",
-    "evaluation",
     "guardrails",
     "intake",
     # Safe Synthesizer is intentionally excluded from default runtime groups
@@ -65,7 +63,6 @@ API_SERVICES = [
 OPENAPI_SERVICES = [
     "auth",
     "entities",
-    "evaluation",
     "files",
     "guardrails",
     "intake",

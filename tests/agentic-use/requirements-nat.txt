@@ -2,9 +2,8 @@
 #
 # WHY THIS FILE EXISTS INSTEAD OF pyproject.toml
 # -----------------------------------------------
-# nvidia-nat requires pymilvus>=2.6, which conflicts with nmp-evaluator's
-# requirement of pymilvus==2.4.6 in the NeMo Platform workspace uv.lock. This means
-# nvidia-nat cannot be added as a workspace dependency.
+# Keep NAT dependencies isolated from the main NeMo Platform workspace so agentic-use
+# tasks can evolve independently of platform runtime dependencies.
 #
 # Instead, nvidia-nat is installed:
 #   1. Inside the Docker container via Dockerfile.agentic-base (runtime)

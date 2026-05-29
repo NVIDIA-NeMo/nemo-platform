@@ -340,12 +340,6 @@ class TestShouldProcessFile:
     def test_skips_underscore_files(self):
         assert not _should_process_file(Path("__init__.py"))
 
-    def test_skips_benchmark_jobs(self):
-        assert not _should_process_file(Path("evaluation/benchmark_jobs/benchmark_jobs.py"))
-
-    def test_skips_metric_jobs(self):
-        assert not _should_process_file(Path("evaluation/metric_jobs/metric_jobs.py"))
-
     def test_skips_gateway(self):
         assert not _should_process_file(Path("inference/gateway/gateway.py"))
 

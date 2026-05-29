@@ -10,8 +10,6 @@ import {
   DATA_DESIGNER_ENABLED,
   DATASETS_ENABLED,
   DEPLOYMENTS_ENABLED,
-  EVALUATOR_BENCHMARKS_ENABLED,
-  EVALUATOR_ENABLED,
   FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
@@ -62,12 +60,6 @@ export const gateSafeSynthesizerRoutes = (routes: RouteObject | RouteObject[]) =
 
 export const gateDataDesignerRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATA_DESIGNER_ENABLED, routes);
-
-export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(EVALUATOR_ENABLED, routes);
-
-export const gateEvaluationBenchmarksRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(EVALUATOR_ENABLED && EVALUATOR_BENCHMARKS_ENABLED, routes);
 
 export const gateSecretsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(SECRETS_ENABLED, routes);
@@ -193,10 +185,6 @@ export const getWorkspaceNewCustomizationJobRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
 };
 
-export const getWorkspaceEvaluationRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.evaluation, { workspace });
-};
-
 export const getWorkspaceInferenceProvidersRoute = (
   workspace: string,
   options?: { preset?: string }
@@ -229,76 +217,6 @@ export const getWorkspaceDeploymentDetailsRoute = (
 
 export const getWorkspaceSafeSynthesizerRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.safeSynthesizer, { workspace });
-};
-
-export const getEvaluationRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.evaluation, { workspace });
-};
-
-export const getEvaluationMetricsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.evaluationMetrics, { workspace });
-};
-
-export const getNewEvaluationMetricRoute = (workspace: string, options?: { model?: string }) => {
-  const searchParams = new URLSearchParams();
-  if (options?.model) {
-    searchParams.append('model', options.model);
-  }
-  const baseUrl = generatePath(ROUTES.workspace.evaluationMetricNew, {
-    workspace,
-  });
-  return searchParams.size ? `${baseUrl}?${searchParams.toString()}` : baseUrl;
-};
-
-export const getEvaluationMetricDetailsRoute = (workspace: string, metricId: string) => {
-  return generatePath(ROUTES.workspace.evaluationMetricDetails, {
-    workspace,
-    id: metricId,
-  });
-};
-
-/** Run panel without a pre-selected metric (user picks from within the panel). */
-export const getEvaluationMetricsRunRoute = (workspace: string, options?: { model?: string }) => {
-  const basePath = generatePath(ROUTES.workspace.evaluationMetricsRun, { workspace });
-  if (options?.model) {
-    return `${basePath}?${QUERY_PARAMETERS.model}=${encodeURIComponent(options.model)}`;
-  }
-  return generatePath(ROUTES.workspace.evaluationMetricsRun, { workspace });
-};
-
-/** Run panel pre-populated for a specific metric. */
-export const getEvaluationMetricRunRoute = (
-  workspace: string,
-  metricId: string,
-  options?: { model?: string }
-) => {
-  const basePath = generatePath(ROUTES.workspace.evaluationMetricRun, { workspace, id: metricId });
-  if (options?.model) {
-    return `${basePath}?${QUERY_PARAMETERS.model}=${encodeURIComponent(options.model)}`;
-  }
-  return basePath;
-};
-
-export const getEvaluationBenchmarkListRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.evaluationBenchmarks, { workspace });
-};
-
-export const getEvaluationBenchmarkDetailsRoute = (workspace: string, benchmarkName: string) => {
-  return generatePath(ROUTES.workspace.evaluationBenchmarkDetails, {
-    workspace,
-    benchmarkName,
-  });
-};
-
-export const getEvaluationResultsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.evaluationResults, { workspace });
-};
-
-export const getEvaluationResultDetailsRoute = (workspace: string, jobName: string) => {
-  return generatePath(ROUTES.workspace.evaluationResultDetails, {
-    workspace,
-    id: jobName,
-  });
 };
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {

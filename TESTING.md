@@ -431,7 +431,7 @@ uv run pytest -v packages/nmp_common/tests/
 
 # Test a specific service
 make test-service SERVICE=evaluator
-uv run pytest -v services/evaluator/tests/
+uv run pytest -v plugins/nemo-evaluator/tests/
 
 # Test a specific file
 uv run pytest -v path/to/test_file.py
@@ -742,4 +742,3 @@ If you're updating existing tests:
 - [ ] Chaos engineering tests
 - [ ] Load and stress tests
 - [ ] Contract testing between services
-

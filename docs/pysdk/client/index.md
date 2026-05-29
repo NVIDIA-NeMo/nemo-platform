@@ -156,7 +156,6 @@ For endpoint details, see the [REST API Reference](../../api/index.md).
 ### Model Management
 
 - **models**: Model entity CRUD
-- **evaluation**: Benchmarks, benchmark jobs, metrics, and metric jobs
 - **inference**: Deployments, deployment configs, providers, and OpenAI-compatible gateway
 
 ### Data & Synthesis

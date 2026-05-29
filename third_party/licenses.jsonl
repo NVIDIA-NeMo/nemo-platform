@@ -17,7 +17,6 @@
 {"name": "anthropic", "license": "MIT", "compatible": true}
 {"name": "anyascii", "license": "ISC", "compatible": true}
 {"name": "anyio", "license": "MIT", "compatible": true}
-{"name": "appdirs", "license": "MIT", "compatible": true}
 {"name": "asgiref", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "async-timeout", "license": "APACHE-2.0", "compatible": true}
 {"name": "asyncpg", "license": "APACHE-2.0", "compatible": true}
@@ -55,7 +54,6 @@
 {"name": "datasets", "license": "APACHE-2.0", "compatible": true}
 {"name": "diff-cover", "license": "APACHE-2.0", "compatible": true}
 {"name": "dill", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "diskcache", "license": "APACHE-2.0", "compatible": true}
 {"name": "distro", "license": "APACHE-2.0", "compatible": true}
 {"name": "dnspython", "license": "ISC", "compatible": true}
 {"name": "docker", "license": "APACHE-2.0", "compatible": true}
@@ -81,8 +79,6 @@
 {"name": "flower", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "frozenlist", "license": "APACHE-2.0", "compatible": true}
 {"name": "fsspec", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "gitdb", "license": "BSD-3-CLAUSE", "compatible": true}
-{"name": "gitpython", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "googleapis-common-protos", "license": "APACHE-2.0", "compatible": true}
 {"name": "greenlet", "license": "MIT", "compatible": true}
 {"name": "grpcio", "license": "APACHE-2.0", "compatible": true}
@@ -100,7 +96,6 @@
 {"name": "idna", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "importlib-metadata", "license": "APACHE-2.0", "compatible": true}
 {"name": "iniconfig", "license": "MIT", "compatible": true}
-{"name": "instructor", "license": "MIT", "compatible": true}
 {"name": "isodate", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "jaraco-classes", "license": "MIT", "compatible": true}
 {"name": "jaraco-context", "license": "MIT", "compatible": true}
@@ -244,14 +239,12 @@
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pytest", "license": "MIT", "compatible": true}
-{"name": "python-box", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-multipart", "license": "APACHE-2.0", "compatible": true}
 {"name": "pytz", "license": "MIT", "compatible": true}
 {"name": "pyyaml", "license": "MIT", "compatible": true}
-{"name": "ragas", "license": "APACHE-2.0", "compatible": true}
 {"name": "redis", "license": "MIT", "compatible": true}
 {"name": "referencing", "license": "MIT", "compatible": true}
 {"name": "regex", "license": "APACHE-2.0", "compatible": true}
@@ -268,7 +261,6 @@
 {"name": "ruff", "license": "MIT", "compatible": true}
 {"name": "s3transfer", "license": "APACHE-2.0", "compatible": true}
 {"name": "sacrebleu", "license": "APACHE-2.0", "compatible": true}
-{"name": "scikit-network", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "scipy", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "secretstorage", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sentry-sdk", "license": "MIT", "compatible": true}
@@ -278,7 +270,6 @@
 {"name": "simpleeval", "license": "MIT", "compatible": true}
 {"name": "six", "license": "MIT", "compatible": true}
 {"name": "smart-open", "license": "MIT", "compatible": true}
-{"name": "smmap", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "sniffio", "license": "APACHE-2.0", "compatible": true}
 {"name": "soupsieve", "license": "MIT", "compatible": true}
 {"name": "sqlalchemy", "license": "MIT", "compatible": true}

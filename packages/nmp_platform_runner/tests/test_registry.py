@@ -78,16 +78,15 @@ def test_openapi_services_are_explicit_and_do_not_auto_include_plugins(monkeypat
         "AVAILABLE_SERVICES",
         {
             "auth": "nmp.core.auth.main:service",
-            "evaluation": "nmp.evaluator.main:service",
             "hello-world": "nmp.hello_world.main:service",
         },
     )
-    monkeypatch.setattr(registry, "OPENAPI_SERVICES", ["auth", "evaluation"])
+    monkeypatch.setattr(registry, "OPENAPI_SERVICES", ["auth", "hello-world"])
     monkeypatch.setattr(registry, "discover_services", lambda: {"agents": AgentsService})
 
     available = registry.get_available_services()
 
-    assert registry.get_openapi_service_names(available) == ["auth", "evaluation"]
+    assert registry.get_openapi_service_names(available) == ["auth", "hello-world"]
 
 
 def test_intake_is_registered_as_api_and_openapi_service():

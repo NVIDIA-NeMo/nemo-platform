@@ -101,7 +101,6 @@ This service follows NeMo Platform v2 patterns:
 Future expansion will support mounting service-specific MCP servers from:
 
 - `nmp.guardrails.mcp`
-- `nmp.evaluator.mcp`
 - `nmp.customizer.mcp`
 - etc.
 
@@ -145,10 +144,9 @@ uv run ruff format services/core/mcp
 
 **Future Phases**:
 
-- Phase 2: Evaluator service MCP
-- Phase 3: Data Designer service MCP
-- Phase 4: Customization service MCP
-- Phase 5: Guardrails & Inference service MCPs
+- Phase 2: Data Designer service MCP
+- Phase 3: Customization service MCP
+- Phase 4: Guardrails & Inference service MCPs
 
 ## Contributing
 

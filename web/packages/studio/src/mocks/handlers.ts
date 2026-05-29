@@ -4,7 +4,6 @@
 import {
   type AnnotationInput,
   HTTPValidationError,
-  type MetricEvaluationJob,
   ModelEntitySortField,
   PlatformJobLogPage,
   PlatformJobResponsesPage,
@@ -31,26 +30,6 @@ import {
 import { randomUUID } from 'crypto';
 import { http, HttpResponse } from 'msw';
 
-/**
- * Reject a request if it carries a legacy top-level `search` query parameter.
- *
- * The v2 evaluator endpoints dropped the `search` param in favor of a structured
- * `filter` object. Mock handlers enforce the same contract so that a test which
- * accidentally reintroduces `search:` fails loudly rather than silently passing
- * against a tolerant mock.
- */
-const rejectLegacySearchParam = (request: Request) => {
-  const params = new URL(request.url).searchParams;
-  const hasSearch = Array.from(params.keys()).some(
-    (key) => key === 'search' || key.startsWith('search[')
-  );
-  if (!hasSearch) return undefined;
-  return HttpResponse.json(
-    { detail: "'search' query parameter is no longer supported; use 'filter' instead" },
-    { status: 400 }
-  );
-};
-
 export interface ProjectParams {
   projectId: string;
 }
@@ -66,104 +45,6 @@ export interface HypermodelParams {
  */
 export const handlers = [
   ...sampleDatasetsHandlers,
-
-  // Evaluation V2 (Platform) — fixtures loaded on first use to keep initial handler graph smaller
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs`,
-    async () => {
-      const { metricEvaluationJobsPage } = await import('@studio/mocks/evaluation/v1/evaluations');
-      return HttpResponse.json(metricEvaluationJobsPage);
-    }
-  ),
-  http.post(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/`,
-    async () => {
-      const { metricEvaluationJob1 } = await import('@studio/mocks/evaluation/v1/evaluations');
-      return HttpResponse.json(metricEvaluationJob1);
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/:name`,
-    async () => {
-      const { metricEvaluationJob1 } = await import('@studio/mocks/evaluation/v1/evaluations');
-      return HttpResponse.json(metricEvaluationJob1);
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/:name/logs`,
-    ({ params }) => {
-      const jobName = params.name as string;
-      return HttpResponse.json({
-        data: [
-          {
-            timestamp: '2026-02-27T23:17:01.123456',
-            job: jobName,
-            job_step: 'initialization',
-            job_task: 'task-abc123',
-            message: 'Starting metric evaluation job',
-          },
-          {
-            timestamp: '2026-02-27T23:17:02.234567',
-            job: jobName,
-            job_step: 'dataset-download',
-            job_task: 'task-def456',
-            message: 'Downloading dataset from fileset',
-          },
-          {
-            timestamp: '2026-02-27T23:17:03.345678',
-            job: jobName,
-            job_step: 'evaluation',
-            job_task: 'task-ghi789',
-            message: 'Running metric evaluation on 150 samples',
-          },
-        ],
-        total: 3,
-        next_page: '',
-        prev_page: '',
-      });
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metrics`,
-    async ({ request }) => {
-      const rejection = rejectLegacySearchParam(request);
-      if (rejection) return rejection;
-      const { getEvaluationConfigsListResponse } =
-        await import('@studio/mocks/evaluation/v1/evaluations');
-      return HttpResponse.json(getEvaluationConfigsListResponse);
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/benchmarks`,
-    ({ request }) => {
-      const rejection = rejectLegacySearchParam(request);
-      if (rejection) return rejection;
-      return HttpResponse.json({
-        data: [],
-        pagination: {
-          page: 1,
-          page_size: 50,
-          current_page_size: 0,
-          total_pages: 0,
-          total_results: 0,
-        },
-      });
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metrics/:name`,
-    async ({ params: { name } }) => {
-      const { getEvaluationConfigsListResponse } =
-        await import('@studio/mocks/evaluation/v1/evaluations');
-      const config = getEvaluationConfigsListResponse.data.find(
-        (c: MetricEvaluationJob) => c.name === name
-      );
-      if (!config) {
-        return HttpResponse.json({ detail: 'Config not found' }, { status: 404 });
-      }
-      return HttpResponse.json(config);
-    }
-  ),
 
   // Projects V2 (Platform) — fixtures loaded on first use
   http.get(

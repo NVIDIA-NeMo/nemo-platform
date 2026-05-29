@@ -202,8 +202,7 @@ lint-fix: ## Auto-fix lint issues in dependency order (openapi → stainless →
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
 	uv run --no-sync nemo-platform-sdk-tools vendor all-from-configs \
-		nemo_platform_ext models filesets safe_synthesizer_sdk \
-		nemo_evaluator_sdk
+		nemo_platform_ext models filesets safe_synthesizer_sdk
 	uv run --no-sync nemo-platform-sdk-tools post-generation update-license-headers
 
 # ============================================================================

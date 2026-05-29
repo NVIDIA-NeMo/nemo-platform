@@ -12,7 +12,6 @@
 
 export const ROUTE_PARAMS = {
   completionId: 'completionId',
-  evaluationJobId: 'id',
   customizationJobId: 'customizationJobId',
   customizationJobName: 'customizationJobName',
   filesetId: 'filesetId',
@@ -22,8 +21,6 @@ export const ROUTE_PARAMS = {
   workspace: 'workspace',
   modelNamespace: 'modelNamespace',
   modelName: 'modelName',
-  evalConfigNamespace: 'configNamespace',
-  evalConfigName: 'configName',
   safeSynthesizerJobName: 'safeSynthesizerJobName',
   dataDesignerJobName: 'dataDesignerJobName',
   traceId: 'traceId',
@@ -36,8 +33,6 @@ export const ROUTE_PARAMS = {
   agentDeploymentName: 'agentDeploymentName',
   agentEvalJobName: 'agentEvalJobName',
   jobName: 'jobName',
-  /** Benchmark entity name segment under evaluation/benchmarks/:name */
-  benchmarkName: 'benchmarkName',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -57,17 +52,6 @@ export const ROUTES = {
     baseModels: `/workspaces/:${P.workspace}/base-models`,
     /** Base models list with a specific model panel open (model name in path) */
     baseModelsModel: `/workspaces/:${P.workspace}/base-models/:${P.modelName}`,
-    evaluation: `/workspaces/:${P.workspace}/evaluation`,
-    evaluationMetrics: `/workspaces/:${P.workspace}/evaluation/metrics`,
-    evaluationMetricNew: `/workspaces/:${P.workspace}/evaluation/metrics/new`,
-    /** Run panel without a pre-selected metric — user picks from within the panel */
-    evaluationMetricsRun: `/workspaces/:${P.workspace}/evaluation/metrics/run`,
-    evaluationMetricDetails: `/workspaces/:${P.workspace}/evaluation/metrics/:${P.evaluationJobId}`,
-    evaluationMetricRun: `/workspaces/:${P.workspace}/evaluation/metrics/:${P.evaluationJobId}/run`,
-    evaluationBenchmarks: `/workspaces/:${P.workspace}/evaluation/benchmarks`,
-    evaluationBenchmarkDetails: `/workspaces/:${P.workspace}/evaluation/benchmarks/:${P.benchmarkName}`,
-    evaluationResults: `/workspaces/:${P.workspace}/evaluation/results`,
-    evaluationResultDetails: `/workspaces/:${P.workspace}/evaluation/results/:${P.evaluationJobId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,

@@ -62,7 +62,7 @@ test_viewer_denied_read_entities if {
 		with input as {
 			"principal_id": "viewer@test.com",
 			"method": "GET",
-			"path": "/apis/entities/v2/workspaces/test-ws/entities/evaluation_config",
+			"path": "/apis/entities/v2/workspaces/test-ws/entities/generic_config",
 		}
 		with data.authz.roles as entities_deny_test_data.roles
 		with data.authz.endpoints as entities_deny_test_data.endpoints
@@ -78,7 +78,7 @@ test_editor_denied_create_entities if {
 		with input as {
 			"principal_id": "editor@test.com",
 			"method": "POST",
-			"path": "/apis/entities/v2/workspaces/test-ws/entities/evaluation_config",
+			"path": "/apis/entities/v2/workspaces/test-ws/entities/generic_config",
 		}
 		with data.authz.roles as entities_deny_test_data.roles
 		with data.authz.endpoints as entities_deny_test_data.endpoints
@@ -126,7 +126,7 @@ test_editor_denied_delete_entity if {
 		with input as {
 			"principal_id": "editor@test.com",
 			"method": "DELETE",
-			"path": "/apis/entities/v2/workspaces/test-ws/entities/evaluation_config/eval-1",
+			"path": "/apis/entities/v2/workspaces/test-ws/entities/generic_config/eval-1",
 		}
 		with data.authz.roles as entities_deny_test_data.roles
 		with data.authz.endpoints as entities_deny_test_data.endpoints
@@ -146,7 +146,7 @@ test_admin_allowed_read_entities if {
 		with input as {
 			"principal_id": "admin@test.com",
 			"method": "GET",
-			"path": "/apis/entities/v2/workspaces/test-ws/entities/evaluation_config",
+			"path": "/apis/entities/v2/workspaces/test-ws/entities/generic_config",
 		}
 		with data.authz.roles as entities_deny_test_data.roles
 		with data.authz.endpoints as entities_deny_test_data.endpoints
@@ -160,9 +160,9 @@ test_admin_allowed_read_entities if {
 test_service_principal_allowed_entities if {
 	result := authz.allow
 		with input as {
-			"principal_id": "service:evaluator",
+			"principal_id": "service:platform-seed",
 			"method": "POST",
-			"path": "/apis/entities/v2/workspaces/test-ws/entities/evaluation_config",
+			"path": "/apis/entities/v2/workspaces/test-ws/entities/generic_config",
 		}
 		with data.authz.roles as entities_deny_test_data.roles
 		with data.authz.endpoints as entities_deny_test_data.endpoints

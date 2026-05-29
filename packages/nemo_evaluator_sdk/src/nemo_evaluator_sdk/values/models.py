@@ -121,7 +121,7 @@ class Model(BaseModel):
     host_url: str | None = Field(
         default=None,
         description="Direct NIM endpoint URL (http://host:port). Populated when resolved from a ModelRef. "
-        "Used by EvalFactory containers that reject path-based URLs (e.g., Haystack NvidiaDocumentEmbedder).",
+        "Used by integrations that require a host URL without inference route suffixes.",
     )
     api_key_secret: SecretRef | None = Field(
         default=None,

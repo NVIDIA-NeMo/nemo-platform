@@ -8,13 +8,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, cast
 
+from nemo_evaluator.jobs.filesets import dataset_exists, download_dataset, download_dataset_sync
+from nemo_evaluator.sdk.types import FilesetRef
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.types import MetricsUnion
 from nemo_evaluator_sdk.values import DatasetRows
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
-from nmp.evaluator.app.datasets.nmp_datasets.fileset import dataset_exists, download_dataset, download_dataset_sync
-from nmp.evaluator.app.values import FilesetRef
 
 
 def remote_compile_metric(metric: MetricsUnion | Sequence[MetricsUnion]) -> MetricsUnion:

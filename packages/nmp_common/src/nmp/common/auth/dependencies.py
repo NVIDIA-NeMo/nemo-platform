@@ -154,10 +154,10 @@ def auth_as_service(service: Optional[str] = None) -> Generator[None, None, None
     Note:
         Currently all service principals are treated equally with full permissions.
         In the future, service principals may be restricted based on scope - e.g.,
-        "service:evaluator" would not have access to data designer resources.
+        "service:guardrails" would not have access to data designer resources.
 
     Args:
-        service: Service name for the principal (e.g., "evaluator").
+        service: Service name for the principal (e.g., "guardrails").
                  Defaults to the current client's configured service name, or
                  "unknown" if no context exists and no service is specified.
 
@@ -171,8 +171,8 @@ def auth_as_service(service: Optional[str] = None) -> Generator[None, None, None
                 data = await entities_client.list(RoleBindingEntity, ...)
 
         async def cross_service_call():
-            with auth_as_service(service="evaluator"):
-                # Uses "service:evaluator" as principal
+            with auth_as_service(service="guardrails"):
+                # Uses "service:guardrails" as principal
                 data = await other_client.fetch(...)
         ```
     """

@@ -476,7 +476,7 @@ LLM judge prompt variables define the fields required from the evaluation contex
 - Raw dataset variables such as `{{item.question}}`, `{{item.response}}`, `{{question}}`, or `{{sample.output_text}}` continue to work for backward compatibility.
 {% endraw %}
 
-When your dataset uses different field names, keep the metric prompt stable and map dataset columns at job or benchmark submission time with `field_mapping`:
+When your dataset uses different field names, keep the metric prompt stable and map dataset columns at job submission time with `field_mapping`:
 
 ```python
 metric = {
@@ -537,16 +537,16 @@ metric = {
 
 ### Schema-Aware Validation
 
-{{nem_short_name}} derives the required prompt fields directly from the prompt variables used by the metric and validates them against dataset metadata during benchmark and job creation.
+{{nem_short_name}} derives the required prompt fields directly from the prompt variables used by the metric and validates them against dataset metadata during job creation.
 
 - Add fileset metadata `dataset.schema` for a default row schema.
 - Add `dataset.schemas_by_path` when different files in the same fileset have different row shapes.
-- Use benchmark or job `field_mapping` to map prompt variables such as `input`, `output`, or custom names onto dataset columns.
+- Use job `field_mapping` to map prompt variables such as `input`, `output`, or custom names onto dataset columns.
 - Use `optional_fields` when a prompt variable may be absent from some datasets but should still be available when provided.
 - Required fields mean the key must be present in each dataset row selected for evaluation.
 - Nullable fields use JSON Schema types such as `["integer", "null"]`, which means the key is still expected but the value may be `null`.
 
-Benchmark-level `field_mapping` is shared by every metric in that benchmark. If two metrics need different bindings for the same prompt variable, either give the metrics different prompt variable names or split them into separate benchmarks.
+If two metrics need different bindings for the same prompt variable, give the metrics different prompt variable names or submit them as separate jobs.
 
 ### Example: Custom Judge Template
 
