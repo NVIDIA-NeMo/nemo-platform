@@ -27,11 +27,11 @@ const METRICS = [
 ];
 
 /**
- * V1 stub of the Run Evaluation handoff. We don't actually wire this to the
- * Evaluator backend yet — the user picks an eval set + metric, we toast a
- * synthetic job id, and a future PR replaces the body of submit() with a real
- * POST to /apis/agents/v2/.../jobs/evaluate (see SubmitEvaluationModal for
- * the exact payload shape).
+ * V1 stub of the Run Evaluation handoff. The backend endpoint exists
+ * (`agentsCreateJob`) but Studio isn't wired to it yet. Rather than fake a
+ * success, we surface an honest "coming next" toast and close — see Follow-up
+ * A in the staged-seahorse plan. A future PR replaces submit() with a real
+ * POST and routes the user to the eval-job detail page.
  */
 export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({
   open,
@@ -46,12 +46,12 @@ export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({
 
   const submit = useCallback(async () => {
     setSubmitting(true);
-    await new Promise((r) => setTimeout(r, 350));
-    const jobId = `eval-${Date.now().toString(36)}`;
-    toast.success(`Evaluation submitted — ${jobId} (would open Evaluations)`);
+    toast.info(
+      `Coming next — Studio will POST this evaluation to the agents service in the next release. (Captured: ${modelUrns.length} model${modelUrns.length === 1 ? '' : 's'} · eval-set ${evalSetId} · metric ${metricId})`
+    );
     setSubmitting(false);
     onClose();
-  }, [onClose, toast]);
+  }, [evalSetId, metricId, modelUrns.length, onClose, toast]);
 
   return (
     <FormModal
@@ -64,6 +64,12 @@ export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({
       loading={submitting}
     >
       <Stack gap="density-xl">
+        <Block className="rounded border border-base bg-surface-sunken px-3 py-2">
+          <Text kind="body/regular/sm" color="secondary">
+            Preview only — Submit captures your choices and shows what would be sent. The wire-up to
+            the evaluator service lands in the next release.
+          </Text>
+        </Block>
         <Block>
           <Text kind="label/bold/sm" color="secondary">
             Models from this Playground ({modelUrns.length})

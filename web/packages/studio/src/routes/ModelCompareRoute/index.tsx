@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, TabsList, TabsRoot, TabsTrigger } from '@nvidia/foundations-react-core';
+import { Button, Flex, TabsList, TabsRoot, TabsTrigger, Text } from '@nvidia/foundations-react-core';
 import { AgentContextBanner } from '@studio/components/chat/AgentContextBanner';
+import { AgentPicker } from '@studio/components/chat/AgentPicker';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/SeedQuestions';
@@ -16,8 +17,9 @@ import { ModelCompareChat } from '@studio/components/ModelCompareChat';
 import { ModelComparePrompts } from '@studio/components/ModelComparePrompts';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { useAgentContext } from '@studio/routes/ModelCompareRoute/useAgentContext';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
-import { Plus, RotateCcw, Target } from 'lucide-react';
+import { Check, Plus, RotateCcw, Target } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, useNavigate, useSearchParams } from 'react-router-dom';
 import { ROUTES } from '@studio/constants/routes';
@@ -26,27 +28,6 @@ type CompareView = 'chat' | 'compare' | 'prompts';
 
 const MAX_MODELS = 4;
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
-
-interface AgentContext {
-  name: string;
-  currentModelUrn: string;
-  systemPrompt: string;
-}
-
-/**
- * Mock agent lookup keyed off ?agent= URL param. Real implementation reads
- * agent config via the agents API; for the in-product preview we surface a
- * fixed demo agent so the locked-baseline + apply flow is reachable.
- */
-function mockAgent(id: string | null): AgentContext | null {
-  if (!id) return null;
-  return {
-    name: id,
-    currentModelUrn: 'meta/llama-3.1-70b-instruct',
-    systemPrompt:
-      'You are the first-line support triage agent. Classify each ticket by urgency (P0-P3) and product area, then draft a short empathetic reply. Never promise refunds.',
-  };
-}
 
 const makeDefaultEntry = (
   id: number,
@@ -68,27 +49,75 @@ export const ModelCompareRoute: FC = () => {
     useWorkspaceModels(workspace);
   const toast = useToast();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const agentContext = useMemo(() => mockAgent(searchParams.get('agent')), [searchParams]);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const agentNameFromUrl = searchParams.get('agent');
+  const { context: agentContext, isLoading: agentLoading, error: agentError } =
+    useAgentContext(workspace, agentNameFromUrl);
 
   const [activeView, setActiveView] = useState<CompareView>('chat');
   const [promptsReady, setPromptsReady] = useState(false);
 
-  // Initial panel state: agent overlay locks panel 0; otherwise two empty
-  // entries (Baseline + Comparison 1).
-  const initialPanels: SharedModelEntry[] = useMemo(() => {
-    if (agentContext) {
-      return [
-        makeDefaultEntry(0, agentContext.systemPrompt, agentContext.currentModelUrn, true),
-        makeDefaultEntry(1, agentContext.systemPrompt),
-      ];
-    }
-    return [makeDefaultEntry(0), makeDefaultEntry(1)];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Start with two empty, unlocked panels — even when `?agent=` is set. The
+  // seeding effect below applies the lock + baseline once the agent fetch
+  // resolves. Deferring the lock avoids a stuck "locked with no model" panel
+  // if the fetch 404s or the agent config doesn't expose a recognizable LLM.
+  const [models, setModels] = useState<SharedModelEntry[]>(() => [
+    makeDefaultEntry(0),
+    makeDefaultEntry(1),
+  ]);
+  const nextIdRef = useRef(2);
 
-  const [models, setModels] = useState<SharedModelEntry[]>(initialPanels);
-  const nextIdRef = useRef(initialPanels.length);
+  // Track which agent (if any) we've already applied to the panels so the
+  // seeding effect re-runs only when the URL agent actually changes — not on
+  // every render or every refetch.
+  const seededAgentRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Agent cleared from URL → unlock panel 0 if we previously locked it for
+    // an agent, and reset its model.
+    if (!agentContext) {
+      if (seededAgentRef.current !== null) {
+        seededAgentRef.current = null;
+        setModels((prev) =>
+          prev.map((m, i) =>
+            i === 0 && m.locked ? { ...m, modelURN: null, locked: false } : m
+          )
+        );
+      }
+      return;
+    }
+    if (seededAgentRef.current === agentContext.name) return;
+    seededAgentRef.current = agentContext.name;
+    const seedPrompt = agentContext.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    setModels((prev) =>
+      prev.map((m, i) => {
+        if (i === 0) {
+          return {
+            ...m,
+            modelURN: agentContext.currentModelUrn,
+            systemPrompt: seedPrompt,
+            locked: true,
+          };
+        }
+        return { ...m, systemPrompt: seedPrompt };
+      })
+    );
+  }, [agentContext]);
+
+  const setAgentName = useCallback(
+    (next: string | null) => {
+      setSearchParams(
+        (prev) => {
+          const params = new URLSearchParams(prev);
+          if (next) params.set('agent', next);
+          else params.delete('agent');
+          return params;
+        },
+        { replace: true }
+      );
+    },
+    [setSearchParams]
+  );
 
   const [evalOpen, setEvalOpen] = useState(false);
   const [evalSeedModels, setEvalSeedModels] = useState<string[]>([]);
@@ -198,8 +227,11 @@ export const ModelCompareRoute: FC = () => {
       toast.error('Select a model in Comparison 1 first');
       return;
     }
-    toast.success(
-      `Would apply ${candidate} to ${agentContext.name} (config diff: ${agentContext.currentModelUrn} → ${candidate})`
+    // Honest UX: the agents API has no PATCH/PUT today, so we can't actually
+    // swap the model. Surface the gap clearly instead of faking a success
+    // toast — see Follow-up B in the staged-seahorse plan.
+    toast.info(
+      `Coming next — agent model swap is queued for the next release. (Planned diff: ${agentContext.currentModelUrn} → ${candidate})`
     );
   }, [agentContext, models, toast]);
 
@@ -253,10 +285,6 @@ export const ModelCompareRoute: FC = () => {
           </TabsList>
         </TabsRoot>
         <Flex align="center" gap="density-md">
-          <Button kind="tertiary" size="small" onClick={resetAll}>
-            <RotateCcw size={14} />
-            Reset
-          </Button>
           {inCompareMode && (
             <Button
               kind="primary"
@@ -269,22 +297,53 @@ export const ModelCompareRoute: FC = () => {
               Run Evaluation
             </Button>
           )}
+          {agentContext && (
+            <Button kind="secondary" size="small" onClick={applyToAgent}>
+              <Check size={14} />
+              Apply to Agent
+            </Button>
+          )}
           <Button kind="secondary" size="small" onClick={addModel} disabled={addModelDisabled}>
             <Plus size={14} />
             Add Model
           </Button>
+          <Button kind="tertiary" size="small" onClick={resetAll}>
+            <RotateCcw size={14} />
+            Reset
+          </Button>
         </Flex>
       </Flex>
-
-      {agentContext && (
-        <div className="shrink-0 px-6 pb-3">
-          <AgentContextBanner
-            agentName={agentContext.name}
-            baselineModelUrn={models[0]?.modelURN ?? null}
-            onApplyToAgent={applyToAgent}
-          />
+      {/* Row 3 — agent picker (left) + context banner (right, fills remaining
+       *  width). Banner is the info chrome when an agent is selected, or a
+       *  loading/error state when the URL points at a missing agent. */}
+      <Flex align="center" gap="density-md" className="shrink-0 px-6 pb-3">
+        <AgentPicker
+          workspace={workspace}
+          value={agentNameFromUrl}
+          onChange={setAgentName}
+        />
+        <div className="min-w-0 flex-1">
+          {agentContext && (
+            <AgentContextBanner
+              agentName={agentContext.name}
+              baselineModelUrn={models[0]?.modelURN ?? null}
+            />
+          )}
+          {agentNameFromUrl && !agentContext && (agentLoading || agentError) && (
+            <div className="rounded-lg border border-base bg-surface-sunken px-3 py-2 text-sm">
+              {agentLoading ? (
+                <Text kind="body/regular/sm" color="secondary">
+                  Loading agent &quot;{agentNameFromUrl}&quot;…
+                </Text>
+              ) : (
+                <Text kind="body/regular/sm" className="text-fg-error">
+                  Agent &quot;{agentNameFromUrl}&quot; not found in workspace &quot;{workspace}&quot;. Falling back to plain Chat.
+                </Text>
+              )}
+            </div>
+          )}
         </div>
-      )}
+      </Flex>
 
       <div className={`min-h-0 flex-1 overflow-hidden ${showChatPanels ? '' : 'hidden'}`}>
         <ModelCompareChat
@@ -313,6 +372,7 @@ export const ModelCompareRoute: FC = () => {
           onRemoveModel={removeModel}
           onSetModel={setModelRef}
           onReadyChange={setPromptsReady}
+          agentName={agentContext?.name ?? null}
         />
       </div>
 
