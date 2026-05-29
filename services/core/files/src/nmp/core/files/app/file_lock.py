@@ -127,7 +127,6 @@ class FileLockManager:
             except EntityConflictError:
                 # Version changed - someone else took the lock, retry on next iteration
                 logger.debug("Update failed, lock was modified by another request")
-                pass
             except EntityNotFoundError:
                 pass  # Someone else deleted it, that's fine
 

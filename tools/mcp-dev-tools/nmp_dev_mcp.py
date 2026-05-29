@@ -457,8 +457,9 @@ def create_server(working_dir: str | None = None) -> FastMCP:
 
         # Validate markers if provided
         if markers:
-            # Allow pytest marker syntax: alphanumerics, spaces, "and", "or", "not", parentheses
-            if not re.match(r"^[a-zA-Z0-9_ ()andornt]+$", markers):
+            # Allow pytest marker syntax: alphanumerics (covers "and"/"or"/"not"),
+            # underscores, spaces, and parentheses.
+            if not re.match(r"^[a-zA-Z0-9_ ()]+$", markers):
                 return {
                     "success": False,
                     "error": f"Invalid markers '{markers}'. Only alphanumerics, spaces, and logical operators (and, or, not) allowed.",

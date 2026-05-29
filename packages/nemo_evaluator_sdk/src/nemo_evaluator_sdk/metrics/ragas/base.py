@@ -8,7 +8,6 @@ import inspect
 import json
 import logging
 import math
-from collections.abc import Awaitable, Callable
 from functools import cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -27,10 +26,13 @@ from nemo_evaluator_sdk.metrics.ragas.imports import (
     get_langchain_llm_wrapper_class,
     get_run_config_class,
 )
+from nemo_evaluator_sdk.metrics.resolution import collect_model_refs, resolve_model_refs
+from nemo_evaluator_sdk.resolver_protocols import ModelResolver, SecretResolver
 from nemo_evaluator_sdk.templates import render_request
 from nemo_evaluator_sdk.values import (
     MetricBase,
     Model,
+    ModelRef,
     SecretRef,
 )
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
@@ -118,15 +120,20 @@ class BaseRAGASMetric(MetricBase):
         if logger:
             self._log = logger
 
+        self._configure_models()
+
+    def _configure_models(self) -> None:
+        """Build provider client configuration from resolved inline model bindings."""
         self._inference_params = {}
+        self._llm_model = None
+        self._embed_params = None
+        self._secrets = {}
         inference = getattr(self, "inference", None)
         if isinstance(inference, BaseModel):
             self._inference_params = inference.model_dump(mode="json", exclude_none=True)
 
         judge_model = getattr(self, "judge_model", None)
-        if judge_model is not None:
-            assert isinstance(judge_model, Model)
-
+        if isinstance(judge_model, Model):
             # Determine initial API key:
             # - If api_key_secret is configured, resolve secret from env
             # - If no api_key_secret, use placeholder immediately (no secret resolution needed)
@@ -144,9 +151,7 @@ class BaseRAGASMetric(MetricBase):
             }
 
         embeddings_model = getattr(self, "embeddings_model", None)
-        if embeddings_model is not None:
-            assert isinstance(embeddings_model, Model)
-
+        if isinstance(embeddings_model, Model):
             # Determine initial API key:
             # - If api_key_secret is configured, resolve secret from env
             # - If no api_key_secret, use placeholder immediately (no secret resolution needed)
@@ -164,21 +169,34 @@ class BaseRAGASMetric(MetricBase):
                 "truncate": self._inference_params.get("truncate", "NONE"),
             }
 
-    async def resolve_secrets(self, secret_resolver: Callable[[str], Awaitable[str | None]]) -> None:
+    async def resolve_models(self, model_resolver: ModelResolver) -> None:
+        """Resolve RAGAS model references before the metric is used for evaluation."""
+        await resolve_model_refs(self, model_resolver)
+        self._configure_models()
+
+    def model_refs(self) -> dict[str, ModelRef]:
+        """Return RAGAS model references present on this metric."""
+        return collect_model_refs(self)
+
+    async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve API key secrets if configured. Must be called before using the metric.
 
         This follows the same pattern as LLMJudgeMetric.resolve_secrets().
 
         Args:
-            secret_resolver: Async callback to resolve secret names to values.
+            secret_resolver: Resolver used to look up configured secret references.
         """
         # Resolve judge API key (only if api_key_secret is configured)
         judge_model = getattr(self, "judge_model", None)
         if judge_model is not None:
-            assert isinstance(judge_model, Model)
+            if not isinstance(judge_model, Model):
+                raise ValueError(
+                    f"Model reference '{judge_model.root}' has not been resolved. "
+                    "Register it with LocalBackend.model_resolver.register_model() before local execution."
+                )
             if judge_model.api_key_secret:
                 secret_name = judge_model.api_key_secret.root
-                api_key = await secret_resolver(secret_name)
+                api_key = await secret_resolver.resolve_secret(judge_model.api_key_secret)
                 if not api_key:
                     raise ValueError(f"Missing secret '{secret_name}' for API key authentication with LLM judge.")
                 # Update the model config with resolved API key
@@ -188,10 +206,14 @@ class BaseRAGASMetric(MetricBase):
         # Resolve embeddings API key (only if api_key_secret is configured)
         embeddings_model = getattr(self, "embeddings_model", None)
         if embeddings_model is not None:
-            assert isinstance(embeddings_model, Model)
+            if not isinstance(embeddings_model, Model):
+                raise ValueError(
+                    f"Model reference '{embeddings_model.root}' has not been resolved. "
+                    "Register it with LocalBackend.model_resolver.register_model() before local execution."
+                )
             if embeddings_model.api_key_secret:
                 secret_name = embeddings_model.api_key_secret.root
-                api_key = await secret_resolver(secret_name)
+                api_key = await secret_resolver.resolve_secret(embeddings_model.api_key_secret)
                 if not api_key:
                     raise ValueError(
                         f"Missing secret '{secret_name}' for API key authentication with embeddings model."

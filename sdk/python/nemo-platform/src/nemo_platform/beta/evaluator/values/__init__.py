@@ -3,20 +3,6 @@
 
 """Public value types for evaluator SDK runtime."""
 
-from nemo_platform.beta.evaluator.metrics.protocol import (
-    BooleanValue,
-    CandidateOutput,
-    ContinuousScore,
-    DatasetRow,
-    DiscreteScore,
-    Label,
-    MetricDescriptor,
-    MetricInput,
-    MetricOutput,
-    MetricOutputSpec,
-    MetricResult,
-    MetricTypeName,
-)
 from nemo_platform.beta.evaluator.values.agents import Agent
 from nemo_platform.beta.evaluator.values.common import SecretRef, SupportedJobTypes
 from nemo_platform.beta.evaluator.values.dataset_schemas import (
@@ -49,12 +35,26 @@ from nemo_platform.beta.evaluator.values.metrics import (
     ToolCalling,
     TopicAdherence,
 )
-from nemo_platform.beta.evaluator.values.models import Model, ReasoningParams
+from nemo_platform.beta.evaluator.values.models import Model, ModelRef, ReasoningParams
 from nemo_platform.beta.evaluator.values.params import (
     InferenceParams,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
+)
+from nemo_platform.beta.evaluator.values.protocol import (
+    BooleanValue,
+    CandidateOutput,
+    ContinuousScore,
+    DatasetRow,
+    DiscreteScore,
+    Label,
+    MetricDescriptor,
+    MetricInput,
+    MetricOutput,
+    MetricOutputSpec,
+    MetricResult,
+    MetricTypeName,
 )
 from nemo_platform.beta.evaluator.values.results import (
     AggregatedMetricResult,
@@ -118,6 +118,7 @@ __all__ = [
     "MetricTypeName",
     "MetricScore",
     "Model",
+    "ModelRef",
     "DatasetInput",
     "EvaluationResult",
     "Percentiles",

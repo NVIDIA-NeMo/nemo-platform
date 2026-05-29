@@ -6,7 +6,6 @@
 import logging
 import os
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
 from typing import Any, cast
 
 import httpx
@@ -23,6 +22,7 @@ from nemo_platform.beta.evaluator.metrics.template_rendering import (
 )
 from nemo_platform.beta.evaluator.resilience.api import run_with_resilience
 from nemo_platform.beta.evaluator.resilience.classifier import endpoint_identity
+from nemo_platform.beta.evaluator.resolver_protocols import SecretResolver
 from nemo_platform.beta.evaluator.values.common import SecretRef
 from nemo_platform.beta.evaluator.values.metrics import NemoAgentToolkitRemote, Remote, _RemoteBase
 from nemo_platform.beta.evaluator.values.scores import RemoteScore
@@ -104,11 +104,11 @@ class _RemoteMetricBase(_RemoteBase, ABC):
         self._append_request_log(payload=payload, response=result_data)
         return result_data
 
-    async def resolve_secrets(self, secret_resolver: Callable[[str], Awaitable[str | None]]) -> None:
+    async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve API key secret if configured. Must be called before live evaluation."""
         if self.api_key_secret:
             secret_name = self.api_key_secret.root
-            resolved_key = await secret_resolver(secret_name)
+            resolved_key = await secret_resolver.resolve_secret(self.api_key_secret)
             if resolved_key:
                 self._set_api_key(resolved_key)
             elif not self._get_api_key():
