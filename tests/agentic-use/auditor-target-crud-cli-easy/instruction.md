@@ -42,7 +42,7 @@ Example create body:
 
 ### Target Types
 
-The `--type` field specifies the model endpoint type. Common values: `nim`, `openai`.
+The `type` field in the JSON payload specifies the model endpoint type. Common values: `nim`, `openai`.
 
 ## Success Criteria
 

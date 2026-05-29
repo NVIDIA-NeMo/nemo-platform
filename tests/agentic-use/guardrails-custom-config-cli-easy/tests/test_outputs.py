@@ -227,8 +227,8 @@ def test_agent_performed_operations() -> None:
         f"Agent did not update 'harbor-custom-config'. Commands: {commands}"
     )
 
-    # Agent should have made at least one guardrail inference call (check or chat)
-    made_inference = has_command("guardrail", "check") or has_command("guardrail", "chat")
-    assert made_inference, f"Agent did not make any guardrail inference call (check or chat). Commands: {commands}"
+    # Agent should have used the migrated guardrail check endpoint
+    made_inference = has_command("guardrail", "check")
+    assert made_inference, f"Agent did not make a guardrail check call. Commands: {commands}"
 
     print(f"All trajectory checks passed. Total commands: {len(commands)}")

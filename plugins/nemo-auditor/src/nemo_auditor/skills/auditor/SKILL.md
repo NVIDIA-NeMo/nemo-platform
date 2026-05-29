@@ -22,7 +22,8 @@ nemo auditor configs list
 # List workspace configs
 nemo auditor configs list --workspace <ws>
 
-# Create a config (all four section flags required)
+# Create a config with a JSON payload
+# The -d body includes description plus plugins, reporting, run, and system sections.
 nemo auditor configs create <name> \
   -d '{"description": "<description>", "plugins": {"probe_spec": "dan.AutoDANCached"}, "reporting": {}, "run": {}, "system": {"lite": true}}'
 
