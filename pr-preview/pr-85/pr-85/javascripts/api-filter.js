@@ -9,7 +9,7 @@
     var iframe = document.querySelector('iframe.swagger-ui-iframe');
     if (!chipContainer || !iframe) return;
     var hiddenTags = {};
-    if (chipContainer && chipContainer.dataset.hiddenTags) {
+    if (chipContainer.dataset.hiddenTags) {
       chipContainer.dataset.hiddenTags.split(',').forEach(function(tag) {
         tag = tag.trim();
         if (tag) hiddenTags[tag] = true;
