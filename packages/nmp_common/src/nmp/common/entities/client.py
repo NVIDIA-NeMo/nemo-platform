@@ -20,7 +20,6 @@ from nemo_platform_plugin.entities import EntityStoreError as EntityStoreError
 from nemo_platform_plugin.entities import EntityValidationError as EntityValidationError
 from nemo_platform_plugin.entities import ListResponse as ListResponse
 from nemo_platform_plugin.entities import PaginationInfo as PaginationInfo
-from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str as _convert_filter_obj_to_filter_str
 from nemo_platform_plugin.entities import parse_qualified_name as parse_qualified_name
 
 
