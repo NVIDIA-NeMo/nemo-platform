@@ -9,7 +9,7 @@ import { z } from 'zod';
 const NAME_REQUIRED_MESSAGE = 'Name is required.';
 
 const NAME_PATTERN_MESSAGE =
-  'Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot end with a hyphen).';
+  'Name must start with a lowercase letter, be 2-63 characters, and contain only lowercase letters, digits, hyphens, dots, underscores, plus, and @ (no consecutive hyphens, cannot end with a hyphen).';
 
 export enum StorageMode {
   Local = 'local',
