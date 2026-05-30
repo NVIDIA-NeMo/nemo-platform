@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MockToastProvider } from '@nemo/common/src/tests/MockToastProvider';
-import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
+import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { FilesetCreateModal } from '@studio/components/FilesetCreateModal';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams';
@@ -16,7 +15,10 @@ import { BrowserRouter } from 'react-router-dom';
 const { mockMutate, mockUseRemoteRepoMetadata } = vi.hoisted(() => ({
   mockMutate: vi.fn<(args: unknown) => Promise<FilesetOutput>>(),
   mockUseRemoteRepoMetadata: vi.fn<
-    (url: string | undefined, enabled: boolean) => {
+    (
+      url: string | undefined,
+      enabled: boolean
+    ) => {
       data: { slug: string; description: string | null } | null | undefined;
       isFetching: boolean;
     }

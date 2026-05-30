@@ -23,9 +23,9 @@ import {
   type SupportedPurpose,
 } from '@studio/components/FilesetCreateModal/constants';
 import { useRemoteRepoMetadata } from '@studio/hooks/useRemoteRepoMetadata';
+import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
-import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
 import { getDatasetDetailRoute, getFilesetDetailsRoute } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
