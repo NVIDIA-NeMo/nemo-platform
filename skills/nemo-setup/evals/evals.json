@@ -1,0 +1,17 @@
+[
+  {
+    "id": "setup-fresh-local-platform",
+    "question": "Set up NeMo Platform locally so I can start developing.",
+    "expected_skill": "nemo-setup",
+    "expected_script": null,
+    "ground_truth": "Run `make bootstrap` to install Python dependencies, Studio assets, and plugins. Then activate the venv with `source .venv/bin/activate` and run `nemo setup` (interactive) or `nemo setup --auto --start-services --install-skills --deploy-agent` (non-interactive). The platform will be available at localhost:8080. Before starting, check if port 8080 is already in use and decide whether to wipe the local DB at ~/.local/share/nemo.",
+    "expected_behavior": [
+      "Check if a NeMo platform is already running on port 8080",
+      "Ask about the local data directory preference (default ~/.local/share/nemo)",
+      "Ask whether to wipe the existing local database",
+      "Run make bootstrap followed by nemo setup",
+      "Verify services are running on localhost:8080",
+      "Offer next-step options based on the user's goal"
+    ]
+  }
+]
