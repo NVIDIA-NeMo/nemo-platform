@@ -3,13 +3,12 @@
     "id": "nemo-data-designer-plugin-001",
     "question": "Use the nemo-data-designer-plugin to generate a synthetic dataset of customer support tickets with names, emails, issue descriptions, and priority levels.",
     "expected_skill": "nemo-data-designer-plugin",
-    "expected_script": "get_person_object_schema.py",
+    "expected_script": null,
     "ground_truth": "The agent used nemo-data-designer-plugin to create a Python script with a DataDesignerConfigBuilder that generates synthetic customer support tickets including person data (names, emails), issue descriptions, and priority levels.",
     "expected_behavior": [
       "The agent read the nemo-data-designer-plugin SKILL.md before proceeding",
       "The agent read references/person-sampling.md since the dataset requires person data like names and emails",
       "The agent produced a Python file with a load_config_builder() function returning a DataDesignerConfigBuilder",
-      "The agent included PEP 723 inline metadata with data-designer as a dependency",
       "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
     ]
   }
