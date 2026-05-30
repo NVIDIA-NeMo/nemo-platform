@@ -33,6 +33,8 @@ import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationMo
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { NewDatasetButton } from '@studio/components/NewDatasetButton';
+import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
+import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_DATASETS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
@@ -548,6 +550,7 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
                     <>
                       <DocumentationButton href={LINK_DOCS_DATASETS} />
                       <NewDatasetButton />
+                      {FILESET_DETAILS_ENABLED && <NewModelFilesetButton />}
                     </>
                   }
                 />

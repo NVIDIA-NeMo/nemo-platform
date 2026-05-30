@@ -6,6 +6,8 @@ import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
+import { NewDatasetButton } from '@studio/components/NewDatasetButton';
+import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -58,9 +60,16 @@ export const FilesetListRoute: FC = () => {
           slotHeading="Filesets"
           slotDescription="Filesets organize files by purpose — Generic, Dataset, or Model. Purpose determines which metadata fields are available and can't be changed after creation. Use Dataset for training and evaluation data, Model for model weights and checkpoints, and Generic for everything else."
           slotActions={
-            <Button asChild color="brand">
-              <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
-            </Button>
+            FILESET_DETAILS_ENABLED ? (
+              <>
+                <NewDatasetButton color="brand" />
+                <NewModelFilesetButton color="brand" />
+              </>
+            ) : (
+              <Button asChild color="brand">
+                <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
+              </Button>
+            )
           }
         />
         <DatasetsTable
