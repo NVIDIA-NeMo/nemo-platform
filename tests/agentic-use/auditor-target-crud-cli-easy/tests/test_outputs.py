@@ -27,8 +27,8 @@ def client() -> NeMoPlatform:
 
 def test_original_target_was_deleted(client: NeMoPlatform) -> None:
     """Verify that harbor-audit-target was successfully deleted."""
-    targets = client.audit.targets.list()
-    target_names = [t.name for t in targets]
+    targets = client.auditor.targets.list(workspace=WORKSPACE)
+    target_names = [t["name"] for t in targets["data"]]
 
     assert "harbor-audit-target" not in target_names, (
         f"Target 'harbor-audit-target' should have been deleted but still exists! Found targets: {target_names}"
@@ -37,7 +37,7 @@ def test_original_target_was_deleted(client: NeMoPlatform) -> None:
 
 def test_final_target_exists(client: NeMoPlatform) -> None:
     """Verify that harbor-audit-target-final was created with correct config."""
-    target = client.audit.targets.retrieve("harbor-audit-target-final")
+    target = client.auditor.targets.get(workspace=WORKSPACE, name="harbor-audit-target-final")
 
     assert target is not None, "Target 'harbor-audit-target-final' was not found!"
     assert target.name == "harbor-audit-target-final", (
@@ -70,30 +70,30 @@ def test_agent_performed_all_crud_operations() -> None:
         return any(all(p in cmd for p in patterns) for cmd in commands)
 
     # 1. Created harbor-audit-target
-    assert has_command("audit", "targets", "create", "harbor-audit-target"), (
+    assert has_command("auditor", "targets", "create", "harbor-audit-target"), (
         f"Agent did not create 'harbor-audit-target'. Commands: {commands}"
     )
 
     # 2. Listed audit targets
-    assert has_command("audit", "targets", "list"), f"Agent did not list audit targets. Commands: {commands}"
+    assert has_command("auditor", "targets", "list"), f"Agent did not list audit targets. Commands: {commands}"
 
     # 3. Got harbor-audit-target by name
-    assert has_command("audit", "targets", "get", "harbor-audit-target"), (
+    assert has_command("auditor", "targets", "get", "harbor-audit-target"), (
         f"Agent did not get 'harbor-audit-target' by name. Commands: {commands}"
     )
 
     # 4. Updated harbor-audit-target description
-    assert has_command("audit", "targets", "update", "harbor-audit-target"), (
+    assert has_command("auditor", "targets", "update", "harbor-audit-target"), (
         f"Agent did not update 'harbor-audit-target'. Commands: {commands}"
     )
 
     # 5. Deleted harbor-audit-target
-    assert has_command("audit", "targets", "delete", "harbor-audit-target"), (
+    assert has_command("auditor", "targets", "delete", "harbor-audit-target"), (
         f"Agent did not delete 'harbor-audit-target'. Commands: {commands}"
     )
 
     # 6. Created harbor-audit-target-final
-    assert has_command("audit", "targets", "create", "harbor-audit-target-final"), (
+    assert has_command("auditor", "targets", "create", "harbor-audit-target-final"), (
         f"Agent did not create 'harbor-audit-target-final'. Commands: {commands}"
     )
 

@@ -229,7 +229,7 @@ async def ensure_remote_evaluator_api_key_secret(workspace: str, client: AsyncNe
             ) from None
         try:
             await client.secrets.create(workspace=workspace, name=secret_name, value=api_key)
-            print(f"Secret {workspace}/{secret_name} created")
+            print("API key secret created for workspace")
         except ConflictError:
             pass
     return secret_name

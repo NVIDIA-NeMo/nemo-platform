@@ -28,7 +28,6 @@ WORKSPACE = "default"
 CONFIG_NAME = "harbor-custom-config"
 CONFIG_ID = f"{WORKSPACE}/{CONFIG_NAME}"
 MODEL = "default/guardrails-llm"
-CANNED_REFUSAL = "I'm sorry, I can't respond to that."
 
 
 def _make_unsigned_jwt() -> str:
@@ -146,20 +145,17 @@ def test_input_rail_blocks_fruit_mention(client: NeMoPlatform) -> None:
 
     The self_check_input prompt tells the LLM to block messages mentioning fruit.
     A message about apples should trigger a 'Yes' response from the self-check,
-    causing the guardrails to return the canned refusal.
+    causing guardrails to mark the request blocked.
     """
-    response = client.guardrail.chat.completions.create(
+    response = client.guardrail.check(
         model=MODEL,
         messages=[{"role": "user", "content": "Tell me about the health benefits of apples"}],
         guardrails={"config_id": CONFIG_ID},
         max_tokens=256,
         temperature=0,
     )
-    content = response.choices[0].message.content
-    assert content == CANNED_REFUSAL, (
-        f"Message mentioning fruit should be blocked with '{CANNED_REFUSAL}', but got: {content}"
-    )
-    print(f"Input rail correctly blocked fruit mention: {content}")
+    assert response.status == "blocked", f"Message mentioning fruit should be blocked, got: {response.status}"
+    print(f"Input rail correctly blocked fruit mention: {response.status}")
 
 
 def test_normal_message_passes_through(client: NeMoPlatform) -> None:
@@ -168,19 +164,15 @@ def test_normal_message_passes_through(client: NeMoPlatform) -> None:
     A geography question doesn't mention fruit (passes input rail) and the response
     won't be about bread baking (passes output rail).
     """
-    response = client.guardrail.chat.completions.create(
+    response = client.guardrail.check(
         model=MODEL,
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         guardrails={"config_id": CONFIG_ID},
         max_tokens=256,
         temperature=0,
     )
-    content = response.choices[0].message.content
-    assert content != CANNED_REFUSAL, f"Normal message should NOT be blocked, but got canned refusal: {content}"
-    assert content is not None and len(content.strip()) > 0, (
-        f"Normal message should return a non-empty response, got: {content}"
-    )
-    print(f"Normal message passed through: {content}")
+    assert response.status == "success", f"Normal message should NOT be blocked, got: {response.status}"
+    print(f"Normal message passed through: {response.status}")
 
 
 def test_output_rail_blocks_bread_content(client: NeMoPlatform) -> None:
@@ -188,20 +180,17 @@ def test_output_rail_blocks_bread_content(client: NeMoPlatform) -> None:
 
     The message doesn't mention fruit (passes input rail), but asking about bread
     baking will elicit a response about baking bread, which the output self-check
-    should block.
+    should mark as blocked.
     """
-    response = client.guardrail.chat.completions.create(
+    response = client.guardrail.check(
         model=MODEL,
         messages=[{"role": "user", "content": "Give me a step-by-step guide for baking sourdough bread"}],
         guardrails={"config_id": CONFIG_ID},
         max_tokens=256,
         temperature=0,
     )
-    content = response.choices[0].message.content
-    assert content == CANNED_REFUSAL, (
-        f"Response about baking bread should be blocked with '{CANNED_REFUSAL}', but got: {content}"
-    )
-    print(f"Output rail correctly blocked bread content: {content}")
+    assert response.status == "blocked", f"Response about baking bread should be blocked, got: {response.status}"
+    print(f"Output rail correctly blocked bread content: {response.status}")
 
 
 # --- Trajectory check ---
@@ -238,8 +227,8 @@ def test_agent_performed_operations() -> None:
         f"Agent did not update 'harbor-custom-config'. Commands: {commands}"
     )
 
-    # Agent should have made at least one guardrail inference call (check or chat)
-    made_inference = has_command("guardrail", "check") or has_command("guardrail", "chat")
-    assert made_inference, f"Agent did not make any guardrail inference call (check or chat). Commands: {commands}"
+    # Agent should have used the migrated guardrail check endpoint
+    made_inference = has_command("guardrail", "check")
+    assert made_inference, f"Agent did not make a guardrail check call. Commands: {commands}"
 
     print(f"All trajectory checks passed. Total commands: {len(commands)}")

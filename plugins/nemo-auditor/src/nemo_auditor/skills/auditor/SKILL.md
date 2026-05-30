@@ -3,7 +3,7 @@ name: auditor
 description: >
   NeMo auditor CLI reference for audit configs, targets, and jobs.
   Use when the task involves audit configurations, audit targets, audit jobs,
-  vulnerability scanning, probes, or `nemo audit` CLI commands.
+  vulnerability scanning, probes, or `nemo auditor` CLI commands.
 ---
 
 # NeMo Auditor CLI Reference
@@ -16,28 +16,26 @@ description: >
 ## Audit Config Commands
 
 ```bash
-# List configs across all accessible workspaces (omit --workspace for the cross-workspace set, including built-in globals)
-nemo audit configs list
+# List workspace configs
+nemo auditor configs list
 
 # List workspace configs
-nemo audit configs list --workspace <ws>
+nemo auditor configs list --workspace <ws>
 
-# Create a config (all four section flags required)
-nemo audit configs create <name> \
-  --description "<description>" \
-  --plugins '<json>' \
-  --reporting '<json>' \
-  --run '<json>' \
-  --system '<json>'
+# Create a config with a JSON payload
+# The -d body includes description plus plugins, reporting, run, and system sections.
+nemo auditor configs create <name> \
+  -d '{"description": "<description>", "plugins": {"probe_spec": "dan.AutoDANCached"}, "reporting": {}, "run": {}, "system": {"lite": true}}'
 
 # Get a config
-nemo audit configs get <name>
+nemo auditor configs get <name>
 
-# Update a config (pass only fields to change)
-nemo audit configs update <name> --description "<new description>"
+# Update a config
+nemo auditor configs update <name> \
+  -d '{"description": "<new description>", "plugins": {"probe_spec": "dan.AutoDANCached"}, "reporting": {}, "run": {}, "system": {"lite": true}}'
 
 # Delete a config
-nemo audit configs delete <name>
+nemo auditor configs delete <name>
 ```
 
 ### Config JSON Structure
@@ -54,28 +52,25 @@ Common probe specs: `dan.AutoDANCached`, `dan.DanInTheWild`, `dan.goodside`
 
 ```bash
 # Create a target
-nemo audit targets create <name> \
-  --model <model-name> \
-  --type <type> \
-  --description "<description>"
+nemo auditor targets create <name> \
+  -d '{"model": "<model-name>", "type": "<type>", "description": "<description>"}'
 
 # Create a target with a provider (for real inference endpoints)
-nemo audit targets create <name> \
-  --model <model-name> \
-  --type <type> \
-  --options '{"provider": "<provider-name>"}'
+nemo auditor targets create <name> \
+  -d '{"model": "<model-name>", "type": "<type>", "options": {"provider": "<provider-name>"}}'
 
 # List targets
-nemo audit targets list
+nemo auditor targets list
 
 # Get a target
-nemo audit targets get <name>
+nemo auditor targets get <name>
 
 # Update a target
-nemo audit targets update <name> --description "<new description>"
+nemo auditor targets update <name> \
+  -d '{"model": "<model-name>", "type": "<type>", "description": "<new description>"}'
 
 # Delete a target
-nemo audit targets delete <name>
+nemo auditor targets delete <name>
 ```
 
 Target types: `nim`, `openai`
@@ -83,15 +78,13 @@ Target types: `nim`, `openai`
 ## Audit Job Commands
 
 ```bash
-# Create a job (spec references config and target as namespace/name)
-nemo audit jobs create <job-name> \
+# Run an audit locally (spec references config and target as namespace/name)
+nemo auditor audit run \
   --spec '{"config": "default/<config-name>", "target": "default/<target-name>"}'
 
-# Check job status
-nemo audit jobs get-status <job-name>
-
-# List jobs
-nemo audit jobs list
+# Submit an audit to a configured cluster
+nemo auditor audit submit \
+  --spec '{"config": "default/<config-name>", "target": "default/<target-name>"}'
 ```
 
 Jobs may take a long time or remain in pending/created status. That is expected.
@@ -100,15 +93,15 @@ Jobs may take a long time or remain in pending/created status. That is expected.
 
 ### Config CRUD
 
-1. `nemo audit configs list` (no `--workspace`) — inspect built-in/global configs across all accessible workspaces
-2. `nemo audit configs create my-config ...` — create
-3. `nemo audit configs get my-config` — verify
-4. `nemo audit configs update my-config --description "..."` — update
-5. `nemo audit configs delete my-config` — delete
+1. `nemo auditor configs list` — inspect configs in the active workspace
+2. `nemo auditor configs create my-config -d '{...}'` — create
+3. `nemo auditor configs get my-config` — verify
+4. `nemo auditor configs update my-config -d '{...}'` — update
+5. `nemo auditor configs delete my-config` — delete
 
 ### Run an Audit Job
 
 1. Create a target pointing to the model endpoint
 2. Create a config with probe selection
 3. Create a job referencing `default/<config>` and `default/<target>`
-4. Check status with `nemo audit jobs get-status`
+4. Run locally with `nemo auditor audit run --spec '{...}'`, or submit with `nemo auditor audit submit --spec '{...}'`

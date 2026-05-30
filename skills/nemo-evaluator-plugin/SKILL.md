@@ -1,9 +1,10 @@
 ---
-name: evaluator-plugin
+name: nemo-evaluator-plugin
 description: Use when working on the Evaluator plugin CLI, jobs, SDK-backed specs, or plugin-owned Evaluator skills.
 metadata:
-  owner: evaluator
+  owner: nemo-platform
   maturity: active
+license: Apache-2.0
 ---
 
 # Evaluator Plugin
@@ -71,11 +72,11 @@ The current job accepts inline SDK-backed evaluation specs. At a high level, spe
 - `params`: optional Evaluator SDK execution parameters
 - `target`: optional model or agent target for online evaluation
 
-For LLM-judge setup notes, see [LLM Judge Notes](resources/llm-judge.md).
+For LLM-judge setup notes, see [LLM Judge Notes](references/llm-judge.md).
 
-For evaluator API key auth, see [Evaluator API Auth](resources/api-auth.md).
+For evaluator API key auth, see [Evaluator API Auth](references/api-auth.md).
 
-For local and cluster troubleshooting, see [Evaluation Troubleshooting](resources/troubleshooting.md).
+For local and cluster troubleshooting, see [Evaluation Troubleshooting](references/troubleshooting.md).
 
 Call the SDK-backed status route through the platform SDK:
 
