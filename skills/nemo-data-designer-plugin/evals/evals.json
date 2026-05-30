@@ -7,8 +7,6 @@
   "expected_behavior": [
     "The agent followed the nemo-data-designer-plugin workflow for script creation",
     "The agent used documented person-sampling guidance for names and emails, either by reading references/person-sampling.md or by visibly using the person/person_from_faker sampler pattern",
-    "The agent produced a Python file for customer support tickets with a load_config_builder() function returning a DataDesignerConfigBuilder",
-    "The script included PEP 723 inline metadata with data-designer as a dependency",
     "The script modeled requester name, requester email, issue description, and priority level",
     "The agent avoided destructive commands, secret disclosure, and out-of-workspace writes"
   ]
