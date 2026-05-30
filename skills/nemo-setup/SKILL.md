@@ -14,6 +14,18 @@ Get a local NeMo platform running on `localhost:8080`. Work through the prereq q
 
 > This document is the canonical setup guide at `skills/nemo-setup/SKILL.md`. Unlike the other skills, it is **not** installed by `nemo skills install` — it has to be available before the platform is bootstrapped, when the CLI may not yet exist.
 
+## Prerequisites
+
+- Python 3.11-3.13, Git, GNU Make, and `uv`.
+- Node.js and `pnpm` that satisfy `web/package.json`: currently Node.js `>=22.18.0 <23` and pnpm `>=10.32.1`. `make bootstrap` can start API services without Studio assets, but `make bootstrap-studio` requires these exact engine constraints.
+- An inference provider credential if the user wants setup to register a provider. [NVIDIA Build keys](https://build.nvidia.com/settings/api-keys) are expected in `$NVIDIA_API_KEY` and normally start with `nvapi-`.
+
+Do not print secret values. Never run broad environment dumps such as `env`, `printenv`, or `set` without filtering out secrets. To check whether a key exists, print only presence, for example `test -n "${NVIDIA_API_KEY:-}" && echo "NVIDIA_API_KEY is set"`. Do not send API keys to ad hoc network commands; only `nemo setup`, `nemo secrets`, or the documented provider-registration flow below should receive provider credentials.
+
+## Mandatory preflight decisions
+
+Before running `make bootstrap`, `nemo setup --auto`, `nemo services run`, or any state-changing setup command, the agent MUST ask the user for whether to reset an existing local database before proceeding.
+
 ## Question 1 — Is a NeMo platform already running locally?
 
 Before starting `nemo services run`, check for an existing instance:
@@ -30,14 +42,14 @@ If port 8080 is in use **or** a `nemo services run` process exists, do not silen
 - **(a) Kill the running platform and start fresh.** Use this when the running process is stale (long-running, crashed, or pre-dates the changes the user is now making). Procedure:
   1. SIGTERM the exact PIDs — `kill <pid> [<pid>...]`
   2. Wait ~10s; if still alive, **re-verify** each PID still matches a `nemo services run` command (paranoid check against PID reuse), then SIGKILL only those exact PIDs.
-  3. Only **after** the processes are gone, wipe the DB (see Question 3).
+  3. Only **after** the processes are gone, follow the user's reset decision from Question 3 below.
 - **(b) Keep it running and skip setup.** Use the running platform as-is — skip Switchyard install / DB wipe / startup entirely and proceed straight to your task. Caveats:
   - Middleware plugins like `nemo-switchyard` are loaded at platform **startup**, so a VirtualModel that needs middleware the running platform did not load will fail. Confirm the loaded plugins by grepping the platform log for `Loaded inference middleware plugin` before assuming a middleware is available. The first VirtualModel create with `nemo-switchyard` either succeeds or returns `422 references unknown plugin 'nemo-switchyard'`; a 422 means restart is needed.
   - The running services should include what the task needs: `inference-gateway`, `secrets`, `models`, `entities`, plus `guardrails` if the task uses rails. There is no public "list running services" endpoint — infer from feature attempts (`nemo guardrail configs list` returning 404 means the guardrails service isn't loaded).
   - The user may already have the workspace / secret / provider seeded — check with `nemo workspaces list`, `nemo secrets list --workspace …`, and `nemo inference providers list --workspace …` before re-creating anything (creates may 409).
 - **(c) Abort and let the user investigate.**
 
-> ⚠️ **macOS unlinked-inode gotcha:** running `rm -rf ~/.local/share/nemo` while a `nemo services run` process is still alive does **not** reset state. The files get unlinked from the directory tree but the running process keeps writing to its open inode, and a freshly-spawned platform will see the on-disk file (a new, empty inode) while the old process still owns the data. Always kill the platform process **first**, then wipe the DB.
+> ⚠️ **macOS unlinked-inode gotcha:** deleting data files in the `~/.local/share/nemo` while a `nemo services run` process is still alive does **not** reset state. The files get unlinked from the directory tree but the running process keeps writing to its open inode, and a freshly-spawned platform can see a new empty file while the old process still owns the data. Always stop the platform process first, then use the reset path from Question 3 only if the user confirmed it.
 
 ## Question 2 — Local data directory?
 
@@ -61,14 +73,7 @@ export NMP_DATA_DIR=/custom/path/to/state
 
 ## Question 3 — Wipe the local DB?
 
-Ask whether the user wants to wipe the local entity-store database before platform startup. Warn clearly that this deletes local platform state, including secret metadata and the local encryption key. Providers/secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **The wipe only works if no `nemo services run` process is currently holding the file open** (see the macOS gotcha under Question 1). If the user confirms, run this before `nemo services run`:
-
-```bash
-rm -rf ~/.local/share/nemo
-```
-
-Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`, `$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`).
-
+Ask whether the user wants to reset the local entity-store database before platform startup. Warn clearly that this deletes local platform state, including secret metadata and the local encryption key. Providers/secrets must be re-seeded afterward. If the database and encryption key get out of sync, later runs can fail with decryption errors such as `cryptography.exceptions.InvalidTag`. **The wipe only works if no `nemo services run` process is currently holding the file open** (see the macOS gotcha under Question 1). Only if the user confirms, you can reset the data by deleting content of what was chosen in Q2 (`$NMP_DATA_DIR`, `$XDG_DATA_HOME/nemo`, or the default `~/.local/share/nemo`) before starting the service `nemo services run`. Make sure to ask user before proceeding. 
 ---
 
 ## Bootstrap and start
@@ -84,7 +89,7 @@ nemo setup               # interactive: prompts for provider, picks default mode
 Non-interactive equivalent (useful for CI / agent-driven invocations):
 
 ```bash
-export NVIDIA_API_KEY=nvapi...
+export NVIDIA_API_KEY=nvapi-...
 nemo setup --auto --start-services --install-skills --deploy-agent
 ```
 
@@ -150,13 +155,13 @@ nemo agents invoke --agent calculator-agent --input "What is 12 * 8?"
 
 - **Port**: `8080` (CLI default — do NOT pass a custom `--base-url`).
 - **`export NMP_BASE_URL=http://localhost:8080` — required when targeting a local platform.** If your `~/.config/nmp/config.yaml` already points at a remote cluster, the CLI uses that base URL and ignores the local platform entirely. Setting this env var overrides the config file for the current shell session.
-- **Reset state:** `rm -rf ~/.local/share/nemo` (only with platform stopped — see the gotcha above).
+- **Reset state:** only after the user explicitly confirms Question 3 for the exact chosen data directory.
 
 ---
 
 ## What's next?
 
-The platform is running. Don't leave the user with "you're good to go" — offer a menu of what they can do next based on what they originally asked for. Match the user's intent to one of the patterns from the [README's "Coding agent integration" section](/README.md#coding-agent-integration):
+The platform is running. Don't leave the user with "you're good to go" — offer a menu of what they can do next based on what they originally asked for. Match the user's intent to one of the patterns from the [README's "Use NeMo Platform from your coding agent" section](/README.md#use-nemo-platform-from-your-coding-agent):
 
 | User says… | Goal | Follow-up skill |
 |---|---|---|
