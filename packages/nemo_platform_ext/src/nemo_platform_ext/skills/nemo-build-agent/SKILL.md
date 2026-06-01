@@ -16,7 +16,7 @@ not-for:
   - nemo-try-agent (use to query a deployed agent)
   - nemo-setup (use to install the platform first)
   - superpowers:brainstorming (use for unrelated design work)
-compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands plus a single `lsof`/`curl` probe at pre-flight; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
+compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands; defers platform-health probing to `nemo-status`; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -31,12 +31,7 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 
 ## Pre-flight
 
-1. Confirm the platform is up using `lsof` (ground truth) + `curl` (functional). If either fails, route to `nemo-setup` and stop. Do not trust `nemo services status` — it reports stale "running" from held locks after the process has died.
-
-   ```bash
-   lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-   curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -qE "^[24][0-9][0-9]$" || { echo "PLATFORM_WEDGED"; exit 1; }
-   ```
+1. Confirm the platform is up. Run `nemo-status`'s platform probe (canonical lsof + curl check) and stop if it reports `PLATFORM_DOWN` or `PLATFORM_WEDGED`; route to `nemo-setup` and return when it clears. Do not reimplement the probe here — `nemo-status` owns it so changes (new components, new ports) land in one place.
 
 2. Confirm a spec exists at `agents/$AGENT_NAME.spec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
 3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
