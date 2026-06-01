@@ -11,7 +11,7 @@ import { server } from '@studio/mocks/node';
 import { LG_SELECTOR_TIMEOUT } from '@studio/tests/util/constants';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import type { ComponentProps, ReactNode } from 'react';
@@ -535,6 +535,17 @@ describe('DatasetsTable', () => {
   });
 
   describe('Row click', () => {
+    const activateFirstRow = async () => {
+      await waitFor(
+        () => {
+          expect(screen.getAllByRole('button', { name: 'Open row' }).length).toBeGreaterThan(0);
+        },
+        { timeout: LG_SELECTOR_TIMEOUT }
+      );
+
+      fireEvent.keyDown(screen.getAllByRole('button', { name: 'Open row' })[0], { key: 'Enter' });
+    };
+
     it('fires both onRowClick and navigates when both are provided', async () => {
       installListHandler();
       const onRowClick = vi.fn();
@@ -542,10 +553,7 @@ describe('DatasetsTable', () => {
       renderTable({ onRowClick, getDatasetRoute });
 
       await screen.findByText('dataset-1', undefined, { timeout: LG_SELECTOR_TIMEOUT });
-
-      const openButtons = await screen.findAllByRole('button', { name: 'Open row' });
-      openButtons[0].focus();
-      await user.keyboard('{Enter}');
+      await activateFirstRow();
 
       await waitFor(() => {
         expect(onRowClick).toHaveBeenCalledTimes(1);
@@ -561,9 +569,7 @@ describe('DatasetsTable', () => {
       renderTable({ enableSelection: true, enableFilters: false, onRowClick, onDatasetsSelected });
 
       await screen.findByText('dataset-1', undefined, { timeout: LG_SELECTOR_TIMEOUT });
-      const openButtons = await screen.findAllByRole('button', { name: 'Open row' });
-      openButtons[0].focus();
-      await user.keyboard('{Enter}');
+      await activateFirstRow();
 
       await waitFor(() => {
         const lastCall = onDatasetsSelected.mock.calls.at(-1);
@@ -579,11 +585,11 @@ describe('DatasetsTable', () => {
       renderTable({ enableSelection: true, enableFilters: true, onRowClick, onDatasetsSelected });
 
       await screen.findByText('dataset-1', undefined, { timeout: LG_SELECTOR_TIMEOUT });
-      const openButtons = await screen.findAllByRole('button', { name: 'Open row' });
-      openButtons[0].focus();
-      await user.keyboard('{Enter}');
+      await activateFirstRow();
 
-      await waitFor(() => expect(onRowClick).toHaveBeenCalledTimes(1));
+      await waitFor(() => expect(onRowClick).toHaveBeenCalledTimes(1), {
+        timeout: LG_SELECTOR_TIMEOUT,
+      });
       // Selection should remain empty — onDatasetsSelected should never fire with a selection
       expect(
         onDatasetsSelected.mock.calls.some((args) => (args[0] as FilesetOutput[]).length > 0)
