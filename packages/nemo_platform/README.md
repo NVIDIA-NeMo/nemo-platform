@@ -54,7 +54,7 @@ After `nemo setup` completes, the CLI prompts you to pick one of two paths. The 
 - **Build and optimize agents.** Open a coding agent session inside your agent's project directory and ask: _"Build and optimize an agent using NeMo Platform."_ The shipped skills will scaffold the agent, deploy it, run evaluations, suggest optimizations, and add guardrails on request.
 - **Explore the platform.** From any coding agent session, ask: _"What can I do with NeMo Platform?"_ to get a guided tour of the capabilities surfaced through skills.
 
-NeMo skills work with Claude Code, Codex, Cursor, OpenCode, and other coding agents. Install or refresh them with:
+NeMo skills work with Claude Code, Codex, Cursor, OpenCode, and other coding agents. Install or refresh them with `nemo skills install --agent <agent>`, for example:
 
 ```bash
 nemo skills install --agent claude

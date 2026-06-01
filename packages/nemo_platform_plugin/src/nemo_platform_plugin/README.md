@@ -33,7 +33,7 @@ pip install "nemo-platform[all]"
 
 ## A minimal plugin
 
-A complete NeMo Platform plugin that contributes one HTTP route. Two files plus a `pyproject.toml`:
+A complete NeMo Platform plugin that contributes one HTTP route — a `pyproject.toml` and a service module:
 
 ```toml
 # pyproject.toml
@@ -81,7 +81,7 @@ class MyService(NemoService):
         return [RouterSpec(router, tag="My Plugin")]
 ```
 
-Install and run the platform with your plugin discovered:
+During development, `nemo-platform-plugin` is the only dependency your plugin needs. To actually run a local platform that loads your plugin, install `nemo-platform[all]` (see [Install](#install) above), then:
 
 ```bash
 pip install -e .
