@@ -14,8 +14,8 @@ import re
 from datetime import datetime
 
 import pytest
+from nemo_platform_plugin.jobs.api_factory import handle_job_spec_mismatch
 from nmp.common.entities.utils import get_random_id
-from nmp.common.jobs.api_factory import handle_job_spec_mismatch
 from nmp.core.models.schemas import FinetuningType, ModelEntity
 from nmp.customizer.api.v2.jobs.schemas import (
     CustomizationJobInput,

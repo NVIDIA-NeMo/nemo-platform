@@ -6,14 +6,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from nmp.common.config import Runtime
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     GPUExecutionProviderSpec,
     PlatformJobSpec,
     PlatformJobStep,
 )
+from nmp.common.config import Runtime
 from nmp.common.jobs.docker import spec_has_gpu_step, validate_gpu_available_for_docker
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 

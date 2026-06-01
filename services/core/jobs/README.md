@@ -41,7 +41,7 @@ You can create a platform job configuration compiler like the following:
 
 ```python
 ## Import the necessary building blocks from the factory
-from nmp_common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
     CPUExecutionProviderSpec,
@@ -119,7 +119,7 @@ def my_functional_job_compiler(model: MyFunctionalJobConfig) -> PlatformJobSpec:
 Now that you have a platform job configuration compiler, you can implement the Jobs api factory as follows:
 
 ```python
-from nmp_common.jobs.api_factory import job_route_factory
+from nemo_platform_plugin.jobs.api_factory import job_route_factory
 
 service_name = "my-functional-microservice"
 jobs_router = job_route_factory(

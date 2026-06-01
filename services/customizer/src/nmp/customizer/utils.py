@@ -6,7 +6,7 @@
 import uuid
 
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.entities.client import EntityClient, parse_qualified_name
+from nemo_platform_plugin.entities import EntityClient, parse_qualified_name
 from nmp.core.models.schemas import ModelEntity
 from nmp.customizer.api.v2.jobs.schemas import (
     CustomizationJobInput,

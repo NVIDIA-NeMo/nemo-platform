@@ -13,11 +13,8 @@ from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
-from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
-from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
-from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
-from nmp.common.entities import EntityClient
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     EnvironmentVariable,
     EnvironmentVariableFromSecret,
@@ -32,6 +29,9 @@ from nmp.common.jobs.api_factory import (
     ResourcesSpec,
     job_route_factory,
 )
+from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
+from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
+from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.image import get_qualified_image
 from nmp.safe_synthesizer.config import config
@@ -201,7 +201,7 @@ async def job_config_compiler(
             raise PlatformJobCompilationError(
                 f"Failed to retrieve model provider {classify_model_provider!r}: Access denied to workspace {provider_workspace!r}"
             ) from e
-        nim_endpoint_url = sdk.models.get_provider_route_openai_url(provider)  # ty: ignore[unresolved-reference]
+        nim_endpoint_url = sdk.models.get_provider_route_openai_url(provider)
         parsed_url = urlparse(nim_endpoint_url)
         environment.append(EnvironmentVariable(name="CLASSIFY_LLM_ENDPOINT_PATH", value=parsed_url.path))
         logger.info(f"Configured NIM endpoint URL: {nim_endpoint_url} (provider: {classify_model_provider})")

@@ -10,28 +10,16 @@ with the platform-specific ``as_service()`` method.
 
 from __future__ import annotations
 
-# Re-export all types from nemo-platform-plugin (canonical source)
-from nemo_platform_plugin.entities import BASE_FIELDS as BASE_FIELDS
-from nemo_platform_plugin.entities import DEFAULT_WORKSPACE as DEFAULT_WORKSPACE
-from nemo_platform_plugin.entities import ID_PATTERN as ID_PATTERN
+# Re-export types from nemo-platform-plugin (canonical source) that have
+# consumers through this module's path.
 from nemo_platform_plugin.entities import EntityBase as EntityBase
 from nemo_platform_plugin.entities import EntityClient as _PluginEntityClient
-from nemo_platform_plugin.entities import EntityClientProtocol as EntityClientProtocol
 from nemo_platform_plugin.entities import EntityConflictError as EntityConflictError
 from nemo_platform_plugin.entities import EntityNotFoundError as EntityNotFoundError
 from nemo_platform_plugin.entities import EntityStoreError as EntityStoreError
-
-# Re-export EntityT TypeVar
-from nemo_platform_plugin.entities import EntityT as EntityT
-from nemo_platform_plugin.entities import EntityToken as EntityToken
-from nemo_platform_plugin.entities import EntityTypeDefault as EntityTypeDefault
-from nemo_platform_plugin.entities import EntityTypeLike as EntityTypeLike
 from nemo_platform_plugin.entities import EntityValidationError as EntityValidationError
 from nemo_platform_plugin.entities import ListResponse as ListResponse
 from nemo_platform_plugin.entities import PaginationInfo as PaginationInfo
-from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str as _convert_filter_obj_to_filter_str
-from nemo_platform_plugin.entities import _convert_sort_to_api_sort as _convert_sort_to_api_sort
-from nemo_platform_plugin.entities import _get_entity_type as _get_entity_type
 from nemo_platform_plugin.entities import parse_qualified_name as parse_qualified_name
 
 

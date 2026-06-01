@@ -12,13 +12,13 @@ import pytest_asyncio
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.jobs.api_factory import ContainerSpec as FactoryContainerSpec
+from nemo_platform_plugin.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
+from nemo_platform_plugin.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec as FactoryPlatformJobSpec
+from nemo_platform_plugin.jobs.api_factory import PlatformJobStep as FactoryPlatformJobStep
 from nmp.common.config import Configuration, ImagePullSecret, PlatformConfig
 from nmp.common.entities.client import EntityClient
-from nmp.common.jobs.api_factory import ContainerSpec as FactoryContainerSpec
-from nmp.common.jobs.api_factory import CPUExecutionProviderSpec as FactoryCPUExecutionProviderSpec
-from nmp.common.jobs.api_factory import PlatformJobEnvironmentVariableParam, job_route_factory
-from nmp.common.jobs.api_factory import PlatformJobSpec as FactoryPlatformJobSpec
-from nmp.common.jobs.api_factory import PlatformJobStep as FactoryPlatformJobStep
 from nmp.common.jobs.constants import (
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,

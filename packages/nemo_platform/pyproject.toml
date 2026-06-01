@@ -6,6 +6,9 @@
 #
 # To regenerate the auto-generated sections:
 #   make vendor
+#
+# README.md is the public PyPI landing page (top-level NeMo Platform intro).
+# Internal bundling/wrapper-distribution developer docs live in BUNDLING.md.
 # =============================================================================
 
 [project]

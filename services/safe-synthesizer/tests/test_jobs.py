@@ -9,9 +9,9 @@ import pytest
 from httpx import Response
 from nemo_platform import NotFoundError, PermissionDeniedError
 from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig, SafeSynthesizerParameters
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
-from nmp.common.jobs.api_factory import PlatformJobSpec
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.safe_synthesizer.api.v2.jobs.endpoints import job_config_compiler
 

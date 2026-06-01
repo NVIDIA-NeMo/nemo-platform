@@ -5,8 +5,8 @@
 
 from fastapi import APIRouter
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.entities import EntityClient
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     PlatformJobSpec,

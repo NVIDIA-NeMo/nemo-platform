@@ -1,131 +1,91 @@
-# nemo-platform
+# NeMo Platform
 
-Wrapper distribution for NeMo Platform. When users run `pip install nemo-platform[all]`, this is the wheel they get.
+[![License](https://img.shields.io/badge/license-Apache_2.0-D22128?style=flat-square)](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE)
+[![Python](https://img.shields.io/badge/python-3.11--3.13-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Docs](https://img.shields.io/badge/docs-nvidia--nemo.github.io-76B900?style=flat-square&logo=readthedocs&logoColor=white)](https://nvidia-nemo.github.io/nemo-platform/)
 
-The wheel bundles the SDK, shared runtime packages, default first-party plugins, and services directly from source via hatch force-include. As sub-packages are published independently to PyPI, they'll be removed from the bundle and added as normal dependencies instead.
+Make the agents you ship faster, more accurate, and safer.
 
-## How bundling works
+NeMo Platform brings NVIDIA NeMo libraries together under one CLI, Python SDK, and web UI. Hardening, evaluation, and tuning for the agents you put in production.
 
-All source bundling is configured in `pyproject.toml` via `[tool.bundle-package]`. Each entry declares a package source tree to include in the wheel:
+## What's here today
 
-```toml
-[tool.bundle-package]
-nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
-nemo-platform-sdk = { source = "../../sdk/python/nemo-platform/src/nemo_platform", module = "nemo_platform", inherit = { "optional-dependencies" = true, scripts = true } }
-nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor", inherit = { "entry-points" = ["nemo.*"] } }
-nmp-auth = { source = "../../services/core/auth/src/nmp/core/auth", module = "nmp/core/auth", deps_group = "auth-service" }
+- **Secure agents.** Guardrails (content safety, jailbreak detection, PII redaction), Auditor (red-teaming via garak), Anonymizer (PII handling for training data).
+- **Evaluate agents.** LLM-as-judge, deterministic, agentic, and RAG benchmarks. Harbor-backed eval suites for regression testing.
+- **Tune agents.** Skill optimization, prompt and hyperparameter tuning, Switchyard model routing.
+- **Build agents.** NVIDIA NeMo Agent Toolkit (NAT) for LangGraph-based agents. Shared infrastructure: Inference Gateway, Secrets, Files, Entity Store, Jobs.
+- **Generate synthetic data.** Generate synthetic data for training or evaluation purposes using Data Designer.
+- **NeMo Studio (alpha).** Browser UI for chat, monitoring, and reviewing optimization suggestions. Studio's agent-focused features are still a work in progress; the CLI is the primary surface today.
+
+## Install
+
+**Prerequisites:** Python 3.11–3.13 and an API key for an inference provider (NVIDIA Build, OpenAI, Anthropic, Google Gemini, or a local Ollama instance).
+
+The `nemo-platform` distribution is a convenience wrapper that bundles the SDK, shared runtime packages, default first-party plugins, and platform services into a single wheel. Install just the SDK and CLI, or install everything needed to run the platform locally:
+
+```bash
+# SDK + CLI only
+pip install nemo-platform
+
+# SDK + CLI + all platform services and default plugins (recommended)
+pip install "nemo-platform[all]"
 ```
 
-Each entry has:
-- **key** — the distribution/package name used to find its `pyproject.toml`, read its metadata, and match wheel `Requires-Dist` entries
-- **source** — relative path to the source directory to include in the wheel
-- **module** — target module path inside the wheel
-- **deps_group** (optional) — name of the `[project.optional-dependencies]` group where the package's transitive deps are written. Defaults to the bundle key.
-- **inherit** (optional) — structured metadata to re-export from the bundled package. Supported keys are `scripts`, `entry-points`, and `optional-dependencies`; each value is either `true` or a list of wildcard patterns.
-- **scripts** (optional) — explicit CLI entrypoints to register on the wrapper. Prefer `inherit.scripts` when copying scripts from the bundled package.
-- **force_include** (optional) — extra source files, directories, or globs to bundle with this package, keyed relative to the entry's `source` path and mapped to their target wheel path. When using a glob, make the target end in `/` to copy each match into that package directory.
+Then bring up the platform:
 
-By default, bundled package metadata is not re-exported. `nemo-platform` opts into SDK scripts and SDK optional dependencies, and it opts into only `nemo.*` entry-point groups from the default first-party plugins. Other plugin entry-point groups, such as `data_designer.plugins`, are intentionally not inherited.
+```bash
+nemo setup
+```
 
-Two tools read this config:
+`nemo setup` starts local services, registers your LLM provider, discovers available models, installs agent skills, and (optionally) deploys a sample agent.
 
-### `hatch_build.py` (build hook)
+Verify:
 
-At wheel build time, `hatch_build.py` reads `[tool.bundle-package]` and generates hatch force-include mappings dynamically, including each entry's per-bundle `force_include` mappings. Component-owned runtime assets such as Alembic migrations and Studio UI static files should live on the corresponding bundle entry. The hook still merges any static `[tool.hatch.build.targets.wheel.force-include]` entries when present, but per-bundle `force_include` is preferred for assets owned by a bundled component.
+```bash
+nemo services status
+```
 
-During editable installs (`uv sync`), the build hook does nothing. Workspace packages resolve via their normal editable/workspace installation, so there is no copied bundle and the source dependency graph stays intact.
+The recommended developer setup is to clone the repo and use `make bootstrap` instead of installing from PyPI — see the [setup playbook](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md) for the full walkthrough, including local data dir, DB reset, and troubleshooting.
 
-After the wheel is built, the build hook opens the wheel, rewrites `METADATA`, regenerates `RECORD`, and repacks the wheel. Any `Requires-Dist` whose distribution name matches a `[tool.bundle-package]` key is rewritten to a self-referencing extra using that entry's `deps_group`, or the bundle key when `deps_group` is omitted. Existing requirement extras and environment markers are preserved.
+## Where to go next
 
-For example, this source dependency:
+After `nemo setup` completes, the CLI prompts you to pick one of two paths. The same two paths are the recommended starting points if you came in via PyPI:
+
+- **Build and optimize agents.** Open a coding agent session inside your agent's project directory and ask: _"Build and optimize an agent using NeMo Platform."_ The shipped skills will scaffold the agent, deploy it, run evaluations, suggest optimizations, and add guardrails on request.
+- **Explore the platform.** From any coding agent session, ask: _"What can I do with NeMo Platform?"_ to get a guided tour of the capabilities surfaced through skills.
+
+NeMo skills work with Claude Code, Codex, Cursor, OpenCode, and other coding agents. Install or refresh them with `nemo skills install --agent <agent>`, for example:
+
+```bash
+nemo skills install --agent claude
+```
+
+## Operating the platform
+
+A few useful CLI commands once setup completes:
+
+```bash
+nemo --help                # All commands
+nemo models list           # Available models
+nemo services status       # Platform health
+nemo skills list           # Skills installed on the platform
+```
+
+Every capability is also available via REST API. Model inference uses the model IDs returned from `nemo models list` and is available at:
 
 ```text
-Requires-Dist: nmp-common
+http://localhost:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1/chat/completions
 ```
 
-becomes this in the final wheel metadata:
+## Links
 
-```text
-Requires-Dist: nemo-platform[nmp-common]
-```
+- **Source:** https://github.com/NVIDIA-NeMo/nemo-platform
+- **Documentation:** https://nvidia-nemo.github.io/nemo-platform/
+- **Setup playbook:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/SETUP.md
+- **CLI reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/cli/index.md
+- **API reference:** https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/docs/api/index.md
+- **Issue tracker:** https://github.com/NVIDIA-NeMo/nemo-platform/issues
 
-A dependency with extras and a marker, such as `nemo-platform-sdk[aiohttp] ; python_version >= "3.11"`, becomes `nemo-platform[nemo-platform-sdk,aiohttp] ; python_version >= "3.11"`.
+## License
 
-### `make vendor` (vendor tool)
-
-The vendor tool refreshes auto-generated metadata in workspace pyprojects without disturbing hand-written content. In `[project.optional-dependencies]`, each vendor-owned extra is preceded by a `# Generated from [tool.bundle-package]; do not edit by hand.` marker comment — that marker is the load-bearing signal that distinguishes vendor-owned extras (refreshed or removed by `make vendor`) from hand-written extras (preserved untouched). Generated `[project.scripts]` and `[project.entry-points.*]` tables get a `# Generated from [tool.bundle-package]; do not edit this table by hand.` header marker on the table itself, since those tables are wholly owned by the vendor flow.
-
-The `_process_bundle_packages()` phase in `vendor_package.py` reads `[tool.bundle-package]` from every workspace package that has one. For each entry it:
-
-1. Finds the bundled package's `pyproject.toml`, using the configured `source` path when needed
-2. Reads its `[project.dependencies]`
-3. Filters out workspace packages that are not bundled by the parent, because they are not installable from PyPI
-4. Keeps bundled workspace dependency names readable in source metadata, so the wheel build hook can rewrite final `Requires-Dist` metadata to self-extras
-5. Writes the resulting deps into the generated extra named by `deps_group`, or by the bundle key when `deps_group` is omitted
-6. Copies only the metadata explicitly selected by `inherit`
-7. Writes any explicit `scripts = [...]` declared directly on the bundle entry
-
-For the wrapper specifically, `make vendor` also creates aggregate extras from `[tool.bundle-package]`:
-
-- `core-service` references all core service `*-service` extras.
-- `plugins` references all bundled first-party plugin extras whose source lives under `plugins/*/src`.
-- `services` references `core-service`, all non-core service `*-service` extras, and `plugins`.
-
-Hand-written extras (e.g. the wrapper's `all` alias, or a plugin's `test` group) live directly in the pyproject's `[project.optional-dependencies]` table without the generator marker. The vendor tool will preserve them on every run; only extras with the `# Generated from [tool.bundle-package]; do not edit by hand.` marker are touched by `make vendor`.
-
-## Dependency groups
-
-The wrapper's `[project.dependencies]` is hand-written with the true workspace dependencies for the base install:
-
-```toml
-dependencies = [
-  "nemo-platform-sdk",
-  "nmp-common",
-  "nemo-platform-plugin",
-]
-```
-
-Those direct workspace dependencies are what editable installs and repo-local tooling see. Wheel builds rewrite them to self-referencing extras so published wheels do not require unpublished workspace packages:
-
-```toml
-dependencies = [
-  "nemo-platform[nemo-platform-sdk]",
-  "nemo-platform[nmp-common]",
-  "nemo-platform[nemo-platform-plugin]",
-]
-```
-
-Service and plugin dependencies are behind optional extras. They are composed via:
-- `auth-service`, `entities-service`, etc. — individual service deps
-- `core-service` — aggregates all core service `-service` extras
-- `plugins` — aggregates default first-party plugin extras
-- `services` — aggregates `core-service`, all non-core service `-service` extras, and `plugins`
-- `all` — hand-written alias for the full packaged install; expands to `services`. The recommended user-facing extra (`pip install nemo-platform[all]`).
-
-The `services` extra includes `plugins` because Python entry points are distribution-level metadata and are not conditional on extras. If the wrapper publishes plugin `nemo.services` entry points, installing service discovery dependencies must also install the plugin dependencies needed by those entry points.
-
-Vendor-owned extras (those generated from `[tool.bundle-package]`) are marked with a `# Generated from [tool.bundle-package]; do not edit by hand.` comment immediately above the key, and `make vendor` will overwrite them on every run. Extras without the marker are hand-written — add new ones (like `all`) directly in the pyproject and they will be left alone. The wheel rewrite step assumes the generated `deps_group` extras already exist before the build starts.
-
-The wrapper's generated `[project.scripts]` currently re-exports only the SDK CLI entry points:
-
-```toml
-[project.scripts]
-nemo = "nemo_platform.cli.app:cli"
-nmp = "nemo_platform.cli.app:cli"
-```
-
-Service-specific server scripts are not exposed by the umbrella `nemo-platform` wheel. Individual service packages may still expose their own scripts, and the wrapper uses `nemo services run` through the platform runner instead.
-
-## Extracting a package to PyPI
-
-To publish a bundled package independently:
-
-1. Remove its entry from `[tool.bundle-package]`
-2. Add it as a normal dependency in `[project.dependencies]` (or in the appropriate optional group)
-3. Run `make vendor` to regenerate the dependency groups
-
-The wheel gets thinner, the dependency metadata stays correct, and `pip install nemo-platform[all]` (and `[services]`) continues to work.
-
-## Other vendoring (`make vendor`)
-
-The `make vendor` command also handles SDK client extensions (`nemo_platform_ext`, `data_designer_sdk`, `models`, `filesets`, `safe_synthesizer_sdk`, `nemo_evaluator_sdk`). These are **not** bundled via `[tool.bundle-package]` — they use the older `[tool.vendor-package]` mechanism which copies source files into the SDK tree with import rewriting. This is separate from the bundling described above and is only relevant to SDK client-side extensions.
+NeMo Platform is licensed under the [Apache License 2.0](https://github.com/NVIDIA-NeMo/nemo-platform/blob/main/LICENSE). Third-party open-source dependencies have their own licenses; review them before use.
