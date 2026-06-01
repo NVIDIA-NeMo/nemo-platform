@@ -106,6 +106,7 @@ from nemo_platform_plugin._spec_flags import (
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.cli_errors import print_http_request_error, print_http_status_error
 from nemo_platform_plugin.cli_renderer import CLIRenderer, RendererContext
+from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
 from nemo_platform_plugin.function import NemoFunction, returns_async_iterator
 from nemo_platform_plugin.function_context import FunctionContext
 from nemo_platform_plugin.functions.routes import DEFAULT_FUNCTION_PATH, NDJSON_MEDIA_TYPE
@@ -408,7 +409,7 @@ def _add_run_command(
         overlay = build_overlay(leaves, kwargs, unset_sentinel=UNSET)
         data = deep_merge(base, overlay)
         logger.debug("Running job %r locally with spec %r", job_cls.name, data)
-        sdk, async_sdk = _resolve_local_cli_sdks(typer_ctx)
+        sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
 
         renderer_cls: type[CLIRenderer] | None = None
         if cli is not None and not _output_format_is_json(typer_ctx):
@@ -925,7 +926,7 @@ def _add_function_run_command(
             typer.echo(f"Error: invalid spec for {fn_cls.name}: {exc}", err=True)
             raise typer.Exit(code=1) from exc
 
-        sdk, async_sdk = _resolve_local_cli_sdks(typer_ctx)
+        sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
         ctx = FunctionContext(workspace=workspace)
         renderer_cls: type[CLIRenderer] | None = None
         if cli is not None and not _output_format_is_json(typer_ctx):
@@ -1074,18 +1075,6 @@ async def _invoke_function_locally(
         return
     awaited = await result
     typer.echo(_format_value_for_stdout(awaited))
-
-
-def _resolve_local_cli_sdks(
-    typer_ctx: typer.Context,
-) -> tuple[object | None, object | None]:
-    """Build sync + async SDKs from a CLI-like context, if present."""
-    state = typer_ctx.obj
-    if not state:
-        return None, None
-    sdk = state.get_client() if hasattr(state, "get_client") else None
-    async_sdk = state.get_async_client() if hasattr(state, "get_async_client") else None
-    return sdk, async_sdk
 
 
 # ---- submit ------------------------------------------------------ #

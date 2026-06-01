@@ -51,12 +51,24 @@ def validate_seed_source_for_execution_context(data: Any, *, is_local: bool) -> 
     not bypass that. So, we can safely ignore all Exceptions (most commonly KeyError, on requests
     that don't include a seed_config at all) and index our way straight to the deeply nested field
     we care about for this particular validation.
+
+    Per the Pydantic v2 contract, "before"-mode validators may raise ``ValueError``,
+    ``AssertionError``, or ``PydanticCustomError`` — anything else (including our
+    ``NDDInvalidConfigError``) propagates raw out of ``model_validate`` and is not wrapped in
+    ``pydantic.ValidationError``. That breaks ``except ValidationError`` clauses in CLI / framework
+    code that turn validation problems into clean user-facing messages. To keep those code paths
+    working *and* keep ``NDDInvalidConfigError`` as the canonical error class for non-Pydantic
+    callers, we translate at this boundary: catch the plugin's error class and re-raise as a
+    ``ValueError`` carrying the same message.
     """
     seed_type = _get_raw_seed_type(data)
     if seed_type is None:
         return
 
-    _validate_seed_type_for_execution_context(seed_type, is_local=is_local)
+    try:
+        _validate_seed_type_for_execution_context(seed_type, is_local=is_local)
+    except NDDInvalidConfigError as exc:
+        raise ValueError(str(exc)) from exc
 
 
 def _validate_seed_type_for_execution_context(seed_type: str, *, is_local: bool) -> None:
