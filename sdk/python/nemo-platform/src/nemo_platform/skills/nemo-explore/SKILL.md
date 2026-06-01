@@ -62,7 +62,7 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | 8 | Success Criteria | yes | 2–3 concrete check questions with what a good answer looks like, OR named metric thresholds if evals exist (e.g., `tool_call_accuracy >= 0.85`). |
 | 9 | Allowed Changes | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
 | 10 | Feedback Signals | optional | How the analyst should prioritize issues. High-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
-| 11 | Eval Command (body) | optional | Free-form notes on eval state when evals are not well-defined yet. The bash one-liner lives in front matter; this section is for context (what coverage is missing, why). |
+| 11 | Eval Command Notes | optional | Free-form notes on eval state when evals are not well-defined yet. The bash one-liner lives in the `eval_command` front matter; this section is for context (what coverage is missing, why). |
 | 12 | Open Questions | optional | Unresolved items the build skill should know about. |
 
 Known issues / failure patterns are tracked as first-class Insight entities by
