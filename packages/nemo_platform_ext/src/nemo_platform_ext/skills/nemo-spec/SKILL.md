@@ -1,6 +1,6 @@
 ---
 name: nemo-spec
-description: Captures a NeMo Platform agent spec as a durable artifact at agents/<name>.spec.md (the agent's AGENTSpec.md). Validates the answers from nemo-explore against the AgentSpec schema, writes the file, uploads it to a NeMo Filesets fileset (the canonical copy), then hands the resulting fileset reference to nemo-build-agent. Use over generic planning skills for any NeMo Platform agent spec.
+description: Captures a NeMo Platform agent spec as a durable artifact at agents/<name>.spec.md (the agent's AGENTSpec.md). Validates the answers from nemo-explore against the AgentSpec schema, writes the file, and uploads it to a NeMo Filesets fileset (the canonical copy). The spec's location is fully derivable from the agent's workspace and name — this skill does not return or persist a ref. Use over generic planning skills for any NeMo Platform agent spec.
 triggers:
   - write the spec
   - save the design
@@ -8,7 +8,7 @@ triggers:
   - persist the agent design
   - nemo spec
   - write agent spec
-  - write AGENT_DESCRIPTION
+  - write AGENTSpec
 not-for:
   - nemo-explore (use to gather the design before writing the spec)
   - nemo-build-agent (use to scaffold and deploy once the spec is signed off)
@@ -24,7 +24,7 @@ allowed-tools: [Read, Write, Edit, Bash]
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
 the contract `nemo-build-agent` reads to scaffold the NAT workflow YAML and
-the AGENTSpec.md that the analyst and experimentalist agents read as
+the `AGENTSpec.md` that the analyst and experimentalist agents read as
 their primary context. Without it, downstream skills have to re-ask
 everything and the optimization loop has no contract for what the agent is
 supposed to do or what may be changed.
@@ -34,16 +34,23 @@ supposed to do or what may be changed.
 Two copies of the spec exist intentionally:
 
 * **Canonical**: a NeMo Filesets fileset named `<agent-name>-spec` in the
-  active workspace, holding a single file `AGENT_SPEC.md`. The analyst agent
-  reads this copy server-side; the platform stores it durably.
+  active workspace, holding a single file `AGENTSpec.md`. The analyst
+  agent reads this copy server-side; the platform stores it durably.
 * **Local cache**: `agents/<name>.spec.md` in the developer's working
   directory. Hand-editable, version-controlled with the AUT repo, used by
   this skill and by `nemo-build-agent`.
 
 The Fileset wins on conflict. If a developer edits the local file, this
 skill re-uploads to refresh the Fileset. If the platform copy has drifted
-ahead (e.g. the refinement-mode skill updated it server-side), pull it down
-before editing.
+ahead (e.g. the refinement-mode skill updated it server-side), pull it
+down before editing.
+
+**The spec's location is by convention, not by reference.** Given an
+agent's workspace and name, the file ref is always
+`<workspace>/<agent-name>-spec#AGENTSpec.md`. The `Agent` entity does
+**not** carry a `spec_file_ref` field — downstream consumers compute the
+ref from `(workspace, agent_name)` via
+`nemo_agents_plugin.entities.agent_spec_file_ref`.
 
 ## Hard preconditions
 
@@ -88,7 +95,7 @@ clear gap-question rather than a stack trace.
 
    ```bash
    mkdir -p agents
-   nemo files download "${NAME}-spec" AGENT_SPEC.md \
+   nemo files download "${NAME}-spec" AGENTSpec.md \
      --local-path "agents/${NAME}.spec.md"
    ```
 
@@ -117,38 +124,32 @@ clear gap-question rather than a stack trace.
    ```
 
 7. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
-   needed and upload `AGENT_SPEC.md`:
+   needed and upload `AGENTSpec.md`:
 
    ```bash
    nemo files filesets create "${NAME}-spec" 2>/dev/null || true
    nemo files upload "agents/${NAME}.spec.md" "${NAME}-spec" \
-     --remote-path AGENT_SPEC.md
+     --remote-path AGENTSpec.md
    ```
 
-   Capture the fileset reference for the handoff. The default form is
-   `<workspace>/<name>-spec` (e.g. `default/it-helpdesk-spec`); if the
-   workspace was overridden, substitute that instead.
-
-   ```bash
-   SPEC_FILE_REF="default/${NAME}-spec"
-   echo "${SPEC_FILE_REF}"
-   ```
+   No ref to capture or pass downstream — the location is by convention.
+   `nemo-build-agent` and the analyst agent both call
+   `agent_spec_file_ref(workspace, name)` to compute
+   `<workspace>/<name>-spec#AGENTSpec.md` when they need it.
 
 8. **Show the spec to the user.** Print the full file contents and ask:
    "Does this match what we agreed? Edit anything you want to change." If
    the user edits, repeat steps 5–7.
 
-9. **Hand off.** Once confirmed, tell the user the next skill and pass the
-   fileset reference:
+9. **Hand off.** Once confirmed, tell the user the next skill:
 
-   - `nemo-build-agent` will read `agents/<name>.spec.md` and produce the
-     workflow YAML; when it calls `nemo agents create`, it will pass
-     `--spec-file-ref "${SPEC_FILE_REF}"` so the platform Agent entity is
-     linked to the spec from creation.
-   - The `eval-setup` skill (M2) will fill in the `Eval Command` section
-     and front matter when ready.
-   - The analyst agent (insights plugin, separate workstream) will read
-     `${SPEC_FILE_REF}` server-side once traces exist.
+    - `nemo-build-agent` will read `agents/<name>.spec.md`, produce the
+      workflow YAML, and call `nemo agents create`. It does not need a
+      `--spec-file-ref` flag — the spec's location is derivable.
+    - The `eval-setup` skill (M2) will fill in the `Eval Command` section
+      and front matter when ready.
+    - The analyst agent (insights plugin, separate workstream) reads the
+      same canonical fileset server-side once traces exist.
 
 ## Verification
 
@@ -166,7 +167,7 @@ parse_spec(Path('agents/${NAME}.spec.md').read_text())
 " && echo "schema_ok" || echo "schema_invalid"
 
 # Canonical Fileset copy is reachable.
-nemo files list "${NAME}-spec" 2>/dev/null | grep -q AGENT_SPEC.md \
+nemo files list "${NAME}-spec" 2>/dev/null | grep -q AGENTSpec.md \
   && echo "fileset_ok" || echo "fileset_missing"
 ```
 
@@ -189,8 +190,7 @@ all print, and the user has confirmed the contents.
 This skill does not produce NAT workflow YAML. The spec is the
 human-readable design; the YAML is generated downstream by
 `nemo-build-agent`. It also does not create the `Agent` entity on the
-platform — that happens in `nemo-build-agent` via `nemo agents create
---spec-file-ref ...`.
+platform — that happens in `nemo-build-agent` via `nemo agents create`.
 
 ## Gotchas
 
@@ -204,6 +204,11 @@ platform — that happens in `nemo-build-agent` via `nemo agents create
 - **The Fileset is canonical, not the local file.** If the two disagree,
   the Fileset wins. Re-pull before editing if you suspect server-side
   drift.
+- **The spec's location is convention, not configuration.** Always
+  `<workspace>/<agent-name>-spec#AGENTSpec.md`. Do not introduce a flag,
+  env var, or persisted field to override it — if the layout needs to
+  change, update `agent_spec_file_ref` in
+  `nemo_agents_plugin.entities` and every consumer follows.
 - **Names with underscores or capitals break tools.** Validate against
   `[a-z][a-z0-9-]*`.
 - **Job and Framework are hard requirements.** Do not write the spec with
@@ -211,6 +216,6 @@ platform — that happens in `nemo-build-agent` via `nemo agents create
 - **Do not duplicate Insights into the spec.** Known issues / recurring
   failure patterns live in the Insights plugin as first-class entities; the
   spec has no `Known Issues` section.
-- **This file is the AGENTSpec.md.** The experimentalist agent will
+- **This file is the `AGENTSpec.md`.** The experimentalist agent will
   not edit it; only the developer and the developer's coding agent do.
   Treat it as a long-lived contract, not a scratch pad.

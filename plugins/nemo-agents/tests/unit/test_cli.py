@@ -85,43 +85,9 @@ def test_create_resolves_default_model_placeholder(tmp_path, placeholder: str) -
     assert result.exit_code == 0, result.stderr
     sent = _json.loads(captured["body"])
     assert sent["config"]["llms"]["llm"]["model_name"] == "nvidia-nemotron-3-super-v3"
-    # spec_file_ref omitted from payload when the flag isn't passed.
+    # The CLI does not carry a spec location — it is derivable from
+    # (workspace, name) and computed by consumers via agent_spec_file_ref.
     assert "spec_file_ref" not in sent
-
-
-def test_create_passes_spec_file_ref_through_to_api(tmp_path) -> None:
-    """`nemo agents create --spec-file-ref X` includes X in the POST body."""
-    import json as _json
-
-    config = tmp_path / "agent.yml"
-    config.write_text("llms:\n  llm:\n    _type: openai\n    model_name: gpt-x\n")
-
-    captured: dict[str, Any] = {}
-
-    def handler(req: httpx.Request) -> httpx.Response:
-        captured["body"] = req.read()
-        return httpx.Response(200, json={"name": "calc"})
-
-    app = AgentsCLI().get_cli()
-    with _install_mock_transport(handler):
-        result = CliRunner().invoke(
-            app,
-            [
-                "create",
-                "--name",
-                "calc",
-                "--agent-config",
-                str(config),
-                "--spec-file-ref",
-                "default/calc-spec",
-                "--base-url",
-                "http://test",
-            ],
-        )
-
-    assert result.exit_code == 0, result.stderr
-    sent = _json.loads(captured["body"])
-    assert sent["spec_file_ref"] == "default/calc-spec"
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])

@@ -40,56 +40,17 @@ def _minimal_spec(**overrides: Any) -> AgentSpec:
 
 
 class TestRender:
-    def test_renders_front_matter_and_all_sections(self) -> None:
-        out = render_spec(_minimal_spec())
-        assert out.startswith("---\nname: it-helpdesk\neval_command: make eval\n---\n")
-        assert "# Agent Spec: it-helpdesk\n" in out
-        for header in (
-            "## Job",
-            "## Audience",
-            "## Categories",
-            "## Tools",
-            "## Model",
-            "## Framework",
-            "## Constraints",
-            "## Success Criteria",
-            "## Allowed Changes",
-            "## Feedback Signals",
-            "## Eval Command",
-            "## Open Questions",
-        ):
-            assert header in out, f"missing {header}"
+    # Most render shape is asserted by the round-trip tests below. The two
+    # cases kept here are edge behaviors the round-trip can't observe:
+    # eval_command omission from front matter, and the ``_(none)_``
+    # placeholder for empty optional lists.
 
     def test_omits_eval_command_when_none(self) -> None:
         out = render_spec(_minimal_spec(eval_command=None))
         assert "eval_command" not in out.split("---", 2)[1]
 
-    def test_renders_model_choice_as_labeled_bullets(self) -> None:
-        out = render_spec(_minimal_spec())
-        assert "- Mode: cloud" in out
-        assert "- Family: Nemotron Super 49B" in out
-
-    def test_renders_framework_with_wrapper_notes(self) -> None:
-        spec = _minimal_spec(
-            framework=Framework(
-                resolution=FrameworkResolution.NEEDS_WRAPPER,
-                source_framework="crewai",
-                notes="wrap CrewAI agents in a NAT workflow",
-            )
-        )
-        out = render_spec(spec)
-        assert "- Resolution: needs-wrapper" in out
-        assert "- Source framework: crewai" in out
-        assert "- Notes: wrap CrewAI agents in a NAT workflow" in out
-
-    def test_renders_allowed_changes_with_defaults(self) -> None:
-        out = render_spec(_minimal_spec())
-        assert "- System prompt: yes" in out
-        assert "- Fine-tuning: no" in out
-
     def test_empty_optional_lists_render_as_placeholder(self) -> None:
         out = render_spec(_minimal_spec())
-        # constraints and open_questions are empty by default
         constraints_section = out.split("## Constraints", 1)[1].split("##", 1)[0]
         assert "_(none)_" in constraints_section
 
@@ -148,7 +109,7 @@ class TestParseErrors:
     def test_missing_required_section(self) -> None:
         spec = _minimal_spec()
         md = render_spec(spec).replace("## Audience\n\ninternal employees\n", "")
-        with pytest.raises(SpecRenderError, match="missing section.*Audience"):
+        with pytest.raises(SpecRenderError, match=r"missing section.*Audience"):
             parse_spec(md)
 
     def test_unknown_section_rejected(self) -> None:

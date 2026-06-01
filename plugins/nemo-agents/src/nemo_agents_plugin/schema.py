@@ -23,7 +23,6 @@ from __future__ import annotations
 from typing import Any
 
 from nemo_agents_plugin.entities import Agent, AgentDeployment, DeploymentStatus
-from nemo_platform_plugin.refs import FilesetRef
 from nemo_platform_plugin.schema import NemoFilter, NemoListResponse
 from pydantic import BaseModel, Field
 
@@ -39,14 +38,6 @@ class CreateAgentRequest(BaseModel):
     description: str = Field(default="", description="Human-readable description.")
     config: dict[str, Any] = Field(description="NAT workflow config dict.")
     config_format: str = Field(default="nat-workflow-v1", description="Config format identifier.")
-    spec_file_ref: FilesetRef | None = Field(
-        default=None,
-        description=(
-            "Optional reference to the fileset holding the agent's spec "
-            "(AGENTSpec.md). Populated by ``nemo-spec`` after upload; "
-            "left empty for agents created without an onboarding skill."
-        ),
-    )
 
 
 class CreateDeploymentRequest(BaseModel):
