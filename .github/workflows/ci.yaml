@@ -311,7 +311,6 @@ jobs:
   python-e2e-test:
     name: Python e2e tests
     needs: [wheel-build]
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
