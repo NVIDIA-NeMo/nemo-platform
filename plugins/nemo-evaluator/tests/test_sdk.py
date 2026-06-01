@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -34,7 +35,7 @@ from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBu
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric
-from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import Model, ModelRef, RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.jobs.schemas import PlatformJobStatus
@@ -87,6 +88,24 @@ class _RecordingMetricBundlePackager(MetricBundlePackager):
         raise NotImplementedError("test packager only exercises submission-side packaging")
 
 
+class _FakeModels:
+    def __init__(self) -> None:
+        self.retrieved: list[tuple[str, str]] = []
+
+    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
+        self.retrieved.append((workspace, name))
+        return SimpleNamespace(model_providers=["default/provider"])
+
+    def get_model_entity_route_openai_url(self, model_entity: object) -> str:
+        del model_entity
+        return "https://igw.example.test/v1/chat/completions"
+
+
+class _FakeProviders:
+    def retrieve(self, name: str, *, workspace: str) -> SimpleNamespace:
+        return SimpleNamespace(name=name, workspace=workspace, host_url="http://nim.example.test:8000")
+
+
 class _SyncPlatform:
     def __init__(self) -> None:
         self.base_url = "http://test:8000"
@@ -94,6 +113,8 @@ class _SyncPlatform:
         self.default_headers = {"Authorization": "Bearer sync-platform-token"}
         self.timeout = httpx.Timeout(42.0)
         self._client = MagicMock(spec=httpx.Client)
+        self.models = _FakeModels()
+        self.inference = SimpleNamespace(providers=_FakeProviders())
 
 
 class _AsyncPlatform:
@@ -495,6 +516,62 @@ def test_sync_executor_runs_evaluator_job_locally(mocker: MockerFixture) -> None
     to_thread.assert_not_called()
 
 
+def test_sync_executor_submit_resolves_model_ref_target_before_building_job_spec() -> None:
+    """Durable submit resolves platform ModelRef targets before creating the evaluator job."""
+    platform = _SyncPlatform()
+    platform.models = _FakeModels()
+    platform.inference = SimpleNamespace(providers=_FakeProviders())
+    platform._client.post.return_value = httpx.Response(
+        201,
+        request=httpx.Request("POST", "http://test:8000/apis/evaluator/v2/workspaces/platform-ws/evaluate/jobs"),
+        json={"name": "job-123", "status": "created", "spec": _EXACT_MATCH_SPEC},
+    )
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+
+    job = executor.submit(
+        metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+        dataset=[{"expected": "a", "output": "a"}],
+        params=RunConfigOnlineModel(),
+        target=ModelRef(root="default/model-a"),
+        prompt_template="Answer: {{item.input}}",
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
+    )
+
+    assert job.name == "job-123"
+    assert platform.models.retrieved == [("default", "model-a")]
+    request_json = platform._client.post.call_args.kwargs["json"]
+    target = request_json["spec"]["target"]
+    assert target["name"] == "model-a"
+    assert target["url"] == "https://igw.example.test/v1/chat/completions"
+    assert target["host_url"] == "http://nim.example.test:8000"
+
+
+def test_sync_executor_submit_rejects_model_ref_target_without_online_model_params() -> None:
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, _SyncPlatform()))
+
+    with pytest.raises(TypeError, match="ModelRef target requires RunConfigOnlineModel"):
+        executor.submit(
+            metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            dataset=[{"expected": "a", "output": "a"}],
+            target=ModelRef(root="default/model-a"),
+            prompt_template="Answer: {{item.input}}",
+            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+        )
+
+
+def test_sync_executor_submit_rejects_model_target_without_online_model_params() -> None:
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, _SyncPlatform()))
+
+    with pytest.raises(TypeError, match="model target requires RunConfigOnlineModel"):
+        executor.submit(
+            metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            dataset=[{"expected": "a", "output": "a"}],
+            target=Model(url="https://model.test/v1", name="model-a"),
+            prompt_template="Answer: {{item.input}}",
+            metric_bundle_packager=CloudpickleMetricBundlePackager(),
+        )
+
+
 class TestEvaluatorSubmit:
     """Tests for ``Evaluator.submit`` request construction."""
 
@@ -529,6 +606,37 @@ class TestEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
+            metric_bundle_packager=packager,
+        )
+
+    def test_accepts_model_ref_target(self, mocker: MockerFixture) -> None:
+        """Submit should forward platform ModelRef targets to the plugin executor."""
+        platform = _SyncPlatform()
+        resource = Evaluator(cast(NeMoPlatform, platform))
+        expected_job = mocker.Mock(spec=EvaluatorJobResource)
+        submit = mocker.patch.object(resource._executor, "submit", return_value=expected_job)
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+        dataset = [{"expected": "a", "output": "a"}]
+        model_ref = ModelRef(root="default/model-a")
+        packager = CloudpickleMetricBundlePackager()
+
+        job = resource.submit(
+            metric=metric,
+            dataset=dataset,
+            config=RunConfigOnlineModel(),
+            target=model_ref,
+            prompt_template="Answer: {{item.input}}",
+            metric_bundle_packager=packager,
+        )
+
+        assert job is expected_job
+        submit.assert_called_once_with(
+            metric=metric,
+            dataset=dataset,
+            params=RunConfigOnlineModel(),
+            target=model_ref,
+            dataset_glob_pattern=None,
+            prompt_template="Answer: {{item.input}}",
             metric_bundle_packager=packager,
         )
 

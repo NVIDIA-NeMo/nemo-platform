@@ -13,7 +13,8 @@ from tempfile import TemporaryDirectory
 from typing import Any, AsyncIterator, Iterator, cast
 
 import httpx
-from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec, TargetSpec
+from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import (
@@ -27,11 +28,13 @@ from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBun
 from nemo_evaluator_sdk import Evaluator as SDKEvaluator
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
+from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
     DatasetInput,
     Model,
+    ModelRef,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
@@ -48,6 +51,7 @@ _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
 _ResolvedDataset = DatasetInput | str | Path
+SubmitTargetSpec = TargetSpec | ModelRef
 
 
 class MetricBundlePackagerPolicyError(RuntimeError):
@@ -61,6 +65,41 @@ def _require_metric_bundle_packager(metric_bundle_packager: MetricBundlePackager
             "Pass CloudpickleMetricBundlePackager() to opt in to cloudpickle metric bundles."
         )
     return metric_bundle_packager
+
+
+def _submit_params(
+    params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None,
+    target: SubmitTargetSpec | None,
+) -> RunConfig | RunConfigOnline | RunConfigOnlineModel:
+    if isinstance(target, ModelRef) and not isinstance(params, RunConfigOnlineModel):
+        raise TypeError("ModelRef target requires RunConfigOnlineModel")
+    if isinstance(target, Model) and not isinstance(params, RunConfigOnlineModel):
+        raise TypeError("model target requires RunConfigOnlineModel")
+    if isinstance(target, Agent) and not isinstance(params, RunConfigOnline):
+        raise TypeError("agent target requires RunConfigOnline")
+    if target is None:
+        return params or RunConfig()
+    if params is None:
+        raise TypeError("targeted evaluation requires params")
+    return params
+
+
+def _resolve_submit_target(
+    platform: NeMoPlatform,
+    target: SubmitTargetSpec | None,
+) -> Model | Agent | None:
+    if isinstance(target, ModelRef):
+        return run_sync(lambda: PlatformModelResolver(platform).resolve_model(target))
+    return target
+
+
+async def _resolve_submit_target_async(
+    platform: AsyncNeMoPlatform,
+    target: SubmitTargetSpec | None,
+) -> Model | Agent | None:
+    if isinstance(target, ModelRef):
+        return await PlatformModelResolver(platform).resolve_model(target)
+    return target
 
 
 def _dataset_config(request: EvaluationRequest) -> list[dict[str, Any]] | FilesetRef:
@@ -272,7 +311,7 @@ class _SyncEvaluatorPluginExecutor:
         metric: Metric,
         dataset: PluginDatasetInput,
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: SubmitTargetSpec | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
@@ -280,8 +319,8 @@ class _SyncEvaluatorPluginExecutor:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
             dataset=dataset,
-            params=normalize_params(params, target),
-            target=target,
+            params=_submit_params(params, target),
+            target=_resolve_submit_target(self._platform, target),
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
         )
@@ -391,7 +430,7 @@ class _AsyncEvaluatorPluginExecutor:
         metric: Metric,
         dataset: PluginDatasetInput,
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: SubmitTargetSpec | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
@@ -399,8 +438,8 @@ class _AsyncEvaluatorPluginExecutor:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
             dataset=dataset,
-            params=normalize_params(params, target),
-            target=target,
+            params=_submit_params(params, target),
+            target=await _resolve_submit_target_async(self._platform, target),
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
         )

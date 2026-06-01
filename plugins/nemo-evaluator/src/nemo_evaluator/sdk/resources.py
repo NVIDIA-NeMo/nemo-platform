@@ -10,6 +10,7 @@ from urllib.parse import quote
 
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
+    SubmitTargetSpec,
     _AsyncEvaluatorPluginExecutor,
     _SyncEvaluatorPluginExecutor,
 )
@@ -82,7 +83,7 @@ class Evaluator:
         metric: Metric,
         dataset: PluginDatasetInput,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: SubmitTargetSpec | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
@@ -194,7 +195,7 @@ class AsyncEvaluator:
         metric: Metric,
         dataset: PluginDatasetInput,
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
-        target: Model | Agent | None = None,
+        target: SubmitTargetSpec | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
