@@ -203,7 +203,7 @@ jobs:
             coverage.json
 
   # Build wheels for all packages × python versions. Downstream jobs
-  # (wheel-smoke-test, python-e2e-test) download these artifacts instead
+  # (wheel-test, python-e2e-test) download these artifacts instead
   # of rebuilding.
   wheel-build:
     name: ${{ matrix.package }} wheel build (py${{ matrix.python-version }})
@@ -245,10 +245,10 @@ jobs:
           retention-days: 7
           if-no-files-found: error
 
-  # Smoke-test each wheel: install from the artifact and run basic CLI /
+  # Test each wheel: install from the artifact and run basic CLI /
   # import checks.
-  wheel-smoke-test:
-    name: ${{ matrix.package }} wheel smoke test (py${{ matrix.python-version }})
+  wheel-test:
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
     needs: [wheel-build]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -357,7 +357,7 @@ jobs:
   # without admin intervention. Skipped counts as pass.
   wheel-test-aggregate:
     name: Wheel build + test
-    needs: [wheel-smoke-test]
+    needs: [wheel-test]
     if: always()
     runs-on: ubuntu-latest
     permissions:
@@ -366,16 +366,16 @@ jobs:
       - name: Check matrix result
         shell: bash
         env:
-          MATRIX_RESULT: ${{ needs.wheel-smoke-test.result }}
+          MATRIX_RESULT: ${{ needs.wheel-test.result }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
           case "${MATRIX_RESULT}" in
             success|skipped)
-              echo "wheel-smoke-test matrix: ${MATRIX_RESULT}"
+              echo "wheel-test matrix: ${MATRIX_RESULT}"
               ;;
             *)
-              echo "::error::wheel-smoke-test matrix concluded ${MATRIX_RESULT}"
+              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
               echo "::error::see per-row results: ${RUN_URL}"
               exit 1
               ;;
