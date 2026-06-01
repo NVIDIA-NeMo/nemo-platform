@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Deployment controller for self-hosted jailbreak-detection model servers.
@@ -100,6 +100,7 @@ class JailbreakDetectController(NemoController):
         config = _require(deployment)
         return DeploymentSpec(
             name=deployment.name,
+            workspace=deployment.workspace,
             image=config["image"],
             device=config["device"],
             port=config["port"],

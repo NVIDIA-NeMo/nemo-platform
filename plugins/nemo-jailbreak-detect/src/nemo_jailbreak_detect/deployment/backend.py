@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Deployment backends for the jailbreak-detection model server.
@@ -29,6 +29,7 @@ class DeploymentSpec:
     """Everything a backend needs to launch one model server."""
 
     name: str
+    workspace: str
     image: str
     device: str
     port: int
@@ -55,11 +56,15 @@ class DeploymentBackend(Protocol):
 
 async def _run(*args: str) -> tuple[int, str, str]:
     """Run a subprocess, returning (returncode, stdout, stderr)."""
-    proc = await asyncio.create_subprocess_exec(
-        *args,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
-    )
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *args,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+    except FileNotFoundError as exc:
+        # e.g. the `docker` binary is not installed on the controller host.
+        raise RuntimeError(f"Command not found: {args[0]!r}. Is it installed and on PATH?") from exc
     stdout, stderr = await proc.communicate()
     return proc.returncode or 0, stdout.decode().strip(), stderr.decode().strip()
 
@@ -80,18 +85,27 @@ class DockerBackend:
     """Manage the model server as a local Docker container via the docker CLI.
 
     Uses ``docker`` over the CLI (no docker-py dependency). Container names are
-    derived from the deployment name so operations are idempotent.
+    scoped by ``workspace`` + deployment name so operations are idempotent and
+    deployments in different workspaces don't collide.
+
+    The endpoint is resolved against ``host`` (default ``localhost``), which
+    assumes the controller shares the host's network namespace with the
+    container — true for local/dev runs, not for k8s. Cross-host/k8s deployment
+    is the job of :class:`JobsBackend`.
+
+    Note: each deployment must use a distinct host ``port``; a collision surfaces
+    as a loud ``docker run`` bind error that marks the deployment failed.
     """
 
     def __init__(self, host: str = "localhost") -> None:
         self._host = host
 
     @staticmethod
-    def _container_name(name: str) -> str:
-        return f"nemo-jailbreak-detect-{name}"
+    def _container_name(workspace: str, name: str) -> str:
+        return f"nemo-jailbreak-detect-{workspace}-{name}"
 
     async def ensure_started(self, spec: DeploymentSpec) -> DeploymentResult:
-        container = self._container_name(spec.name)
+        container = self._container_name(spec.workspace, spec.name)
         endpoint_url = f"http://{self._host}:{spec.port}"
 
         # Already running? Treat as success (idempotent reconcile).
@@ -158,7 +172,7 @@ class JobsBackend:
 
 
 def get_backend(kind: str) -> DeploymentBackend:
-    """Resolve a backend by kind. Defaults to docker for unknown values is NOT done — fail loud."""
+    """Resolve a backend by kind. Unknown kinds fail loudly rather than defaulting."""
     if kind == "docker":
         return DockerBackend()
     if kind == "jobs":

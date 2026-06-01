@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Decomposed NemoGuard JailbreakDetect model.
@@ -27,6 +27,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Any, cast
 
 import numpy as np
 
@@ -100,10 +101,12 @@ class JailbreakClassifier:
     def __call__(self, text: str) -> tuple[bool, float]:
         embedding = self.embed(text)
         features = np.asarray([embedding], dtype=np.float32)
-        result = self.classifier.run(None, {"X": features})
-        classification = result[0].item()
-        # result[1] is a list of per-class probability dicts; one element here.
-        prob = result[1][0][classification]
+        # onnxruntime types `run` as a broad union; the RF returns a label array
+        # plus a per-class probability mapping. Cast to keep type-checkers happy.
+        outputs = cast(list[Any], self.classifier.run(None, {"X": features}))
+        classification = int(np.asarray(outputs[0]).reshape(-1)[0])
+        # outputs[1] is a list of per-class probability dicts; one element here.
+        prob = float(outputs[1][0][classification])
         score = -prob if classification == 0 else prob
         return bool(classification), float(score)
 

@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Tests for the deployment backends (docker CLI mocked)."""
@@ -15,7 +15,12 @@ from nemo_jailbreak_detect.deployment.backend import (
 )
 
 _SPEC = DeploymentSpec(
-    name="jbd", image="nemo/jailbreak-detect:0.1.0", device="cpu", port=8123, model_cache_dir="/tmp/c"
+    name="jbd",
+    workspace="default",
+    image="nemo/jailbreak-detect:0.1.0",
+    device="cpu",
+    port=8123,
+    model_cache_dir="/tmp/c",
 )
 
 
@@ -49,6 +54,8 @@ async def test_docker_ensure_started_runs_container(monkeypatch):
     run_cmd = calls[-1]
     assert run_cmd[:3] == ["docker", "run", "-d"]
     assert "8123:8000" in run_cmd
+    # container name is scoped by workspace so deployments don't collide
+    assert "nemo-jailbreak-detect-default-jbd" in run_cmd
 
 
 async def test_docker_ensure_started_idempotent_when_running(monkeypatch):
@@ -63,7 +70,9 @@ async def test_docker_ensure_started_idempotent_when_running(monkeypatch):
 
 
 async def test_docker_ensure_started_gpu_flags(monkeypatch):
-    gpu_spec = DeploymentSpec(name="jbd", image="img", device="cuda:0", port=9000, model_cache_dir="/tmp/c")
+    gpu_spec = DeploymentSpec(
+        name="jbd", workspace="default", image="img", device="cuda:0", port=9000, model_cache_dir="/tmp/c"
+    )
     run, calls = _fake_run([(0, "", ""), (0, "", ""), (0, "gpuid", "")])
     monkeypatch.setattr(backend_mod, "_run", run)
 

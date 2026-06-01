@@ -1,5 +1,5 @@
 <!--
-  SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+  SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
   SPDX-License-Identifier: Apache-2.0
 -->
 
@@ -74,14 +74,17 @@ rails:
       - jailbreak detection model
   config:
     jailbreak_detection:
-      nim_base_url: "http://<endpoint_url>"
+      # endpoint_url already includes the scheme, e.g. http://localhost:8000
+      nim_base_url: "<endpoint_url>"
       nim_server_endpoint: "/v1/classify"
 ```
 
 ## Backends
 
-- **`docker`** (default): the controller manages a local container via the `docker` CLI — parity with the NIM tutorial.
+- **`docker`** (default): the controller manages a local container via the `docker` CLI — parity with the NIM tutorial. The endpoint is resolved as `http://localhost:<port>`, so this backend assumes the controller and container share a host (local/dev). Each deployment needs a **distinct host port**; a collision surfaces as a `docker run` bind error that marks the deployment `failed`.
 - **`jobs`**: stubbed seam in `deployment/backend.py` for a production path on the platform Jobs/Executor system (k8s/slurm). Entities and the controller are already backend-agnostic.
+
+Deleting a deployment marks it `stopping`; the controller stops the backend and removes the entity on its next cycle. If the controller is not running, the entity stays in `stopping` until it is.
 
 ## Tests
 

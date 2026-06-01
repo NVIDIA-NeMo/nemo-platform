@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 """Unit tests for the decomposed classifier scoring logic (no torch/onnx needed)."""
@@ -15,21 +15,18 @@ class _FakeEmbed:
 
 
 class _FakeOnnx:
-    """Mimics onnxruntime InferenceSession.run output shape."""
+    """Mimics onnxruntime InferenceSession.run output shape.
+
+    Real onnxruntime returns ``[label_ndarray, [per_class_prob_dict, ...]]`` for
+    this RF, so the fake returns an ndarray label to stay faithful.
+    """
 
     def __init__(self, label: int, probs: dict[int, float]) -> None:
         self._label = label
         self._probs = probs
 
     def run(self, _outputs, _inputs):
-        class _Scalar:
-            def __init__(self, v: int) -> None:
-                self._v = v
-
-            def item(self) -> int:
-                return self._v
-
-        return [_Scalar(self._label), [self._probs]]
+        return [np.array([self._label]), [self._probs]]
 
 
 def _make_classifier(label: int, probs: dict[int, float]) -> JailbreakClassifier:
