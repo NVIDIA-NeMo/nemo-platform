@@ -13,7 +13,6 @@ import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 from nmp.studio import coding_agents
-from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
 
@@ -31,12 +30,8 @@ def reset_coding_agent_state():
 
 @pytest.fixture
 def service_client() -> TestClient:
-    service = StudioService().with_config(coding_agents_enabled_config())
+    service = StudioService()
     return TestClient(service.app)
-
-
-def coding_agents_enabled_config() -> StudioConfig:
-    return StudioConfig(feature_flags={"coding_agent_studio_enabled": True})
 
 
 def test_create_session_returns_uuid(service_client: TestClient):
@@ -271,7 +266,7 @@ async def test_resolve_permission_sets_result_for_owning_session():
 
 
 def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.MonkeyPatch):
-    service = StudioService().with_config(coding_agents_enabled_config())
+    service = StudioService()
     app = FastAPI()
     app.include_router(service.app.router, prefix="/apis/studio")
     service.configure_app(app)
@@ -302,7 +297,7 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
 
 
 def test_public_mcp_route_is_mounted_before_static_fallback():
-    service = StudioService().with_config(coding_agents_enabled_config())
+    service = StudioService()
     app = FastAPI()
     service.configure_app(app)
     client = TestClient(app)
@@ -317,9 +312,10 @@ def test_public_mcp_route_is_mounted_before_static_fallback():
     assert response.json()["result"]["tools"][0]["name"] == "approval_prompt"
 
 
-def test_coding_agent_routes_are_disabled_by_default():
+def test_coding_agent_routes_are_available_by_default():
     client = TestClient(StudioService().app)
 
     response = client.post("/v2/coding-agents/sessions")
 
-    assert response.status_code == 404
+    assert response.status_code == 200
+    uuid.UUID(response.json()["session_id"])

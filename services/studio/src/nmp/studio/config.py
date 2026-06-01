@@ -48,13 +48,13 @@ class StudioOtelConfig(BaseModel):
 
 
 class StudioFeatureFlagsConfig(BaseModel):
-    """Feature flags that affect Studio service behavior."""
+    """Feature flags injected into the Studio UI."""
 
     model_config = ConfigDict(extra="allow")
 
     coding_agent_studio_enabled: bool = Field(
         default=False,
-        description="Enable Studio's local coding-agent backend bridge.",
+        description="Show Studio's local coding-agent UI.",
     )
 
 

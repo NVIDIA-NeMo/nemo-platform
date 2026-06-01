@@ -73,8 +73,6 @@ class StudioService(Service[StudioConfig]):
         Studio exposes API routes for local-only UI integrations in addition to
         serving static files.
         """
-        if not self._coding_agents_enabled():
-            return []
         return [
             RouterConfig(
                 coding_agents.router,
@@ -93,13 +91,8 @@ class StudioService(Service[StudioConfig]):
             app: The platform's FastAPI application
         """
         self._mount_telemetry_proxy(app)
-        if self._coding_agents_enabled():
-            self._mount_coding_agent_mcp(app)
+        self._mount_coding_agent_mcp(app)
         self._mount_static_files(app)
-
-    def _coding_agents_enabled(self) -> bool:
-        """Return whether the exploratory local coding-agent bridge is enabled."""
-        return self._get_config().feature_flags.coding_agent_studio_enabled
 
     def _mount_coding_agent_mcp(self, app: FastAPI) -> None:
         """Mount the auth-bypassed MCP callback before the /studio static app."""

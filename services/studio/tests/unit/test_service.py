@@ -51,15 +51,9 @@ class TestStudioService:
         service = StudioService()
         assert service.description == "Serves the NeMo Studio web application and local coding-agent bridge"
 
-    def test_get_routers_returns_empty_list_by_default(self):
-        """Test that exploratory coding-agent routes are disabled by default."""
+    def test_get_routers_returns_coding_agent_router(self):
+        """Test that the service exposes the local coding-agent API router."""
         service = StudioService()
-        routers = service.get_routers()
-        assert routers == []
-
-    def test_get_routers_returns_coding_agent_router_when_enabled(self):
-        """Test that the service exposes the local coding-agent API router when enabled."""
-        service = StudioService().with_config(StudioConfig(feature_flags={"coding_agent_studio_enabled": True}))
         routers = service.get_routers()
         assert len(routers) == 1
         assert routers[0].tag == "Studio Coding Agents"
