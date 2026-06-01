@@ -5,16 +5,23 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Sequence
-from typing import cast
+from typing import Literal, cast
 
 import pytest
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
+    MetricBundlePackager,
+    MetricBundlePayload,
     MetricBundlingError,
     bundle_metric,
+    register_metric_bundle_kind,
     unbundle_metric,
 )
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload, CloudpickleMetricPayloadBundler
+from nemo_evaluator.shared.metric_bundles.cloudpickle import (
+    MAX_CLOUDPICKLE_PAYLOAD_BYTES,
+    CloudpickleMetricBundlePackager,
+    CloudpickleMetricPayload,
+)
 from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.bleu import BLEUMetric
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -65,6 +72,36 @@ class _CustomMetric:
 
 class _NotMetric:
     pass
+
+
+class _TestPayload(MetricBundlePayload):
+    @property
+    def kind(self) -> Literal["test-cloudpickle-registration"]:
+        return "test-cloudpickle-registration"
+
+    @property
+    def digest(self) -> str:
+        return "test-digest"
+
+
+class _ConflictingPayload(MetricBundlePayload):
+    @property
+    def kind(self) -> Literal["test-cloudpickle-registration"]:
+        return "test-cloudpickle-registration"
+
+    @property
+    def digest(self) -> str:
+        return "test-conflicting-digest"
+
+
+class _TestPackager(MetricBundlePackager):
+    def package(self, metric: Metric) -> MetricBundlePayload:
+        del metric
+        return _TestPayload()
+
+    def load(self, payload: MetricBundlePayload) -> Metric:
+        del payload
+        return _CustomMetric()
 
 
 class _EmptyTypeMetric(_CustomMetric):
@@ -150,11 +187,11 @@ def _builtin_metric_cases() -> Sequence[tuple[str, Metric]]:
     ]
 
 
-def test_cloudpickle_bundler_round_trips_builtin_metric() -> None:
+def test_cloudpickle_packager_round_trips_builtin_metric() -> None:
     metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
-    bundler = CloudpickleMetricPayloadBundler()
+    packager = CloudpickleMetricBundlePackager()
 
-    bundle = bundle_metric(metric, bundler)
+    bundle = bundle_metric(metric, packager)
     hydrated = unbundle_metric(bundle)
 
     assert bundle.metric_type == "exact-match"
@@ -165,10 +202,10 @@ def test_cloudpickle_bundler_round_trips_builtin_metric() -> None:
 @pytest.mark.parametrize(
     ("case_name", "metric"), _builtin_metric_cases(), ids=[case[0] for case in _builtin_metric_cases()]
 )
-def test_cloudpickle_bundler_round_trips_every_builtin_metric(case_name: str, metric: Metric) -> None:
-    bundler = CloudpickleMetricPayloadBundler()
+def test_cloudpickle_packager_round_trips_every_builtin_metric(case_name: str, metric: Metric) -> None:
+    packager = CloudpickleMetricBundlePackager()
 
-    bundle = bundle_metric(metric, bundler)
+    bundle = bundle_metric(metric, packager)
     restored = MetricBundle.model_validate_json(bundle.model_dump_json())
     hydrated = unbundle_metric(restored)
 
@@ -178,10 +215,10 @@ def test_cloudpickle_bundler_round_trips_every_builtin_metric(case_name: str, me
     assert type(hydrated) is type(metric), case_name
 
 
-def test_cloudpickle_bundler_round_trips_custom_protocol_metric() -> None:
-    bundler = CloudpickleMetricPayloadBundler()
+def test_cloudpickle_packager_round_trips_custom_protocol_metric() -> None:
+    packager = CloudpickleMetricBundlePackager()
 
-    bundle = bundle_metric(_CustomMetric(), bundler)
+    bundle = bundle_metric(_CustomMetric(), packager)
     serialized = bundle.model_dump_json()
     restored = MetricBundle.model_validate_json(serialized)
     hydrated = unbundle_metric(restored)
@@ -194,7 +231,7 @@ def test_cloudpickle_bundler_round_trips_custom_protocol_metric() -> None:
     assert isinstance(hydrated, _CustomMetric)
 
 
-def test_cloudpickle_bundler_captures_metric_secrets() -> None:
+def test_cloudpickle_packager_captures_metric_secrets() -> None:
     metric = LLMJudgeMetric(
         model=Model(
             url="https://judge.example.test/v1/chat/completions",
@@ -212,14 +249,14 @@ def test_cloudpickle_bundler_captures_metric_secrets() -> None:
         ],
     )
 
-    bundle = bundle_metric(metric, CloudpickleMetricPayloadBundler())
+    bundle = bundle_metric(metric, CloudpickleMetricBundlePackager())
     restored = MetricBundle.model_validate_json(bundle.model_dump_json())
 
     assert restored.secrets == {"judge_secret": SecretRef(root="judge-secret")}
 
 
-def test_cloudpickle_bundler_captures_digest_and_payload_metadata() -> None:
-    bundle = bundle_metric(_CustomMetric(), CloudpickleMetricPayloadBundler())
+def test_cloudpickle_packager_captures_digest_and_payload_metadata() -> None:
+    bundle = bundle_metric(_CustomMetric(), CloudpickleMetricBundlePackager())
     payload = CloudpickleMetricPayload.model_validate(bundle.payload)
     serialized_payload = cast(dict[str, object], bundle.model_dump(mode="json")["payload"])
 
@@ -233,20 +270,67 @@ def test_cloudpickle_bundler_captures_digest_and_payload_metadata() -> None:
     assert bundle.outputs[0].value_json_schema["title"] == "ContinuousScore"
 
 
-def test_cloudpickle_bundler_rejects_non_metric_object() -> None:
+def test_cloudpickle_packager_rejects_oversized_payload() -> None:
+    oversized_blob = b"x" * (MAX_CLOUDPICKLE_PAYLOAD_BYTES + 1)
+
+    with pytest.raises(MetricBundlingError, match="maximum allowed"):
+        CloudpickleMetricPayload.from_blob(oversized_blob)
+
+
+def test_cloudpickle_packager_rejects_python_version_mismatch() -> None:
+    bundle = bundle_metric(_CustomMetric(), CloudpickleMetricBundlePackager())
+    payload = CloudpickleMetricPayload.model_validate(bundle.payload)
+    incompatible_payload = payload.model_copy(update={"python_version": "0.0.0"})
+    incompatible_bundle = bundle.model_copy(update={"payload": incompatible_payload})
+
+    with pytest.raises(MetricBundlingError, match="created with Python 0.0.0"):
+        unbundle_metric(incompatible_bundle)
+
+
+def test_unbundle_metric_rejects_output_contract_mismatch() -> None:
+    bundle = bundle_metric(_CustomMetric(), CloudpickleMetricBundlePackager())
+    incompatible_bundle = bundle.model_copy(
+        update={"outputs": [bundle.outputs[0].model_copy(update={"description": "changed"})]}
+    )
+
+    with pytest.raises(MetricBundlingError, match="output spec"):
+        unbundle_metric(incompatible_bundle)
+
+
+def test_register_metric_bundle_kind_rejects_conflicting_registration() -> None:
+    register_metric_bundle_kind(
+        "test-cloudpickle-registration",
+        payload_type=_TestPayload,
+        packager_factory=_TestPackager,
+    )
+    register_metric_bundle_kind(
+        "test-cloudpickle-registration",
+        payload_type=_TestPayload,
+        packager_factory=_TestPackager,
+    )
+
+    with pytest.raises(ValueError, match="already registered"):
+        register_metric_bundle_kind(
+            "test-cloudpickle-registration",
+            payload_type=_ConflictingPayload,
+            packager_factory=_TestPackager,
+        )
+
+
+def test_cloudpickle_packager_rejects_non_metric_object() -> None:
     with pytest.raises(MetricBundlingError, match="Metric protocol"):
-        bundle_metric(cast(Metric, _NotMetric()), CloudpickleMetricPayloadBundler())
+        bundle_metric(cast(Metric, _NotMetric()), CloudpickleMetricBundlePackager())
 
 
-def test_cloudpickle_bundler_rejects_empty_metric_type() -> None:
+def test_cloudpickle_packager_rejects_empty_metric_type() -> None:
     with pytest.raises(MetricBundlingError, match="metric type must not be empty"):
-        bundle_metric(_EmptyTypeMetric(), CloudpickleMetricPayloadBundler())
+        bundle_metric(_EmptyTypeMetric(), CloudpickleMetricBundlePackager())
 
 
-def test_cloudpickle_bundler_hydrates_from_payload_without_bundle_envelope() -> None:
-    bundler = CloudpickleMetricPayloadBundler()
-    bundle = bundle_metric(_CustomMetric(), bundler)
+def test_cloudpickle_packager_hydrates_from_payload_without_bundle_envelope() -> None:
+    packager = CloudpickleMetricBundlePackager()
+    bundle = bundle_metric(_CustomMetric(), packager)
 
-    hydrated = bundler.unbundle(bundle.payload)
+    hydrated = packager.load(bundle.payload)
 
     assert isinstance(hydrated, _CustomMetric)

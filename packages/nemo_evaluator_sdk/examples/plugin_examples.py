@@ -15,6 +15,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any, cast
 
+from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk.resources import AsyncEvaluator
 from nemo_evaluator.sdk.resources import Evaluator as SyncEvaluator
 from nemo_evaluator.sdk.types import (
@@ -23,10 +24,12 @@ from nemo_evaluator.sdk.types import (
     RunConfig,
     RunConfigOnlineModel,
 )
+from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.enums import MetricType
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
-from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import (
     InferenceParams,
     JSONScoreParser,
@@ -72,6 +75,23 @@ model = Model(
     # Local evaluator and local plugin execution resolve this as an environment variable name.
     api_key_secret=SecretRef(root=DEFAULT_API_KEY_SECRET),
 )
+
+
+class CustomResponseLengthMetric:
+    """Tiny custom metric used to demonstrate code-generated metric bundles."""
+
+    type = "custom-response-length"
+    description = "Scores each row by response length."
+    labels = {"source": "plugin-example"}
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return the metric outputs recorded in the bundle metadata."""
+        return [MetricOutputSpec.continuous_score("response-length")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        """Score one row with a deterministic custom Python implementation."""
+        response = str(input.row.data.get("response", ""))
+        return MetricResult(outputs=[MetricOutput(name="response-length", value=float(len(response)))])
 
 
 def configure_example_logging() -> None:
@@ -306,6 +326,26 @@ def _online_exact_match_metric() -> ExactMatchMetric:
     return ExactMatchMetric(type=MetricType.EXACT_MATCH, reference="{{item.response}}")
 
 
+def build_custom_metric_submit_spec_example() -> dict[str, Any]:
+    """Return the generated job spec for remote custom metric submission.
+
+    The cloudpickle payload contains base64-encoded Python bytes. It is not a
+    field users should hand-author; generate it from the metric object with a
+    metric payload packager, or pass the packager to ``submit``.
+    """
+    metric = CustomResponseLengthMetric()
+    spec = EvaluateSpec.model_validate(
+        {
+            "metrics": [
+                bundle_metric(metric, CloudpickleMetricBundlePackager()).model_dump(mode="json"),
+            ],
+            "dataset": [{"response": "Paris is the capital of France."}],
+            "params": RunConfig(limit_samples=1).model_dump(mode="json"),
+        }
+    )
+    return spec.model_dump(mode="json")
+
+
 def _assert_exact_match_result(result: EvaluationResult, *, workflow: str, expected_rows: int) -> None:
     """Assert the deterministic offline exact-match examples scored every selected row."""
     if len(result.row_scores) != expected_rows:
@@ -345,6 +385,7 @@ async def _evaluate_metric(
         metric=metric,
         dataset=dataset,
         config=config,
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         **run_kwargs,
     )
     print(f"Submitted evaluator plugin job: {job.name}")
@@ -506,6 +547,7 @@ def run_nmp_online_metric_example_sync_client(
                 metric=metric,
                 dataset=dataset,
                 config=config,
+                metric_bundle_packager=CloudpickleMetricBundlePackager(),
                 **run_kwargs,
             )
             print(f"Submitted evaluator plugin job: {job.name}")

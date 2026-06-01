@@ -17,24 +17,18 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.constants import (
     DEFAULT_JOB_STORAGE_PATH,
-    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
 from nmp.common.jobs.image import get_qualified_image
-from nmp.evaluator.app.values import FilesetRef
 
-DATASET_DOWNLOAD_STEP_NAME = "dataset-download"
 EVALUATE_STEP_NAME = "evaluate"
+_RESERVED_SECRET_ENV_NAMES = frozenset({PERSISTENT_JOB_STORAGE_PATH_ENVVAR})
 
 
 def compile_evaluate_job(spec: EvaluateSpec, *, profile: str | None = None) -> PlatformJobSpec:
     """Compile a bundle-native evaluator plugin job."""
     _validate_evaluate_spec(spec)
-    steps: list[PlatformJobStep] = []
-    if isinstance(spec.dataset, FilesetRef):
-        steps.append(_fileset_download_step(spec.dataset))
-    steps.append(_evaluate_step(spec, profile))
-    return PlatformJobSpec(steps=steps)
+    return PlatformJobSpec(steps=[_evaluate_step(spec, profile)])
 
 
 def _validate_evaluate_spec(spec: EvaluateSpec) -> None:
@@ -52,36 +46,9 @@ def _validate_evaluate_spec(spec: EvaluateSpec) -> None:
         raise TypeError("offline evaluation requires RunConfig")
 
 
-def _fileset_download_step(dataset: FilesetRef) -> PlatformJobStep:
-    scratch_path = "${" + EPHEMERAL_TASK_STORAGE_PATH_ENVVAR + "}"
-    target_download_dir = "${" + PERSISTENT_JOB_STORAGE_PATH_ENVVAR + "}/datasets"
-    return PlatformJobStep(
-        name=DATASET_DOWNLOAD_STEP_NAME,
-        executor=CPUExecutionProviderSpec(
-            provider="cpu",
-            container=ContainerSpec(
-                image=get_qualified_image("nmp-cpu-tasks"),
-                entrypoint=["python", "-m", "nmp.evaluator.tasks.download_fileset"],
-                command=[
-                    "--local-dir",
-                    scratch_path,
-                    "--target-dir",
-                    target_download_dir,
-                    "--dataset",
-                    dataset.model_dump_json(),
-                ],
-            ),
-        ),
-        environment=[
-            EnvironmentVariable(
-                name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-                value=DEFAULT_JOB_STORAGE_PATH,
-            )
-        ],
-    )
-
-
 def _add_secret_ref(secret_refs: dict[str, str], env_name: str, secret_name: str) -> None:
+    if env_name in _RESERVED_SECRET_ENV_NAMES:
+        raise ValueError(f"{env_name!r} is reserved and cannot be sourced from secret refs")
     existing = secret_refs.get(env_name)
     if existing is not None and existing != secret_name:
         raise ValueError(f"conflicting secret references for environment variable {env_name!r}")

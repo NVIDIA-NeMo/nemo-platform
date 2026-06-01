@@ -23,7 +23,7 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
-from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricPayloadBundler, bundle_metric
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundlePackager, bundle_metric
 from nemo_evaluator_sdk import Evaluator as SDKEvaluator
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
@@ -50,17 +50,17 @@ _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 _ResolvedDataset = DatasetInput | str | Path
 
 
-class MetricPayloadBundlerPolicyError(RuntimeError):
-    """Raised when plugin backend metric bundling is not configured."""
+class MetricBundlePackagerPolicyError(RuntimeError):
+    """Raised when plugin backend metric packaging is not configured."""
 
 
-def _require_metric_payload_bundler(metric_payload_bundler: MetricPayloadBundler | None) -> MetricPayloadBundler:
-    if metric_payload_bundler is None:
-        raise MetricPayloadBundlerPolicyError(
-            "Bundling runtime metrics for evaluator plugin submission requires an explicit metric_payload_bundler. "
-            "Pass CloudpickleMetricPayloadBundler() to opt in to cloudpickle metric bundles."
+def _require_metric_bundle_packager(metric_bundle_packager: MetricBundlePackager | None) -> MetricBundlePackager:
+    if metric_bundle_packager is None:
+        raise MetricBundlePackagerPolicyError(
+            "Packaging runtime metrics for evaluator plugin submission requires an explicit metric_bundle_packager. "
+            "Pass CloudpickleMetricBundlePackager() to opt in to cloudpickle metric bundles."
         )
-    return metric_payload_bundler
+    return metric_bundle_packager
 
 
 def _dataset_config(request: EvaluationRequest) -> list[dict[str, Any]] | FilesetRef:
@@ -128,12 +128,12 @@ def _build_evaluate_spec(
     *,
     metrics: Metric | Sequence[Metric],
     request: EvaluationRequest,
-    metric_payload_bundler: MetricPayloadBundler | None = None,
+    metric_bundle_packager: MetricBundlePackager | None = None,
 ) -> EvaluateSpec:
     """Build the evaluator plugin spec shared by local and remote execution."""
-    effective_bundler = _require_metric_payload_bundler(metric_payload_bundler)
+    effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
     spec = {
-        "metrics": bundle_metrics_for_spec(metrics, metric_payload_bundler=effective_bundler),
+        "metrics": bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager),
         "dataset": _dataset_config(request),
         "params": request.params.model_dump(mode="json") if request.params else None,
     }
@@ -215,13 +215,13 @@ class _SyncEvaluatorPluginExecutor:
         *,
         metric: Metric,
         request: EvaluationRequest,
-        metric_payload_bundler: MetricPayloadBundler | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluationResult:
         """Submit, poll, and download a remote evaluator plugin metric job."""
         spec = _build_evaluate_spec(
             metrics=metric,
             request=request,
-            metric_payload_bundler=metric_payload_bundler,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
         job = self.create(
@@ -275,7 +275,7 @@ class _SyncEvaluatorPluginExecutor:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
-        metric_payload_bundler: MetricPayloadBundler | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
@@ -288,7 +288,7 @@ class _SyncEvaluatorPluginExecutor:
         spec = _build_evaluate_spec(
             metrics=metric,
             request=request,
-            metric_payload_bundler=metric_payload_bundler,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
         job = self.create(
@@ -394,7 +394,7 @@ class _AsyncEvaluatorPluginExecutor:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
-        metric_payload_bundler: MetricPayloadBundler | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
@@ -407,7 +407,7 @@ class _AsyncEvaluatorPluginExecutor:
         spec = _build_evaluate_spec(
             metrics=metric,
             request=request,
-            metric_payload_bundler=metric_payload_bundler,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
         job = await self.create(
@@ -421,13 +421,13 @@ class _AsyncEvaluatorPluginExecutor:
         *,
         metric: Metric,
         request: EvaluationRequest,
-        metric_payload_bundler: MetricPayloadBundler | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluationResult:
         """Submit, poll, and download a remote evaluator plugin metric job."""
         spec = _build_evaluate_spec(
             metrics=metric,
             request=request,
-            metric_payload_bundler=metric_payload_bundler,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
         job = await self.create(
@@ -492,10 +492,10 @@ class _AsyncEvaluatorPluginExecutor:
 
 
 def bundle_metrics_for_spec(
-    metrics: Metric | Sequence[Metric], *, metric_payload_bundler: MetricPayloadBundler
+    metrics: Metric | Sequence[Metric], *, metric_bundle_packager: MetricBundlePackager
 ) -> list[MetricBundle]:
-    """Bundle one metric or a benchmark metric sequence for an evaluator plugin spec."""
+    """Package one metric or a benchmark metric sequence for an evaluator plugin spec."""
     if isinstance(metrics, Sequence) and not isinstance(metrics, (str, bytes)):
         metric_sequence = cast(Sequence[Metric], metrics)
-        return [bundle_metric(metric, metric_payload_bundler) for metric in metric_sequence]
-    return [bundle_metric(cast(Metric, metrics), metric_payload_bundler)]
+        return [bundle_metric(metric, metric_bundle_packager) for metric in metric_sequence]
+    return [bundle_metric(cast(Metric, metrics), metric_bundle_packager)]

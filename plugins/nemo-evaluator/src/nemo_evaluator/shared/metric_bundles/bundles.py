@@ -68,7 +68,7 @@ class MetricBundlePayload(BaseModel, ABC):
     @property
     @abstractmethod
     def kind(self) -> str:
-        """Payload discriminator used to select the bundler implementation."""
+        """Payload discriminator used to select the packager implementation."""
         ...
 
     @property
@@ -78,14 +78,14 @@ class MetricBundlePayload(BaseModel, ABC):
         ...
 
 
-class MetricPayloadBundler(Protocol):
-    """Interface for metric bundle payload implementations."""
+class MetricBundlePackager(Protocol):
+    """Strategy for packaging a runtime metric into a bundle payload and loading it later."""
 
-    def bundle(self, metric: Metric) -> MetricBundlePayload:
-        """Serialize a runtime metric object to a format-specific payload."""
+    def package(self, metric: Metric) -> MetricBundlePayload:
+        """Package a runtime metric object into a format-specific payload."""
         ...
 
-    def unbundle(self, payload: MetricBundlePayload) -> Metric:
+    def load(self, payload: MetricBundlePayload) -> Metric:
         """Hydrate an executable metric from a bundle payload."""
         ...
 
@@ -93,7 +93,7 @@ class MetricPayloadBundler(Protocol):
 @dataclass(frozen=True)
 class _MetricBundleRegistration:
     payload_type: type[MetricBundlePayload]
-    payload_bundler_factory: Callable[[], MetricPayloadBundler]
+    packager_factory: Callable[[], MetricBundlePackager]
 
 
 _BUNDLE_REGISTRY: dict[str, _MetricBundleRegistration] = {}
@@ -110,15 +110,21 @@ def register_metric_bundle_kind(
     kind: str,
     *,
     payload_type: type[MetricBundlePayload],
-    payload_bundler_factory: Callable[[], MetricPayloadBundler],
+    packager_factory: Callable[[], MetricBundlePackager],
 ) -> None:
-    """Register the payload model and payload bundler factory for a bundle kind."""
+    """Register the payload model and packager factory for a bundle kind."""
     if not kind:
         raise ValueError("metric bundle payload kind must not be empty")
-    _BUNDLE_REGISTRY[kind] = _MetricBundleRegistration(
+    registration = _MetricBundleRegistration(
         payload_type=payload_type,
-        payload_bundler_factory=payload_bundler_factory,
+        packager_factory=packager_factory,
     )
+    existing = _BUNDLE_REGISTRY.get(kind)
+    if existing is not None:
+        if existing == registration:
+            return
+        raise ValueError(f"metric bundle payload kind already registered: {kind}")
+    _BUNDLE_REGISTRY[kind] = registration
 
 
 class MetricBundle(BaseModel):
@@ -168,20 +174,20 @@ class MetricBundle(BaseModel):
         return self
 
 
-def metric_payload_bundler_for_payload(payload: MetricBundlePayload) -> MetricPayloadBundler:
-    """Create the payload bundler registered for a metric bundle payload."""
+def metric_bundle_packager_for_payload(payload: MetricBundlePayload) -> MetricBundlePackager:
+    """Create the packager registered for a metric bundle payload."""
     kind = _payload_kind(payload)
     registration = _BUNDLE_REGISTRY.get(kind)
     if registration is None:
         raise MetricBundlingError(f"unsupported metric bundle payload kind: {kind}")
-    return registration.payload_bundler_factory()
+    return registration.packager_factory()
 
 
-def bundle_metric(metric: Metric, bundler: MetricPayloadBundler) -> MetricBundle:
+def bundle_metric(metric: Metric, packager: MetricBundlePackager) -> MetricBundle:
     """Build a standard metric bundle envelope around a format-specific payload."""
     if not isinstance(metric, Metric):
         raise MetricBundlingError("object does not satisfy the Metric protocol")
-    payload = bundler.bundle(metric)
+    payload = packager.package(metric)
     return MetricBundle(
         metric_type=validate_metric_type(metric),
         metadata=metric_metadata(metric),
@@ -193,8 +199,8 @@ def bundle_metric(metric: Metric, bundler: MetricPayloadBundler) -> MetricBundle
 
 def unbundle_metric(bundle: MetricBundle) -> Metric:
     """Hydrate a runtime metric from a standard metric bundle envelope."""
-    payload_bundler = metric_payload_bundler_for_payload(bundle.payload)
-    hydrated_metric = payload_bundler.unbundle(bundle.payload)
+    packager = metric_bundle_packager_for_payload(bundle.payload)
+    hydrated_metric = packager.load(bundle.payload)
     _validate_metric_matches_bundle(hydrated_metric, bundle)
     return hydrated_metric
 
@@ -204,9 +210,8 @@ def _validate_metric_matches_bundle(metric: object, bundle: MetricBundle) -> Non
     if not isinstance(metric, Metric):
         raise MetricBundlingError("unbundled object does not satisfy the Metric protocol")
 
-    output_names = [output.name for output in metric.output_spec()]
-    bundled_output_names = [output.name for output in bundle.outputs]
-    if output_names != bundled_output_names:
+    hydrated_outputs = [BundledMetricOutputSpec.from_output_spec(output) for output in metric.output_spec()]
+    if hydrated_outputs != bundle.outputs:
         raise MetricBundlingError("unbundled metric output spec does not match bundle metadata")
     if validate_metric_type(metric) != bundle.metric_type:
         raise MetricBundlingError("unbundled metric type does not match bundle metadata")

@@ -24,13 +24,13 @@ from nemo_evaluator.jobs.evaluate import (
 from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
+    MetricBundlePackager,
     MetricBundlePayload,
-    MetricPayloadBundler,
     bundle_metric,
     register_metric_bundle_kind,
     unbundle_metric,
 )
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayloadBundler
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -53,6 +53,7 @@ from nemo_platform.types.jobs.platform_job_spec import PlatformJobSpec
 from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
+from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel, ConfigDict
@@ -74,7 +75,7 @@ def _exact_match_spec() -> dict:
 
 
 def _bundle_payload(metric) -> dict[str, Any]:
-    return bundle_metric(metric, CloudpickleMetricPayloadBundler()).model_dump(mode="json")
+    return bundle_metric(metric, CloudpickleMetricBundlePackager()).model_dump(mode="json")
 
 
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
@@ -167,12 +168,12 @@ class _StrictMetricPayload(MetricBundlePayload):
         return "test-strict-digest"
 
 
-class _StaticMetricPayloadBundler(MetricPayloadBundler):
-    def bundle(self, metric: Metric) -> MetricBundlePayload:
+class _StaticMetricBundlePackager(MetricBundlePackager):
+    def package(self, metric: Metric) -> MetricBundlePayload:
         del metric
         return _StaticMetricPayload()
 
-    def unbundle(self, payload: MetricBundlePayload) -> Metric:
+    def load(self, payload: MetricBundlePayload) -> Metric:
         del payload
         return _StaticMetric("test-static")
 
@@ -180,12 +181,12 @@ class _StaticMetricPayloadBundler(MetricPayloadBundler):
 register_metric_bundle_kind(
     "test-static",
     payload_type=_StaticMetricPayload,
-    payload_bundler_factory=_StaticMetricPayloadBundler,
+    packager_factory=_StaticMetricBundlePackager,
 )
 register_metric_bundle_kind(
     "test-strict",
     payload_type=_StrictMetricPayload,
-    payload_bundler_factory=_StaticMetricPayloadBundler,
+    packager_factory=_StaticMetricBundlePackager,
 )
 
 
@@ -292,12 +293,12 @@ def test_parse_required_workspace_name_rejects_extra_separator() -> None:
 
 
 def test_evaluate_job_hydrates_mixed_bundle_kinds_by_payload_kind() -> None:
-    """Execution-side hydration dispatches per bundle instead of assuming one bundler."""
+    """Execution-side hydration dispatches per bundle instead of assuming one packager."""
     cloudpickle_bundle = bundle_metric(
         ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-        CloudpickleMetricPayloadBundler(),
+        CloudpickleMetricBundlePackager(),
     )
-    static_bundle = bundle_metric(_StaticMetric("test-static"), _StaticMetricPayloadBundler())
+    static_bundle = bundle_metric(_StaticMetric("test-static"), _StaticMetricBundlePackager())
 
     metrics = EvaluateJob._hydrate_metrics([cloudpickle_bundle, static_bundle])
 
@@ -493,6 +494,34 @@ async def test_evaluate_job_compile_injects_metric_and_target_secrets() -> None:
     step = PlatformJobSpec.model_validate(compiled).steps[0]
     secrets = {env.name: env.from_secret.name for env in step.environment or [] if env.from_secret}
     assert secrets == {"NVIDIA_BUILD_API_KEY": "NVIDIA_BUILD_API_KEY"}
+
+
+async def test_evaluate_job_compile_rejects_secret_reserved_env_names() -> None:
+    metric = LLMJudgeMetric(
+        model=Model(
+            url="https://integrate.api.nvidia.com/v1/chat/completions",
+            name="nvidia/nemotron-3-super-120b-a12b",
+            api_key_secret=SecretRef(root=PERSISTENT_JOB_STORAGE_PATH_ENVVAR),
+        ),
+        scores=[
+            RangeScore(
+                name="quality",
+                minimum=1,
+                maximum=5,
+                parser=JSONScoreParser(json_path="quality"),
+            ),
+        ],
+    )
+    spec = EvaluateSpec.model_validate({**_exact_match_spec(), "metrics": [_bundle_payload(metric)]})
+
+    with pytest.raises(ValueError, match="reserved"):
+        await EvaluateJob.compile(
+            workspace="default",
+            spec=spec,
+            entity_client=object(),
+            job_name=None,
+            async_sdk=object(),
+        )
 
 
 class TestEvaluateSpec:
@@ -744,7 +773,7 @@ class TestEvaluateJobCompile:
                 async_sdk=object(),
             )
 
-    async def test_fileset_ref_dataset_compiles_into_bundle_native_step(self) -> None:
+    async def test_fileset_ref_dataset_compiles_into_evaluate_step(self) -> None:
         dataset = FilesetRef(root="default/helpsteer2#validation/*.jsonl")
 
         compiled = await EvaluateJob.compile(
@@ -756,12 +785,8 @@ class TestEvaluateJobCompile:
         )
 
         job_spec = PlatformJobSpec.model_validate(compiled)
-        assert [step.name for step in job_spec.steps] == ["dataset-download", "evaluate"]
-        download_step = job_spec.steps[0]
-        download_container = cast(Any, download_step.executor).container
-        assert download_container.entrypoint == ["python", "-m", "nmp.evaluator.tasks.download_fileset"]
-        assert download_container.command[-2:] == ["--dataset", dataset.model_dump_json()]
-        config = cast(dict[str, Any], job_spec.steps[1].config)
+        assert [step.name for step in job_spec.steps] == ["evaluate"]
+        config = cast(dict[str, Any], job_spec.steps[0].config)
         assert config["dataset"] == dataset.root
 
 

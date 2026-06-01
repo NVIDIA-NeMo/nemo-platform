@@ -14,7 +14,7 @@ import pytest
 from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
-    MetricPayloadBundlerPolicyError,
+    MetricBundlePackagerPolicyError,
     _AsyncEvaluatorPluginExecutor,
     _build_evaluate_spec,
     _SyncEvaluatorPluginExecutor,
@@ -25,12 +25,12 @@ from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, Evaluato
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
+    MetricBundlePackager,
     MetricBundlePayload,
     MetricBundlingError,
-    MetricPayloadBundler,
     bundle_metric,
 )
-from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayloadBundler
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric
@@ -47,7 +47,7 @@ _EXACT_MATCH_SPEC = {
     "metrics": [
         bundle_metric(
             _EXACT_MATCH_METRIC,
-            CloudpickleMetricPayloadBundler(),
+            CloudpickleMetricBundlePackager(),
         ).model_dump(mode="json")
     ],
     "dataset": [{"expected": "a", "output": "a"}],
@@ -71,20 +71,20 @@ def _single_metric(spec: EvaluateSpec) -> MetricBundle:
     return spec.metrics[0]
 
 
-class _RecordingMetricPayloadBundler(MetricPayloadBundler):
-    """Test bundler that records all runtime metrics selected for bundling."""
+class _RecordingMetricBundlePackager(MetricBundlePackager):
+    """Test packager that records all runtime metrics selected for packaging."""
 
     def __init__(self) -> None:
         self.metrics: list[Metric] = []
-        self._delegate = CloudpickleMetricPayloadBundler()
+        self._delegate = CloudpickleMetricBundlePackager()
 
-    def bundle(self, metric: Metric) -> MetricBundlePayload:
+    def package(self, metric: Metric) -> MetricBundlePayload:
         self.metrics.append(metric)
-        return self._delegate.bundle(metric)
+        return self._delegate.package(metric)
 
-    def unbundle(self, payload: MetricBundlePayload) -> Metric:
+    def load(self, payload: MetricBundlePayload) -> Metric:
         del payload
-        raise NotImplementedError("test bundler only exercises submission-side bundling")
+        raise NotImplementedError("test packager only exercises submission-side packaging")
 
 
 class _SyncPlatform:
@@ -187,11 +187,11 @@ def test_resolve_workspace_requires_explicit_or_default_workspace() -> None:
 def test_bundle_metrics_for_spec_rejects_non_metric_object() -> None:
     """Metrics must satisfy the runtime Metric protocol before plugin execution."""
     with pytest.raises(MetricBundlingError, match="Metric protocol"):
-        bundle_metrics_for_spec(cast(Any, object()), metric_payload_bundler=CloudpickleMetricPayloadBundler())
+        bundle_metrics_for_spec(cast(Any, object()), metric_bundle_packager=CloudpickleMetricBundlePackager())
 
 
-def test_build_evaluate_spec_requires_metric_payload_bundler() -> None:
-    with pytest.raises(MetricPayloadBundlerPolicyError, match="CloudpickleMetricPayloadBundler"):
+def test_build_evaluate_spec_requires_metric_bundle_packager() -> None:
+    with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
         _build_evaluate_spec(
             metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
             request=EvaluationRequest(dataset=[{"expected": "a", "output": "a"}]),
@@ -203,7 +203,7 @@ def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
     model = Model(url="https://model.test/v1", name="model-a")
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=[{"expected": "a", "output": "a"}],
             target=model,
@@ -215,19 +215,19 @@ def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
     assert spec.prompt_template == "Answer: {{item.input}}"
 
 
-def test_build_evaluate_spec_uses_selected_bundler_for_all_runtime_metrics() -> None:
-    """Submission bundles all outgoing runtime metrics with the caller-selected bundler."""
+def test_build_evaluate_spec_uses_selected_packager_for_all_runtime_metrics() -> None:
+    """Submission packages all outgoing runtime metrics with the caller-selected packager."""
     metric_a = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
     metric_b = ExactMatchMetric(reference="{{item.other_expected}}", candidate="{{item.other_output}}")
-    bundler = _RecordingMetricPayloadBundler()
+    packager = _RecordingMetricBundlePackager()
 
     spec = _build_evaluate_spec(
         metrics=[metric_a, metric_b],
-        metric_payload_bundler=bundler,
+        metric_bundle_packager=packager,
         request=EvaluationRequest(dataset=[{"expected": "a", "output": "a"}]),
     )
 
-    assert bundler.metrics == [metric_a, metric_b]
+    assert packager.metrics == [metric_a, metric_b]
     assert [metric.metric_type for metric in spec.metrics] == ["exact-match", "exact-match"]
 
 
@@ -235,7 +235,7 @@ def test_build_evaluate_spec_excludes_aggregate_fields() -> None:
     """Evaluator specs should not persist result-shaping options."""
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=[{"expected": "a", "output": "a"}],
             params=RunConfig(),
@@ -253,7 +253,7 @@ def test_build_evaluate_spec_preserves_fileset_ref_dataset() -> None:
 
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(dataset=cast(Any, dataset)),
     )
 
@@ -264,7 +264,7 @@ def test_build_evaluate_spec_synthesizes_fileset_ref_fragment_from_dataset_glob_
     """FilesetRef datasets should encode dataset_glob_pattern as the existing fragment selector syntax."""
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=cast(Any, FilesetRef(root="default/helpsteer2")),
             dataset_glob_pattern="validation/*.jsonl",
@@ -279,7 +279,7 @@ def test_build_evaluate_spec_rejects_fileset_ref_fragment_and_dataset_glob_patte
     with pytest.raises(ValueError, match=r"dataset_glob_pattern.*FilesetRef"):
         _build_evaluate_spec(
             metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
-            metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+            metric_bundle_packager=CloudpickleMetricBundlePackager(),
             request=EvaluationRequest(
                 dataset=cast(Any, FilesetRef(root="default/helpsteer2#validation/*.jsonl")),
                 dataset_glob_pattern="train/*.jsonl",
@@ -509,6 +509,8 @@ class TestEvaluatorSubmit:
         model = Model(url="https://model.test/v1", name="model-a")
         config = RunConfigOnlineModel(parallelism=3, limit_samples=5)
 
+        packager = CloudpickleMetricBundlePackager()
+
         job = resource.submit(
             metric=metric,
             dataset=dataset,
@@ -516,7 +518,7 @@ class TestEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
 
         assert job is expected_job
@@ -527,7 +529,7 @@ class TestEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
 
     def test_accepts_fileset_ref_dataset(self, mocker: MockerFixture) -> None:
@@ -539,7 +541,9 @@ class TestEvaluatorSubmit:
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         dataset = FilesetRef(root="default/helpsteer2")
 
-        job = resource.submit(metric=metric, dataset=dataset)
+        packager = CloudpickleMetricBundlePackager()
+
+        job = resource.submit(metric=metric, dataset=dataset, metric_bundle_packager=packager)
 
         assert job is expected_job
         submit.assert_called_once_with(
@@ -549,8 +553,18 @@ class TestEvaluatorSubmit:
             target=None,
             dataset_glob_pattern=None,
             prompt_template=None,
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
+
+    def test_requires_metric_bundle_packager(self) -> None:
+        """Submit should fail fast before delegating without a remote metric packager."""
+        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            resource.submit(
+                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                dataset=[{"expected": "a", "output": "a"}],
+            )
 
 
 class TestEvaluatorRun:
@@ -630,7 +644,7 @@ class TestEvaluatorRun:
         remote_evaluate.assert_not_called()
 
 
-def test_sync_executor_evaluate_calls_sdk_directly_without_bundling(mocker: MockerFixture) -> None:
+def test_sync_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
     platform = _SyncPlatform()
     executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
     expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
@@ -708,7 +722,7 @@ def test_sync_executor_evaluate_remote_submits_waits_and_downloads(mocker: Mocke
     result = executor.evaluate_remote(
         metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
         request=request,
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
     )
 
     assert result == expected
@@ -909,6 +923,8 @@ class TestAsyncEvaluatorSubmit:
         model = Model(url="https://model.test/v1", name="model-a")
         config = RunConfigOnlineModel(parallelism=3, limit_samples=5)
 
+        packager = CloudpickleMetricBundlePackager()
+
         job = await resource.submit(
             metric=metric,
             dataset=dataset,
@@ -916,7 +932,7 @@ class TestAsyncEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
 
         assert job is expected_job
@@ -927,7 +943,7 @@ class TestAsyncEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
 
     @pytest.mark.asyncio
@@ -940,7 +956,9 @@ class TestAsyncEvaluatorSubmit:
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         dataset = FilesetRef(root="default/helpsteer2")
 
-        job = await resource.submit(metric=metric, dataset=dataset)
+        packager = CloudpickleMetricBundlePackager()
+
+        job = await resource.submit(metric=metric, dataset=dataset, metric_bundle_packager=packager)
 
         assert job is expected_job
         submit.assert_awaited_once_with(
@@ -950,8 +968,19 @@ class TestAsyncEvaluatorSubmit:
             target=None,
             dataset_glob_pattern=None,
             prompt_template=None,
-            metric_payload_bundler=None,
+            metric_bundle_packager=packager,
         )
+
+    @pytest.mark.asyncio
+    async def test_requires_metric_bundle_packager(self) -> None:
+        """Submit should fail fast before delegating without a remote metric packager."""
+        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            await resource.submit(
+                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                dataset=[{"expected": "a", "output": "a"}],
+            )
 
 
 class TestAsyncEvaluatorRun:
@@ -1060,7 +1089,7 @@ async def test_async_executor_remote_submit_uses_platform_async_client_headers_a
 
 
 @pytest.mark.asyncio
-async def test_async_executor_evaluate_calls_sdk_directly_without_bundling(mocker: MockerFixture) -> None:
+async def test_async_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
     platform = _AsyncPlatform()
     executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
     expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
@@ -1105,7 +1134,7 @@ async def test_async_executor_evaluate_remote_submits_waits_and_downloads(mocker
     result = await executor.evaluate_remote(
         metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
         request=request,
-        metric_payload_bundler=CloudpickleMetricPayloadBundler(),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
     )
 
     assert result == expected

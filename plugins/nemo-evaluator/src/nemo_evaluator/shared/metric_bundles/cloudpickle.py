@@ -8,19 +8,53 @@ from __future__ import annotations
 import hashlib
 import pickle
 import platform
+import sys
 from typing import Annotated, Literal
 
 import cloudpickle
 from nemo_evaluator.shared.metric_bundles.bundles import (
+    MetricBundlePackager,
     MetricBundlePayload,
     MetricBundlingError,
-    MetricPayloadBundler,
     register_metric_bundle_kind,
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric
-from pydantic import ConfigDict, Field, computed_field
+from pydantic import ConfigDict, Field, computed_field, field_validator
 
-NonEmptyBytes = Annotated[bytes, Field(min_length=1)]
+MAX_CLOUDPICKLE_PAYLOAD_BYTES = 10 * 1024 * 1024
+CloudpickleBlob = Annotated[bytes, Field(min_length=1, max_length=MAX_CLOUDPICKLE_PAYLOAD_BYTES)]
+
+
+def _format_bytes(value: int) -> str:
+    return f"{value / (1024 * 1024):.1f} MiB"
+
+
+def _validate_payload_size(blob: bytes) -> bytes:
+    if len(blob) > MAX_CLOUDPICKLE_PAYLOAD_BYTES:
+        raise MetricBundlingError(
+            "cloudpickle metric payload is "
+            f"{_format_bytes(len(blob))}; maximum allowed is {_format_bytes(MAX_CLOUDPICKLE_PAYLOAD_BYTES)}"
+        )
+    return blob
+
+
+def _python_major_minor(version: str) -> tuple[int, int]:
+    try:
+        major, minor, *_ = version.split(".")
+        return int(major), int(minor)
+    except ValueError as exc:
+        raise MetricBundlingError(f"invalid cloudpickle payload python_version: {version!r}") from exc
+
+
+def _validate_python_version(payload: CloudpickleMetricPayload) -> None:
+    payload_version = _python_major_minor(payload.python_version)
+    runtime_version = sys.version_info[:2]
+    if payload_version != runtime_version:
+        raise MetricBundlingError(
+            "cloudpickle metric payload was created with "
+            f"Python {payload.python_version}, but this runtime is Python {platform.python_version()}; "
+            "recreate the metric bundle with the runtime Python version."
+        )
 
 
 class CloudpickleMetricPayload(MetricBundlePayload):
@@ -31,7 +65,12 @@ class CloudpickleMetricPayload(MetricBundlePayload):
     python_version: str
     cloudpickle_version: str
     pickle_protocol: int
-    blob: NonEmptyBytes
+    blob: CloudpickleBlob
+
+    @field_validator("blob")
+    @classmethod
+    def _blob_must_fit_step_config(cls, blob: bytes) -> bytes:
+        return _validate_payload_size(blob)
 
     @property
     def kind(self) -> Literal["cloudpickle"]:
@@ -47,6 +86,7 @@ class CloudpickleMetricPayload(MetricBundlePayload):
     @classmethod
     def from_blob(cls, blob: bytes) -> CloudpickleMetricPayload:
         """Create a JSON-safe cloudpickle payload from raw bytes."""
+        _validate_payload_size(blob)
         return cls(
             python_version=platform.python_version(),
             cloudpickle_version=cloudpickle.__version__,
@@ -55,24 +95,25 @@ class CloudpickleMetricPayload(MetricBundlePayload):
         )
 
 
-class CloudpickleMetricPayloadBundler(MetricPayloadBundler):
-    """Cloudpickle-backed metric payload bundler.
+class CloudpickleMetricBundlePackager(MetricBundlePackager):
+    """Cloudpickle-backed metric bundle packager.
 
     Cloudpickle bundles execute arbitrary Python code when hydrated. This
     implementation is intended for explicit opt-in development/MVP use.
     """
 
-    def bundle(self, metric: Metric) -> MetricBundlePayload:
-        """Serialize a runtime metric object to a cloudpickle payload."""
+    def package(self, metric: Metric) -> MetricBundlePayload:
+        """Package a runtime metric object as a cloudpickle payload."""
         if not isinstance(metric, Metric):
             raise MetricBundlingError("object does not satisfy the Metric protocol")
 
         blob = cloudpickle.dumps(metric, protocol=pickle.HIGHEST_PROTOCOL)
         return CloudpickleMetricPayload.from_blob(blob)
 
-    def unbundle(self, payload: MetricBundlePayload) -> Metric:
+    def load(self, payload: MetricBundlePayload) -> Metric:
         """Hydrate a metric from a cloudpickle payload."""
         cloudpickle_payload = CloudpickleMetricPayload.model_validate(payload.model_dump(mode="python"))
+        _validate_python_version(cloudpickle_payload)
         hydrated_metric = cloudpickle.loads(cloudpickle_payload.blob)
         if not isinstance(hydrated_metric, Metric):
             raise MetricBundlingError("unbundled object does not satisfy the Metric protocol")
@@ -82,5 +123,5 @@ class CloudpickleMetricPayloadBundler(MetricPayloadBundler):
 register_metric_bundle_kind(
     "cloudpickle",
     payload_type=CloudpickleMetricPayload,
-    payload_bundler_factory=CloudpickleMetricPayloadBundler,
+    packager_factory=CloudpickleMetricBundlePackager,
 )
