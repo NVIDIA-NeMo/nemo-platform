@@ -66,7 +66,7 @@ class ValidationReport(BaseModel):
         return all(r.ok for r in self.results) and len(self.results) > 0
 
 
-def _to_validation_error(exc: BaseException) -> ValidationError:
+def _to_validation_error(exc: Exception) -> ValidationError:
     return ValidationError(message=str(exc))
 
 
