@@ -48,7 +48,7 @@ _BODY_SECTIONS: tuple[tuple[str, str], ...] = (
     ("success_criteria", "Success Criteria"),
     ("allowed_changes", "Allowed Changes"),
     ("feedback_signals", "Feedback Signals"),
-    ("eval_command_notes", "Eval Command"),
+    ("eval_command_notes", "Eval Command Notes"),
     ("open_questions", "Open Questions"),
 )
 

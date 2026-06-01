@@ -146,8 +146,8 @@ clear gap-question rather than a stack trace.
     - `nemo-build-agent` will read `agents/<name>.spec.md`, produce the
       workflow YAML, and call `nemo agents create`. It does not need a
       `--spec-file-ref` flag — the spec's location is derivable.
-    - The `eval-setup` skill (M2) will fill in the `Eval Command` section
-      and front matter when ready.
+    - The `eval-setup` skill (M2) will fill in the `Eval Command Notes`
+      section and the `eval_command` front matter when ready.
     - The analyst agent (insights plugin, separate workstream) reads the
       same canonical fileset server-side once traces exist.
 

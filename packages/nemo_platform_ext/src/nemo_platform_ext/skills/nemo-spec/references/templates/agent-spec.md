@@ -23,7 +23,7 @@ eval_command: <CLI command to run evaluations against this agent; omit the key e
 > - **Labeled-bullet sections** (`Model`, `Framework`, `Allowed Changes`):
 >   `- Label: value` lines only. No prose, no blank-line-separated paragraphs.
 > - **Free-form sections** (`Job`, `Audience`, `Tools`, `Feedback Signals`,
->   `Eval Command`): any markdown. `Tools` accepts a markdown table or the
+>   `Eval Command Notes`): any markdown. `Tools` accepts a markdown table or the
 >   literal string `Prompt-only.`
 
 ## Job
@@ -85,11 +85,12 @@ string `Prompt-only.` if none>
 priority: thumbs-down on escalation flows; ignore: internal QA traffic". Use
 `defaults` if nothing specific.>
 
-## Eval Command
+## Eval Command Notes
 
 <free-form notes on eval state when the suite is not well-defined yet
-(coverage gaps, why). The runnable command lives in the `eval_command` front
-matter. Use `_(none)_` if there is nothing to note.>
+(coverage gaps, why). The runnable command itself lives in the
+`eval_command` front matter, not here. Use `_(none)_` if there is
+nothing to note.>
 
 ## Open Questions
 

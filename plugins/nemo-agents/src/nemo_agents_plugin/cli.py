@@ -236,7 +236,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
                 err=True,
             )
             raise typer.Exit(code=1)
-        payload: dict[str, Any] = {"name": name, "description": description, "config": config_dict}
+        payload = {"name": name, "description": description, "config": config_dict}
         resp = _api_request("POST", base_url, f"/apis/agents/v2/workspaces/{workspace}/agents", json_body=payload)
         typer.echo(json.dumps(resp, indent=2))
 
