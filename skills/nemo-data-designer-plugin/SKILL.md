@@ -108,4 +108,5 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
+
 Only include Pydantic models, custom generators, seed datasets, and extra dependencies when the task requires them. Prefer including `model_configs` when the dataset uses LLM columns — declaring it in the script keeps the config portable between local `run` and cluster `submit`, while the local YAML registry alternative only works for `run`.
