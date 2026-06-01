@@ -864,4 +864,8 @@ studio:
     allowed_origins:
     - http://localhost
     - http://localhost:*
+  # Studio feature flags.
+  feature_flags:
+    # Enable Studio's local coding-agent backend bridge. | default: False
+    coding_agent_studio_enabled: false
 ```

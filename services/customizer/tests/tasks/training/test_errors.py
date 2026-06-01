@@ -1190,8 +1190,10 @@ class TestSubprocessErrorFlow:
                 "[rank0]:     policy_worker.step(batch)",
                 '[rank0]:   File "/opt/nemo-rl/workers/megatron.py", line 85',
                 "[rank0]:     self._validate_config(cfg)",
-                "[rank0]: ValueError: World size (2) is insufficient for the "
-                "parallelism configuration: PP=2, CP=1, TP=2 requires at least 4 GPUs.",
+                (
+                    "[rank0]: ValueError: World size (2) is insufficient for the "
+                    "parallelism configuration: PP=2, CP=1, TP=2 requires at least 4 GPUs."
+                ),
             ]
         )
         assert details == {

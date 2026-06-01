@@ -34,7 +34,7 @@ To generate an API key on the NVIDIA Build hub:
 
 #### How to use API key
 
-For evaluator API key auth, see [Evaluator API Auth](../skills/evaluator-plugin/resources/api-auth.md)
+For evaluator API key auth, see [Evaluator API Auth](../../../../../skills/nemo-evaluator-plugin/references/api-auth.md)
 
 ### Examples
 

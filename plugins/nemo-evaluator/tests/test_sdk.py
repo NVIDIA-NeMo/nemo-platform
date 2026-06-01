@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from pathlib import Path
 from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
@@ -14,18 +14,26 @@ import pytest
 from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk._executor import (
+    MetricBundlePackagerPolicyError,
     _AsyncEvaluatorPluginExecutor,
     _build_evaluate_spec,
     _SyncEvaluatorPluginExecutor,
-    metric_config,
+    bundle_metrics_for_spec,
 )
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
-from nemo_evaluator_sdk.enums import MetricType
+from nemo_evaluator.shared.metric_bundles.bundles import (
+    MetricBundle,
+    MetricBundlePackager,
+    MetricBundlePayload,
+    MetricBundlingError,
+    bundle_metric,
+)
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
-from nemo_evaluator_sdk.metrics.types import MetricsUnion
+from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -34,8 +42,18 @@ from nmp.evaluator.app.values import FilesetRef
 from pydantic import ValidationError
 from pytest_mock import MockerFixture
 
+_EXACT_MATCH_METRIC = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
 _EXACT_MATCH_SPEC = {
-    "metric": {
+    "metrics": [
+        bundle_metric(
+            _EXACT_MATCH_METRIC,
+            CloudpickleMetricBundlePackager(),
+        ).model_dump(mode="json")
+    ],
+    "dataset": [{"expected": "a", "output": "a"}],
+}
+_LEGACY_EXACT_MATCH_SPEC = {
+    "metrics": {
         "type": "exact-match",
         "reference": "{{item.expected}}",
         "candidate": "{{item.output}}",
@@ -46,11 +64,27 @@ _EXACT_MATCH_EVALUATE_SPEC = EvaluateSpec.model_validate(_EXACT_MATCH_SPEC)
 _EXACT_MATCH_EVALUATE_SPEC_JSON = _EXACT_MATCH_EVALUATE_SPEC.model_dump(mode="json")
 
 
-def _single_metric(spec: EvaluateSpec) -> MetricsUnion:
+def _single_metric(spec: EvaluateSpec) -> MetricBundle:
     """Return the single metric from an evaluator job spec."""
-    if isinstance(spec.metric, Sequence):
+    if len(spec.metrics) != 1:
         raise AssertionError("Expected a single metric spec.")
-    return spec.metric
+    return spec.metrics[0]
+
+
+class _RecordingMetricBundlePackager(MetricBundlePackager):
+    """Test packager that records all runtime metrics selected for packaging."""
+
+    def __init__(self) -> None:
+        self.metrics: list[Metric] = []
+        self._delegate = CloudpickleMetricBundlePackager()
+
+    def package(self, metric: Metric) -> MetricBundlePayload:
+        self.metrics.append(metric)
+        return self._delegate.package(metric)
+
+    def load(self, payload: MetricBundlePayload) -> Metric:
+        del payload
+        raise NotImplementedError("test packager only exercises submission-side packaging")
 
 
 class _SyncPlatform:
@@ -150,10 +184,18 @@ def test_resolve_workspace_requires_explicit_or_default_workspace() -> None:
         http_utils.resolve_workspace(cast(NeMoPlatform, _PlatformWithoutWorkspace()), None, strict=True)
 
 
-def test_metric_config_rejects_non_serializable_metric() -> None:
-    """Metrics must expose a JSON model dump for evaluator plugin execution."""
-    with pytest.raises(TypeError, match="model_dump"):
-        metric_config(object())
+def test_bundle_metrics_for_spec_rejects_non_metric_object() -> None:
+    """Metrics must satisfy the runtime Metric protocol before plugin execution."""
+    with pytest.raises(MetricBundlingError, match="Metric protocol"):
+        bundle_metrics_for_spec(cast(Any, object()), metric_bundle_packager=CloudpickleMetricBundlePackager())
+
+
+def test_build_evaluate_spec_requires_metric_bundle_packager() -> None:
+    with pytest.raises(MetricBundlePackagerPolicyError, match="CloudpickleMetricBundlePackager"):
+        _build_evaluate_spec(
+            metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            request=EvaluationRequest(dataset=[{"expected": "a", "output": "a"}]),
+        )
 
 
 def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
@@ -161,6 +203,7 @@ def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
     model = Model(url="https://model.test/v1", name="model-a")
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=[{"expected": "a", "output": "a"}],
             target=model,
@@ -172,10 +215,27 @@ def test_build_evaluate_spec_includes_target_and_prompt_template() -> None:
     assert spec.prompt_template == "Answer: {{item.input}}"
 
 
+def test_build_evaluate_spec_uses_selected_packager_for_all_runtime_metrics() -> None:
+    """Submission packages all outgoing runtime metrics with the caller-selected packager."""
+    metric_a = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    metric_b = ExactMatchMetric(reference="{{item.other_expected}}", candidate="{{item.other_output}}")
+    packager = _RecordingMetricBundlePackager()
+
+    spec = _build_evaluate_spec(
+        metrics=[metric_a, metric_b],
+        metric_bundle_packager=packager,
+        request=EvaluationRequest(dataset=[{"expected": "a", "output": "a"}]),
+    )
+
+    assert packager.metrics == [metric_a, metric_b]
+    assert [metric.metric_type for metric in spec.metrics] == ["exact-match", "exact-match"]
+
+
 def test_build_evaluate_spec_excludes_aggregate_fields() -> None:
     """Evaluator specs should not persist result-shaping options."""
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=[{"expected": "a", "output": "a"}],
             params=RunConfig(),
@@ -193,6 +253,7 @@ def test_build_evaluate_spec_preserves_fileset_ref_dataset() -> None:
 
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(dataset=cast(Any, dataset)),
     )
 
@@ -203,6 +264,7 @@ def test_build_evaluate_spec_synthesizes_fileset_ref_fragment_from_dataset_glob_
     """FilesetRef datasets should encode dataset_glob_pattern as the existing fragment selector syntax."""
     spec = _build_evaluate_spec(
         metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
         request=EvaluationRequest(
             dataset=cast(Any, FilesetRef(root="default/helpsteer2")),
             dataset_glob_pattern="validation/*.jsonl",
@@ -217,6 +279,7 @@ def test_build_evaluate_spec_rejects_fileset_ref_fragment_and_dataset_glob_patte
     with pytest.raises(ValueError, match=r"dataset_glob_pattern.*FilesetRef"):
         _build_evaluate_spec(
             metrics=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+            metric_bundle_packager=CloudpickleMetricBundlePackager(),
             request=EvaluationRequest(
                 dataset=cast(Any, FilesetRef(root="default/helpsteer2#validation/*.jsonl")),
                 dataset_glob_pattern="train/*.jsonl",
@@ -277,7 +340,7 @@ def test_sync_executor_creates_evaluator_job() -> None:
     assert job.name == "job-123"
     assert job.job.status == PlatformJobStatus.CREATED
     assert job.job.spec is not None
-    assert _single_metric(job.job.spec).type == MetricType.EXACT_MATCH
+    assert _single_metric(job.job.spec).metric_type == "exact-match"
     platform._client.post.assert_called_once_with(
         "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs",
         json={"spec": _EXACT_MATCH_EVALUATE_SPEC_JSON},
@@ -315,7 +378,7 @@ def test_sync_executor_create_uses_platform_workspace_by_default() -> None:
     job = executor.create(spec=_EXACT_MATCH_EVALUATE_SPEC)
     assert job.name == "job-123"
     assert job.job.spec is not None
-    assert _single_metric(job.job.spec).type == MetricType.EXACT_MATCH
+    assert _single_metric(job.job.spec).metric_type == "exact-match"
     platform._client.post.assert_called_once_with(
         "http://test:8000/apis/evaluator/v2/workspaces/platform-ws/evaluate/jobs",
         json={"spec": _EXACT_MATCH_EVALUATE_SPEC_JSON},
@@ -446,6 +509,8 @@ class TestEvaluatorSubmit:
         model = Model(url="https://model.test/v1", name="model-a")
         config = RunConfigOnlineModel(parallelism=3, limit_samples=5)
 
+        packager = CloudpickleMetricBundlePackager()
+
         job = resource.submit(
             metric=metric,
             dataset=dataset,
@@ -453,6 +518,7 @@ class TestEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
+            metric_bundle_packager=packager,
         )
 
         assert job is expected_job
@@ -463,6 +529,7 @@ class TestEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
+            metric_bundle_packager=packager,
         )
 
     def test_accepts_fileset_ref_dataset(self, mocker: MockerFixture) -> None:
@@ -474,7 +541,9 @@ class TestEvaluatorSubmit:
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         dataset = FilesetRef(root="default/helpsteer2")
 
-        job = resource.submit(metric=metric, dataset=dataset)
+        packager = CloudpickleMetricBundlePackager()
+
+        job = resource.submit(metric=metric, dataset=dataset, metric_bundle_packager=packager)
 
         assert job is expected_job
         submit.assert_called_once_with(
@@ -484,7 +553,18 @@ class TestEvaluatorSubmit:
             target=None,
             dataset_glob_pattern=None,
             prompt_template=None,
+            metric_bundle_packager=packager,
         )
+
+    def test_requires_metric_bundle_packager(self) -> None:
+        """Submit should fail fast before delegating without a remote metric packager."""
+        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            resource.submit(
+                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                dataset=[{"expected": "a", "output": "a"}],
+            )
 
 
 class TestEvaluatorRun:
@@ -564,6 +644,69 @@ class TestEvaluatorRun:
         remote_evaluate.assert_not_called()
 
 
+def test_sync_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
+    platform = _SyncPlatform()
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
+    sdk_evaluator = mocker.Mock()
+    sdk_evaluator.run_sync.return_value = expected
+    sdk_evaluator_cls = mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
+    metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    dataset = [{"expected": "a", "output": "a"}]
+
+    result = executor.evaluate(
+        metric=metric,
+        dataset=dataset,
+        params=RunConfig(parallelism=2),
+    )
+
+    assert result is expected
+    sdk_evaluator_cls.assert_called_once_with()
+    sdk_evaluator.run_sync.assert_called_once_with(
+        metrics=metric,
+        dataset=dataset,
+        config=RunConfig(parallelism=2),
+        target=None,
+        dataset_glob_pattern=None,
+        prompt_template=None,
+    )
+
+
+def test_sync_executor_evaluate_resolves_fileset_ref_before_calling_sdk(mocker: MockerFixture) -> None:
+    platform = _SyncPlatform()
+    executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
+    expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
+    sdk_evaluator = mocker.Mock()
+    sdk_evaluator.run_sync.return_value = expected
+    mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
+    downloaded_path = Path("/tmp/downloaded-dataset")
+    download_dataset_sync = mocker.patch(
+        "nemo_evaluator.sdk._executor.download_dataset_sync",
+        return_value=downloaded_path,
+    )
+    metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    dataset = FilesetRef(root="default/helpsteer2")
+
+    result = executor.evaluate(
+        metric=metric,
+        dataset=dataset,
+        dataset_glob_pattern="validation/*.jsonl",
+    )
+
+    assert result is expected
+    download_dataset_sync.assert_called_once()
+    assert download_dataset_sync.call_args.kwargs["sdk"] is platform
+    assert download_dataset_sync.call_args.kwargs["dataset"] == FilesetRef(root="default/helpsteer2#validation/*.jsonl")
+    sdk_evaluator.run_sync.assert_called_once_with(
+        metrics=metric,
+        dataset=downloaded_path,
+        config=RunConfig(),
+        target=None,
+        dataset_glob_pattern=None,
+        prompt_template=None,
+    )
+
+
 def test_sync_executor_evaluate_remote_submits_waits_and_downloads(mocker: MockerFixture) -> None:
     platform = _SyncPlatform()
     executor = _SyncEvaluatorPluginExecutor(platform=cast(NeMoPlatform, platform))
@@ -579,23 +722,16 @@ def test_sync_executor_evaluate_remote_submits_waits_and_downloads(mocker: Mocke
     result = executor.evaluate_remote(
         metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
         request=request,
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
     )
 
     assert result == expected
-    create.assert_called_once_with(
-        spec=EvaluateSpec.model_validate(
-            {
-                "metric": {
-                    "type": "exact-match",
-                    "reference": "{{item.expected}}",
-                    "candidate": "{{item.output}}",
-                },
-                "dataset": [{"expected": "a", "output": "a"}],
-                "params": {"limit_samples": None, "parallelism": 2},
-            }
-        ),
-        workspace="platform-ws",
-    )
+    create.assert_called_once()
+    assert create.call_args.kwargs["workspace"] == "platform-ws"
+    created_spec = create.call_args.kwargs["spec"]
+    assert _single_metric(created_spec).metric_type == "exact-match"
+    assert created_spec.dataset == [{"expected": "a", "output": "a"}]
+    assert created_spec.params == RunConfig(parallelism=2)
     job_resource.wait_until_done.assert_called_once_with(
         poll_interval_seconds=10.0,
         job_timeout_seconds=3600.0,
@@ -662,7 +798,7 @@ async def test_async_executor_creates_evaluator_job(mocker: MockerFixture) -> No
     assert job.name == "job-123"
     assert job.job.status == PlatformJobStatus.CREATED
     assert job.job.spec is not None
-    assert _single_metric(job.job.spec).type == MetricType.EXACT_MATCH
+    assert _single_metric(job.job.spec).metric_type == "exact-match"
     platform._client.post.assert_awaited_once_with(
         "http://test:8000/apis/evaluator/v2/workspaces/ws/evaluate/jobs",
         json={"spec": _EXACT_MATCH_EVALUATE_SPEC_JSON},
@@ -787,6 +923,8 @@ class TestAsyncEvaluatorSubmit:
         model = Model(url="https://model.test/v1", name="model-a")
         config = RunConfigOnlineModel(parallelism=3, limit_samples=5)
 
+        packager = CloudpickleMetricBundlePackager()
+
         job = await resource.submit(
             metric=metric,
             dataset=dataset,
@@ -794,6 +932,7 @@ class TestAsyncEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
+            metric_bundle_packager=packager,
         )
 
         assert job is expected_job
@@ -804,6 +943,7 @@ class TestAsyncEvaluatorSubmit:
             target=model,
             dataset_glob_pattern="*.jsonl",
             prompt_template={"template": "Answer {{item.input}}"},
+            metric_bundle_packager=packager,
         )
 
     @pytest.mark.asyncio
@@ -816,7 +956,9 @@ class TestAsyncEvaluatorSubmit:
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         dataset = FilesetRef(root="default/helpsteer2")
 
-        job = await resource.submit(metric=metric, dataset=dataset)
+        packager = CloudpickleMetricBundlePackager()
+
+        job = await resource.submit(metric=metric, dataset=dataset, metric_bundle_packager=packager)
 
         assert job is expected_job
         submit.assert_awaited_once_with(
@@ -826,7 +968,19 @@ class TestAsyncEvaluatorSubmit:
             target=None,
             dataset_glob_pattern=None,
             prompt_template=None,
+            metric_bundle_packager=packager,
         )
+
+    @pytest.mark.asyncio
+    async def test_requires_metric_bundle_packager(self) -> None:
+        """Submit should fail fast before delegating without a remote metric packager."""
+        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            await resource.submit(
+                metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                dataset=[{"expected": "a", "output": "a"}],
+            )
 
 
 class TestAsyncEvaluatorRun:
@@ -935,6 +1089,35 @@ async def test_async_executor_remote_submit_uses_platform_async_client_headers_a
 
 
 @pytest.mark.asyncio
+async def test_async_executor_evaluate_calls_sdk_directly_without_packaging(mocker: MockerFixture) -> None:
+    platform = _AsyncPlatform()
+    executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
+    expected = EvaluationResult(row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]))
+    sdk_evaluator = mocker.Mock()
+    sdk_evaluator.run = AsyncMock(return_value=expected)
+    sdk_evaluator_cls = mocker.patch("nemo_evaluator.sdk._executor.SDKEvaluator", return_value=sdk_evaluator)
+    metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+    dataset = [{"expected": "a", "output": "a"}]
+
+    result = await executor.evaluate(
+        metric=metric,
+        dataset=dataset,
+        params=RunConfig(parallelism=2),
+    )
+
+    assert result is expected
+    sdk_evaluator_cls.assert_called_once_with()
+    sdk_evaluator.run.assert_awaited_once_with(
+        metrics=metric,
+        dataset=dataset,
+        config=RunConfig(parallelism=2),
+        target=None,
+        dataset_glob_pattern=None,
+        prompt_template=None,
+    )
+
+
+@pytest.mark.asyncio
 async def test_async_executor_evaluate_remote_submits_waits_and_downloads(mocker: MockerFixture) -> None:
     platform = _AsyncPlatform()
     executor = _AsyncEvaluatorPluginExecutor(platform=cast(AsyncNeMoPlatform, platform))
@@ -951,23 +1134,16 @@ async def test_async_executor_evaluate_remote_submits_waits_and_downloads(mocker
     result = await executor.evaluate_remote(
         metric=ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
         request=request,
+        metric_bundle_packager=CloudpickleMetricBundlePackager(),
     )
 
     assert result == expected
-    create.assert_awaited_once_with(
-        spec=EvaluateSpec.model_validate(
-            {
-                "metric": {
-                    "type": "exact-match",
-                    "reference": "{{item.expected}}",
-                    "candidate": "{{item.output}}",
-                },
-                "dataset": [{"expected": "a", "output": "a"}],
-                "params": {"limit_samples": None, "parallelism": 2},
-            }
-        ),
-        workspace="platform-ws",
-    )
+    create.assert_awaited_once()
+    assert create.call_args.kwargs["workspace"] == "platform-ws"
+    created_spec = create.call_args.kwargs["spec"]
+    assert _single_metric(created_spec).metric_type == "exact-match"
+    assert created_spec.dataset == [{"expected": "a", "output": "a"}]
+    assert created_spec.params == RunConfig(parallelism=2)
     job_resource.wait_until_done.assert_awaited_once_with(
         poll_interval_seconds=10.0,
         job_timeout_seconds=3600.0,

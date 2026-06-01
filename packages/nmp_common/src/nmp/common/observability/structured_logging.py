@@ -70,6 +70,25 @@ def _drop_console_hidden_fields(logger: logging.Logger, method_name: str, event_
     return event_dict
 
 
+# CR, LF, NEL, line/paragraph separators. Anything that a multi-line log
+# rendering pass could turn into a fake new log entry.
+_LOG_NEWLINE_CHARS = "\n\r\x0b\x0c\x1c\x1d\x1e\x85\u2028\u2029"
+_LOG_NEWLINE_TABLE = {ord(c): " " for c in _LOG_NEWLINE_CHARS}
+
+
+def _sanitize_log_strings(logger: logging.Logger, method_name: str, event_dict: EventDict) -> EventDict:
+    """Strip newline-like characters from string values in the event dict.
+
+    Defends against log-forgery via user-controlled fields landing in
+    request/response logs. JSON renderers escape these characters already,
+    but plain-text renderers do not.
+    """
+    for key, value in list(event_dict.items()):
+        if isinstance(value, str) and any(ch in value for ch in _LOG_NEWLINE_CHARS):
+            event_dict[key] = value.translate(_LOG_NEWLINE_TABLE)
+    return event_dict
+
+
 def clear_loggers():
     logging.getLogger().handlers.clear()
 
@@ -171,6 +190,7 @@ def initialize_logging(resource: Resource | None = None):
         structlog.processors.StackInfoRenderer(),
         structlog.processors.format_exc_info,
         structlog.processors.UnicodeDecoder(),
+        _sanitize_log_strings,
         structlog.processors.CallsiteParameterAdder(
             {
                 structlog.processors.CallsiteParameter.FILENAME,

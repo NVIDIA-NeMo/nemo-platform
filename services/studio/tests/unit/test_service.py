@@ -59,7 +59,7 @@ class TestStudioService:
 
     def test_get_routers_returns_coding_agent_router_when_enabled(self):
         """Test that the service exposes the local coding-agent API router when enabled."""
-        service = StudioService().with_config(StudioConfig(feature_flags={"coding_agents_enabled": True}))
+        service = StudioService().with_config(StudioConfig(feature_flags={"coding_agent_studio_enabled": True}))
         routers = service.get_routers()
         assert len(routers) == 1
         assert routers[0].tag == "Studio Coding Agents"

@@ -36,7 +36,7 @@ def service_client() -> TestClient:
 
 
 def coding_agents_enabled_config() -> StudioConfig:
-    return StudioConfig(feature_flags={"coding_agents_enabled": True})
+    return StudioConfig(feature_flags={"coding_agent_studio_enabled": True})
 
 
 def test_create_session_returns_uuid(service_client: TestClient):

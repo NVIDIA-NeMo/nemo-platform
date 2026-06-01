@@ -52,7 +52,7 @@ class StudioFeatureFlagsConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    coding_agents_enabled: bool = Field(
+    coding_agent_studio_enabled: bool = Field(
         default=False,
         description="Enable Studio's local coding-agent backend bridge.",
     )

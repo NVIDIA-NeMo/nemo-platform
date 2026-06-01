@@ -26,8 +26,8 @@ Perform the following operations:
 4. Retrieve the config by name and verify it was created correctly
 5. Update the config's description to `Updated custom guardrail config`
 6. Retrieve the config again and confirm the description was updated
-7. Test the **input rail** by sending a message that mentions a fruit (e.g., "Tell me about the health benefits of apples") through the guardrails chat completions endpoint — verify that the input rails **block** the request
-8. Test that normal messages pass through by sending a message that does NOT mention any fruit or bread (e.g., "What is the capital of France?") — verify that the message **passes through** and returns a normal response
+7. Test the **input rail** by sending a message that mentions a fruit (e.g., "Tell me about the health benefits of apples") through the guardrails check endpoint — verify that the input rails **block** the request
+8. Test that normal messages pass through by sending a message that does NOT mention any fruit or bread (e.g., "What is the capital of France?") — verify that the message **passes through** with a success status
 
 ## Success Criteria
 
@@ -37,4 +37,4 @@ The task is complete when:
 - The config uses the `default/guardrails-llm` model
 - The config has prompts for both `self_check_input` and `self_check_output` tasks
 - A message mentioning fruit was **blocked** by the input rail
-- A normal message (no fruit, no bread) **passed through** and returned a normal response
+- A normal message (no fruit, no bread) **passed through** with a success status

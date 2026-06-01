@@ -287,7 +287,7 @@ async def test_hello_world_jobs_list(test_client: AsyncClient):
     assert response.status_code == 201, f"POST failed: {response.status_code} {response.text}"
 
     response = await test_client.get("/apis/jobs/v2/workspaces/default/hello-world/jobs")
-    data = response.json()
+    assert response.status_code == 200, f"GET failed: {response.status_code} {response.text}"
 
     response = await test_client.get("/apis/jobs/v2/workspaces/default/jobs")
     data = response.json()
@@ -317,6 +317,7 @@ async def test_hello_world_jobs_list(test_client: AsyncClient):
             "ownership": {"user": "fake-user", "service": "fake-ms"},
         },
     )
+    assert response.status_code == 201, f"POST failed: {response.status_code} {response.text}"
     response = await test_client.get("/apis/jobs/v2/workspaces/default/jobs")
     data = response.json()
     assert len(data["data"]) == 2
@@ -341,6 +342,7 @@ async def test_hello_world_jobs_list(test_client: AsyncClient):
             "ownership": {"user": "fake-user", "service": "fake-ms"},
         },
     )
+    assert response.status_code == 201, f"POST failed: {response.status_code} {response.text}"
     response = await test_client.get("/apis/jobs/v2/workspaces/default/jobs")
     data = response.json()
     assert len(data["data"]) == 3

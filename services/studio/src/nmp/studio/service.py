@@ -99,7 +99,7 @@ class StudioService(Service[StudioConfig]):
 
     def _coding_agents_enabled(self) -> bool:
         """Return whether the exploratory local coding-agent bridge is enabled."""
-        return self._get_config().feature_flags.coding_agents_enabled
+        return self._get_config().feature_flags.coding_agent_studio_enabled
 
     def _mount_coding_agent_mcp(self, app: FastAPI) -> None:
         """Mount the auth-bypassed MCP callback before the /studio static app."""

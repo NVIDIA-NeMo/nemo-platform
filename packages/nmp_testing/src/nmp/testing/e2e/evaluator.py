@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 from dataclasses import dataclass
+from typing import cast
 
 from nemo_platform import NeMoPlatform
 from nemo_platform.types.evaluation import AggregatedMetricResult, MetricEvaluationJob, RowScore
@@ -100,23 +101,17 @@ def get_job_outputs(
     job = sdk.evaluation.metric_jobs.retrieve(job_name, workspace=workspace)
     job_status = sdk.evaluation.metric_jobs.get_status(job_name, workspace=workspace)
 
-    # Verify file download is functional
+    # Smoke-test the generic results.download endpoint (status + body readable).
+    # Content is validated below via the typed aggregate_scores/row_scores accessors.
     results = sdk.evaluation.metric_jobs.results.list(job_name, workspace=workspace)
     for result in results.data:
-        if result.name == AGGREGATE_SCORES_RESULT:
+        if result.name in (AGGREGATE_SCORES_RESULT, ROW_SCORES_RESULT):
             response = sdk.evaluation.metric_jobs.results.download(
                 result.name,
                 job=job_name,
                 workspace=workspace,
             )
-            aggregate_scores = json.loads(response.read())
-        elif result.name == ROW_SCORES_RESULT:
-            response = sdk.evaluation.metric_jobs.results.download(
-                result.name,
-                job=job_name,
-                workspace=workspace,
-            )
-            row_scores = [json.loads(line) for line in response.read().decode().strip().split("\n") if line.strip()]
+            response.read()
 
     # Verify result entity is registered
     job_result = sdk.evaluation.metric_job_results.retrieve(job_name, workspace=workspace)
@@ -168,7 +163,8 @@ def verify_job_completed_successfully(
         f"Expect 100% progress completed for successful jobs: {outputs.job_status}"
     )
     if require_samples_processed:
-        assert outputs.job_status.status_details.get("samples_processed", 0) > 0, (
+        samples_processed = cast(int, outputs.job_status.status_details.get("samples_processed", 0))
+        assert samples_processed > 0, (
             f"Expect samples_processed for custom jobs and industry metrics with limit_samples: {outputs.job_status}"
         )
 
@@ -180,7 +176,8 @@ def verify_job_completed_successfully(
         len_row_scores = len(outputs.row_scores)
         assert len_row_scores > 0, "Row scores should not be empty"
         if require_samples_processed:
-            assert outputs.job_status.status_details.get("samples_processed", 0) >= len_row_scores, (
+            samples_processed = cast(int, outputs.job_status.status_details.get("samples_processed", 0))
+            assert samples_processed >= len_row_scores, (
                 f"Expect samples_processed to match number of rows: {outputs.job_status}"
             )
 
@@ -241,14 +238,14 @@ def create_dataset_fileset(
     filename: str = "dataset.json",
 ) -> str:
     """Create a fileset with optional dataset schema metadata and upload rows."""
-    create_kwargs = {
-        "workspace": workspace,
-        "name": fileset_name,
-    }
     if schema is not None:
-        create_kwargs["metadata"] = {"dataset": {"schema": schema}}
-
-    sdk.files.filesets.create(**create_kwargs)
+        sdk.files.filesets.create(
+            workspace=workspace,
+            name=fileset_name,
+            metadata={"dataset": {"schema": schema}},
+        )
+    else:
+        sdk.files.filesets.create(workspace=workspace, name=fileset_name)
     return upload_dataset_to_fileset(sdk, workspace, fileset_name, rows, filename=filename)
 
 

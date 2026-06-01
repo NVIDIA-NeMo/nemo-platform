@@ -124,12 +124,12 @@ def test_secret_key_encryptor_config_validation():
     # Invalid key (too short)
     short_key = base64.b64encode(SHORT_TEST_KEY).decode()
     with pytest.raises(ValueError):
-        config = SecretKeyEncryptorConfig(value=short_key)
+        SecretKeyEncryptorConfig(value=short_key)
 
     # Invalid base64
     invalid_base64_key = "not-a-valid-base64-string"
     with pytest.raises(ValueError):
-        config = SecretKeyEncryptorConfig(value=invalid_base64_key)
+        SecretKeyEncryptorConfig(value=invalid_base64_key)
 
 
 def test_secret_key_encryptor_config_from_env(monkeypatch):

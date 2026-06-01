@@ -473,10 +473,7 @@ def detect_mamba_config_from_cfg(
         return detect_hybrid_mamba_via_introspection(cfg, n_layers, is_trusted)
 
     # Priority 4: Pure Mamba model
-    if has_ssm_config:
-        return detect_pure_mamba_from_cfg(cfg, n_layers)
-
-    return None
+    return detect_pure_mamba_from_cfg(cfg, n_layers)
 
 
 def _has_config_json(pretrained_or_path: str) -> bool:
