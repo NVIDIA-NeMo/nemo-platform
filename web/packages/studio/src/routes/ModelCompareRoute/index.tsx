@@ -1,28 +1,32 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button, Flex, TabsList, TabsRoot, TabsTrigger, Text } from '@nvidia/foundations-react-core';
+import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import {
+  Button,
+  Flex,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { AgentContextBanner } from '@studio/components/chat/AgentContextBanner';
 import { AgentPicker } from '@studio/components/chat/AgentPicker';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
-import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/SeedQuestions';
-import {
-  DEFAULT_INFERENCE_PARAMS,
-  type InferenceParams,
-} from '@studio/components/chat/ParamsPopover';
+import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
+import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { RunEvaluationModal } from '@studio/components/chat/RunEvaluationModal';
 import { useWorkspaceModels } from '@studio/components/chat/useWorkspaceModels';
 import { ModelCompareChat } from '@studio/components/ModelCompareChat';
 import { ModelComparePrompts } from '@studio/components/ModelComparePrompts';
+import { ROUTES } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { useAgentContext } from '@studio/routes/ModelCompareRoute/useAgentContext';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
+import { useAgentContext } from '@studio/routes/ModelCompareRoute/useAgentContext';
 import { Check, Plus, RotateCcw, Target } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, useNavigate, useSearchParams } from 'react-router-dom';
-import { ROUTES } from '@studio/constants/routes';
 
 type CompareView = 'chat' | 'compare' | 'prompts';
 
@@ -45,14 +49,16 @@ const makeDefaultEntry = (
 
 export const ModelCompareRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { models: availableModels, isLoading: isLoadingModels } =
-    useWorkspaceModels(workspace);
+  const { models: availableModels, isLoading: isLoadingModels } = useWorkspaceModels(workspace);
   const toast = useToast();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const agentNameFromUrl = searchParams.get('agent');
-  const { context: agentContext, isLoading: agentLoading, error: agentError } =
-    useAgentContext(workspace, agentNameFromUrl);
+  const {
+    context: agentContext,
+    isLoading: agentLoading,
+    error: agentError,
+  } = useAgentContext(workspace, agentNameFromUrl);
 
   const [activeView, setActiveView] = useState<CompareView>('chat');
   const [promptsReady, setPromptsReady] = useState(false);
@@ -79,9 +85,7 @@ export const ModelCompareRoute: FC = () => {
       if (seededAgentRef.current !== null) {
         seededAgentRef.current = null;
         setModels((prev) =>
-          prev.map((m, i) =>
-            i === 0 && m.locked ? { ...m, modelURN: null, locked: false } : m
-          )
+          prev.map((m, i) => (i === 0 && m.locked ? { ...m, modelURN: null, locked: false } : m))
         );
       }
       return;
@@ -127,10 +131,7 @@ export const ModelCompareRoute: FC = () => {
   const [broadcast, setBroadcast] = useState<{ nonce: number; text: string } | null>(null);
   const [cancelNonce, setCancelNonce] = useState(0);
   const [runningById, setRunningById] = useState<Map<number, boolean>>(() => new Map());
-  const isAnyRunning = useMemo(
-    () => Array.from(runningById.values()).some(Boolean),
-    [runningById]
-  );
+  const isAnyRunning = useMemo(() => Array.from(runningById.values()).some(Boolean), [runningById]);
 
   const handleRunningChange = useCallback((id: number, running: boolean) => {
     setRunningById((prev) => {
@@ -168,9 +169,7 @@ export const ModelCompareRoute: FC = () => {
   }, []);
 
   const setParams = useCallback((id: number, params: InferenceParams) => {
-    setModels((prev) =>
-      prev.map((m) => (m.id === id ? { ...m, params, paramsTouched: true } : m))
-    );
+    setModels((prev) => prev.map((m) => (m.id === id ? { ...m, params, paramsTouched: true } : m)));
   }, []);
 
   const resetAll = useCallback(() => {
@@ -189,9 +188,7 @@ export const ModelCompareRoute: FC = () => {
   }, [activeView, models.length]);
 
   const openEvalForAll = useCallback(() => {
-    const urns = Array.from(
-      new Set(models.map((m) => m.modelURN).filter((u): u is string => !!u))
-    );
+    const urns = Array.from(new Set(models.map((m) => m.modelURN).filter((u): u is string => !!u)));
     setEvalSeedModels(urns);
     setEvalOpen(true);
   }, [models]);
@@ -211,9 +208,7 @@ export const ModelCompareRoute: FC = () => {
       const panel = models.find((m) => m.id === id);
       if (!panel?.modelURN) return;
       const target = generatePath(ROUTES.workspace.newCustomizationJob, { workspace });
-      toast.success(
-        `Opening Customizer — would preselect ${panel.modelURN} as the base model.`
-      );
+      toast.success(`Opening Customizer — would preselect ${panel.modelURN} as the base model.`);
       navigate(target);
     },
     [models, navigate, toast, workspace]
@@ -250,7 +245,6 @@ export const ModelCompareRoute: FC = () => {
   const anyModelSelected = models.some((m) => !!m.modelURN);
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
 
-
   // Empty state when the workspace has zero models and we're not still loading.
   if (!isLoadingModels && availableModels.length === 0) {
     return <ChatEmptyState hasModels={false} />;
@@ -267,18 +261,11 @@ export const ModelCompareRoute: FC = () => {
       {/* Row 2 — sub-nav tabs (left) + page actions (right). No row-level
        *  underline: each tab carries its own indicator only when active, so
        *  the header stays quiet until the user selects a tab. */}
-      <Flex
-        align="center"
-        justify="between"
-        className="shrink-0 px-6 pb-2"
-      >
-        <TabsRoot
-          value={activeView}
-          onValueChange={(value) => setActiveView(value as CompareView)}
-        >
+      <Flex align="center" justify="between" className="shrink-0 px-6 pb-2">
+        <TabsRoot value={activeView} onValueChange={(value) => setActiveView(value as CompareView)}>
           {/* -ml-3 cancels the first TabsTrigger's internal 12px left padding
            *  so its label aligns precisely with the page title above. */}
-          <TabsList className="-ml-3 !shadow-none [&_[data-state=active]]:border-b-[#76b900]">
+          <TabsList className="-ml-3 !shadow-none [&_[data-state=active]]:border-b-[var(--color-brand)]">
             <TabsTrigger value="chat">Chat</TabsTrigger>
             {showCompareItem && <TabsTrigger value="compare">Compare</TabsTrigger>}
             <TabsTrigger value="prompts">Run Prompts</TabsTrigger>
@@ -317,11 +304,7 @@ export const ModelCompareRoute: FC = () => {
        *  width). Banner is the info chrome when an agent is selected, or a
        *  loading/error state when the URL points at a missing agent. */}
       <Flex align="center" gap="density-md" className="shrink-0 px-6 pb-3">
-        <AgentPicker
-          workspace={workspace}
-          value={agentNameFromUrl}
-          onChange={setAgentName}
-        />
+        <AgentPicker workspace={workspace} value={agentNameFromUrl} onChange={setAgentName} />
         <div className="min-w-0 flex-1">
           {agentContext && (
             <AgentContextBanner
@@ -337,7 +320,8 @@ export const ModelCompareRoute: FC = () => {
                 </Text>
               ) : (
                 <Text kind="body/regular/sm" className="text-fg-error">
-                  Agent &quot;{agentNameFromUrl}&quot; not found in workspace &quot;{workspace}&quot;. Falling back to plain Chat.
+                  Agent &quot;{agentNameFromUrl}&quot; not found in workspace &quot;{workspace}
+                  &quot;. Falling back to plain Chat.
                 </Text>
               )}
             </div>

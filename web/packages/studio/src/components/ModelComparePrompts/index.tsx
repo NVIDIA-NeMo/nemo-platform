@@ -27,9 +27,6 @@ const INFERENCE_BATCH_SIZE = 10;
 const UPLOAD_ACTION_VALUE = '__upload__';
 const UPLOADED_FILE_VALUE = '__uploaded__';
 
-/** Brand green — matches the Chat tab StatsBadge. */
-const STATS_GREEN = '#76b900';
-
 interface ResponseStats {
   /** Wall-clock time from request fire to response, in ms. */
   totalMs: number;
@@ -109,7 +106,9 @@ async function parseUploadedFile(file: File): Promise<DatasetInputFileResult | {
         .map((line) => JSON.parse(line) as Record<string, unknown>);
     } else {
       const parsed: unknown = JSON.parse(text);
-      parsedRows = Array.isArray(parsed) ? (parsed as Record<string, unknown>[]) : [parsed as Record<string, unknown>];
+      parsedRows = Array.isArray(parsed)
+        ? (parsed as Record<string, unknown>[])
+        : [parsed as Record<string, unknown>];
     }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Failed to parse file contents' };
@@ -129,11 +128,12 @@ async function parseUploadedFile(file: File): Promise<DatasetInputFileResult | {
   }
   if (!promptKey) {
     const candidates = ['prompt', 'question', 'input', 'text'];
-    promptKey =
-      candidates.find((k) => typeof firstRow[k] === 'string') ?? null;
+    promptKey = candidates.find((k) => typeof firstRow[k] === 'string') ?? null;
   }
   if (!promptKey) {
-    return { error: 'Could not detect a prompt column. Expected one of: prompt, question, input, text.' };
+    return {
+      error: 'Could not detect a prompt column. Expected one of: prompt, question, input, text.',
+    };
   }
   return {
     fileUrl: `upload://${file.name}`,
@@ -321,7 +321,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
    * zero completed responses so the footer can render an em-dash.
    */
   const averagesByModelId = useMemo(() => {
-    const result: Record<number, ResponseStats & { count: number } | null> = {};
+    const result: Record<number, (ResponseStats & { count: number }) | null> = {};
     models.forEach((m) => {
       let totalMs = 0;
       let totalTokens = 0;
@@ -381,6 +381,11 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     setUploadedFileName(null);
     setParseError(null);
     handleFileChange(match.build());
+    // We intentionally re-run only on `agentName` change. Including
+    // `handleFileChange` (or the various setters) would re-fire this effect
+    // every time the parent re-renders and produce a seed loop — the agentRef
+    // guard above would still no-op the work, but the effect would still run
+    // and we want the dependencies to read true.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agentName]);
 
@@ -649,10 +654,7 @@ const CellStats: FC<{ stats: ResponseStats; className?: string }> = ({ stats, cl
   const seconds = (stats.totalMs / 1000).toFixed(1);
   const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
   return (
-    <div
-      className={`text-xs font-mono ${className ?? ''}`}
-      style={{ color: STATS_GREEN }}
-    >
+    <div className={`text-xs font-mono text-[var(--color-brand)] ${className ?? ''}`}>
       {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
     </div>
   );

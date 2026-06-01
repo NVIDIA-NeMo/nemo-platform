@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { DEFAULT_INFERENCE_PARAMS } from '@studio/components/chat/ParamsPopover';
+import { DEFAULT_INFERENCE_PARAMS } from '@studio/components/chat/params';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render } from '@testing-library/react';

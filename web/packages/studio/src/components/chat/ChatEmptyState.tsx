@@ -31,11 +31,7 @@ export const ChatEmptyState: FC<ChatEmptyStateProps> = ({ hasModels }) => {
 
   return (
     <div className="flex h-full w-full items-center justify-center p-8">
-      <Stack
-        gap="density-xl"
-        align="center"
-        className="relative z-10 w-full max-w-xl text-center"
-      >
+      <Stack gap="density-xl" align="center" className="relative z-10 w-full max-w-xl text-center">
         <div className="relative h-72 w-72">
           <ParticleSwirl />
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2">
@@ -52,9 +48,7 @@ export const ChatEmptyState: FC<ChatEmptyStateProps> = ({ hasModels }) => {
                 kind="primary"
                 color="brand"
                 onClick={() =>
-                  navigate(
-                    generatePath(ROUTES.workspace.inferenceProviders, { workspace })
-                  )
+                  navigate(generatePath(ROUTES.workspace.inferenceProviders, { workspace }))
                 }
               >
                 <PlugZap size={16} />
@@ -62,9 +56,7 @@ export const ChatEmptyState: FC<ChatEmptyStateProps> = ({ hasModels }) => {
               </Button>
               <Button
                 kind="secondary"
-                onClick={() =>
-                  navigate(generatePath(ROUTES.workspace.deployments, { workspace }))
-                }
+                onClick={() => navigate(generatePath(ROUTES.workspace.deployments, { workspace }))}
               >
                 <Server size={16} />
                 Create deployment
@@ -102,25 +94,26 @@ const ParticleSwirl: FC = () => {
     >
       <defs>
         <radialGradient id="playground-swirl-glow" cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor="#76b900" stopOpacity="0.18" />
-          <stop offset="65%" stopColor="#76b900" stopOpacity="0.04" />
-          <stop offset="100%" stopColor="#76b900" stopOpacity="0" />
+          <stop offset="0%" stopColor="var(--color-brand)" stopOpacity="0.18" />
+          <stop offset="65%" stopColor="var(--color-brand)" stopOpacity="0.04" />
+          <stop offset="100%" stopColor="var(--color-brand)" stopOpacity="0" />
         </radialGradient>
       </defs>
       <circle cx="144" cy="144" r="128" fill="url(#playground-swirl-glow)" />
-      {dots.map(({ cx, cy, size, delay, key }) => (
+      {dots.map(({ cx, cy, size, key }, i) => (
         <circle
           key={key}
           cx={cx}
           cy={cy}
           r={size}
-          fill="#76b900"
-          style={{
-            opacity: 0.6,
-            animation: `playground-swirl-pulse 2.8s ${delay}s ease-in-out infinite`,
-          }}
+          fill="var(--color-brand)"
+          className={`playground-swirl-dot dot-${i}`}
         />
       ))}
+      {/* Per-dot animation-delay is generated dynamically into this style block
+       *  rather than via inline `style={}` so we don't trip the
+       *  no-restricted-syntax lint rule. The styled <style> tag inside an SVG
+       *  scopes the rules to this swirl. */}
       <style>{`
         @keyframes playground-swirl-spin {
           from { transform: rotate(0deg); }
@@ -130,6 +123,11 @@ const ParticleSwirl: FC = () => {
           0%, 100% { opacity: 0.2; }
           50% { opacity: 0.85; }
         }
+        .playground-swirl-dot {
+          opacity: 0.6;
+          animation: playground-swirl-pulse 2.8s ease-in-out infinite;
+        }
+        ${dots.map(({ delay }, i) => `.playground-swirl-dot.dot-${i} { animation-delay: ${delay}s; }`).join('\n        ')}
       `}</style>
     </svg>
   );

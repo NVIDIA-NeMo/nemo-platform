@@ -1,14 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
 import { type FC } from 'react';
-
-/** Default seed questions — short, recognizable LLM "gotchas" that make
- *  cross-model differences obvious in the first prompt. */
-export const DEFAULT_SEED_QUESTIONS = [
-  "How many 'r's are in the word strawberry?",
-  "Mary's mom has 4 kids: April, May, and June. Who is the fourth kid?",
-];
 
 interface SeedQuestionsProps {
   questions?: string[];
