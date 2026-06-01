@@ -2,22 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button, Popover, Slider, Stack, Text } from '@nvidia/foundations-react-core';
+import type { InferenceParams } from '@studio/components/chat/params';
 import { Sliders } from 'lucide-react';
 import { useState, type FC } from 'react';
-
-export interface InferenceParams {
-  temperature: number;
-  top_p: number;
-  top_k: number;
-  max_tokens: number;
-}
-
-export const DEFAULT_INFERENCE_PARAMS: InferenceParams = {
-  temperature: 0.7,
-  top_p: 0.95,
-  top_k: 40,
-  max_tokens: 512,
-};
 
 interface ParamsPopoverProps {
   value: InferenceParams;
@@ -32,10 +19,31 @@ const SLIDERS: Array<{
   step: number;
   hint: string;
 }> = [
-  { key: 'temperature', label: 'Temperature', min: 0, max: 2, step: 0.05, hint: 'Randomness — higher = more creative.' },
+  {
+    key: 'temperature',
+    label: 'Temperature',
+    min: 0,
+    max: 2,
+    step: 0.05,
+    hint: 'Randomness — higher = more creative.',
+  },
   { key: 'top_p', label: 'Top P', min: 0, max: 1, step: 0.01, hint: 'Nucleus sampling cutoff.' },
-  { key: 'top_k', label: 'Top K', min: 1, max: 100, step: 1, hint: 'Sample from top-K tokens. Provider-dependent.' },
-  { key: 'max_tokens', label: 'Max tokens', min: 32, max: 4096, step: 32, hint: 'Hard cap on response length.' },
+  {
+    key: 'top_k',
+    label: 'Top K',
+    min: 1,
+    max: 100,
+    step: 1,
+    hint: 'Sample from top-K tokens. Provider-dependent.',
+  },
+  {
+    key: 'max_tokens',
+    label: 'Max tokens',
+    min: 32,
+    max: 4096,
+    step: 32,
+    hint: 'Hard cap on response length.',
+  },
 ];
 
 export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
@@ -79,7 +87,12 @@ export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
         </Stack>
       }
     >
-      <Button kind="secondary" size="small" aria-label="Inference parameters" title="Inference parameters">
+      <Button
+        kind="secondary"
+        size="small"
+        aria-label="Inference parameters"
+        title="Inference parameters"
+      >
         <Sliders size={14} />
       </Button>
     </Popover>

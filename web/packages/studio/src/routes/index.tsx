@@ -3,8 +3,8 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { Stack } from '@nvidia/foundations-react-core';
-import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { PlaygroundRedirect } from '@studio/components/chat/PlaygroundRedirect';
+import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
   AGENTS_ENABLED,

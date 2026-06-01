@@ -27,8 +27,8 @@ import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO } from '@studio/constants/links';
-import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { ROUTES } from '@studio/constants/routes';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { keepPreviousData, useQueryClient } from '@tanstack/react-query';
 import { HatGlasses } from 'lucide-react';
 import { ComponentProps, FC, useMemo, useState } from 'react';

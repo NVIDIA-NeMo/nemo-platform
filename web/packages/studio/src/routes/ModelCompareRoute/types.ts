@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { InferenceParams } from '@studio/components/chat/ParamsPopover';
+import type { InferenceParams } from '@studio/components/chat/params';
 
 /** Color/label slots assigned by position. First panel is Baseline. */
 export type PanelRoleColor = 'baseline' | 'cyan' | 'magenta' | 'amber';

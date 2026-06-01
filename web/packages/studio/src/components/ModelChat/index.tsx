@@ -1,15 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  AssistantChat,
-  type AssistantChatProps,
-} from '@nemo/common/src/components/AssistantChat';
+import { AssistantChat, type AssistantChatProps } from '@nemo/common/src/components/AssistantChat';
 import type { AssistantMessageCompletion } from '@nemo/common/src/components/AssistantChat/types';
 import type { ModelChatStatus } from '@nemo/common/src/utils/models';
+import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
+import type { InferenceParams } from '@studio/components/chat/params';
+import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { StatsBadge, type ChatMetrics } from '@studio/components/chat/StatsBadge';
-import type { InferenceParams } from '@studio/components/chat/ParamsPopover';
-import { DEFAULT_SEED_QUESTIONS, SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { handleGenericError } from '@studio/util/logger';
 import { useMemo, useState, type FC } from 'react';
 
