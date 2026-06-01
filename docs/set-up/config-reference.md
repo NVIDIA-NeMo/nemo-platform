@@ -875,6 +875,4 @@ studio:
     allowed_origins:
     - http://localhost
     - http://localhost:*
-  # Studio feature flags.
-  feature_flags: {}
 ```
