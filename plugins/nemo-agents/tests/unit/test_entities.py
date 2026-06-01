@@ -16,12 +16,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 import pytest
-from nemo_agents_plugin.entities import Agent, AgentDeployment
+from nemo_agents_plugin.entities import (
+    AGENT_SPEC_FILENAME,
+    Agent,
+    AgentDeployment,
+    agent_spec_file_ref,
+    agent_spec_fileset_name,
+)
 from nemo_agents_plugin.schema import (
     CreateAgentRequest,
     CreateDeploymentRequest,
 )
-from nemo_platform_plugin.refs import FilesetRef
 from pydantic import ValidationError
 
 NOW = datetime.now(timezone.utc)
@@ -43,17 +48,13 @@ class TestAgentEntity:
         assert a.description == ""
         assert a.config == {}
         assert a.config_format == "nat-workflow-v1"
-        assert a.spec_file_ref is None
 
-    def test_spec_file_ref_round_trip(self) -> None:
-        a = Agent(name="calc", workspace="default", spec_file_ref=FilesetRef("default/calc-spec"))
-        assert a.spec_file_ref == "default/calc-spec"
-        # Serializes back as a plain string in the API response.
-        assert a.model_dump()["spec_file_ref"] == "default/calc-spec"
-
-    def test_spec_file_ref_in_data_fields(self) -> None:
-        a = Agent(name="calc", workspace="default", spec_file_ref=FilesetRef("default/calc-spec"))
-        assert "spec_file_ref" in a._get_data_fields()
+    def test_no_spec_file_ref_field(self) -> None:
+        # Intentional: the spec location is derivable from (workspace, name)
+        # via :func:`agent_spec_file_ref`, not stored on the entity.
+        a = Agent(name="calc", workspace="default")
+        assert "spec_file_ref" not in a._get_data_fields()
+        assert not hasattr(a, "spec_file_ref")
 
     def test_config_stored(self) -> None:
         config = {"llms": {"my_llm": {"_type": "nim", "model_name": "llama"}}}
@@ -183,7 +184,6 @@ class TestCreateAgentRequest:
         assert req.config == {"llms": {}}
         assert req.description == ""
         assert req.config_format == "nat-workflow-v1"
-        assert req.spec_file_ref is None
 
     def test_missing_config_raises(self) -> None:
         with pytest.raises(ValidationError):
@@ -193,9 +193,33 @@ class TestCreateAgentRequest:
         req = CreateAgentRequest(name="x", config={}, config_format="custom-v2")
         assert req.config_format == "custom-v2"
 
-    def test_spec_file_ref_accepted(self) -> None:
-        req = CreateAgentRequest(name="x", config={}, spec_file_ref=FilesetRef("default/x-spec"))
-        assert req.spec_file_ref == "default/x-spec"
+    def test_spec_file_ref_field_rejected(self) -> None:
+        # The field was removed in favor of convention-based derivation.
+        # ``extra='forbid'`` is not set on this BaseModel, so the extra value
+        # is silently dropped — assert it does not surface on the parsed model.
+        req = CreateAgentRequest.model_validate({"name": "x", "config": {}, "spec_file_ref": "default/x-spec"})
+        assert not hasattr(req, "spec_file_ref")
+
+
+# ---------------------------------------------------------------------------
+# Canonical spec-location helpers
+# ---------------------------------------------------------------------------
+
+
+class TestSpecLocationConvention:
+    def test_canonical_filename(self) -> None:
+        assert AGENT_SPEC_FILENAME == "AGENTSpec.md"
+
+    def test_fileset_name_is_agent_name_plus_suffix(self) -> None:
+        assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
+
+    def test_file_ref_combines_workspace_fileset_and_filename(self) -> None:
+        ref = agent_spec_file_ref("default", "checkout-bot")
+        assert str(ref) == "default/checkout-bot-spec#AGENTSpec.md"
+
+    def test_file_ref_uses_active_workspace(self) -> None:
+        ref = agent_spec_file_ref("acme-corp", "support-triage")
+        assert str(ref) == "acme-corp/support-triage-spec#AGENTSpec.md"
 
 
 # ---------------------------------------------------------------------------

@@ -41,16 +41,15 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 2. Confirm a spec exists at `agents/$AGENT_NAME.spec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
 3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
 4. Read the spec. Extract: name, categories, tools, model, constraints, success criteria.
-5. Resolve the spec's fileset reference. `nemo-spec` uploads the canonical copy to a Filesets fileset named `<agent-name>-spec` and the convention is `<workspace>/<agent-name>-spec`. Either trust the convention or read it from a Step-0 env var:
+5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENTSpec.md` — there is no ref to thread through, just a one-shot presence check:
 
    ```bash
-   SPEC_FILE_REF="${SPEC_FILE_REF:-default/${AGENT_NAME}-spec}"
-   nemo files filesets get "${SPEC_FILE_REF#*/}" >/dev/null 2>&1 \
+   nemo files filesets get "${AGENT_NAME}-spec" --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
      && echo "spec_fileset_ok" \
-     || echo "spec_fileset_missing — run nemo-spec to upload before continuing"
+     || { echo "spec_fileset_missing — run nemo-spec to upload before continuing"; exit 1; }
    ```
 
-   If the fileset is missing, route back to `nemo-spec`. The ref is passed to every `nemo agents create` call below so the platform Agent entity is linked to the spec from creation.
+   If the fileset is missing, route back to `nemo-spec` and return when the upload succeeds.
 6. Check for an existing deployment: `.venv/bin/nemo agents deployments list 2>/dev/null | grep -q "$AGENT_NAME"`. If the agent is already deployed, ask the user whether to skip (idempotent path) or redeploy.
 
 ## Step 1: Scaffold and deploy
@@ -59,11 +58,9 @@ Write `agents/$AGENT_NAME.yml` from `references/templates/agent.yml`, substituti
 
 ```bash
 AGENT_NAME=<agent-name>            # set once; reused throughout this skill
-SPEC_FILE_REF="${SPEC_FILE_REF:-default/${AGENT_NAME}-spec}"
 .venv/bin/nemo agents delete "$AGENT_NAME" 2>/dev/null || true
 .venv/bin/nemo agents create --name "$AGENT_NAME" \
-  --agent-config "agents/$AGENT_NAME.yml" \
-  --spec-file-ref "$SPEC_FILE_REF"
+  --agent-config "agents/$AGENT_NAME.yml"
 .venv/bin/nemo agents deploy --agent "$AGENT_NAME"
 .venv/bin/nemo agents deployments wait --agent "$AGENT_NAME"
 ```
@@ -155,8 +152,7 @@ NeMo Agent Toolkit (NAT) has first-class retrieval support:
 ```bash
 .venv/bin/nemo agents undeploy --agent $AGENT_NAME
 .venv/bin/nemo agents create --name $AGENT_NAME \
-  --agent-config agents/$AGENT_NAME.yml \
-  --spec-file-ref "$SPEC_FILE_REF"
+  --agent-config agents/$AGENT_NAME.yml
 .venv/bin/nemo agents deploy --agent $AGENT_NAME
 .venv/bin/nemo agents deployments wait --agent $AGENT_NAME
 ```
@@ -202,8 +198,7 @@ If the spec lists constraints, add a content-safety intercept to the YAML (see `
 ```bash
 .venv/bin/nemo agents undeploy --agent $AGENT_NAME
 .venv/bin/nemo agents create --name $AGENT_NAME \
-  --agent-config agents/$AGENT_NAME.yml \
-  --spec-file-ref "$SPEC_FILE_REF"
+  --agent-config agents/$AGENT_NAME.yml
 .venv/bin/nemo agents deploy --agent $AGENT_NAME
 .venv/bin/nemo agents deployments wait --agent $AGENT_NAME
 ```
