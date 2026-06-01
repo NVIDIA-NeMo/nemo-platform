@@ -330,7 +330,8 @@ nemo-evaluator-plugin = [
   "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
-  "nmp-evaluator",
+  "nemo-platform-sdk",
+  "nmp-common",
   "pydantic>=2.10.6",
   "typer>=0.20.0",
 ]

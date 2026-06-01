@@ -3,8 +3,6 @@
 
 """Aggregation data structures and computations for metric results."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/metrics/aggregation.py
-
 import math
 from collections import OrderedDict, defaultdict
 from collections.abc import Mapping, Sequence
