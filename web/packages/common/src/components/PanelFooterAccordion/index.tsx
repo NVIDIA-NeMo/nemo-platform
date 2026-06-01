@@ -38,7 +38,7 @@ export const PanelFooterAccordion: FC<Props> = ({
             ...attributes?.AccordionTrigger,
           },
         },
-        iconSide: 'left',
+        chevronPosition: 'start',
         slotTrigger,
         slotContent,
         value,

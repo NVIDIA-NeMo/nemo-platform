@@ -106,7 +106,6 @@ export const ControlledSearchableSelect = ({
   maxHeight = '300px',
   formFieldProps,
   useControllerProps,
-  portal,
   disabled,
   required,
   status,
@@ -237,7 +236,7 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)" portal={portal}>
+        <SelectContent className="w-(--radix-popper-anchor-width)">
           <Block className="p-2 w-full sticky top-0 bg-surface z-10">
             <TextInput
               ref={searchInputRef}
@@ -250,14 +249,14 @@ export const ControlledSearchableSelect = ({
                 setLocalSearch(e.target.value);
               }}
               attributes={{
-                TextInputValue: {
-                  'data-testid': `${useControllerProps.name}-search`,
+                Input: {
+                  ['data-testid' as never]: `${useControllerProps.name}-search`,
                 },
               }}
             />
           </Block>
           {/* eslint-disable-next-line no-restricted-syntax */}
-          <Stack className="overflow-auto w-full" style={{ maxHeight }}>
+          <Stack className="overflow-auto w-full" style={{ maxHeight }} role="listbox">
             {isLoading && filteredOptions.length === 0 ? (
               <Flex align="center" justify="center" className="py-4">
                 <Spinner aria-label="Loading options" size="small" />

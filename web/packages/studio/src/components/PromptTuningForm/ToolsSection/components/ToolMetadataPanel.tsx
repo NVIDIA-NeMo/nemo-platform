@@ -7,6 +7,7 @@ import { ChatCompletionToolsParam } from '@nemo/common/src/zod/tools';
 import {
   Flex,
   SidePanelContent,
+  SidePanelDialog,
   SidePanelHeading,
   SidePanelRoot,
   Stack,
@@ -41,44 +42,46 @@ export const ToolMetadataPanel: FC<ToolMetadataPanelProps> = ({
 
   return (
     <SidePanelRoot open={open} onOpenChange={onClose} modal {...attributes?.SidePanelRoot}>
-      <SidePanelContent className="w-[800px]" bordered {...attributes?.SidePanelContent}>
-        <SidePanelHeading {...attributes?.SidePanelHeading}>
-          <Flex gap="density-md" align="center">
-            <Wrench />
-            Tool Metadata
-          </Flex>
-        </SidePanelHeading>
-        <Stack gap="density-2xl" padding="4" className="h-full overflow-y-auto">
-          {/* Basic Information */}
-          <Stack gap="density-xl">
-            <Text kind="label/semibold/lg">Basic Information</Text>
-            <Stack gap="density-md">
-              <Stack gap="density-xs">
-                <Text kind="label/semibold/md">Function Name</Text>
-                <Text kind="label/regular/md">{tool.function.name}</Text>
-              </Stack>
-              {tool.function.description && (
+      <SidePanelDialog>
+        <SidePanelContent className="w-[800px]" bordered {...attributes?.SidePanelContent}>
+          <SidePanelHeading {...attributes?.SidePanelHeading}>
+            <Flex gap="density-md" align="center">
+              <Wrench />
+              Tool Metadata
+            </Flex>
+          </SidePanelHeading>
+          <Stack gap="density-2xl" padding="4" className="h-full overflow-y-auto">
+            {/* Basic Information */}
+            <Stack gap="density-xl">
+              <Text kind="label/semibold/lg">Basic Information</Text>
+              <Stack gap="density-md">
                 <Stack gap="density-xs">
-                  <Text kind="label/semibold/md">Description</Text>
-                  <Text kind="label/regular/md">{tool.function.description}</Text>
+                  <Text kind="label/semibold/md">Function Name</Text>
+                  <Text kind="label/regular/md">{tool.function.name}</Text>
                 </Stack>
-              )}
+                {tool.function.description && (
+                  <Stack gap="density-xs">
+                    <Text kind="label/semibold/md">Description</Text>
+                    <Text kind="label/regular/md">{tool.function.description}</Text>
+                  </Stack>
+                )}
+              </Stack>
+            </Stack>
+
+            {/* Parameters */}
+            <Stack gap="density-xl">
+              <Text kind="label/semibold/lg">Parameters</Text>
+              <ToolParameterDetails tool={tool} />
+            </Stack>
+
+            {/* JSON Schema */}
+            <Stack gap="density-md" className="max-h-[500px]">
+              <Text kind="label/semibold/lg">Definition</Text>
+              <CodeEditor content={toolJson} readOnly contentType={ContentType.JSON} />
             </Stack>
           </Stack>
-
-          {/* Parameters */}
-          <Stack gap="density-xl">
-            <Text kind="label/semibold/lg">Parameters</Text>
-            <ToolParameterDetails tool={tool} />
-          </Stack>
-
-          {/* JSON Schema */}
-          <Stack gap="density-md" className="max-h-[500px]">
-            <Text kind="label/semibold/lg">Definition</Text>
-            <CodeEditor content={toolJson} readOnly contentType={ContentType.JSON} />
-          </Stack>
-        </Stack>
-      </SidePanelContent>
+        </SidePanelContent>
+      </SidePanelDialog>
     </SidePanelRoot>
   );
 };

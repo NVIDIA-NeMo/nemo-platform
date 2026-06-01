@@ -66,7 +66,7 @@ describe('MetricsCheckboxes', () => {
 
     // Wait for component to render
     expect(await screen.findByText(METRIC_LABELS.bleu)).toBeInTheDocument();
-    expect(screen.getAllByTestId('nv-checkbox-box')).toHaveLength(NUM_METRICS);
+    expect(screen.getAllByTestId('nv-checkbox-input')).toHaveLength(NUM_METRICS);
     expect(screen.getByText(METRIC_LABELS.rouge)).toBeInTheDocument();
     expect(screen.getByText(METRIC_LABELS.em)).toBeInTheDocument();
     expect(screen.getByText(METRIC_LABELS.f1)).toBeInTheDocument();
@@ -92,7 +92,7 @@ describe('MetricsCheckboxes', () => {
     // Wait for component to render
     await screen.findByText(METRIC_LABELS.bleu);
 
-    const checkboxes = screen.getAllByTestId('nv-checkbox-box');
+    const checkboxes = screen.getAllByTestId('nv-checkbox-input');
     checkboxes.forEach((checkbox) => {
       expect(checkbox).toBeDisabled();
     });

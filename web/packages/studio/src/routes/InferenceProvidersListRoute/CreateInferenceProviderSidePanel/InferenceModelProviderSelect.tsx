@@ -114,8 +114,8 @@ export const InferenceModelProviderSelect: FC<InferenceModelProviderSelectProps>
             value={localSearch}
             onChange={(e: ChangeEvent<HTMLInputElement>) => setLocalSearch(e.target.value)}
             attributes={{
-              TextInputValue: {
-                'data-testid': 'model-provider-search',
+              Input: {
+                ['data-testid' as never]: 'model-provider-search',
               },
             }}
           />

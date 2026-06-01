@@ -43,7 +43,7 @@ describe('DpoParameters', () => {
       </FormWrapper>
     );
 
-    expect(screen.queryByText('Ref Policy KL Penalty')).not.toBeInTheDocument();
-    expect(screen.queryByText('Preference Loss Weight')).not.toBeInTheDocument();
+    expect(screen.queryByText('Ref Policy KL Penalty')).not.toBeVisible();
+    expect(screen.queryByText('Preference Loss Weight')).not.toBeVisible();
   });
 });

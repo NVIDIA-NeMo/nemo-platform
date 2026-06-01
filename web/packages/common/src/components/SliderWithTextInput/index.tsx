@@ -9,7 +9,6 @@ import {
   FormField,
   FormFieldProps,
   Slider,
-  SliderProps,
   Stack,
   Text,
   TextInput,
@@ -17,14 +16,10 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import { Info, RotateCcw } from 'lucide-react';
-import { ReactNode } from 'react';
+import { ComponentProps, ReactNode } from 'react';
 import { FieldValues } from 'react-hook-form';
 
-// Extract only the single slider props for horizontal orientation
-type HorizontalSingleSliderProps = Extract<
-  SliderProps,
-  { kind?: 'single'; orientation?: 'horizontal' }
->;
+type SliderProps = ComponentProps<typeof Slider>;
 
 export type SliderWithTextInputProps = {
   field: FieldValues;
@@ -38,7 +33,7 @@ export type SliderWithTextInputProps = {
   showReset?: boolean;
   size?: 'normal' | 'compact';
   attributes?: {
-    Slider?: Partial<HorizontalSingleSliderProps>;
+    Slider?: Partial<SliderProps>;
     TextInput?: Partial<TextInputProps>;
   };
   formFieldProps?: FormFieldProps;
@@ -67,18 +62,26 @@ export const SliderWithTextInput = ({
     field.onChange(clampedValue);
     attributes?.Slider?.onValueChange?.(clampedValue);
   };
-  const handleTextInputChange = (newValue: string) => {
+  const handleTextInputChange = (newValue: string, event: React.ChangeEvent<HTMLInputElement>) => {
+    if (newValue === '') {
+      field.onChange(undefined);
+      attributes?.TextInput?.onValueChange?.('', event);
+      return;
+    }
     const numberValue = parseFloat(newValue);
+    if (Number.isNaN(numberValue)) return;
     const clampedValue = Math.min(Math.max(numberValue, min), max);
     field.onChange(clampedValue);
-    attributes?.TextInput?.onValueChange?.(clampedValue.toString());
+    attributes?.TextInput?.onValueChange?.(clampedValue.toString(), event);
   };
   const handleReset = () => {
     field.onChange(defaultValue);
     attributes?.Slider?.onValueChange?.(defaultValue);
-    attributes?.TextInput?.onValueChange?.(defaultValue.toString());
   };
   const fallback = defaultValue ?? min;
+  const isFieldValueNumber = typeof field.value === 'number' && !Number.isNaN(field.value);
+  const safeFieldValue = isFieldValueNumber ? field.value : fallback;
+  const textInputValue = isFieldValueNumber ? field.value.toString() : '';
 
   const stepMarkerClassNames =
     'pb-5 [&_.nv-slider-step:first-of-type]:items-start [&_.nv-slider-step:last-of-type]:items-end';
@@ -126,16 +129,12 @@ export const SliderWithTextInput = ({
       >
         <Slider
           orientation="horizontal"
-          kind="single"
-          value={typeof field.value === 'number' ? field.value : fallback}
-          defaultValue={defaultValue}
+          value={safeFieldValue}
           max={max}
           min={min}
           step={step}
           disabled={disabled}
-          stepPosition={
-            showStepMarkers ? (attributes?.Slider?.stepPosition ?? 'bottom') : undefined
-          }
+          stepPosition={showStepMarkers ? (attributes?.Slider?.stepPosition ?? 'end') : undefined}
           customSteps={attributes?.Slider?.customSteps ?? [min, max]}
           aria-label="Controlled slider"
           stepFormatFn={attributes?.Slider?.stepFormatFn ?? toScientificNotation}
@@ -148,18 +147,17 @@ export const SliderWithTextInput = ({
         name={field.name}
         status={fieldStatus}
         aria-label="Slider value"
-        value={typeof field.value === 'number' ? field.value.toString() : fallback.toString()}
+        value={textInputValue}
         max={max.toString()}
         min={min.toString()}
         step={step?.toString()}
-        defaultValue={defaultValue?.toString()}
         type="number"
         disabled={disabled}
         className={`${textInputWidth} h-[40px] shrink-0`}
         {...attributes?.TextInput}
         onValueChange={handleTextInputChange}
         attributes={{
-          TextInputValue: {
+          Input: {
             'aria-label': `${id || 'slider'}_text_input`,
             className: 'text-center',
           },

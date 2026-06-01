@@ -79,7 +79,6 @@ export const ModelSelect: FC<ModelSelectProps> = ({
   onBlur,
   onChange,
   placeholder,
-  portal,
   required,
   status,
   tooltip,
@@ -116,7 +115,7 @@ export const ModelSelect: FC<ModelSelectProps> = ({
     return () => clearTimeout(timer);
   }, [localSearch, searchDebounceMs, onSearchChange, serverDrivenSearch]);
 
-  const handleBlur = (event: React.FocusEvent<HTMLButtonElement>) => {
+  const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
     onBlurField();
     onBlur?.(event);
   };
@@ -235,7 +234,7 @@ export const ModelSelect: FC<ModelSelectProps> = ({
           required={required}
           status={status || (error ? 'error' : undefined)}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)" portal={portal}>
+        <SelectContent className="w-(--radix-popper-anchor-width)">
           <Block className="p-2 w-full sticky top-0 bg-surface z-10">
             <TextInput
               ref={filterInputRef}
@@ -246,8 +245,8 @@ export const ModelSelect: FC<ModelSelectProps> = ({
               value={localSearch}
               onChange={handleSearchChange}
               attributes={{
-                TextInputValue: {
-                  'data-testid': 'model-filter',
+                Input: {
+                  ['data-testid' as never]: 'model-filter',
                 },
               }}
             />

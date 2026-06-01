@@ -72,7 +72,7 @@ export const MetricDetailsPanel: FC<MetricDetailsPanelProps> = ({
               className="w-full border-t border-base"
               defaultValue={scores.map((s) => s.name)}
               items={scores.map((score) => ({
-                iconSide: 'left' as const,
+                chevronPosition: 'start' as const,
                 value: score.name,
                 slotTrigger: score.name,
                 slotContent: (

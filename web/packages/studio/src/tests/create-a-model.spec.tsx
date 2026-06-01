@@ -21,7 +21,7 @@ import { PromptTuningFormRoute } from '@studio/routes/PromptTuningFormRoute';
 import { getWorkspaceCustomizationJobListRoute } from '@studio/routes/utils';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { createMemoryRouter, RouterProvider } from 'react-router-dom';
@@ -281,11 +281,9 @@ describe('Create a model', () => {
     const accordionTitle = screen.getByText('Hyperparameters');
     await user.click(accordionTitle);
     const temperatureInput = screen.getByLabelText('temperature-slider_text_input');
-    await user.clear(temperatureInput);
-    await user.paste(expectedTemperature.toString());
+    fireEvent.change(temperatureInput, { target: { value: expectedTemperature.toString() } });
     const maxTokenInput = screen.getByLabelText('max_tokens-slider_text_input');
-    await user.clear(maxTokenInput);
-    await user.paste(expectedMaxTokens.toString());
+    fireEvent.change(maxTokenInput, { target: { value: expectedMaxTokens.toString() } });
 
     // Click Save Model
     const saveButton = screen.getByRole('button', { name: 'Save Model' });

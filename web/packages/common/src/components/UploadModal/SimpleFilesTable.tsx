@@ -16,6 +16,7 @@ import {
   Stack,
   RadioGroupRoot,
   RadioGroupItem,
+  RadioGroupInput,
 } from '@nvidia/foundations-react-core';
 import { CircleAlert } from 'lucide-react';
 import { useCallback, useMemo } from 'react';
@@ -107,13 +108,15 @@ export const SimpleFilesTable = () => {
               children: allowMultipleFileSelection ? (
                 <Checkbox
                   name={name}
-                  attributes={{ CheckboxBox: { 'aria-label': name } }}
+                  attributes={{ CheckboxInput: { 'aria-label': name } }}
                   checked={selectedFiles.some((file) => file.id === uploadFile.id)}
                   onCheckedChange={() => toggleFileSelection(uploadFile)}
                   disabled={isDisabled}
                 />
               ) : (
-                <RadioGroupItem value={uploadFile.id} aria-label={name} disabled={isDisabled} />
+                <RadioGroupItem aria-label={name}>
+                  <RadioGroupInput value={uploadFile.id} disabled={isDisabled} />
+                </RadioGroupItem>
               ),
             },
             { children: name },

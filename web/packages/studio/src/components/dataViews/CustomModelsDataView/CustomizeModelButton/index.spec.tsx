@@ -127,12 +127,8 @@ describe('CustomizeModelButton', () => {
       const user = userEvent.setup();
       renderRoute({ model: testModel });
       await user.click(screen.getByRole('button', { name: /Customize this Model/ }));
-      expect(await screen.findByRole('radio', { name: /Fine-Tuned/ })).toHaveAttribute(
-        'data-disabled'
-      );
-      expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).not.toHaveAttribute(
-        'data-disabled'
-      );
+      expect(await screen.findByRole('radio', { name: /Fine-Tuned/ })).toBeDisabled();
+      expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).not.toBeDisabled();
     });
   });
 });

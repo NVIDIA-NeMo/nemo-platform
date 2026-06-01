@@ -52,7 +52,7 @@ export const FilterPanel = ({
                 <Checkbox
                   key={value}
                   attributes={{
-                    CheckboxBox: {
+                    CheckboxInput: {
                       id: `eval-result-status-${value}`,
                       'aria-label': label,
                     },

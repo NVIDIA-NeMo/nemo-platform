@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { CustomizationCreateJobBody } from '@nemo/sdk/vendored/customizer/zod';
-import { SliderProps } from '@nvidia/foundations-react-core';
+import { Slider } from '@nvidia/foundations-react-core';
+import { ComponentProps } from 'react';
 import { z } from 'zod';
+
+type SliderProps = ComponentProps<typeof Slider>;
 
 /** Training config is a union: SFT (0), distillation (1), DPO (2). We use the first option for common hyperparameters. */
 const trainingUnion = CustomizationCreateJobBody.shape.spec.shape.training;

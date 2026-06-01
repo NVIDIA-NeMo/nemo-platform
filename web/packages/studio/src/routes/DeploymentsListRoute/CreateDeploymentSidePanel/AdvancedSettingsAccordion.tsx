@@ -36,7 +36,7 @@ export const AdvancedSettingsAccordion: FC<AdvancedSettingsAccordionProps> = ({
     items={[
       {
         value: 'advanced',
-        iconSide: 'left',
+        chevronPosition: 'start',
         slotTrigger: `${advancedAccordion === 'advanced' ? 'Hide' : 'Show'} Advanced Settings`,
         slotContent: (
           <Stack gap="density-lg" className="pt-density-md">

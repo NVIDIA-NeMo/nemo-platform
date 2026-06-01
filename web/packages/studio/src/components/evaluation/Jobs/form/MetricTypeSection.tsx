@@ -54,11 +54,7 @@ export const MetricTypeSection: FC = () => {
               key={option.value}
               value={option.value}
               label={option.label}
-              attributes={{
-                RadioGroupItem: {
-                  labelSide: 'left',
-                },
-              }}
+              labelSide="left"
               icon={<Scale className="size-4" aria-hidden />}
               description={
                 <Stack gap="density-xs">

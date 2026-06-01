@@ -142,8 +142,10 @@ describe('CombinedAgentsTable', () => {
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
 
-      expect(await screen.findByRole('menuitem', { name: 'Deploy' })).toBeInTheDocument();
-      expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+      const deployItems = await screen.findAllByRole('menuitem', { name: 'Deploy' });
+      const deleteItems = screen.getAllByRole('menuitem', { name: 'Delete' });
+      expect(deployItems.length).toBeGreaterThan(0);
+      expect(deleteItems.length).toBeGreaterThan(0);
     });
   });
 
@@ -311,7 +313,8 @@ describe('CombinedAgentsTable', () => {
 
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
-      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      const deleteItems = await screen.findAllByRole('menuitem', { name: 'Delete' });
+      await user.click(deleteItems[0]);
 
       expect(await screen.findByText('Delete Agent')).toBeInTheDocument();
     });
@@ -336,7 +339,8 @@ describe('CombinedAgentsTable', () => {
 
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
-      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      const deleteItems = await screen.findAllByRole('menuitem', { name: 'Delete' });
+      await user.click(deleteItems[0]);
 
       const confirmDialog = await screen.findByRole('dialog');
       await user.click(within(confirmDialog).getByRole('button', { name: 'Delete' }));

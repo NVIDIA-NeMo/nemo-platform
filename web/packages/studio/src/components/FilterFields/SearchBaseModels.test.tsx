@@ -187,7 +187,12 @@ describe('SearchBaseModels', () => {
 
       fireEvent.click(screen.getByPlaceholderText('Search base models...'));
 
-      await screen.findByText('Start typing to search...');
+      await waitFor(() =>
+        expect(screen.getByRole('listbox')).toHaveAttribute(
+          'data-empty-message',
+          'Start typing to search...'
+        )
+      );
     });
 
     it('shows "No models found" message when search returns no results', async () => {
@@ -203,7 +208,12 @@ describe('SearchBaseModels', () => {
 
       fireEvent.click(screen.getByPlaceholderText('Search base models...'));
 
-      await screen.findByText('No models found matching your search');
+      await waitFor(() =>
+        expect(screen.getByRole('listbox')).toHaveAttribute(
+          'data-empty-message',
+          'No models found matching your search'
+        )
+      );
     });
 
     it('shows "All available models are already selected" when all models are selected', async () => {
@@ -218,7 +228,12 @@ describe('SearchBaseModels', () => {
 
       fireEvent.click(screen.getByPlaceholderText('Search base models...'));
 
-      await screen.findByText('All available models are already selected');
+      await waitFor(() =>
+        expect(screen.getByRole('listbox')).toHaveAttribute(
+          'data-empty-message',
+          'All available models are already selected'
+        )
+      );
     });
   });
 

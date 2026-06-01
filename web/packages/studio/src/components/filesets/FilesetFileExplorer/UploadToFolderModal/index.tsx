@@ -126,7 +126,7 @@ export const UploadToFolderModal: FC<UploadToFolderModalProps> = ({
               aria-label="Upload destination folder"
               slotStart={<FolderClosed className="size-4 shrink-0" />}
             />
-            <SelectContent portal>
+            <SelectContent>
               <SelectItem value={ROOT_VALUE}>Root</SelectItem>
               {folderOptions.map((path) => (
                 <SelectItem key={path} value={path}>

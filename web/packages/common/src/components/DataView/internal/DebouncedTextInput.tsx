@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { TextInput, type TextInputProps } from '@nvidia/foundations-react-core';
-import { useEffect, useState, type JSX } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type JSX } from 'react';
 
 export interface DebouncedTextInputProps extends TextInputProps {
   /**
@@ -20,6 +20,7 @@ export function DebouncedTextInput({
   ...props
 }: DebouncedTextInputProps): JSX.Element {
   const [value, setValue] = useState(initialValue ?? '');
+  const lastEventRef = useRef<ChangeEvent<HTMLInputElement> | null>(null);
 
   useEffect(() => {
     setValue(initialValue);
@@ -27,10 +28,21 @@ export function DebouncedTextInput({
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      onValueChange?.(value);
+      if (lastEventRef.current) {
+        onValueChange?.(value, lastEventRef.current);
+      }
     }, debounce);
     return () => clearTimeout(timeout);
   }, [debounce, onValueChange, value]);
 
-  return <TextInput {...props} value={value} onValueChange={setValue} />;
+  return (
+    <TextInput
+      {...props}
+      value={value}
+      onValueChange={(next, event) => {
+        lastEventRef.current = event;
+        setValue(next);
+      }}
+    />
+  );
 }
