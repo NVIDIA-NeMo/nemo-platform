@@ -32,12 +32,13 @@ from ...._response import (
     async_to_streamed_response_wrapper,
 )
 from ...._base_client import make_request_options
-from ....types.intake import FlexibleEntryRequestParam
-from ....types.intake.ingest import chat_completion_create_params
+from ....types.intake.ingest import (
+    chat_completion_create_params,
+)
 from ....types.intake.evaluation_context_param import EvaluationContextParam
-from ....types.intake.flexible_entry_request_param import FlexibleEntryRequestParam
-from ....types.intake.flexible_entry_response_param import FlexibleEntryResponseParam
 from ....types.intake.ingest.chat_completions_ingest_response import ChatCompletionsIngestResponse
+from ....types.intake.ingest.captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
+from ....types.intake.ingest.captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
 __all__ = ["ChatCompletionsResource", "AsyncChatCompletionsResource"]
 
@@ -66,8 +67,8 @@ class ChatCompletionsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        request: FlexibleEntryRequestParam,
-        response: FlexibleEntryResponseParam,
+        request: CapturedChatCompletionsRequestParam,
+        response: CapturedChatCompletionsResponseParam,
         cost_details: Dict[str, float] | Omit = omit,
         cost_input_usd: float | Omit = omit,
         cost_output_usd: float | Omit = omit,
@@ -87,23 +88,9 @@ class ChatCompletionsResource(SyncAPIResource):
         Ingest Chat Completion
 
         Args:
-          request: Flexible entry request that accepts any object shape.
+          request: Flexible captured chat-completions request.
 
-              This flexibility enables the Intake service to store requests from various LLM
-              providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-              multimodal, etc.) without requiring schema updates.
-
-              Required fields: `messages` and `model` Common optional fields: `temperature`,
-              `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
-
-          response: Flexible entry response that accepts any object shape.
-
-              This flexibility enables the Intake service to store responses from various LLM
-              providers and future model types without requiring schema updates.
-
-              Required: either `choices` (successful response) or `error` (failed call).
-              Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-              etc.
+          response: Flexible captured chat-completions response.
 
           cost_details: Additional estimated cost breakdown fields in USD.
 
@@ -180,8 +167,8 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        request: FlexibleEntryRequestParam,
-        response: FlexibleEntryResponseParam,
+        request: CapturedChatCompletionsRequestParam,
+        response: CapturedChatCompletionsResponseParam,
         cost_details: Dict[str, float] | Omit = omit,
         cost_input_usd: float | Omit = omit,
         cost_output_usd: float | Omit = omit,
@@ -201,23 +188,9 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         Ingest Chat Completion
 
         Args:
-          request: Flexible entry request that accepts any object shape.
+          request: Flexible captured chat-completions request.
 
-              This flexibility enables the Intake service to store requests from various LLM
-              providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-              multimodal, etc.) without requiring schema updates.
-
-              Required fields: `messages` and `model` Common optional fields: `temperature`,
-              `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
-
-          response: Flexible entry response that accepts any object shape.
-
-              This flexibility enables the Intake service to store responses from various LLM
-              providers and future model types without requiring schema updates.
-
-              Required: either `choices` (successful response) or `error` (failed call).
-              Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-              etc.
+          response: Flexible captured chat-completions response.
 
           cost_details: Additional estimated cost breakdown fields in USD.
 

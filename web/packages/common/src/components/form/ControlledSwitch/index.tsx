@@ -7,7 +7,9 @@ import { ComponentProps, FC } from 'react';
 import { useController } from 'react-hook-form';
 
 interface Props
-  extends Omit<ComponentProps<typeof Switch>, 'attributes'>, UseControllerComponentProps {
+  extends
+    Omit<ComponentProps<typeof Switch>, 'attributes' | 'onChange'>,
+    UseControllerComponentProps {
   onChange?: (value: boolean) => void;
   attributes?: {
     Flex?: ComponentProps<typeof Flex>;

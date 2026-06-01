@@ -355,7 +355,7 @@ export function ChatCompletionInput<TFieldValues extends FieldValues = FieldValu
               attributes={{
                 TextAreaElement: {
                   name: String(contentPath),
-                  'data-testid': 'chat-completion-message-content',
+                  ['data-testid' as never]: 'chat-completion-message-content',
                 },
               }}
             />

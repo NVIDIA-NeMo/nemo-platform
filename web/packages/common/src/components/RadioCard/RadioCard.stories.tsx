@@ -94,21 +94,13 @@ export const LabelSideLeft: Story = {
             label="Radio on the right"
             description="The radio control appears on the right when labelSide is left."
             icon={<Boxes width={24} height={24} />}
-            attributes={{
-              RadioGroupItem: {
-                labelSide: 'left',
-              },
-            }}
+            labelSide="left"
           />
           <RadioCard
             value="option-2"
             label="Second option"
             description="Also with radio on the right."
-            attributes={{
-              RadioGroupItem: {
-                labelSide: 'left',
-              },
-            }}
+            labelSide="left"
           />
         </Stack>
       </RadioGroupRoot>

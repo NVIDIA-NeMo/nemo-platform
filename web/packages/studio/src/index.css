@@ -48,16 +48,6 @@ body {
   }
 }
 
-/* hack fix - Checkbox component has incorrect outline color */
-.nv-checkbox-box {
-  &[data-state='checked'],
-  &[data-state='indeterminate'] {
-    .nv-checkbox-indicator path {
-      stroke-dashoffset: 0;
-    }
-  }
-}
-
 /* hack fix - Switch component has incorrect outline color */
 .nv-switch-track {
   &[data-state='checked'] {
@@ -69,12 +59,12 @@ body {
 }
 
 /* hack fix: KUI ships Checkbox and RadioGroupItem without a pointer cursor */
-.nv-checkbox-box,
+.nv-checkbox-input,
 .nv-radio-group-item {
   cursor: pointer;
 }
-.nv-checkbox-box:disabled,
-.nv-checkbox-box[data-disabled],
+.nv-checkbox-input:disabled,
+.nv-checkbox-input[data-disabled],
 .nv-radio-group-item:disabled,
 .nv-radio-group-item[data-disabled] {
   cursor: not-allowed;

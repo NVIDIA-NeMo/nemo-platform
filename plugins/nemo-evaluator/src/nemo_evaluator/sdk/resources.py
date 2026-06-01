@@ -24,6 +24,7 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackager
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -84,8 +85,14 @@ class Evaluator:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
+        if metric_bundle_packager is None:
+            raise ValueError(
+                "metric_bundle_packager is required for submit(); "
+                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
+            )
         return self._executor.submit(
             metric=metric,
             dataset=dataset,
@@ -93,6 +100,7 @@ class Evaluator:
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
     def run(
@@ -189,8 +197,14 @@ class AsyncEvaluator:
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
+        if metric_bundle_packager is None:
+            raise ValueError(
+                "metric_bundle_packager is required for submit(); "
+                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
+            )
         return await self._executor.submit(
             metric=metric,
             dataset=dataset,
@@ -198,6 +212,7 @@ class AsyncEvaluator:
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
             prompt_template=prompt_template,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
 

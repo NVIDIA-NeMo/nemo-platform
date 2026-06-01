@@ -454,7 +454,8 @@ class TestConfigErrors:
     def test_missing_cluster_reference(self, temp_config_file: Path):
         """Test error when context references missing cluster."""
         # Modify file to have invalid cluster reference
-        config_data = yaml.safe_load(open(temp_config_file))
+        with open(temp_config_file) as f:
+            config_data = yaml.safe_load(f)
         config_data["contexts"][0]["cluster"] = "nonexistent-cluster"
         with open(temp_config_file, "w") as f:
             yaml.dump(config_data, f)

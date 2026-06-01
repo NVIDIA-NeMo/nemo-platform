@@ -44,7 +44,7 @@ describe('ComputeResources', () => {
       </FormWrapper>
     );
 
-    expect(screen.queryByText('Tensor Parallel Size')).not.toBeInTheDocument();
-    expect(screen.queryByText('Pipeline Parallel Size')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tensor Parallel Size')).not.toBeVisible();
+    expect(screen.queryByText('Pipeline Parallel Size')).not.toBeVisible();
   });
 });

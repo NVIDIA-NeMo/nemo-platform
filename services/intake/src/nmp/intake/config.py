@@ -43,11 +43,6 @@ class IntakeConfig(_BaseIntakeConfig):
     Environment variables use the NMP_INTAKE_ prefix.
     """
 
-    # TODO(v2): CONFIG - deprecated, used by DataStoreClient
-    datastore_url: str = Field(
-        default="http://nemo-data-store:8000",
-        description="URL for the DataStore service",
-    )
     clickhouse_config: ClickHouseConfig = Field(
         default_factory=ClickHouseConfig,
         description="ClickHouse connection settings for Intake spans storage.",
@@ -57,7 +52,3 @@ class IntakeConfig(_BaseIntakeConfig):
         ge=1024,
         description="Maximum accepted body size for OTLP ingest requests, in bytes.",
     )
-
-
-# Backward-compatible module-level config for legacy imports.
-config = IntakeConfig()

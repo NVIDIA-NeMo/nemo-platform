@@ -12,11 +12,5 @@ from nemo_platform_plugin.api.filter import FilterOperation as FilterOperation
 from nemo_platform_plugin.api.filter import FilterOperator as FilterOperator
 from nemo_platform_plugin.api.filter import FilterRepository as FilterRepository
 from nemo_platform_plugin.api.filter import LogicalOperation as LogicalOperation
-from nemo_platform_plugin.api.filter import _apply_implicit_eq as _apply_implicit_eq  # noqa: F401
-from nemo_platform_plugin.api.filter import _normalize_operator_keys as _normalize_operator_keys  # noqa: F401
-from nemo_platform_plugin.api.filter import _normalize_value as _normalize_value  # noqa: F401
-from nemo_platform_plugin.api.filter import _parse_dict_to_operation as _parse_dict_to_operation  # noqa: F401
-from nemo_platform_plugin.api.filter import _parse_field_operation as _parse_field_operation  # noqa: F401
-from nemo_platform_plugin.api.filter import _wrap_operations as _wrap_operations  # noqa: F401
 from nemo_platform_plugin.api.filter import parse_bracket_filter as parse_bracket_filter
 from nemo_platform_plugin.api.filter import parse_json_filter as parse_json_filter

@@ -6,8 +6,10 @@ import { FormField, TextArea } from '@nvidia/foundations-react-core';
 import { ComponentProps } from 'react';
 import { useController } from 'react-hook-form';
 
-interface Props extends ComponentProps<typeof TextArea>, UseControllerComponentProps {
+interface Props
+  extends Omit<ComponentProps<typeof TextArea>, 'onChange'>, UseControllerComponentProps {
   label?: string;
+  onChange?: (value: string) => void;
 }
 
 export const ControlledTextArea = ({
@@ -15,15 +17,16 @@ export const ControlledTextArea = ({
   label,
   formFieldProps,
   attributes,
+  onChange,
   ...props
 }: Props) => {
   const {
-    field: { onChange, value, disabled },
+    field: { onChange: onChangeField, value, disabled },
     fieldState: { error },
   } = useController(useControllerProps);
-  const wrappedOnChange: NonNullable<ComponentProps<typeof TextArea>['onChange']> = (e) => {
-    props?.onChange?.(e);
-    onChange(e);
+  const handleValueChange = (next: string) => {
+    onChange?.(next);
+    onChangeField(next);
   };
   return (
     <FormField
@@ -37,7 +40,7 @@ export const ControlledTextArea = ({
         attributes={attributes}
         {...props}
         value={value}
-        onChange={wrappedOnChange}
+        onValueChange={handleValueChange}
         disabled={props.disabled || disabled}
         status={error ? 'error' : undefined}
       />

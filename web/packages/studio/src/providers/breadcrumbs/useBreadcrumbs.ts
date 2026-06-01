@@ -1,14 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { BreadcrumbsItemFieldProps } from '@nvidia/foundations-react-core';
 import { BreadcrumbsContextValue } from '@studio/providers/breadcrumbs/types';
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
 
 export const BreadcrumbsContext = createContext<BreadcrumbsContextValue | null>(null);
 
 export type BreadcrumbsItemProps = {
-  href?: BreadcrumbsItemFieldProps['href'];
+  href?: string;
   slotLabel: ReactNode;
 };
 

@@ -26,12 +26,12 @@ export function makeTriggerCell<TData, TValue = unknown>({
     const data = cellContext.row.original;
     const value = cellContext.getValue() as ReactNode;
     return LinkComponent ? (
-      <span className="leading-deprecated-kui11-text cursor-pointer underline [&_a]:text-inherit">
+      <span className="cursor-pointer underline [&_a]:text-inherit">
         <LinkComponent data={data}>{value}</LinkComponent>
       </span>
     ) : (
       <button
-        className="font-inherit leading-deprecated-kui11-text max-w-full cursor-pointer truncate border-none bg-inherit p-0 text-inherit underline"
+        className="font-inherit max-w-full cursor-pointer truncate border-none bg-inherit p-0 text-inherit underline"
         onClick={() => onSelect!(data, cellContext)}
         type="button"
       >

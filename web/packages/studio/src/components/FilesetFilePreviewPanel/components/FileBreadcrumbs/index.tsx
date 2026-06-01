@@ -66,9 +66,8 @@ export const FileBreadcrumbs: FC<FileBreadcrumbsProps> = ({
     return items;
   }, [filesetName, filePath, onFilesetClick, onFolderClick]);
 
-  const items = breadcrumbs.map(({ label, onClick }, index) => ({
-    key: `breadcrumb-${index}`,
-    slotTrigger:
+  const items = breadcrumbs.map(({ label, onClick }) => ({
+    children:
       onClick !== undefined ? (
         <button
           type="button"

@@ -40,9 +40,9 @@ describe('LoraParameters', () => {
   it('should not render advanced parameters before accordion is expanded', async () => {
     await renderLoraParameters();
 
-    expect(screen.queryByText('Alpha')).not.toBeInTheDocument();
-    expect(screen.queryByText('Dropout')).not.toBeInTheDocument();
-    expect(screen.queryByText('Target Modules')).not.toBeInTheDocument();
+    expect(screen.queryByText('Alpha')).not.toBeVisible();
+    expect(screen.queryByText('Dropout')).not.toBeVisible();
+    expect(screen.queryByText('Target Modules')).not.toBeVisible();
   });
 
   it('should show QLoRA precision selector when QLoRA is enabled', async () => {

@@ -212,7 +212,7 @@ export const DatasetCreateModal: FC<DatasetCreateModalProps> = ({
               attributes={
                 isEditMode
                   ? {
-                      TextInputValue: {
+                      Input: {
                         // Fixes a KUI issue where when it's disabled, the text color is white in dark mode.
                         className: 'text-disabled',
                       },
@@ -269,7 +269,6 @@ export const DatasetCreateModal: FC<DatasetCreateModalProps> = ({
               useControllerProps={{ control, name: 'folderPrefix' }}
               label="Folder (optional)"
               resetValueOnBlur={false}
-              portal={false}
               items={Object.values(CUSTOMIZATION_FILESET_FILE_PREFIXES)}
               formFieldProps={{
                 slotHelp:

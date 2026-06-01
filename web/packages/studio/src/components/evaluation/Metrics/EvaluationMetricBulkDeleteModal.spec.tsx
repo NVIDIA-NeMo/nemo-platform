@@ -5,7 +5,7 @@ import { EvaluationMetricBulkDeleteModal } from '@studio/components/evaluation/M
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
 import { customRender as render } from '@studio/tests/util/render';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const TEST_WORKSPACE = 'test-workspace';
@@ -126,7 +126,9 @@ describe('EvaluationMetricBulkDeleteModal', () => {
 
       expect(await screen.findByText('Delete 2 Metrics')).toBeInTheDocument();
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -170,7 +172,9 @@ describe('EvaluationMetricBulkDeleteModal', () => {
 
       expect(await screen.findByText('Delete 2 Metrics')).toBeInTheDocument();
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       await waitFor(() => {
@@ -206,7 +210,9 @@ describe('EvaluationMetricBulkDeleteModal', () => {
 
       expect(await screen.findByText('Delete 2 Metrics')).toBeInTheDocument();
 
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       await waitFor(() => {

@@ -228,7 +228,7 @@ describe('DatasetSelect', () => {
 
     await waitFor(() => {
       const select = screen.getByRole('combobox');
-      expect(select).toHaveAttribute('aria-disabled', 'true');
+      expect(select).toBeDisabled();
     });
   });
 });

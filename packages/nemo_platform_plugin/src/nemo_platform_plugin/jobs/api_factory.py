@@ -349,7 +349,7 @@ class PydanticJSONLResultSerializer(BaseResultSerializer):
                                 "error": {
                                     "type": e.__class__.__name__,
                                     "line": line_number,
-                                    "message": str(e),
+                                    "message": "Failed to validate result line; see server logs for details.",
                                 }
                             }
                         )

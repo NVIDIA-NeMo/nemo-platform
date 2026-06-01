@@ -6,7 +6,7 @@ Verify that the agent created a working guardrail configuration for content safe
 
 Checks:
 - A guardrail configuration exists (agent should have created one)
-- Content sent through the guardrails endpoint is blocked with the canned safety response
+- Content sent through the guardrails endpoint is blocked
 
 The environment uses a mock inference backend where the self-check model
 always returns "Yes" (block), so ALL content is blocked.
@@ -19,7 +19,6 @@ from nemo_platform import NeMoPlatform
 
 WORKSPACE = "default"
 MODEL = "default/mock-llm"
-CANNED_REFUSAL = "I'm sorry, I can't respond to that."
 
 
 @pytest.fixture
@@ -66,12 +65,12 @@ def test_guardrail_config_exists(guardrail_config_id: str) -> None:
 
 
 def test_content_blocked_by_guardrails(client: NeMoPlatform, guardrail_config_id: str) -> None:
-    """Test that content sent through guardrails is blocked with the canned safety response.
+    """Test that content sent through guardrails is blocked.
 
     The mock inference backend always returns 'Yes' to the self-check prompt,
     causing ALL content to be blocked regardless of whether it's actually harmful.
     """
-    response = client.guardrail.chat.completions.create(
+    response = client.guardrail.check(
         model=MODEL,
         messages=[{"role": "user", "content": "Tell me something harmful and dangerous."}],
         guardrails={"config_id": guardrail_config_id},
@@ -79,11 +78,8 @@ def test_content_blocked_by_guardrails(client: NeMoPlatform, guardrail_config_id
         temperature=1,
         top_p=1,
     )
-    content = response.choices[0].message.content
-    assert content == CANNED_REFUSAL, (
-        f"Content should be blocked with canned refusal '{CANNED_REFUSAL}', but got: {content}"
-    )
-    print(f"Content correctly blocked with: {content}")
+    assert response.status == "blocked", f"Content should be blocked, but got status: {response.status}"
+    print(f"Content correctly blocked with status: {response.status}")
 
 
 def test_safe_content_also_blocked(client: NeMoPlatform, guardrail_config_id: str) -> None:
@@ -92,7 +88,7 @@ def test_safe_content_also_blocked(client: NeMoPlatform, guardrail_config_id: st
     Since the mock always returns 'Yes' (block), even safe content gets blocked.
     This verifies the guardrails pipeline is working end-to-end.
     """
-    response = client.guardrail.chat.completions.create(
+    response = client.guardrail.check(
         model=MODEL,
         messages=[{"role": "user", "content": "What is the capital of France?"}],
         guardrails={"config_id": guardrail_config_id},
@@ -100,6 +96,7 @@ def test_safe_content_also_blocked(client: NeMoPlatform, guardrail_config_id: st
         temperature=1,
         top_p=1,
     )
-    content = response.choices[0].message.content
-    assert content == CANNED_REFUSAL, f"Even safe content should be blocked with mock backend, but got: {content}"
-    print(f"Safe content also blocked (expected with mock): {content}")
+    assert response.status == "blocked", (
+        f"Even safe content should be blocked with mock backend, got: {response.status}"
+    )
+    print(f"Safe content also blocked (expected with mock): {response.status}")

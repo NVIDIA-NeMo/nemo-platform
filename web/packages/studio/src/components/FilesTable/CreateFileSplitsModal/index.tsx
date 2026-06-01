@@ -151,7 +151,7 @@ export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) =>
                 items={SELECT_SPLIT_OPTIONS}
                 formFieldProps={{
                   attributes: {
-                    TooltipContent: { className: tooltipClassName },
+                    Popover: { className: tooltipClassName },
                     FormFieldLabelGroup: { className: 'justify-between' },
                   },
                   slotInfo: (
@@ -205,7 +205,7 @@ export const CreateFileSplitsModal: FC<Props> = ({ open, onClose, filepath }) =>
                 useControllerProps={{ name: 'distributionType', control }}
                 formFieldProps={{
                   attributes: {
-                    TooltipContent: { className: tooltipClassName },
+                    Popover: { className: tooltipClassName },
                     FormFieldLabelGroup: { className: 'justify-between' },
                     FormFieldContentGroup: { className: 'gap-2.5' },
                   },

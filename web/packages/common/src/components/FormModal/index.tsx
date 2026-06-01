@@ -14,6 +14,7 @@ import {
   Button,
   Flex,
   ModalContent,
+  ModalDialog,
   ModalFooter,
   ModalHeading,
   ModalMain,
@@ -21,7 +22,14 @@ import {
   Stack,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { ComponentProps, ComponentPropsWithoutRef, FC, PropsWithChildren, ReactNode } from 'react';
+import {
+  ComponentProps,
+  ComponentPropsWithoutRef,
+  FC,
+  PropsWithChildren,
+  ReactNode,
+  useId,
+} from 'react';
 
 export interface FormModalProps {
   open: boolean;
@@ -72,6 +80,7 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
   slotFooterRight,
   attributes,
 }) => {
+  const modalId = useId();
   // Prevents the user from closing the dialog if the inputs are disabled
   const handleUserClose = () => {
     if (!disabled) {
@@ -87,54 +96,58 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
   const footerJustifyClass = slotFooterLeft ? 'justify-between' : 'justify-end';
 
   return (
-    <ModalRoot open={open} onOpenChange={handleUserClose}>
-      <ModalContent className={`max-h-[90vh] ${className || ''}`}>
-        <form
-          className="flex flex-col h-full overflow-y-auto gap-2"
-          onSubmit={handleSubmit}
-          noValidate
-          {...attributes?.Form}
-        >
-          <ModalHeading>{title}</ModalHeading>
-          <ModalMain className="flex-1 min-h-0 overflow-y-auto">
-            <Stack gap="density-md" className="pt-4">
-              {errorText && <p className="text-feedback-danger">{errorText}</p>}
-              {instruction && <p>{instruction}</p>}
-              {children}
-            </Stack>
-          </ModalMain>
-          <ModalFooter className={cn('flex w-full gap-2 flex-1 flex-shrink-0', footerJustifyClass)}>
-            {slotFooterLeft}
-            {slotFooterRight ?? (
-              <Flex gap="2">
-                <Button
-                  kind="tertiary"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleUserClose();
-                  }}
-                  disabled={disabled}
-                  type="button"
-                  {...attributes?.CancelButton}
-                >
-                  {cancelButtonText || 'Cancel'}
-                </Button>
-                <LoadingButton
-                  type="submit"
-                  disabled={disabled || submitDisabled}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                  }}
-                  loading={loading}
-                  {...attributes?.SubmitButton}
-                >
-                  {submitButtonText}
-                </LoadingButton>
-              </Flex>
-            )}
-          </ModalFooter>
-        </form>
-      </ModalContent>
+    <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose}>
+      <ModalDialog>
+        <ModalContent className={`max-h-[90vh] ${className || ''}`}>
+          <form
+            className="flex flex-col h-full overflow-y-auto gap-2"
+            onSubmit={handleSubmit}
+            noValidate
+            {...attributes?.Form}
+          >
+            <ModalHeading>{title}</ModalHeading>
+            <ModalMain className="flex-1 min-h-0 overflow-y-auto">
+              <Stack gap="density-md" className="pt-4">
+                {errorText && <p className="text-feedback-danger">{errorText}</p>}
+                {instruction && <p>{instruction}</p>}
+                {children}
+              </Stack>
+            </ModalMain>
+            <ModalFooter
+              className={cn('flex w-full gap-2 flex-1 flex-shrink-0', footerJustifyClass)}
+            >
+              {slotFooterLeft}
+              {slotFooterRight ?? (
+                <Flex gap="2">
+                  <Button
+                    kind="tertiary"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleUserClose();
+                    }}
+                    disabled={disabled}
+                    type="button"
+                    {...attributes?.CancelButton}
+                  >
+                    {cancelButtonText || 'Cancel'}
+                  </Button>
+                  <LoadingButton
+                    type="submit"
+                    disabled={disabled || submitDisabled}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                    }}
+                    loading={loading}
+                    {...attributes?.SubmitButton}
+                  >
+                    {submitButtonText}
+                  </LoadingButton>
+                </Flex>
+              )}
+            </ModalFooter>
+          </form>
+        </ModalContent>
+      </ModalDialog>
     </ModalRoot>
   );
 };

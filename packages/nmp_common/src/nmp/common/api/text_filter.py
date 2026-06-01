@@ -7,7 +7,5 @@ The canonical implementation lives in ``nemo_platform_plugin.api.text_filter``.
 Existing imports from ``nmp.common.api.text_filter`` continue to resolve here.
 """
 
-from nemo_platform_plugin.api.text_filter import TEXT_FILTER_GRAMMAR as TEXT_FILTER_GRAMMAR  # noqa: F401
 from nemo_platform_plugin.api.text_filter import TextFilterParser as TextFilterParser
-from nemo_platform_plugin.api.text_filter import TextFilterTransformer as TextFilterTransformer
 from nemo_platform_plugin.api.text_filter import parse_text_filter as parse_text_filter

@@ -53,6 +53,7 @@ RAGAS Tool Call Accuracy (no judge required):
 """
 
 import time
+
 import httpx
 
 BASE_URL = "http://localhost:8080"
@@ -161,7 +162,7 @@ def main():
     print(f"Results: {passed} passed, {failed} failed")
     print("=" * 60)
 
-    exit(1 if failed else 0)
+    raise SystemExit(1 if failed else 0)
 
 
 if __name__ == "__main__":

@@ -49,6 +49,9 @@ failOnConsole({
       )
     )
       return true;
+    // KUI 1.0 emits a React.Fragment className warning from one of its primitives. Tracked in the
+    // KUI upgrade ticket; silence so studio tests pass until the upstream fix lands.
+    if (message.includes('Invalid prop `className` supplied to `React.Fragment`')) return true;
     return false;
   },
 });

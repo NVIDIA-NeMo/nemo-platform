@@ -62,7 +62,7 @@ export const SchemaSelectControl: FC<SchemaSelectControlProps> = ({
         return v;
       }}
     />
-    <SelectContent portal={false}>
+    <SelectContent>
       {hasInlineDefault && <SelectItem value={DEFAULT_SCHEMA_VALUE}>Default</SelectItem>}
       {defKeys.map((key) => (
         <SelectItem key={key} value={key}>

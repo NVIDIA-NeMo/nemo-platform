@@ -26,8 +26,6 @@ from nemo_platform_plugin.config import ImagePullSecret as ImagePullSecret
 from nemo_platform_plugin.config import NemoPlatformConfig as _PluginPlatformConfig
 from nemo_platform_plugin.config import Runtime as Runtime
 from nemo_platform_plugin.config import ServiceConfig as ServiceConfig
-from nemo_platform_plugin.config import _deep_merge_defaults_with_file as _deep_merge_defaults_with_file
-from nemo_platform_plugin.config import _is_running_in_docker as _is_running_in_docker
 from nemo_platform_plugin.config import create_service_config_class as create_service_config_class
 from nemo_platform_plugin.config import determine_loopback_override as determine_loopback_override
 from nemo_platform_plugin.config import get_service_config as get_service_config

@@ -10,10 +10,11 @@ import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.values.results import AggregateFieldName
 from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.common.api.common import DeleteResponse, PaginationData
 from nmp.common.api.parsed_filter import ParsedFilter
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityClient, EntityConflictError, EntityNotFoundError, ListResponse
-from nmp.common.jobs.api_factory import PlatformJobSpec
+from nmp.common.entities import SYSTEM_WORKSPACE, EntityConflictError, EntityNotFoundError, ListResponse
 from nmp.common.observability.otel import MARK_INTERNAL_REQUEST_HEADERS, scoped_otel_headers
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.evaluator.api.v2.benchmarks.checks import (

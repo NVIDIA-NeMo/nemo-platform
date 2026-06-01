@@ -66,7 +66,6 @@ if TYPE_CHECKING:
         inference,
         evaluation,
         workspaces,
-        safe_synthesizer,
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
     from .resources.jobs.jobs import JobsResource, AsyncJobsResource
@@ -82,7 +81,6 @@ if TYPE_CHECKING:
     from .resources.inference.inference import InferenceResource, AsyncInferenceResource
     from .resources.evaluation.evaluation import EvaluationResource, AsyncEvaluationResource
     from .resources.workspaces.workspaces import WorkspacesResource, AsyncWorkspacesResource
-    from .resources.safe_synthesizer.safe_synthesizer import SafeSynthesizerResource, AsyncSafeSynthesizerResource
 
 __all__ = [
     "Timeout",
@@ -269,12 +267,6 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.workspaces import WorkspacesResource
 
         return WorkspacesResource(self)
-
-    @cached_property
-    def safe_synthesizer(self) -> SafeSynthesizerResource:
-        from .resources.safe_synthesizer import SafeSynthesizerResource
-
-        return SafeSynthesizerResource(self)
 
     @cached_property
     def secrets(self) -> SecretsResource:
@@ -635,12 +627,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncWorkspacesResource(self)
 
     @cached_property
-    def safe_synthesizer(self) -> AsyncSafeSynthesizerResource:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResource
-
-        return AsyncSafeSynthesizerResource(self)
-
-    @cached_property
     def secrets(self) -> AsyncSecretsResource:
         from .resources.secrets import AsyncSecretsResource
 
@@ -862,12 +848,6 @@ class NeMoPlatformWithRawResponse:
         return WorkspacesResourceWithRawResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.SafeSynthesizerResourceWithRawResponse:
-        from .resources.safe_synthesizer import SafeSynthesizerResourceWithRawResponse
-
-        return SafeSynthesizerResourceWithRawResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.SecretsResourceWithRawResponse:
         from .resources.secrets import SecretsResourceWithRawResponse
 
@@ -957,12 +937,6 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.workspaces import AsyncWorkspacesResourceWithRawResponse
 
         return AsyncWorkspacesResourceWithRawResponse(self._client.workspaces)
-
-    @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.AsyncSafeSynthesizerResourceWithRawResponse:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResourceWithRawResponse
-
-        return AsyncSafeSynthesizerResourceWithRawResponse(self._client.safe_synthesizer)
 
     @cached_property
     def secrets(self) -> secrets.AsyncSecretsResourceWithRawResponse:
@@ -1056,12 +1030,6 @@ class NeMoPlatformWithStreamedResponse:
         return WorkspacesResourceWithStreamingResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.SafeSynthesizerResourceWithStreamingResponse:
-        from .resources.safe_synthesizer import SafeSynthesizerResourceWithStreamingResponse
-
-        return SafeSynthesizerResourceWithStreamingResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.SecretsResourceWithStreamingResponse:
         from .resources.secrets import SecretsResourceWithStreamingResponse
 
@@ -1151,12 +1119,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.workspaces import AsyncWorkspacesResourceWithStreamingResponse
 
         return AsyncWorkspacesResourceWithStreamingResponse(self._client.workspaces)
-
-    @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.AsyncSafeSynthesizerResourceWithStreamingResponse:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResourceWithStreamingResponse
-
-        return AsyncSafeSynthesizerResourceWithStreamingResponse(self._client.safe_synthesizer)
 
     @cached_property
     def secrets(self) -> secrets.AsyncSecretsResourceWithStreamingResponse:

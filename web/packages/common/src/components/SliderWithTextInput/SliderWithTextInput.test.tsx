@@ -28,7 +28,7 @@ describe('SliderWithTextInput', () => {
       );
 
       expect(screen.getByRole('slider')).toBeInTheDocument();
-      expect(screen.getByTestId('nv-text-input-element')).toBeInTheDocument();
+      expect(screen.getByRole('spinbutton')).toBeInTheDocument();
     });
   });
 
@@ -49,7 +49,7 @@ describe('SliderWithTextInput', () => {
       const slider = screen.getByRole('slider');
       const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuenow', '25');
+      expect(slider).toHaveValue('25');
       expect(textInput).toHaveValue(25);
     });
 
@@ -67,9 +67,9 @@ describe('SliderWithTextInput', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuenow', '0');
+      expect(slider).toHaveValue('0');
       expect(textInput).toHaveValue(0);
     });
   });
@@ -89,10 +89,10 @@ describe('SliderWithTextInput', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuemin', '10');
-      expect(slider).toHaveAttribute('aria-valuemax', '90');
+      expect(slider).toHaveAttribute('min', '10');
+      expect(slider).toHaveAttribute('max', '90');
       expect(textInput).toHaveAttribute('min', '10');
       expect(textInput).toHaveAttribute('max', '90');
       expect(textInput).toHaveAttribute('step', '5');
@@ -168,7 +168,7 @@ describe('SliderWithTextInput', () => {
         <SliderWithTextInput field={field} defaultValue={25} min={0} max={100} step={1} disabled />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       expect(textInput).toBeDisabled();
     });
@@ -186,7 +186,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       expect(textInput).not.toBeDisabled();
     });
@@ -207,7 +207,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const slider = screen.getByTestId('nv-text-input-element');
+      const slider = screen.getByRole('spinbutton');
       fireEvent.change(slider, { target: { value: '75' } });
 
       expect(mockOnChange).toHaveBeenCalledWith(75);
@@ -227,7 +227,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       await waitFor(() => expect(textInput).toBeInTheDocument());
 
       fireEvent.change(textInput, { target: { value: '80' } });
@@ -249,7 +249,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const slider = screen.getByTestId('nv-text-input-element');
+      const slider = screen.getByRole('spinbutton');
 
       // Test value above max
       fireEvent.change(slider, { target: { value: '150' } });
@@ -274,7 +274,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Test value above max
       fireEvent.change(textInput, { target: { value: '150' } });
@@ -302,7 +302,7 @@ describe('SliderWithTextInput', () => {
       );
 
       // Change the value via text input
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       fireEvent.change(textInput, { target: { value: '80' } });
 
       await waitFor(() => {
@@ -433,7 +433,7 @@ describe('SliderWithTextInput', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       expect(slider).toHaveAttribute('aria-label', 'Controlled slider');
       expect(textInput).toHaveAttribute('aria-label', 'slider_text_input');
@@ -453,7 +453,7 @@ describe('SliderWithTextInput', () => {
       );
 
       expect(screen.getByRole('slider')).toBeInTheDocument();
-      expect(screen.getByTestId('nv-text-input-element')).toBeInTheDocument();
+      expect(screen.getByRole('spinbutton')).toBeInTheDocument();
     });
   });
 
@@ -479,10 +479,10 @@ describe('SliderWithTextInput', () => {
       expect(screen.getByText(/Batch size is a hyperparameter/)).toBeInTheDocument();
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuemin', '8');
-      expect(slider).toHaveAttribute('aria-valuemax', '128');
+      expect(slider).toHaveAttribute('min', '8');
+      expect(slider).toHaveAttribute('max', '128');
       expect(textInput).toHaveAttribute('step', '8');
     });
 
@@ -505,7 +505,7 @@ describe('SliderWithTextInput', () => {
 
       expect(screen.getByText('Learning Rate')).toBeInTheDocument();
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       expect(textInput).toHaveValue(0.0001);
     });
   });
@@ -531,7 +531,7 @@ describe('SliderWithTextInput', () => {
       expect(screen.getByText('Temperature')).toBeInTheDocument();
       expect(screen.getByText('Controls randomness in the output.')).toBeInTheDocument();
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       expect(textInput).toHaveValue(0.7);
     });
   });
@@ -555,7 +555,7 @@ describe('SliderWithTextInput', () => {
 
       expect(screen.getByText('The maximum number of tokens to generate.')).toBeInTheDocument();
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       expect(textInput).toHaveValue(100);
     });
   });
@@ -575,9 +575,9 @@ describe('SliderWithTextInput', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuenow', '0');
+      expect(slider).toHaveValue('0');
       expect(textInput).toHaveValue(0);
     });
 
@@ -595,9 +595,9 @@ describe('SliderWithTextInput', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
-      expect(slider).toHaveAttribute('aria-valuenow', '-5');
+      expect(slider).toHaveValue('-5');
       expect(textInput).toHaveValue(-5);
     });
 
@@ -614,7 +614,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       expect(textInput).toHaveValue(0.00001);
     });
 
@@ -632,7 +632,7 @@ describe('SliderWithTextInput', () => {
         />
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
       fireEvent.change(textInput, { target: { value: 'invalid' } });
 
       // Should call onChange with NaN, which will be clamped

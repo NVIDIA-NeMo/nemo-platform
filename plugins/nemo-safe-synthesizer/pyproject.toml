@@ -1,0 +1,120 @@
+[project]
+name = "nemo-safe-synthesizer-plugin"
+version = "0.1.0"
+description = "NeMo Safe Synthesizer plugin."
+readme = "README.md"
+requires-python = ">=3.11,<3.12"
+authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
+dependencies = [
+    "fastapi>=0.115.8",
+    "fsspec>=2024.10.0",
+    "gunicorn>=23.0.0",
+    "httpx>=0.27.2",
+    "nemo-platform",
+    "nemo-platform-plugin",
+    "nemo-safe-synthesizer==0.1.1",
+    "nmp-common",
+    "pydantic[email]>=2.9.2",
+    "pydantic-settings>=2.2.1",
+    "python-multipart~=0.0.9",
+    "requests>=2.31.0",
+    "typer>=0.9.0",
+    "uvicorn>=0.32.1",
+]
+
+[project.entry-points."nemo.services"]
+safe-synthesizer = "nemo_safe_synthesizer_plugin.service:SafeSynthesizerService"
+
+[project.entry-points."nemo.cli"]
+safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
+
+[project.entry-points."nemo.skills"]
+safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+    "httpx>=0.27",
+    "fastapi>=0.115",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-platform-plugin = [
+  "anthropic>=0.88.0",
+  "fastapi>=0.115.4",
+  "lark>=1.1.0",
+  "openai>=1.109.1",
+  "pydantic>=2.10.3",
+  "pydantic-settings>=2.8.1",
+  "pyyaml>=6.0.2",
+  "typer>=0.20.0,<0.26",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nmp-common = [
+  "aiofiles>=24.1.0",
+  "base58>=2.1.1",
+  "pydantic>=2.10.3",
+  "pydantic-settings>=2.8.1",
+  "fastapi[standard]>=0.115.4",
+  "lark>=1.1.0",
+  "nemo-platform-plugin",
+  "pyyaml>=6.0.2",
+  "sqlalchemy>=2.0.0",
+  "huggingface-hub>=1.0.1,<2.0.0",
+  "hvac>=2.3.0",
+  "kubernetes>=30.1.0",
+  "prometheus-fastapi-instrumentator>=7.1.0",
+  "opentelemetry-exporter-prometheus>=0.59b0",
+  "opentelemetry-processor-baggage>=0.59b0",
+  "opentelemetry-instrumentation-fastapi>=0.59b0",
+  "opentelemetry-instrumentation-system-metrics>=0.59b0",
+  "opentelemetry-instrumentation-sqlalchemy>=0.59b0",
+  "opentelemetry-instrumentation-httpx>=0.59b0",
+  "opentelemetry-exporter-otlp-proto-http>=1.38.0",
+  "opentelemetry-exporter-otlp-proto-grpc>=1.38.0",
+  "opentelemetry-sdk>=1.38.0",
+  "prometheus-client>=0.23.0",
+  "structlog>=24.1.0",
+  "nvidia-ml-py>=13.0.0",
+  "pyjwt[crypto]>=2.12.0",
+]
+
+[build-system]
+requires = ["hatchling", "nmp-build-tools"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel.hooks.custom]
+path = "hatch_build.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_safe_synthesizer_plugin"]
+
+[tool.uv]
+cache-keys = [{ file = "pyproject.toml" }]
+
+[tool.uv.sources]
+nemo-platform = { workspace = true }
+nemo-platform-plugin = { workspace = true }
+nemo-platform-sdk = { workspace = true }
+nmp-common = { workspace = true }
+nmp-build-tools = { workspace = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+markers = [
+    "e2e: End-to-end tests",
+    "gpu_integration: Tests that require GPU dependencies or hardware",
+    "integration: Service integration tests",
+    "slow: Tests that take a long time to run",
+]
+
+# Opt this plugin into OpenAPI spec generation.
+[tool.nemo.openapi]
+
+[tool.bundle-package]
+nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
+nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }

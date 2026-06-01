@@ -29,6 +29,9 @@ from nemo_evaluator.sdk.job_resources import (
     metric_job_status_details_value,
     metric_job_status_value,
 )
+from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
     AggregateRangeScore,
@@ -44,11 +47,12 @@ _JOB_PAYLOAD = {
     "name": "job-123",
     "status": "created",
     "spec": {
-        "metric": {
-            "type": "exact-match",
-            "reference": "{{item.expected}}",
-            "candidate": "{{item.output}}",
-        },
+        "metrics": [
+            bundle_metric(
+                ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}"),
+                CloudpickleMetricBundlePackager(),
+            ).model_dump(mode="json")
+        ],
         "dataset": [{"expected": "a", "output": "a"}],
     },
 }

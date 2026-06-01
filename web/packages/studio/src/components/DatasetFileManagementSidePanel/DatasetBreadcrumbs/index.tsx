@@ -45,8 +45,7 @@ export const DatasetBreadcrumbs: FC<Props> = ({ datasetName, currentFolder, onFo
     <Breadcrumbs
       data-testid="dataset-breadcrumbs"
       items={folders.map(({ onClick, label }) => ({
-        key: label,
-        slotTrigger: (
+        children: (
           <button
             type="button"
             onClick={onClick}

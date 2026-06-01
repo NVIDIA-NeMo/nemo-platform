@@ -123,16 +123,19 @@ describe('NavigationDrawer', () => {
       expect(await screen.findByText('Entries')).toBeInTheDocument();
       expect(await screen.findByText('Export Jobs')).toBeInTheDocument();
 
-      const accordionTrigger = screen.getByRole('button', { name: 'Annotation' });
+      // KUI v1.0 collapsible uses native <details><summary> — find the summary via text.
+      // eslint-disable-next-line testing-library/no-node-access
+      const accordionTrigger = screen.getByText('Annotation').closest('summary');
+      expect(accordionTrigger).not.toBeNull();
 
-      // Starts expanded (chevron-up icon visible)
-      expect(accordionTrigger).toHaveAttribute('aria-expanded', 'true');
+      // Starts expanded
+      expect(accordionTrigger).toHaveAttribute('data-state', 'open');
       // eslint-disable-next-line testing-library/no-node-access
       expect(document.querySelector('.lucide-chevron-up')).toBeInTheDocument();
 
       // Clicking closes it (chevron-down icon visible)
-      await user.click(accordionTrigger);
-      expect(accordionTrigger).toHaveAttribute('aria-expanded', 'false');
+      await user.click(accordionTrigger as HTMLElement);
+      expect(accordionTrigger).toHaveAttribute('data-state', 'closed');
       // eslint-disable-next-line testing-library/no-node-access
       expect(document.querySelector('.lucide-chevron-down')).toBeInTheDocument();
     });

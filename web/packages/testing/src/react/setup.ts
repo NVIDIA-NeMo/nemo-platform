@@ -94,6 +94,11 @@ const localStorageMock = (() => {
 vi.stubGlobal('localStorage', localStorageMock);
 
 beforeEach(() => {
+  // Unmount any React trees from a previous test. Vitest 4 does not fire
+  // `afterEach` hooks registered in setup files reliably (observed: setupFiles'
+  // `beforeEach` fires per test, `afterEach` never does), so run cleanup at the
+  // start of each test instead.
+  cleanup();
   /**
    * This is a bug in testing components that use KUI. Without this, we'll see
    * an error like "window.matchMedia is not a function".
@@ -145,11 +150,91 @@ beforeEach(() => {
   window.HTMLElement.prototype.hasPointerCapture = vi.fn().mockReturnValue(false);
   window.HTMLElement.prototype.releasePointerCapture = vi.fn();
   window.HTMLElement.prototype.setPointerCapture = vi.fn();
+
+  /**
+   * Popover API polyfill — happy-dom does not implement showPopover/hidePopover/togglePopover.
+   * KUI v1.0 uses these to drive Select/Tooltip/Popover open state.
+   * We toggle a data attribute so testing-library can see the popover as visible.
+   */
+  function syncPopoverState(this: HTMLElement, open: boolean) {
+    const oldState = this.hasAttribute('popover-open') ? 'open' : 'closed';
+    const newState = open ? 'open' : 'closed';
+    if (oldState === newState) {
+      return;
+    }
+    if (open) {
+      this.setAttribute('popover-open', '');
+      this.removeAttribute('hidden');
+    } else {
+      this.removeAttribute('popover-open');
+      // Hide so testing-library's accessible queries treat it as absent.
+      this.setAttribute('hidden', 'until-found');
+    }
+    const toggleEvent = new Event('toggle', { bubbles: false }) as Event & {
+      oldState?: string;
+      newState?: string;
+    };
+    toggleEvent.oldState = oldState;
+    toggleEvent.newState = newState;
+    this.dispatchEvent(toggleEvent);
+  }
+  window.HTMLElement.prototype.showPopover = function () {
+    syncPopoverState.call(this, true);
+  };
+  window.HTMLElement.prototype.hidePopover = function () {
+    syncPopoverState.call(this, false);
+  };
+  window.HTMLElement.prototype.togglePopover = function (force?: boolean | { force?: boolean }) {
+    const desired =
+      typeof force === 'boolean'
+        ? force
+        : typeof force === 'object' && force !== null && typeof force.force === 'boolean'
+          ? force.force
+          : this.dataset.popoverOpen !== 'true';
+    syncPopoverState.call(this, desired);
+    return desired;
+  };
+});
+
+/**
+ * Browsers auto-toggle the popover targeted by a button's `popovertarget`
+ * attribute on click. happy-dom does not. Add the missing behavior here so
+ * KUI Select/Tooltip/Popover tests can open/close via user interaction.
+ *
+ * Registered once per test file via `beforeAll` — registering in `beforeEach`
+ * stacks duplicate handlers across tests, causing N toggles per click and
+ * order-dependent flakes.
+ */
+beforeAll(() => {
+  document.addEventListener(
+    'click',
+    (event) => {
+      const target = event.target;
+      if (!(target instanceof window.HTMLElement)) {
+        return;
+      }
+      const button = target.closest('[popovertarget]');
+      if (button instanceof window.HTMLElement) {
+        const popoverId = button.getAttribute('popovertarget');
+        if (popoverId) {
+          const popover = document.getElementById(popoverId);
+          popover?.togglePopover();
+          return;
+        }
+      }
+      // Light-dismiss: clicking outside an open popover="auto" closes it.
+      const openPopovers = document.querySelectorAll<HTMLElement>('[popover="auto"][popover-open]');
+      openPopovers.forEach((popover) => {
+        if (!popover.contains(target)) {
+          popover.hidePopover();
+        }
+      });
+    },
+    true
+  );
 });
 
 afterEach(() => {
-  // Unmount all React trees that were mounted with render.
-  cleanup();
   // Reset localStorage mock to prevent cross-test state pollution.
   localStorageMock.clear();
   // Clear all timers to prevent timeouts from firing after test completion.
