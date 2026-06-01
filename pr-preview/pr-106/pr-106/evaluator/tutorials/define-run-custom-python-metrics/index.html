@@ -1930,10 +1930,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-inspect-results" class="md-nav__link">
+  <a href="#7-prepare-platform-resources" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Inspect Results
+        7. Prepare Platform Resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Prepare Platform Resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register-a-dataset-fileset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a Dataset Fileset
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-submit-a-durable-evaluator-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Submit a Durable Evaluator Job
       
     </span>
   </a>
@@ -1941,10 +1980,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#platform-jobs" class="md-nav__link">
+  <a href="#9-inspect-results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Platform Jobs
+        9. Inspect Results
       
     </span>
   </a>
@@ -4517,10 +4556,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#7-inspect-results" class="md-nav__link">
+  <a href="#7-prepare-platform-resources" class="md-nav__link">
     <span class="md-ellipsis">
       
-        7. Inspect Results
+        7. Prepare Platform Resources
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. Prepare Platform Resources">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#create-a-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Create a Workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#register-a-dataset-fileset" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Register a Dataset Fileset
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-submit-a-durable-evaluator-job" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Submit a Durable Evaluator Job
       
     </span>
   </a>
@@ -4528,10 +4606,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#platform-jobs" class="md-nav__link">
+  <a href="#9-inspect-results" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Platform Jobs
+        9. Inspect Results
       
     </span>
   </a>
@@ -4650,18 +4728,20 @@
 <p><a id="evaluate-define-run-custom-python-metrics"></a></p>
 <h1 id="define-and-run-custom-python-metrics">Define and Run Custom Python Metrics<a class="headerlink" href="#define-and-run-custom-python-metrics" title="Permanent link">&para;</a></h1>
 <p>Custom Python metrics let you score model outputs with deterministic, domain-specific logic that is easier to express in code than in a generic metric or an LLM-as-a-judge prompt.</p>
-<p>This tutorial shows how to evaluate calculator-style outputs that are represented as Python arithmetic expressions. This response format is useful because it makes the model output executable and easy to verify. You will define a metric that checks whether each expression is safe to evaluate and whether it produces the expected answer, test the metric directly, then run it through the local Evaluator SDK with inline rows.</p>
+<p>This tutorial shows how to evaluate an agent that solves arithmetic word problems by returning a Python expression. This response format is useful for calculator-style agents because it makes the agent's reasoning executable and easy to verify. You will define a metric that checks whether each expression is safe to evaluate and whether it produces the expected answer, test the metric locally, then submit the same metric as a durable Evaluator service job with a <code>FilesetRef</code> dataset and a <code>ModelRef</code> target.</p>
 <p><strong>What you will learn:</strong></p>
 <ul>
 <li>Define a Python metric with the Evaluator SDK metric protocol</li>
 <li>Score model outputs with standard-library Python logic</li>
 <li>Smoke-test a custom metric locally with inline rows</li>
 <li>Run the same metric through the local Evaluator SDK</li>
+<li>Package the metric with the Cloudpickle metric bundle packager for remote execution</li>
+<li>Submit a durable Evaluator service job with <code>FilesetRef</code> and <code>ModelRef</code></li>
 <li>Inspect aggregate and row-level metric results</li>
 </ul>
 <div class="admonition tip">
 <p class="admonition-title">Tip</p>
-<p>Keep custom metric code dependency-light. The local Evaluator SDK runs your metric in the current Python environment, so any dependencies must be available where you run the evaluation. This tutorial uses only the Python standard library.</p>
+<p>Keep custom metric code dependency-light. Local execution runs your metric in the current Python environment, and remote execution hydrates the serialized metric in the evaluator job runtime. This tutorial uses only the Python standard library.</p>
 </div>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <p>Install the Evaluator SDK:</p>
@@ -4673,7 +4753,7 @@
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
 </span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">nemo_evaluator_sdk</span><span class="o">.</span><span class="n">version</span><span class="p">)</span>
 </span></code></pre></div>
-<p>You do not need a running NeMo Platform instance for this tutorial. Custom Python metric classes run locally in the Evaluator SDK. Durable platform jobs currently require metrics that can be serialized into the evaluator plugin job spec.</p>
+<p>You do not need a running NeMo Platform instance to define the metric or run the local smoke test. Start NeMo Platform and configure platform resources before submitting the durable remote job.</p>
 <h2 id="1-understand-the-metric-contract">1. Understand the Metric Contract<a class="headerlink" href="#1-understand-the-metric-contract" title="Permanent link">&para;</a></h2>
 <p>A custom metric implements the <code>Metric</code> protocol from <code>nemo_evaluator_sdk</code>. The protocol has one identifier property and two methods:</p>
 <ul>
@@ -4914,28 +4994,163 @@
 </span><span id="__span-7-37"><a id="__codelineno-7-37" name="__codelineno-7-37" href="#__codelineno-7-37"></a>
 </span><span id="__span-7-38"><a id="__codelineno-7-38" name="__codelineno-7-38" href="#__codelineno-7-38"></a><span class="n">result</span><span class="o">.</span><span class="n">print_summary</span><span class="p">()</span>
 </span></code></pre></div>
-<h2 id="7-inspect-results">7. Inspect Results<a class="headerlink" href="#7-inspect-results" title="Permanent link">&para;</a></h2>
+<h2 id="7-prepare-platform-resources">7. Prepare Platform Resources<a class="headerlink" href="#7-prepare-platform-resources" title="Permanent link">&para;</a></h2>
+<p>To run the same metric remotely, install and start NeMo Platform using the <a href="../../../get-started/setup/">Setup guide</a>. You also need:</p>
+<ul>
+<li>A model entity that can be referenced as <code>workspace/model-name</code>. See <a href="../../metrics/model-configuration/">Model Configuration</a> for model setup details.</li>
+<li>A platform secret for the model, if the model requires an API key.</li>
+</ul>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_platform</span><span class="w"> </span><span class="kn">import</span> <span class="n">NeMoPlatform</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">WORKSPACE</span> <span class="o">=</span> <span class="s2">&quot;custom-python-metrics&quot;</span>
+</span><span id="__span-8-7"><a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">MODEL_REF</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;NMP_EVAL_MODEL_REF&quot;</span><span class="p">,</span> <span class="s2">&quot;default/my-model&quot;</span><span class="p">)</span>
+</span><span id="__span-8-8"><a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a>
+</span><span id="__span-8-9"><a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">client</span> <span class="o">=</span> <span class="n">NeMoPlatform</span><span class="p">(</span>
+</span><span id="__span-8-10"><a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="n">base_url</span><span class="o">=</span><span class="n">os</span><span class="o">.</span><span class="n">environ</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;NMP_BASE_URL&quot;</span><span class="p">,</span> <span class="s2">&quot;http://localhost:8080&quot;</span><span class="p">),</span>
+</span><span id="__span-8-11"><a id="__codelineno-8-11" name="__codelineno-8-11" href="#__codelineno-8-11"></a>    <span class="n">workspace</span><span class="o">=</span><span class="n">WORKSPACE</span><span class="p">,</span>
+</span><span id="__span-8-12"><a id="__codelineno-8-12" name="__codelineno-8-12" href="#__codelineno-8-12"></a><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="create-a-workspace">Create a Workspace<a class="headerlink" href="#create-a-workspace" title="Permanent link">&para;</a></h3>
+<p>Create a workspace for the tutorial. If it already exists, continue using it.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_platform</span><span class="w"> </span><span class="kn">import</span> <span class="n">ConflictError</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">client</span><span class="o">.</span><span class="n">workspaces</span><span class="o">.</span><span class="n">create</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">WORKSPACE</span><span class="p">)</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Workspace &#39;</span><span class="si">{</span><span class="n">WORKSPACE</span><span class="si">}</span><span class="s2">&#39; created&quot;</span><span class="p">)</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="k">except</span> <span class="n">ConflictError</span><span class="p">:</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Workspace &#39;</span><span class="si">{</span><span class="n">WORKSPACE</span><span class="si">}</span><span class="s2">&#39; already exists, continuing...&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<h3 id="register-a-dataset-fileset">Register a Dataset Fileset<a class="headerlink" href="#register-a-dataset-fileset" title="Permanent link">&para;</a></h3>
+<p>The dataset contains word problems with the expected numeric answer. The model will generate a Python arithmetic expression, and the custom metric will evaluate that expression.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_evaluator.sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">FilesetRef</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="n">DATASET_NAME</span> <span class="o">=</span> <span class="s2">&quot;arithmetic-expression-data&quot;</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="n">DATASET_FILE</span> <span class="o">=</span> <span class="s2">&quot;math-expressions.jsonl&quot;</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="n">remote_rows</span> <span class="o">=</span> <span class="p">[</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>    <span class="p">{</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>        <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;A box has 12 rows of pencils with 4 pencils in each row. Then 7 pencils are added. How many pencils are there?&quot;</span><span class="p">,</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>        <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="mi">55</span><span class="p">,</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>        <span class="s2">&quot;tolerance&quot;</span><span class="p">:</span> <span class="mf">1e-6</span><span class="p">,</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a>    <span class="p">},</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>    <span class="p">{</span>
+</span><span id="__span-10-17"><a id="__codelineno-10-17" name="__codelineno-10-17" href="#__codelineno-10-17"></a>        <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;A server processed 125 requests, then processed 3 more batches of 25 requests. How many requests were processed?&quot;</span><span class="p">,</span>
+</span><span id="__span-10-18"><a id="__codelineno-10-18" name="__codelineno-10-18" href="#__codelineno-10-18"></a>        <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="mi">200</span><span class="p">,</span>
+</span><span id="__span-10-19"><a id="__codelineno-10-19" name="__codelineno-10-19" href="#__codelineno-10-19"></a>        <span class="s2">&quot;tolerance&quot;</span><span class="p">:</span> <span class="mf">1e-6</span><span class="p">,</span>
+</span><span id="__span-10-20"><a id="__codelineno-10-20" name="__codelineno-10-20" href="#__codelineno-10-20"></a>    <span class="p">},</span>
+</span><span id="__span-10-21"><a id="__codelineno-10-21" name="__codelineno-10-21" href="#__codelineno-10-21"></a>    <span class="p">{</span>
+</span><span id="__span-10-22"><a id="__codelineno-10-22" name="__codelineno-10-22" href="#__codelineno-10-22"></a>        <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="s2">&quot;A tank starts with 90 liters and loses 18 liters each hour for 3 hours. How many liters remain?&quot;</span><span class="p">,</span>
+</span><span id="__span-10-23"><a id="__codelineno-10-23" name="__codelineno-10-23" href="#__codelineno-10-23"></a>        <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="mi">36</span><span class="p">,</span>
+</span><span id="__span-10-24"><a id="__codelineno-10-24" name="__codelineno-10-24" href="#__codelineno-10-24"></a>        <span class="s2">&quot;tolerance&quot;</span><span class="p">:</span> <span class="mf">1e-6</span><span class="p">,</span>
+</span><span id="__span-10-25"><a id="__codelineno-10-25" name="__codelineno-10-25" href="#__codelineno-10-25"></a>    <span class="p">},</span>
+</span><span id="__span-10-26"><a id="__codelineno-10-26" name="__codelineno-10-26" href="#__codelineno-10-26"></a><span class="p">]</span>
+</span><span id="__span-10-27"><a id="__codelineno-10-27" name="__codelineno-10-27" href="#__codelineno-10-27"></a>
+</span><span id="__span-10-28"><a id="__codelineno-10-28" name="__codelineno-10-28" href="#__codelineno-10-28"></a><span class="n">dataset_path</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">DATASET_FILE</span><span class="p">)</span>
+</span><span id="__span-10-29"><a id="__codelineno-10-29" name="__codelineno-10-29" href="#__codelineno-10-29"></a><span class="n">dataset_path</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span>
+</span><span id="__span-10-30"><a id="__codelineno-10-30" name="__codelineno-10-30" href="#__codelineno-10-30"></a>    <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">json</span><span class="o">.</span><span class="n">dumps</span><span class="p">(</span><span class="n">row</span><span class="p">)</span> <span class="o">+</span> <span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">remote_rows</span><span class="p">),</span>
+</span><span id="__span-10-31"><a id="__codelineno-10-31" name="__codelineno-10-31" href="#__codelineno-10-31"></a>    <span class="n">encoding</span><span class="o">=</span><span class="s2">&quot;utf-8&quot;</span><span class="p">,</span>
+</span><span id="__span-10-32"><a id="__codelineno-10-32" name="__codelineno-10-32" href="#__codelineno-10-32"></a><span class="p">)</span>
+</span><span id="__span-10-33"><a id="__codelineno-10-33" name="__codelineno-10-33" href="#__codelineno-10-33"></a>
+</span><span id="__span-10-34"><a id="__codelineno-10-34" name="__codelineno-10-34" href="#__codelineno-10-34"></a><span class="k">try</span><span class="p">:</span>
+</span><span id="__span-10-35"><a id="__codelineno-10-35" name="__codelineno-10-35" href="#__codelineno-10-35"></a>    <span class="n">fileset</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">filesets</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
+</span><span id="__span-10-36"><a id="__codelineno-10-36" name="__codelineno-10-36" href="#__codelineno-10-36"></a>        <span class="n">name</span><span class="o">=</span><span class="n">DATASET_NAME</span><span class="p">,</span>
+</span><span id="__span-10-37"><a id="__codelineno-10-37" name="__codelineno-10-37" href="#__codelineno-10-37"></a>        <span class="n">description</span><span class="o">=</span><span class="s2">&quot;Math expression evaluation dataset&quot;</span><span class="p">,</span>
+</span><span id="__span-10-38"><a id="__codelineno-10-38" name="__codelineno-10-38" href="#__codelineno-10-38"></a>        <span class="n">purpose</span><span class="o">=</span><span class="s2">&quot;dataset&quot;</span><span class="p">,</span>
+</span><span id="__span-10-39"><a id="__codelineno-10-39" name="__codelineno-10-39" href="#__codelineno-10-39"></a>        <span class="n">metadata</span><span class="o">=</span><span class="p">{</span>
+</span><span id="__span-10-40"><a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a>            <span class="s2">&quot;dataset&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-10-41"><a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a>                <span class="s2">&quot;schema&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-10-42"><a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a>                    <span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;object&quot;</span><span class="p">,</span>
+</span><span id="__span-10-43"><a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a>                    <span class="s2">&quot;properties&quot;</span><span class="p">:</span> <span class="p">{</span>
+</span><span id="__span-10-44"><a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>                        <span class="s2">&quot;question&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;string&quot;</span><span class="p">},</span>
+</span><span id="__span-10-45"><a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a>                        <span class="s2">&quot;expected&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">},</span>
+</span><span id="__span-10-46"><a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a>                        <span class="s2">&quot;tolerance&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;type&quot;</span><span class="p">:</span> <span class="s2">&quot;number&quot;</span><span class="p">},</span>
+</span><span id="__span-10-47"><a id="__codelineno-10-47" name="__codelineno-10-47" href="#__codelineno-10-47"></a>                    <span class="p">},</span>
+</span><span id="__span-10-48"><a id="__codelineno-10-48" name="__codelineno-10-48" href="#__codelineno-10-48"></a>                    <span class="s2">&quot;required&quot;</span><span class="p">:</span> <span class="p">[</span><span class="s2">&quot;question&quot;</span><span class="p">,</span> <span class="s2">&quot;expected&quot;</span><span class="p">],</span>
+</span><span id="__span-10-49"><a id="__codelineno-10-49" name="__codelineno-10-49" href="#__codelineno-10-49"></a>                    <span class="s2">&quot;additionalProperties&quot;</span><span class="p">:</span> <span class="kc">True</span><span class="p">,</span>
+</span><span id="__span-10-50"><a id="__codelineno-10-50" name="__codelineno-10-50" href="#__codelineno-10-50"></a>                <span class="p">}</span>
+</span><span id="__span-10-51"><a id="__codelineno-10-51" name="__codelineno-10-51" href="#__codelineno-10-51"></a>            <span class="p">}</span>
+</span><span id="__span-10-52"><a id="__codelineno-10-52" name="__codelineno-10-52" href="#__codelineno-10-52"></a>        <span class="p">},</span>
+</span><span id="__span-10-53"><a id="__codelineno-10-53" name="__codelineno-10-53" href="#__codelineno-10-53"></a>    <span class="p">)</span>
+</span><span id="__span-10-54"><a id="__codelineno-10-54" name="__codelineno-10-54" href="#__codelineno-10-54"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Created fileset: </span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">workspace</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-10-55"><a id="__codelineno-10-55" name="__codelineno-10-55" href="#__codelineno-10-55"></a><span class="k">except</span> <span class="n">ConflictError</span><span class="p">:</span>
+</span><span id="__span-10-56"><a id="__codelineno-10-56" name="__codelineno-10-56" href="#__codelineno-10-56"></a>    <span class="n">fileset</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">filesets</span><span class="o">.</span><span class="n">retrieve</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">DATASET_NAME</span><span class="p">)</span>
+</span><span id="__span-10-57"><a id="__codelineno-10-57" name="__codelineno-10-57" href="#__codelineno-10-57"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Fileset exists: </span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">workspace</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-10-58"><a id="__codelineno-10-58" name="__codelineno-10-58" href="#__codelineno-10-58"></a>
+</span><span id="__span-10-59"><a id="__codelineno-10-59" name="__codelineno-10-59" href="#__codelineno-10-59"></a><span class="n">client</span><span class="o">.</span><span class="n">files</span><span class="o">.</span><span class="n">upload</span><span class="p">(</span>
+</span><span id="__span-10-60"><a id="__codelineno-10-60" name="__codelineno-10-60" href="#__codelineno-10-60"></a>    <span class="n">fileset</span><span class="o">=</span><span class="n">fileset</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
+</span><span id="__span-10-61"><a id="__codelineno-10-61" name="__codelineno-10-61" href="#__codelineno-10-61"></a>    <span class="n">local_path</span><span class="o">=</span><span class="nb">str</span><span class="p">(</span><span class="n">dataset_path</span><span class="p">),</span>
+</span><span id="__span-10-62"><a id="__codelineno-10-62" name="__codelineno-10-62" href="#__codelineno-10-62"></a>    <span class="n">remote_path</span><span class="o">=</span><span class="n">DATASET_FILE</span><span class="p">,</span>
+</span><span id="__span-10-63"><a id="__codelineno-10-63" name="__codelineno-10-63" href="#__codelineno-10-63"></a><span class="p">)</span>
+</span><span id="__span-10-64"><a id="__codelineno-10-64" name="__codelineno-10-64" href="#__codelineno-10-64"></a>
+</span><span id="__span-10-65"><a id="__codelineno-10-65" name="__codelineno-10-65" href="#__codelineno-10-65"></a><span class="n">dataset_ref</span> <span class="o">=</span> <span class="n">FilesetRef</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">workspace</span><span class="si">}</span><span class="s2">/</span><span class="si">{</span><span class="n">fileset</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">with_fragment</span><span class="p">(</span><span class="n">DATASET_FILE</span><span class="p">)</span>
+</span><span id="__span-10-66"><a id="__codelineno-10-66" name="__codelineno-10-66" href="#__codelineno-10-66"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Using dataset: </span><span class="si">{</span><span class="n">dataset_ref</span><span class="o">.</span><span class="n">root</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span></code></pre></div>
+<h2 id="8-submit-a-durable-evaluator-job">8. Submit a Durable Evaluator Job<a class="headerlink" href="#8-submit-a-durable-evaluator-job" title="Permanent link">&para;</a></h2>
+<p>Remote custom Python metric execution is explicit opt-in. Pass <code>CloudpickleMetricBundlePackager()</code> to <code>client.evaluator.submit(...)</code> so the SDK serializes the metric object into the evaluator job spec. The job runtime hydrates the metric bundle before scoring rows.</p>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_evaluator.shared.metric_bundles.cloudpickle</span><span class="w"> </span><span class="kn">import</span> <span class="n">CloudpickleMetricBundlePackager</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">nemo_evaluator_sdk</span><span class="w"> </span><span class="kn">import</span> <span class="n">InferenceParams</span><span class="p">,</span> <span class="n">ModelRef</span><span class="p">,</span> <span class="n">RunConfigOnlineModel</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="n">target_model</span> <span class="o">=</span> <span class="n">ModelRef</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="n">MODEL_REF</span><span class="p">)</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="n">job</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">evaluator</span><span class="o">.</span><span class="n">submit</span><span class="p">(</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>    <span class="n">metric</span><span class="o">=</span><span class="n">metric</span><span class="p">,</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>    <span class="n">dataset</span><span class="o">=</span><span class="n">dataset_ref</span><span class="p">,</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a>    <span class="n">config</span><span class="o">=</span><span class="n">RunConfigOnlineModel</span><span class="p">(</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>        <span class="n">parallelism</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>        <span class="n">limit_samples</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span>
+</span><span id="__span-11-13"><a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a>        <span class="n">inference</span><span class="o">=</span><span class="n">InferenceParams</span><span class="p">(</span>
+</span><span id="__span-11-14"><a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a>            <span class="n">temperature</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+</span><span id="__span-11-15"><a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>            <span class="n">max_tokens</span><span class="o">=</span><span class="mi">64</span><span class="p">,</span>
+</span><span id="__span-11-16"><a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a>        <span class="p">),</span>
+</span><span id="__span-11-17"><a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a>    <span class="p">),</span>
+</span><span id="__span-11-18"><a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a>    <span class="n">target</span><span class="o">=</span><span class="n">target_model</span><span class="p">,</span>
+</span><span id="__span-11-19"><a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>    <span class="n">prompt_template</span><span class="o">=</span><span class="p">(</span>
+</span><span id="__span-11-20"><a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>        <span class="s2">&quot;Return only a Python arithmetic expression that evaluates to the answer.</span><span class="se">\n</span><span class="s2">&quot;</span>
+</span><span id="__span-11-21"><a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>        <span class="s2">&quot;Use numbers, parentheses, and these operators only: +, -, *, /, //, %.</span><span class="se">\n\n</span><span class="s2">&quot;</span>
+</span><span id="__span-11-22"><a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a>        <span class="s2">&quot;Question: {{item.question}}&quot;</span>
+</span><span id="__span-11-23"><a id="__codelineno-11-23" name="__codelineno-11-23" href="#__codelineno-11-23"></a>    <span class="p">),</span>
+</span><span id="__span-11-24"><a id="__codelineno-11-24" name="__codelineno-11-24" href="#__codelineno-11-24"></a>    <span class="n">metric_bundle_packager</span><span class="o">=</span><span class="n">CloudpickleMetricBundlePackager</span><span class="p">(),</span>
+</span><span id="__span-11-25"><a id="__codelineno-11-25" name="__codelineno-11-25" href="#__codelineno-11-25"></a><span class="p">)</span>
+</span><span id="__span-11-26"><a id="__codelineno-11-26" name="__codelineno-11-26" href="#__codelineno-11-26"></a>
+</span><span id="__span-11-27"><a id="__codelineno-11-27" name="__codelineno-11-27" href="#__codelineno-11-27"></a><span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Submitted job: </span><span class="si">{</span><span class="n">job</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+</span><span id="__span-11-28"><a id="__codelineno-11-28" name="__codelineno-11-28" href="#__codelineno-11-28"></a><span class="n">job</span><span class="o">.</span><span class="n">wait_until_done</span><span class="p">()</span>
+</span><span id="__span-11-29"><a id="__codelineno-11-29" name="__codelineno-11-29" href="#__codelineno-11-29"></a><span class="n">remote_result</span> <span class="o">=</span> <span class="n">job</span><span class="o">.</span><span class="n">get_result</span><span class="p">()</span>
+</span><span id="__span-11-30"><a id="__codelineno-11-30" name="__codelineno-11-30" href="#__codelineno-11-30"></a><span class="n">remote_result</span><span class="o">.</span><span class="n">print_summary</span><span class="p">()</span>
+</span></code></pre></div>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>Cloudpickle metric bundles execute serialized Python code when the job hydrates the metric. Use this path only for metric code that you trust and intentionally submit.</p>
+</div>
+<h2 id="9-inspect-results">9. Inspect Results<a class="headerlink" href="#9-inspect-results" title="Permanent link">&para;</a></h2>
 <p>The aggregate scores show how often the outputs followed the expression contract and how often the expression evaluated to the expected value.</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="k">for</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">aggregate_scores</span><span class="o">.</span><span class="n">scores</span><span class="p">:</span>
-</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: mean=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">mean</span><span class="si">}</span><span class="s2">, count=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">count</span><span class="si">}</span><span class="s2">, nan_count=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">nan_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">for</span> <span class="n">score</span> <span class="ow">in</span> <span class="n">remote_result</span><span class="o">.</span><span class="n">aggregate_scores</span><span class="o">.</span><span class="n">scores</span><span class="p">:</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">name</span><span class="si">}</span><span class="s2">: mean=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">mean</span><span class="si">}</span><span class="s2">, count=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">count</span><span class="si">}</span><span class="s2">, nan_count=</span><span class="si">{</span><span class="n">score</span><span class="o">.</span><span class="n">nan_count</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
 </span></code></pre></div>
 <p>Use row scores to debug the expressions:</p>
-<div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">result</span><span class="o">.</span><span class="n">row_scores</span><span class="p">:</span>
-</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Question:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">item</span><span class="p">[</span><span class="s2">&quot;question&quot;</span><span class="p">])</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model output:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">sample</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output_text&quot;</span><span class="p">))</span>
-</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Metric outputs:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">metrics</span><span class="p">)</span>
-</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="nb">print</span><span class="p">()</span>
+<div class="language-python highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">for</span> <span class="n">row</span> <span class="ow">in</span> <span class="n">remote_result</span><span class="o">.</span><span class="n">row_scores</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Question:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">item</span><span class="p">[</span><span class="s2">&quot;question&quot;</span><span class="p">])</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Model output:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">sample</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;output_text&quot;</span><span class="p">))</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Metric outputs:&quot;</span><span class="p">,</span> <span class="n">row</span><span class="o">.</span><span class="n">metrics</span><span class="p">)</span>
+</span><span id="__span-13-5"><a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>    <span class="nb">print</span><span class="p">()</span>
 </span></code></pre></div>
-<h2 id="platform-jobs">Platform Jobs<a class="headerlink" href="#platform-jobs" title="Permanent link">&para;</a></h2>
-<p>Custom Python classes like <code>ArithmeticExpressionCorrectnessMetric</code> are normal Python objects. On the current NeMo Platform implementation, durable evaluator service jobs accept metrics that can be serialized into the evaluator plugin job spec. Use built-in SDK metrics or other serializable metric configs for <code>client.evaluator.submit(...)</code> jobs.</p>
-<p>For custom Python logic, use the local Evaluator SDK flow shown above while developing the metric. Move the logic into a serializable metric type before submitting it as a durable platform job.</p>
+<p>Use the local <code>result</code> object from Step 6 the same way if you want to inspect the local run instead.</p>
 <h2 id="best-practices">Best Practices<a class="headerlink" href="#best-practices" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Test custom metrics locally with inline rows before turning the logic into a platform job metric.</li>
+<li>Test custom metrics locally with inline rows before submitting service-side jobs.</li>
 <li>Keep metric code deterministic and side-effect free.</li>
-<li>Prefer Python standard-library logic unless you control the runtime environment where the metric executes.</li>
+<li>Prefer Python standard-library logic unless you know the dependency is available in the service runtime.</li>
 <li>Emit separate outputs for format validity and task correctness so failures are easier to diagnose.</li>
-<li>Keep durable platform jobs on serializable metric configs.</li>
+<li>Pass an explicit metric bundle packager when submitting custom Python metrics as durable jobs.</li>
+<li>Use <code>FilesetRef</code> for reusable datasets and <code>ModelRef</code> for platform-managed model routing.</li>
 </ul>
 <h2 id="next-steps">Next Steps<a class="headerlink" href="#next-steps" title="Permanent link">&para;</a></h2>
 <ul>
