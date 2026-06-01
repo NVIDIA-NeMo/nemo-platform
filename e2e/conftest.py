@@ -88,6 +88,12 @@ def _services() -> Iterator[str]:
     """Spawn ``nemo services run`` and yield the base URL.
 
     Skipped when ``NMP_BASE_URL`` is already set (external services).
+
+    This is the "subprocess" backend.  When we add Docker and Kubernetes
+    backends, this fixture should be replaced by a backend-selection layer
+    (e.g. ``--docker`` / ``--kubernetes`` CLI flags) that dispatches to the
+    appropriate setup while yielding the same base URL interface.  Tests
+    should remain agnostic to the backend.
     """
     external_url = os.environ.get("NMP_BASE_URL")
     if external_url:
