@@ -320,12 +320,12 @@ jobs:
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.11"
+          python-version: "3.13"
           enable-cache: true
       - name: Download wheel
         uses: actions/download-artifact@v8
         with:
-          name: nemo-platform-wheel-py3.11
+          name: nemo-platform-wheel-py3.13
           path: ${{ runner.temp }}/wheelcheck
       - name: Install nemo-platform from wheel
         shell: bash
@@ -334,7 +334,7 @@ jobs:
         run: |
           set -euo pipefail
           WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
-          uv tool install --force --python 3.11 "${WHEEL}[services]"
+          uv tool install --force --python 3.13 "${WHEEL}[services]"
       - name: Run e2e tests
         run: |
           uv run --frozen pytest e2e -v --run-e2e --junitxml=report.xml
