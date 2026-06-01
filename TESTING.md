@@ -117,7 +117,7 @@ def test_create_and_fetch_entity(client, db_session):
 
 **Characteristics**:
 
-- Start the platform via `nemo services start` (real process, real ports)
+- Start the platform via `nemo services run` (real process, real ports)
 - Hit services with an external HTTP client (the NeMoPlatform SDK)
 - Test startup machinery, port binding, config resolution, and cross-service workflows
 - Slower than integration tests (tens of seconds for startup) but faster than Docker/K8s e2e
@@ -135,7 +135,7 @@ uv run --frozen pytest e2e -v --run-e2e
 NMP_BASE_URL=http://localhost:8080 uv run --frozen pytest e2e -v --run-e2e
 ```
 
-**Prerequisites**: `make bootstrap` must have been run. The harness runs `nemo services start`
+**Prerequisites**: `make bootstrap` must have been run. The harness runs `nemo services run`
 on a free port with a unique `--instance` name, so it won't conflict with your dev instance.
 
 **When to Write E2E Tests**:

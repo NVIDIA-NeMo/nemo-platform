@@ -233,6 +233,8 @@ jobs:
           package: ${{ matrix.package }}
           out-dir: ${{ github.workspace }}/dist
           cadence: nightly
+          # Sentinel epoch — the wheel version is meaningless for a CI test
+          # build, but stamp_sdk_version.py requires \d{14}.
           nightly-timestamp: "19700101000000"
           python-version: ${{ matrix.python-version }}
       - name: Upload wheel
@@ -298,6 +300,10 @@ jobs:
           uv venv .venv --python "${PYTHON_VERSION}"
           uv pip install --python .venv/bin/python "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
+          # Import the package + a couple of representative submodules
+          # (cli, commands). These are the surfaces a plugin author would
+          # touch first; if any of them fail to import, the wheel is
+          # broken in a way that surfaces immediately on day one.
           .venv/bin/python -c "
           import nemo_platform_plugin
           import nemo_platform_plugin.cli
