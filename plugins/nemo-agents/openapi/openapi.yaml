@@ -766,7 +766,9 @@ components:
       title: Agent
       description: "An agent definition \u2014 stores the NAT workflow config and\
         \ metadata.\n\nEntity type: ``agent``\nPrimary lookup: by ``name`` within\
-        \ a ``workspace``."
+        \ a ``workspace``.\n\nThe agent's spec lives at the location returned by\n\
+        :func:`agent_spec_file_ref` \u2014 it is **not** stored on the entity\nbecause\
+        \ the path is fully derivable from ``(workspace, name)``."
     AgentDeployment:
       properties:
         name:
