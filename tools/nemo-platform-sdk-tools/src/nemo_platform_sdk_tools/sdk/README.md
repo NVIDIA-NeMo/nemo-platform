@@ -72,8 +72,7 @@ Vendor configured platform packages into the Python SDK wrapper:
 
 ```sh
 uv run --no-sync nemo-platform-sdk-tools vendor all-from-configs \
-  nemo_platform_ext models filesets safe_synthesizer_sdk \
-  nemo_evaluator_sdk
+  nemo_platform_ext models filesets nemo_evaluator_sdk
 ```
 
 Run post-generation updates:

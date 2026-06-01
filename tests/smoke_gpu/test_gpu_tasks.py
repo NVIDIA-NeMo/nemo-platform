@@ -41,8 +41,8 @@ def test_causal_conv1d_importable():
     import causal_conv1d  # noqa: F401
 
 
-def test_nmp_safe_synthesizer_importable():
-    import nmp.safe_synthesizer  # noqa: F401
+def test_nemo_safe_synthesizer_plugin_importable():
+    import nemo_safe_synthesizer_plugin.service  # noqa: F401
 
 
 def test_nmp_customizer_importable():

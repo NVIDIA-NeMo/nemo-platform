@@ -47,12 +47,10 @@ dependencies = [
   "nmp-core-mcp",
   "nemo-platform",
   "nemo-platform-ext",
-  "nemo-safe-synthesizer==0.0.4rc0",
   "nmp-common",
   "garak-api",
   "nmp-platform",
   "nmp-platform-seed",
-  "nmp-safe-synthesizer",
   "nmp-secrets",
   # Core services needed for OpenAPI generation (platform imports these dynamically)
   "nmp-auth",
@@ -117,11 +115,6 @@ dev = [
   "httpx-aiohttp>=0.1.8",
   "aiosqlite>=0.20.0",
   "greenlet>=3.0.0",
-  # Relevant dev dependencies from nemo-safe-synthesizer (external package).
-  # Including here until we find a better way to include them.
-  "pandas-stubs>=2.1.3",
-  "types-click",
-  "types-colorama>=0.4.6",
   # nemo-nb/docs dependencies
   "nemo_nb",
   "myst-parser>=4.0.0",
@@ -133,15 +126,14 @@ dev = [
   "nemo-data-designer-plugin",
   "nmp-evaluator",
   "nmp-guardrails",
+  "nemo-safe-synthesizer-plugin",
   "nmp-hello-world",
   "nmp-intake",
   "nmp-core-mcp",
   "nemo-platform",
   "nemo-platform-ext",
-  "nemo-safe-synthesizer[engine]",
   "nmp-common",
   "nmp-platform",
-  "nmp-safe-synthesizer",
   "nmp-secrets",
   "blockbuster>=1.5.26",
 ]
@@ -209,7 +201,6 @@ functional-services = [
   "nmp-customizer",
   "nemo-data-designer-plugin",
   "nemo-anonymizer-plugin",
-  "nmp-safe-synthesizer",
   "nmp-intake",
   "nmp-hello-world",
   "nmp-platform-seed",
@@ -229,50 +220,16 @@ cpu-tasks = [
 
 # GPU task dependencies (for nmp-gpu-tasks container)
 # Services that have GPU-intensive batch tasks
-# Includes GPU deps (torch, transformers, etc.) via nemo-safe-synthesizer[engine, cu128]
 gpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nmp-models",
   "nmp-customizer",
-  # Temporarily removing until it is a plugin
-  # "nmp-safe-synthesizer[cu128]",
 ]
 
 
 [project.scripts]
 generate-config-docs = "script.generate_config_docs:main"
-
-[project.optional-dependencies]
-
-# these are set up to provide a working mac and linux environment. we only use cuda on linux.
-# this is required as the nemo-safe-synthesizer package needs the full cuda depset
-# as it requires GPUs.
-# in the root uv project, to include the nemo-safe-synthesizer package, you need to
-# specify the extra `cu128` or `cpu` to get the deps like:
-# `uv sync --all-packages --extra [cu128|cpu]`
-cpu = [
-  # "nemo-safe-synthesizer[engine, cpu]==0.0.4rc0; sys_platform=='linux'",
-  "nmp-safe-synthesizer[cpu]",
-  #"torch==2.10.0+cpu; sys_platform=='linux'",
-  #"torch==2.10.0; sys_platform=='darwin'",
-  #"torchvision==0.25.0+cpu; sys_platform=='linux'",
-  #"torchvision==0.25.0; sys_platform=='darwin'",
-  #"flashinfer-python==0.6.6; sys_platform=='linux'",
-  #"flashinfer-cubin==0.6.6; sys_platform=='linux'",
-
-]
-
-cu128 = [
-  # "nemo-safe-synthesizer[engine, cu128]==0.0.4rc0; sys_platform=='linux'",
-  # "nmp-safe-synthesizer[cu128]",
-  #"torch==2.10.0+cu128; sys_platform=='linux'",
-  #"torchvision==0.25.0+cu128; sys_platform=='linux'",
-  #"flashinfer-python==0.6.6; sys_platform == 'linux'",
-  #"flashinfer-cubin==0.6.6; sys_platform == 'linux'",
-  #"flashinfer-jit-cache==0.6.6+cu128; sys_platform == 'linux'",
-
-]
 
 [tool.uv]
 prerelease = "if-necessary-or-explicit"
@@ -320,38 +277,17 @@ constraint-dependencies = [
     "postcss>=8.5.10",
     "pyasn1>=0.6.3",
     "python-multipart>=0.0.27",
-    "regex==2025.07.34",
+    "regex>=2025.10.22",
     "safetensors>=0.8.0rc0",   # explicit prerelease so uv allows the rc
-    #"torch==2.10.0",
     "sqlfluff==4.1.0",
     "urllib3>=2.7.0",
     "uv>=0.9.14,<0.10.0",
-]
-
-conflicts = [
-  # Within-package: root (nemoplatform) cpu/cu128 are mutually exclusive
-  [
-    { extra = "cpu" },
-    { extra = "cu128" },
-  ],
-  # Within-package: service (nmp-safe-synthesizer) cpu/cu128 are mutually exclusive
-  # Cross-package: root (nemoplatform) and service (nmp-safe-synthesizer) must agree on cpu vs cu128
-  # (both pull in nemo-safe-synthesizer[cpu|cu128] which have conflicting torch deps)
-  [
-    { extra = "cu128" },
-    { package = "nmp-safe-synthesizer", extra = "cpu" },
-  ],
-  [
-    { extra = "cpu" },
-    { package = "nmp-safe-synthesizer", extra = "cu128" },
-  ],
 ]
 
 override-dependencies = [
   # unsloth requires a later version but will never be used on macos. mostly useful for dev
   "datasets>=3.3.1, <=4.3.0",
   "jsonpath-ng>=1.6.1",
-  "outlines_core==0.2.11",    # there's a conflict with vllm's (nss) pin on outlines_core==0.2.10 but this version works.
   "grpcio>=1.71.0",
   "huggingface-hub>=1.0.1,<2.0.0",
   "pydantic[email]>=2.9.2",       # openai-harmony depends on a later pydantic, but that causes the stainless gen to hit an infinite loop
@@ -385,7 +321,6 @@ override-dependencies = [
   "openai>=2.26.0",
   "sqlfluff>=4.1.0",       # CVE-2026-46373
 
-
 ]
 
 [tool.uv.sources]
@@ -417,27 +352,16 @@ nmp-platform-seed = { workspace = true }
 nmp-hello-world = { workspace = true }
 nmp-studio = { workspace = true }
 nmp-customizer = { workspace = true }
-nmp-safe-synthesizer = { workspace = true }
 nmp-secrets = { workspace = true }
 nmp-dev-mcp = { workspace = true }
 nmp-testing = { workspace = true }
 nmp-build-tools = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 
-#torch = [
-#  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform=='linux'" },
-#  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform=='darwin'" },
-#  { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform=='linux'" },
-#]
-#torchvision = [
-#  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform=='linux'" },
-#  { index = "pytorch-cpu", extra = "cpu", marker = "sys_platform=='darwin'" },
-#  { index = "pytorch-cu128", extra = "cu128", marker = "sys_platform=='linux'" },
-#]
-#flashinfer-jit-cache = [{ index = "flashinfer-jit-cache" }]
 nemo-evaluator-plugin = { workspace = true }
 nemo-guardrails-plugin = { workspace = true }
 nemo-auditor-plugin = { workspace = true }
+nemo-safe-synthesizer-plugin = { workspace = true }
 nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
@@ -473,7 +397,6 @@ members = [
   "services/core/files",
   "services/core/secrets",
   "services/core/mcp",
-  "services/safe-synthesizer",
   "tools/nemo-platform-sdk-tools",
   "tools/mcp-dev-tools",
   "packages/nmp_testing",
@@ -481,12 +404,12 @@ members = [
   "sdk/python/nemo-platform",
   "packages/nemo_platform_ext",
   "packages/nemo_evaluator_sdk",
-  "packages/safe_synthesizer_sdk",
   "packages/filesets",
   "packages/models",
   "plugins/nemo-guardrails",
   "plugins/nemo-evaluator",
   "plugins/nemo-auditor",
+  "plugins/nemo-safe-synthesizer",
   "plugins/nemo-switchyard",
   "plugins/nemo-agents",
   "plugins/nemo-agents/examples/calculator-agent",
@@ -562,22 +485,6 @@ directory = "htmlcov"
 [tool.coverage.xml]
 output = "coverage.xml"
 
-#[[tool.uv.index]]
-#name = "flashinfer-jit-cache"
-#url = "https://flashinfer.ai/whl/cu128"
-
-# required for linux cpu - it's got a `+cpu` on the version
-#[[tool.uv.index]]
-#name = "pytorch-cpu"
-#url = "https://download.pytorch.org/whl/cpu"
-#explicit = true
-#
-#[[tool.uv.index]]
-#name = "pytorch-cu128"
-#url = "https://download.pytorch.org/whl/cu128"
-#explicit = false
-
-
 [tool.pyright]
 extraPaths = [
     "plugins/nemo-guardrails/src",
@@ -643,8 +550,6 @@ exclude = [
   "./services/guardrails/",
 
   "./services/intake/",
-
-  "./services/safe-synthesizer/",
 
   "./services/core/",
 

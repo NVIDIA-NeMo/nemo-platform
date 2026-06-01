@@ -11,7 +11,6 @@ import typer
 
 # from nemo_platform_ext.cli.commands.api.customization.jobs import create_jobs as create_customization_job
 from nemo_platform_ext.cli.commands.api.inference.deployments import create_deployments
-from nemo_platform_ext.cli.commands.api.safe_synthesizer.jobs import create_jobs as create_safe_synthesizer_job
 
 
 def _ctx(client: object) -> SimpleNamespace:
@@ -73,39 +72,6 @@ def _ctx(client: object) -> SimpleNamespace:
 #         timeout=42,
 #         poll_interval=7,
 #     )
-
-
-def test_safe_synthesizer_job_create_uses_input_name_for_wait_when_response_has_no_name() -> None:
-    jobs = MagicMock()
-    jobs.create.return_value = SimpleNamespace()
-    client = SimpleNamespace(safe_synthesizer=SimpleNamespace(jobs=jobs))
-
-    with (
-        patch("nemo_platform_ext.cli.commands.api.safe_synthesizer.jobs.handle_code_generation", return_value=False),
-        patch("nemo_platform_ext.cli.commands.api.safe_synthesizer.jobs.format_output"),
-        patch(
-            "nemo_platform_ext.cli.commands.api.safe_synthesizer.jobs.wait_for_platform_job",
-            return_value=True,
-        ) as wait_for_platform_job,
-    ):
-        create_safe_synthesizer_job(
-            _ctx(client),
-            name="safe-job",
-            workspace="test-workspace",
-            spec='{"source": "dataset"}',
-            wait=True,
-            timeout=60,
-            poll_interval=5,
-        )
-
-    wait_for_platform_job.assert_called_once_with(
-        jobs,
-        "safe-job",
-        workspace="test-workspace",
-        resource_label="safe-synthesizer job",
-        timeout=60,
-        poll_interval=5,
-    )
 
 
 def test_inference_deployment_create_exits_when_wait_fails() -> None:
