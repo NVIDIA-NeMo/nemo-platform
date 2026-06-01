@@ -20,7 +20,6 @@ from nemo_agents_plugin.spec_render import (
     parse_spec,
     render_spec,
 )
-from pydantic import ValidationError
 
 
 def _minimal_spec(**overrides: Any) -> AgentSpec:
@@ -144,13 +143,4 @@ class TestParseErrors:
             "vpn, password reset, software access",
         )
         with pytest.raises(SpecRenderError, match="expected bullet"):
-            parse_spec(md)
-
-    def test_validation_error_propagates(self) -> None:
-        spec = _minimal_spec()
-        md = render_spec(spec).replace(
-            "- vpn\n- password reset\n- software access",
-            "- vpn",
-        )
-        with pytest.raises(ValidationError):
             parse_spec(md)

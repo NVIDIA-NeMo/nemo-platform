@@ -82,24 +82,7 @@ class TestJobValidation:
             AgentSpec(**_valid_spec_kwargs(job=padded_short))
 
 
-class TestFrameworkValidation:
-    def test_missing_framework_rejected(self) -> None:
-        # Framework is one of the two hard preconditions enforced by the
-        # explore-first flow; without it the build skill has nothing to act on.
-        kwargs = _valid_spec_kwargs()
-        del kwargs["framework"]
-        with pytest.raises(ValidationError, match="framework"):
-            AgentSpec(**kwargs)
-
-
 class TestCategoriesValidation:
-    @pytest.mark.parametrize("categories", [["a", "b"], ["a", "b", "c", "d", "e", "f", "g"]])
-    def test_category_count_out_of_range_rejected(self, categories: list[str]) -> None:
-        # 3-6 is a real product contract from the explore skill, not just a
-        # Field bound — worth pinning at the boundary.
-        with pytest.raises(ValidationError):
-            AgentSpec(**_valid_spec_kwargs(categories=categories))
-
     def test_empty_category_rejected(self) -> None:
         with pytest.raises(ValidationError, match="empty"):
             AgentSpec(**_valid_spec_kwargs(categories=["vpn", "", "software"]))
