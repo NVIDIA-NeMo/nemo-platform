@@ -139,6 +139,22 @@ def test_invalid_session_id_returns_400(service_client: TestClient):
     assert response.json()["detail"] == "session_id must be a UUID"
 
 
+async def test_stream_claude_hides_startup_oserror(monkeypatch: pytest.MonkeyPatch):
+    session_id = str(uuid.uuid4())
+
+    async def fail_start(*args: Any, **kwargs: Any):
+        raise OSError("secret local path")
+
+    monkeypatch.setattr(coding_agents.shutil, "which", lambda name: "/usr/bin/claude")
+    monkeypatch.setattr(coding_agents.asyncio, "create_subprocess_exec", fail_start)
+
+    chunks = [chunk async for chunk in coding_agents._stream_claude(session_id, "hello", "http://test/mcp")]
+
+    assert chunks == ['event: error\ndata: {"exit_code": null, "stderr": "Failed to start Claude Code process"}\n\n']
+    assert "secret local path" not in chunks[0]
+    assert session_id not in coding_agents._session_streams
+
+
 def test_mcp_initialize_and_tools_list(service_client: TestClient):
     session_id = str(uuid.uuid4())
 

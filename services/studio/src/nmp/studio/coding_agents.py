@@ -401,9 +401,13 @@ async def _stream_claude(session_id: str, message: str, mcp_url: str) -> AsyncIt
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-    except OSError as exc:
+    except OSError:
+        logger.exception("Failed to start Claude Code subprocess for session %s", session_id)
         _session_streams.pop(session_id, None)
-        yield _sse(json.dumps({"exit_code": None, "stderr": str(exc)}), event="error")
+        yield _sse(
+            json.dumps({"exit_code": None, "stderr": "Failed to start Claude Code process"}),
+            event="error",
+        )
         return
 
     stdout_task = asyncio.create_task(_pump_stdout(proc, queue))
