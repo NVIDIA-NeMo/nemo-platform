@@ -52,11 +52,6 @@ class StudioFeatureFlagsConfig(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    coding_agent_studio_enabled: bool = Field(
-        default=False,
-        description="Show Studio's local coding-agent UI.",
-    )
-
 
 class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
     """Configuration for the Studio service.

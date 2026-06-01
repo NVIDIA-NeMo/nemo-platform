@@ -876,7 +876,5 @@ studio:
     - http://localhost
     - http://localhost:*
   # Studio feature flags.
-  feature_flags:
-    # Show Studio's local coding-agent UI. | default: False
-    coding_agent_studio_enabled: false
+  feature_flags: {}
 ```
