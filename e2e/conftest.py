@@ -17,15 +17,18 @@ child process on a free port, polls ``/health/ready`` until ready, and
 terminates the process after the session.
 """
 
+import contextlib
 import logging
 import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
+from typing import IO, Any
 
 import httpx
 import pytest
@@ -35,6 +38,7 @@ logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL_INTERVAL = 1.0
+_SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
 
 
 def _find_free_port() -> int:
@@ -53,9 +57,30 @@ def _wait_for_healthy(url: str, timeout: float = _HEALTH_TIMEOUT) -> bool:
             if resp.status_code == 200:
                 return True
         except httpx.RequestError:
-            pass
+            pass  # Server not up yet, keep polling
         time.sleep(_HEALTH_POLL_INTERVAL)
     return False
+
+
+@contextlib.contextmanager
+def background_process(args: list[str], stdout: IO[Any] | None = None) -> Iterator[subprocess.Popen]:
+    """Run a subprocess, yield the ``Popen``, and terminate on exit.
+
+    Unlike ``Popen``'s built-in context manager (which only waits for the
+    process), this sends SIGTERM/SIGKILL so long-running servers are
+    cleaned up.
+    """
+    proc = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT)
+    try:
+        yield proc
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            logger.warning("Process %d did not exit after SIGTERM, sending SIGKILL", proc.pid)
+            proc.kill()
+            proc.wait(timeout=5)
 
 
 @pytest.fixture(scope="session")
@@ -63,7 +88,6 @@ def _services() -> Iterator[str]:
     """Spawn ``nemo services run`` and yield the base URL.
 
     Skipped when ``NMP_BASE_URL`` is already set (external services).
-    The process is our direct child — on teardown we just terminate it.
     """
     external_url = os.environ.get("NMP_BASE_URL")
     if external_url:
@@ -74,43 +98,20 @@ def _services() -> Iterator[str]:
     url = f"http://127.0.0.1:{port}"
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
-    args = [
-        nemo_bin,
-        "services",
-        "run",
-        "--service-group",
-        "all",
-        "--port",
-        str(port),
-    ]
+    args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
 
     logger.info("Starting nemo services on port %d", port)
 
-    proc = subprocess.Popen(
-        args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
+    log_path = _SERVICES_LOG
+    with open(log_path, "w") as log_file, background_process(args, stdout=log_file) as proc:
+        if not _wait_for_healthy(url):
+            pytest.fail(
+                f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
+            )
 
-    if not _wait_for_healthy(url):
-        # Grab whatever output we have for diagnostics
-        proc.terminate()
-        stdout, _ = proc.communicate(timeout=10)
-        pytest.fail(f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nstdout:\n{stdout}")
-
-    logger.info("Platform services ready on port %d (pid %d)", port, proc.pid)
-
-    yield url
-
-    logger.info("Terminating nemo services (pid %d)", proc.pid)
-    proc.terminate()
-    try:
-        proc.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        logger.warning("Process did not exit after SIGTERM, sending SIGKILL")
-        proc.kill()
-        proc.wait(timeout=5)
+        logger.info("Platform services ready on port %d (pid %d)", port, proc.pid)
+        yield url
+        logger.info("Terminating nemo services (pid %d)", proc.pid)
 
 
 @pytest.fixture(scope="session")

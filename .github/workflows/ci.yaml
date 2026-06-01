@@ -335,6 +335,13 @@ jobs:
         run: make test-e2e
         env:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG: ${{ runner.temp }}/services.log
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "::group::Server log"
+          cat "${{ runner.temp }}/services.log" 2>/dev/null || echo "No server log found"
+          echo "::endgroup::"
       - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v6
@@ -343,6 +350,7 @@ jobs:
           retention-days: 30
           path: |
             report.xml
+            ${{ runner.temp }}/services.log
 
   # Required-check pin: branch protection should reference this aggregator
   # rather than the per-row matrix jobs, so the matrix can grow or shrink

@@ -25,8 +25,10 @@ def test_create_and_delete_workspace(sdk: NeMoPlatform):
     """Workspace create and delete round-trips through the platform."""
     name = f"e2e-smoke-{uuid.uuid4().hex[:8]}"
     ws = sdk.workspaces.create(name=name)
-    assert ws.name == name
-    sdk.workspaces.delete(name)
+    try:
+        assert ws.name == name
+    finally:
+        sdk.workspaces.delete(name)
 
 
 def test_list_workspaces(sdk: NeMoPlatform, workspace: str):
