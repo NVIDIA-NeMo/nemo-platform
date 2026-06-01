@@ -11,7 +11,7 @@ from typing import Any
 
 from nmp.common.config import Configuration, create_service_config_class
 from nmp.studio.env_mappings import ENV_MAPPINGS
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,6 @@ class StudioOtelConfig(BaseModel):
         return any(fnmatchcase(origin, allowed_origin) for allowed_origin in self.allowed_origins)
 
 
-class StudioFeatureFlagsConfig(BaseModel):
-    """Feature flags injected into the Studio UI."""
-
-    model_config = ConfigDict(extra="allow")
-
-
 class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
     """Configuration for the Studio service.
 
@@ -83,10 +77,6 @@ class StudioConfig(create_service_config_class("studio")):  # type: ignore[misc]
     otel: StudioOtelConfig = Field(
         default_factory=StudioOtelConfig,
         description="Studio UI OpenTelemetry settings.",
-    )
-    feature_flags: StudioFeatureFlagsConfig = Field(
-        default_factory=StudioFeatureFlagsConfig,
-        description="Studio feature flags.",
     )
 
     @cached_property
