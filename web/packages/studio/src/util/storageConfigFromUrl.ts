@@ -51,7 +51,7 @@ export function isHuggingFaceUrl(url: URL): boolean {
   );
 }
 
-function parseNgcUrl(url: URL): { org: string; team: string; target: string } {
+export function parseNgcUrl(url: URL): { org: string; team: string; target: string } {
   const path = url.pathname;
   const match = path.match(NGC_ORG_TEAM_RESOURCE);
   if (!match) {
@@ -66,7 +66,7 @@ function parseNgcUrl(url: URL): { org: string; team: string; target: string } {
   return { org, team, target };
 }
 
-function parseHuggingFaceUrl(url: URL): {
+export function parseHuggingFaceUrl(url: URL): {
   repoId: string;
   repoType: 'dataset' | 'model' | 'space';
 } {
