@@ -1703,6 +1703,8 @@
       
         
       
+        
+      
     
     
     
@@ -1767,6 +1769,34 @@
     
   
     Run LLM-as-a-Judge Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../evaluator/tutorials/define-run-custom-python-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Define and Run Custom Python Metrics
   
 
     
@@ -4383,7 +4413,7 @@
 <p>Data Designer on NeMo Platform enables high-quality synthetic data generation through the NeMo Data Designer plugin. You can execute workloads locally from the CLI, submit them to a running NeMo Services cluster, or call the Data Designer API from the SDK.</p>
 <h2 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h2>
 <p>Data Designer is a framework for orchestrating complex synthetic data generation workflows. It coordinates LLM calls, manages dependencies between data fields, handles batching and parallelization, and validates generated data against specifications.</p>
-<p>The plugin is built on the open-source <a href="https://nvidia-nemo.github.io/DataDesigner/0.6.0/">NVIDIA NeMo Data Designer library</a> (<a href="https://github.com/NVIDIA-NeMo/DataDesigner">GitHub</a>). The library provides the configuration and generation engine; the plugin provides CLI, SDK, Data Designer API, Jobs, Files API, Secrets API, and Inference Gateway API integration.</p>
+<p>The plugin is built on the open-source <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome">NVIDIA NeMo Data Designer library</a> (<a href="https://github.com/NVIDIA-NeMo/DataDesigner">GitHub</a>). The library provides the configuration and generation engine; the plugin provides CLI, SDK, Data Designer API, Jobs, Files API, Secrets API, and Inference Gateway API integration.</p>
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <p>Data Designer separates <strong>configuration</strong> from <strong>execution</strong>.</p>
 <div class="admonition note">
@@ -4410,7 +4440,7 @@ For runnable examples, see the <a href="tutorials/">tutorials</a>.</p>
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="n">config_builder</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span><span class="n">dd</span><span class="o">.</span><span class="n">LLMTextColumnConfig</span><span class="p">(</span><span class="o">...</span><span class="p">))</span>
 </span></code></pre></div>
 <p>Configuration code describes the dataset schema, columns, dependencies, constraints, seed data, processors, profilers, and inference settings.</p>
-<p><strong>Learn more</strong>: See the <a href="https://nvidia-nemo.github.io/DataDesigner/0.6.0/">library documentation</a> for comprehensive guides on column types, samplers, constraints, and advanced features.</p>
+<p><strong>Learn more</strong>: See the <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome">library documentation</a> for comprehensive guides on column types, samplers, constraints, and advanced features.</p>
 <h3 id="2-choose-where-to-execute">2. Choose Where to Execute<a class="headerlink" href="#2-choose-where-to-execute" title="Permanent link">&para;</a></h3>
 <p>The same configuration can run through different plugin surfaces:</p>
 <table>
@@ -4498,7 +4528,7 @@ For runnable examples, see the <a href="tutorials/">tutorials</a>.</p>
 <p>Move configurations between local CLI and NeMo Services execution.</p>
 </li>
 <li>
-<p><strong><a href="https://nvidia-nemo.github.io/DataDesigner/0.6.0/">Library Documentation</a></strong></p>
+<p><strong><a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome">Library Documentation</a></strong></p>
 <hr />
 <p>Comprehensive guides on column types, constraints, and advanced features.</p>
 </li>
