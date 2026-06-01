@@ -311,37 +311,28 @@ jobs:
           print('nemo_platform_plugin', getattr(nemo_platform_plugin, '__version__', '<no __version__>'))
           "
 
-  # E2E tests: install nemo-platform from the wheel, start services, and
-  # run the e2e suite against the real process.
+  # E2E tests: start services from the workspace venv and run the e2e
+  # suite against the real process.
   python-e2e-test:
     name: Python e2e tests
-    needs: [wheel-build]
+    needs: [policy-wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+      - name: Download policy WASM
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
         uses: astral-sh/setup-uv@v7
         with:
-          python-version: "3.13"
+          python-version: "3.11"
           enable-cache: true
-      - name: Download wheel
-        uses: actions/download-artifact@v8
-        with:
-          name: nemo-platform-wheel-py3.13
-          path: ${{ runner.temp }}/wheelcheck
-      - name: Install nemo-platform from wheel
-        shell: bash
-        env:
-          NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
-        run: |
-          set -euo pipefail
-          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
-          uv tool install --force --python 3.13 "${WHEEL}[services]"
       - name: Run e2e tests
-        run: |
-          uv run --frozen pytest e2e -v --run-e2e --junitxml=report.xml
+        run: make test-e2e
         env:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts

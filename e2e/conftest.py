@@ -19,7 +19,6 @@ terminates the process after the session.
 
 import logging
 import os
-import shutil
 import socket
 import subprocess
 import sys
@@ -74,9 +73,7 @@ def _services() -> Iterator[str]:
     port = _find_free_port()
     url = f"http://127.0.0.1:{port}"
 
-    # Prefer `nemo` on PATH (e.g. installed from a wheel via `uv tool install`)
-    # over the one next to sys.executable (the dev venv).
-    nemo_bin = shutil.which("nemo") or str(Path(sys.executable).parent / "nemo")
+    nemo_bin = str(Path(sys.executable).parent / "nemo")
     args = [
         nemo_bin,
         "services",
