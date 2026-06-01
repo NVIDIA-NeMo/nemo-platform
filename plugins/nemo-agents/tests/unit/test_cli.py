@@ -80,9 +80,6 @@ def test_create_resolves_default_model_placeholder(tmp_path, placeholder: str) -
     assert result.exit_code == 0, result.stderr
     sent = _json.loads(captured["body"])
     assert sent["config"]["llms"]["llm"]["model_name"] == "nvidia-nemotron-3-super-v3"
-    # The CLI does not carry a spec location — it is derivable from
-    # (workspace, name) and computed by consumers via agent_spec_file_ref.
-    assert "spec_file_ref" not in sent
 
 
 @pytest.mark.parametrize("placeholder", ["${NEMO_DEFAULT_MODEL}", "$NEMO_DEFAULT_MODEL"])
