@@ -15,6 +15,16 @@ eval_command: <CLI command to run evaluations against this agent; omit the key e
 > `nemo_agents_plugin.spec`). If you hand-edit this file, preserve the section
 > headers and labeled-bullet format exactly — `nemo-spec` will refuse to load
 > a malformed spec.
+>
+> Section rules:
+>
+> - **Bullet sections** (`Constraints`, `Open Questions`): list items only.
+>   If the list is empty, write `_(none)_` instead of leaving the section blank.
+> - **Labeled-bullet sections** (`Model`, `Framework`, `Allowed Changes`):
+>   `- Label: value` lines only. No prose, no blank-line-separated paragraphs.
+> - **Free-form sections** (`Job`, `Audience`, `Tools`, `Feedback Signals`,
+>   `Eval Command`): any markdown. `Tools` accepts a markdown table or the
+>   literal string `Prompt-only.`
 
 ## Job
 
@@ -54,16 +64,11 @@ string `Prompt-only.` if none>
 
 - <negative requirement, e.g. "never give medical advice">
 
-(Use `_(none)_` if there are no constraints.)
-
 ## Success Criteria
 
 - <concrete check question with what a pass looks like, OR named metric threshold like `tool_call_accuracy >= 0.85`>
 
 ## Allowed Changes
-
-A permissions list — what the optimization loop is allowed to modify when
-fixing Insights. Defaults below; flip to `no` to veto.
 
 - System prompt: yes
 - Tools: yes
@@ -89,5 +94,3 @@ matter. Use `_(none)_` if there is nothing to note.>
 ## Open Questions
 
 - <anything unresolved for the build step>
-
-(Use `_(none)_` if there are none.)

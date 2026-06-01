@@ -182,7 +182,7 @@ class AgentSpec(BaseModel):
     categories: list[str] = Field(
         min_length=3,
         max_length=6,
-        description="3–6 task buckets the agent handles.",
+        description="3-6 task buckets the agent handles.",
     )
     tools: str = Field(
         min_length=1,
@@ -231,11 +231,24 @@ class AgentSpec(BaseModel):
     @field_validator("job")
     @classmethod
     def _validate_job(cls, value: str) -> str:
+        # Two post-strip checks. The vague-phrase check runs first so a
+        # whitespace-padded vague phrase ("   help with stuff   ") surfaces
+        # the more useful diagnosis rather than the length floor.
+        #
+        # The length floor itself is re-enforced here because Pydantic's
+        # built-in ``min_length`` runs against the raw value, so padded
+        # short strings would otherwise bypass it.
         stripped = value.strip()
         if stripped.lower() in _VAGUE_JOB_PHRASES:
             raise ValueError(
                 f"'job' is too vague ({stripped!r}). Write one concrete sentence "
                 "describing what the agent actually does."
+            )
+        if len(stripped) < _MIN_JOB_LENGTH:
+            raise ValueError(
+                f"'job' must be at least {_MIN_JOB_LENGTH} characters after trimming "
+                f"(got {len(stripped)}). Write one concrete sentence describing what "
+                "the agent does."
             )
         return stripped
 
