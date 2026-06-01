@@ -135,8 +135,8 @@ uv run --frozen pytest e2e -v --run-e2e
 NMP_BASE_URL=http://localhost:8080 uv run --frozen pytest e2e -v --run-e2e
 ```
 
-**Prerequisites**: `make bootstrap` must have been run. The harness runs `nemo services run`
-on a free port with a unique `--instance` name, so it won't conflict with your dev instance.
+**Prerequisites**: `make bootstrap` must have been run. The harness spawns `nemo services run`
+on a free port, so it won't conflict with your dev instance.
 
 **When to Write E2E Tests**:
 
