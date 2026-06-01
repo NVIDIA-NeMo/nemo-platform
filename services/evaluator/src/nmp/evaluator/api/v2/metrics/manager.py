@@ -26,11 +26,12 @@ from nemo_evaluator_sdk.values import (
 )
 from nemo_evaluator_sdk.values.metrics import _RAGASEmbeddingsConfig, _RAGASJudgeConfig
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
+from nemo_platform_plugin.entities import EntityClient
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.common.api.common import DeleteResponse, PaginationData
 from nmp.common.api.common import SecretRef as ApiSecretRef
 from nmp.common.api.parsed_filter import ParsedFilter
-from nmp.common.entities import SYSTEM_WORKSPACE, EntityBase, EntityClient, EntityNotFoundError, ListResponse
-from nmp.common.jobs.api_factory import PlatformJobSpec
+from nmp.common.entities import SYSTEM_WORKSPACE, EntityBase, EntityNotFoundError, ListResponse
 from nmp.common.observability.otel import MARK_INTERNAL_REQUEST_HEADERS, scoped_otel_headers
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.evaluator.api.v2.common.checks import CompositeCheck

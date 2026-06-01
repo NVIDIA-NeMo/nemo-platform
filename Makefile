@@ -6,11 +6,8 @@ PROFILE ?= platform
 NMP_CONFIG_FILE_PATH ?= packages/nmp_platform/config/local.yaml
 
 # Normalize architecture names and set arch-specific defaults.
-# EXTRA controls the uv install extra for unit and integration tests (cpu vs cu128). Arch blocks use ?= so
-# that CLI (make EXTRA=cpu) and env (EXTRA=cpu make ...) overrides are respected.
 ifeq ($(ARCH),x86_64)
 	ARCH := amd64
-	EXTRA ?= cu128
 	export BUILD_ARCH ?= linux/amd64
 endif
 ifeq ($(ARCH),aarch64)
@@ -19,9 +16,6 @@ endif
 ifeq ($(ARCH),arm64)
 	export BUILD_ARCH ?= linux/arm64
 endif
-# Fallback default for non-amd64 architectures (or explicit user override)
-EXTRA ?= cpu
-PYTORCH_DEPS ?= cpu
 PYTEST_EXTRA ?=
 PYTHON_VERSION ?= 3.11
 BOOTSTRAP_CREATE_VENV ?= 1
@@ -106,12 +100,10 @@ verify-python-version: ## Verify Python version and install if necessary
 BOOTSTRAP_LOCAL_PLUGIN_DIRS ?=
 
 .PHONY: bootstrap-python
-bootstrap-python: ## Bootstrap Python dependencies with optional Pytorch cuda/cpu version. set PYTORCH_DEPS to 'cpu|cu128'.
+bootstrap-python: ## Bootstrap Python dependencies.
 	@echo "~~~~~~"
-	@echo "installing python dependencies ${PYTORCH_DEPS} version of torch"
-	@echo "cpu/cuda version is set with the env variable 'PYTORCH_DEPS=cpu|cu128'"
-	@echo "PYTORCH_DEPS=cu128 make bootstrap-python"
-	uv sync --frozen --all-packages --extra ${PYTORCH_DEPS}
+	@echo "installing python dependencies"
+	uv sync --frozen --all-packages
 	@if [ -n "$(strip $(BOOTSTRAP_LOCAL_PLUGIN_DIRS))" ]; then \
 		$(MAKE) bootstrap-plugins BOOTSTRAP_LOCAL_PLUGIN_DIRS="$(BOOTSTRAP_LOCAL_PLUGIN_DIRS)"; \
 	fi
@@ -202,7 +194,7 @@ lint-fix: ## Auto-fix lint issues in dependency order (openapi → stainless →
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
 	uv run --no-sync nemo-platform-sdk-tools vendor all-from-configs \
-		nemo_platform_ext models filesets safe_synthesizer_sdk \
+		nemo_platform_ext models filesets \
 		nemo_evaluator_sdk
 	uv run --no-sync nemo-platform-sdk-tools post-generation update-license-headers
 
@@ -219,7 +211,6 @@ PYTEST_VERBOSITY := $(if $(filter true,$(CI)),-q,-v)
 PYTEST_WORKERS ?= auto
 PYTEST_MAX_WORKERS ?= 16
 PYTEST_CMD := env PYTHONWARNINGS="ignore::UserWarning:pytest_only.version" uv run --frozen \
-	--extra $(EXTRA) \
 	pytest \
 	-n $(PYTEST_WORKERS) --maxprocesses=$(PYTEST_MAX_WORKERS) --dist loadscope --timeout=120 $(PYTEST_VERBOSITY) $(PYTEST_EXTRA)
 

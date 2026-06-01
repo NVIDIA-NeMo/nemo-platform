@@ -138,5 +138,5 @@ execution mode:
 - [Evaluator plugin reference](src/nemo_evaluator/docs/index.md)
 - [Evaluator platform docs](../../docs/evaluator/index.md)
 - [Evaluator plugin skill](src/nemo_evaluator/skills/evaluator-plugin/SKILL.md)
-- [Evaluator API auth](src/nemo_evaluator/skills/evaluator-plugin/resources/api-auth.md)
-- [Evaluation troubleshooting](src/nemo_evaluator/skills/evaluator-plugin/resources/troubleshooting.md)
+- [Evaluator API auth](../../skills/nemo-evaluator-plugin/references/api-auth.md)
+- [Evaluation troubleshooting](../../skills/nemo-evaluator-plugin/references/troubleshooting.md)

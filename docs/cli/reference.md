@@ -4159,7 +4159,7 @@ nemo models list [OPTIONS]
 * `--workspace`
 * `--page <INTEGER>`: Page number.
 * `--page-size <INTEGER>`: Page size.
-* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: created_at, -created_at, name, -name, updated_at, -updated_at]
+* `--sort <CHOICE>`: The field to sort by. To sort in decreasing order, use `-` in front of the field name. [possible values: name, -name, created_at, -created_at, updated_at, -updated_at]
 * `--verbose`: Whether to include full spec details
 * `--all-pages`: Fetch all pages
 

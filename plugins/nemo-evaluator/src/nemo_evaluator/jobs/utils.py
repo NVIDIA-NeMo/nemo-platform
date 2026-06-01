@@ -5,39 +5,13 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Any, cast
+from typing import Any
 
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
-from nemo_evaluator_sdk.metrics.types import MetricsUnion
-from nemo_evaluator_sdk.values import DatasetRows
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job_context import JobContext
-from nmp.evaluator.app.datasets.nmp_datasets.fileset import dataset_exists, download_dataset, download_dataset_sync
+from nmp.evaluator.app.datasets.nmp_datasets.fileset import download_dataset, download_dataset_sync
 from nmp.evaluator.app.values import FilesetRef
-
-
-def remote_compile_metric(metric: MetricsUnion | Sequence[MetricsUnion]) -> MetricsUnion:
-    """Return the single metric supported by remote service metric-job compilation."""
-    if isinstance(metric, Sequence):
-        raise NotImplementedError("Remote benchmark compilation is not implemented for inline evaluator plugin specs.")
-    return cast(MetricsUnion, metric)
-
-
-async def resolve_submit_dataset(
-    async_sdk: AsyncNeMoPlatform,
-    dataset: list[dict[str, object]] | FilesetRef,
-) -> tuple[DatasetRows | FilesetRef, FilesetRef | None]:
-    """Resolve an evaluator plugin dataset for remote metric-job submission.
-
-    FilesetRef datasets are validated via the async SDK and passed through;
-    inline rows are wrapped as ``DatasetRows``.
-    """
-    if isinstance(dataset, FilesetRef):
-        if not await dataset_exists(async_sdk, dataset):
-            raise ValueError(f"FilesetRef dataset does not exist: {dataset.root}")
-        return dataset, dataset
-    return DatasetRows(rows=dataset), None
 
 
 def resolve_run_dataset(

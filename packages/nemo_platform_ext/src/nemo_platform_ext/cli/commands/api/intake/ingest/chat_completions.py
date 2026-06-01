@@ -27,17 +27,11 @@ def create_chat_completions(
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     request: Annotated[
         str | None,
-        typer.Option(
-            "--request",
-            help="Flexible entry request that accepts any object shape.This flexibility enables the Intake service to store requests from various LLM providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal, etc.) without requiring schema updates.Required fields: `messages` and `model` Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc. (JSON string) (required)",
-        ),
+        typer.Option("--request", help="Flexible captured chat-completions request. (JSON string) (required)"),
     ] = None,
     response: Annotated[
         str | None,
-        typer.Option(
-            "--response",
-            help="Flexible entry response that accepts any object shape.This flexibility enables the Intake service to store responses from various LLM providers and future model types without requiring schema updates.Required: either `choices` (successful response) or `error` (failed call). Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`, etc. (JSON string) (required)",
-        ),
+        typer.Option("--response", help="Flexible captured chat-completions response. (JSON string) (required)"),
     ] = None,
     cost_details: Annotated[
         str | None,
@@ -126,8 +120,8 @@ def create_chat_completions(
         ["request", "response"],
         "intake ingest chat-completions create",
         {
-            "request": "Flexible entry request that accepts any object shape.This flexibility enables the Intake service to store requests from various LLM providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal, etc.) without requiring schema updates.Required fields: `messages` and `model` Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc. (JSON string) (required)",
-            "response": "Flexible entry response that accepts any object shape.This flexibility enables the Intake service to store responses from various LLM providers and future model types without requiring schema updates.Required: either `choices` (successful response) or `error` (failed call). Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`, etc. (JSON string) (required)",
+            "request": "Flexible captured chat-completions request. (JSON string) (required)",
+            "response": "Flexible captured chat-completions response. (JSON string) (required)",
         },
     )
 

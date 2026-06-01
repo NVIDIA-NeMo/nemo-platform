@@ -1,0 +1,16 @@
+{
+    "data_source": "default/local#similarity.csv",
+    "config": {
+      "enable_synthesis": true,
+      "enable_replace_pii": false,
+      "generation": {
+        "num_records": 10
+      },
+      "evaluation": {
+        "enabled": false
+      },
+      "privacy": {
+        "dp_enabled": false
+      }
+    }
+  }

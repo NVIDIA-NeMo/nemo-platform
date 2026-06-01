@@ -17,9 +17,7 @@ from nemo_platform import APIStatusError
 from nemo_platform.types.jobs import PlatformJobResponse as PlatformJob
 from nemo_platform.types.shared.platform_job_status import PlatformJobStatus
 from nemo_platform_plugin.entities import EntityClient
-from nmp.common.api.common import Page, PaginationData
-from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     FileResultSerializer,
@@ -40,6 +38,8 @@ from nmp.common.jobs.api_factory import (
     _validate_job_spec,
     job_route_factory,
 )
+from nmp.common.api.common import Page, PaginationData
+from nmp.common.errors.sdk_exception_handlers import register_sdk_exception_handlers
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.schemas import (
     FileStorageType,

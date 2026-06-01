@@ -65,6 +65,11 @@ ENV_MAPPINGS: list[EnvMapping] = [
         default="true",
     ),
     EnvMapping(
+        marker="STUDIO_UI_VITE_FF_CODING_AGENT_STUDIO_ENABLED",
+        config_path="studio.feature_flags.coding_agent_studio_enabled",
+        default="false",
+    ),
+    EnvMapping(
         marker="STUDIO_UI_VITE_FF_CUSTOMIZER_ENABLED",
         config_path="studio.feature_flags.customizer_enabled",
         default="false",

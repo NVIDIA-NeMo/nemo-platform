@@ -6,6 +6,9 @@
 #
 # To regenerate the auto-generated sections:
 #   make vendor
+#
+# README.md is the public PyPI landing page (top-level NeMo Platform intro).
+# Internal bundling/wrapper-distribution developer docs live in BUNDLING.md.
 # =============================================================================
 
 [project]
@@ -226,30 +229,9 @@ inference-gateway-service = [
 intake-service = [
   "fastapi>=0.115.5, <1.0.0",
   "uvicorn>=0.22.0, <1.0.0",
-  "sqlalchemy>=2.0",
-  "alembic>=1.10.4, <2.0.0",
   "pydantic>=2.9.2, <3.0.0",
   "pydantic-settings>=2.6.1, <3.0.0",
-  "asyncpg>=0.30.0, <1.0.0",
-  "python-dotenv>=1.0.0, <2.0.0",
-  "httpx>=0.24.1, <1.0.0",
-  "huggingface-hub>=1.0.1, <2.0.0",
-  "openai>=1.51.0",
-  "requests>=2.32.3, <3.0.0",
-  "types-requests>=2.32.0.20241016, <3.0.0.0",
-  "pyyaml>=6.0.2, <7.0.0",
-  "base58>=2.1.1",
   "nmp-common",
-  "opentelemetry-api>=1.27.0",
-  "opentelemetry-instrumentation-fastapi>=0.48b0",
-  "opentelemetry-sdk>=1.27.0",
-  "opentelemetry-exporter-otlp>=1.27.0",
-  "opentelemetry-instrumentation-openai>=0.33.9",
-  "psycopg2-binary>=2.9.10",
-  "celery>=5.5.3",
-  "redis>=5.0.1",
-  "flower>=2.0.1",
-  "watchdog[watchmedo]>=6.0.0",
   "clickhouse-connect>=0.7,<1.0",
   "opentelemetry-proto>=1.27.0",
 ]
@@ -345,6 +327,7 @@ nemo-data-designer-plugin = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-evaluator-plugin = [
+  "cloudpickle>=3.1.1",
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nmp-evaluator",
@@ -395,6 +378,23 @@ nemo-platform-sdk = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+nemo-safe-synthesizer-plugin = [
+  "fastapi>=0.115.8",
+  "fsspec>=2024.10.0",
+  "gunicorn>=23.0.0",
+  "httpx>=0.27.2",
+  "nemo-platform-plugin",
+  "nemo-safe-synthesizer==0.1.1",
+  "nmp-common",
+  "pydantic[email]>=2.9.2",
+  "pydantic-settings>=2.2.1",
+  "python-multipart~=0.0.9",
+  "requests>=2.31.0",
+  "typer>=0.9.0",
+  "uvicorn>=0.32.1",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 nemo-switchyard = [
   "nemo-platform-plugin",
   "switchyard",
@@ -440,29 +440,8 @@ plugins = [
     "nemo-platform[nemo-data-designer-plugin]",
     "nemo-platform[nemo-evaluator-plugin]",
     "nemo-platform[nemo-guardrails-plugin]",
+    "nemo-platform[nemo-safe-synthesizer-plugin]",
     "nemo-platform[nemo-switchyard]",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
-safe-synthesizer = [
-  "pandas>=1.5.3",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
-safe-synthesizer-service = [
-  "fastapi>=0.115.8",
-  "fsspec>=2024.10.0",
-  "opentelemetry-distro>=0.41b",
-  "opentelemetry-exporter-otlp>=1.22.0",
-  "pydantic[email]>=2.9.2",
-  "pydantic-settings>=2.2.1",
-  "python-multipart~=0.0.9",
-  "requests>=2.31.0",
-  "uvicorn>=0.32.1",
-  "httpx>=0.27.2",
-  "gunicorn>=23.0.0",
-  "nmp-common",
-  "nemo-safe-synthesizer",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -522,6 +501,7 @@ nemo_agents_files_telemetry = "nemo_agents_plugin.telemetry.files_service_export
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.cli"]
+safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
 agents = "nemo_agents_plugin.cli:AgentsCLI"
 anonymizer = "nemo_anonymizer_plugin.cli:AnonymizerCLI"
 auditor = "nemo_auditor.cli:AuditorPluginCLI"
@@ -573,6 +553,7 @@ auditor = "nemo_auditor.seed_job:AuditorSeedJob"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.services"]
+safe-synthesizer = "nemo_safe_synthesizer_plugin.service:SafeSynthesizerService"
 agents = "nemo_agents_plugin.service:AgentsService"
 anonymizer = "nemo_anonymizer_plugin.service:AnonymizerService"
 auditor = "nemo_auditor.service:AuditorPluginService"
@@ -588,6 +569,7 @@ evaluator = "nemo_evaluator.skills:get_skills_path"
 anonymizer = "nemo_anonymizer_plugin.skills:get_skills_path"
 guardrails = "nemo_guardrails_plugin.skills:get_skills_path"
 platform = "nemo_platform.skills:skills_dir"
+safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 
 [tool.uv.sources]
 nemo-platform-sdk = { workspace = true }
@@ -642,6 +624,7 @@ nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", 
 nemo-data-designer-plugin = { source = "../../plugins/nemo-data-designer/src/nemo_data_designer_plugin", module = "nemo_data_designer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-guardrails-plugin = { source = "../../plugins/nemo-guardrails/src/nemo_guardrails_plugin", module = "nemo_guardrails_plugin", inherit = { "entry-points" = ["nemo.*"] } }
+nemo-safe-synthesizer-plugin = { source = "../../plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin", module = "nemo_safe_synthesizer_plugin", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-switchyard = { source = "../../plugins/nemo-switchyard/src/nemo_switchyard", module = "nemo_switchyard", inherit = { "entry-points" = ["nemo.*"] } }
 
 # Core services
@@ -658,7 +641,6 @@ nmp-customizer = { source = "../../services/customizer/src/nmp/customizer", modu
 nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
 nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
-nmp-safe-synthesizer = { source = "../../services/safe-synthesizer/src/nmp/safe_synthesizer", module = "nmp/safe_synthesizer", deps_group = "safe-synthesizer-service", include_in_services = false }
 
 [tool.bundle-package.nemo-platform-sdk]
 source = "../../sdk/python/nemo-platform/src/nemo_platform"

@@ -38,7 +38,7 @@ These tests require GPU libraries and are marked with `@pytest.mark.gpu_integrat
 
 **How they work:**
 - Marked explicitly with `@pytest.mark.gpu_integration`
-- Run in GPU containers via `make test-gpu-integration EXTRA=cu128`
+- Run in GPU containers via `make test-gpu-integration EXTRA=cu129`
 - Excluded from regular CI unit tests
 
 ## Running Tests
@@ -57,7 +57,7 @@ uv run pytest services/customizer/tests/tasks/training/test_distributed.py -v
 
 ```bash
 # Run GPU integration tests
-make test-gpu-integration EXTRA=cu128
+make test-gpu-integration EXTRA=cu129
 ```
 
 ## Writing New Tests
