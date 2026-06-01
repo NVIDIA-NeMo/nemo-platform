@@ -36,6 +36,7 @@ import { NewDatasetButton } from '@studio/components/NewDatasetButton';
 import { LINK_DOCS_DATASETS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
+import { formatStorageBackendLabel, type StorageBackend } from '@studio/util/storageBackend';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Cloud, X, Database, Trash } from 'lucide-react';
 import {
@@ -58,29 +59,15 @@ type StorageConfig =
   | HuggingfaceStorageConfig
   | S3StorageConfig;
 
-function getStorageBackend(storage: StorageConfig | undefined): string | null {
-  if (!storage) return null;
-  const type = (storage as { type?: string }).type;
-  return type ?? null;
+function getStorageBackend(storage: StorageConfig | undefined): StorageBackend | null {
+  return storage?.type ?? null;
 }
-
-const STORAGE_BACKEND_LABELS: Record<string, string> = {
-  local: 'Local',
-  ngc: 'NGC',
-  huggingface: 'Hugging Face',
-  s3: 'S3',
-};
 
 const PURPOSE_LABELS: Record<FilesetPurpose, string> = {
   [FilesetPurpose.generic]: 'Generic',
   [FilesetPurpose.dataset]: 'Dataset',
   [FilesetPurpose.model]: 'Model',
 };
-
-function formatStorageBackendLabel(type: string | null): string | null {
-  if (!type) return null;
-  return STORAGE_BACKEND_LABELS[type] ?? type.charAt(0).toUpperCase() + type.slice(1);
-}
 
 function getStoragePath(storage: StorageConfig | undefined): string | null {
   if (!storage) return null;
