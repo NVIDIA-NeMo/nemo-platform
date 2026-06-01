@@ -5907,6 +5907,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentGroupResponse'
+        '409':
+          description: Experiment group already exists
         '422':
           description: Validation Error
           content:
@@ -6113,6 +6115,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ExperimentResponse'
+        '409':
+          description: Experiment already exists
         '422':
           description: Validation Error
           content:
