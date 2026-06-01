@@ -18,7 +18,7 @@ The [NVIDIA NeMo Platform APIs](https://docs.nvidia.com/nemo/microservices/lates
 This project downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use.
 
 ```sh
-pip install nemo-platform[services]
+pip install nemo-platform[all]
 ```
 
 ## Usage

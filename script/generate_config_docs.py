@@ -39,6 +39,7 @@ from pathlib import Path
 from typing import Any, get_args, get_origin
 
 import yaml
+from nemo_safe_synthesizer_plugin.config import SafeSynthesizerConfig
 from nmp.common.config.base import CommonServiceConfig, PlatformConfig
 from nmp.core.auth.config import AuthServiceConfig
 from nmp.core.entities.config import EntitiesConfig
@@ -49,7 +50,6 @@ from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
 from nmp.customizer.config import CustomizerConfig
 from nmp.evaluator.config import EvaluatorSettings
-from nmp.safe_synthesizer.config import SafeSynthesizerSettings
 from nmp.studio.config import StudioConfig
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -72,7 +72,7 @@ CONFIG_CLASSES: list[type[Any]] = [
     SecretsServiceConfig,
     CustomizerConfig,
     EvaluatorSettings,
-    SafeSynthesizerSettings,
+    SafeSynthesizerConfig,
     StudioConfig,
 ]
 

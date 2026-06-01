@@ -19,7 +19,6 @@ Only 6 client-side extension packages are file-vendored into the SDK. Runtime/se
 | `data_designer_sdk` | `packages/data_designer_sdk/` |
 | `models` | `packages/models/` |
 | `filesets` | `packages/filesets/` |
-| `safe_synthesizer_sdk` | `packages/safe_synthesizer_sdk/` |
 | `nemo_evaluator_sdk` | `packages/nemo_evaluator_sdk/` |
 
 ## Build Commands
