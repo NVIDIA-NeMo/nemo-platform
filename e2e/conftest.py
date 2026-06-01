@@ -12,22 +12,29 @@ Usage::
     NMP_BASE_URL=http://localhost:9090 uv run --frozen pytest e2e -v --run-e2e
 
 When ``NMP_BASE_URL`` is set the harness skips service startup/shutdown and
-connects to the given URL.  Otherwise it starts ``nemo services start`` on a
-free port, waits for ``/health/ready``, and tears the instance down after the
-session.
+connects to the given URL.  Otherwise it spawns ``nemo services run`` as a
+child process on a free port, polls ``/health/ready`` until ready, and
+terminates the process after the session.
 """
 
 import logging
 import os
 import socket
 import subprocess
+import sys
+import time
 import uuid
 from collections.abc import Iterator
+from pathlib import Path
 
+import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 
 logger = logging.getLogger(__name__)
+
+_HEALTH_TIMEOUT = 60
+_HEALTH_POLL_INTERVAL = 1.0
 
 
 def _find_free_port() -> int:
@@ -37,11 +44,26 @@ def _find_free_port() -> int:
         return s.getsockname()[1]
 
 
+def _wait_for_healthy(url: str, timeout: float = _HEALTH_TIMEOUT) -> bool:
+    """Poll /health/ready until it returns 200 or timeout expires."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(f"{url}/health/ready", timeout=2.0)
+            if resp.status_code == 200:
+                return True
+        except httpx.RequestError:
+            pass
+        time.sleep(_HEALTH_POLL_INTERVAL)
+    return False
+
+
 @pytest.fixture(scope="session")
 def _services() -> Iterator[str]:
-    """Start ``nemo services`` and yield the base URL.
+    """Spawn ``nemo services run`` and yield the base URL.
 
     Skipped when ``NMP_BASE_URL`` is already set (external services).
+    The process is our direct child — on teardown we just terminate it.
     """
     external_url = os.environ.get("NMP_BASE_URL")
     if external_url:
@@ -49,61 +71,46 @@ def _services() -> Iterator[str]:
         return
 
     port = _find_free_port()
-    instance = f"e2e-test-{port}"
     url = f"http://127.0.0.1:{port}"
 
-    logger.info("Starting nemo services on port %d (instance=%s)", port, instance)
+    nemo_bin = str(Path(sys.executable).parent / "nemo")
+    args = [
+        nemo_bin,
+        "services",
+        "run",
+        "--service-group",
+        "all",
+        "--port",
+        str(port),
+    ]
 
-    result = subprocess.run(
-        [
-            "nemo",
-            "services",
-            "start",
-            "--service-group",
-            "all",
-            "--port",
-            str(port),
-            "--instance",
-            instance,
-        ],
-        capture_output=True,
+    logger.info("Starting nemo services on port %d", port)
+
+    proc = subprocess.Popen(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
-        timeout=120,
     )
 
-    if result.returncode != 0:
-        pytest.fail(
-            f"nemo services start failed (exit {result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
-        )
+    if not _wait_for_healthy(url):
+        # Grab whatever output we have for diagnostics
+        proc.terminate()
+        stdout, _ = proc.communicate(timeout=10)
+        pytest.fail(f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nstdout:\n{stdout}")
 
-    logger.info("Platform services started: %s", result.stdout.strip())
-
-    # Set NMP_BASE_URL so the SDK picks it up automatically
-    os.environ["NMP_BASE_URL"] = url
+    logger.info("Platform services ready on port %d (pid %d)", port, proc.pid)
 
     yield url
 
-    logger.info("Stopping nemo services (instance=%s)", instance)
-    stop_result = subprocess.run(
-        [
-            "nemo",
-            "services",
-            "stop",
-            "--instance",
-            instance,
-            "--port",
-            str(port),
-        ],
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
-    if stop_result.returncode != 0:
-        logger.warning(
-            "nemo services stop failed (exit %d): %s",
-            stop_result.returncode,
-            stop_result.stderr,
-        )
+    logger.info("Terminating nemo services (pid %d)", proc.pid)
+    proc.terminate()
+    try:
+        proc.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        logger.warning("Process did not exit after SIGTERM, sending SIGKILL")
+        proc.kill()
+        proc.wait(timeout=5)
 
 
 @pytest.fixture(scope="session")
