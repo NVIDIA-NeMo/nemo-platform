@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { MetricNameApi } from '@nemo/common/src/constants/metrics';
-import { FlattenedEvaluationParams } from '@studio/api/evaluation/types';
 import { getFilesetFileRoute } from '@studio/routes/utils';
 import { getDatasetDisplayNameFromFilesUrl } from '@studio/util/files';
 
@@ -56,14 +55,6 @@ export const getConfigParams = (config: EvaluationConfig) => {
 
 export const getConfigTasks = (config: EvaluationConfig) => {
   return config?.tasks || {};
-};
-
-export const getConfigInferenceParams = (config: EvaluationConfig): FlattenedEvaluationParams => {
-  const { extra, ...restParams } = config?.params || {};
-  return {
-    ...restParams,
-    ...(extra ?? {}),
-  } as FlattenedEvaluationParams;
 };
 
 // ============================================================================
