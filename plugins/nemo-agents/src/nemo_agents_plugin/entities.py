@@ -10,6 +10,7 @@ filter models live in :mod:`nemo_agents_plugin.schema`.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 from nemo_platform_plugin.entity import NemoEntity
@@ -34,6 +35,7 @@ DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting
 #   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
 #   - File inside fileset:   ``AGENTSpec.md`` (industry-standard name)
 #   - Full file ref:         ``{workspace}/{agent-name}-spec#AGENTSpec.md``
+#   - Local cache:           ``agents/{agent-name}-spec/AGENTSpec.md``
 #
 # This is intentionally **not** an Optional field on the Agent. The
 # relationship is 1:1 and convention-bound; carrying a stored ref would
@@ -44,9 +46,18 @@ AGENT_SPEC_FILENAME = "AGENTSpec.md"
 """Canonical filename inside the agent's spec fileset."""
 
 
+AGENT_SPEC_LOCAL_ROOT = "agents"
+"""Local directory holding agent build artifacts."""
+
+
 def agent_spec_fileset_name(agent_name: str) -> str:
     """Return the conventional fileset name holding an agent's spec."""
     return f"{agent_name}-spec"
+
+
+def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_ROOT) -> Path:
+    """Return the local write-through cache path for an agent's spec."""
+    return Path(root) / agent_spec_fileset_name(agent_name) / AGENT_SPEC_FILENAME
 
 
 def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:

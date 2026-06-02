@@ -1,6 +1,7 @@
 ---
 name: <canonical-agent-name>
-eval_command: <CLI command to run the current evaluation setup; omit the key entirely if no eval suite is wired yet>
+created_timestamp: <ISO 8601 creation timestamp, e.g. 2026-06-02T20:00:00Z>
+author: <human or agent that created this spec>
 ---
 
 # Agent Spec: <name>
@@ -12,10 +13,9 @@ eval_command: <CLI command to run the current evaluation setup; omit the key ent
 > context. Keep it accurate; stale entries here directly degrade the quality
 > of generated Insights and PRs.
 >
-> The structured layout below is parseable by `AgentSpec` (Pydantic model in
-> `nemo_agents_plugin.spec`). If you hand-edit this file, preserve the section
-> headers and labeled-bullet format exactly — `nemo-spec` will refuse to load
-> a malformed spec.
+> The layout below is lightly parseable by `nemo-spec`: front matter and the
+> required `##` section headers are machine-checked, while section bodies stay
+> markdown for humans and agents to read directly.
 >
 > Section rules:
 >
@@ -100,12 +100,10 @@ relevant, and representative examples of successful behavior.>
 
 ## Evaluation Setup
 
-<the current validation setup. Include how to run it (also reflected by
-`eval_command` front matter when there is a runnable command), what datasets or
-checks it uses, what scorers or metrics measure, pass/fail thresholds, and
-known coverage gaps relative to the success criteria. If no eval suite is wired
-yet, say that explicitly and describe any partial/manual validation that
-exists.>
+<the current validation setup. Include how to run it, what datasets or checks it
+uses, what scorers or metrics measure, pass/fail thresholds, and known coverage
+gaps relative to the success criteria. If no eval suite is wired yet, say that
+explicitly and describe any partial/manual validation that exists.>
 
 ## Change Scope
 

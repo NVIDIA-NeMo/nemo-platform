@@ -21,6 +21,7 @@ from nemo_agents_plugin.entities import (
     AgentDeployment,
     agent_spec_file_ref,
     agent_spec_fileset_name,
+    agent_spec_local_path,
 )
 from nemo_agents_plugin.schema import (
     CreateAgentRequest,
@@ -192,12 +193,11 @@ class TestCreateAgentRequest:
 
 
 class TestSpecLocationConvention:
-    def test_fileset_name_is_agent_name_plus_suffix(self) -> None:
+    def test_spec_location_convention(self) -> None:
         assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
-
-    def test_file_ref_combines_workspace_fileset_and_filename(self) -> None:
         ref = agent_spec_file_ref("default", "checkout-bot")
         assert str(ref) == "default/checkout-bot-spec#AGENTSpec.md"
+        assert agent_spec_local_path("checkout-bot").as_posix() == "agents/checkout-bot-spec/AGENTSpec.md"
 
 
 # ---------------------------------------------------------------------------

@@ -26,7 +26,7 @@ allowed-tools: [Read, Glob, Grep, Bash]
 # NeMo Platform agent explore
 
 Capture what the agent should do before any code or YAML. The output of this
-skill is the data that `nemo-spec` writes into `agents/<name>.spec.md` — the
+skill is the data that `nemo-spec` writes into `agents/<name>-spec/AGENTSpec.md` — the
 durable contract that the analyst and experimentalist agents in the NeMo
 optimization loop read as their primary context. Underspecified input here
 directly degrades the quality of generated Insights and PRs downstream.
@@ -38,7 +38,7 @@ fields you could not fill.
 
 ## The schema you are filling
 
-The spec has two front-matter fields and thirteen body sections. Two are hard
+The spec has three front-matter fields and thirteen body sections. Two are hard
 requirements: handoff to `nemo-spec` is blocked until both are resolved.
 
 **Front matter**
@@ -46,7 +46,8 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | Field | Required | Guidance |
 | :---- | :---- | :---- |
 | `name` | yes | Canonical agent name. Use the directory or workflow name if obvious; ask if not. |
-| `eval_command` | optional | CLI to run the current eval setup. Leave blank if no eval suite is wired yet; the eval-setup skill (M2) will fill it. |
+| `created_timestamp` | yes | ISO 8601 timestamp for when the spec is created. `nemo-spec` fills this at write time. |
+| `author` | yes | Human or agent that created the spec. `nemo-spec` fills this from the current author context when known; ask only if ambiguous. |
 
 **Body sections** (in order)
 
@@ -71,12 +72,12 @@ the insights plugin — do not duplicate them into the spec.
 
 ## Pre-flight
 
-Check whether a spec already exists for this agent. If `agents/<name>.spec.md`
+Check whether a spec already exists for this agent. If `agents/<name>-spec/AGENTSpec.md`
 is present, ask the user whether they want to edit the existing spec or start
 over. If they want to edit, route to `nemo-spec` directly.
 
 ```bash
-ls agents/*.spec.md 2>/dev/null || echo "no specs yet"
+ls agents/*-spec/AGENTSpec.md 2>/dev/null || echo "no specs yet"
 ```
 
 ## Step 1 — Explore the codebase
@@ -130,7 +131,6 @@ the user the full set of unfilled fields.
      metric definitions, thresholds, and coverage notes.
    - **Change Scope** — not in the code; ask the user.
    - **Signals** — usually not in the code; ask the user.
-   - **`eval_command`** — Makefile target, scripts directory, CI config.
    - **Unresolved Questions** — TODOs / FIXMEs in agent-adjacent code that
      affect safe use, evaluation, or modification.
 
@@ -185,7 +185,7 @@ the user provides it. Do not hand off with a hard requirement blank —
 `nemo-spec` will reject the write.
 
 If both are satisfied, announce the handoff in one line ("Handing off to
-`nemo-spec` to write `agents/<name>.spec.md` and upload the canonical copy
+`nemo-spec` to write `agents/<name>-spec/AGENTSpec.md` and upload the canonical copy
 to Filesets") and trigger it.
 
 ## If the user pushes back
