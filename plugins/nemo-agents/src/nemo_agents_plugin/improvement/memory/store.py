@@ -21,12 +21,19 @@ from typing import Iterable, Protocol, runtime_checkable
 class MemoryEntry:
     """A single durable-memory entry, normalized across store backends.
 
-    ``source_session_ids`` captures the corroboration depth — if an
-    adapter can track which sessions originally produced an entry, the
-    triage layer uses that as a "seen-in N sessions" signal. Adapters
-    that can't track this should leave the list empty rather than
-    populate with fake IDs; the council prompt handles empty lists as
-    "single observation, low corroboration".
+    ``source_session_ids`` captures the actual session IDs that
+    produced an entry when the adapter can track them (e.g. an agent
+    runtime that records provenance per write). Adapters that only know
+    *how many* sessions corroborated an entry, but not which ones,
+    should leave this list empty and set ``corroboration_count`` instead.
+    The PoC pi-hermes consolidate-output format is in that bucket: it
+    embeds ``<!-- seen-in: N sessions -->`` but does not name them.
+
+    ``corroboration_count`` is the orthogonal "how many independent
+    observations" signal. Defaults to 1 (single observation) when the
+    adapter has no better information. When ``source_session_ids`` is
+    populated, callers should expect ``corroboration_count >=
+    len(source_session_ids)`` (the IDs are a known-subset of the total).
 
     ``last_used_at`` is for retrieval-staleness signal. Adapters set it
     to ``None`` when the store does not track retrieval (the PoC pi-
@@ -40,6 +47,7 @@ class MemoryEntry:
     id: str
     content: str
     source_session_ids: list[str] = field(default_factory=list)
+    corroboration_count: int = 1
     created_at: datetime | None = None
     last_used_at: datetime | None = None
     tags: dict[str, str] = field(default_factory=dict)
