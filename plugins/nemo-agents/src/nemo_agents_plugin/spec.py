@@ -50,4 +50,3 @@ class AgentSpec:
     @property
     def role(self) -> str:
         return self.sections["Role"]
-

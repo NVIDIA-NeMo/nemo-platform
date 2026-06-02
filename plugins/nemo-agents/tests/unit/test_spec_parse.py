@@ -37,4 +37,3 @@ def test_missing_required_section_rejected() -> None:
         assert "missing section: ## Purpose" in str(exc)
     else:
         raise AssertionError("missing Purpose section was accepted")
-
