@@ -34,7 +34,8 @@ from nemo_evaluator_sdk.execution.metric_execution import (
     run_sync,
 )
 from nemo_evaluator_sdk.execution.pipeline import PipelineRuntime
-from nemo_evaluator_sdk.execution.scoring import build_metric_input, empty_evaluation_result, finalize_evaluation_result
+from nemo_evaluator_sdk.execution.samples import build_metric_input
+from nemo_evaluator_sdk.execution.scoring import empty_evaluation_result, finalize_evaluation_result
 from nemo_evaluator_sdk.execution.values import EvaluationError, EvaluationPhase
 from nemo_evaluator_sdk.metrics.hooks import HooksBase
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric as RuntimeLLMJudgeMetric

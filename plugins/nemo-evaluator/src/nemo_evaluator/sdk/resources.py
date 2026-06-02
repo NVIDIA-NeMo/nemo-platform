@@ -19,6 +19,7 @@ from nemo_evaluator.sdk.job_resources import (
     EvaluatorJobResource,
 )
 from nemo_evaluator.sdk.types import (
+    FieldMapping,
     PluginDatasetInput,
     RunConfig,
     RunConfigOnline,
@@ -84,6 +85,7 @@ class Evaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
@@ -99,6 +101,7 @@ class Evaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             metric_bundle_packager=metric_bundle_packager,
         )
@@ -111,6 +114,7 @@ class Evaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -121,6 +125,7 @@ class Evaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -174,6 +179,7 @@ class AsyncEvaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -184,6 +190,7 @@ class AsyncEvaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -196,6 +203,7 @@ class AsyncEvaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
@@ -211,6 +219,7 @@ class AsyncEvaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             metric_bundle_packager=metric_bundle_packager,
         )
