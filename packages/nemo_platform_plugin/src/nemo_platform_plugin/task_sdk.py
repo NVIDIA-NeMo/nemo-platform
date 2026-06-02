@@ -36,9 +36,11 @@ import json
 import logging
 import os
 from importlib.metadata import entry_points
-from typing import Any, Protocol, runtime_checkable
+from typing import Any, Protocol, TypeVar, runtime_checkable
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+
+_SDKT = TypeVar("_SDKT", NeMoPlatform, AsyncNeMoPlatform)
 
 logger = logging.getLogger(__name__)
 
@@ -175,6 +177,10 @@ class DefaultSDKProvider:
             default_headers=headers,
         )
 
+    def _make_sdk(self, cls: type[_SDKT], *, as_service: str | None = None, internal: bool = False, on_behalf_of: str | None = None) -> _SDKT:
+        headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
+        return cls(base_url=self._base_url(), default_headers=headers or None)
+
     def get_platform_sdk(
         self,
         *,
@@ -182,11 +188,7 @@ class DefaultSDKProvider:
         internal: bool = False,
         on_behalf_of: str | None = None,
     ) -> NeMoPlatform:
-        headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return NeMoPlatform(
-            base_url=self._base_url(),
-            default_headers=headers if headers else None,
-        )
+        return self._make_sdk(NeMoPlatform, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
 
     def get_async_platform_sdk(
         self,
@@ -195,11 +197,7 @@ class DefaultSDKProvider:
         internal: bool = False,
         on_behalf_of: str | None = None,
     ) -> AsyncNeMoPlatform:
-        headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
-        return AsyncNeMoPlatform(
-            base_url=self._base_url(),
-            default_headers=headers if headers else None,
-        )
+        return self._make_sdk(AsyncNeMoPlatform, as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
 
     @staticmethod
     def _build_headers(
@@ -238,7 +236,8 @@ class DefaultSDKProvider:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-_state: dict[str, Any] = {"provider": None, "resolved": False}
+_provider: SDKProvider | None = None
+_resolved: bool = False
 
 
 def set_sdk_provider(provider: SDKProvider | None) -> None:
@@ -247,36 +246,38 @@ def set_sdk_provider(provider: SDKProvider | None) -> None:
     Pass ``None`` to clear the override and fall back to entry-point
     discovery on the next call.
     """
-    _state["provider"] = provider
-    _state["resolved"] = provider is not None
+    global _provider, _resolved
+    _provider = provider
+    _resolved = provider is not None
 
 
 def _resolve_provider() -> SDKProvider:
     """Resolve the provider once: entry-point → default."""
-    if _state["resolved"]:
-        return _state["provider"]
+    global _provider, _resolved
+    if _resolved:
+        assert _provider is not None
+        return _provider
 
     # Scan entry-points.
     eps = entry_points(group="nemo.task_sdk_provider")
     for ep in eps:
         try:
-            factory = ep.load()
-            loaded = factory() if callable(factory) and not isinstance(factory, type) else factory
-            if isinstance(loaded, type):
-                loaded = loaded()
-            if isinstance(loaded, SDKProvider):
+            obj = ep.load()
+            if isinstance(obj, type):
+                obj = obj()
+            if isinstance(obj, SDKProvider):
                 logger.debug("Using task SDK provider from entry-point %r", ep.name)
-                _state["provider"] = loaded
-                _state["resolved"] = True
-                return loaded
+                _provider = obj
+                _resolved = True
+                return obj
         except Exception:
             logger.warning("Failed to load task SDK provider %r; skipping", ep.name, exc_info=True)
 
     # Fall back to the built-in default.
     logger.debug("No entry-point task SDK provider found; using DefaultSDKProvider")
     default = DefaultSDKProvider()
-    _state["provider"] = default
-    _state["resolved"] = True
+    _provider = default
+    _resolved = True
     return default
 
 

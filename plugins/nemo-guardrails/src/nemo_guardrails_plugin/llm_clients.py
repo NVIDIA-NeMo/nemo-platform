@@ -41,16 +41,6 @@ _request_headers_ctx: ContextVar[RequestHeaders] = ContextVar(
 )
 
 
-def build_platform_headers(sdk: AsyncNeMoPlatform) -> dict[str, str]:
-    """Return the platform headers *sdk* would send on outbound requests.
-
-    Cached rail clients merge these into each LangChain call so downstream
-    services (IGW) see the correct service-principal, on-behalf-of, and
-    trace-propagation context.
-    """
-    return get_forwarding_headers(sdk)
-
-
 def get_request_headers() -> RequestHeaders:
     """Return the platform headers in scope for the current rail execution."""
     return _request_headers_ctx.get()
@@ -86,7 +76,7 @@ def platform_headers_context(sdk: AsyncNeMoPlatform) -> Iterator[None]:
        ``_prepare_inputs_and_payload`` override reads ``_request_headers_ctx``
        and merges those headers into the request.
     """
-    headers = _request_headers_ctx.set(build_platform_headers(sdk))
+    headers = _request_headers_ctx.set(get_forwarding_headers(sdk))
     try:
         yield
     finally:

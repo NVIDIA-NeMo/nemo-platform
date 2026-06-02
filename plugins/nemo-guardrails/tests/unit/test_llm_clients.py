@@ -10,11 +10,11 @@ import pytest
 from nemo_guardrails_plugin import llm_clients
 from nemo_guardrails_plugin.llm_clients import (
     build_header_aware_chat_nvidia,
-    build_platform_headers,
     get_request_headers,
     platform_headers_context,
     register_header_aware_nim_provider,
 )
+from nemo_platform_plugin.task_sdk import get_forwarding_headers
 from nemoguardrails.llm.models import langchain_initializer
 
 
@@ -52,7 +52,7 @@ def _make_fake_sdk(**custom_headers: str) -> MagicMock:
     return sdk
 
 
-class TestBuildPlatformHeaders:
+class TestGetForwardingHeaders:
     def test_returns_custom_headers_from_sdk(self) -> None:
         sdk = _make_fake_sdk(
             **{
@@ -60,14 +60,14 @@ class TestBuildPlatformHeaders:
                 "traceparent": "00-platform",
             }
         )
-        assert build_platform_headers(sdk) == {
+        assert get_forwarding_headers(sdk) == {
             "X-NMP-Principal-Id": "service:guardrails-test",
             "traceparent": "00-platform",
         }
 
     def test_returns_empty_for_sdk_with_no_custom_headers(self) -> None:
         sdk = _make_fake_sdk()
-        assert build_platform_headers(sdk) == {}
+        assert get_forwarding_headers(sdk) == {}
 
 
 class TestRequestHeadersContext:

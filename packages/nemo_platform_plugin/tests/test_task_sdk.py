@@ -147,6 +147,14 @@ class TestDefaultSDKProvider:
 # ---------------------------------------------------------------------------
 
 
+class _CustomProvider:
+    def get_task_sdk(self, service_name: str) -> NeMoPlatform:
+        return NeMoPlatform(base_url="http://custom:1234")
+
+    def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
+        return NeMoPlatform(base_url="http://custom:1234")
+
+
 class TestProviderResolution:
     def setup_method(self):
         # Reset global state before each test.
@@ -159,14 +167,7 @@ class TestProviderResolution:
         monkeypatch.delenv("NMP_BASE_URL", raising=False)
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        class CustomProvider:
-            def get_task_sdk(self, service_name: str) -> NeMoPlatform:
-                return NeMoPlatform(base_url="http://custom:1234")
-
-            def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
-                return NeMoPlatform(base_url="http://custom:1234")
-
-        set_sdk_provider(CustomProvider())
+        set_sdk_provider(_CustomProvider())
         sdk = get_task_sdk("test")
         assert sdk.base_url == "http://custom:1234"
 
@@ -183,14 +184,7 @@ class TestProviderResolution:
         monkeypatch.setenv("NMP_BASE_URL", "http://re-resolved:8080")
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        class CustomProvider:
-            def get_task_sdk(self, service_name: str) -> NeMoPlatform:
-                return NeMoPlatform(base_url="http://custom:1234")
-
-            def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
-                return NeMoPlatform(base_url="http://custom:1234")
-
-        set_sdk_provider(CustomProvider())
+        set_sdk_provider(_CustomProvider())
         assert get_task_sdk("x").base_url == "http://custom:1234"
 
         # Clear the override
