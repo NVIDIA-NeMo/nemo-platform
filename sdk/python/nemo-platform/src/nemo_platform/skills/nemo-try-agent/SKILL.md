@@ -31,8 +31,8 @@ Confirm the platform is up and check what deployed agents exist before doing any
 ```bash
 # Ground truth: anything bound to :8080?
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-# Functional check: API answers?
-curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -qE "^[24][0-9][0-9]$" || { echo "PLATFORM_WEDGED"; exit 1; }
+# Functional check: platform readiness endpoint answers?
+curl -sS http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
 .venv/bin/nemo agents deployments list 2>/dev/null
 ```
 
