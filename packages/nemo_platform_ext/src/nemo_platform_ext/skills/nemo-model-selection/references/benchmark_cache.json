@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-06-01T16:14:13.553926+00:00",
-  "schema_version": "4",
+  "generated_at": "2026-06-01T19:28:25.262265+00:00",
+  "schema_version": "5",
   "sources": {
     "bfcl": "https://gorilla.cs.berkeley.edu/data_overall.csv",
     "arena_elo": "https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fleaderboard-dataset&config=text&split=latest"
@@ -89,48 +89,181 @@
       "primary_benchmarks": [
         "bfcl_v4"
       ],
+      "intent_hints": [
+        "Qwen3 family \u2014 Alibaba's instruction-tuned series with a strong public tool-calling track record",
+        "235B total parameters, 22B active per forward pass \u2014 sparse mixture-of-experts",
+        "A22B suffix marks the 'active-22B' MoE configuration variant"
+      ],
       "scores": {
         "bfcl_v4": {
-          "raw": 0.4799,
-          "percent": "48%",
+          "raw": 0.5215,
+          "percent": "52%",
           "tier": "mid",
-          "plain": "Gets tool calls right about 48% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+          "plain": "Gets tool calls right about 52% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences.",
+          "source": "direct"
         },
         "arena_elo": {
           "chinese": {
-            "raw": 1380,
-            "tier": "strong",
-            "plain": "Rated 1380 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "raw": 1466,
+            "tier": "top",
+            "plain": "Rated 1466 Elo on Chinese prompts in head-to-head matches with real users \u2014 at the frontier for this capability.",
+            "source": "direct"
           },
           "coding": {
-            "raw": 1386,
+            "raw": 1444,
             "tier": "strong",
-            "plain": "Rated 1386 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1444 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "creative_writing": {
-            "raw": 1317,
-            "tier": "mid",
-            "plain": "Rated 1317 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1376,
+            "tier": "strong",
+            "plain": "Rated 1376 Elo on creative writing \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "english": {
-            "raw": 1377,
+            "raw": 1424,
             "tier": "strong",
-            "plain": "Rated 1377 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1424 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "exclude_ties": {
-            "raw": 1332,
-            "tier": "mid",
-            "plain": "Rated 1332 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1407,
+            "tier": "strong",
+            "plain": "Rated 1407 Elo on head-to-head preference (excluding ties) \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "expert": {
-            "raw": 1348,
-            "tier": "mid",
-            "plain": "Rated 1348 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1444,
+            "tier": "strong",
+            "plain": "Rated 1444 Elo on expert-level prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "french": {
+            "raw": 1449,
+            "tier": "strong",
+            "plain": "Rated 1449 Elo on French prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "german": {
+            "raw": 1436,
+            "tier": "strong",
+            "plain": "Rated 1436 Elo on German prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "hard_prompts": {
+            "raw": 1434,
+            "tier": "strong",
+            "plain": "Rated 1434 Elo on hard prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "hard_prompts_english": {
+            "raw": 1436,
+            "tier": "strong",
+            "plain": "Rated 1436 Elo on hard prompts (English) \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1418,
+            "tier": "strong",
+            "plain": "Rated 1418 Elo on industry business and management and financial operations \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1375,
+            "tier": "strong",
+            "plain": "Rated 1375 Elo on industry entertainment and sports and media \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_legal_and_government": {
+            "raw": 1429,
+            "tier": "strong",
+            "plain": "Rated 1429 Elo on industry legal and government \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1438,
+            "tier": "strong",
+            "plain": "Rated 1438 Elo on industry life and physical and social science \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_mathematical": {
+            "raw": 1441,
+            "tier": "strong",
+            "plain": "Rated 1441 Elo on industry mathematical \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_medicine_and_healthcare": {
+            "raw": 1445,
+            "tier": "strong",
+            "plain": "Rated 1445 Elo on industry medicine and healthcare \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1446,
+            "tier": "strong",
+            "plain": "Rated 1446 Elo on industry software and it services \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_writing_and_literature_and_language": {
+            "raw": 1390,
+            "tier": "strong",
+            "plain": "Rated 1390 Elo on industry writing and literature and language \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "instruction_following": {
+            "raw": 1408,
+            "tier": "strong",
+            "plain": "Rated 1408 Elo on instruction following \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "japanese": {
+            "raw": 1388,
+            "tier": "strong",
+            "plain": "Rated 1388 Elo on Japanese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "korean": {
+            "raw": 1393,
+            "tier": "strong",
+            "plain": "Rated 1393 Elo on Korean prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "longer_query": {
+            "raw": 1427,
+            "tier": "strong",
+            "plain": "Rated 1427 Elo on longer query \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "math": {
+            "raw": 1432,
+            "tier": "strong",
+            "plain": "Rated 1432 Elo on math \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "multi_turn": {
+            "raw": 1433,
+            "tier": "strong",
+            "plain": "Rated 1433 Elo on multi turn \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "overall": {
-            "raw": 1366,
+            "raw": 1419,
             "tier": "strong",
-            "plain": "Rated 1366 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1419 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "russian": {
+            "raw": 1412,
+            "tier": "strong",
+            "plain": "Rated 1412 Elo on russian \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "spanish": {
+            "raw": 1426,
+            "tier": "strong",
+            "plain": "Rated 1426 Elo on spanish \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           }
         }
       }
@@ -151,48 +284,181 @@
       "primary_benchmarks": [
         "bfcl_v4"
       ],
+      "intent_hints": [
+        "Qwen3 family",
+        "30B total parameters, 3B active per forward pass \u2014 fast-inference sparse MoE",
+        "Designed for high throughput at moderate quality"
+      ],
       "scores": {
         "bfcl_v4": {
-          "raw": 0.367,
-          "percent": "37%",
+          "raw": 0.4139,
+          "percent": "41%",
           "tier": "mid",
-          "plain": "Gets tool calls right about 37% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+          "plain": "Gets tool calls right about 41% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences.",
+          "source": "direct"
         },
         "arena_elo": {
           "chinese": {
-            "raw": 1356,
+            "raw": 1434,
             "tier": "strong",
-            "plain": "Rated 1356 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1434 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "coding": {
-            "raw": 1338,
-            "tier": "mid",
-            "plain": "Rated 1338 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1418,
+            "tier": "strong",
+            "plain": "Rated 1418 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "creative_writing": {
-            "raw": 1273,
+            "raw": 1319,
             "tier": "mid",
-            "plain": "Rated 1273 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1319 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "english": {
-            "raw": 1335,
-            "tier": "mid",
-            "plain": "Rated 1335 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "Rated 1391 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "exclude_ties": {
-            "raw": 1261,
-            "tier": "mid",
-            "plain": "Rated 1261 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1358,
+            "tier": "strong",
+            "plain": "Rated 1358 Elo on head-to-head preference (excluding ties) \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "expert": {
-            "raw": 1314,
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "Rated 1391 Elo on expert-level prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "french": {
+            "raw": 1422,
+            "tier": "strong",
+            "plain": "Rated 1422 Elo on French prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "german": {
+            "raw": 1370,
+            "tier": "strong",
+            "plain": "Rated 1370 Elo on German prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "hard_prompts": {
+            "raw": 1398,
+            "tier": "strong",
+            "plain": "Rated 1398 Elo on hard prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "hard_prompts_english": {
+            "raw": 1406,
+            "tier": "strong",
+            "plain": "Rated 1406 Elo on hard prompts (English) \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1389,
+            "tier": "strong",
+            "plain": "Rated 1389 Elo on industry business and management and financial operations \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1336,
             "tier": "mid",
-            "plain": "Rated 1314 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1336 Elo on industry entertainment and sports and media \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_legal_and_government": {
+            "raw": 1385,
+            "tier": "strong",
+            "plain": "Rated 1385 Elo on industry legal and government \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "Rated 1391 Elo on industry life and physical and social science \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_mathematical": {
+            "raw": 1409,
+            "tier": "strong",
+            "plain": "Rated 1409 Elo on industry mathematical \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_medicine_and_healthcare": {
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "Rated 1391 Elo on industry medicine and healthcare \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1418,
+            "tier": "strong",
+            "plain": "Rated 1418 Elo on industry software and it services \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_writing_and_literature_and_language": {
+            "raw": 1337,
+            "tier": "mid",
+            "plain": "Rated 1337 Elo on industry writing and literature and language \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "instruction_following": {
+            "raw": 1362,
+            "tier": "strong",
+            "plain": "Rated 1362 Elo on instruction following \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "japanese": {
+            "raw": 1337,
+            "tier": "mid",
+            "plain": "Rated 1337 Elo on Japanese prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "korean": {
+            "raw": 1328,
+            "tier": "mid",
+            "plain": "Rated 1328 Elo on Korean prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "longer_query": {
+            "raw": 1378,
+            "tier": "strong",
+            "plain": "Rated 1378 Elo on longer query \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "math": {
+            "raw": 1394,
+            "tier": "strong",
+            "plain": "Rated 1394 Elo on math \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "multi_turn": {
+            "raw": 1381,
+            "tier": "strong",
+            "plain": "Rated 1381 Elo on multi turn \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "overall": {
-            "raw": 1317,
-            "tier": "mid",
-            "plain": "Rated 1317 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1384,
+            "tier": "strong",
+            "plain": "Rated 1384 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "russian": {
+            "raw": 1364,
+            "tier": "strong",
+            "plain": "Rated 1364 Elo on russian \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "spanish": {
+            "raw": 1392,
+            "tier": "strong",
+            "plain": "Rated 1392 Elo on spanish \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           }
         }
       }
@@ -213,42 +479,209 @@
       "primary_benchmarks": [
         "swe_bench_verified"
       ],
+      "intent_hints": [
+        "Qwen3 family, code-specialized fine-tune",
+        "Same 30B-A3B backbone as qwen3-30b-a3b (30B total, 3B active)",
+        "Instruction-tuned variant, not base-model completion"
+      ],
       "scores": {
+        "bfcl_v4": {
+          "raw": 0.4139,
+          "percent": "41%",
+          "tier": "mid",
+          "plain": "Berkeley hasn't published a BFCL score for this exact variant. Best available signal: its ancestor qwen3-30b-a3b scored 41%. The coder variant is fine-tuned on software engineering data, which usually tightens structured-output discipline (helpful for tool calls) but narrows the variety of tool patterns the model has seen during training (potentially hurts on unfamiliar APIs). Treat as rough signal, not measurement.",
+          "source": "inferred_from_ancestor",
+          "inferred_from": "qwen/qwen3-30b-a3b"
+        },
         "arena_elo": {
           "chinese": {
-            "raw": 1357,
+            "raw": 1434,
             "tier": "strong",
-            "plain": "Rated 1357 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on Chinese prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1434 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "coding": {
-            "raw": 1413,
+            "raw": 1418,
             "tier": "strong",
-            "plain": "Rated 1413 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on coding tasks. Best available signal: its ancestor qwen3-30b-a3b sits at 1418 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "creative_writing": {
-            "raw": 1336,
+            "raw": 1319,
             "tier": "mid",
-            "plain": "Rated 1336 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on creative writing. Best available signal: its ancestor qwen3-30b-a3b sits at 1319 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "english": {
-            "raw": 1364,
+            "raw": 1391,
             "tier": "strong",
-            "plain": "Rated 1364 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on English prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1391 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "exclude_ties": {
-            "raw": 1318,
-            "tier": "mid",
-            "plain": "Rated 1318 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "raw": 1358,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on head-to-head preference (excluding ties). Best available signal: its ancestor qwen3-30b-a3b sits at 1358 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "expert": {
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on expert-level prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1391 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "french": {
+            "raw": 1422,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on French prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1422 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "german": {
+            "raw": 1370,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on German prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1370 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "hard_prompts": {
+            "raw": 1398,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on hard prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1398 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "hard_prompts_english": {
+            "raw": 1406,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on hard prompts (English). Best available signal: its ancestor qwen3-30b-a3b sits at 1406 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1389,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry business and management and financial operations. Best available signal: its ancestor qwen3-30b-a3b sits at 1389 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1336,
+            "tier": "mid",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry entertainment and sports and media. Best available signal: its ancestor qwen3-30b-a3b sits at 1336 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_legal_and_government": {
+            "raw": 1385,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry legal and government. Best available signal: its ancestor qwen3-30b-a3b sits at 1385 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry life and physical and social science. Best available signal: its ancestor qwen3-30b-a3b sits at 1391 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_mathematical": {
+            "raw": 1409,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry mathematical. Best available signal: its ancestor qwen3-30b-a3b sits at 1409 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_medicine_and_healthcare": {
+            "raw": 1391,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry medicine and healthcare. Best available signal: its ancestor qwen3-30b-a3b sits at 1391 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1418,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry software and it services. Best available signal: its ancestor qwen3-30b-a3b sits at 1418 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "industry_writing_and_literature_and_language": {
             "raw": 1337,
             "tier": "mid",
-            "plain": "Rated 1337 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on industry writing and literature and language. Best available signal: its ancestor qwen3-30b-a3b sits at 1337 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "instruction_following": {
+            "raw": 1362,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on instruction following. Best available signal: its ancestor qwen3-30b-a3b sits at 1362 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "japanese": {
+            "raw": 1337,
+            "tier": "mid",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on Japanese prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1337 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "korean": {
+            "raw": 1328,
+            "tier": "mid",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on Korean prompts. Best available signal: its ancestor qwen3-30b-a3b sits at 1328 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "longer_query": {
+            "raw": 1378,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on longer query. Best available signal: its ancestor qwen3-30b-a3b sits at 1378 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "math": {
+            "raw": 1394,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on math. Best available signal: its ancestor qwen3-30b-a3b sits at 1394 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "multi_turn": {
+            "raw": 1381,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on multi turn. Best available signal: its ancestor qwen3-30b-a3b sits at 1381 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           },
           "overall": {
-            "raw": 1356,
+            "raw": 1384,
             "tier": "strong",
-            "plain": "Rated 1356 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on overall head-to-head preference. Best available signal: its ancestor qwen3-30b-a3b sits at 1384 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "russian": {
+            "raw": 1364,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on russian. Best available signal: its ancestor qwen3-30b-a3b sits at 1364 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
+          },
+          "spanish": {
+            "raw": 1392,
+            "tier": "strong",
+            "plain": "LMSYS hasn't published an Arena rating for this exact variant on spanish. Best available signal: its ancestor qwen3-30b-a3b sits at 1392 Elo. Post-training can shift human-preference scores in either direction \u2014 treat as rough signal, not measurement.",
+            "source": "inferred_from_ancestor",
+            "inferred_from": "qwen/qwen3-30b-a3b"
           }
         }
       }
@@ -270,38 +703,121 @@
         "gpqa_diamond",
         "ruler"
       ],
+      "intent_hints": [
+        "Llama 3.1 base, post-trained by NVIDIA",
+        "253B dense parameters \u2014 large, slower inference",
+        "'Ultra' tier in Nemotron lineup, optimized for multi-step reasoning over function calling"
+      ],
       "scores": {
         "bfcl_v4": {
           "raw": 0.1,
           "percent": "10%",
           "tier": "weak",
-          "plain": "Tool-calling accuracy around 10% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
+          "plain": "Tool-calling accuracy around 10% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job.",
+          "source": "direct"
         },
         "arena_elo": {
           "coding": {
             "raw": 1312,
             "tier": "mid",
-            "plain": "Rated 1312 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1312 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "creative_writing": {
             "raw": 1315,
             "tier": "mid",
-            "plain": "Rated 1315 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1315 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "english": {
             "raw": 1344,
             "tier": "mid",
-            "plain": "Rated 1344 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1344 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "exclude_ties": {
             "raw": 1264,
             "tier": "mid",
-            "plain": "Rated 1264 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1264 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts": {
+            "raw": 1316,
+            "tier": "mid",
+            "plain": "Rated 1316 Elo on hard prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts_english": {
+            "raw": 1336,
+            "tier": "mid",
+            "plain": "Rated 1336 Elo on hard prompts (English) \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1301,
+            "tier": "mid",
+            "plain": "Rated 1301 Elo on industry business and management and financial operations \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1277,
+            "tier": "mid",
+            "plain": "Rated 1277 Elo on industry entertainment and sports and media \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1324,
+            "tier": "mid",
+            "plain": "Rated 1324 Elo on industry life and physical and social science \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1327,
+            "tier": "mid",
+            "plain": "Rated 1327 Elo on industry software and it services \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_writing_and_literature_and_language": {
+            "raw": 1300,
+            "tier": "mid",
+            "plain": "Rated 1300 Elo on industry writing and literature and language \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "instruction_following": {
+            "raw": 1308,
+            "tier": "mid",
+            "plain": "Rated 1308 Elo on instruction following \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "longer_query": {
+            "raw": 1299,
+            "tier": "mid",
+            "plain": "Rated 1299 Elo on longer query \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "math": {
+            "raw": 1359,
+            "tier": "strong",
+            "plain": "Rated 1359 Elo on math \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "multi_turn": {
+            "raw": 1317,
+            "tier": "mid",
+            "plain": "Rated 1317 Elo on multi turn \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "overall": {
             "raw": 1319,
             "tier": "mid",
-            "plain": "Rated 1319 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1319 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "russian": {
+            "raw": 1283,
+            "tier": "mid",
+            "plain": "Rated 1283 Elo on russian \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           }
         }
       }
@@ -322,37 +838,146 @@
       "primary_benchmarks": [
         "arena_elo"
       ],
+      "intent_hints": [
+        "Llama 3.3 70B base, distilled and post-trained by NVIDIA",
+        "49B dense \u2014 distilled from a larger model",
+        "'Super' tier, v1 \u2014 NVIDIA's current cloud agent default"
+      ],
       "scores": {
+        "bfcl_v4": {
+          "raw": 0.319,
+          "percent": "32%",
+          "tier": "weak",
+          "plain": "Berkeley hasn't published a BFCL score for this exact variant. Best available signal: its ancestor llama-3.3-70b-instruct scored 32%. NVIDIA's Nemotron post-training emphasizes reasoning and instruction following, not function-call discipline, so a meaningful uplift over the base model isn't likely. Treat as rough signal, not measurement.",
+          "source": "inferred_from_ancestor",
+          "inferred_from": "meta/llama-3.3-70b-instruct"
+        },
         "arena_elo": {
           "coding": {
             "raw": 1357,
             "tier": "strong",
-            "plain": "Rated 1357 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1357 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "creative_writing": {
             "raw": 1310,
             "tier": "mid",
-            "plain": "Rated 1310 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1310 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "english": {
             "raw": 1356,
             "tier": "strong",
-            "plain": "Rated 1356 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+            "plain": "Rated 1356 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
           },
           "exclude_ties": {
             "raw": 1292,
             "tier": "mid",
-            "plain": "Rated 1292 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1292 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "expert": {
             "raw": 1320,
             "tier": "mid",
-            "plain": "Rated 1320 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1320 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts": {
+            "raw": 1333,
+            "tier": "mid",
+            "plain": "Rated 1333 Elo on hard prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts_english": {
+            "raw": 1336,
+            "tier": "mid",
+            "plain": "Rated 1336 Elo on hard prompts (English) \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1310,
+            "tier": "mid",
+            "plain": "Rated 1310 Elo on industry business and management and financial operations \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1280,
+            "tier": "mid",
+            "plain": "Rated 1280 Elo on industry entertainment and sports and media \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_legal_and_government": {
+            "raw": 1345,
+            "tier": "mid",
+            "plain": "Rated 1345 Elo on industry legal and government \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1364,
+            "tier": "strong",
+            "plain": "Rated 1364 Elo on industry life and physical and social science \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_mathematical": {
+            "raw": 1401,
+            "tier": "strong",
+            "plain": "Rated 1401 Elo on industry mathematical \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_medicine_and_healthcare": {
+            "raw": 1365,
+            "tier": "strong",
+            "plain": "Rated 1365 Elo on industry medicine and healthcare \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1359,
+            "tier": "strong",
+            "plain": "Rated 1359 Elo on industry software and it services \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "industry_writing_and_literature_and_language": {
+            "raw": 1293,
+            "tier": "mid",
+            "plain": "Rated 1293 Elo on industry writing and literature and language \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "instruction_following": {
+            "raw": 1299,
+            "tier": "mid",
+            "plain": "Rated 1299 Elo on instruction following \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "japanese": {
+            "raw": 1296,
+            "tier": "mid",
+            "plain": "Rated 1296 Elo on Japanese prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "longer_query": {
+            "raw": 1315,
+            "tier": "mid",
+            "plain": "Rated 1315 Elo on longer query \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "math": {
+            "raw": 1394,
+            "tier": "strong",
+            "plain": "Rated 1394 Elo on math \u2014 competitive, reliable across the kinds of prompts real users send in this category.",
+            "source": "direct"
+          },
+          "multi_turn": {
+            "raw": 1334,
+            "tier": "mid",
+            "plain": "Rated 1334 Elo on multi turn \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "overall": {
             "raw": 1338,
             "tier": "mid",
-            "plain": "Rated 1338 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1338 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           }
         }
       }
@@ -373,48 +998,181 @@
       "primary_benchmarks": [
         "arena_elo"
       ],
+      "intent_hints": [
+        "Meta's Llama 3.3 70B, instruction-tuned",
+        "Dense 70B \u2014 well-characterized, widely deployed",
+        "Most reference implementations target this size class"
+      ],
       "scores": {
         "bfcl_v4": {
           "raw": 0.319,
           "percent": "32%",
           "tier": "weak",
-          "plain": "Tool-calling accuracy around 32% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
+          "plain": "Tool-calling accuracy around 32% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job.",
+          "source": "direct"
         },
         "arena_elo": {
           "chinese": {
             "raw": 1215,
             "tier": "weak",
-            "plain": "Rated 1215 Elo on Chinese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+            "plain": "Rated 1215 Elo on Chinese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
           },
           "coding": {
             "raw": 1269,
             "tier": "mid",
-            "plain": "Rated 1269 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1269 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "creative_writing": {
             "raw": 1252,
             "tier": "mid",
-            "plain": "Rated 1252 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1252 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "english": {
             "raw": 1304,
             "tier": "mid",
-            "plain": "Rated 1304 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1304 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "exclude_ties": {
             "raw": 1201,
             "tier": "weak",
-            "plain": "Rated 1201 Elo on head-to-head preference (excluding ties) \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+            "plain": "Rated 1201 Elo on head-to-head preference (excluding ties) \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
           },
           "expert": {
             "raw": 1224,
             "tier": "weak",
-            "plain": "Rated 1224 Elo on expert-level prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+            "plain": "Rated 1224 Elo on expert-level prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "french": {
+            "raw": 1282,
+            "tier": "mid",
+            "plain": "Rated 1282 Elo on French prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "german": {
+            "raw": 1251,
+            "tier": "mid",
+            "plain": "Rated 1251 Elo on German prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts": {
+            "raw": 1258,
+            "tier": "mid",
+            "plain": "Rated 1258 Elo on hard prompts \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "hard_prompts_english": {
+            "raw": 1279,
+            "tier": "mid",
+            "plain": "Rated 1279 Elo on hard prompts (English) \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_business_and_management_and_financial_operations": {
+            "raw": 1243,
+            "tier": "weak",
+            "plain": "Rated 1243 Elo on industry business and management and financial operations \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "industry_entertainment_and_sports_and_media": {
+            "raw": 1242,
+            "tier": "weak",
+            "plain": "Rated 1242 Elo on industry entertainment and sports and media \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "industry_legal_and_government": {
+            "raw": 1284,
+            "tier": "mid",
+            "plain": "Rated 1284 Elo on industry legal and government \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_life_and_physical_and_social_science": {
+            "raw": 1284,
+            "tier": "mid",
+            "plain": "Rated 1284 Elo on industry life and physical and social science \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_mathematical": {
+            "raw": 1267,
+            "tier": "mid",
+            "plain": "Rated 1267 Elo on industry mathematical \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_medicine_and_healthcare": {
+            "raw": 1274,
+            "tier": "mid",
+            "plain": "Rated 1274 Elo on industry medicine and healthcare \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_software_and_it_services": {
+            "raw": 1275,
+            "tier": "mid",
+            "plain": "Rated 1275 Elo on industry software and it services \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "industry_writing_and_literature_and_language": {
+            "raw": 1256,
+            "tier": "mid",
+            "plain": "Rated 1256 Elo on industry writing and literature and language \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "instruction_following": {
+            "raw": 1243,
+            "tier": "weak",
+            "plain": "Rated 1243 Elo on instruction following \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "japanese": {
+            "raw": 1149,
+            "tier": "weak",
+            "plain": "Rated 1149 Elo on Japanese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "korean": {
+            "raw": 1139,
+            "tier": "weak",
+            "plain": "Rated 1139 Elo on Korean prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "longer_query": {
+            "raw": 1256,
+            "tier": "mid",
+            "plain": "Rated 1256 Elo on longer query \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "math": {
+            "raw": 1267,
+            "tier": "mid",
+            "plain": "Rated 1267 Elo on math \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "multi_turn": {
+            "raw": 1281,
+            "tier": "mid",
+            "plain": "Rated 1281 Elo on multi turn \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           },
           "overall": {
             "raw": 1275,
             "tier": "mid",
-            "plain": "Rated 1275 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+            "plain": "Rated 1275 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
+          },
+          "russian": {
+            "raw": 1250,
+            "tier": "weak",
+            "plain": "Rated 1250 Elo on russian \u2014 well below current competitive models. Consider a stronger model if this capability is the main job.",
+            "source": "direct"
+          },
+          "spanish": {
+            "raw": 1266,
+            "tier": "mid",
+            "plain": "Rated 1266 Elo on spanish \u2014 workable, but expect to lose preference comparisons against top models in this category.",
+            "source": "direct"
           }
         }
       }
@@ -435,51 +1193,12 @@
       "primary_benchmarks": [
         "arena_elo"
       ],
-      "scores": {
-        "bfcl_v4": {
-          "raw": 0.2879,
-          "percent": "29%",
-          "tier": "weak",
-          "plain": "Tool-calling accuracy around 29% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
-        },
-        "arena_elo": {
-          "chinese": {
-            "raw": 1211,
-            "tier": "weak",
-            "plain": "Rated 1211 Elo on Chinese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "coding": {
-            "raw": 1232,
-            "tier": "weak",
-            "plain": "Rated 1232 Elo on coding tasks \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "creative_writing": {
-            "raw": 1182,
-            "tier": "weak",
-            "plain": "Rated 1182 Elo on creative writing \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "english": {
-            "raw": 1231,
-            "tier": "weak",
-            "plain": "Rated 1231 Elo on English prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "exclude_ties": {
-            "raw": 1101,
-            "tier": "weak",
-            "plain": "Rated 1101 Elo on head-to-head preference (excluding ties) \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "expert": {
-            "raw": 1202,
-            "tier": "weak",
-            "plain": "Rated 1202 Elo on expert-level prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          },
-          "overall": {
-            "raw": 1217,
-            "tier": "weak",
-            "plain": "Rated 1217 Elo on overall head-to-head preference \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
-          }
-        }
-      }
+      "intent_hints": [
+        "Microsoft's Phi-4 small variant, instruction-tuned",
+        "'Mini' \u2014 roughly 3.8B dense parameters, distinct from the 14B Phi-4",
+        "Designed for high quality-per-parameter at edge / low-VRAM deployments"
+      ],
+      "scores": {}
     },
     {
       "nim_model": "qwen/qwen3-8b",
@@ -497,12 +1216,18 @@
       "primary_benchmarks": [
         "bfcl_v4"
       ],
+      "intent_hints": [
+        "Qwen3 family, dense",
+        "8B parameters \u2014 fits on a single consumer GPU (12\u201316 GB VRAM)",
+        "Strong BFCL performance for its size class"
+      ],
       "scores": {
         "bfcl_v4": {
-          "raw": 0.4043,
-          "percent": "40%",
+          "raw": 0.4257,
+          "percent": "43%",
           "tier": "mid",
-          "plain": "Gets tool calls right about 40% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+          "plain": "Gets tool calls right about 43% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences.",
+          "source": "direct"
         }
       }
     }

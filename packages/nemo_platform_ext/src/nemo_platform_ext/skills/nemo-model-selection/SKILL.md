@@ -64,6 +64,58 @@ Before I recommend a model, three quick things about what the agent will do:
 
 Do not propose a model before all three answers are in. Push back on "you decide" — commit to a default and announce it ("I'll assume cloud and a tool-heavy agent. Tell me if that's wrong.").
 
+## Step 1.5 — Pick a presentation pattern based on evidence quality
+
+The cache marks each benchmark score with `source: "direct"` or `source: "inferred_from_ancestor"`, and carries `intent_hints` for models with no benchmark coverage. Pick the presentation pattern based on what's available for the candidate model that best matches the user's profile answer to question 2 (primary capability).
+
+```
+Identify the candidate model that best matches the profile.
+Inspect scores.<primary_axis>.source for that candidate, where primary_axis is:
+  - "code"               → scores.arena_elo.coding  AND  scores.bfcl_v4
+  - "tools"              → scores.bfcl_v4
+  - "long documents"     → scores.arena_elo.hard_prompts
+  - "general/instruction"→ scores.arena_elo.overall AND scores.arena_elo.instruction_following
+
+If the relevant scores all have source == "direct":
+  → Pattern A (single recommendation, current Step 2 template)
+
+If one or more relevant scores have source == "inferred_from_ancestor",
+or the candidate has scores == {} but has intent_hints:
+  → Pattern B (forced trade-off, withhold model name until user resolves it)
+
+If 3+ candidates have similar profiles and similar evidence-quality:
+  → Pattern C (shortlist with explicit "I'd want an eval before deciding")
+```
+
+### Pattern B — forced trade-off
+
+**Hard rule: when the primary candidate's evidence is anything other than `direct`, the model name does NOT appear in your response until the user has resolved the trade-off.** This is the anchoring guard. Without it, users default to the first model named regardless of caveats.
+
+Structure:
+
+1. State that there's a trade-off to settle before naming a model.
+2. Present exactly two candidates labeled A and B (NOT named):
+   - **A. The matched specialist** — the candidate that best fits the profile by name/intent, with its inferred/missing-data caveat.
+   - **B. The measured generalist** — the model with the strongest *direct* score on the same primary axis, even if less specialized.
+3. For each, summarize the `plain` text from the cache (which already carries the editorial caveat for inferred entries) in your own words.
+4. Recommend a 5–10 prompt eval from the user's spec on both as the "real answer."
+5. If the user can't run an eval, ask: which framing of your priority is right — A's specialist intent or B's measured discipline?
+6. **Only after the user picks** — name the chosen model and proceed to Step 2's recommendation template (skipping the model-selection paragraph since it's resolved).
+
+Example output for a code-heavy agent where the natural pick has inferred BFCL data:
+
+> "Before I name a model — one thing to settle. Your profile (code-focused, three tools, cloud) has two reasonable candidates with different evidence quality:
+>
+> **A. The specialist.** Built for this exact job. Arena's coding-category Elo (1418, strong) IS measured for this exact model. *But BFCL hasn't measured its tool-calling discipline — only its base model (Qwen3-30B-A3B at 37%) and we're inferring from there.*
+>
+> **B. The measured generalist.** Best directly-measured tool-calling in our NIM set (BFCL 52%, mid). Not code-specialized, but disciplined.
+>
+> If you can run a 5–10 prompt eval from your spec on both, that's the real answer. If you need to commit now: which matters more — specialist intent (A) or measured discipline (B)?"
+
+### Pattern C — shortlist (rare)
+
+Use only when 3+ candidates have similar profiles and similar evidence-quality, and no honest trade-off binary exists. Present them in a numbered list with `plain` summaries and **explicit phrasing that an eval is the only way to actually decide.** Do not commit to one. Default to recommending an eval as the next step.
+
 ## Step 2 — Recommend in plain English
 
 Lead with the *capability that matters most for this agent*, then name the model as the conclusion. Use this shape (adapt the content, do not copy verbatim):
@@ -150,7 +202,7 @@ If the user asks what benchmark was used or wants the raw number, tell them. Do 
 
 ## Step 4 — Output
 
-Two ready-to-paste blocks. Show whichever fits the user's stage.
+Two ready-to-paste blocks. Show whichever fits the user's stage. **When the chosen model's primary-axis score has `source: "inferred_from_ancestor"` or the model relies on `intent_hints` only, include an explicit evidence caveat in the output** — don't let the spec or YAML carry the recommendation forward without surfacing the inference.
 
 If they're authoring an agent spec for `nemo-spec`:
 
@@ -160,6 +212,7 @@ If they're authoring an agent spec for `nemo-spec`:
 - **Family/size:** <plain description, e.g. "Qwen3 235B MoE">
 - **NIM model id:** `<model-string>`
 - **Why this choice:** <one plain-English sentence — same words you used above>
+- **Evidence:** <"Direct BFCL and Arena measurements" | "BFCL inferred from ancestor <ancestor-id>; Arena measured directly" | "No public benchmark coverage — selection based on model-name intent only, eval recommended">
 - **Deployment:** <cloud | self-hosted (VRAM)>
 ```
 
@@ -171,6 +224,7 @@ llms:
     _type: nim
     model_name: <model-string>
     # Chosen because: <one plain-English sentence — same words you used above>
+    # Evidence: <direct | inferred from <ancestor-id> | name-intent only — eval recommended>
     max_tokens: 4096
 
 workflow:
@@ -225,6 +279,8 @@ If `nemo-explore` invoked this skill, return control to `nemo-explore` with the 
 - Never lead with a model name, benchmark name, or score.
 - Never recommend a cloud-only model when the user said self-hosted.
 - Never write `model_name` (YAML) or "NIM model id" (spec) without showing the plain-English reason alongside it.
+- **When the primary candidate's evidence is anything other than `direct`, the model name does not appear in your response until the user has resolved the trade-off in Pattern B.** Anchoring is the failure mode this guards against — users default to the first model named regardless of caveats. The withhold is non-negotiable.
+- When emitting the spec or YAML block, always include an Evidence line/comment naming the source quality. Inferred or name-only choices that propagate downstream without that signal mislead the build skill and the user both.
 
 ## Gotchas
 

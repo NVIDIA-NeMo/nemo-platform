@@ -25,13 +25,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, NotRequired, TypedDict
 
 
 class BenchmarkEntry(TypedDict):
@@ -46,13 +47,22 @@ class BenchmarkEntry(TypedDict):
 
 
 class ModelProfile(TypedDict):
-    """One row in NIM_MODEL_PROFILES: a model's architectural strengths and caveats."""
+    """One row in NIM_MODEL_PROFILES: a model's architectural strengths and caveats.
+
+    `derived_from` and `intent_hints` are editorial. `derived_from` points to
+    another NIM ID whose benchmark scores should be used as a rough proxy when
+    the upstream leaderboard hasn't measured this exact variant. `intent_hints`
+    is plain-English unpacking of what the NIM ID itself implies — the fallback
+    when no benchmark data is available at all.
+    """
     aliases: list[str]
     architecture_note: str
     strong_at: list[str]
     watch_out_for: list[str]
     best_deployment: str
     primary_benchmarks: list[str]
+    derived_from: NotRequired[str]
+    intent_hints: NotRequired[list[str]]
 
 
 class BfclScore(TypedDict):
@@ -60,6 +70,8 @@ class BfclScore(TypedDict):
     percent: str  # raw formatted as e.g. "48%" for direct display
     tier: str
     plain: str
+    source: Literal["direct", "inferred_from_ancestor"]
+    inferred_from: NotRequired[str]
 
 
 class ArenaEloScore(TypedDict):
@@ -67,6 +79,8 @@ class ArenaEloScore(TypedDict):
     raw: int
     tier: str
     plain: str
+    source: Literal["direct", "inferred_from_ancestor"]
+    inferred_from: NotRequired[str]
 
 
 class ModelScores(TypedDict, total=False):
@@ -88,6 +102,7 @@ class CacheModelEntry(TypedDict):
     watch_out_for: list[str]
     best_deployment: str
     primary_benchmarks: list[str]
+    intent_hints: list[str]  # plain-English fallback when no benchmark data exists
     scores: ModelScores
 
 
@@ -277,7 +292,7 @@ BENCHMARK_REGISTRY: dict[str, BenchmarkEntry] = {
 
 NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
     "qwen/qwen3-235b-a22b": {
-        "aliases": ["Qwen3-235B", "qwen3-235b"],
+        "aliases": ["Qwen3-235B-A22B", "qwen3-235b-a22b"],
         "architecture_note": "235B sparse MoE, ~22B active parameters per forward pass",
         "strong_at": [
             "Calling multiple tools in a single turn without mixing up their arguments",
@@ -290,6 +305,11 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api",
         "primary_benchmarks": ["bfcl_v4"],
+        "intent_hints": [
+            "Qwen3 family — Alibaba's instruction-tuned series with a strong public tool-calling track record",
+            "235B total parameters, 22B active per forward pass — sparse mixture-of-experts",
+            "A22B suffix marks the 'active-22B' MoE configuration variant",
+        ],
     },
     "qwen/qwen3-30b-a3b": {
         "aliases": ["Qwen3-30B-A3B", "qwen3-30b-a3b"],
@@ -305,9 +325,14 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api_cost_sensitive",
         "primary_benchmarks": ["bfcl_v4"],
+        "intent_hints": [
+            "Qwen3 family",
+            "30B total parameters, 3B active per forward pass — fast-inference sparse MoE",
+            "Designed for high throughput at moderate quality",
+        ],
     },
     "qwen/qwen3-coder-30b-a3b-instruct": {
-        "aliases": ["Qwen3-Coder-30B", "qwen3-coder"],
+        "aliases": ["Qwen3-Coder-30B-A3B-Instruct", "qwen3-coder-30b-a3b-instruct"],
         "architecture_note": "30B MoE fine-tuned specifically on software engineering tasks",
         "strong_at": [
             "Navigating unfamiliar codebases and making targeted edits",
@@ -320,9 +345,15 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api",
         "primary_benchmarks": ["swe_bench_verified"],
+        "derived_from": "qwen/qwen3-30b-a3b",
+        "intent_hints": [
+            "Qwen3 family, code-specialized fine-tune",
+            "Same 30B-A3B backbone as qwen3-30b-a3b (30B total, 3B active)",
+            "Instruction-tuned variant, not base-model completion",
+        ],
     },
     "nvidia/llama-3.1-nemotron-ultra-253b": {
-        "aliases": ["Nemotron-Ultra", "nemotron-ultra-253b"],
+        "aliases": ["Llama-3.1-Nemotron-Ultra-253B", "llama-3.1-nemotron-ultra-253b"],
         "architecture_note": "253B dense model, NVIDIA post-trained on Llama 3.1 for reasoning",
         "strong_at": [
             "Multi-step reasoning over long documents without losing the thread",
@@ -335,13 +366,14 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api",
         "primary_benchmarks": ["gpqa_diamond", "ruler"],
+        "intent_hints": [
+            "Llama 3.1 base, post-trained by NVIDIA",
+            "253B dense parameters — large, slower inference",
+            "'Ultra' tier in Nemotron lineup, optimized for multi-step reasoning over function calling",
+        ],
     },
     "nvidia/llama-3.3-nemotron-super-49b-v1": {
-        "aliases": [
-            "Nemotron-Super-49B",
-            "nemotron-super-49b",
-            "nvidia-llama-3-3-nemotron-super-49b-v1",
-        ],
+        "aliases": ["Llama-3.3-Nemotron-Super-49B-v1", "llama-3.3-nemotron-super-49b-v1"],
         "architecture_note": "49B dense model, NVIDIA post-trained on Llama 3.3; platform default for cloud agents",
         "strong_at": [
             "General-purpose agent work where you don't yet know the bottleneck",
@@ -354,9 +386,15 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api",
         "primary_benchmarks": ["arena_elo"],
+        "derived_from": "meta/llama-3.3-70b-instruct",
+        "intent_hints": [
+            "Llama 3.3 70B base, distilled and post-trained by NVIDIA",
+            "49B dense — distilled from a larger model",
+            "'Super' tier, v1 — NVIDIA's current cloud agent default",
+        ],
     },
     "meta/llama-3.3-70b-instruct": {
-        "aliases": ["Llama-3.3-70B", "llama-3.3-70b"],
+        "aliases": ["Llama-3.3-70B-Instruct", "llama-3.3-70b-instruct"],
         "architecture_note": "70B dense model, widely deployed and well-understood",
         "strong_at": [
             "General-purpose instruction following across a wide range of tasks",
@@ -369,9 +407,14 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "cloud_api_or_self_hosted",
         "primary_benchmarks": ["arena_elo"],
+        "intent_hints": [
+            "Meta's Llama 3.3 70B, instruction-tuned",
+            "Dense 70B — well-characterized, widely deployed",
+            "Most reference implementations target this size class",
+        ],
     },
     "microsoft/phi-4-mini-instruct": {
-        "aliases": ["Phi-4-Mini", "phi-4-mini"],
+        "aliases": ["Phi-4-Mini-Instruct", "phi-4-mini-instruct"],
         "architecture_note": "Small dense model (~4B), optimized for quality-per-parameter",
         "strong_at": [
             "Fast, cheap inference for agents where latency is the bottleneck",
@@ -384,6 +427,11 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "self_hosted_low_vram",
         "primary_benchmarks": ["arena_elo"],
+        "intent_hints": [
+            "Microsoft's Phi-4 small variant, instruction-tuned",
+            "'Mini' — roughly 3.8B dense parameters, distinct from the 14B Phi-4",
+            "Designed for high quality-per-parameter at edge / low-VRAM deployments",
+        ],
     },
     "qwen/qwen3-8b": {
         "aliases": ["Qwen3-8B", "qwen3-8b"],
@@ -399,6 +447,11 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
         "best_deployment": "self_hosted_local_gpu",
         "primary_benchmarks": ["bfcl_v4"],
+        "intent_hints": [
+            "Qwen3 family, dense",
+            "8B parameters — fits on a single consumer GPU (12–16 GB VRAM)",
+            "Strong BFCL performance for its size class",
+        ],
     },
 }
 
@@ -472,7 +525,10 @@ def fetch_bfcl_scores() -> dict[str, float]:
             score = float(raw_score) / 100.0
         except ValueError:
             continue
-        scores[model] = score
+        # When both (FC) and (Prompt) variants of the same base model exist, both
+        # collapse to the same key after tag-stripping. Keep the higher score —
+        # last-write-wins would arbitrarily depend on CSV row order.
+        scores[model] = max(scores.get(model, 0.0), score)
 
     print(f"OK ({len(scores)} entries)")
     return scores
@@ -538,27 +594,74 @@ def fetch_arena_elo_scores() -> dict[str, dict[str, float]]:
 # Matching + cache assembly
 # ---------------------------------------------------------------------------
 
+_TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
+
+
+def _tokenize(name: str) -> list[str]:
+    """Lowercase and split on any non-alphanumeric run.
+
+    `Qwen3-235B-A22B-Instruct-2507 (FC)` → ['qwen3', '235b', 'a22b', 'instruct', '2507', 'fc']
+    `qwen/qwen3-coder-30b-a3b-instruct`  → ['qwen', 'qwen3', 'coder', '30b', 'a3b', 'instruct']
+    """
+    return [tok for tok in _TOKEN_SPLIT.split(name.lower()) if tok]
+
+
+def _tokens_match(alias_tokens: list[str], upstream_tokens: list[str]) -> bool:
+    """True when alias tokens appear as a contiguous subsequence of upstream tokens.
+
+    `phi-4-mini` → ['phi', '4', 'mini'] is NOT a subsequence of ['phi', '4', 'prompt'],
+    so the prior false-positive against the 14B `Phi-4` row is correctly rejected.
+    `qwen3-235b` → ['qwen3', '235b'] IS a subsequence of
+    ['qwen3', '235b', 'a22b', 'instruct', '2507', 'fc'], so the legitimate match holds.
+    """
+    if not alias_tokens or len(alias_tokens) > len(upstream_tokens):
+        return False
+    n = len(alias_tokens)
+    for i in range(len(upstream_tokens) - n + 1):
+        if upstream_tokens[i : i + n] == alias_tokens:
+            return True
+    return False
+
+
 def _match_score(nim_model: str, aliases: list[str], upstream: dict[str, float]) -> float | None:
-    candidates = [nim_model] + aliases
-    for cand in candidates:
-        cand_lower = cand.lower()
-        for key, val in upstream.items():
-            if cand_lower in key.lower() or key.lower() in cand_lower:
-                return val
-    return None
+    """Token-aware contiguous-subsequence match. Returns the highest score across all matches.
+
+    Picking the max is intentional: when both `(FC)` and `(Prompt)` BFCL variants of the
+    same model exist, we want the user-friendlier number, not whichever row came second
+    in the CSV.
+    """
+    candidates_tokenized = [_tokenize(c) for c in [nim_model] + aliases]
+    best: float | None = None
+    for key, val in upstream.items():
+        key_tokens = _tokenize(key)
+        for cand_tokens in candidates_tokenized:
+            if _tokens_match(cand_tokens, key_tokens):
+                if best is None or val > best:
+                    best = val
+                break  # one match per upstream key is enough; move on
+    return best
 
 
 def _match_arena_categories(
     nim_model: str, aliases: list[str], upstream: dict[str, dict[str, float]],
 ) -> dict[str, float] | None:
-    """Same substring matching as `_match_score`, but returns the full per-category dict."""
-    candidates = [nim_model] + aliases
-    for cand in candidates:
-        cand_lower = cand.lower()
-        for key, val in upstream.items():
-            if cand_lower in key.lower() or key.lower() in cand_lower:
-                return val
-    return None
+    """Token-aware match for the per-category Arena dict. Returns the matched model's full
+    category map, or None. When multiple upstream entries match (rare), picks the one with
+    the highest 'overall' rating; falls back to the first match if no 'overall' exists.
+    """
+    candidates_tokenized = [_tokenize(c) for c in [nim_model] + aliases]
+    best_key: str | None = None
+    best_overall: float = float("-inf")
+    for key, cat_map in upstream.items():
+        key_tokens = _tokenize(key)
+        for cand_tokens in candidates_tokenized:
+            if _tokens_match(cand_tokens, key_tokens):
+                overall = cat_map.get("overall", float("-inf"))
+                if best_key is None or overall > best_overall:
+                    best_key = key
+                    best_overall = overall
+                break
+    return upstream[best_key] if best_key else None
 
 
 # Tier thresholds are editorial buckets calibrated against the current BFCL
@@ -601,6 +704,49 @@ def _bfcl_plain(score: float) -> str:
             "invocation is the main job."
         ),
     }[tier]
+
+
+def _bfcl_plain_inferred(score: float, ancestor_id: str) -> str:
+    """Editorial blurb for a BFCL score inherited from an ancestor model.
+
+    Surfaces both the inference and the reasoning behind it. The skill is
+    expected to read this verbatim — do not hide that the number is inferred.
+    """
+    ancestor_short = ancestor_id.split("/")[-1]
+    reasoning = {
+        "qwen/qwen3-30b-a3b": (
+            "The coder variant is fine-tuned on software engineering data, "
+            "which usually tightens structured-output discipline (helpful for "
+            "tool calls) but narrows the variety of tool patterns the model has "
+            "seen during training (potentially hurts on unfamiliar APIs)."
+        ),
+        "meta/llama-3.3-70b-instruct": (
+            "NVIDIA's Nemotron post-training emphasizes reasoning and "
+            "instruction following, not function-call discipline, so a "
+            "meaningful uplift over the base model isn't likely."
+        ),
+    }.get(ancestor_id, (
+        "No public information indicates the post-training changes tool-calling "
+        "discipline materially, so the base score is the best available anchor."
+    ))
+    return (
+        f"Berkeley hasn't published a BFCL score for this exact variant. "
+        f"Best available signal: its ancestor {ancestor_short} scored {score:.0%}. "
+        f"{reasoning} Treat as rough signal, not measurement."
+    )
+
+
+def _arena_elo_plain_inferred(score: float, category: str, ancestor_id: str) -> str:
+    """Editorial blurb for an Arena Elo entry inherited from an ancestor model."""
+    ancestor_short = ancestor_id.split("/")[-1]
+    label = _category_label(category)
+    rounded = int(round(score))
+    return (
+        f"LMSYS hasn't published an Arena rating for this exact variant on {label}. "
+        f"Best available signal: its ancestor {ancestor_short} sits at {rounded} Elo. "
+        f"Post-training can shift human-preference scores in either direction — "
+        f"treat as rough signal, not measurement."
+    )
 
 
 # Tier thresholds are editorial buckets calibrated against the current Arena
@@ -661,32 +807,78 @@ def _arena_elo_plain(score: float, category: str = "overall") -> str:
     }[tier]
 
 
+def _resolve_bfcl(
+    nim_id: str, profile: ModelProfile, bfcl: dict[str, float],
+) -> tuple[float, Literal["direct", "inferred_from_ancestor"], str | None] | None:
+    """Try direct match first; if that fails and the profile declares a `derived_from`,
+    try the ancestor's aliases instead. Returns (score, source, inferred_from)."""
+    direct = _match_score(nim_id, profile["aliases"], bfcl)
+    if direct is not None:
+        return (direct, "direct", None)
+    ancestor_id = profile.get("derived_from")
+    if ancestor_id and ancestor_id in NIM_MODEL_PROFILES:
+        ancestor = NIM_MODEL_PROFILES[ancestor_id]
+        inherited = _match_score(ancestor_id, ancestor["aliases"], bfcl)
+        if inherited is not None:
+            return (inherited, "inferred_from_ancestor", ancestor_id)
+    return None
+
+
+def _resolve_arena(
+    nim_id: str, profile: ModelProfile, arena_elo: dict[str, dict[str, float]],
+) -> tuple[dict[str, float], Literal["direct", "inferred_from_ancestor"], str | None] | None:
+    """Same lineage fallback for Arena's per-category dict."""
+    direct = _match_arena_categories(nim_id, profile["aliases"], arena_elo)
+    if direct is not None:
+        return (direct, "direct", None)
+    ancestor_id = profile.get("derived_from")
+    if ancestor_id and ancestor_id in NIM_MODEL_PROFILES:
+        ancestor = NIM_MODEL_PROFILES[ancestor_id]
+        inherited = _match_arena_categories(ancestor_id, ancestor["aliases"], arena_elo)
+        if inherited is not None:
+            return (inherited, "inferred_from_ancestor", ancestor_id)
+    return None
+
+
 def build_cache(bfcl: dict[str, float], arena_elo: dict[str, dict[str, float]]) -> Cache:
     models: list[CacheModelEntry] = []
 
     for nim_id, profile in NIM_MODEL_PROFILES.items():
-        aliases = profile["aliases"]
-
-        bfcl_score = _match_score(nim_id, aliases, bfcl)
-        arena_by_category = _match_arena_categories(nim_id, aliases, arena_elo)
-
         scores: ModelScores = {}
-        if bfcl_score is not None:
-            scores["bfcl_v4"] = {
-                "raw": round(bfcl_score, 4),
-                "percent": f"{bfcl_score:.0%}",
-                "tier": _bfcl_tier(bfcl_score),
-                "plain": _bfcl_plain(bfcl_score),
+
+        bfcl_resolved = _resolve_bfcl(nim_id, profile, bfcl)
+        if bfcl_resolved is not None:
+            score, source, inferred_from = bfcl_resolved
+            entry: BfclScore = {
+                "raw": round(score, 4),
+                "percent": f"{score:.0%}",
+                "tier": _bfcl_tier(score),
+                "plain": _bfcl_plain(score) if source == "direct" else _bfcl_plain_inferred(score, inferred_from or ""),
+                "source": source,
             }
-        if arena_by_category:
-            scores["arena_elo"] = {
-                category: {
+            if inferred_from:
+                entry["inferred_from"] = inferred_from
+            scores["bfcl_v4"] = entry
+
+        arena_resolved = _resolve_arena(nim_id, profile, arena_elo)
+        if arena_resolved is not None:
+            arena_by_category, arena_source, arena_inferred_from = arena_resolved
+            per_cat: dict[str, ArenaEloScore] = {}
+            for category, rating in sorted(arena_by_category.items()):
+                cat_entry: ArenaEloScore = {
                     "raw": int(round(rating)),
                     "tier": _arena_elo_tier(rating),
-                    "plain": _arena_elo_plain(rating, category),
+                    "plain": (
+                        _arena_elo_plain(rating, category)
+                        if arena_source == "direct"
+                        else _arena_elo_plain_inferred(rating, category, arena_inferred_from or "")
+                    ),
+                    "source": arena_source,
                 }
-                for category, rating in sorted(arena_by_category.items())
-            }
+                if arena_inferred_from:
+                    cat_entry["inferred_from"] = arena_inferred_from
+                per_cat[category] = cat_entry
+            scores["arena_elo"] = per_cat
 
         models.append({
             "nim_model": nim_id,
@@ -695,12 +887,13 @@ def build_cache(bfcl: dict[str, float], arena_elo: dict[str, dict[str, float]]) 
             "watch_out_for": profile["watch_out_for"],
             "best_deployment": profile["best_deployment"],
             "primary_benchmarks": profile["primary_benchmarks"],
+            "intent_hints": profile.get("intent_hints", []),
             "scores": scores,
         })
 
     return {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "schema_version": "4",
+        "schema_version": "5",
         "sources": {
             "bfcl": BFCL_CSV_URL,
             "arena_elo": ARENA_ELO_ROWS_URL,
@@ -774,6 +967,7 @@ def merge_cache(existing: Cache | None, fresh: Cache) -> Cache:
             "watch_out_for": fresh_m["watch_out_for"],
             "best_deployment": fresh_m["best_deployment"],
             "primary_benchmarks": fresh_m["primary_benchmarks"],
+            "intent_hints": fresh_m.get("intent_hints", []),
             "scores": merged_scores,
         })
 
@@ -798,21 +992,27 @@ def write_cache(cache: Cache, path: Path, dry_run: bool) -> None:
 
 
 def print_summary(cache: Cache) -> None:
-    print("\nModel capability summary (raw values; tier in parens):")
-    print(f"  {'NIM model':<45} {'BFCL':<14} {'overall':<14} {'coding':<14} {'hard_prompts'}")
-    print("  " + "-" * 102)
+    print("\nModel capability summary (raw value, tier, source) — '*' marks inferred-from-ancestor:")
+    print(f"  {'NIM model':<45} {'BFCL':<16} {'overall':<16} {'coding':<16} {'hard_prompts'}")
+    print("  " + "-" * 110)
     for m in cache["models"]:
-        bfcl = m["scores"].get("bfcl_v4")
-        bfcl_cell = f"{bfcl['percent']} ({bfcl['tier']})" if bfcl else "—"
-        arena = m["scores"].get("arena_elo", {})
+        def _bfcl_cell(score: BfclScore | None) -> str:
+            if not score:
+                return "—"
+            marker = "*" if score["source"] != "direct" else ""
+            return f"{score['percent']} ({score['tier']}){marker}"
 
-        def _cell(cat: str) -> str:
-            s = arena.get(cat)
-            return f"{s['raw']} ({s['tier']})" if s else "—"
+        def _arena_cell(cat: str) -> str:
+            s = m["scores"].get("arena_elo", {}).get(cat)
+            if not s:
+                return "—"
+            marker = "*" if s["source"] != "direct" else ""
+            return f"{s['raw']} ({s['tier']}){marker}"
 
+        bfcl_cell = _bfcl_cell(m["scores"].get("bfcl_v4"))
         print(
-            f"  {m['nim_model']:<45} {bfcl_cell:<14} "
-            f"{_cell('overall'):<14} {_cell('coding'):<14} {_cell('hard_prompts')}"
+            f"  {m['nim_model']:<45} {bfcl_cell:<16} "
+            f"{_arena_cell('overall'):<16} {_arena_cell('coding'):<16} {_arena_cell('hard_prompts')}"
         )
         if m["strong_at"]:
             hint = m["strong_at"][0]
