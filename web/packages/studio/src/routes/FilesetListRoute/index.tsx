@@ -14,9 +14,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ActionMenu } from '@studio/routes/FilesetListRoute/ActionMenu';
 import { PanelManagement } from '@studio/routes/FilesetListRoute/PanelManagement';
 import {
-  getDatasetDetailRoute,
   getFilesetDetailsRoute,
-  getModelDetailRoute,
   getNewFilesetRoute,
   getWorkspaceFilesetsRoute,
 } from '@studio/routes/utils';
@@ -32,15 +30,8 @@ export const FilesetListRoute: FC = () => {
   });
 
   const getDatasetRoute = useCallback(
-    (dataset: FilesetOutput) => {
-      if (FILESET_DETAILS_ENABLED && dataset.purpose === 'dataset') {
-        return getDatasetDetailRoute(workspace, dataset.name);
-      }
-      if (FILESET_DETAILS_ENABLED && dataset.purpose === 'model') {
-        return getModelDetailRoute(workspace, dataset.name);
-      }
-      return getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true }));
-    },
+    (dataset: FilesetOutput) =>
+      getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true })),
     [workspace]
   );
 

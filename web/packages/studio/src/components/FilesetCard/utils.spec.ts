@@ -8,11 +8,11 @@ import {
   type LocalStorageConfig,
   type NGCStorageConfig,
 } from '@nemo/sdk/generated/platform/schema';
-import { getModelSource, isRootReadme, parseReadme } from '@studio/routes/ModelDetailRoute/utils';
+import { getFilesetSource, isRootReadme, parseReadme } from '@studio/components/FilesetCard/utils';
 
 const makeFileset = (storage: FilesetOutput['storage']): FilesetOutput => ({
   id: 'fs',
-  name: 'my-model',
+  name: 'my-fileset',
   workspace: 'ws',
   description: '',
   purpose: FilesetPurpose.model,
@@ -54,9 +54,9 @@ describe('parseReadme', () => {
   });
 });
 
-describe('getModelSource', () => {
+describe('getFilesetSource', () => {
   it('derives source from a Hugging Face repo_id', () => {
-    const source = getModelSource(
+    const source = getFilesetSource(
       makeFileset({
         type: 'huggingface',
         repo_id: 'meta-llama/Llama-2-7b',
@@ -66,7 +66,7 @@ describe('getModelSource', () => {
   });
 
   it('derives source from an NGC org/team/target', () => {
-    const source = getModelSource(
+    const source = getFilesetSource(
       makeFileset({
         type: 'ngc',
         org: 'nvidia',
@@ -81,12 +81,12 @@ describe('getModelSource', () => {
   });
 
   it('falls back to workspace/name for local storage', () => {
-    const source = getModelSource(
+    const source = getFilesetSource(
       makeFileset({
         type: 'local',
         path: '/some/path',
       } as LocalStorageConfig)
     );
-    expect(source).toEqual({ path: 'ws/my-model', creatorSlug: 'ws' });
+    expect(source).toEqual({ path: 'ws/my-fileset', creatorSlug: 'ws' });
   });
 });

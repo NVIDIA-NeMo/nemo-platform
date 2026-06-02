@@ -45,17 +45,11 @@ import {
 } from '@nvidia/foundations-react-core';
 import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import { useSampleDatasetFiles } from '@studio/api/datasets/useSampleDatasetFiles';
-import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { SAMPLE_DATASETS, SampleDataset } from '@studio/constants/sampleDatasets';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
-import {
-  getDatasetDetailRoute,
-  getFilesetDetailsRoute,
-  getModelDetailRoute,
-  getWorkspaceFilesetsRoute,
-} from '@studio/routes/utils';
+import { getFilesetDetailsRoute, getWorkspaceFilesetsRoute } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
   isHuggingFaceUrl,
@@ -411,14 +405,6 @@ export const FilesetNewRoute: FC = () => {
       }
 
       setIsSubmitPending(false);
-      if (FILESET_DETAILS_ENABLED && fileset.purpose === FilesetPurpose.dataset) {
-        navigate(getDatasetDetailRoute(workspace, fileset.name));
-        return;
-      }
-      if (FILESET_DETAILS_ENABLED && fileset.purpose === FilesetPurpose.model) {
-        navigate(getModelDetailRoute(workspace, fileset.name));
-        return;
-      }
       navigate(
         getFilesetDetailsRoute(
           workspace,

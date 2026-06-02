@@ -3,7 +3,10 @@
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import {
+  useFilesListFilesetFiles,
+  useFilesRetrieveFileset,
+} from '@nemo/sdk/generated/platform/api';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
@@ -86,19 +89,41 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
     data: filesResponse,
     isPending: isFilesPending,
     isFetching: isFilesFetching,
+    isError: isFilesError,
   } = useFilesListFilesetFiles(datasetworkspace || '', datasetName || '', undefined, {
     query: { enabled: showDatasetPanel },
   });
   const filesList = filesResponse?.data;
 
+  // Fetch the fileset record so the Card tab can render its description,
+  // storage source, and README frontmatter.
+  const {
+    data: fileset,
+    isPending: isFilesetPending,
+    isError: isFilesetError,
+  } = useFilesRetrieveFileset(datasetworkspace || '', datasetName || '', {
+    query: { enabled: showDatasetPanel },
+  });
+
   // Dataset panel handlers
+  //
+  // Drive both `isDatasetPanelOpen` (the SidePanel's controlled `open` prop)
+  // and `animatingDatasetId` (which keeps the panel mounted during the close
+  // animation) to false synchronously here. If we only navigate and rely on
+  // the URL → useParams → useEffect chain to flip `isDatasetPanelOpen`, the
+  // foundations SidePanel briefly observes `open=true` + `isClosing=false`
+  // right after its internal close animation completes and *reopens* the
+  // native dialog. That triggers a second close animation — the "flash of
+  // another side panel closing" we saw before.
   const handleDatasetPanelClose = () => {
+    setIsDatasetPanelOpen(false);
+    setAnimatingDatasetId(undefined);
     navigate(generatePath(ROUTES.workspace.filesets, { workspace }));
   };
 
   const handleDatasetPanelOpenChange = (open: boolean) => {
     if (!open && !datasetIdFromUrl) {
-      setAnimatingDatasetId(undefined); // Safe to unmount
+      setAnimatingDatasetId(undefined);
     }
   };
 
@@ -113,8 +138,11 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
 
   const decodedFilePath = animatingFilePath ? decodeURIComponent(animatingFilePath) : '';
 
-  // File panel handlers
+  // File panel handlers. Same sync-state-then-navigate pattern as the dataset
+  // panel above, to prevent a reopen-then-close double animation.
   const handleFilePanelClose = () => {
+    setIsFilePanelOpen(false);
+    setAnimatingFilePath(undefined);
     const folderPathFromFile = decodedFilePath.split('/').slice(0, -1).join('/');
     navigate(
       getFilesetDetailsRoute(
@@ -126,6 +154,10 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   };
 
   const handleFilePanelOutsideClick = () => {
+    setIsFilePanelOpen(false);
+    setAnimatingFilePath(undefined);
+    setIsDatasetPanelOpen(false);
+    setAnimatingDatasetId(undefined);
     navigate(generatePath(ROUTES.workspace.filesets, { workspace }));
   };
 
@@ -177,6 +209,10 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
           filesList={filesList}
           isLoading={isFilesPending}
           isFilesFetching={isFilesFetching}
+          isFilesError={isFilesError}
+          fileset={fileset}
+          isFilesetLoading={isFilesetPending}
+          isFilesetError={isFilesetError}
           onFolderChange={handleFolderClick}
           onFileSelect={handleFileSelect}
           onClose={handleDatasetPanelClose}

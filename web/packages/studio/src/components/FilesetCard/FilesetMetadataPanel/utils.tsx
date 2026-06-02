@@ -3,8 +3,8 @@
 
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Anchor } from '@nvidia/foundations-react-core';
-import { TagList } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/TagList';
-import { getModelSource } from '@studio/routes/ModelDetailRoute/utils';
+import { TagList } from '@studio/components/FilesetCard/FilesetMetadataPanel/TagList';
+import { getFilesetSource } from '@studio/components/FilesetCard/utils';
 import { formatStorageBackendLabel } from '@studio/util/storageBackend';
 import { type ReactNode } from 'react';
 
@@ -27,7 +27,7 @@ export const getMetadataSections = (
     { value: 'source', title: 'Source', rows: getSourceRows(fileset) },
   ];
 
-  const detailsRows = getModelCardRows(readmeMetadata);
+  const detailsRows = getReadmeDetailRows(readmeMetadata);
   if (detailsRows.length > 0) {
     sections.push({ value: 'details', title: 'Details', rows: detailsRows });
   }
@@ -37,7 +37,7 @@ export const getMetadataSections = (
 
 const getSourceRows = (fileset: FilesetOutput): MetadataRow[] => {
   const { storage } = fileset;
-  const source = getModelSource(fileset);
+  const source = getFilesetSource(fileset);
 
   const rows: MetadataRow[] = [
     { label: 'Storage', value: formatStorageBackendLabel(storage.type) ?? 'Unknown' },
@@ -74,7 +74,7 @@ const getSourceRows = (fileset: FilesetOutput): MetadataRow[] => {
   return rows;
 };
 
-const getModelCardRows = (metadata: Record<string, unknown> | undefined): MetadataRow[] => {
+const getReadmeDetailRows = (metadata: Record<string, unknown> | undefined): MetadataRow[] => {
   if (!metadata) return [];
 
   const rows: MetadataRow[] = [];

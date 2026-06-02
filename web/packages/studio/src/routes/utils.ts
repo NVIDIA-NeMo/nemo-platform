@@ -12,7 +12,6 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
-  FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
   INTAKE_ENABLED,
@@ -25,8 +24,6 @@ import {
 } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
-import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
-import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -45,9 +42,6 @@ export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
-
-export const gateFilesetDetailsRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(FILESET_DETAILS_ENABLED, routes);
 
 export const gateJobsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(JOBS_ENABLED, routes);
@@ -360,24 +354,6 @@ export const getFilesetDetailsRoute = (
   }
 
   return searchParams.size ? `${baseUrl}?${searchParams.toString()}` : baseUrl;
-};
-
-export const getDatasetDetailRoute = (
-  workspace: string,
-  datasetName: string,
-  options?: { tab?: DatasetDetailTab }
-) => {
-  const base = generatePath(ROUTES.workspace.datasetDetail, { workspace, datasetName });
-  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
-};
-
-export const getModelDetailRoute = (
-  workspace: string,
-  modelName: string,
-  options?: { tab?: ModelDetailTab }
-) => {
-  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
-  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {

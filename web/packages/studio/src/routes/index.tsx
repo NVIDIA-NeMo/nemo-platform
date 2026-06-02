@@ -27,7 +27,6 @@ import {
   gateDataDesignerRoutes,
   gateEvaluationBenchmarksRoutes,
   gateEvaluationRoutes,
-  gateFilesetDetailsRoutes,
   gateGuardrailsRoutes,
   gateInferenceProviderRoutes,
   gateIntakeRoutes,
@@ -96,16 +95,6 @@ const FilesetNewRoute = lazy(() =>
 // Route paths are kept for URL matching only
 const FilesetListRoute = lazy(() =>
   import('@studio/routes/FilesetListRoute').then((module) => ({ default: module.FilesetListRoute }))
-);
-const DatasetDetailRoute = lazy(() =>
-  import('@studio/routes/DatasetDetailRoute').then((module) => ({
-    default: module.DatasetDetailRoute,
-  }))
-);
-const ModelDetailRoute = lazy(() =>
-  import('@studio/routes/ModelDetailRoute').then((module) => ({
-    default: module.ModelDetailRoute,
-  }))
 );
 const SecretsListRoute = lazy(() =>
   import('@studio/routes/SecretsListRoute').then((module) => ({ default: module.SecretsListRoute }))
@@ -433,26 +422,6 @@ export const routes: RouteObject[] = [
                     },
                   ],
                 },
-                ...gateFilesetDetailsRoutes([
-                  {
-                    path: ROUTES.workspace.datasetDetail,
-                    element: (
-                      <Suspense fallback={<Loading description="Loading Dataset..." />}>
-                        <DatasetDetailRoute />
-                      </Suspense>
-                    ),
-                    errorElement: <ErrorPanel title="Dataset" />,
-                  },
-                  {
-                    path: ROUTES.workspace.modelDetail,
-                    element: (
-                      <Suspense fallback={<Loading description="Loading Model..." />}>
-                        <ModelDetailRoute />
-                      </Suspense>
-                    ),
-                    errorElement: <ErrorPanel title="Model" />,
-                  },
-                ]),
               ]),
               ...gateSecretsRoutes([
                 {

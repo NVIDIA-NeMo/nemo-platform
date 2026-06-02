@@ -11,6 +11,8 @@ export interface ReadmeBodyProps {
   isContentLoading: boolean;
   isContentError: boolean;
   content: string | undefined;
+  filesErrorMessage?: string;
+  noReadmeMessage?: string;
 }
 
 export const ReadmeBody: FC<ReadmeBodyProps> = ({
@@ -19,11 +21,13 @@ export const ReadmeBody: FC<ReadmeBodyProps> = ({
   isContentLoading,
   isContentError,
   content,
+  filesErrorMessage = 'Failed to load files.',
+  noReadmeMessage = 'No README.md found at the root of this fileset.',
 }) => {
   if (isFilesError) {
     return (
       <Flex className="min-h-80" align="center" justify="center">
-        <Text className="text-feedback-danger">Failed to load model files.</Text>
+        <Text className="text-feedback-danger">{filesErrorMessage}</Text>
       </Flex>
     );
   }
@@ -31,7 +35,7 @@ export const ReadmeBody: FC<ReadmeBodyProps> = ({
   if (!readmePath) {
     return (
       <Flex className="min-h-80" align="center" justify="center">
-        <Text color="secondary">No README.md found at the root of this model fileset.</Text>
+        <Text color="secondary">{noReadmeMessage}</Text>
       </Flex>
     );
   }

@@ -4,25 +4,33 @@
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { ReadmeBody } from '@studio/routes/ModelDetailRoute/ModelCardTab/ReadmeBody';
-import { ModelMetadataPanel } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel';
-import { isRootReadme, parseReadme } from '@studio/routes/ModelDetailRoute/utils';
+import { FilesetMetadataPanel } from '@studio/components/FilesetCard/FilesetMetadataPanel';
+import { ReadmeBody } from '@studio/components/FilesetCard/ReadmeBody';
+import { isRootReadme, parseReadme } from '@studio/components/FilesetCard/utils';
 import { useMemo, type FC } from 'react';
 
-export interface ModelCardTabProps {
+export interface FilesetCardProps {
   workspace: string;
-  modelName: string;
+  filesetName: string;
   fileset: FilesetOutput;
   files: FilesetFileOutput[] | undefined;
   isFilesError: boolean;
+  testId?: string;
+  metadataPanelTestId?: string;
+  noReadmeMessage?: string;
+  filesErrorMessage?: string;
 }
 
-export const ModelCardTab: FC<ModelCardTabProps> = ({
+export const FilesetCard: FC<FilesetCardProps> = ({
   workspace,
-  modelName,
+  filesetName,
   fileset,
   files,
   isFilesError,
+  testId,
+  metadataPanelTestId,
+  noReadmeMessage,
+  filesErrorMessage,
 }) => {
   const readmePath = useMemo(() => files?.find(isRootReadme)?.path, [files]);
 
@@ -32,7 +40,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
     isError: isContentError,
   } = useDatasetFileContent({
     workspace,
-    name: modelName,
+    name: filesetName,
     path: readmePath ?? '',
     enabled: Boolean(readmePath),
   });
@@ -47,7 +55,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
       cols={{ base: 1, xl: 12 }}
       gap="density-xl"
       className="w-full items-start"
-      data-testid="model-card-tab"
+      data-testid={testId}
     >
       <GridItem
         cols={{ lg: 8 }}
@@ -55,7 +63,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
       >
         <Stack gap="density-md">
           {fileset.description && (
-            <Text kind="body/regular/md" data-testid="model-card-fileset-description">
+            <Text kind="body/regular/md" data-testid={testId ? `${testId}-description` : undefined}>
               {fileset.description}
             </Text>
           )}
@@ -65,11 +73,17 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
             isContentLoading={isContentLoading}
             isContentError={isContentError}
             content={parsed?.content}
+            noReadmeMessage={noReadmeMessage}
+            filesErrorMessage={filesErrorMessage}
           />
         </Stack>
       </GridItem>
       <GridItem cols={{ lg: 4 }} className="min-w-0">
-        <ModelMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+        <FilesetMetadataPanel
+          fileset={fileset}
+          readmeMetadata={parsed?.metadata}
+          testId={metadataPanelTestId}
+        />
       </GridItem>
     </Grid>
   );

@@ -45,12 +45,12 @@ export const parseReadme = (content: string): ParsedReadme => {
   return { content: body };
 };
 
-export interface ModelSource {
+export interface FilesetSource {
   path: string;
   creatorSlug: string;
 }
 
-export const getModelSource = (fileset: FilesetOutput): ModelSource | undefined => {
+export const getFilesetSource = (fileset: FilesetOutput): FilesetSource | undefined => {
   const { storage } = fileset;
 
   if (storage.type === 'huggingface' && 'repo_id' in storage && storage.repo_id) {

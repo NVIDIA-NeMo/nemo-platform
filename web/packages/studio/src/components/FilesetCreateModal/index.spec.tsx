@@ -230,7 +230,7 @@ describe('FilesetCreateModal', () => {
   });
 
   describe('navigation after create', () => {
-    it('Dataset + Local navigates to dataset detail Files tab', async () => {
+    it('Dataset + Local navigates to the fileset details side-panel route', async () => {
       const navigate = vi.fn();
       mockUseNavigate(navigate);
       mockMutate.mockResolvedValue({
@@ -255,12 +255,12 @@ describe('FilesetCreateModal', () => {
       await user.click(screen.getByRole('button', { name: 'Create Dataset' }));
       await waitFor(() => {
         expect(navigate).toHaveBeenCalledWith(
-          expect.stringContaining('/workspaces/default/datasets/mydataset?tab=files')
+          expect.stringContaining('/workspaces/default/filesets/default%2Fmydataset')
         );
       });
     });
 
-    it('Model + Local navigates to model detail Files tab', async () => {
+    it('Model + Local navigates to the fileset details side-panel route', async () => {
       const navigate = vi.fn();
       mockUseNavigate(navigate);
       mockMutate.mockResolvedValue({
@@ -284,7 +284,7 @@ describe('FilesetCreateModal', () => {
       await user.click(screen.getByRole('button', { name: 'Create Model Fileset' }));
       await waitFor(() => {
         expect(navigate).toHaveBeenCalledWith(
-          expect.stringContaining('/workspaces/default/models/mymodel?tab=files')
+          expect.stringContaining('/workspaces/default/filesets/default%2Fmymodel')
         );
       });
     });
