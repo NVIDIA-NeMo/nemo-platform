@@ -3,7 +3,10 @@
 
 import { Button, Card, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
@@ -13,6 +16,7 @@ import {
   useCallback,
   useState,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 interface PromptSuggestion {
   title: string;
@@ -63,12 +67,18 @@ const PromptCard = ({
 const LandingComposer = ({
   input,
   onChange,
+  onSubmit,
 }: {
   input: string;
   onChange: (value: string) => void;
+  onSubmit: (prompt: string) => void;
 }) => {
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    const prompt = input.trim();
+    if (!prompt) return;
+
+    onSubmit(prompt);
   };
 
   return (
@@ -107,6 +117,8 @@ const LandingComposer = ({
 };
 
 export const DashboardLandingRoute: FC = () => {
+  const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const [input, setInput] = useState('');
 
   useBreadcrumbs({
@@ -116,6 +128,14 @@ export const DashboardLandingRoute: FC = () => {
   const handlePromptSelect = useCallback((prompt: string) => {
     setInput(prompt);
   }, []);
+
+  const handleSubmit = useCallback(
+    (prompt: string) => {
+      const state: ClaudeCodeChatRouteState = { initialPrompt: prompt };
+      navigate(getClaudeCodeChatRoute(workspace), { state });
+    },
+    [navigate, workspace]
+  );
 
   return (
     <AccessibleTitle title="Dashboard">
@@ -127,7 +147,7 @@ export const DashboardLandingRoute: FC = () => {
             </Text>
           </Flex>
 
-          <LandingComposer input={input} onChange={setInput} />
+          <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
 
           <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
             {PROMPT_SUGGESTIONS.map((suggestion) => (

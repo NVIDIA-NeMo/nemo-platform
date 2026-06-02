@@ -86,6 +86,9 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
 
+export const gateCodingAgentStudioRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(CODING_AGENT_STUDIO_ENABLED, routes);
+
 export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DEPLOYMENTS_ENABLED, routes);
 
@@ -457,6 +460,10 @@ export const getModelChatRoute = (model: NamedEntityRef) => {
 
 export const getAgentsListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentsList, { workspace });
+};
+
+export const getClaudeCodeChatRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.claudeCodeChat, { workspace });
 };
 
 export const getAgentDetailRoute = (workspace: string, agentName: string) => {

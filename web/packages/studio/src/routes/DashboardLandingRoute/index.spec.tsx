@@ -6,14 +6,29 @@ import { DashboardLandingRoute } from '@studio/routes/DashboardLandingRoute';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { createMemoryRouter, generatePath, RouterProvider } from 'react-router';
+import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
 
 const workspace = 'default';
+const CHAT_ROUTE_TEST_ID = 'chat-route';
+
+const ChatRouteProbe = () => {
+  const location = useLocation();
+  const state = location.state as { initialPrompt?: string } | null;
+
+  return (
+    <div data-testid={CHAT_ROUTE_TEST_ID}>
+      {location.pathname}|{state?.initialPrompt}
+    </div>
+  );
+};
 
 const renderRoute = () => {
   const route = generatePath(ROUTES.workspace.dashboard, { workspace });
   const router = createMemoryRouter(
-    [{ path: ROUTES.workspace.dashboard, element: <DashboardLandingRoute /> }],
+    [
+      { path: ROUTES.workspace.dashboard, element: <DashboardLandingRoute /> },
+      { path: ROUTES.workspace.claudeCodeChat, element: <ChatRouteProbe /> },
+    ],
     {
       initialEntries: [route],
     }
@@ -62,5 +77,17 @@ describe('DashboardLandingRoute', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Send message' })).toBeEnabled();
     });
+  });
+
+  it('navigates to Claude Code chat with the submitted prompt', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    await user.type(await screen.findByRole('textbox', { name: 'Message Claude' }), 'Check repo');
+    await user.click(screen.getByRole('button', { name: 'Send message' }));
+
+    expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
+      `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
+    );
   });
 });
