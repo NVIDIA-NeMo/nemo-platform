@@ -6,22 +6,23 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import click
-import nemo_platform
-import pytest
 import typer
+import pytest
+from typer.testing import CliRunner
+from nemo_platform_plugin.cli import NemoCLI
+
+import nemo_platform
 from nemo_platform.cli.app import app
-from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
-from nemo_platform.cli.core.lazy_load import (
-    ManifestBackedNmpGroup,
-    attach_lazy_entries,
-    lazy_command_loader,
-    lazy_group_loader,
-    lazy_plugin_loader,
-)
 from nemo_platform.cli.manifest import TopLevelEntry, build_top_level_entries
 from nemo_platform.quickstart.config import QuickstartConfig
-from nemo_platform_plugin.cli import NemoCLI
-from typer.testing import CliRunner
+from nemo_platform.cli.core.lazy_load import (
+    ManifestBackedNmpGroup,
+    lazy_group_loader,
+    lazy_plugin_loader,
+    attach_lazy_entries,
+    lazy_command_loader,
+)
+from nemo_platform.cli.commands.manifest_registry import TOP_LEVEL_ENTRIES
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])
@@ -124,6 +125,31 @@ def test_entities_api_command_is_not_registered():
     assert result.exit_code != 0
     assert "No such command 'entities'" in result.stderr
     assert "nemo_platform.cli.commands.api.entities" not in sys.modules
+
+
+def test_members_api_command_is_nested_under_workspaces():
+    runner = CliRunner()
+    sys.modules.pop("nemo_platform.cli.commands.api.members", None)
+    sys.modules.pop("nemo_platform.cli.commands.api.workspaces", None)
+    sys.modules.pop("nemo_platform.cli.commands.api.workspaces.members", None)
+
+    result = runner.invoke(app, ["workspaces", "members", "--help"])
+
+    assert result.exit_code == 0
+    assert "Manage members" in result.stdout
+    assert "nemo_platform.cli.commands.api.workspaces.members" in sys.modules
+    assert "nemo_platform.cli.commands.api.members" not in sys.modules
+
+
+def test_members_api_command_is_not_registered_at_top_level():
+    runner = CliRunner()
+    sys.modules.pop("nemo_platform.cli.commands.api.members", None)
+
+    result = runner.invoke(app, ["members", "--help"])
+
+    assert result.exit_code != 0
+    assert "No such command 'members'" in result.stderr
+    assert "nemo_platform.cli.commands.api.members" not in sys.modules
 
 
 def test_root_help_excludes_hidden_commands_and_context_option():

@@ -64,14 +64,6 @@ API_TOP_LEVEL_ENTRIES = (
         hidden=False,
     ),
     TopLevelEntry(
-        import_path=f"{__package__}.members:app",
-        name="members",
-        help="Manage members.",
-        panel="Core plugins",
-        kind="group",
-        hidden=True,
-    ),
-    TopLevelEntry(
         import_path=f"{__package__}.models:app",
         name="models",
         help="Manage models.",

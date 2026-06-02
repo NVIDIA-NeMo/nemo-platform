@@ -856,7 +856,18 @@ resources:
       retrieve: get /apis/entities/v2/workspaces/{name}
       update: put /apis/entities/v2/workspaces/{name}
       delete: delete /apis/entities/v2/workspaces/{name}
-
+    subresources:
+      members:
+        models:
+          workspace_member: WorkspaceMember
+          workspace_member_list_response: WorkspaceMemberListResponse
+          workspace_member_param: WorkspaceMemberInput
+          workspace_member_update: WorkspaceMemberUpdate
+        methods:
+          list: get /apis/entities/v2/workspaces/{workspace}/members
+          create: post /apis/entities/v2/workspaces/{workspace}/members
+          update: put /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
+          delete: delete /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
   safe_synthesizer:
     standalone_api: true
     subresources:
@@ -953,18 +964,6 @@ resources:
       retrieve: get /apis/entities/v2/workspaces/{workspace}/projects/{name}
       update: put /apis/entities/v2/workspaces/{workspace}/projects/{name}
       delete: delete /apis/entities/v2/workspaces/{workspace}/projects/{name}
-  members:
-    standalone_api: true
-    models:
-      workspace_member: WorkspaceMember
-      workspace_member_list_response: WorkspaceMemberListResponse
-      workspace_member_param: WorkspaceMemberInput
-      workspace_member_update: WorkspaceMemberUpdate
-    methods:
-      list: get /apis/entities/v2/workspaces/{workspace}/members
-      create: post /apis/entities/v2/workspaces/{workspace}/members
-      update: put /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
-      delete: delete /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
   adapters:
     standalone_api: true
     models:

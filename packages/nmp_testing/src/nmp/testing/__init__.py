@@ -21,6 +21,7 @@ Utilities:
 - unique_email: Helper for generating unique test user emails
 - as_user: Helper for creating SDK client authenticated as a specific user
 - as_service_for: Helper for creating SDK client authenticated as a service principal
+- grant_workspace_role: Helper for granting workspace roles in auth-enabled tests
 - add_mock_provider: Helper for adding mock providers to IGW model cache
 - MockProviderResponse: Wrapper to configure dynamic mock LLM responses
 - wait_for_model_entity: Poll until a model entity is available in IGW's model cache
@@ -73,6 +74,7 @@ from .utils import (
     as_user,
     assert_exit_0,
     get_repo_root,
+    grant_workspace_role,
     run_nemo_local,
     short_unique_name,
     unique_email,
@@ -95,6 +97,7 @@ __all__ = [
     "unique_email",
     "as_service_for",
     "as_user",
+    "grant_workspace_role",
     "add_mock_provider",
     "MockProviderResponse",
     "wait_for_model_entity",
