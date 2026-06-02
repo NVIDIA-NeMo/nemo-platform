@@ -8,8 +8,8 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from data_designer_nemo.context import create_data_designer_context
-from data_designer_nemo.errors import NDDInvalidConfigError
-from data_designer_nemo.model_configs import get_model_configs
+from data_designer_nemo.errors import raise_if_errors
+from data_designer_nemo.runnable import resolve_runnable_config
 from nemo_data_designer_plugin.jobs.run import run_step_config_result
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
@@ -21,7 +21,6 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
 )
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.image import get_qualified_image
 from pydantic import BaseModel
 
@@ -47,17 +46,10 @@ class CreateJob(NemoJob):
     ) -> BaseModel:  # DataDesignerStepConfig
         async_sdk = cast(AsyncNeMoPlatform, async_sdk)
         input_spec = cast(DataDesignerJobConfig, input_spec)
-        dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
 
-        try:
-            await dd_ctx.validate(input_spec.config)
-            model_configs = get_model_configs(input_spec.config)
-            model_providers = await dd_ctx.get_model_providers(model_configs)
-        # Only catch-and-transform NDDInvalidConfigError here; other errors
-        # (e.g. NDDInternalError) should bubble out as 500s.
-        # TODO: raise a more generic error (not "job compilation")
-        except NDDInvalidConfigError as e:
-            raise PlatformJobCompilationError(str(e)) from e
+        dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
+        errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, input_spec.config)
+        raise_if_errors(errors)
 
         return DataDesignerStepConfig(
             job_config=input_spec,

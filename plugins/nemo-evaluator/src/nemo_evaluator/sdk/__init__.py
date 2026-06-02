@@ -3,16 +3,20 @@
 
 """Public Evaluator plugin SDK surface."""
 
-from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
-from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
+from typing import TYPE_CHECKING
+
 from nemo_evaluator.sdk.types import (
     ExecutionMode,
-    FilesetRef,
     PluginDatasetInput,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator.sdk.values.filesets import FilesetRef
+
+if TYPE_CHECKING:
+    from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource
+    from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 
 __all__ = [
     "AsyncEvaluator",
@@ -26,3 +30,32 @@ __all__ = [
     "FilesetRef",
     "PluginDatasetInput",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load resource classes only when callers access them.
+
+    Keep ``import nemo_evaluator.sdk`` lightweight for examples and SDK users
+    that only need value types such as ``FilesetRef`` or ``RunConfig``. Eagerly
+    importing ``resources`` pulls in ``sdk._executor``, which imports
+    ``jobs.evaluate`` and the plugin job/metric-bundle runtime. The lightweight
+    path is used by imports such as ``from nemo_evaluator.sdk import FilesetRef``;
+    preserve this lazy boundary so those imports do not initialize job code.
+    """
+    if name == "AsyncEvaluator":
+        from nemo_evaluator.sdk.resources import AsyncEvaluator
+
+        return AsyncEvaluator
+    if name == "Evaluator":
+        from nemo_evaluator.sdk.resources import Evaluator
+
+        return Evaluator
+    if name == "AsyncEvaluatorJobResource":
+        from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource
+
+        return AsyncEvaluatorJobResource
+    if name == "EvaluatorJobResource":
+        from nemo_evaluator.sdk.job_resources import EvaluatorJobResource
+
+        return EvaluatorJobResource
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

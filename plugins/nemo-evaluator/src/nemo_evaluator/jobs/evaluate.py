@@ -12,6 +12,7 @@ from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 from nemo_evaluator.jobs.utils import resolve_run_dataset
 from nemo_evaluator.resolvers import PlatformModelResolver
+from nemo_evaluator.sdk.values.filesets import FilesetRef
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, unbundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
 from nemo_evaluator_sdk import Evaluator
@@ -32,7 +33,6 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent

@@ -3,8 +3,6 @@
 
 """Dataset loader module for evaluator SDK runtime."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/datasets/loader.py
-
 import gzip
 import io
 import json

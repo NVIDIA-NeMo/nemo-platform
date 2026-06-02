@@ -113,25 +113,38 @@ def test_create_and_fetch_entity(client, db_session):
 
 ### 3. End-to-End (E2E) Tests
 
-**Objective**: Ensure that customers can orchestrate services together for common workflows and blueprints on real deployed infrastructure.
+**Objective**: Ensure that services work together correctly when running as a real platform process.
 
 **Characteristics**:
 
-- Test complete customer workflows on actual deployments
-- Uses testcontainers with Docker or Kubernetes backends
-- Multiple services working together with real infrastructure
-- Slowest tests (minutes to hours)
-- Requires deployed infrastructure (no mocking of Jobs or Inference)
+- Start the platform via `nemo services run` (real process, real ports)
+- Hit services with an external HTTP client (the NeMoPlatform SDK)
+- Test startup machinery, port binding, config resolution, and cross-service workflows
+- Slower than integration tests (tens of seconds for startup) but faster than Docker/K8s e2e
+
+**How to run**:
+
+```bash
+# Start services, run tests, stop services (all automatic)
+make test-e2e
+
+# Or manually
+uv run --frozen pytest e2e -v --run-e2e
+
+# If you already have services running
+NMP_BASE_URL=http://localhost:8080 uv run --frozen pytest e2e -v --run-e2e
+```
+
+**Prerequisites**: `make bootstrap` must have been run. The harness spawns `nemo services run`
+on a free port, so it won't conflict with your dev instance.
 
 **When to Write E2E Tests**:
 
 Write E2E tests when you need to:
 - **Verify cross-service workflows**: Test operations that span multiple services (e.g., create workspace → upload file → run job → get results)
-- **Test real infrastructure**: Validate jobs, inference, or storage backends that cannot be mocked
-- **Validate customer scenarios**: Test complete workflows as users would experience them
+- **Validate the real startup path**: Ensure config resolution, service discovery, and health checks work
 - **Test authentication/authorization**: Verify role-based access control across multiple services
-- **Test async workflows**: Validate long-running operations, job lifecycles, and event propagation
-- **Ensure service integration**: Verify that services work together correctly in production-like setups
+- **Ensure service integration**: Verify that services work together correctly end-to-end
 
 **What NOT to E2E Test**:
 - Single service APIs (use integration tests)
@@ -139,9 +152,7 @@ Write E2E tests when you need to:
 - Every permutation of inputs (E2E should focus on critical paths)
 - Implementation details (test user-visible behavior)
 
-For detailed E2E test documentation, configuration options, and best practices, see: **[e2e/README.md](e2e/README.md)**
-
-**Location**: `e2e/` (root-level for deployed infrastructure tests)
+**Location**: `e2e/` (root-level)
 
 ### 4. Infrastructure Tests
 
@@ -395,19 +406,12 @@ uv run python tools/run_all_tests.py
 make test-integration
 uv run pytest -v -m integration
 
-# End-to-end tests (Docker backend - recommended for local dev)
-make test-e2e-docker
-uv run pytest e2e --docker -v
+# End-to-end tests (starts nemo services automatically)
+make test-e2e
+uv run --frozen pytest e2e -v --run-e2e
 
-# End-to-end tests (Kubernetes backend: local minikube or custom cluster)
-make test-e2e-minikube
-uv run pytest e2e --kubernetes --cluster-url=https://my-cluster.example.com -v
-
-# E2E with custom registry and tag
-uv run pytest e2e --docker --registry=my-registry --tag=v1.0.0 -v
-
-# E2E with custom config
-uv run pytest e2e --docker --config=e2e/quickstart/custom.yaml -v
+# E2E against an already-running instance
+NMP_BASE_URL=http://localhost:8080 uv run --frozen pytest e2e -v --run-e2e
 
 # Regression tests
 make test-regression

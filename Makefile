@@ -266,11 +266,10 @@ test-all-script: ## Run all unit tests using the helper script (with summary)
 	@echo "Running all unit tests with summary..."
 	uv run --frozen python tools/run_all_tests.py
 
-# NOTE: disabled this in favour of the other test-e2e target (see below)
 .PHONY: test-e2e
-# test-e2e: ## Run Python end-to-end tests (customer workflows and blueprints)
-# 	@echo "Running Python end-to-end tests..."
-# 	uv run --frozen pytest -v -m e2e
+test-e2e: ## Run e2e tests against nemo services (starts/stops services automatically)
+	@echo "Running e2e tests..."
+	uv run --frozen pytest e2e -v --run-e2e --junitxml=report.xml $(PYTEST_EXTRA)
 
 .PHONY: test-regression
 test-regression: ## Run Python regression tests (functional microservice baseline tests)

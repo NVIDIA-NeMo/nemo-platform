@@ -586,6 +586,21 @@ def _should_copy_optional_dependency_extra(extra_name: str, target_project_name:
     return True
 
 
+def _generated_optional_dependency_groups(optional: tomlkit.items.Table) -> set[str]:
+    """Return optional-dependency groups owned by the bundle generator."""
+    generated: set[str] = set()
+    saw_marker = False
+    for key, item in optional._value.body:
+        if key is None:
+            if isinstance(item, tomlkit.items.Comment) and item.as_string().strip() == GENERATED_BUNDLE_GROUP_COMMENT:
+                saw_marker = True
+            continue
+        if saw_marker:
+            generated.add(key.key)
+        saw_marker = False
+    return generated
+
+
 def _merge_matching_project_optional_dependencies(
     target_project: dict, source_project: dict, patterns: list[str]
 ) -> None:
@@ -707,6 +722,7 @@ def _process_bundle_packages() -> None:
 
         pyproject = tomlkit.loads(member_pyproject_path.read_text(encoding="utf-8"))
         optional = pyproject["project"].setdefault("optional-dependencies", tomlkit.table())
+        generated_optional_groups = _generated_optional_dependency_groups(optional)
 
         for pkg_name, pkg_config in bundle_config.items():
             deps_group = _bundle_deps_group(pkg_name, pkg_config)
@@ -759,7 +775,11 @@ def _process_bundle_packages() -> None:
                 self_ref_deps = [d for d in filtered_deps if d.startswith(self_ref_prefix)]
 
                 existing = list(optional.get(deps_group, []))
-                existing_regular = [d for d in existing if not d.startswith(self_ref_prefix)]
+                existing_regular = (
+                    []
+                    if deps_group in generated_optional_groups
+                    else [d for d in existing if not d.startswith(self_ref_prefix)]
+                )
                 existing_self_refs = [d for d in existing if d.startswith(self_ref_prefix)]
 
                 merged_regular = merge_dependencies(existing_regular, regular_deps)

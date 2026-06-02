@@ -22,6 +22,7 @@ from nemo_evaluator.jobs.evaluate import (
     EvaluateSpec,
 )
 from nemo_evaluator.resolvers import PlatformModelResolver, _parse_required_workspace_name
+from nemo_evaluator.sdk.values.filesets import FilesetRef
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     MetricBundlePackager,
@@ -31,6 +32,7 @@ from nemo_evaluator.shared.metric_bundles.bundles import (
     unbundle_metric,
 )
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
+from nemo_evaluator.tasks.evaluate import EvaluateTaskExitCode
 from nemo_evaluator.tasks.evaluate import main as evaluate_task_main
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -55,7 +57,6 @@ from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
@@ -974,3 +975,16 @@ class TestEvaluateTask:
         assert exit_code == 0
         get_task_sdk.assert_called_once_with("evaluator")
         run_task.assert_called_once_with(EvaluateJob, sdk=sdk)
+
+    def test_main_returns_setup_exit_code_when_task_sdk_fails(self, mocker: MockerFixture) -> None:
+        get_task_sdk = mocker.patch(
+            "nemo_evaluator.tasks.evaluate.get_task_sdk",
+            side_effect=RuntimeError("boom"),
+        )
+        run_task = mocker.patch("nemo_evaluator.tasks.evaluate.run_task")
+
+        exit_code = evaluate_task_main()
+
+        assert exit_code == EvaluateTaskExitCode.SDK_INITIALIZATION_FAILED
+        get_task_sdk.assert_called_once_with("evaluator")
+        run_task.assert_not_called()

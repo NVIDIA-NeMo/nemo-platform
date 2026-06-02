@@ -102,6 +102,11 @@ const DatasetDetailRoute = lazy(() =>
     default: module.DatasetDetailRoute,
   }))
 );
+const ModelDetailRoute = lazy(() =>
+  import('@studio/routes/ModelDetailRoute').then((module) => ({
+    default: module.ModelDetailRoute,
+  }))
+);
 const SecretsListRoute = lazy(() =>
   import('@studio/routes/SecretsListRoute').then((module) => ({ default: module.SecretsListRoute }))
 );
@@ -437,6 +442,15 @@ export const routes: RouteObject[] = [
                       </Suspense>
                     ),
                     errorElement: <ErrorPanel title="Dataset" />,
+                  },
+                  {
+                    path: ROUTES.workspace.modelDetail,
+                    element: (
+                      <Suspense fallback={<Loading description="Loading Model..." />}>
+                        <ModelDetailRoute />
+                      </Suspense>
+                    ),
+                    errorElement: <ErrorPanel title="Model" />,
                   },
                 ]),
               ]),

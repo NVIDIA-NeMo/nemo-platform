@@ -323,6 +323,71 @@ dependencies = ["openai>=2"]
     assert not wrapper_updated["project"]["entry-points"]
 
 
+def test_process_bundle_packages_rebuilds_generated_dependency_groups(tmp_path: Path, monkeypatch) -> None:
+    wrapper_path = tmp_path / "packages/nemo_platform"
+    plugin_path = tmp_path / "plugins/nemo-evaluator"
+    runner_path = tmp_path / "packages/nmp_platform_runner"
+    (plugin_path / "src/nemo_evaluator").mkdir(parents=True)
+    (runner_path / "src/nmp/platform_runner").mkdir(parents=True)
+    wrapper_path.mkdir(parents=True)
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.uv.workspace]
+members = ["packages/nemo_platform"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (wrapper_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform"
+
+[project.optional-dependencies]
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-evaluator-plugin = ["nemo-evaluator-sdk", "nmp-evaluator"]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+services = ["nemo-platform[core-service]", "old-service"]
+
+[tool.bundle-package]
+nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator" }
+nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (plugin_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-evaluator-plugin"
+dependencies = ["nemo-evaluator-sdk", "nemo-platform-sdk", "nmp-common", "pydantic>=2.10.6"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (runner_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nmp-platform-runner"
+dependencies = ["rich>=14.1.0"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+    vendor_package._process_bundle_packages()
+
+    wrapper_updated = tomlkit.parse((wrapper_path / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = wrapper_updated["project"]["optional-dependencies"]
+
+    assert list(optional["nemo-evaluator-plugin"]) == [
+        "nemo-evaluator-sdk",
+        "nemo-platform-sdk",
+        "nmp-common",
+        "pydantic>=2.10.6",
+    ]
+    assert list(optional["services"]) == ["rich>=14.1.0", "nemo-platform[core-service]"]
+
+
 def test_process_bundle_packages_inherits_requested_metadata(tmp_path: Path, monkeypatch) -> None:
     wrapper_path = tmp_path / "packages/nemo_platform"
     plugin_path = tmp_path / "plugins/nemo-switchyard"
