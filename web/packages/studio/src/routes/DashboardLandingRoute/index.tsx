@@ -128,7 +128,7 @@ export const DashboardLandingRoute: FC = () => {
               <Boxes size={24} />
             </div>
             <Text kind="body/bold/2xl" className="text-center">
-              What should we build in nemo-platform?
+              What would you like to do?
             </Text>
           </div>
 

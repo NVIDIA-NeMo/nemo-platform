@@ -30,7 +30,7 @@ describe('DashboardLandingRoute', () => {
   it('renders the dashboard landing page', async () => {
     renderRoute();
 
-    expect(await screen.findByText('What should we build in nemo-platform?')).toBeInTheDocument();
+    expect(await screen.findByText('What would you like to do?')).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Message Claude' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Explore repo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Draft a change/ })).toBeInTheDocument();
