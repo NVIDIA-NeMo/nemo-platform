@@ -28,25 +28,19 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   // normal stacking context, so toasts rendered as ordinary fixed-position
   // children disappear behind any open modal's backdrop.
   //
-  // Fix: render the toast container as a manual Popover. Popovers also enter
-  // the top layer, and "last opened wins" — re-issuing showPopover() promotes
-  // the container above any dialog that opened after it.
-  useEffect(() => {
+  // Fix: render the toast container as a manual Popover and call .showPopover()
+  // imperatively at addToast time. Popovers also enter the top layer, and
+  // "last opened wins" — re-issuing showPopover() promotes the container above
+  // any dialog that opened after the previous call. With no toasts, the
+  // popover stays open but renders nothing visible (no children inside).
+  const promoteToTopLayer = useCallback(() => {
     const el = containerRef.current;
-    // Feature-detect once. Older browsers fall back to z-index-only behaviour
+    // Feature-detect. Older browsers fall back to z-index-only behaviour
     // (broken under top-layer dialogs, same as before this fix).
     if (!el || typeof el.showPopover !== 'function') return;
-
-    const isOpen = el.matches(':popover-open');
-    if (toasts.length > 0) {
-      // Toggle to re-promote above any dialog that opened after the previous
-      // showPopover() — top-layer order is "last opened wins".
-      if (isOpen) el.hidePopover();
-      el.showPopover();
-    } else if (isOpen) {
-      el.hidePopover();
-    }
-  }, [toasts.length]);
+    if (el.matches(':popover-open')) el.hidePopover();
+    el.showPopover();
+  }, []);
 
   // Cleanup all timeouts when component unmounts to prevent state updates after unmount
   useEffect(() => {
@@ -92,6 +86,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
       const durationMs = rawDurationMs === false ? undefined : rawDurationMs;
       const newToastId = `toast-${crypto.randomUUID()}`;
 
+      promoteToTopLayer();
       setToasts((prevToasts) => [
         ...prevToasts,
         {
@@ -119,7 +114,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
 
       return newToastId;
     },
-    [removeToast]
+    [promoteToTopLayer, removeToast]
   );
 
   const contextValue: ToastContextValue = useMemo(
