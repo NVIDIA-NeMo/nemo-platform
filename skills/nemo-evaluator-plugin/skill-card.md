@@ -7,9 +7,9 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache-2.0 <br>
+Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers use this skill to configure, run, and troubleshoot NeMo Evaluator plugin jobs for inline metric execution and benchmark evaluation of models and agents. <br>
+Developers and engineers use this skill to operate the NeMo Evaluator plugin CLI, run inline metric evaluations, and submit evaluation jobs to clusters. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -25,7 +25,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
+**Output Type(s):** [Shell commands, Configuration instructions, API Calls] <br>
 **Output Format:** [Markdown with inline bash and Python code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
@@ -37,7 +37,7 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 internal skill evaluation task with 2 attempts per task (pass threshold: 50%). <br>
+Evaluated against 1 evaluation task with 2 attempts per task at a 50% pass threshold. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -62,10 +62,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 92% (+8%) | 94% (+12%) |
-| Discoverability | 2 | 61% (+27%) | 94% (+5%) |
-| Effectiveness | 2 | 98% (+7%) | 92% (+29%) |
-| Efficiency | 2 | 48% (+25%) | 92% (+7%) |
+| Correctness | 2 | 84% (-8%) | 95% (+45%) |
+| Discoverability | 2 | 34% (-27%) | 95% (+0%) |
+| Effectiveness | 2 | 92% (-5%) | 94% (+81%) |
+| Efficiency | 2 | 23% (-25%) | 93% (+2%) |
 
 ## Skill Version(s): <br>
 0.1.0 (source: pyproject.toml) <br>
