@@ -1,0 +1,510 @@
+{
+  "generated_at": "2026-06-01T16:14:13.553926+00:00",
+  "schema_version": "4",
+  "sources": {
+    "bfcl": "https://gorilla.cs.berkeley.edu/data_overall.csv",
+    "arena_elo": "https://datasets-server.huggingface.co/rows?dataset=lmarena-ai%2Fleaderboard-dataset&config=text&split=latest"
+  },
+  "benchmarks": {
+    "bfcl_v4": {
+      "full_name": "Berkeley Function Calling Leaderboard v4",
+      "url": "https://gorilla.cs.berkeley.edu/leaderboard.html",
+      "what_it_measures": "Whether a model can correctly decide which tool to call, with what arguments, and when not to call any tool at all \u2014 tested across single calls, parallel calls, multi-step sequences, and situations where calling a tool would be the wrong answer.",
+      "what_it_predicts": "How reliably your agent will invoke tools without hallucinating function names, fabricating arguments, or calling the wrong tool when the user's intent is ambiguous. A high score here means fewer silent failures in production where the agent confidently calls something that doesn't exist.",
+      "does_not_predict": "General reasoning quality or how well the model writes prose. A model can score poorly here and still be excellent at open-ended tasks that don't involve structured tool calls.",
+      "scale": "Reported as a percentage 0\u2013100%, higher is better. Current leaderboard top is ~77% (Claude Opus 4.5). This script buckets scores as top \u226570%, strong \u226555%, mid \u226535%, weak below that \u2014 editorial bands calibrated against the live distribution, not published by Berkeley.",
+      "primary_signal_for": [
+        "tool_calling",
+        "mcp_tools",
+        "api_agents"
+      ]
+    },
+    "swe_bench_verified": {
+      "full_name": "SWE-bench Verified",
+      "url": "https://www.swebench.com",
+      "what_it_measures": "Whether a model can read a real GitHub issue, understand an existing codebase it has never seen before, write a patch that fixes the issue, and pass the repo's existing test suite \u2014 all without human guidance.",
+      "what_it_predicts": "How well your agent will handle multi-step software tasks: reading unfamiliar code, making targeted edits, and not breaking things that were already working. Good signal for agents that interact with codebases rather than just generating isolated snippets.",
+      "does_not_predict": "Performance on short code-generation prompts, or on tasks outside software engineering. Also does not predict tool-calling accuracy.",
+      "scale": "% of issues resolved, higher is better. Top OSS models reach 40\u201355%.",
+      "primary_signal_for": [
+        "code_agents",
+        "software_tasks",
+        "repo_interaction"
+      ]
+    },
+    "arena_elo": {
+      "full_name": "LMSYS Chatbot Arena Elo (overall)",
+      "url": "https://lmarena.ai",
+      "what_it_measures": "How often real users, shown two anonymous model responses side by side, prefer one model over the other \u2014 aggregated across millions of head-to-head votes covering every topic imaginable.",
+      "what_it_predicts": "Whether the model will feel good to interact with in practice: clear writing, appropriate length, not over-hedging, following instructions without being obtuse. Good proxy for general-purpose agents whose output is prose the user will read directly.",
+      "does_not_predict": "Structured output quality, tool-calling accuracy, or correctness on any specific domain. Human preference can favor confident-sounding wrong answers over correct but uncertain ones.",
+      "scale": "Elo points, similar to chess ratings. Current leaderboard top is ~1500. This script buckets ratings as top \u22651450, strong \u22651350, mid \u22651250, weak below that \u2014 editorial bands calibrated against the live distribution, not published by LMSYS.",
+      "primary_signal_for": [
+        "general_purpose",
+        "conversational",
+        "instruction_following"
+      ]
+    },
+    "gpqa_diamond": {
+      "full_name": "Graduate-Level Google-Proof Q&A (Diamond set)",
+      "url": "https://arxiv.org/abs/2311.12022",
+      "what_it_measures": "Whether a model can answer questions that were written by PhD researchers to be hard enough that other experts in adjacent fields get them wrong \u2014 covering biology, chemistry, and physics. The 'Diamond' subset is the hardest tier.",
+      "what_it_predicts": "Deep multi-step reasoning and the ability to synthesize complex information without shortcuts. Relevant for agents that need to draw real conclusions from dense technical or scientific content, not just retrieve and reformat it.",
+      "does_not_predict": "Performance on everyday tasks, instruction following, or anything involving tool use. Overkill as a signal for most business agents.",
+      "scale": "% correct, higher is better. Human expert baseline is ~70%; top models reach 75\u201380%.",
+      "primary_signal_for": [
+        "reasoning",
+        "scientific_analysis",
+        "technical_depth"
+      ]
+    },
+    "ruler": {
+      "full_name": "RULER (Realistic and Unbiased Long-context Evaluation)",
+      "url": "https://arxiv.org/abs/2404.06654",
+      "what_it_measures": "Whether a model can actually find and use information buried deep in a long document \u2014 not just claim it supports a large context window. Tests retrieval, tracking multiple entities, and aggregating information across a long input.",
+      "what_it_predicts": "How much of the model's advertised context window you can actually rely on. A model claiming 128K context might only reliably use 50\u201370K. Critical for agents that process long documents, codebases, or conversation histories.",
+      "does_not_predict": "Quality on short inputs. A model can be excellent at short tasks and lose the thread badly at 60K tokens.",
+      "scale": "Score 0\u2013100; also reported as effective context length vs advertised length.",
+      "primary_signal_for": [
+        "long_context",
+        "document_analysis",
+        "rag"
+      ]
+    }
+  },
+  "models": [
+    {
+      "nim_model": "qwen/qwen3-235b-a22b",
+      "architecture_note": "235B sparse MoE, ~22B active parameters per forward pass",
+      "strong_at": [
+        "Calling multiple tools in a single turn without mixing up their arguments",
+        "Parallel tool invocation where the order of calls matters",
+        "Recovering gracefully when a tool returns an error instead of hallucinating a result"
+      ],
+      "watch_out_for": [
+        "Requires significant VRAM for self-hosted deployment despite low active params",
+        "Overkill for agents that only call one or two simple tools"
+      ],
+      "best_deployment": "cloud_api",
+      "primary_benchmarks": [
+        "bfcl_v4"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.4799,
+          "percent": "48%",
+          "tier": "mid",
+          "plain": "Gets tool calls right about 48% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+        },
+        "arena_elo": {
+          "chinese": {
+            "raw": 1380,
+            "tier": "strong",
+            "plain": "Rated 1380 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "coding": {
+            "raw": 1386,
+            "tier": "strong",
+            "plain": "Rated 1386 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "creative_writing": {
+            "raw": 1317,
+            "tier": "mid",
+            "plain": "Rated 1317 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1377,
+            "tier": "strong",
+            "plain": "Rated 1377 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "exclude_ties": {
+            "raw": 1332,
+            "tier": "mid",
+            "plain": "Rated 1332 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "expert": {
+            "raw": 1348,
+            "tier": "mid",
+            "plain": "Rated 1348 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "overall": {
+            "raw": 1366,
+            "tier": "strong",
+            "plain": "Rated 1366 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "qwen/qwen3-30b-a3b",
+      "architecture_note": "30B sparse MoE, ~3B active parameters \u2014 very fast inference",
+      "strong_at": [
+        "Tool-calling tasks where speed and cost matter more than perfection",
+        "High-throughput agents that run many short tool-calling loops per minute",
+        "Good baseline for tool-heavy agents before you know if you need the larger model"
+      ],
+      "watch_out_for": [
+        "Lower ceiling than the 235B for complex nested or parallel tool chains",
+        "May struggle with ambiguous tool selection when multiple tools fit the query"
+      ],
+      "best_deployment": "cloud_api_cost_sensitive",
+      "primary_benchmarks": [
+        "bfcl_v4"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.367,
+          "percent": "37%",
+          "tier": "mid",
+          "plain": "Gets tool calls right about 37% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+        },
+        "arena_elo": {
+          "chinese": {
+            "raw": 1356,
+            "tier": "strong",
+            "plain": "Rated 1356 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "coding": {
+            "raw": 1338,
+            "tier": "mid",
+            "plain": "Rated 1338 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "creative_writing": {
+            "raw": 1273,
+            "tier": "mid",
+            "plain": "Rated 1273 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1335,
+            "tier": "mid",
+            "plain": "Rated 1335 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "exclude_ties": {
+            "raw": 1261,
+            "tier": "mid",
+            "plain": "Rated 1261 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "expert": {
+            "raw": 1314,
+            "tier": "mid",
+            "plain": "Rated 1314 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "overall": {
+            "raw": 1317,
+            "tier": "mid",
+            "plain": "Rated 1317 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "qwen/qwen3-coder-30b-a3b-instruct",
+      "architecture_note": "30B MoE fine-tuned specifically on software engineering tasks",
+      "strong_at": [
+        "Navigating unfamiliar codebases and making targeted edits",
+        "Writing patches that don't break existing tests",
+        "Agents that interact with git, CI, or code review workflows"
+      ],
+      "watch_out_for": [
+        "Not the right choice for non-code tasks \u2014 general reasoning suffers from the specialization",
+        "Tool-calling accuracy is good but not best-in-class; use qwen3-235b if tools matter more than code"
+      ],
+      "best_deployment": "cloud_api",
+      "primary_benchmarks": [
+        "swe_bench_verified"
+      ],
+      "scores": {
+        "arena_elo": {
+          "chinese": {
+            "raw": 1357,
+            "tier": "strong",
+            "plain": "Rated 1357 Elo on Chinese prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "coding": {
+            "raw": 1413,
+            "tier": "strong",
+            "plain": "Rated 1413 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "creative_writing": {
+            "raw": 1336,
+            "tier": "mid",
+            "plain": "Rated 1336 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1364,
+            "tier": "strong",
+            "plain": "Rated 1364 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "exclude_ties": {
+            "raw": 1318,
+            "tier": "mid",
+            "plain": "Rated 1318 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "expert": {
+            "raw": 1337,
+            "tier": "mid",
+            "plain": "Rated 1337 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "overall": {
+            "raw": 1356,
+            "tier": "strong",
+            "plain": "Rated 1356 Elo on overall head-to-head preference \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "nvidia/llama-3.1-nemotron-ultra-253b",
+      "architecture_note": "253B dense model, NVIDIA post-trained on Llama 3.1 for reasoning",
+      "strong_at": [
+        "Multi-step reasoning over long documents without losing the thread",
+        "Technical and scientific analysis where intermediate reasoning steps matter",
+        "Agents that need to synthesize information from many retrieved chunks"
+      ],
+      "watch_out_for": [
+        "Very large model \u2014 cloud API is the practical deployment path for most teams",
+        "Slower inference than MoE alternatives; not ideal for latency-sensitive loops"
+      ],
+      "best_deployment": "cloud_api",
+      "primary_benchmarks": [
+        "gpqa_diamond",
+        "ruler"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.1,
+          "percent": "10%",
+          "tier": "weak",
+          "plain": "Tool-calling accuracy around 10% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
+        },
+        "arena_elo": {
+          "coding": {
+            "raw": 1312,
+            "tier": "mid",
+            "plain": "Rated 1312 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "creative_writing": {
+            "raw": 1315,
+            "tier": "mid",
+            "plain": "Rated 1315 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1344,
+            "tier": "mid",
+            "plain": "Rated 1344 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "exclude_ties": {
+            "raw": 1264,
+            "tier": "mid",
+            "plain": "Rated 1264 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "overall": {
+            "raw": 1319,
+            "tier": "mid",
+            "plain": "Rated 1319 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "nvidia/llama-3.3-nemotron-super-49b-v1",
+      "architecture_note": "49B dense model, NVIDIA post-trained on Llama 3.3; platform default for cloud agents",
+      "strong_at": [
+        "General-purpose agent work where you don't yet know the bottleneck",
+        "Reasonable tool-calling accuracy plus solid prose \u2014 a balanced starting point",
+        "The platform's curated default; well-tested across the agent build path"
+      ],
+      "watch_out_for": [
+        "Not specialized \u2014 a tool-calling specialist will beat it on heavy tool chains",
+        "Not the fastest \u2014 a smaller MoE wins on cost and latency for simple loops"
+      ],
+      "best_deployment": "cloud_api",
+      "primary_benchmarks": [
+        "arena_elo"
+      ],
+      "scores": {
+        "arena_elo": {
+          "coding": {
+            "raw": 1357,
+            "tier": "strong",
+            "plain": "Rated 1357 Elo on coding tasks \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "creative_writing": {
+            "raw": 1310,
+            "tier": "mid",
+            "plain": "Rated 1310 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1356,
+            "tier": "strong",
+            "plain": "Rated 1356 Elo on English prompts \u2014 competitive, reliable across the kinds of prompts real users send in this category."
+          },
+          "exclude_ties": {
+            "raw": 1292,
+            "tier": "mid",
+            "plain": "Rated 1292 Elo on head-to-head preference (excluding ties) \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "expert": {
+            "raw": 1320,
+            "tier": "mid",
+            "plain": "Rated 1320 Elo on expert-level prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "overall": {
+            "raw": 1338,
+            "tier": "mid",
+            "plain": "Rated 1338 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "meta/llama-3.3-70b-instruct",
+      "architecture_note": "70B dense model, widely deployed and well-understood",
+      "strong_at": [
+        "General-purpose instruction following across a wide range of tasks",
+        "Stable, predictable outputs \u2014 well-characterized by the community",
+        "Good starting point for any agent before you know its bottlenecks"
+      ],
+      "watch_out_for": [
+        "Not a specialist in any one area \u2014 if tool-calling or code quality is critical, use a specialist",
+        "Human preference scores well but that doesn't translate directly to agentic reliability"
+      ],
+      "best_deployment": "cloud_api_or_self_hosted",
+      "primary_benchmarks": [
+        "arena_elo"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.319,
+          "percent": "32%",
+          "tier": "weak",
+          "plain": "Tool-calling accuracy around 32% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
+        },
+        "arena_elo": {
+          "chinese": {
+            "raw": 1215,
+            "tier": "weak",
+            "plain": "Rated 1215 Elo on Chinese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "coding": {
+            "raw": 1269,
+            "tier": "mid",
+            "plain": "Rated 1269 Elo on coding tasks \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "creative_writing": {
+            "raw": 1252,
+            "tier": "mid",
+            "plain": "Rated 1252 Elo on creative writing \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "english": {
+            "raw": 1304,
+            "tier": "mid",
+            "plain": "Rated 1304 Elo on English prompts \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          },
+          "exclude_ties": {
+            "raw": 1201,
+            "tier": "weak",
+            "plain": "Rated 1201 Elo on head-to-head preference (excluding ties) \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "expert": {
+            "raw": 1224,
+            "tier": "weak",
+            "plain": "Rated 1224 Elo on expert-level prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "overall": {
+            "raw": 1275,
+            "tier": "mid",
+            "plain": "Rated 1275 Elo on overall head-to-head preference \u2014 workable, but expect to lose preference comparisons against top models in this category."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "microsoft/phi-4-mini-instruct",
+      "architecture_note": "Small dense model (~4B), optimized for quality-per-parameter",
+      "strong_at": [
+        "Fast, cheap inference for agents where latency is the bottleneck",
+        "Single-tool or low-complexity tool-calling loops",
+        "Edge or resource-constrained deployments"
+      ],
+      "watch_out_for": [
+        "Ceiling is lower than larger models for complex multi-tool orchestration",
+        "May miss subtle nuance in tool argument generation under ambiguous prompts"
+      ],
+      "best_deployment": "self_hosted_low_vram",
+      "primary_benchmarks": [
+        "arena_elo"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.2879,
+          "percent": "29%",
+          "tier": "weak",
+          "plain": "Tool-calling accuracy around 29% \u2014 well behind current competitive models. Consider a stronger model if precise tool invocation is the main job."
+        },
+        "arena_elo": {
+          "chinese": {
+            "raw": 1211,
+            "tier": "weak",
+            "plain": "Rated 1211 Elo on Chinese prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "coding": {
+            "raw": 1232,
+            "tier": "weak",
+            "plain": "Rated 1232 Elo on coding tasks \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "creative_writing": {
+            "raw": 1182,
+            "tier": "weak",
+            "plain": "Rated 1182 Elo on creative writing \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "english": {
+            "raw": 1231,
+            "tier": "weak",
+            "plain": "Rated 1231 Elo on English prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "exclude_ties": {
+            "raw": 1101,
+            "tier": "weak",
+            "plain": "Rated 1101 Elo on head-to-head preference (excluding ties) \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "expert": {
+            "raw": 1202,
+            "tier": "weak",
+            "plain": "Rated 1202 Elo on expert-level prompts \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          },
+          "overall": {
+            "raw": 1217,
+            "tier": "weak",
+            "plain": "Rated 1217 Elo on overall head-to-head preference \u2014 well below current competitive models. Consider a stronger model if this capability is the main job."
+          }
+        }
+      }
+    },
+    {
+      "nim_model": "qwen/qwen3-8b",
+      "architecture_note": "8B dense model with strong BFCL performance for its size class",
+      "strong_at": [
+        "Tool-calling on a single consumer GPU (fits in 12\u201316 GB VRAM)",
+        "Local development and prototyping before scaling to a larger model",
+        "Agents where self-hosting is non-negotiable and tools are the primary task"
+      ],
+      "watch_out_for": [
+        "Not competitive with larger models on complex reasoning chains",
+        "Context window reliability drops faster than in larger models"
+      ],
+      "best_deployment": "self_hosted_local_gpu",
+      "primary_benchmarks": [
+        "bfcl_v4"
+      ],
+      "scores": {
+        "bfcl_v4": {
+          "raw": 0.4043,
+          "percent": "40%",
+          "tier": "mid",
+          "plain": "Gets tool calls right about 40% of the time. Workable for single-tool or low-complexity agents; expect reliability issues with parallel calls or chained sequences."
+        }
+      }
+    }
+  ]
+}
