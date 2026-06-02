@@ -55,6 +55,7 @@ from nemo_evaluator_sdk.values import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator_sdk.values.params import DEFAULT_MAX_TOKENS
 from openai import AsyncOpenAI
 
 log = getLogger(__name__)
@@ -271,7 +272,7 @@ def _maybe_set_nim_default_max_tokens(
         return
     if "max_tokens" in request or "max_completion_tokens" in request:
         return
-    request["max_tokens"] = 4096
+    request["max_tokens"] = DEFAULT_MAX_TOKENS
 
 
 def _process_online_response(

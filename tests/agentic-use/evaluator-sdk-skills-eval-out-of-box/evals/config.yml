@@ -1,0 +1,14 @@
+schema_version: 1
+
+harbor:
+  task_source: evals_json
+  custom_dockerfile_mode: preserve
+  base_image_mode: disabled
+  agent_workdir: /app
+  runtime_env:
+    - NVIDIA_API_KEY
+  pre_agent_setup:
+    - /app/.venv/bin/nemo evaluator info
+
+grading:
+  mode: aces_default

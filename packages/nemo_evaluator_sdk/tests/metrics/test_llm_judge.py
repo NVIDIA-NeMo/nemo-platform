@@ -731,7 +731,7 @@ class TestLLMJudgeMetric:
 
         warn.assert_called_once()
         assert request["messages"][0]["content"] == "sample 1"
-        assert request["max_tokens"] == 1024
+        assert request["max_tokens"] == 32768
 
     def test_retry_with_max_completion_tokens_updates_request(self):
         metric = LLMJudgeMetric(model=_make_model(), scores=[_make_metric_score()])
@@ -749,7 +749,7 @@ class TestLLMJudgeMetric:
         request = metric._render_request({"prompt": "hello"}, {"output_text": "world"})
 
         assert "max_tokens" not in request
-        assert request["max_completion_tokens"] == 1024
+        assert request["max_completion_tokens"] == 32768
 
     @pytest.mark.asyncio
     async def test_metric_retries_with_max_completion_tokens(self, mocker: MockerFixture):

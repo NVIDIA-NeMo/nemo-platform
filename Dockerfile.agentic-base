@@ -1,28 +1,33 @@
 FROM ubuntu:24.04
 
-ARG CODEX_VERSION=0.130.0
+ARG CODEX_VERSION=0.136.0
+ARG NODE_VERSION=22.22.3
 ARG CURSOR_AGENT_VERSION=2026.05.09-0afadcc
 
 # Install system dependencies including Python 3.11.
 # Use manual deadsnakes PPA setup to avoid add-apt-repository network issues.
+# ripgrep/procps/bash/build-essential are required by Harbor/ACES agent bootstrap.
+# Node/Codex are pre-baked so Harbor/ACES agent bootstrap can skip per-trial
+# nvm/npm installs when `codex --version` is already available on PATH.
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-        curl \
-        ca-certificates \
-        gpg \
-        git \
-        build-essential \
-        nodejs \
-        npm && \
+    bash \
+    curl \
+    ca-certificates \
+    gpg \
+    git \
+    build-essential \
+    procps \
+    ripgrep && \
     curl -fsSL "https://keyserver.ubuntu.com/pks/lookup?op=get&search=0xF23C5A6CF475977595C89F51BA6932366A755776" \
-      | gpg --dearmor -o /usr/share/keyrings/deadsnakes.gpg && \
+    | gpg --dearmor -o /usr/share/keyrings/deadsnakes.gpg && \
     echo "deb [signed-by=/usr/share/keyrings/deadsnakes.gpg] https://ppa.launchpadcontent.net/deadsnakes/ppa/ubuntu noble main" \
-      > /etc/apt/sources.list.d/deadsnakes.list && \
+    > /etc/apt/sources.list.d/deadsnakes.list && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-        python3.11 \
-        python3.11-venv \
-        python3.11-dev && \
+    python3.11 \
+    python3.11-venv \
+    python3.11-dev && \
     rm -rf /var/lib/apt/lists/*
 
 # Install uv for Python package management
@@ -44,32 +49,48 @@ RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
 RUN useradd -m -u 1001 -s /bin/bash harbor && \
     mkdir -p /app /logs /installed-agent /data /var/lib/apt/lists/partial && \
     chown -R harbor:harbor \
-      /app /logs /installed-agent /data \
-      /var/lib/apt /var/cache/apt /var/lib/dpkg
+    /app /logs /installed-agent /data \
+    /var/lib/apt /var/cache/apt /var/lib/dpkg
+
+# Install Node and Codex as the Harbor agent user so Harbor's Codex adapter can
+# detect `codex --version` and skip its runtime nvm/npm bootstrap path.
+RUN runuser -u harbor -- env NODE_VERSION="${NODE_VERSION}" CODEX_VERSION="${CODEX_VERSION}" bash -lc 'set -eux; \
+    export NVM_DIR="$HOME/.nvm"; \
+    curl --retry 5 --retry-delay 2 --retry-all-errors --http1.1 -fsSL https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.2/install.sh | bash; \
+    . "$NVM_DIR/nvm.sh"; \
+    nvm install "$NODE_VERSION"; \
+    nvm alias default "$NODE_VERSION"; \
+    npm install -g "@openai/codex@$CODEX_VERSION"; \
+    mkdir -p "$HOME/.local/bin"; \
+    for bin in node npm npx codex; do \
+    ln -sfn "$(command -v "$bin")" "$HOME/.local/bin/$bin"; \
+    done; \
+    node --version; \
+    npm --version; \
+    codex --version'
 
 # Install Claude Code as the non-root harbor user, then wrap it so all calls
 # include --dangerously-skip-permissions (required in this containerized flow).
 RUN runuser -u harbor -- bash -lc "curl -fsSL https://claude.ai/install.sh | bash" && \
     mv /home/harbor/.local/bin/claude /home/harbor/.local/bin/claude-real && \
     printf '#!/bin/bash\nexec /home/harbor/.local/bin/claude-real --dangerously-skip-permissions "$@"\n' \
-      > /home/harbor/.local/bin/claude && \
+    > /home/harbor/.local/bin/claude && \
     chmod +x /home/harbor/.local/bin/claude && \
     chown harbor:harbor /home/harbor/.local/bin/claude /home/harbor/.local/bin/claude-real
 
 # Install pinned headless coding agents used by the agentic-use benchmark matrix.
 # Cursor Agent releases are published under
 # downloads.cursor.com/lab/<version>/linux/<arch>/agent-cli-package.tar.gz.
-RUN npm install -g "@openai/codex@${CODEX_VERSION}" && \
-    set -eux; \
+RUN set -eux; \
     case "$(uname -m)" in \
-        x86_64|amd64) cursor_arch="x64" ;; \
-        aarch64|arm64) cursor_arch="arm64" ;; \
-        *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
+    x86_64|amd64) cursor_arch="x64" ;; \
+    aarch64|arm64) cursor_arch="arm64" ;; \
+    *) echo "Unsupported architecture: $(uname -m)" >&2; exit 1 ;; \
     esac; \
     cursor_dir="/home/harbor/.local/share/cursor-agent/versions/${CURSOR_AGENT_VERSION}"; \
     mkdir -p "${cursor_dir}" /home/harbor/.local/bin; \
     curl -fSL "https://downloads.cursor.com/lab/${CURSOR_AGENT_VERSION}/linux/${cursor_arch}/agent-cli-package.tar.gz" \
-      | tar --strip-components=1 -xzf - -C "${cursor_dir}"; \
+    | tar --strip-components=1 -xzf - -C "${cursor_dir}"; \
     ln -sfn "${cursor_dir}/cursor-agent" /home/harbor/.local/bin/agent; \
     ln -sfn "${cursor_dir}/cursor-agent" /home/harbor/.local/bin/cursor-agent; \
     chown -R harbor:harbor /home/harbor/.local
@@ -129,27 +150,27 @@ EXPOSE 8080
 #
 # NVIDIA_API_KEY must be provided at runtime via ``docker run -e NVIDIA_API_KEY=...``
 ENTRYPOINT ["/bin/bash", "-c", "\
-cd /app && /app/.venv/bin/nemo services run > /tmp/nmp-api.log 2>&1 & API_PID=$!; \
-echo 'Started API server with PID: '$API_PID; \
-CONSECUTIVE_SUCCESS=0; \
-for i in {1..60}; do \
+    cd /app && /app/.venv/bin/nemo services run > /tmp/nmp-api.log 2>&1 & API_PID=$!; \
+    echo 'Started API server with PID: '$API_PID; \
+    CONSECUTIVE_SUCCESS=0; \
+    for i in {1..60}; do \
     if curl -s http://localhost:8080/status > /dev/null 2>&1; then \
-        CONSECUTIVE_SUCCESS=$((CONSECUTIVE_SUCCESS+1)); \
-        echo 'Health check passed ('$CONSECUTIVE_SUCCESS'/3)'; \
-        if [ $CONSECUTIVE_SUCCESS -ge 3 ]; then \
-            echo 'NeMo Platform API ready and stable'; \
-            break; \
-        fi; \
+    CONSECUTIVE_SUCCESS=$((CONSECUTIVE_SUCCESS+1)); \
+    echo 'Health check passed ('$CONSECUTIVE_SUCCESS'/3)'; \
+    if [ $CONSECUTIVE_SUCCESS -ge 3 ]; then \
+    echo 'NeMo Platform API ready and stable'; \
+    break; \
+    fi; \
     else \
-        CONSECUTIVE_SUCCESS=0; \
+    CONSECUTIVE_SUCCESS=0; \
     fi; \
     sleep 1; \
-done; \
-if [ $CONSECUTIVE_SUCCESS -lt 3 ]; then \
+    done; \
+    if [ $CONSECUTIVE_SUCCESS -lt 3 ]; then \
     echo 'API failed to become stable!'; \
     cat /tmp/nmp-api.log; \
     kill $API_PID 2>/dev/null; \
     exit 1; \
-fi; \
-exec runuser -u harbor -- \"$@\"", "--"]
+    fi; \
+    exec runuser -u harbor -- \"$@\"", "--"]
 CMD ["sleep", "infinity"]

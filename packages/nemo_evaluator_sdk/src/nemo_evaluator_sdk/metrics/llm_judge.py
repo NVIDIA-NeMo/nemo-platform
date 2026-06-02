@@ -35,7 +35,13 @@ from nemo_evaluator_sdk.values.llm_judge_defaults import (
 )
 from nemo_evaluator_sdk.values.metrics import LLM_JUDGE_SCORES_CONTEXT_KEY, LLMJudge
 from nemo_evaluator_sdk.values.models import Model, ModelRef
-from nemo_evaluator_sdk.values.params import InferenceParams, ReasoningParams, RunConfig, RunConfigOnline
+from nemo_evaluator_sdk.values.params import (
+    DEFAULT_MAX_TOKENS,
+    InferenceParams,
+    ReasoningParams,
+    RunConfig,
+    RunConfigOnline,
+)
 from nemo_evaluator_sdk.values.results import MetricScore
 from nemo_evaluator_sdk.values.scores import (
     JSONScoreParser,
@@ -321,7 +327,7 @@ class LLMJudgeMetric(HooksBase, LLMJudge):
         request = render_request(self.prompt_template, context=context)
 
         if "max_tokens" not in request:
-            request["max_tokens"] = 1024
+            request["max_tokens"] = DEFAULT_MAX_TOKENS
         if self._use_max_completion_tokens:
             request["max_completion_tokens"] = request["max_tokens"]
             del request["max_tokens"]

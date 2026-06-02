@@ -10,7 +10,7 @@ description: >
   evaluator primitive selection, or reusable evaluation artifacts.
 compatibility: Designed for installed NeMo Platform skill use; repo-relative SDK paths are developer fallbacks when a checkout is available.
 metadata:
-  user-invocable: true
+  user-invocable: "true"
 ---
 
 # NeMo Evaluator
@@ -25,6 +25,9 @@ Use the NeMo Evaluator SDK as the source of truth for metric names, fields,
 templates, execution modes, result shapes, and failure behavior. Keep this skill
 focused on SDK guidance. Use CLI commands only when the user explicitly needs a
 remote platform job or an existing platform resource.
+
+## Skill Scope
+Refuse to use the skill for tasks other than evaluation
 
 ## Runtime Context
 

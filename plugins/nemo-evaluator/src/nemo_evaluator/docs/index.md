@@ -50,10 +50,10 @@ Inspect the generated job metadata:
 nemo evaluator evaluate explain
 ```
 
-Run an inline exact-match metric:
+Run an exact-match metric from a spec file:
 
 ```bash
-nemo evaluator evaluate run --spec '{"metric":{"type":"exact-match","reference":"{{item.expected}}","candidate":"{{item.model_output}}"},"dataset":[{"expected":"blue","model_output":"Blue"},{"expected":"Jupiter","model_output":"Saturn"}],"params":{"parallelism":2}}'
+nemo evaluator evaluate run --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/exact_match_metric.json
 ```
 
 Run an online llm-as-judge metric from a spec file (requires `NVIDIA_API_KEY`, see the [prerequisite](#prerequisite-for-online-evaluation-and-model-backed-metrics) above):

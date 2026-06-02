@@ -113,8 +113,8 @@ ONLINE_CHAT_PROMPT_TEMPLATE = {"messages": [{"role": "user", "content": "{{item.
 
 
 model = Model(
-    url="https://integrate.api.nvidia.com/v1/chat/completions",
-    name=os.getenv("NEMO_DEFAULT_MODEL", "nvidia/nemotron-3-nano-30b-a3b"),
+    url="https://inference-api.nvidia.com/v1",
+    name=os.getenv("NEMO_DEFAULT_MODEL", "azure/openai/gpt-5.4"),
     # looks up NVIDIA_API_KEY by default - override via NMP_EVALUATOR_DEFAULT_API_KEY_SECRET
     api_key_secret=SecretRef(root=DEFAULT_API_KEY_SECRET),
 )
@@ -176,8 +176,7 @@ def extract_helpfulness_scores(
     """Extract aligned judge and human score arrays from metric-job rows.
 
     Args:
-        row_scores: Row-level metric-job results returned by ``Evaluator.run``
-            or ``client.evaluation.metric_jobs.results.row_scores.download``.
+        row_scores: Row-level metric-job results returned by ``Evaluator.run``.
         dimension: Dataset field and judge JSON key to compare.
         metric_ref: Optional metric key for benchmark rows where scores are
             already materialized in ``row.metrics``.
@@ -546,14 +545,14 @@ async def run_examples() -> None:
         None.
     """
     #### Local backend examples ####
-    await run_offline_local_exact_match_example()
-    await run_online_local_exact_match_example()
-    await run_offline_local_llm_judge_example()
+    # await run_offline_local_exact_match_example()
+    # await run_online_local_exact_match_example()
+    # await run_offline_local_llm_judge_example()
     await run_online_local_llm_judge_example()
-    await run_offline_local_benchmark_example()
-    await run_online_local_benchmark_example()
-    await run_local_benchmark_with_metric_failure_example()
-    await run_local_metric_with_template_failure_example()
+    # await run_offline_local_benchmark_example()
+    # await run_online_local_benchmark_example()
+    # await run_local_benchmark_with_metric_failure_example()
+    # await run_local_metric_with_template_failure_example()
 
 
 if __name__ == "__main__":

@@ -1,3 +1,8 @@
+---
+name: workspace-basic-cli-easy
+description: Use the NeMo Platform CLI to create and verify a basic workspace.
+---
+
 # Workspace Creation Test (CLI)
 
 You have access to the `nemo` CLI for NeMo Platform operations. Note: MCP tools are not available in this environment - you must use the CLI.

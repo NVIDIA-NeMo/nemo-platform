@@ -4,8 +4,8 @@ A NeMo Platform plugin that brings Evaluator SDK metric execution into the
 platform.
 
 The plugin exposes an `evaluator` service, CLI commands under `nemo evaluator`,
-an SDK accessor on `NeMoPlatform.evaluator`, and an `evaluator.run/evaluator.submit` for
-local plugin runs and durable platform submissions.
+an SDK accessor on `NeMoPlatform.evaluator`, and an `NeMoPlatform.evaluator.run/NeMoPlatform.evaluator.submit` for
+local plugin runs and durable platform submissions correspondingly.
 
 ## What it provides
 
@@ -50,7 +50,7 @@ Check that the plugin is installed:
 nemo evaluator info
 ```
 
-Inspect the registered job contract:
+Inspect the registered job spec contract:
 
 ```bash
 nemo evaluator evaluate explain

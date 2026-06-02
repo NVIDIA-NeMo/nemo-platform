@@ -9,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from nemo_evaluator_sdk.values.models import ReasoningParams
 
+DEFAULT_MAX_TOKENS = 32768
+
 
 class InferenceParams(BaseModel):
     """

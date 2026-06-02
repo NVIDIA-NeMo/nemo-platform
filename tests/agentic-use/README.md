@@ -18,12 +18,49 @@ In practice this translates to:
 2. a Docker environment that starts NeMo Platform services,
 3. a Python verifier (`tests/test_outputs.py`) that checks API state.
 
-This benchmark currently uses `tests/agentic-use/nat_runner.py` in AUT mode.
-`nat run` task-local workflows remain supported as a fallback (`--agent-backend workflow`),
-but are no longer the default evaluation target.
+The `workspace-basic-cli-easy` task is the current ACES Harbor Docker pilot.
+It runs through `astra-skill-eval evaluate`, uses `SKILL.md` plus
+`evals/evals.json` for normal ACES static/deep/live scoring, and reports the
+task pytest verifier as an additional custom metric.
 
-Harbor re-integration is intentionally deferred until NAT/Harbor compatibility
-work lands.
+Other tasks in this directory still use `tests/agentic-use/nat_runner.py` in AUT
+mode until they are migrated to the same ACES layout.
+
+### ACES Harbor pilot: `workspace-basic-cli-easy`
+
+Build the NeMo Platform eval base image whenever the repo or dependencies
+change:
+
+```bash
+docker build -f Dockerfile.agentic-base -t nmp-agentic-base:latest .
+```
+
+Run the pilot task with the normal ACES live-agent path, including with-skill
+and without-skill baseline:
+
+```bash
+ASTRA_SKILL_EVAL_DEBUG=1 \
+astra-skill-eval evaluate tests/agentic-use/workspace-basic-cli-easy \
+  --agent-eval -a codex \
+  --results-dir /tmp/astra-results \
+  --harbor-keep-jobs \
+  --env-mode docker
+```
+
+For full preflight signal, include static and LLM-as-judge skill checks:
+
+```bash
+ASTRA_SKILL_EVAL_DEBUG=1 \
+astra-skill-eval evaluate tests/agentic-use/workspace-basic-cli-easy \
+  --static --deep --agent-eval -a codex \
+  --results-dir /tmp/astra-results \
+  --harbor-keep-jobs \
+  --env-mode docker
+```
+
+The task config uses `grading.mode: aces_plus_custom`, so ACES default metrics
+remain authoritative for pass/lift, while `nemo_workspace_pytest` appears under
+Custom Metrics and Custom Reward Lift in the report.
 
 ## Run -> Gate -> Optimize
 
@@ -390,6 +427,7 @@ tests/agentic-use/
 - NeMo Platform API server (auto-starts via ENTRYPOINT with 3-check health validation)
 - MCP server configuration (`.mcp.json`)
 - Non-root `harbor` user (UID 1001) for Claude Code
+- Node 22 and Codex CLI pre-baked for Harbor agent runs
 - Claude Code CLI with wrapper script that auto-adds `--dangerously-skip-permissions`
 - Required directories: `/app`, `/logs`, `/installed-agent`
 

@@ -1,0 +1,3 @@
+Focus generation of question on performing evaluation for public https://huggingface.co/datasets/nvidia/ProfBench dataset:
+- Task 1: use `rubrics` column as ground truth to evaluate how `nvidia/llama-3.3-nemotron-super-49b-v1.5` model at https://inference-api.nvidia.com/v1 model provider pefrorms on the first 3 samples from the dataset
+- Task 2: negative case scenario - `How do I configure a Kubernetes horizontal pod autoscaler to scale my Flask application based on custom Prometheus metrics?`

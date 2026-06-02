@@ -229,6 +229,29 @@ def _llm_judge_ref_metric() -> LLMJudgeMetric:
     )
 
 
+@pytest.mark.parametrize(
+    "spec_path",
+    [
+        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"),
+        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"),
+        Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"),
+    ],
+)
+def test_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    payload = json.loads((repo_root / spec_path).read_text(encoding="utf-8"))
+
+    spec = EvaluateSpec.model_validate(payload)
+
+    assert "metric" not in payload
+    assert len(spec.metrics) >= 1
+    for metric_payload in payload["metrics"]:
+        bundle = MetricBundle.model_validate(metric_payload)
+        metric = unbundle_metric(bundle)
+        assert bundle.payload.kind == "cloudpickle"
+        assert metric.type == bundle.metric_type
+
+
 def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
 
@@ -261,6 +284,68 @@ def test_cli_info_reports_registered_evaluator_job_key() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["jobs"] == ["evaluator.evaluate"]
+
+
+def test_cli_metric_types_reports_sdk_metric_union_types() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    entries = payload["metric_types"]
+    metric_names = [entry["name"] for entry in entries]
+    metrics = {entry["name"]: entry["description"] for entry in entries}
+    assert metrics["exact-match"].startswith("Exact-match metric runtime for evaluator-driven execution.")
+    assert metrics["llm-judge"].startswith("Runtime metric implementation for LLM-as-a-judge scoring.")
+    assert metrics["remote"].startswith("A metric that computes scores via a remote endpoint.")
+    assert metrics["topic_adherence"] == "Metric for measuring topic adherence."
+    assert "system" not in metrics
+    assert "system-retriever" not in metrics
+
+    ragas_metric_types = {
+        "agent_goal_accuracy",
+        "answer_accuracy",
+        "context_entity_recall",
+        "context_precision",
+        "context_recall",
+        "context_relevance",
+        "faithfulness",
+        "noise_sensitivity",
+        "response_groundedness",
+        "response_relevancy",
+        "tool_call_accuracy",
+        "topic_adherence",
+    }
+    first_ragas_index = min(metric_names.index(metric_type) for metric_type in ragas_metric_types)
+    non_ragas_metric_types = metric_names[:first_ragas_index]
+    trailing_ragas_metric_types = metric_names[first_ragas_index:]
+    assert not ragas_metric_types.intersection(non_ragas_metric_types)
+    assert set(trailing_ragas_metric_types) == ragas_metric_types
+    assert non_ragas_metric_types == sorted(non_ragas_metric_types)
+    assert trailing_ragas_metric_types == sorted(trailing_ragas_metric_types)
+
+
+def test_cli_metric_types_reports_json_schema_for_named_metric_types() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types", "exact-match"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["title"] == "ExactMatchMetric"
+    assert payload["properties"]["type"]["const"] == "exact-match"
+    assert "workspace" not in payload["properties"]
+
+
+def test_cli_metric_types_rejects_unknown_metric_types_name() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types", "missing-metric"])
+
+    assert result.exit_code != 0
+    assert "Unknown metric name 'missing-metric'" in result.output
+    assert "nemo evaluator metric-types" in result.output
 
 
 def test_cli_run_executes_evaluator_job() -> None:

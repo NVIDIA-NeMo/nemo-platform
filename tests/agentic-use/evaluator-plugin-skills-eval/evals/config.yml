@@ -1,0 +1,14 @@
+schema_version: 1
+
+harbor:
+  task_source: evals_json
+  # ACES appends verifier deps and runtime copy paths
+  # src/layer2/harbor/adapter.py
+  custom_dockerfile_mode: preserve
+  base_image_mode: disabled
+  agent_workdir: /app
+  runtime_env:
+    - NVIDIA_API_KEY
+  pre_agent_setup:
+    - /app/.venv/bin/nemo evaluator info
+    - runuser -u harbor -- bash -lc 'command -v node && node --version && command -v codex && codex --version'

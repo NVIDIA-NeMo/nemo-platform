@@ -1,6 +1,6 @@
 # Workspace Basic CLI Test
 
-This Harbor test verifies that Claude Code can create and list workspaces using the `nemo` CLI.
+This ACES Harbor Docker test verifies that an agent can create and list workspaces using the `nemo` CLI.
 
 ## Purpose
 
@@ -17,10 +17,11 @@ Both tests verify the same outcome (workspace creation), but through different i
 
 ## Test Flow
 
-1. Claude Code receives instructions to create a workspace using the `nemo` CLI
-2. Claude executes: `nemo workspaces create harbor-test-workspace --description "..."`
-3. Claude verifies by listing: `nemo workspaces list`
-4. The verifier pytest script checks that `harbor-test-workspace` exists in the API
+1. `astra-skill-eval` emits Harbor tasks from `evals/evals.json`
+2. The selected agent receives instructions to create a workspace using the `nemo` CLI
+3. The agent executes: `nemo workspaces create harbor-test-workspace --description "..."`
+4. The agent verifies by listing: `nemo workspaces list`
+5. ACES default metrics score the trajectory, and the custom pytest metric checks the API state
 
 ## CLI Commands Used
 
@@ -34,3 +35,22 @@ nemo workspaces list
 # Get a specific workspace
 nemo workspaces get harbor-test-workspace
 ```
+
+## Run with ACES Harbor
+
+```bash
+docker build -f /Users/ngoncharenko/code/microservices/nemo-platform/Dockerfile.agentic-base \
+  -t nmp-agentic-base:latest \
+  /Users/ngoncharenko/code/microservices/nemo-platform
+
+ASTRA_SKILL_EVAL_DEBUG=1 \
+astra-skill-eval evaluate /Users/ngoncharenko/code/microservices/nemo-platform/tests/agentic-use/workspace-basic-cli-easy \
+  --agent-eval -a codex \
+  --results-dir /tmp/astra-results \
+  --harbor-keep-jobs \
+  --env-mode docker
+```
+
+This task uses `grading.mode: aces_plus_custom`: normal ACES scoring and
+baseline lift remain enabled, and the pytest verifier appears as the
+`nemo_workspace_pytest` custom metric.

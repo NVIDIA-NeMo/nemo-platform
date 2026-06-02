@@ -3,13 +3,20 @@
 ## Quickstart
 
 ```python
-from nemo_evaluator_sdk import evaluate
+from nemo_evaluator_sdk import Evaluator, ExactMatchMetric, RunConfig
 
-result = evaluate(
-    dataset="data/eval.jsonl",
-    metric="exact_match",
-    reference="{{ expected }}",
-    candidate="{{ prediction }}",
+dataset = [
+    {"reference": "Paris", "actual": "Paris"},
+    {"reference": "London", "actual": "Berlin"},
+]
+
+evaluator = Evaluator()
+exact_match = ExactMatchMetric(reference="{{item.reference}}", candidate="{{item.actual}}")
+
+result = evaluator.run_sync(
+    metrics=exact_match,
+    dataset=dataset,
+    config=RunConfig(parallelism=4),
 )
 
 result.print_summary()
@@ -17,14 +24,14 @@ rows_df = result.to_pandas()
 aggregate_df = result.to_pandas(view="aggregate")
 ```
 
-`evaluate(...)` is the recommended product-level API for scripts and notebooks. It accepts:
+`await Evaluator.run(...)` and `Evaluator.run_sync(...)` are the recommended product-level APIs for scripts and notebooks. They accept:
 - inline rows
 - `DatasetRows`
 - `pyarrow.Table`
 - a local file path
-- a local directory path plus an optional `pattern`
+- a local directory path plus an optional `dataset_glob_pattern`
 
-The returned `OfflineEvaluationResult` supports:
+The returned `EvaluationResult` supports:
 - `print_summary()`
 - `format_summary()`
 - `to_records()`
@@ -37,17 +44,22 @@ Offline evaluation uses each dataset row as both `item` and `sample`. In practic
 that means templates should usually read directly from the row, for example
 `{{item.answer}}` and `{{item.model_output}}`.
 
-## Advanced Usage
+## Running in Async Context
 
-If you want direct control over metric construction or async execution, the low-level APIs remain available:
+For async execution, use `run(...)` from an async context:
 
 ```python
-from nemo_evaluator_sdk import ExactMatchMetric, evaluate_offline_sync
+from nemo_evaluator_sdk import Evaluator, ExactMatchMetric, RunConfig
 
-metric = ExactMatchMetric.from_template(
-    reference="{{item.expected}}",
-    candidate="{{item.prediction}}",
+evaluator = Evaluator()
+exact_match = ExactMatchMetric(
+    reference="{{item.reference}}",
+    candidate="{{item.actual}}",
 )
 
-result = evaluate_offline_sync(metric=metric, dataset=[{"expected": "4", "prediction": "4"}])
+result = await evaluator.run(
+    metrics=exact_match,
+    dataset=[{"reference": "4", "actual": "4"}],
+    config=RunConfig(parallelism=1),
+)
 ```

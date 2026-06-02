@@ -503,7 +503,7 @@ class TestMaybeSetNimDefaultMaxTokens:
         [
             ({}, RunConfigOnlineModel(inference=InferenceParams(max_tokens=32)), {}),
             ({"max_completion_tokens": 12}, None, {"max_completion_tokens": 12}),
-            ({}, None, {"max_tokens": 4096}),
+            ({}, None, {"max_tokens": 32768}),
         ],
     )
     def test_applies_default_only_when_no_max_tokens_are_set(

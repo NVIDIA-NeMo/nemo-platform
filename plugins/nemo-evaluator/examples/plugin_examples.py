@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import gzip
 import json
@@ -13,14 +14,13 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator.sdk import FilesetRef
 from nemo_evaluator.sdk.resources import AsyncEvaluator
 from nemo_evaluator.sdk.resources import Evaluator as SyncEvaluator
 from nemo_evaluator.sdk.types import (
-    ExecutionMode,
     PluginDatasetInput,
     RunConfig,
     RunConfigOnlineModel,
@@ -56,6 +56,7 @@ HELPFULNESS_PROMPT_V1 = (
     'Return only a JSON object with this shape: {"helpfulness": <integer>}.'
 )
 ONLINE_CHAT_PROMPT_TEMPLATE = {"messages": [{"role": "user", "content": "{{item.prompt}}"}]}
+ExampleExecutionMode = Literal["run", "submit"]
 LOCAL_HELPSTEER2_ROWS = (
     {
         "prompt": "What is the capital of France?",
@@ -111,7 +112,8 @@ async def _new_client() -> AsyncNeMoPlatform:
     except APIError as e:
         await _close_client(client)
         raise RuntimeError(
-            f"Failed to connect to evaluator plugin. Ensure nemo-evaluator plugin is running along with `nemo services run`. Error: {e}"
+            "Failed to connect to evaluator plugin. Ensure nemo-evaluator plugin is running along with "
+            f"`nemo services run`. Error: {e}"
         ) from None
     return client
 
@@ -128,7 +130,8 @@ def _new_sync_client() -> NeMoPlatform:
     except APIError as e:
         client.close()
         raise RuntimeError(
-            f"Failed to connect to evaluator plugin. Ensure nemo-evaluator plugin is running along with `nemo services run`. Error: {e}"
+            "Failed to connect to evaluator plugin. Ensure nemo-evaluator plugin is running along with "
+            f"`nemo services run`. Error: {e}"
         ) from None
     return client
 
@@ -233,19 +236,19 @@ def ensure_example_fileset_sync(client: NeMoPlatform) -> FilesetRef:
     return FilesetRef(root=f"{fileset.workspace}/{fileset.name}").with_fragment(HELPSTEER2_REMOTE_PATH)
 
 
-async def ensure_remote_evaluator_api_key_secret(workspace: str, client: AsyncNeMoPlatform) -> str:
+async def ensure_submit_evaluator_api_key_secret(workspace: str, client: AsyncNeMoPlatform) -> str:
     """Resolve an API key secret name and ensure it exists on the platform."""
-    secret_name = DEFAULT_API_KEY_SECRET.lower()
+    secret_name = DEFAULT_API_KEY_SECRET.lower().replace("_", "-")
     try:
         await client.secrets.retrieve(secret_name, workspace=workspace)
     except NotFoundError:
         api_key = os.getenv(DEFAULT_API_KEY_SECRET) or os.getenv("NVIDIA_API_KEY") or os.getenv("NVIDIA_BUILD_API_KEY")
         if api_key is None:
             raise RuntimeError(
-                f"Remote online evaluation needs a platform secret named '{secret_name}' in workspace "
+                f"Submit-mode online evaluation needs a platform secret named '{secret_name}' in workspace "
                 f"'{workspace}'. Set NVIDIA_BUILD_API_KEY or NVIDIA_API_KEY to let this "
                 "example create it, or create it manually with: "
-                f"nemo secrets create {secret_name} --data '<api-key>' --workspace {workspace}"
+                f"nemo secrets create {secret_name} --value '<api-key>' --workspace {workspace}"
             ) from None
         try:
             await client.secrets.create(workspace=workspace, name=secret_name, value=api_key)
@@ -257,13 +260,13 @@ async def ensure_remote_evaluator_api_key_secret(workspace: str, client: AsyncNe
 
 async def model_with_valid_secret(
     *,
-    execution_mode: ExecutionMode,
+    execution_mode: ExampleExecutionMode,
     workspace: str,
     client: AsyncNeMoPlatform,
 ) -> Model:
-    """Return a model configured for local or remote NeMo Platform example execution."""
-    if execution_mode == "remote":
-        secret_name = await ensure_remote_evaluator_api_key_secret(workspace, client)
+    """Return a model configured for run or submit NeMo Platform example execution."""
+    if execution_mode == "submit":
+        secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
         return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
     return model
 
@@ -366,14 +369,14 @@ def _assert_exact_match_result(result: EvaluationResult, *, workflow: str, expec
 async def _evaluate_metric(
     evaluator_plugin_client: AsyncEvaluator,
     *,
-    execution_mode: ExecutionMode,
+    execution_mode: ExampleExecutionMode,
     metric: Metric,
     dataset: PluginDatasetInput,
     config: RunConfig | RunConfigOnlineModel,
     **run_kwargs: Any,
 ) -> EvaluationResult:
-    """Run locally or submit remotely based on the requested plugin SDK execution mode."""
-    if execution_mode == "local":
+    """Run or submit based on the requested plugin SDK execution mode."""
+    if execution_mode == "run":
         return await evaluator_plugin_client.run(
             metric=metric,
             dataset=dataset,
@@ -440,7 +443,7 @@ async def _run_online_metric_example_body(
     dataset: PluginDatasetInput,
     workflow_label: str,
     is_online: bool,
-    execution_mode: ExecutionMode,
+    execution_mode: ExampleExecutionMode,
     limit_samples: int,
 ) -> None:
     """Evaluate one exact-match metric against an already-built dataset.
@@ -484,10 +487,10 @@ async def _run_online_metric_example_body(
 
 async def run_nmp_online_metric_example(
     is_online: bool = False,
-    execution_mode: ExecutionMode = "local",
+    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
-    """Evaluate one metric through the plugin SDK using local run or remote submit."""
+    """Evaluate one metric through the plugin SDK using run or submit."""
     _print_example_separator(
         run_nmp_online_metric_example.__name__,
         is_online=is_online,
@@ -511,7 +514,7 @@ async def run_nmp_online_metric_example(
 
 def run_nmp_online_metric_example_sync_client(
     is_online: bool = False,
-    execution_mode: ExecutionMode = "local",
+    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
     """Evaluate one metric through the plugin SDK using a sync platform client."""
@@ -535,7 +538,7 @@ def run_nmp_online_metric_example_sync_client(
             run_kwargs["target"] = model
             run_kwargs["prompt_template"] = ONLINE_CHAT_PROMPT_TEMPLATE
 
-        if execution_mode == "local":
+        if execution_mode == "run":
             result = evaluator_plugin_client.run(
                 metric=metric,
                 dataset=dataset,
@@ -574,7 +577,7 @@ def run_nmp_online_metric_example_sync_client(
 
 async def run_nmp_online_metric_local_file_example(
     is_online: bool = False,
-    execution_mode: ExecutionMode = "local",
+    execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
     """Evaluate one metric through the plugin SDK using a local JSONL Path dataset."""
@@ -604,9 +607,9 @@ async def run_nmp_online_metric_local_file_example(
 async def run_nmp_llm_judge_example(
     is_online: bool = False,
     limit_samples: int = 2,
-    execution_mode: ExecutionMode = "local",
+    execution_mode: ExampleExecutionMode = "run",
 ) -> None:
-    """Evaluate a helpfulness judge through the plugin SDK using local run or remote submit."""
+    """Evaluate a helpfulness judge through the plugin SDK using run or submit."""
     _print_example_separator(
         run_nmp_llm_judge_example.__name__,
         is_online=is_online,
@@ -653,22 +656,61 @@ async def run_nmp_llm_judge_example(
         print(f"human avg: {human_scores.mean()}")
 
 
-async def run_examples() -> None:
+async def run_examples(*, include_submit: bool = False, include_model_calls: bool = False) -> None:
     """Execute the example workflows exposed by this module."""
-    await run_nmp_online_metric_example(is_online=False, execution_mode="local")
-    await run_nmp_online_metric_example(is_online=False, execution_mode="remote")
-    await run_nmp_llm_judge_example(is_online=False, execution_mode="local")
-    await run_nmp_llm_judge_example(is_online=True, execution_mode="remote")
-    await run_nmp_online_metric_local_file_example(is_online=False, execution_mode="local")
+    await run_nmp_online_metric_example(is_online=False, execution_mode="run")
+    await run_nmp_online_metric_local_file_example(is_online=False, execution_mode="run")
+
+    if include_submit:
+        await run_nmp_online_metric_example(is_online=False, execution_mode="submit")
+
+    if include_model_calls:
+        await run_nmp_llm_judge_example(is_online=False, execution_mode="run")
+        if include_submit:
+            await run_nmp_llm_judge_example(is_online=True, execution_mode="submit")
 
 
-def run_sync_examples() -> None:
+def run_sync_examples(*, include_submit: bool = False) -> None:
     """Execute the synchronous example workflows exposed by this module."""
-    run_nmp_online_metric_example_sync_client(is_online=False, execution_mode="remote")
+    if include_submit:
+        run_nmp_online_metric_example_sync_client(is_online=False, execution_mode="submit")
+
+
+def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
+    """Parse example runner options."""
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--include-submit",
+        action="store_true",
+        help="Submit evaluator jobs in addition to run-mode examples.",
+    )
+    parser.add_argument(
+        "--include-model-calls",
+        action="store_true",
+        help="Run judge or online target examples that call hosted models.",
+    )
+    parser.add_argument(
+        "--include-sync-submit",
+        action="store_true",
+        help="Run the synchronous submit example.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Run examples with safe defaults."""
+    args = parse_args(argv)
+    configure_example_logging()
+
+    run_sync_examples(include_submit=args.include_sync_submit)
+    asyncio.run(
+        run_examples(
+            include_submit=args.include_submit,
+            include_model_calls=args.include_model_calls,
+        )
+    )
+    return 0
 
 
 if __name__ == "__main__":
-    configure_example_logging()
-
-    run_sync_examples()
-    asyncio.run(run_examples())
+    raise SystemExit(main())
