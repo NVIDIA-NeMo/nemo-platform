@@ -23,7 +23,7 @@ from nemo_evaluator_sdk.agent_inference import (
     new_agent_inference_client,
 )
 from nemo_evaluator_sdk.enums import ModelFormat
-from nemo_evaluator_sdk.execution.config import fail_fast_from_params, normalize_params
+from nemo_evaluator_sdk.execution.config import fail_fast_from_params, resolve_params
 from nemo_evaluator_sdk.execution.pipeline import (
     GeneratedSampleEvent,
     GeneratedSampleScoringPipeline,
@@ -498,7 +498,7 @@ class ComputeMetricPipeline:
         prompt_template: str | dict[str, Any],
         inference_fn: AgentInferenceFn,
         client: httpx.AsyncClient | None = None,
-        params: RunConfigOnline | None = None,
+        params: RunConfigOnline,
         default_headers: dict[str, str] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -516,7 +516,7 @@ class ComputeMetricPipeline:
         prompt_template: str | dict[str, Any],
         inference_fn: inference.InferenceFn,
         client: AsyncOpenAI | None = None,
-        params: RunConfigOnlineModel | None = None,
+        params: RunConfigOnlineModel,
         default_headers: dict[str, str] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -531,8 +531,8 @@ class ComputeMetricPipeline:
         metric: Metric,
         target: None,
         metric_key: str,
+        params: RunConfig,
         prompt_template: None = None,
-        params: RunConfig | None = None,
         inference_fn: None = None,
         client: None = None,
         default_headers: None = None,
@@ -549,7 +549,7 @@ class ComputeMetricPipeline:
         target: Model | Agent | None,
         metric_key: str,
         prompt_template: str | dict[str, Any] | None = None,
-        params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+        params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
         inference_fn: inference.InferenceFn | AgentInferenceFn | None = None,
         client: AsyncOpenAI | httpx.AsyncClient | None = None,
         default_headers: dict[str, str] | None = None,
@@ -562,7 +562,7 @@ class ComputeMetricPipeline:
         self.target = target
         self.metric_key = metric_key
         self.prompt_template = prompt_template
-        self.params = normalize_params(params, target)
+        self.params = params
         self.inference_fn = inference_fn
         self.client = client
         self.default_headers = default_headers
@@ -799,7 +799,7 @@ async def evaluate_metric(
         log.warning("No rows found in dataset, returning empty evaluation result")
         return empty_evaluation_result()
 
-    params = normalize_params(params, target)
+    params = resolve_params(params, target)
 
     client_close_fn = None
 

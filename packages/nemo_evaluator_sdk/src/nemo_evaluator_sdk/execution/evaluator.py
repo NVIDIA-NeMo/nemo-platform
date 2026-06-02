@@ -13,18 +13,19 @@ from typing import Any, TypeGuard, overload
 
 import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.execution.metric_execution import run_sync
+from nemo_evaluator_sdk.execution.utils import is_metric, is_metric_sequence
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values.agents import Agent
 from nemo_evaluator_sdk.values.dataset_schemas import FieldMapping
 from nemo_evaluator_sdk.values.datasets import DatasetInput
 from nemo_evaluator_sdk.values.models import Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
-from nemo_evaluator_sdk.values.params import RunConfig
+from nemo_evaluator_sdk.values.params import RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
 
-from .backends.base import EvaluationBackend, SyncEvaluationBackend
+from .backends.base import BackendParams, EvaluationBackend, SyncEvaluationBackend
 from .backends.local.backend import LocalBackend
-from .config import EvaluationRequest, normalize_params
+from .config import resolve_params
 
 BackendClient = EvaluationBackend | SyncEvaluationBackend
 
@@ -76,19 +77,55 @@ class _SyncBackendAdapter:
         self,
         *,
         metric: Metric,
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[inference.PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[inference.PostprocessResponse, ...] | None = None,
     ) -> EvaluationResult:
         """Evaluate one metric by running the sync backend in a worker thread."""
-        return await asyncio.to_thread(self._backend.evaluate, metric=metric, request=request)
+        return await asyncio.to_thread(
+            self._backend.evaluate,
+            metric=metric,
+            dataset=dataset,
+            params=params,
+            target=target,
+            field_mapping=field_mapping,
+            prompt_template=prompt_template,
+            aggregate_fields=aggregate_fields,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
+        )
 
     async def evaluate_benchmark(
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[inference.PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[inference.PostprocessResponse, ...] | None = None,
     ) -> BenchmarkEvaluationResult:
         """Evaluate multiple metrics by running the sync backend in a worker thread."""
-        return await asyncio.to_thread(self._backend.evaluate_benchmark, metrics=metrics, request=request)
+        return await asyncio.to_thread(
+            self._backend.evaluate_benchmark,
+            metrics=metrics,
+            dataset=dataset,
+            params=params,
+            target=target,
+            field_mapping=field_mapping,
+            prompt_template=prompt_template,
+            aggregate_fields=aggregate_fields,
+            preprocess_hooks=preprocess_hooks,
+            postprocess_hooks=postprocess_hooks,
+        )
 
 
 class Evaluator:
@@ -142,10 +179,39 @@ class Evaluator:
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
-        target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
+        target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> EvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Metric,
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnlineModel,
+        target: Model,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> EvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Metric,
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnline,
+        target: Agent,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any],
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -158,10 +224,39 @@ class Evaluator:
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
-        target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
+        target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnlineModel,
+        target: Model,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    async def run(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnline,
+        target: Agent,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any],
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -172,9 +267,8 @@ class Evaluator:
         metrics: Metric | Sequence[Metric],
         dataset: DatasetInput | str | Path,
         *,
-        config: RunConfig | None = None,
+        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -185,12 +279,11 @@ class Evaluator:
 
         Args:
             metrics: One metric or a sequence of metrics to execute.
-            dataset: Dataset input for the configured backend.
-            config: Optional run-level execution configuration.
-            model: Optional model used for online generation.
-            dataset_glob_pattern: Optional file selector within the provided dataset path.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
+            target: Optional model or agent used for online generation. Omit for offline scoring.
             field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
-            prompt_template: Optional prompt template to use for online model generation.
+            prompt_template: Optional prompt template to use for online target generation.
             aggregate_fields: Optional aggregate score fields to keep in the returned result.
             preprocess_hooks: Optional request preprocess hooks for online execution.
             postprocess_hooks: Optional response postprocess hooks for online execution.
@@ -199,25 +292,33 @@ class Evaluator:
             A single-metric or multi-metric result, matching the input metric
             shape.
         """
-        eval_request = EvaluationRequest(
+        params = resolve_params(config, target)
+        normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
+        normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
+        if is_metric_sequence(metrics):
+            return await self._backend.evaluate_benchmark(
+                metrics=list(metrics),
+                dataset=dataset,
+                params=params,
+                target=target,
+                field_mapping=field_mapping,
+                prompt_template=prompt_template,
+                aggregate_fields=aggregate_fields,
+                preprocess_hooks=normalized_preprocess_hooks,
+                postprocess_hooks=normalized_postprocess_hooks,
+            )
+        if not is_metric(metrics):
+            raise TypeError("metrics must be a Metric or a sequence of Metric objects")
+        return await self._backend.evaluate(
+            metric=metrics,
             dataset=dataset,
-            params=normalize_params(config, target),
+            params=params,
             target=target,
-            dataset_glob_pattern=dataset_glob_pattern,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
-            preprocess_hooks=tuple(preprocess_hooks) if preprocess_hooks is not None else None,
-            postprocess_hooks=tuple(postprocess_hooks) if postprocess_hooks is not None else None,
-        )
-        if isinstance(metrics, Sequence):
-            return await self._backend.evaluate_benchmark(
-                metrics=list(metrics),
-                request=eval_request,
-            )
-        return await self._backend.evaluate(
-            metric=metrics,
-            request=eval_request,
+            preprocess_hooks=normalized_preprocess_hooks,
+            postprocess_hooks=normalized_postprocess_hooks,
         )
 
     @overload
@@ -227,10 +328,39 @@ class Evaluator:
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
-        target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
+        target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> EvaluationResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Metric,
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnlineModel,
+        target: Model,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> EvaluationResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Metric,
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnline,
+        target: Agent,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any],
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -243,10 +373,39 @@ class Evaluator:
         dataset: DatasetInput | str | Path,
         *,
         config: RunConfig | None = None,
-        target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
+        target: None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnlineModel,
+        target: Model,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
+        postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
+    ) -> BenchmarkEvaluationResult: ...
+
+    @overload
+    def run_sync(
+        self,
+        metrics: Sequence[Metric],
+        dataset: DatasetInput | str | Path,
+        *,
+        config: RunConfigOnline,
+        target: Agent,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any],
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -257,9 +416,8 @@ class Evaluator:
         metrics: Metric | Sequence[Metric],
         dataset: DatasetInput | str | Path,
         *,
-        config: RunConfig | None = None,
+        config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
-        dataset_glob_pattern: str | None = None,
         field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
@@ -270,12 +428,11 @@ class Evaluator:
 
         Args:
             metrics: One metric or a sequence of metrics to execute.
-            dataset: Dataset input for the configured backend.
-            config: Optional run-level execution configuration.
-            model: Optional model used for online generation.
-            dataset_glob_pattern: Optional file selector within the provided dataset path.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            config: Optional run-level execution configuration. Offline calls default to ``RunConfig``.
+            target: Optional model or agent used for online generation. Omit for offline scoring.
             field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
-            prompt_template: Optional prompt template for online execution.
+            prompt_template: Optional prompt template to use for online target generation.
             aggregate_fields: Optional aggregate score fields to keep in the returned result.
             preprocess_hooks: Optional request preprocess hooks for online execution.
             postprocess_hooks: Optional response postprocess hooks for online execution.
@@ -284,17 +441,35 @@ class Evaluator:
             A single-metric or multi-metric result, matching the input metric
             shape.
         """
-        return run_sync(
-            lambda: self.run(
-                metrics=metrics,
+
+        async def _call() -> EvaluationResult | BenchmarkEvaluationResult:
+            params = resolve_params(config, target)
+            normalized_preprocess_hooks = tuple(preprocess_hooks) if preprocess_hooks is not None else None
+            normalized_postprocess_hooks = tuple(postprocess_hooks) if postprocess_hooks is not None else None
+            if is_metric_sequence(metrics):
+                return await self._backend.evaluate_benchmark(
+                    metrics=list(metrics),
+                    dataset=dataset,
+                    params=params,
+                    target=target,
+                    field_mapping=field_mapping,
+                    prompt_template=prompt_template,
+                    aggregate_fields=aggregate_fields,
+                    preprocess_hooks=normalized_preprocess_hooks,
+                    postprocess_hooks=normalized_postprocess_hooks,
+                )
+            if not is_metric(metrics):
+                raise TypeError("metrics must be a Metric or a sequence of Metric objects")
+            return await self._backend.evaluate(
+                metric=metrics,
                 dataset=dataset,
-                config=config,
+                params=params,
                 target=target,
-                dataset_glob_pattern=dataset_glob_pattern,
                 field_mapping=field_mapping,
                 prompt_template=prompt_template,
                 aggregate_fields=aggregate_fields,
-                preprocess_hooks=preprocess_hooks,
-                postprocess_hooks=postprocess_hooks,
+                preprocess_hooks=normalized_preprocess_hooks,
+                postprocess_hooks=normalized_postprocess_hooks,
             )
-        )
+
+        return run_sync(_call)
