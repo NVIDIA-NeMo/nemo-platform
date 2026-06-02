@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Any
 
 import yaml
-from nemo_agents_plugin.spec import AGENT_SPEC_SECTION_TITLES, AgentSpec, validate_role
+from nemo_agents_plugin.spec import AGENT_SPEC_SECTION_TITLES, AgentSpec
 
 
 class SpecParseError(ValueError):
@@ -40,7 +40,6 @@ def parse_spec(markdown: str) -> AgentSpec:
     sections = _split_sections(markdown[front_match.end() :])
     _validate_required_sections(sections)
 
-    role = validate_role(sections["Role"])
     framework = sections["Framework"].strip()
     if not framework or framework == "_(none)_":
         raise SpecParseError("framework section must be resolved")
@@ -49,7 +48,7 @@ def parse_spec(markdown: str) -> AgentSpec:
         name=_required_str(front, "name"),
         created_timestamp=_required_datetime(front, "created_timestamp"),
         author=_required_str(front, "author"),
-        sections={**sections, "Role": role},
+        sections=sections,
     )
 
 

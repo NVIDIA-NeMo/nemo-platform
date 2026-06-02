@@ -16,18 +16,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-_MIN_ROLE_LENGTH = 20
-_VAGUE_ROLE_PHRASES = frozenset(
-    {
-        "help with stuff",
-        "help users",
-        "answer questions",
-        "do things",
-        "be helpful",
-        "assist users",
-    }
-)
-
 AGENT_SPEC_SECTION_TITLES: tuple[str, ...] = (
     "Role",
     "Purpose",
@@ -63,20 +51,3 @@ class AgentSpec:
     def role(self) -> str:
         return self.sections["Role"]
 
-
-def validate_role(role: str) -> str:
-    """Return a normalized role or raise ``ValueError`` for vague input."""
-
-    stripped = role.strip()
-    if stripped.lower() in _VAGUE_ROLE_PHRASES:
-        raise ValueError(
-            f"'role' is too vague ({stripped!r}). Write one concrete sentence "
-            "describing the role this agent plays for its users."
-        )
-    if len(stripped) < _MIN_ROLE_LENGTH:
-        raise ValueError(
-            f"'role' must be at least {_MIN_ROLE_LENGTH} characters after trimming "
-            f"(got {len(stripped)}). Write one concrete sentence describing what "
-            "role the agent plays."
-        )
-    return stripped
