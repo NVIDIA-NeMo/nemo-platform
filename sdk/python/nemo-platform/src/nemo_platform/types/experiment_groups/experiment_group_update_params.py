@@ -17,8 +17,18 @@
 
 from __future__ import annotations
 
-from .workspace_member import WorkspaceMember as WorkspaceMember
-from .member_create_params import MemberCreateParams as MemberCreateParams
-from .member_delete_params import MemberDeleteParams as MemberDeleteParams
-from .member_update_params import MemberUpdateParams as MemberUpdateParams
-from .workspace_member_list_response import WorkspaceMemberListResponse as WorkspaceMemberListResponse
+from typing_extensions import Required, Annotated, TypedDict
+
+from ..._utils import PropertyInfo
+
+__all__ = ["ExperimentGroupUpdateParams"]
+
+
+class ExperimentGroupUpdateParams(TypedDict, total=False):
+    workspace: str
+
+    body_name: Required[Annotated[str, PropertyInfo(alias="name")]]
+    """Workspace-unique group name."""
+
+    description: str
+    """Human-readable purpose of the group."""

@@ -6,6 +6,7 @@ import { NavigationDrawer } from '@studio/components/Layouts/NavigationDrawer';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -68,16 +69,17 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
   const workspace = useWorkspaceFromPath();
 
   const items = useMemo(() => {
-    const dashboardNav = DASHBOARD_ENABLED
-      ? [
-          {
-            id: 'dashboard',
-            slotIcon: <Home className={iconColorClass} />,
-            slotLabel: 'Dashboard',
-            href: getWorkspaceDashboardRoute(workspace),
-          },
-        ]
-      : [];
+    const dashboardNav =
+      DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED
+        ? [
+            {
+              id: 'dashboard',
+              slotIcon: <Home className={iconColorClass} />,
+              slotLabel: 'Dashboard',
+              href: getWorkspaceDashboardRoute(workspace),
+            },
+          ]
+        : [];
     const jobsNav = JOBS_ENABLED
       ? [
           {

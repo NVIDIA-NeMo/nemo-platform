@@ -9,7 +9,7 @@ import re
 import subprocess
 import time
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +17,7 @@ from typing import Any
 
 from nemo_platform import ConflictError, NeMoPlatform, NotFoundError, omit
 from nemo_platform.types.inference import ModelProvider, ServedModelMapping
+from nemo_platform.types.workspaces import WorkspaceMember
 from nmp.common.entities.constants import NAME_PATTERN, NAME_PATTERN_DESCRIPTION
 from nmp.common.entities.utils import get_random_id
 
@@ -268,6 +269,23 @@ def as_service_for(
             "X-NMP-Principal-Id": f"service:{service_name}",
             "X-NMP-Principal-On-Behalf-Of": on_behalf_of,
         }
+    )
+
+
+def grant_workspace_role(
+    sdk: NeMoPlatform,
+    *,
+    workspace: str,
+    principal: str,
+    roles: Sequence[str],
+    wait_role_propagation: bool = True,
+) -> WorkspaceMember:
+    """Grant workspace roles to a principal in auth-enabled tests."""
+    return sdk.workspaces.members.create(
+        workspace=workspace,
+        principal=principal,
+        roles=list(roles),
+        wait_role_propagation=wait_role_propagation,
     )
 
 

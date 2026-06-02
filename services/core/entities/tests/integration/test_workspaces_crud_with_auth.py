@@ -163,7 +163,7 @@ class TestWorkspaceCRUDWithAuth:
             assert workspace.updated_by == creator_email
 
             # Verify creator is listed as a member with Admin role
-            members = sdk.members.list(workspace=workspace_name)
+            members = sdk.workspaces.members.list(workspace=workspace_name)
             creator_member = next((m for m in members.data if m.principal == creator_email), None)
             assert creator_member is not None, "Creator should be listed as a member"
             assert "Admin" in creator_member.roles, "Creator should have Admin role"
@@ -179,7 +179,7 @@ class TestWorkspaceCRUDWithAuth:
             workspace = sdk.workspaces.retrieve(workspace_name)
             assert workspace.created_by == principal_id
 
-            members = sdk.members.list(workspace=workspace_name)
+            members = sdk.workspaces.members.list(workspace=workspace_name)
         creator_member = next((m for m in members.data if "Admin" in m.roles), None)
         assert creator_member is not None
         assert creator_member.principal == creator_email
@@ -193,7 +193,7 @@ class TestWorkspaceCRUDWithAuth:
 
         with as_user_id_only(sdk, principal_id):
             sdk.workspaces.create(name=workspace_name)
-            members = sdk.members.list(workspace=workspace_name)
+            members = sdk.workspaces.members.list(workspace=workspace_name)
 
         creator_member = next((m for m in members.data if "Admin" in m.roles), None)
         assert creator_member is not None
@@ -208,7 +208,7 @@ class TestWorkspaceCRUDWithAuth:
 
         with as_user(sdk, owner_email):
             sdk.workspaces.create(name=workspace_name)
-            sdk.members.create(
+            sdk.workspaces.members.create(
                 workspace=workspace_name,
                 principal=member_email,
                 roles=["Editor"],
@@ -230,7 +230,7 @@ class TestWorkspaceCRUDWithAuth:
 
         with as_user(sdk, owner_email):
             sdk.workspaces.create(name=workspace_name)
-            sdk.members.create(
+            sdk.workspaces.members.create(
                 workspace=workspace_name,
                 principal=group_principal,
                 roles=["Editor"],
@@ -308,7 +308,7 @@ class TestWorkspaceCRUDWithAuth:
             assert created.updated_by == creator_email
 
             # Add updater as Admin so they can update
-            sdk.members.create(
+            sdk.workspaces.members.create(
                 workspace=workspace_name,
                 principal=updater_email,
                 roles=["Admin"],
@@ -333,7 +333,7 @@ class TestWorkspaceCRUDWithAuth:
         # Owner creates workspace and adds viewer
         with as_user(sdk, owner_email):
             sdk.workspaces.create(name=workspace_name)
-            sdk.members.create(
+            sdk.workspaces.members.create(
                 workspace=workspace_name,
                 principal=viewer_email,
                 roles=["Viewer"],
@@ -361,7 +361,7 @@ class TestWorkspaceCRUDWithAuth:
             sdk.workspaces.create(name=workspace_name)
 
             # Verify role binding exists
-            members = sdk.members.list(workspace=workspace_name)
+            members = sdk.workspaces.members.list(workspace=workspace_name)
             assert len(members.data) > 0
 
             # Delete workspace - should succeed, role bindings are deleted automatically
@@ -386,7 +386,7 @@ class TestWorkspaceCRUDWithAuth:
 
             # Try to remove self (the last admin) - should fail
             with pytest.raises(ConflictError) as exc_info:
-                sdk.members.delete(workspace=workspace_name, principal_id=admin_email)
+                sdk.workspaces.members.delete(workspace=workspace_name, principal_id=admin_email)
 
             assert "last admin" in str(exc_info.value).lower()
 
@@ -402,7 +402,7 @@ class TestWorkspaceCRUDWithAuth:
 
             # Try to change own role from Admin to Viewer - should fail
             with pytest.raises(ConflictError) as exc_info:
-                sdk.members.update(
+                sdk.workspaces.members.update(
                     workspace=workspace_name,
                     principal_id=admin_email,
                     roles=["Viewer"],
@@ -421,7 +421,7 @@ class TestWorkspaceCRUDWithAuth:
             sdk.workspaces.create(name=workspace_name)
 
             # Add admin2 as another Admin
-            sdk.members.create(
+            sdk.workspaces.members.create(
                 workspace=workspace_name,
                 principal=admin2_email,
                 roles=["Admin"],
@@ -429,11 +429,11 @@ class TestWorkspaceCRUDWithAuth:
             )
 
             # Now admin1 can remove themselves since admin2 is also an Admin
-            sdk.members.delete(workspace=workspace_name, principal_id=admin1_email)
+            sdk.workspaces.members.delete(workspace=workspace_name, principal_id=admin1_email)
 
         # Verify admin1 is no longer a member (check as admin2 since admin1 lost access)
         with as_user(sdk, admin2_email):
-            members = sdk.members.list(workspace=workspace_name)
+            members = sdk.workspaces.members.list(workspace=workspace_name)
             member_principals = [m.principal for m in members.data]
             assert admin1_email not in member_principals
             assert admin2_email in member_principals

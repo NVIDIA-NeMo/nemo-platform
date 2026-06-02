@@ -260,7 +260,7 @@ describe('FilesetCreateModal', () => {
       });
     });
 
-    it('Model purpose navigates to the side-panel fileset route', async () => {
+    it('Model + Local navigates to model detail Files tab', async () => {
       const navigate = vi.fn();
       mockUseNavigate(navigate);
       mockMutate.mockResolvedValue({
@@ -283,9 +283,8 @@ describe('FilesetCreateModal', () => {
       await user.type(screen.getByRole('textbox', { name: /^name$/i }), 'mymodel');
       await user.click(screen.getByRole('button', { name: 'Create Model Fileset' }));
       await waitFor(() => {
-        // Side panel route encodes "<workspace>/<name>" as the filesetId param.
         expect(navigate).toHaveBeenCalledWith(
-          expect.stringContaining('/workspaces/default/filesets/default%2Fmymodel')
+          expect.stringContaining('/workspaces/default/models/mymodel?tab=files')
         );
       });
     });

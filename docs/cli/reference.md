@@ -4685,6 +4685,7 @@ nemo workspaces [OPTIONS] COMMAND [ARGS]...
 * `list`: List all workspaces with pagination.
 * `get`: Get a specific workspace by ID.
 * `update`: Update a workspace's description.
+* `members`: Manage members
 
 #### nemo workspaces create
 
@@ -4882,6 +4883,203 @@ nemo workspaces update [OPTIONS] NAME
 **Options:**
 
 * `--description`: Updated description
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+#### nemo workspaces members
+
+Manage members
+
+**Usage:**
+
+```shell
+nemo workspaces members [OPTIONS] COMMAND [ARGS]...
+```
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Commands:**
+
+* `create`: Add a new member to the workspace with specified roles.
+* `delete`: Remove a member from the workspace by revoking all their...
+* `list`: List all members of a workspace with their roles.
+* `update`: Update the roles for a workspace member.
+
+##### nemo workspaces members create
+
+Add a new member to the workspace with specified roles.
+
+This creates role bindings for the specified principal with the given roles. By
+default, this endpoint waits for the roles to propagate before returning. Use
+`wait_role_propagation=false` to skip waiting (useful for bulk operations).
+
+**Examples:**
+
+
+```
+POST /apis/entities/v2/workspaces/ml-team/members
+`{"principal": "user@example.com", "roles": ["Editor"]}`
+```
+
+**Required fields:** principal
+
+**Examples:**
+
+```shell
+nemo workspaces members create --input-file config.json
+nemo workspaces members create --input-data '{"principal": "value"}'
+echo '{"json": "data"}' | nemo workspaces members create --input-file -
+nemo workspaces members create --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo workspaces members create [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+* `--principal`: The principal identifier (email, user ID, or group ID)
+* `--wait-role-propagation`: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.
+* `--roles`: List of roles to grant to the principal (can be repeated)
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Input Options:**
+
+* `--input-file`: Path to JSON file (use '-' for stdin)
+* `--input-data`: Input data for the request (JSON or YAML)
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for an entity. [possible values: json, yaml, raw, code]
+
+##### nemo workspaces members delete
+
+Remove a member from the workspace by revoking all their roles.
+
+This revokes all active role bindings for the principal in the workspace. By
+default, this endpoint waits for all roles to be revoked before returning. Use
+`wait_role_propagation=false` to skip waiting (useful for bulk operations).
+
+**Examples:**
+
+
+```
+DELETE /apis/entities/v2/workspaces/ml-team/members/user@example.com
+```
+
+**Usage:**
+
+```shell
+nemo workspaces members delete [OPTIONS] PRINCIPAL_ID
+```
+
+**Arguments:**
+
+* `<PRINCIPAL_ID>`
+
+**Options:**
+
+* `--workspace`
+* `--wait-role-propagation`: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+##### nemo workspaces members list
+
+List all members of a workspace with their roles.
+
+Returns a list of all principals with active role bindings in the workspace.
+
+**Examples:**
+
+
+```
+GET /apis/entities/v2/workspaces/ml-team/members
+```
+
+**Usage:**
+
+```shell
+nemo workspaces members list [OPTIONS]
+```
+
+**Options:**
+
+* `--workspace`
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+**Output Options:**
+
+* `--output-format, -f <CHOICE>`: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]
+* `--no-truncate`: Don't truncate long values in table/markdown/csv output.
+* `--output-columns, -c`: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.
+
+##### nemo workspaces members update
+
+Update the roles for a workspace member.
+
+This will revoke existing roles not in the new list and add new roles. By
+default, this endpoint waits for the roles to propagate before returning. Use
+`wait_role_propagation=false` to skip waiting (useful for bulk operations).
+
+**Examples:**
+
+
+```
+PUT /apis/entities/v2/workspaces/ml-team/members/user@example.com
+`{"roles": ["Viewer", "Editor"]}`
+```
+
+**Required fields:** roles
+
+**Examples:**
+
+```shell
+nemo workspaces members update <principal_id> --input-file config.json
+nemo workspaces members update <principal_id> --input-data '{"roles": "value"}'
+echo '{"json": "data"}' | nemo workspaces members update <principal_id> --input-file -
+nemo workspaces members update <principal_id> --<option> "value"
+```
+
+**Usage:**
+
+```shell
+nemo workspaces members update [OPTIONS] PRINCIPAL_ID
+```
+
+**Arguments:**
+
+* `<PRINCIPAL_ID>`
+
+**Options:**
+
+* `--workspace`
+* `--roles`: Updated list of roles for the principal (can be repeated)
+* `--wait-role-propagation`: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.
 
 **Help:**
 

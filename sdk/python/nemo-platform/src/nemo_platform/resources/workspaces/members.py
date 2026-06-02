@@ -30,10 +30,10 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ..._base_client import make_request_options
-from ...types.members import member_create_params, member_delete_params, member_update_params
+from ...types.workspaces import member_create_params, member_delete_params, member_update_params
 from ...types.shared.delete_response import DeleteResponse
-from ...types.members.workspace_member import WorkspaceMember
-from ...types.members.workspace_member_list_response import WorkspaceMemberListResponse
+from ...types.workspaces.workspace_member import WorkspaceMember
+from ...types.workspaces.workspace_member_list_response import WorkspaceMemberListResponse
 
 __all__ = ["MembersResource", "AsyncMembersResource"]
 
