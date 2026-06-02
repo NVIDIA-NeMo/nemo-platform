@@ -10,6 +10,8 @@ import os
 import shutil
 import uuid
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
 
@@ -58,6 +60,9 @@ class HistorySessionResponse(BaseModel):
     mtime: float
     first_prompt: str
     message_count: int
+    token_count: int
+    tool_call_count: int
+    tool_calls: list[str]
 
 
 class SessionHistoryResponse(BaseModel):
@@ -70,6 +75,17 @@ class SessionHistoryResponse(BaseModel):
 _initialized_sessions: set[str] = set()
 _session_streams: dict[str, asyncio.Queue[tuple[str, Any]]] = {}
 _pending_permissions: dict[str, tuple[str, asyncio.Future[dict[str, Any]]]] = {}
+
+
+@dataclass
+class HistorySummary:
+    """Aggregated metadata from a Claude session history file."""
+
+    first_prompt: str | None = None
+    message_count: int = 0
+    token_count: int = 0
+    tool_call_count: int = 0
+    tool_calls: list[str] = dataclass_field(default_factory=list)
 
 
 _APPROVAL_TOOL = {
@@ -110,9 +126,68 @@ def _project_history_dir() -> Path:
     return CLAUDE_PROJECTS_DIR / encoded
 
 
-def _first_user_prompt_and_count(path: Path) -> tuple[str | None, int]:
-    first_prompt: str | None = None
-    count = 0
+_TOKEN_USAGE_FIELDS = (
+    "input_tokens",
+    "cache_creation_input_tokens",
+    "cache_read_input_tokens",
+    "output_tokens",
+)
+
+
+def _int_metric(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _usage_token_count(usage: Any) -> int:
+    if not isinstance(usage, dict):
+        return 0
+    return sum(_int_metric(usage.get(field)) for field in _TOKEN_USAGE_FIELDS)
+
+
+def _tool_result_token_count(tool_result: Any) -> int:
+    if not isinstance(tool_result, dict):
+        return 0
+    total_tokens = _int_metric(tool_result.get("totalTokens"))
+    if total_tokens:
+        return total_tokens
+    return _usage_token_count(tool_result.get("usage"))
+
+
+def _usage_identity(entry: dict[str, Any], message: dict[str, Any]) -> tuple[str, str] | None:
+    request_id = entry.get("requestId")
+    message_id = message.get("id")
+    if not isinstance(request_id, str) and not isinstance(message_id, str):
+        return None
+    return (request_id if isinstance(request_id, str) else "", message_id if isinstance(message_id, str) else "")
+
+
+def _append_tool_call(summary: HistorySummary, tool_name: str) -> None:
+    summary.tool_call_count += 1
+    if tool_name not in summary.tool_calls:
+        summary.tool_calls.append(tool_name)
+
+
+def _record_assistant_tool_calls(
+    summary: HistorySummary,
+    message: dict[str, Any],
+    seen_tool_use_ids: set[str],
+) -> None:
+    for part in message.get("content") or []:
+        if not isinstance(part, dict) or part.get("type") != "tool_use":
+            continue
+        tool_use_id = part.get("id")
+        if isinstance(tool_use_id, str):
+            if tool_use_id in seen_tool_use_ids:
+                continue
+            seen_tool_use_ids.add(tool_use_id)
+        tool_name = part.get("name")
+        _append_tool_call(summary, tool_name if isinstance(tool_name, str) and tool_name else "tool")
+
+
+def _summarize_history_session(path: Path) -> HistorySummary:
+    summary = HistorySummary()
+    seen_usage_events: set[tuple[str, str]] = set()
+    seen_tool_use_ids: set[str] = set()
     try:
         with path.open("r", encoding="utf-8", errors="replace") as fh:
             for line in fh:
@@ -123,17 +198,34 @@ def _first_user_prompt_and_count(path: Path) -> tuple[str | None, int]:
                     entry = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if entry.get("type") != "user" or entry.get("isSidechain"):
+                if entry.get("isSidechain"):
                     continue
-                content = (entry.get("message") or {}).get("content")
-                if not isinstance(content, str):
+                if not isinstance(entry, dict):
                     continue
-                count += 1
-                if first_prompt is None:
-                    first_prompt = content
+
+                message = entry.get("message")
+                if isinstance(message, dict):
+                    usage_identity = _usage_identity(entry, message)
+                    if usage_identity is None or usage_identity not in seen_usage_events:
+                        summary.token_count += _usage_token_count(message.get("usage"))
+                        if usage_identity is not None:
+                            seen_usage_events.add(usage_identity)
+
+                summary.token_count += _tool_result_token_count(entry.get("toolUseResult"))
+
+                entry_type = entry.get("type")
+                if entry_type == "assistant" and isinstance(message, dict):
+                    _record_assistant_tool_calls(summary, message, seen_tool_use_ids)
+                elif entry_type == "user" and isinstance(message, dict):
+                    content = message.get("content")
+                    if not isinstance(content, str):
+                        continue
+                    summary.message_count += 1
+                    if summary.first_prompt is None:
+                        summary.first_prompt = content
     except OSError:
-        return None, 0
-    return first_prompt, count
+        return HistorySummary()
+    return summary
 
 
 def _extract_assistant_parts(content: Any) -> list[dict[str, Any]]:
@@ -184,8 +276,8 @@ def list_history_sessions() -> list[HistorySessionResponse]:
         except ValueError:
             continue
 
-        first_prompt, count = _first_user_prompt_and_count(history_file)
-        if count == 0:
+        summary = _summarize_history_session(history_file)
+        if summary.message_count == 0:
             continue
 
         try:
@@ -197,8 +289,11 @@ def list_history_sessions() -> list[HistorySessionResponse]:
             HistorySessionResponse(
                 session_id=history_file.stem,
                 mtime=mtime,
-                first_prompt=first_prompt or "",
-                message_count=count,
+                first_prompt=summary.first_prompt or "",
+                message_count=summary.message_count,
+                token_count=summary.token_count,
+                tool_call_count=summary.tool_call_count,
+                tool_calls=summary.tool_calls,
             )
         )
     sessions.sort(key=lambda session: session.mtime, reverse=True)

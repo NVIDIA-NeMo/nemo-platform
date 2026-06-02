@@ -78,12 +78,40 @@ def test_list_and_get_history_sessions(
                     {
                         "type": "assistant",
                         "message": {
+                            "id": "msg_1",
                             "content": [
                                 {"type": "thinking", "thinking": "checking"},
                                 {"type": "text", "text": "done"},
-                                {"type": "tool_use", "name": "Bash", "input": {"command": "pwd"}},
+                                {
+                                    "type": "tool_use",
+                                    "id": "toolu_1",
+                                    "name": "Bash",
+                                    "input": {"command": "pwd"},
+                                },
+                            ],
+                            "usage": {
+                                "input_tokens": 10,
+                                "cache_creation_input_tokens": 2,
+                                "cache_read_input_tokens": 3,
+                                "output_tokens": 4,
+                            },
+                        },
+                        "requestId": "req_1",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "type": "user",
+                        "message": {
+                            "content": [
+                                {
+                                    "type": "tool_result",
+                                    "tool_use_id": "toolu_1",
+                                    "content": "done",
+                                }
                             ]
                         },
+                        "toolUseResult": {"totalTokens": 11},
                     }
                 ),
                 json.dumps({"type": "user", "isSidechain": True, "message": {"content": "ignored"}}),
@@ -104,6 +132,9 @@ def test_list_and_get_history_sessions(
             "mtime": history.stat().st_mtime,
             "first_prompt": "first prompt",
             "message_count": 1,
+            "token_count": 30,
+            "tool_call_count": 1,
+            "tool_calls": ["Bash"],
         }
     ]
 
