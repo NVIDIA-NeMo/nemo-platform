@@ -3,18 +3,24 @@
 
 """NemoGuard JailbreakDetect model.
 
-A two-stage pipeline, ported from the ``nemoguardrails`` library
-(``library/jailbreak_detection/model_based/models.py``) so it can be served
-independently of the NVIDIA NIM.
+A two-stage pipeline, reconstructed from the open artifacts so it can be served
+independently of the NVIDIA NIM. The recipe below was validated against the
+hosted NIM on build.nvidia.com (matching verdicts + ranking):
 
 Stage 1 — ``SnowflakeEmbed``: the ``Snowflake/snowflake-arctic-embed-m-long``
-transformer encoder, used as a frozen feature extractor. The CLS-token
-embedding is taken (``model(**tokens)[0][:, 0]``), matching the upstream
-implementation.
+transformer encoder, used as a frozen feature extractor. The input is prefixed
+with the Arctic **query prefix** and the **CLS** token of the last hidden state
+is taken (no L2 normalization). The prefix is essential — without it the random
+forest sees out-of-distribution embeddings and classifies everything benign. The
+NIM applies this prefix server-side; the open-source nemoguardrails code does
+not, which is why its in-process path is inaccurate.
 
-Stage 2 — ``JailbreakClassifier``: a scikit-learn random forest exported to
-ONNX (``snowflake.onnx`` from the gated ``nvidia/NemoGuard-JailbreakDetect``
-Hugging Face repo), run on CPU through ``onnxruntime``.
+Stage 2 — ``JailbreakClassifier``: the scikit-learn **random forest**
+``snowflake.pkl`` from the ``nvidia/NemoGuard-JailbreakDetect`` Hugging Face repo.
+We use ``predict_proba`` (the pre-#1715 nemoguardrails behavior), NOT the
+``snowflake.onnx`` export — that ONNX emits an uncalibrated decision function,
+not probabilities. ``score`` matches the NIM's wire value, ``2*p1 - 1`` (negative
+= benign, positive = jailbreak), and the verdict is ``p1 > 0.5``.
 
 This module has no dependency on ``nemo_platform`` so the model container stays
 lean; it is imported by both the standalone server (``server.py``) and the tests.
@@ -22,18 +28,24 @@ lean; it is imported by both the standalone server (``server.py``) and the tests
 
 from __future__ import annotations
 
-import logging
 import os
-from pathlib import Path
-from typing import Any, cast
+import pickle  # noqa: S403  # trusted, revision-pinned artifact from nvidia/NemoGuard-JailbreakDetect
+from typing import Any
 
 import numpy as np
 
-logger = logging.getLogger(__name__)
-
+# Pin exact commits for reproducibility and to avoid silently fetching new
+# `trust_remote_code` model code on every load. Bump deliberately after review.
 SNOWFLAKE_MODEL_ID = "Snowflake/snowflake-arctic-embed-m-long"
-MODEL_FILENAME = "snowflake.onnx"
+SNOWFLAKE_MODEL_REVISION = "92d97331f1f4b6a366c1f161354b9f3390cc219f"
+
 MODEL_REPO_ID = "nvidia/NemoGuard-JailbreakDetect"
+MODEL_REVISION = "cc8b97e2bd6c1667c31476eedaa9a75b4d7ed282"
+MODEL_FILENAME = "snowflake.pkl"
+
+# Arctic-embed query prefix. Required: the random forest was trained on embeddings
+# produced with this prefix. Omitting it collapses jailbreak/benign separation.
+QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
 
 # Token budget and pooling strategy must stay bit-compatible with upstream,
 # otherwise the random forest sees a different feature distribution and
@@ -56,13 +68,19 @@ class SnowflakeEmbed:
 
         self.tokenizer = AutoTokenizer.from_pretrained(
             SNOWFLAKE_MODEL_ID,
+            revision=SNOWFLAKE_MODEL_REVISION,
             trust_remote_code=True,
         )
         self.model = AutoModel.from_pretrained(
             SNOWFLAKE_MODEL_ID,
+            revision=SNOWFLAKE_MODEL_REVISION,
             trust_remote_code=True,
             add_pooling_layer=False,
+            # The repo ships safetensors only. The model's custom (nomic-bert)
+            # loader reads `safe_serialization` (not `use_safetensors`); without
+            # it the loader looks for a non-existent pytorch_model.bin and fails.
             use_safetensors=True,
+            safe_serialization=True,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -81,69 +99,31 @@ class SnowflakeEmbed:
 
 
 class JailbreakClassifier:
-    """Embedding + ONNX random-forest jailbreak classifier.
+    """Embedding + random-forest jailbreak classifier.
 
-    Calling the instance with a prompt returns ``(is_jailbreak, score)`` where
-    ``score`` follows the upstream signed-probability convention: negative when
-    the prompt is classified safe, positive when classified as a jailbreak.
+    Calling the instance with a prompt returns ``(is_jailbreak, score)``.
+    ``score`` matches the NIM wire value ``2*p1 - 1`` (negative = benign,
+    positive = jailbreak); ``is_jailbreak`` is ``p1 > 0.5``.
     """
 
-    def __init__(self, random_forest_path: str, device: str | None = None) -> None:
-        from onnxruntime import InferenceSession
-
-        self.embed = SnowflakeEmbed(device=device)
-        # The random forest is tiny; CPU inference is the right call even when
-        # the embedder runs on GPU.
-        self.classifier = InferenceSession(random_forest_path, providers=["CPUExecutionProvider"])
-
-    def __call__(self, text: str) -> tuple[bool, float]:
-        embedding = self.embed(text)
-        features = np.asarray([embedding], dtype=np.float32)
-        # onnxruntime types `run` as a broad union; the RF returns a label array
-        # plus a per-class probability mapping. Cast to keep type-checkers happy.
-        outputs = cast(list[Any], self.classifier.run(None, {"X": features}))
-        classification = int(np.asarray(outputs[0]).reshape(-1)[0])
-        # outputs[1] is a list of per-class probability dicts; one element here.
-        prob = float(outputs[1][0][classification])
-        score = -prob if classification == 0 else prob
-        return bool(classification), float(score)
-
-
-def ensure_model_downloaded(classifier_dir: str) -> Path:
-    """Ensure ``snowflake.onnx`` exists locally, downloading it if needed.
-
-    Honours an already-populated directory (e.g. a mounted cache) and only
-    reaches Hugging Face when the file is absent. The repo is gated, so the
-    download uses ``HF_TOKEN`` from the environment when present.
-    """
-    directory = Path(classifier_dir)
-    directory.mkdir(parents=True, exist_ok=True)
-    model_path = directory / MODEL_FILENAME
-
-    if not model_path.is_file():
+    def __init__(self, device: str | None = None) -> None:
         from huggingface_hub import hf_hub_download
 
-        logger.info("Downloading %s from %s", MODEL_FILENAME, MODEL_REPO_ID)
-        hf_hub_download(
+        self.embed = SnowflakeEmbed(device=device)
+        # Mirror SnowflakeEmbed: fetch (and HF-cache) the random forest at a
+        # pinned revision instead of requiring a caller-supplied path.
+        random_forest_path = hf_hub_download(
             repo_id=MODEL_REPO_ID,
             filename=MODEL_FILENAME,
-            local_dir=classifier_dir,
+            revision=MODEL_REVISION,
         )
+        with open(random_forest_path, "rb") as fd:
+            self.classifier: Any = pickle.load(fd)  # noqa: S301  # trusted, revision-pinned RF
 
-    return model_path
-
-
-def load_classifier(classifier_dir: str | None = None, device: str | None = None) -> JailbreakClassifier:
-    """Build a :class:`JailbreakClassifier`, downloading the RF if necessary.
-
-    ``classifier_dir`` defaults to the ``EMBEDDING_CLASSIFIER_PATH`` environment
-    variable, matching the upstream contract and the container image layout.
-    """
-    if classifier_dir is None:
-        classifier_dir = os.environ.get("EMBEDDING_CLASSIFIER_PATH")
-    if not classifier_dir:
-        raise RuntimeError(
-            "No classifier path provided. Set EMBEDDING_CLASSIFIER_PATH or pass classifier_dir explicitly."
-        )
-    model_path = ensure_model_downloaded(classifier_dir)
-    return JailbreakClassifier(str(model_path), device=device)
+    def __call__(self, text: str) -> tuple[bool, float]:
+        embedding = self.embed(QUERY_PREFIX + text)
+        proba = self.classifier.predict_proba([embedding])[0]
+        p1 = float(proba[1])
+        # NIM-compatible signed score; verdict thresholds p1 at 0.5 (score at 0).
+        score = 2.0 * p1 - 1.0
+        return p1 > 0.5, score

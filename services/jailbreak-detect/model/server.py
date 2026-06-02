@@ -30,10 +30,10 @@ import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-try:  # package import (tests, plugin runtime)
-    from .classifier import JailbreakClassifier, load_classifier
+try:  # package import (tests)
+    from .classifier import JailbreakClassifier
 except ImportError:  # flat import (container: `python server.py` from /app)
-    from classifier import JailbreakClassifier, load_classifier  # type: ignore[no-redef]
+    from classifier import JailbreakClassifier  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -62,7 +62,7 @@ def get_classifier() -> JailbreakClassifier:
     """Return the process-global classifier, loading it on first use."""
     global _classifier
     if _classifier is None:
-        _classifier = load_classifier(device=os.environ.get("JAILBREAK_CHECK_DEVICE"))
+        _classifier = JailbreakClassifier(device=os.environ.get("JAILBREAK_CHECK_DEVICE"))
     return _classifier
 
 
@@ -84,6 +84,13 @@ def list_models() -> dict:
 def classify(request: ClassifyRequest) -> ClassifyResponse:
     classification, score = get_classifier()(request.input)
     return ClassifyResponse(jailbreak=classification, score=score)
+
+
+@cli_app.callback()
+def _main() -> None:
+    """NeMo jailbreak-detection model server."""
+    # Present so Typer keeps `start` as an explicit subcommand (a single-command
+    # Typer app otherwise collapses and rejects the command name).
 
 
 @cli_app.command()

@@ -13,13 +13,24 @@ at the gateway route with no library change.
 
 ## What it is
 
-Two-stage pipeline (`model/classifier.py`), ported from the `nemoguardrails`
-library so it can run independently of the NIM:
+Two-stage pipeline (`model/classifier.py`), reconstructed from the open artifacts
+and validated against the hosted NIM (matching verdicts + ranking):
 
-1. **Embedder** — `Snowflake/snowflake-arctic-embed-m-long` (CLS pooling), a frozen feature extractor.
-2. **Classifier** — a scikit-learn **random forest** exported to ONNX (`snowflake.onnx` from `nvidia/NemoGuard-JailbreakDetect`), run on CPU via `onnxruntime`.
+1. **Embedder** — `Snowflake/snowflake-arctic-embed-m-long`. Input is prefixed
+   with the Arctic **query prefix** (`Represent this sentence for searching
+   relevant passages: `) and the **CLS** token is taken (no L2 normalization).
+   The prefix is required — the NIM applies it server-side; without it the random
+   forest sees out-of-distribution embeddings and the model under-detects.
+2. **Classifier** — the scikit-learn **random forest** `snowflake.pkl` from
+   `nvidia/NemoGuard-JailbreakDetect`, via `predict_proba`. The verdict is
+   `p1 > 0.5`; the `score` matches the NIM wire value `2*p1 - 1` (negative =
+   benign, positive = jailbreak). We deliberately do **not** use the repo's
+   `snowflake.onnx` (it emits an uncalibrated decision function, not
+   probabilities — see the upstream #1715 regression).
 
 Neither stage requires a GPU. Weights are downloaded at first start (not baked).
+Pinned to **Python 3.11** because `snowflake.pkl` was pickled with scikit-learn
+1.2.x (no 3.12+ wheels); the container base is already `python:3.11-slim`.
 
 ## HTTP contract (NIM-compatible)
 
@@ -27,21 +38,35 @@ Neither stage requires a GPU. Weights are downloaded at first start (not baked).
 - `GET  /v1/health/ready` → `{"object": "health-response", "message": "ready"}`
 - `GET  /v1/models` → OpenAI-style model list
 
-## Build the image
+## Local development (uv)
+
+Standalone uv project (not part of the platform workspace):
 
 ```bash
-cd services/jailbreak-detect/model
+cd services/jailbreak-detect
+uv sync                                   # create .venv from uv.lock
+uv run pytest                             # tests
 
-# CPU (local / Apple Silicon)
-docker build -t nemo/jailbreak-detect:0.1.0 -f Dockerfile .
-
-# GPU (pods / DGX)
-docker build -t nemo/jailbreak-detect:0.1.0-gpu -f Dockerfile-GPU .
+# Run the server (weights download on first call; gated repo needs HF_TOKEN):
+export HF_TOKEN=...
+JAILBREAK_CHECK_DEVICE=cpu uv run python model/server.py start --port 8000
 ```
+
+## Build the image
+
+One uv-managed image, built from this directory:
+
+```bash
+cd services/jailbreak-detect
+docker build -t nemo/jailbreak-detect:0.1.0 .
+```
+
+Runs on CPU by default; for GPU pods/DGX run the **same** image with `--gpus all`
+and `-e JAILBREAK_CHECK_DEVICE=cuda:0` (the Linux torch wheel bundles CUDA).
 
 Weights download on first start. `nvidia/NemoGuard-JailbreakDetect` (the random
 forest) is **gated**, so provide `HF_TOKEN` at run time; the Snowflake embedder
-repo is public. Run it directly to smoke-test:
+repo is public. Mount the cache dir to persist downloads.
 
 ```bash
 docker run --rm -p 8000:8000 -e HF_TOKEN=$HF_TOKEN \
@@ -87,5 +112,5 @@ Tear down: `nemo inference deployments delete jbd`.
 
 ```bash
 cd services/jailbreak-detect
-uv run pytest    # or: PYTHONPATH=model pytest tests
+uv run pytest
 ```
