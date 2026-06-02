@@ -14,17 +14,44 @@ const WORKSPACE = 'default';
 const NGC_IMAGE_NAME = 'nvcr.io/nim/meta/llama-3.2-1b-instruct';
 const NGC_IMAGE_TAG = 'latest';
 
+interface DeploymentTracker {
+  /** Register a deployment + config pair for guaranteed cleanup after the test. */
+  track: (deploymentName: string, configName: string) => void;
+}
+
 interface TestFixtures {
   deploymentsPage: WorkspaceDeploymentsPage;
-  deploymentsApi: DeploymentsAPI;
+  trackedDeployments: DeploymentTracker;
 }
 
 const test = baseTest.extend<TestFixtures>({
   deploymentsPage: async ({ page }, runFixture) => {
     await runFixture(new WorkspaceDeploymentsPage(page));
   },
-  deploymentsApi: async ({ request }, runFixture) => {
-    await runFixture(new DeploymentsAPI(request));
+  // Fixture teardown runs even when the test fails, so anything registered here
+  // is cleaned up regardless of where in the UI flow we threw.
+  trackedDeployments: async ({ request }, runFixture) => {
+    const api = new DeploymentsAPI(request);
+    const tracked: Array<{ deploymentName: string; configName: string }> = [];
+
+    await runFixture({
+      track: (deploymentName, configName) => {
+        tracked.push({ deploymentName, configName });
+      },
+    });
+
+    for (const { deploymentName, configName } of tracked) {
+      try {
+        await api.deleteDeployment(WORKSPACE, deploymentName);
+      } catch {
+        /* already deleted */
+      }
+      try {
+        await api.deleteDeploymentConfig(WORKSPACE, configName);
+      } catch {
+        /* already deleted or still in use */
+      }
+    }
   },
 });
 
@@ -34,7 +61,7 @@ test.describe('Model Deployments', () => {
   test('Creates an NGC deployment, views its details, and deletes it @record', async ({
     page,
     deploymentsPage,
-    deploymentsApi,
+    trackedDeployments,
   }) => {
     test.slow();
 
@@ -44,6 +71,10 @@ test.describe('Model Deployments', () => {
     const baseName = generateShortTestResourceName();
     const deploymentName = `${baseName}-deployment`;
     const configName = `${baseName}-config`;
+
+    // Register for fixture-teardown cleanup before we touch the UI, so a failure
+    // anywhere below still leaves the workspace clean.
+    trackedDeployments.track(deploymentName, configName);
 
     await test.step('Navigate to the workspace deployments page', async () => {
       await deploymentsPage.gotoDeployments(WORKSPACE);
@@ -119,18 +150,5 @@ test.describe('Model Deployments', () => {
         await expect(deploymentRow).toHaveCount(0);
       }
     });
-
-    // Extra cleanup: if anything failed mid-flow, try to remove the deployment + config so the
-    // workspace doesn't leak state. Errors are swallowed because the API may have already deleted them.
-    try {
-      await deploymentsApi.deleteDeployment(WORKSPACE, deploymentName);
-    } catch {
-      /* already deleted */
-    }
-    try {
-      await deploymentsApi.deleteDeploymentConfig(WORKSPACE, configName);
-    } catch {
-      /* already deleted or still in use */
-    }
   });
 });
