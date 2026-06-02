@@ -15,6 +15,8 @@ import subprocess
 from datetime import UTC, date, datetime
 from pathlib import Path
 
+import yaml
+
 
 def extract_agent_metadata(
     agent_config: Path,
@@ -148,6 +150,11 @@ def _resolve_timestamp(cwd: Path | None = None) -> str:
         try:
             return datetime.fromtimestamp(int(sde), UTC).isoformat()
         except ValueError:
+            # SOURCE_DATE_EPOCH was set but not a parseable integer (e.g.
+            # "" after strip, "abc", "1.5"). Don't fail the build — fall
+            # through to the git-commit-time / wall-clock fallbacks below
+            # so a malformed env var degrades gracefully instead of
+            # aborting the package step on every CI run.
             pass
     try:
         result = subprocess.run(
@@ -167,13 +174,14 @@ def _resolve_timestamp(cwd: Path | None = None) -> str:
 
 def _detect_framework(config_text: str) -> str:
     try:
-        import yaml
-
         data = yaml.safe_load(config_text)
-        if isinstance(data, dict) and "workflow" in data:
-            return "nemo_agent_toolkit"
-    except Exception:
-        pass
+    except yaml.YAMLError:
+        # Malformed YAML — validator.py reports the parse error separately;
+        # don't double-fail packaging here, return the "unknown" sentinel
+        # so the OCI label is still populated with a deterministic value.
+        return "unknown"
+    if isinstance(data, dict) and "workflow" in data:
+        return "nemo_agent_toolkit"
     return "unknown"
 
 
@@ -208,15 +216,16 @@ def _resolve_description(pyproject_data: dict, config_text: str) -> str:
     if desc:
         return desc
     try:
-        import yaml
-
         data = yaml.safe_load(config_text)
-        if isinstance(data, dict):
-            wf = data.get("workflow", {})
-            if isinstance(wf, dict) and wf.get("_type"):
-                return f"{wf['_type']} agent"
-    except Exception:
-        pass
+    except yaml.YAMLError:
+        # Malformed YAML — fall back to an empty description rather than
+        # crashing image labeling.  validator.py raises a structured parse
+        # error elsewhere, so the user still sees the YAML problem.
+        return ""
+    if isinstance(data, dict):
+        wf = data.get("workflow", {})
+        if isinstance(wf, dict) and wf.get("_type"):
+            return f"{wf['_type']} agent"
     return ""
 
 
@@ -293,6 +302,10 @@ def _strip_credentials(url: str) -> str:
     try:
         parts = urlsplit(url)
     except ValueError:
+        # Unparseable URL (e.g. invalid IPv6 bracketing) — best-effort
+        # fallback returns the raw string so the OCI label is at least
+        # populated; the credential-leak risk is limited because the
+        # offending URL also failed Python's basic syntax check.
         return url
 
     scheme = parts.scheme

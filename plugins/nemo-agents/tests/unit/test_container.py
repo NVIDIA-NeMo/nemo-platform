@@ -167,6 +167,16 @@ class TestRenderDockerfile:
         assert "groupadd" in result
         assert "useradd" in result
         assert "chown -R agent:agent /workspace" in result
+        # Regression: Ubuntu 24.04 "noble" (and other modern base images) ship
+        # a default unprivileged user at uid/gid=1000.  The previous hardcoded
+        # ``groupadd -g 1000 agent`` collided with that user and the build
+        # failed with ``groupadd: GID '1000' already exists`` (exit code 4).
+        # The template now reclaims uid/gid 1000 first; assert *both* guards
+        # are present so a regression on either half is caught.
+        assert "getent passwd 1000" in result
+        assert "getent group  1000" in result
+        assert "userdel -rf" in result
+        assert "groupdel -f" in result
 
     def test_allow_root_skips_user(self, agent_config: Path) -> None:
         from nemo_agents_plugin.container.template import render_dockerfile
@@ -802,6 +812,37 @@ class TestBuildAgentImage:
 
         assert not (agent_config.parent / ".dockerignore").exists()
         assert not (agent_config.parent / "Dockerfile.generated").exists()
+
+    @patch("nemo_agents_plugin.container.builder.docker_build")
+    def test_build_preserves_committed_plugin_managed_dockerignore(
+        self, mock_build: MagicMock, agent_config: Path
+    ) -> None:
+        """A pre-existing committed ``.dockerignore`` must survive a build.
+
+        Regression: ``render_dockerignore`` regenerates plugin-managed
+        files in place (sentinel match = "safe to refresh") and returns
+        the path.  The build path used to treat any returned path as a
+        transient artifact and unlinked it in the ``finally`` cleanup —
+        which deleted a committed-and-checked-in ``.dockerignore`` whose
+        sentinel header marked it as plugin-managed.  Cleanup now only
+        deletes files this run actually *created* (file did not exist
+        before the build).  Both content and existence are checked.
+        """
+        from nemo_agents_plugin.container.builder import build_agent_image
+        from nemo_agents_plugin.container.template import DOCKERIGNORE_SENTINEL
+
+        ignore = agent_config.parent / ".dockerignore"
+        committed = f"{DOCKERIGNORE_SENTINEL}\n# user-committed tweak\nignore-me/\n"
+        ignore.write_text(committed)
+
+        mock_build.return_value = "config-abc:0.0.0"
+        build_agent_image(agent_config, nat_version="1.4.0", generate_ignore=True, agent_author="x")
+
+        assert ignore.exists(), "committed .dockerignore was deleted by build cleanup"
+        # Content may have been regenerated (sentinel-marked = safe to
+        # refresh), so we only assert the sentinel header survived — the
+        # file is still there for the next ``docker build`` to consume.
+        assert ignore.read_text().splitlines()[0] == DOCKERIGNORE_SENTINEL
 
     @patch("nemo_agents_plugin.container.builder.docker_build")
     def test_build_no_ignore(self, mock_build: MagicMock, agent_config: Path) -> None:
@@ -1692,7 +1733,7 @@ class TestPackagingSafetyRegressions:
         meta_v2 = extract_agent_metadata(
             agent_config,
             agent_author="x",
-            build_env={"nat_version": "1.6.1", "python_version": "3.12"},
+            build_env={"nat_version": "1.7.0", "python_version": "3.12"},
         )
         meta_legacy = extract_agent_metadata(agent_config, agent_author="x")
 

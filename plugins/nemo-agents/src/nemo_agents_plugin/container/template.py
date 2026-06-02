@@ -61,7 +61,7 @@ def is_plugin_managed(path: Path) -> bool:
 
 _DEFAULTS: dict[str, str] = {
     "base_image_url": "nvcr.io/nvidia/base/ubuntu",
-    "base_image_tag": "22.04_20240212",
+    "base_image_tag": "noble-20260217",
     "python_version": "3.13",
     "uv_version": "0.8.15",
     # Default NAT version — used ONLY as a last-resort fallback.  Callers are
@@ -76,7 +76,7 @@ _DEFAULTS: dict[str, str] = {
     # 'nvidia-nat[most]==<ver>'`` against public PyPI.  Note: NAT does not
     # define an ``[all]`` extra — ``[most]`` is the comprehensive one
     # (includes langchain / react-agent / wiki-search).
-    "nat_version": "1.6.1",
+    "nat_version": "1.7.0",
 }
 
 _ENV_MAP: dict[str, str] = {
@@ -162,7 +162,15 @@ ENV NAT_CONFIG_FILE={{ config_file_path }}
 
 ENV PATH="/workspace/.venv/bin:$PATH"
 {% if not allow_root %}
-RUN groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \\
+# Some modern base images (notably Ubuntu 24.04 "noble" and the NVIDIA base
+# images derived from it) ship with a default unprivileged user at
+# uid=1000/gid=1000.  Reclaim 1000 for ``agent`` *by id, not by name* so this
+# layer is portable across older base images (where 1000 is free; the guarded
+# delete is a no-op) and across future base images that might rename the
+# default user.
+RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    if getent group  1000 >/dev/null; then groupdel -f "$(getent group  1000 | cut -d: -f1)" 2>/dev/null || true; fi && \\
+    groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \\
     chown -R agent:agent /workspace
 USER agent
 {% endif %}

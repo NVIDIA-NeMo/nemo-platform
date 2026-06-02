@@ -301,7 +301,7 @@ def _register_package_command(app: typer.Typer) -> None:
             "--nat-version",
             envvar="NAT_VERSION",
             help=(
-                "NAT release to install (e.g. '1.6.1').  Strongly recommended: "
+                "NAT release to install (e.g. '1.7.0').  Strongly recommended: "
                 "pin explicitly so image tags/labels/deps are reproducible.  "
                 "When omitted, a baked-in default is used and a warning is printed."
             ),

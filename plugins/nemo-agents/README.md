@@ -352,7 +352,7 @@ nemo agents package \
 |---|---|---|
 | `--tag`, `-t` | `<agent-name>-<agent-id>:<agent-version>` | Image tag |
 | `--platform` | local daemon's native platform | Target platform (e.g. `linux/amd64`). At most one value -- multi-arch builds via buildx are not yet implemented and are rejected at flag-validation time with an actionable message pointing at `docker buildx imagetools create`. |
-| `--nat-version` | `$NAT_VERSION` env var, then a baked-in fallback (currently `1.6.1`) | NAT package version to install. Strongly recommended to pass explicitly so image tags, labels, and the `nvidia-nat[most]==<ver>` constraint are reproducible. When neither the flag nor the env var is set, the fallback is used and the CLI prints a warning. |
+| `--nat-version` | `$NAT_VERSION` env var, then a baked-in fallback (currently `1.7.0`) | NAT package version to install. Strongly recommended to pass explicitly so image tags, labels, and the `nvidia-nat[most]==<ver>` constraint are reproducible. When neither the flag nor the env var is set, the fallback is used and the CLI prints a warning. |
 | `--output`, `-o` | `<config-dir>/Dockerfile` | Where to write Dockerfile (with `--no-build`) |
 | `--skip-validation` | `False` | Bypass `validate_agent_config` before build |
 
@@ -459,7 +459,11 @@ The `package` command validates the agent config before building (skip with
 
 - File is valid YAML that parses to a mapping (dict)
 - Top-level `workflow` key exists and is a mapping
-- `workflow._type` is a known NAT agent type (`react_agent`, `tool_calling_agent`, `reasoning_agent`, `rewoo_agent`)
+- `workflow._type` is present and non-empty (missing `_type` is an error; an
+  unrecognized value — e.g. a workflow registered by a NAT plugin the
+  validator does not know about — only emits a warning and the build
+  proceeds). Built-in types: `react_agent`, `tool_calling_agent`,
+  `reasoning_agent`, `rewoo_agent`
 - Every name in `workflow.tool_names` is defined in `functions` or `function_groups`
 - `workflow.llm_name` is defined in `llms`
 
@@ -483,7 +487,7 @@ The Dockerfile template has two modes, selected automatically:
 | Mode | Trigger | Install strategy |
 |---|---|---|
 | **Config-only** | No `--pyproject` | `uv pip install "nvidia-nat[most]==${NAT_VERSION}"` |
-| **Project** | `--pyproject` provided | `uv sync` + `uv pip install .` (installs the project and its deps) |
+| **Project** | `--pyproject` provided | `uv pip install .` (installs the project and its declared deps) |
 
 In project mode the entire project directory is the build context and the config
 path is resolved relative to the `pyproject.toml` parent directory.

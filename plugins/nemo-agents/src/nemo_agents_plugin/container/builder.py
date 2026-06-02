@@ -205,6 +205,19 @@ def build_agent_image(
     if tmp_dockerfile.exists():
         raise typer.Exit(_emit_refusal_error(tmp_dockerfile))
     ignore_file: Path | None = None
+    # Snapshot the pre-existing ``.dockerignore`` state so the ``finally``
+    # cleanup only deletes files this run actually *created*.  Without this,
+    # a committed-and-checked-in plugin-managed ``.dockerignore`` (sentinel
+    # header on first line, intentionally kept in the repo) would be wiped:
+    # ``render_dockerignore`` regenerates plugin-managed files in place and
+    # returns the path, and the cleanup below would treat that returned path
+    # as a transient artifact.  Two cases the cleanup must distinguish:
+    #   (a) file did NOT exist before this run -> we just created it ->
+    #       safe to unlink (the user never put it there).
+    #   (b) file existed before this run -> the user committed/wrote it,
+    #       even if plugin-managed -> must NOT unlink.
+    ignore_path = context_dir / ".dockerignore"
+    ignore_pre_existed = ignore_path.exists()
     try:
         tmp_dockerfile.write_text(content, encoding="utf-8")
 
@@ -224,7 +237,7 @@ def build_agent_image(
         )
     finally:
         tmp_dockerfile.unlink(missing_ok=True)
-        if ignore_file is not None:
+        if ignore_file is not None and not ignore_pre_existed:
             ignore_file.unlink(missing_ok=True)
 
 

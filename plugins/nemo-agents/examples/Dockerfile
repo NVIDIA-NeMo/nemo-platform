@@ -1,8 +1,8 @@
 # Managed by `nemo agents package` — safe to delete if you take ownership.
 ARG BASE_IMAGE_URL=nvcr.io/nvidia/base/ubuntu
-ARG BASE_IMAGE_TAG=22.04_20240212
+ARG BASE_IMAGE_TAG=noble-20260217
 ARG PYTHON_VERSION=3.13
-ARG NAT_VERSION=1.6.1
+ARG NAT_VERSION=1.6.0
 FROM ${BASE_IMAGE_URL}:${BASE_IMAGE_TAG}
 ARG PYTHON_VERSION
 ARG NAT_VERSION
@@ -38,21 +38,23 @@ RUN --mount=type=cache,id=uv_cache,target=/root/.cache/uv,sharing=locked \
 
 LABEL org.opencontainers.image.title="hello_world" \
       org.opencontainers.image.version="26.06.01" \
-      org.opencontainers.image.authors="Arpit Singh (SW-CLOUD)" \
+      org.opencontainers.image.authors="NeMo Agents Team" \
       org.opencontainers.image.created="2026-06-01T10:11:07-07:00" \
       org.opencontainers.image.description="react_agent agent" \
       org.opencontainers.image.revision="40924998df45aef404781ca39c9bdd9000016bb7" \
       org.opencontainers.image.source="git@github.com:NVIDIA-NeMo/nemo-platform.git" \
       com.nemo.agent.id="9ee8d3b15822" \
       com.nemo.agent.framework="nemo_agent_toolkit" \
-      com.nemo.agent.nat-version="1.6.1" \
+      com.nemo.agent.nat-version="1.6.0" \
       com.nemo.agent.contract-version="0.1.0"
 
 ENV NAT_CONFIG_FILE=/workspace/hello_world.yaml
 
 ENV PATH="/workspace/.venv/bin:$PATH"
 
-RUN groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \
+RUN if getent passwd 1000 >/dev/null; then userdel -rf "$(getent passwd 1000 | cut -d: -f1)" 2>/dev/null || true; fi && \
+    if getent group  1000 >/dev/null; then groupdel -f "$(getent group  1000 | cut -d: -f1)" 2>/dev/null || true; fi && \
+    groupadd -g 1000 agent && useradd -u 1000 -g agent -m agent && \
     chown -R agent:agent /workspace
 USER agent
 
