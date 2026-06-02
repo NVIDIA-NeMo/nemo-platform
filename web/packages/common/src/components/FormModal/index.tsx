@@ -99,17 +99,12 @@ export const FormModal: FC<PropsWithChildren<FormModalProps>> = ({
     <ModalRoot id={modalId} open={open} onOpenChange={handleUserClose}>
       <ModalDialog>
         <ModalContent className={`max-h-[90vh] ${className || ''}`}>
-          <form
-            className="flex flex-col h-full overflow-y-auto gap-2"
-            onSubmit={handleSubmit}
-            noValidate
-            {...attributes?.Form}
-          >
+          <form className="contents" onSubmit={handleSubmit} noValidate {...attributes?.Form}>
             <ModalHeading>{title}</ModalHeading>
             <ModalMain className="flex-1 min-h-0 overflow-y-auto">
               <Stack gap="density-md" className="pt-4">
-                {errorText && <p className="text-feedback-danger">{errorText}</p>}
-                {instruction && <p>{instruction}</p>}
+                {errorText && <p className="text-feedback-danger whitespace-normal">{errorText}</p>}
+                {instruction && <p className="whitespace-normal">{instruction}</p>}
                 {children}
               </Stack>
             </ModalMain>
