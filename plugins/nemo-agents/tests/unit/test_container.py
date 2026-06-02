@@ -574,15 +574,25 @@ class TestValidateAgentConfig:
         assert not result.valid
         assert any("workflow" in e for e in result.errors)
 
-    def test_unknown_workflow_type(self, tmp_path: Path) -> None:
+    def test_unknown_workflow_type_warns_does_not_fail(self, tmp_path: Path) -> None:
+        """Unknown ``workflow._type`` is a soft warning, not a hard error.
+
+        NAT plugins can register additional workflow types at runtime; a
+        closed allowlist here used to hard-fail on otherwise-valid configs
+        and force operators to ``--skip-validation``.  The check now
+        surfaces unfamiliar types as warnings and lets the build proceed.
+        """
         from nemo_agents_plugin.container.validator import validate_agent_config
 
         p = tmp_path / "config.yaml"
         p.write_text("workflow:\n  _type: unknown_agent_type\n")
 
         result = validate_agent_config(p)
-        assert not result.valid
-        assert any("unknown_agent_type" in e for e in result.errors)
+        assert result.valid, f"unknown type should not block validation; got errors: {result.errors}"
+        assert any("unknown_agent_type" in w for w in result.warnings)
+        # Built-in known types are still listed in the message so operators
+        # can quickly tell whether they made a typo vs. invoked a plugin.
+        assert any("react_agent" in w for w in result.warnings)
 
     def test_known_workflow_types_pass(self, tmp_path: Path) -> None:
         from nemo_agents_plugin.container.validator import validate_agent_config
@@ -683,6 +693,29 @@ class TestValidateAgentConfig:
         result = validate_agent_config(p)
         assert not result.valid
         assert len(result.errors) >= 3
+
+    def test_unreadable_config_returns_structured_error(self, tmp_path: Path) -> None:
+        """``read_text`` failures surface as ``ValidationResult``, not tracebacks.
+
+        Two paths exercised: missing file (``FileNotFoundError``) and a
+        non-UTF-8 binary blob (``UnicodeDecodeError``).  Both must produce a
+        ``valid=False`` result with an explanatory error so the CLI builder
+        path can print a clean "Agent config validation failed" message
+        instead of leaking an ``OSError`` traceback to the operator.
+        """
+        from nemo_agents_plugin.container.validator import validate_agent_config
+
+        missing = tmp_path / "no_such.yaml"
+        result_missing = validate_agent_config(missing)
+        assert not result_missing.valid
+        assert any("Unable to read config file" in e for e in result_missing.errors)
+
+        binary = tmp_path / "binary.yaml"
+        # 0x80 is invalid as a UTF-8 leading byte → ``UnicodeDecodeError``.
+        binary.write_bytes(b"\x80\x81\x82")
+        result_binary = validate_agent_config(binary)
+        assert not result_binary.valid
+        assert any("not valid UTF-8" in e for e in result_binary.errors)
 
     def test_malformed_workflow_fields_are_rejected(self, tmp_path: Path) -> None:
         """tool_names / llm_name / llms with the wrong YAML type must error.

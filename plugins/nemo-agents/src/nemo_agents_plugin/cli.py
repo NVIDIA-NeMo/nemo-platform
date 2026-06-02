@@ -322,7 +322,7 @@ def _register_package_command(app: typer.Typer) -> None:
             None, "--template", help="Path to an external Jinja2 Dockerfile template."
         ),
     ) -> None:
-        """Package a NAT agent — render → validate → build → publish.
+        """Package a NAT agent -- render -> validate -> build -> publish.
 
         \b
         Progressive pipeline controlled by flags:
@@ -332,9 +332,9 @@ def _register_package_command(app: typer.Typer) -> None:
 
         \b
         Platform behavior:
-          • no --platform   image built for the local daemon's native platform
-          • one --platform  image built for that platform (cross-arch via buildx)
-          • multi --platform  rejected — multi-arch builds via buildx are not
+          - no --platform     image built for the local daemon's native platform
+          - one --platform    image built for that platform (cross-arch via buildx)
+          - multi --platform  rejected -- multi-arch builds via buildx are not
                               yet wired up; build per-arch and combine with
                               ``docker buildx imagetools create`` until then.
         """

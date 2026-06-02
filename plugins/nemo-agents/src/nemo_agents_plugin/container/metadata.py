@@ -88,9 +88,14 @@ def _load_pyproject(pyproject: Path | None) -> dict:
         import tomllib
     except ModuleNotFoundError:
         import tomli as tomllib  # type: ignore[no-redef]
+    # Only swallow the *parse* failure: a malformed ``pyproject.toml`` should
+    # not stop a build that is otherwise valid (we fall back to filename-based
+    # name resolution, env-var version, etc.).  ``OSError`` (permission /
+    # races with file deletion) and ``UnicodeDecodeError`` (binary file
+    # passed in) are real bugs and propagate so the operator sees them.
     try:
         return tomllib.loads(pyproject.read_text(encoding="utf-8"))
-    except Exception:
+    except tomllib.TOMLDecodeError:
         return {}
 
 

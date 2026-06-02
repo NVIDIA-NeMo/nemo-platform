@@ -26,10 +26,17 @@ _KNOWN_WORKFLOW_TYPES = frozenset(
 
 @dataclass
 class ValidationResult:
-    """Outcome of agent config validation."""
+    """Outcome of agent config validation.
+
+    ``errors`` are hard failures that should block a build; ``warnings`` are
+    soft signals (e.g. an unrecognised but possibly-valid workflow type from
+    a NAT plugin) that the CLI surfaces but does not treat as fatal.
+    ``valid`` is True iff ``errors`` is empty.
+    """
 
     valid: bool
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def validate_agent_config(agent_config: Path) -> ValidationResult:
@@ -39,14 +46,29 @@ def validate_agent_config(agent_config: Path) -> ValidationResult:
 
     1. File is valid YAML.
     2. Top-level ``workflow`` key exists.
-    3. ``workflow._type`` is present and is a recognised NAT workflow type.
+    3. ``workflow._type`` is present (missing = hard error).  Unknown values
+       are a *warning*, not an error — NAT plugins can register additional
+       workflow types at runtime and a closed allowlist would block valid
+       configs.
     4. Every name in ``workflow.tool_names`` has a matching entry in
        top-level ``functions`` or ``function_groups``.
     5. ``workflow.llm_name`` (if present) references an entry in ``llms``.
     """
     errors: list[str] = []
+    warnings: list[str] = []
 
-    raw = agent_config.read_text(encoding="utf-8")
+    # ``read_text`` can raise even when the caller has already proved the
+    # file exists (race with deletion, EACCES, binary file → decode error).
+    # Convert those into a structured ValidationResult so packaging surfaces
+    # them with the same shape as YAML / schema errors instead of a raw
+    # OSError traceback.
+    try:
+        raw = agent_config.read_text(encoding="utf-8")
+    except OSError as exc:
+        return ValidationResult(valid=False, errors=[f"Unable to read config file: {exc}"])
+    except UnicodeDecodeError as exc:
+        return ValidationResult(valid=False, errors=[f"Config file is not valid UTF-8: {exc}"])
+
     try:
         data = yaml.safe_load(raw)
     except yaml.YAMLError as exc:
@@ -73,8 +95,17 @@ def validate_agent_config(agent_config: Path) -> ValidationResult:
         # traceback after a successful image build.
         errors.append(f"Missing required workflow._type. Expected one of: {', '.join(sorted(_KNOWN_WORKFLOW_TYPES))}.")
     elif wf_type not in _KNOWN_WORKFLOW_TYPES:
-        errors.append(
-            f"Unknown workflow type '{wf_type}'. Expected one of: {', '.join(sorted(_KNOWN_WORKFLOW_TYPES))}."
+        # Soft-warn instead of hard-failing: NAT's plugin system can
+        # register new workflow types at runtime (and does — new types
+        # land regularly).  A closed allowlist here is really a denylist
+        # of "types we recognise at this version of the plugin", and
+        # hard-failing forces operators to ``--skip-validation`` on
+        # otherwise-valid configs.  Surface the unfamiliarity, let the
+        # build proceed, let NAT's own loader make the real call.
+        warnings.append(
+            f"Unknown workflow type '{wf_type}'. Known built-in types are: "
+            f"{', '.join(sorted(_KNOWN_WORKFLOW_TYPES))}. "
+            "Proceeding — assuming it is registered by a NAT plugin."
         )
 
     functions = set(data.get("functions", {}).keys()) if isinstance(data.get("functions"), dict) else set()
@@ -112,4 +143,4 @@ def validate_agent_config(agent_config: Path) -> ValidationResult:
             elif llm_name not in llms:
                 errors.append(f"LLM '{llm_name}' in workflow.llm_name not found in 'llms'.")
 
-    return ValidationResult(valid=len(errors) == 0, errors=errors)
+    return ValidationResult(valid=len(errors) == 0, errors=errors, warnings=warnings)

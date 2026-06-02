@@ -121,6 +121,11 @@ def build_agent_image(
 
     if not skip_validation:
         result = validate_agent_config(agent_config)
+        # Soft warnings (e.g. unknown workflow._type) are surfaced regardless
+        # of overall validity so the operator can see them even when the
+        # config is otherwise fine.  Hard errors still abort the build.
+        for warn in result.warnings:
+            typer.echo(f"warning: {warn}", err=True)
         if not result.valid:
             typer.echo("Agent config validation failed:", err=True)
             for err in result.errors:

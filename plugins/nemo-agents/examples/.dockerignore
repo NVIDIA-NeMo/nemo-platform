@@ -1,3 +1,4 @@
+# Managed by `nemo agents package` — safe to delete if you take ownership.
 .env
 .env.*
 *.pem

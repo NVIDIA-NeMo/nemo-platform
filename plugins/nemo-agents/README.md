@@ -351,8 +351,8 @@ nemo agents package \
 | Flag | Default | Description |
 |---|---|---|
 | `--tag`, `-t` | `<agent-name>-<agent-id>:<agent-version>` | Image tag |
-| `--platform` | local daemon's native platform | Target platform (e.g. `linux/amd64`). At most one value — multi-arch builds via buildx are not yet implemented and are rejected. |
-| `--nat-version` | `$NAT_VERSION` env | NAT package version to install |
+| `--platform` | local daemon's native platform | Target platform (e.g. `linux/amd64`). At most one value -- multi-arch builds via buildx are not yet implemented and are rejected at flag-validation time with an actionable message pointing at `docker buildx imagetools create`. |
+| `--nat-version` | `$NAT_VERSION` env var, then a baked-in fallback (currently `1.6.1`) | NAT package version to install. Strongly recommended to pass explicitly so image tags, labels, and the `nvidia-nat[most]==<ver>` constraint are reproducible. When neither the flag nor the env var is set, the fallback is used and the CLI prints a warning. |
 | `--output`, `-o` | `<config-dir>/Dockerfile` | Where to write Dockerfile (with `--no-build`) |
 | `--skip-validation` | `False` | Bypass `validate_agent_config` before build |
 
