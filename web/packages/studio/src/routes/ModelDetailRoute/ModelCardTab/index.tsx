@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Grid, GridItem } from '@nvidia/foundations-react-core';
+import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { ReadmeBody } from '@studio/routes/ModelDetailRoute/ModelCardTab/ReadmeBody';
 import { ModelMetadataPanel } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel';
@@ -53,13 +53,20 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
         cols={{ lg: 8 }}
         className="min-w-0 overflow-hidden rounded-lg border border-base bg-surface-raised p-density-xl"
       >
-        <ReadmeBody
-          isFilesError={isFilesError}
-          readmePath={readmePath}
-          isContentLoading={isContentLoading}
-          isContentError={isContentError}
-          content={parsed?.content}
-        />
+        <Stack gap="density-md">
+          {fileset.description && (
+            <Text kind="body/regular/md" data-testid="model-card-fileset-description">
+              {fileset.description}
+            </Text>
+          )}
+          <ReadmeBody
+            isFilesError={isFilesError}
+            readmePath={readmePath}
+            isContentLoading={isContentLoading}
+            isContentError={isContentError}
+            content={parsed?.content}
+          />
+        </Stack>
       </GridItem>
       <GridItem cols={{ lg: 4 }} className="min-w-0">
         <ModelMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
