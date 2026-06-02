@@ -28,8 +28,8 @@ class ExperimentFilterParam(TypedDict, total=False):
     agent_name: str
     """Filter experiments by agent name."""
 
-    dataset_id: str
-    """Filter experiments by dataset id."""
+    dataset_name: str
+    """Filter experiments by dataset name."""
 
     experiment_group_id: str
     """Filter experiments by owning group id."""

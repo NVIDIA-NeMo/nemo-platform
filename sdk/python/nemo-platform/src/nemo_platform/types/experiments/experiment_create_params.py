@@ -32,8 +32,8 @@ class ExperimentCreateParams(TypedDict, total=False):
     agent_version: Required[str]
     """Version of the agent under test."""
 
-    dataset_id: Required[str]
-    """Producer-supplied dataset identifier."""
+    dataset_name: Required[str]
+    """Producer-supplied dataset name."""
 
     name: Required[str]
     """Producer-supplied, workspace-unique experiment id."""
@@ -52,6 +52,9 @@ class ExperimentCreateParams(TypedDict, total=False):
 
     metadata: Dict[str, object]
     """Free-form producer metadata."""
+
+    source_link: str
+    """Optional URL for the source experiment."""
 
     summary: str
     """Human-authored summary of results."""

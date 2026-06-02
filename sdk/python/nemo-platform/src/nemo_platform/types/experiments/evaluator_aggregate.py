@@ -28,10 +28,14 @@ class EvaluatorAggregate(BaseModel):
     Populated by the rollup path (later PR).
     """
 
+    sum: Optional[float] = None
+
     mean: Optional[float] = None
 
     median: Optional[float] = None
 
-    n_runs: Optional[int] = None
+    p90: Optional[float] = None
 
-    stddev: Optional[float] = None
+    p95: Optional[float] = None
+
+    p99: Optional[float] = None

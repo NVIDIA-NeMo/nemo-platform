@@ -33,7 +33,7 @@ class ExperimentResponse(BaseModel):
 
     agent_version: str
 
-    dataset_id: str
+    dataset_name: str
 
     name: str
 
@@ -57,7 +57,11 @@ class ExperimentResponse(BaseModel):
 
     metadata: Optional[Dict[str, object]] = None
 
+    model_names: Optional[List[str]] = None
+
     run_count: Optional[int] = None
+
+    source_link: Optional[str] = None
 
     summary: Optional[str] = None
 

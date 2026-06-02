@@ -202,8 +202,9 @@ async def create_experiment(
         experiment_group_id=body.experiment_group_id,
         agent_name=body.agent_name,
         agent_version=body.agent_version,
-        dataset_id=body.dataset_id,
+        dataset_name=body.dataset_name,
         dataset_version=body.dataset_version,
+        source_link=body.source_link,
         metadata=body.metadata,
         description=body.description,
         summary=body.summary,
@@ -224,7 +225,7 @@ async def create_experiment(
     tags=[EXPERIMENTS_TAG],
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
-        filter_description="Filter experiments by name, experiment_group_id, agent_name, and dataset_id.",
+        filter_description="Filter experiments by name, experiment_group_id, agent_name, and dataset_name.",
     ),
 )
 async def list_experiments(
@@ -276,8 +277,8 @@ async def get_experiment(
 
 # Identity and the dataset/agent it was run against are fixed for the life of an
 # Experiment (see the ingest invariants); changing them means it's a different
-# Experiment. PUT may only edit group membership, summary, description, metadata.
-_IMMUTABLE_EXPERIMENT_FIELDS = ("name", "agent_name", "agent_version", "dataset_id", "dataset_version")
+# Experiment. PUT may only edit group membership, source link, summary, description, metadata.
+_IMMUTABLE_EXPERIMENT_FIELDS = ("name", "agent_name", "agent_version", "dataset_name", "dataset_version")
 
 
 @router.put(
@@ -314,6 +315,7 @@ async def update_experiment(
         )
 
     existing.experiment_group_id = body.experiment_group_id
+    existing.source_link = body.source_link
     existing.metadata = body.metadata
     existing.description = body.description
     existing.summary = body.summary

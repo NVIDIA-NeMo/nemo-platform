@@ -18,8 +18,9 @@ def _experiment_body(**overrides: Any) -> dict:
         "name": "terminal-bench-2_claude-code_opus_baseline",
         "agent_name": "claude-code",
         "agent_version": "0.125.0",
-        "dataset_id": "terminal-bench-2",
+        "dataset_name": "terminal-bench-2",
         "dataset_version": "v1",
+        "source_link": "https://example.com/experiments/tb2-baseline",
         "metadata": {"job_name": "tb2-baseline"},
     }
     body.update(overrides)
@@ -95,10 +96,13 @@ def test_experiment_crud_and_empty_rollups(client: TestClient) -> None:
     assert exp["name"] == "terminal-bench-2_claude-code_opus_baseline"
     assert exp["experiment_group_id"] == group["id"]
     assert exp["agent_name"] == "claude-code"
+    assert exp["dataset_name"] == "terminal-bench-2"
+    assert exp["source_link"] == "https://example.com/experiments/tb2-baseline"
     assert exp["metadata"] == {"job_name": "tb2-baseline"}
 
     # Rollups exist on the read model but are empty until ClickHouse hydration lands.
     assert exp["evaluator_names"] == []
+    assert exp["model_names"] == []
     assert exp["aggregate_scores"] is None
     assert exp["run_count"] == 0
 

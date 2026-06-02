@@ -28,7 +28,7 @@ class ExperimentListParams(TypedDict, total=False):
     workspace: str
 
     filter: ExperimentFilterParam
-    """Filter experiments by name, experiment_group_id, agent_name, and dataset_id."""
+    """Filter experiments by name, experiment_group_id, agent_name, and dataset_name."""
 
     page: int
     """Page number."""

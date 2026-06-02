@@ -7,8 +7,8 @@ These are entity-store (Postgres) entities, distinct from the ClickHouse-backed
 telemetry (spans, evaluator_results). They hold the durable, producer-supplied
 metadata that organizes telemetry into leaderboard-shaped views.
 
-Cross-run rollups (per-evaluator aggregate scores, run count, the union of
-evaluator names) are intentionally *not* stored here. They are derived from
+Cross-run rollups (per-evaluator aggregate scores, run count, and the unions of
+evaluator/model names) are intentionally *not* stored here. They are derived from
 ClickHouse and hydrated onto the read model at query time; see
 ``nmp.intake.api.v2.experiments.schemas.ExperimentResponse``.
 """
@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Any, ClassVar
 
 from nmp.common.entities.client import EntityBase
-from pydantic import Field
+from pydantic import AnyUrl, Field
 
 
 class ExperimentGroup(EntityBase):
@@ -52,8 +52,9 @@ class Experiment(EntityBase):
     agent_name: str = Field(description="Name of the agent under test.")
     agent_version: str = Field(description="Version of the agent under test.")
 
-    dataset_id: str = Field(description="Producer-supplied dataset identifier.")
+    dataset_name: str = Field(description="Producer-supplied dataset name.")
     dataset_version: str | None = Field(default=None, description="Producer-supplied dataset version.")
+    source_link: AnyUrl | None = Field(default=None, description="Optional URL for the source experiment.")
 
     metadata: dict[str, Any] = Field(
         default_factory=dict,

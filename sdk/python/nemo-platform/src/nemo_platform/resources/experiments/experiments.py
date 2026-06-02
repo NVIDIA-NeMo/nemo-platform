@@ -33,6 +33,7 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
+from ..._exceptions import ConflictError
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.experiments import (
     experiment_list_params,
@@ -41,7 +42,6 @@ from ...types.experiments import (
 )
 from ...types.experiments.experiment_response import ExperimentResponse
 from ...types.experiments.experiment_filter_param import ExperimentFilterParam
-from ..._exceptions import ConflictError
 
 __all__ = ["ExperimentsResource", "AsyncExperimentsResource"]
 
@@ -72,12 +72,13 @@ class ExperimentsResource(SyncAPIResource):
         workspace: str | None = None,
         agent_name: str,
         agent_version: str,
-        dataset_id: str,
+        dataset_name: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        source_link: str | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -95,7 +96,7 @@ class ExperimentsResource(SyncAPIResource):
 
           agent_version: Version of the agent under test.
 
-          dataset_id: Producer-supplied dataset identifier.
+          dataset_name: Producer-supplied dataset name.
 
           name: Producer-supplied, workspace-unique experiment id.
 
@@ -107,6 +108,8 @@ class ExperimentsResource(SyncAPIResource):
               validated.
 
           metadata: Free-form producer metadata.
+
+          source_link: Optional URL for the source experiment.
 
           summary: Human-authored summary of results.
 
@@ -133,12 +136,13 @@ class ExperimentsResource(SyncAPIResource):
                     {
                         "agent_name": agent_name,
                         "agent_version": agent_version,
-                        "dataset_id": dataset_id,
+                        "dataset_name": dataset_name,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
                         "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
+                        "source_link": source_link,
                         "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
@@ -151,7 +155,7 @@ class ExperimentsResource(SyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return self.retrieve(name = name, workspace = workspace)
+            return self.retrieve(name=name, workspace=workspace)
 
     def retrieve(
         self,
@@ -198,12 +202,13 @@ class ExperimentsResource(SyncAPIResource):
         workspace: str | None = None,
         agent_name: str,
         agent_version: str,
-        dataset_id: str,
+        dataset_name: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        source_link: str | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -220,7 +225,7 @@ class ExperimentsResource(SyncAPIResource):
 
           agent_version: Version of the agent under test.
 
-          dataset_id: Producer-supplied dataset identifier.
+          dataset_name: Producer-supplied dataset name.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
@@ -232,6 +237,8 @@ class ExperimentsResource(SyncAPIResource):
               validated.
 
           metadata: Free-form producer metadata.
+
+          source_link: Optional URL for the source experiment.
 
           summary: Human-authored summary of results.
 
@@ -259,12 +266,13 @@ class ExperimentsResource(SyncAPIResource):
                 {
                     "agent_name": agent_name,
                     "agent_version": agent_version,
-                    "dataset_id": dataset_id,
+                    "dataset_name": dataset_name,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
                     "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
+                    "source_link": source_link,
                     "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
@@ -294,7 +302,7 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_id.
+          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
 
           page: Page number.
 
@@ -401,12 +409,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
         workspace: str | None = None,
         agent_name: str,
         agent_version: str,
-        dataset_id: str,
+        dataset_name: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        source_link: str | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -424,7 +433,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           agent_version: Version of the agent under test.
 
-          dataset_id: Producer-supplied dataset identifier.
+          dataset_name: Producer-supplied dataset name.
 
           name: Producer-supplied, workspace-unique experiment id.
 
@@ -436,6 +445,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
               validated.
 
           metadata: Free-form producer metadata.
+
+          source_link: Optional URL for the source experiment.
 
           summary: Human-authored summary of results.
 
@@ -462,12 +473,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
                     {
                         "agent_name": agent_name,
                         "agent_version": agent_version,
-                        "dataset_id": dataset_id,
+                        "dataset_name": dataset_name,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
                         "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
+                        "source_link": source_link,
                         "summary": summary,
                     },
                     experiment_create_params.ExperimentCreateParams,
@@ -480,7 +492,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return await self.retrieve(name = name, workspace = workspace)
+            return await self.retrieve(name=name, workspace=workspace)
 
     async def retrieve(
         self,
@@ -527,12 +539,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
         workspace: str | None = None,
         agent_name: str,
         agent_version: str,
-        dataset_id: str,
+        dataset_name: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
         experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
+        source_link: str | Omit = omit,
         summary: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
@@ -549,7 +562,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           agent_version: Version of the agent under test.
 
-          dataset_id: Producer-supplied dataset identifier.
+          dataset_name: Producer-supplied dataset name.
 
           body_name: Producer-supplied, workspace-unique experiment id.
 
@@ -561,6 +574,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
               validated.
 
           metadata: Free-form producer metadata.
+
+          source_link: Optional URL for the source experiment.
 
           summary: Human-authored summary of results.
 
@@ -588,12 +603,13 @@ class AsyncExperimentsResource(AsyncAPIResource):
                 {
                     "agent_name": agent_name,
                     "agent_version": agent_version,
-                    "dataset_id": dataset_id,
+                    "dataset_name": dataset_name,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
                     "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
+                    "source_link": source_link,
                     "summary": summary,
                 },
                 experiment_update_params.ExperimentUpdateParams,
@@ -623,7 +639,7 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_id.
+          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
 
           page: Page number.
 
