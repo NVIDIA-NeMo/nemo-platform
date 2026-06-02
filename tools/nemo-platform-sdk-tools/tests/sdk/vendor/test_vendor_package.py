@@ -152,7 +152,8 @@ switchyard = { source = "../../plugins/nemo-switchyard/vendor/switchyard/switchy
     ]
 
 
-def test_remove_marked_optional_dependency_groups_preserves_manual_groups() -> None:
+def test_refresh_bundle_owned_optional_dependencies_preserves_hand_written_extras() -> None:
+    """Extras without the generator marker are preserved untouched, regardless of name."""
     content = """
 [project]
 name = "example"
@@ -160,61 +161,75 @@ name = "example"
 [project.optional-dependencies]
 docs = ["mkdocs"]
 # Generated from [tool.bundle-package]; do not edit by hand.
-old-generated = [
+bundled-sdk = [
   "requests",
 ]
 services = ["manual"]
-# Generated from [tool.bundle-package]; do not edit by hand.
-generated-inline = ["httpx"]
 
 [tool.bundle-package]
 """.lstrip()
 
-    updated = vendor_package._remove_marked_optional_dependency_groups(content)
+    updated = vendor_package._refresh_bundle_owned_optional_dependencies(content, {"bundled-sdk"})
 
+    # Hand-written extras (no marker): preserved as-is.
     assert "docs =" in updated
-    assert "services =" in updated
-    assert "old-generated" not in updated
-    assert "generated-inline" not in updated
-    assert vendor_package.GENERATED_BUNDLE_GROUP_COMMENT not in updated
-
-
-def test_annotate_optional_dependency_groups_marks_only_generated_groups() -> None:
-    content = """
-[project.optional-dependencies]
-docs = ["mkdocs"]
-bundled-sdk = [
-  "httpx",
-]
-services = ["fastapi"]
-
-[tool.example]
-""".lstrip()
-
-    updated = vendor_package._annotate_optional_dependency_groups(content, {"bundled-sdk", "services"})
-
-    assert updated.count(vendor_package.GENERATED_BUNDLE_GROUP_COMMENT) == 2
+    assert 'services = ["manual"]' in updated
+    # Vendor-owned extra still claimed: kept with its marker.
     assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nbundled-sdk" in updated
-    assert f"]\n\n{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nservices" in updated
-    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nservices" in updated
-    assert 'services = ["fastapi"]\n\n[tool.example]' in updated
-    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\ndocs" not in updated
 
 
-def test_annotate_optional_dependency_groups_empty_set_removes_marked_groups() -> None:
+def test_refresh_bundle_owned_optional_dependencies_drops_stale_generated_extras() -> None:
+    """Extras with the marker but no longer in `bundle_owned_names` are dropped as stale."""
     content = """
 [project.optional-dependencies]
 docs = ["mkdocs"]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 stale = ["httpx"]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+still-owned = ["pydantic"]
 """.lstrip()
 
-    updated = vendor_package._annotate_optional_dependency_groups(content, set())
+    updated = vendor_package._refresh_bundle_owned_optional_dependencies(content, {"still-owned"})
 
     assert "docs =" in updated
     assert "stale =" not in updated
-    assert vendor_package.GENERATED_BUNDLE_GROUP_COMMENT not in updated
+    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nstill-owned" in updated
+    # Exactly one marker should remain (for `still-owned`).
+    assert updated.count(vendor_package.GENERATED_BUNDLE_GROUP_COMMENT) == 1
+
+
+def test_refresh_bundle_owned_optional_dependencies_emits_marker_for_unmarked_owned_keys() -> None:
+    """Newly-added bundle-owned extras (no marker yet) get the marker on rewrite."""
+    content = """
+[project.optional-dependencies]
+just-added = ["httpx"]
+""".lstrip()
+
+    updated = vendor_package._refresh_bundle_owned_optional_dependencies(content, {"just-added"})
+
+    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\njust-added" in updated
+
+
+def test_refresh_bundle_owned_optional_dependencies_alphabetizes_vendor_owned() -> None:
+    """Hand-written extras keep their position; vendor-owned extras are sorted below."""
+    content = """
+[project.optional-dependencies]
+all = ["example[services]"]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+zeta = ["z"]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+alpha = ["a"]
+""".lstrip()
+
+    updated = vendor_package._refresh_bundle_owned_optional_dependencies(content, {"alpha", "zeta"})
+
+    # `all` (hand-written) stays first; vendor-owned sorted alphabetically below.
+    assert updated.index("all =") < updated.index("alpha =")
+    assert updated.index("alpha =") < updated.index("zeta =")
 
 
 def test_normalize_static_force_include_spacing(tmp_path: Path) -> None:
@@ -306,6 +321,71 @@ dependencies = ["openai>=2"]
     assert "test" not in optional
     assert "scripts" not in wrapper_updated["project"]
     assert not wrapper_updated["project"]["entry-points"]
+
+
+def test_process_bundle_packages_rebuilds_generated_dependency_groups(tmp_path: Path, monkeypatch) -> None:
+    wrapper_path = tmp_path / "packages/nemo_platform"
+    plugin_path = tmp_path / "plugins/nemo-evaluator"
+    runner_path = tmp_path / "packages/nmp_platform_runner"
+    (plugin_path / "src/nemo_evaluator").mkdir(parents=True)
+    (runner_path / "src/nmp/platform_runner").mkdir(parents=True)
+    wrapper_path.mkdir(parents=True)
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.uv.workspace]
+members = ["packages/nemo_platform"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (wrapper_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform"
+
+[project.optional-dependencies]
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-evaluator-plugin = ["nemo-evaluator-sdk", "nmp-evaluator"]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+services = ["nemo-platform[core-service]", "old-service"]
+
+[tool.bundle-package]
+nemo-evaluator-plugin = { source = "../../plugins/nemo-evaluator/src/nemo_evaluator", module = "nemo_evaluator" }
+nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (plugin_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-evaluator-plugin"
+dependencies = ["nemo-evaluator-sdk", "nemo-platform-sdk", "nmp-common", "pydantic>=2.10.6"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (runner_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nmp-platform-runner"
+dependencies = ["rich>=14.1.0"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+    vendor_package._process_bundle_packages()
+
+    wrapper_updated = tomlkit.parse((wrapper_path / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = wrapper_updated["project"]["optional-dependencies"]
+
+    assert list(optional["nemo-evaluator-plugin"]) == [
+        "nemo-evaluator-sdk",
+        "nemo-platform-sdk",
+        "nmp-common",
+        "pydantic>=2.10.6",
+    ]
+    assert list(optional["services"]) == ["rich>=14.1.0", "nemo-platform[core-service]"]
 
 
 def test_process_bundle_packages_inherits_requested_metadata(tmp_path: Path, monkeypatch) -> None:
@@ -401,7 +481,13 @@ def test_find_package_dir_continues_past_non_matching_pyproject(tmp_path: Path, 
     )
 
 
-def test_annotate_generated_project_entries_marks_generated_entries() -> None:
+def test_annotate_generated_project_entries_marks_only_wholly_generated_tables() -> None:
+    """Wholly-generated scripts/entry-point tables get a table-level marker.
+
+    Mixed tables (containing any hand-written entry) are left unannotated —
+    we no longer emit per-key markers in scripts/entry-points tables, so a
+    table is either wholly generated (and gets one header) or not.
+    """
     content = """
 [project]
 name = "example"
@@ -427,14 +513,17 @@ manual = "example:manual"
         {"nemo.cli": {"auditor"}, "nemo.docs": {"auditor"}},
     )
 
-    assert f'{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nnemo = "nemo_platform.cli.app:cli"' in updated
-    assert f'{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nauditor = "nemo_auditor.cli:AuditorPluginCLI"' in updated
+    # Wholly-generated table gets a header marker.
     assert (
         f'{vendor_package.GENERATED_BUNDLE_TABLE_COMMENT}\n[project.entry-points."nemo.docs"]\n'
         'auditor = "nemo_auditor.docs:get_docs_path"'
     ) in updated
-    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nmanual-script" not in updated
-    assert f"{vendor_package.GENERATED_BUNDLE_GROUP_COMMENT}\nmanual =" not in updated
+    # Mixed tables (`[project.scripts]`, `[project.entry-points."nemo.cli"]`)
+    # are left unannotated — no per-key markers.
+    assert vendor_package.GENERATED_BUNDLE_GROUP_COMMENT not in updated
+    # Hand-written entries survive untouched.
+    assert 'manual-script = "example:main"' in updated
+    assert 'manual = "example:manual"' in updated
 
 
 def test_remove_marked_generated_project_tables_removes_marked_entries() -> None:

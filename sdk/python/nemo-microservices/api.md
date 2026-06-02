@@ -66,5 +66,3 @@ from nemo_microservices.types import (
 # [Iam](src/nemo_microservices/resources/iam/api.md)
 
 # [Projects](src/nemo_microservices/resources/projects/api.md)
-
-# [Members](src/nemo_microservices/resources/members/api.md)

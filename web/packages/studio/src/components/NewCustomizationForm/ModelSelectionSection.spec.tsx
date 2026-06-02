@@ -6,9 +6,19 @@ import { type ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { NEW_CUSTOMIZATION_FORM_HYP_DEFAULT_VALUES } from '@studio/components/NewCustomizationForm/constants';
 import { ModelSelectionSection } from '@studio/components/NewCustomizationForm/ModelSelectionSection';
 import { parentModels } from '@studio/mocks/customizer/parent-models';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { useFormContext } from 'react-hook-form';
+
+const findModelItemByName = (name: string) =>
+  screen
+    .getAllByTestId('model-dropdown-item')
+    .find((item) => within(item).queryByText(name) !== null);
+
+const queryModelItemByName = (name: string) =>
+  screen
+    .queryAllByTestId('model-dropdown-item')
+    .find((item) => within(item).queryByText(name) !== null);
 
 const modelsWithFileset: ModelEntity[] = parentModels.map((m) => ({
   ...m,
@@ -67,7 +77,7 @@ describe('ModelSelectionSection', () => {
     await openModelDropdown(user);
 
     for (const model of modelsWithFileset) {
-      expect(screen.getByText(model.name)).toBeInTheDocument();
+      expect(findModelItemByName(model.name!)).toBeDefined();
     }
   });
 
@@ -103,9 +113,9 @@ describe('ModelSelectionSection', () => {
     await openModelDropdown(user);
 
     for (const model of parentModels) {
-      expect(screen.queryByText(model.name)).toBeNull();
+      expect(queryModelItemByName(model.name!)).toBeUndefined();
     }
-    expect(screen.getByText(modelWithFileset.name)).toBeInTheDocument();
+    expect(findModelItemByName(modelWithFileset.name!)).toBeDefined();
   });
 
   it('should hide adapters from the dropdown', async () => {
@@ -118,7 +128,7 @@ describe('ModelSelectionSection', () => {
 
     await openModelDropdown(user);
 
-    expect(screen.getByText(modelWithAdapters.name)).toBeInTheDocument();
+    expect(findModelItemByName(modelWithAdapters.name!)).toBeDefined();
     expect(screen.queryByText('sample-adapter')).toBeNull();
     expect(screen.queryByTestId('model-dropdown-item-with-adapters')).toBeNull();
     expect(screen.getByTestId('model-dropdown-item')).toBeInTheDocument();
@@ -138,7 +148,9 @@ describe('ModelSelectionSection', () => {
     );
 
     await openModelDropdown(user);
-    await user.click(screen.getByText(modelsWithFileset[0].name));
+    const firstItem = findModelItemByName(modelsWithFileset[0].name!);
+    expect(firstItem).toBeDefined();
+    await user.click(firstItem!);
 
     expect(screen.getByTestId('training-spy')).toHaveTextContent(
       JSON.stringify(NEW_CUSTOMIZATION_FORM_HYP_DEFAULT_VALUES)

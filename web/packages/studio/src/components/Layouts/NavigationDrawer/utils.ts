@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { VerticalNavItem } from '@nvidia/foundations-react-core';
-import { NavGroup, NavInputItem } from '@studio/components/Layouts/NavigationDrawer/types';
+import { NavGroup, NavInputItem, NavItem } from '@studio/components/Layouts/NavigationDrawer/types';
 
-export const isGroup = (
-  item: NavInputItem
-): item is { group?: string; items: VerticalNavItem[] } => {
-  return Array.isArray((item as { items?: VerticalNavItem[] }).items);
+export const isGroup = (item: NavInputItem): item is { group?: string; items: NavItem[] } => {
+  return Array.isArray((item as { items?: NavItem[] }).items);
 };
 
 /** Normalize input into groups. Ungrouped items become their own single-item group. */

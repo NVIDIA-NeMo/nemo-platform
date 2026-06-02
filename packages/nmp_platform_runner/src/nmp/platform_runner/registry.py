@@ -19,7 +19,6 @@ AVAILABLE_SERVICES: dict[str, str] = {
     "hello-world": "nmp.hello_world.main:service",
     "studio": "nmp.studio.main:service",
     "auth": "nmp.core.auth.main:service",
-    "safe-synthesizer": "nmp.safe_synthesizer.main:service",
     "jobs": "nmp.core.jobs.main:service",
     "evaluation": "nmp.evaluator.main:service",
     "files": "nmp.core.files.main:service",

@@ -180,7 +180,7 @@ export const LLMJudgeInput: FC = () => {
                     status={status}
                     value={field.value || ''}
                     placeholder="SIMILARITY: (\\d*)"
-                    attributes={{ TextInputValue: args }}
+                    attributes={{ Input: args }}
                   />
                 )}
               </FormField>

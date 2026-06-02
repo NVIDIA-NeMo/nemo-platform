@@ -75,7 +75,9 @@ describe('ModelDetailOverview', () => {
         <ModelDetailOverview model={minimalModelEntity} status="READY" />
       </TestProviders>
     );
-    expect(screen.getByText('READY')).toBeInTheDocument();
+    // The status text is rendered twice (visible label + tooltip content);
+    // assert at least one is present.
+    expect(screen.getAllByText('READY').length).toBeGreaterThan(0);
   });
 
   it('renders badges when provided', () => {

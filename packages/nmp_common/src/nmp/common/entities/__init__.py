@@ -13,7 +13,6 @@ EntityClient (client.py) - Unified store pattern (recommended)
 from nmp.common.entities.client import (
     EntityBase,
     EntityClient,
-    EntityClientProtocol,
     EntityConflictError,
     EntityNotFoundError,
     EntityStoreError,
@@ -57,7 +56,6 @@ __all__ = [
     # Unified client (recommended - primary implementation)
     "EntityBase",
     "EntityClient",
-    "EntityClientProtocol",
     "EntityStoreError",
     "EntityNotFoundError",
     "EntityConflictError",

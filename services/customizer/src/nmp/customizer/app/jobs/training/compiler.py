@@ -6,7 +6,7 @@
 import logging
 
 from nemo_platform.types.models.model_entity import ModelEntity
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     DistributedGPUExecutionProviderSpec,
     EnvironmentVariable,

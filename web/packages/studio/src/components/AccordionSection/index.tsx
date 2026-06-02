@@ -32,14 +32,11 @@ export const AccordionSection: FC<PropsWithChildren<AccordionSectionProps>> = ({
 }) => {
   return (
     <AccordionItem value={value} disabled={isDisabled} className={className}>
-      <AccordionTrigger asChild>
-        {/* use your own elements if you'd like with asChild */}
-        <button>
-          <Flex align="center" gap="2">
-            {icon}
-            {title}
-          </Flex>
-        </button>
+      <AccordionTrigger>
+        <Flex align="center" gap="2">
+          {icon}
+          {title}
+        </Flex>
       </AccordionTrigger>
       <AccordionContent className={contentClassName}>{children}</AccordionContent>
     </AccordionItem>

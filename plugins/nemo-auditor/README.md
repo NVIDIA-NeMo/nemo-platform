@@ -11,7 +11,7 @@ Before running the `nemo auditor configs create` and `nemo auditor targets
 create` commands below, make sure you have:
 
 - **NeMo CLI installed and platform running** — follow
-  [SETUP.md](../../SETUP.md) (`make bootstrap` + `nemo setup`).
+  [skills/nemo-setup/SKILL.md](../../skills/nemo-setup/SKILL.md) (`make bootstrap` + `nemo setup`).
 - **CLI pointed at the platform** — `nemo setup` configures
   `http://localhost:8080` automatically; otherwise set it explicitly with
   `nemo config set --base-url <url>`.

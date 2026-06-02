@@ -69,19 +69,12 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 
 | Permission | Description | Viewer | Editor | Admin |
 |------------|-------------|:------:|:------:|:-----:|
-| `intake.apps.(read \| list)` | Read, list intake apps | ✓ | ✓ | ✓ |
-| `intake.apps.(create \| update \| delete)` | Create, update, delete intake apps |  | ✓ | ✓ |
-| `intake.entries.(read \| list)` | Read, list intake entries | ✓ | ✓ | ✓ |
-| `intake.entries.(create \| update \| delete)` | Create, update, delete intake entries |  | ✓ | ✓ |
+| `intake.annotations.(read \| list)` | Read, list intake annotations | ✓ | ✓ | ✓ |
+| `intake.annotations.(create \| delete)` | Create, delete intake annotations |  | ✓ | ✓ |
 | `intake.evaluator-results.(read \| list)` | Read, list intake evaluator-results | ✓ | ✓ | ✓ |
 | `intake.evaluator-results.create` | Create intake evaluator results |  | ✓ | ✓ |
-| `intake.events.(create \| delete)` | Create, delete intake events |  | ✓ | ✓ |
-| `intake.exports.(read \| list)` | Read, list intake exports | ✓ | ✓ | ✓ |
-| `intake.exports.create` | Create intake export jobs |  | ✓ | ✓ |
 | `intake.ingest.create` | Ingest traces into intake |  | ✓ | ✓ |
 | `intake.spans.(read \| list)` | Read, list intake spans | ✓ | ✓ | ✓ |
-| `intake.tasks.(read \| list)` | Read, list intake tasks | ✓ | ✓ | ✓ |
-| `intake.tasks.(create \| update \| delete)` | Create, update, delete intake tasks |  | ✓ | ✓ |
 | `intake.traces.read` | Read intake traces | ✓ | ✓ | ✓ |
 
 ## Jobs API
@@ -119,8 +112,7 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 
 | Permission | Description | Viewer | Editor | Admin |
 |------------|-------------|:------:|:------:|:-----:|
-| `safe-synthesizer.jobs.(read \| list)` | Read, list safe synthesizer jobs | ✓ | ✓ | ✓ |
-| `safe-synthesizer.jobs.(create \| delete \| cancel)` | Create, delete, cancel safe synthesizer jobs |  | ✓ | ✓ |
+| `safe-synthesizer.jobs.(read \| list \| create \| delete \| cancel)` | Read, list, create, delete, cancel safe synthesizer jobs |  |  |  |
 
 ## Secrets API
 

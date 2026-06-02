@@ -22,6 +22,7 @@ import {
 import type { Agent } from '@nemo/sdk/generated/agents/schema/Agent';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema/AgentDeployment';
 import { Text } from '@nvidia/foundations-react-core';
+import { getErrorMessage } from '@studio/api/common/utils';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
@@ -162,12 +163,19 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
   const deleteAgentMutation = useAgentsDeleteAgent({
     mutation: {
       onSuccess: () => {
+        toast.success('Agent deleted.');
         void queryClient.refetchQueries({
           queryKey: getAgentsListAgentsQueryKey(workspace),
         });
       },
       onError: (error) => {
-        toast.error(error.message);
+        if (error.response?.status === 409) {
+          toast.error(
+            'Agent has active deployments. Please delete all deployments before deleting agent.'
+          );
+          return;
+        }
+        toast.error(getErrorMessage(error, 'Failed to delete agent.'));
       },
     },
   });
@@ -281,6 +289,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
           onDelete={handleDelete}
           onClose={() => setDeleteState(null)}
           simpleConfirm
+          suppressResultToasts
         />
       )}
     </>

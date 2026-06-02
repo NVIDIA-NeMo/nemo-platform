@@ -264,7 +264,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
           defaultValue={['agent-details', 'deployments', 'evaluations']}
           items={[
             {
-              iconSide: 'left',
+              chevronPosition: 'start',
               slotTrigger: 'Agent Details',
               slotContent: (
                 <Stack gap="2">
@@ -287,7 +287,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
               value: 'agent-details',
             },
             {
-              iconSide: 'left',
+              chevronPosition: 'start',
               slotTrigger: 'Deployments',
               slotContent:
                 !isDeploymentsLoading && agentDeployments.length === 0 ? (
@@ -349,7 +349,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
               value: 'deployments',
             },
             {
-              iconSide: 'left' as const,
+              chevronPosition: 'start' as const,
               slotTrigger: 'Recent Evaluations',
               slotContent:
                 agentEvals.length === 0 ? (

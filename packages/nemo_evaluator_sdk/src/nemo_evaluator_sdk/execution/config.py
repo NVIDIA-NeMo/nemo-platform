@@ -12,6 +12,7 @@ from typing import Any, TypeAlias
 from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.values import (
     Agent,
+    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -54,6 +55,7 @@ class EvaluationRequest:
     params: _RunConfigT = field(default_factory=normalize_params)
     target: Model | Agent | None = None
     dataset_glob_pattern: str | None = None
+    field_mapping: FieldMapping | None = None
     prompt_template: str | dict[str, Any] | None = None
     aggregate_fields: tuple[AggregateFieldName, ...] | None = None
     preprocess_hooks: tuple[PreprocessRequest, ...] | None = None

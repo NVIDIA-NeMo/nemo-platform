@@ -186,6 +186,12 @@ def normalize_model_entity_name(model_name: str) -> str:
     normalizes when possible; if the result would not match, it raises ValueError
     so callers can skip or fail explicitly.
 
+    Names that would otherwise normalize cleanly but begin with a digit (e.g.
+    upstream catalog ids like ``01-ai/yi-large``) are prefixed with ``m-`` so they
+    satisfy the leading-letter requirement. The prefix is purely internal to the
+    entity store / routing layer; the original id is preserved as the
+    ``served_model_name`` and remains the user-facing handle.
+
     Args:
         model_name: The original model name (e.g., "meta/llama-3.2-1b-instruct")
 
@@ -194,13 +200,15 @@ def normalize_model_entity_name(model_name: str) -> str:
 
     Raises:
         ValueError: If the name cannot be normalized to a valid entity name (e.g. empty,
-            only invalid characters, starts with digit with no letter, or single character).
+            only invalid characters, or single character).
 
     Examples:
         >>> normalize_model_entity_name("meta/llama-3.2-1b-instruct")
         "meta-llama-3-2-1b-instruct"
         >>> normalize_model_entity_name("model:v1.0")
         "model-v1-0"
+        >>> normalize_model_entity_name("01-ai/yi-large")
+        "m-01-ai-yi-large"
         >>> normalize_model_entity_name("")
         ValueError: ... cannot be normalized to a valid entity name
     """
@@ -216,6 +224,15 @@ def normalize_model_entity_name(model_name: str) -> str:
             f"Model name {model_name!r} cannot be normalized to a valid entity name: "
             "result is empty (use at least one letter or digit)."
         )
+    # Entity store NAME_PATTERN requires a leading [a-z]. Upstream catalogs sometimes
+    # publish digit-leading ids (e.g. "01-ai/yi-large"); prefix them with "m-" so they
+    # become routable as internal entity names. The prefix is added *before* the 63-char
+    # truncation step so the existing truncate+hash machinery still produces a valid
+    # length-bounded result for long digit-leading names. Idempotent: names that already
+    # start with a letter are left untouched, so re-normalizing "m-01-ai-yi-large" stays
+    # "m-01-ai-yi-large".
+    if normalized[0].isdigit():
+        normalized = f"m-{normalized}"
     # If over 63 chars, truncate with deterministic hash suffix to avoid collisions (before validating)
     if len(normalized) > 63:
         hash_suffix = hashlib.sha256(model_name.encode()).hexdigest()[:8]

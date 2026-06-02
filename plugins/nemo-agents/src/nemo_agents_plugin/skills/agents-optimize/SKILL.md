@@ -83,8 +83,8 @@ snapshot, suggest running it.
 
 Suggested actions:
 
-- `nemo agents optimize-skills --config .agent-improver.yml`
-  (or `--evals … --agent … --skills-path …` if no config file exists)
+- `nemo agents optimize-skills run --spec-file .agent-improver.yml`
+  (or pass an inline JSON spec via `--spec '{...}'` if no config file exists)
 - After it returns, apply the resulting skill diff to the agent and redeploy.
 
 See **the `nemo-agent-skills-optimization` skill** for the full optimize-skills loop
@@ -314,8 +314,8 @@ nemo models list --filter.name nemotron   # find Nemotron candidates
 # Optimization commands (see also: nemo-agent-skills-optimization skill)
 nemo agents evaluate run --agent <name> --eval-config <yaml>
 nemo agents optimize run --agent <name> --optimize-config <yaml>
-nemo agents optimize-skills --config .agent-improver.yml
-nemo agents evaluate-suite --evals <dir> --agent <name>
+nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents evaluate-suite run --spec '{"evals": "<dir>", "agent": "<name>"}'
 
 # Files service
 nemo files list <fileset>

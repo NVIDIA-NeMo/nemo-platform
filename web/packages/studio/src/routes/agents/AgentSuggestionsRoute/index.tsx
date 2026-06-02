@@ -70,6 +70,12 @@ import {
 import { useLocation } from 'react-router-dom';
 
 type MultiState = Record<string, true>;
+interface SuggestionFilter {
+  agent?: MultiState;
+  severity?: MultiState;
+  type?: MultiState;
+  scope?: MultiState;
+}
 
 export const AgentOptimizationsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
@@ -161,7 +167,7 @@ export const AgentOptimizationsRoute: FC = () => {
   // Suggestion the user just clicked Apply on — drives the eval-config
   // chooser modal. ``null`` keeps the modal closed.
   const [pendingApply, setPendingApply] = useState<OptimizationSuggestion | null>(null);
-  const dataViewState = useStudioDataViewState({});
+  const dataViewState = useStudioDataViewState<SuggestionFilter>({});
 
   const handleApplyClicked = useCallback(
     (suggestion: OptimizationSuggestion) => {
@@ -272,9 +278,7 @@ export const AgentOptimizationsRoute: FC = () => {
     [typeOptions, severityOptions, scopeOptions, agentOptions]
   );
 
-  const filterState = dataViewState.apiFilter.filter as
-    | { agent?: MultiState; severity?: MultiState; type?: MultiState; scope?: MultiState }
-    | undefined;
+  const filterState = dataViewState.apiFilter.filter;
   const agentFilter = filterState?.agent;
   const severityFilter = filterState?.severity;
   const typeFilter = filterState?.type;

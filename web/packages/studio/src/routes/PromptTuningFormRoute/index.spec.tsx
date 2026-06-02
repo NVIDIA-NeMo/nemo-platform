@@ -143,7 +143,8 @@ describe('PromptTuningFormRoute', () => {
       await user.click(options[0]);
 
       // Open tools accordion and add a tool
-      const toolsAccordion = screen.getByRole('button', { name: 'Tools' });
+      // KUI Accordion uses native <summary> trigger which lacks role="button".
+      const toolsAccordion = screen.getByText('Tools');
       await user.click(toolsAccordion);
       const addToolButton = screen.getByRole('button', { name: 'Add Tools' });
       await user.click(addToolButton);
@@ -322,7 +323,7 @@ describe('Model Creation Error Handling', () => {
     );
 
     // Modal should still be open (not navigated away)
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Save Model' })).toBeInTheDocument();
   });
 
   // TODO: Unskip when test is no longer flaky

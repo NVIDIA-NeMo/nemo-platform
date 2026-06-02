@@ -333,7 +333,8 @@ def _has_proprietary_license(head: str) -> bool:
 def _fix_proprietary_license(filepath: str) -> bool:
     """Replace LicenseRef-NvidiaProprietary with Apache-2.0. Returns True if modified."""
     try:
-        content = open(filepath, "r", encoding="utf-8").read()  # noqa: SIM115
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
     except (OSError, UnicodeDecodeError):
         return False
 
@@ -349,7 +350,8 @@ def _fix_proprietary_license(filepath: str) -> bool:
 def _fix_header_style(filepath: str) -> bool:
     """Fix wrong comment style on existing headers. Returns True if modified."""
     try:
-        content = open(filepath, "r", encoding="utf-8").read()  # noqa: SIM115
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
     except (OSError, UnicodeDecodeError):
         return False
 
@@ -375,7 +377,8 @@ def _fix_header_style(filepath: str) -> bool:
 def _fix_non_spdx_header(filepath: str) -> bool:
     """Replace legacy / non-standard copyright headers with correct SPDX. Returns True if modified."""
     try:
-        content = open(filepath, "r", encoding="utf-8").read()  # noqa: SIM115
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
     except (OSError, UnicodeDecodeError):
         return False
 
@@ -429,7 +432,8 @@ def _fix_non_spdx_header(filepath: str) -> bool:
 def _add_header(filepath: str) -> bool:
     """Add the copyright header to *filepath*. Returns True if modified."""
     try:
-        content = open(filepath, "r", encoding="utf-8").read()  # noqa: SIM115
+        with open(filepath, "r", encoding="utf-8") as f:
+            content = f.read()
     except (OSError, UnicodeDecodeError):
         return False
 

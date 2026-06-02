@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Nemo Platform API
   description: API for Nemo Platform services
-  version: 0.1.0
+  version: 0.1.1
 paths:
   /apis/auth/discovery:
     get:
@@ -5598,13 +5598,43 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/apps:
+  /apis/intake/v2/workspaces/{workspace}/annotations:
+    post:
+      tags:
+      - Annotations
+      summary: Create Annotation
+      operationId: create_annotation_apis_intake_v2_workspaces__workspace__annotations_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnnotationInput'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Annotation'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
     get:
       tags:
-      - Apps
-      summary: List Apps
-      description: List all apps with filtering capabilities.
-      operationId: list_apps_apis_intake_v2_workspaces__workspace__apps_get
+      - Annotations
+      summary: List Annotations
+      operationId: list_annotations_apis_intake_v2_workspaces__workspace__annotations_get
       parameters:
       - name: workspace
         in: path
@@ -5617,6 +5647,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 1
           description: Page number.
           default: 1
           title: Page
@@ -5626,6 +5657,8 @@ paths:
         required: false
         schema:
           type: integer
+          maximum: 1000
+          minimum: 1
           description: Page size.
           default: 10
           title: Page Size
@@ -5635,72 +5668,36 @@ paths:
         required: false
         schema:
           allOf:
-          - $ref: '#/components/schemas/AppSortField'
-          description: The field to sort by. To sort in decreasing order, use `-`
-            in front of the field name.
-          default: created_at
-        description: The field to sort by. To sort in decreasing order, use `-` in
-          front of the field name.
+          - $ref: '#/components/schemas/AnnotationSortField'
+          default: -created_at
       - in: query
         name: filter
         style: deepObject
         required: false
         explode: true
         schema:
-          $ref: '#/components/schemas/AppFilter'
-        description: Filter apps by name, description, project, created_at, and updated_at.
+          $ref: '#/components/schemas/AnnotationFilter'
+        description: Filter annotations by span_id, session_id, kind, name, created_by,
+          and created_at range.
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/AppsPage'
+                $ref: '#/components/schemas/AnnotationsPage'
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - Apps
-      summary: Create App
-      description: Create a new app.
-      operationId: create_app_apis_intake_v2_workspaces__workspace__apps_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AppInput'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/App'
-        '200':
-          description: Successful Response
-        '409':
-          description: App already exists
-        '422':
-          description: Validation Error
-  /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}:
+  /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
     get:
       tags:
-      - Tasks
-      summary: Get Task
-      description: Get a specific task.
-      operationId: get_task_apis_intake_v2_workspaces__workspace__apps__app__tasks__name__get
+      - Annotations
+      summary: Get Annotation
+      operationId: get_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__get
       parameters:
       - name: workspace
         in: path
@@ -5708,69 +5705,21 @@ paths:
         schema:
           type: string
           title: Workspace
-      - name: app
+      - name: annotation_id
         in: path
         required: true
         schema:
           type: string
-          title: App
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
+          title: Annotation Id
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Task'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    patch:
-      tags:
-      - Tasks
-      summary: Update Task
-      description: Update an existing task.
-      operationId: update_task_apis_intake_v2_workspaces__workspace__apps__app__tasks__name__patch
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: app
-        in: path
-        required: true
-        schema:
-          type: string
-          title: App
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TaskUpdate'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Task'
+                $ref: '#/components/schemas/Annotation'
+        '404':
+          description: Annotation not found
         '422':
           description: Validation Error
           content:
@@ -5779,10 +5728,9 @@ paths:
                 $ref: '#/components/schemas/HTTPValidationError'
     delete:
       tags:
-      - Tasks
-      summary: Delete Task
-      description: Delete a task.
-      operationId: delete_task_apis_intake_v2_workspaces__workspace__apps__app__tasks__name__delete
+      - Annotations
+      summary: Delete Annotation
+      operationId: delete_annotation_apis_intake_v2_workspaces__workspace__annotations__annotation_id__delete
       parameters:
       - name: workspace
         in: path
@@ -5790,536 +5738,17 @@ paths:
         schema:
           type: string
           title: Workspace
-      - name: app
+      - name: annotation_id
         in: path
         required: true
         schema:
           type: string
-          title: App
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
+          title: Annotation Id
       responses:
         '204':
           description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/apps/{name}:
-    get:
-      tags:
-      - Apps
-      summary: Get App
-      description: Get a specific app by workspace and name.
-      operationId: get_app_apis_intake_v2_workspaces__workspace__apps__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/App'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    patch:
-      tags:
-      - Apps
-      summary: Update App
-      description: Update an existing app.
-      operationId: update_app_apis_intake_v2_workspaces__workspace__apps__name__patch
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/AppUpdate'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/App'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Apps
-      summary: Delete App
-      description: Delete an app.
-      operationId: delete_app_apis_intake_v2_workspaces__workspace__apps__name__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '204':
-          description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks:
-    get:
-      tags:
-      - Tasks
-      summary: List Tasks
-      description: List all tasks for a specific app.
-      operationId: list_tasks_apis_intake_v2_workspaces__workspace__apps__name__tasks_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page size.
-          default: 10
-          title: Page Size
-        description: Page size.
-      - name: sort
-        in: query
-        required: false
-        schema:
-          allOf:
-          - $ref: '#/components/schemas/TaskSortField'
-          description: The field to sort by. To sort in decreasing order, use `-`
-            in front of the field name.
-          default: created_at
-        description: The field to sort by. To sort in decreasing order, use `-` in
-          front of the field name.
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/TaskFilter'
-        description: Filter tasks by name, app, description, project, created_at,
-          and updated_at.
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/TasksPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - Tasks
-      summary: Create Task
-      description: Create a new task.
-      operationId: create_task_apis_intake_v2_workspaces__workspace__apps__name__tasks_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/TaskInput'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Task'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/entries:
-    get:
-      tags:
-      - Entries
-      summary: List Entries
-      description: 'List all entries with filtering capabilities.
-
-
-        When longest_per_thread=true is set in filters, returns only the longest entry
-
-        (by message count) for each unique thread_id.'
-      operationId: list_entries_apis_intake_v2_workspaces__workspace__entries_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page size.
-          default: 10
-          title: Page Size
-        description: Page size.
-      - name: sort
-        in: query
-        required: false
-        schema:
-          allOf:
-          - $ref: '#/components/schemas/EntrySortField'
-          description: The field to sort by. To sort in decreasing order, use `-`
-            in front of the field name.
-          default: created_at
-        description: The field to sort by. To sort in decreasing order, use `-` in
-          front of the field name.
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/EntryFilter'
-        description: Filter entries by id, project, external_id, created_at, updated_at,
-          usage fields (model), context fields, and user_rating fields.
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/EntrysPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - Entries
-      summary: Create Entry
-      description: 'Create a new entry.
-
-
-        Apps and tasks referenced in the entry context will be auto-created if they
-        don''t exist.'
-      operationId: create_entry_apis_intake_v2_workspaces__workspace__entries_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EntryInput'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Entry'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/entries/{entry}/events/{name}:
-    delete:
-      tags:
-      - Entries
-      summary: Delete Event
-      description: 'Delete a specific event from an entry.
-
-
-        Entry can be referenced by ID or external_id using `external:{external_id}`
-        prefix.'
-      operationId: delete_event_apis_intake_v2_workspaces__workspace__entries__entry__events__name__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: entry
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Entry
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Entry'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/entries/{name}:
-    get:
-      tags:
-      - Entries
-      summary: Get Entry
-      description: 'Get a specific entry by ID or external_id.
-
-
-        Use `external:{external_id}` to get by external_id.
-
-        Example: `/v2/workspaces/{workspace}/entries/external:chatcmpl-abc123`'
-      operationId: get_entry_apis_intake_v2_workspaces__workspace__entries__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Entry'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    patch:
-      tags:
-      - Entries
-      summary: Update Entry
-      description: 'Update an existing entry by ID or external_id.
-
-
-        Use `external:{external_id}` to update by external_id.
-
-        Example: `/v2/workspaces/{workspace}/entries/external:chatcmpl-abc123`'
-      operationId: update_entry_apis_intake_v2_workspaces__workspace__entries__name__patch
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EntryUpdate'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Entry'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Entries
-      summary: Delete Entry
-      description: 'Delete an entry by ID or external_id.
-
-
-        Use `external:{external_id}` to delete by external_id.
-
-        Example: `/v2/workspaces/{workspace}/entries/external:chatcmpl-abc123`'
-      operationId: delete_entry_apis_intake_v2_workspaces__workspace__entries__name__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '204':
-          description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/entries/{name}/events:
-    post:
-      tags:
-      - Entries
-      summary: Add Events
-      description: 'Add events to an entry by ID or external_id.
-
-
-        Use `external:{external_id}` to add events by external_id.
-
-        Example: `/v2/workspaces/{workspace}/entries/external:chatcmpl-abc123/events`'
-      operationId: add_events_apis_intake_v2_workspaces__workspace__entries__name__events_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/EventsCreateRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Entry'
+        '404':
+          description: Annotation not found
         '422':
           description: Validation Error
           content:
@@ -6446,187 +5875,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EvaluatorResult'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/export/jobs:
-    get:
-      tags:
-      - Exports
-      summary: List Export Jobs
-      description: 'List all export jobs with filtering capabilities.
-
-
-        Use `workspace=-` for cross-workspace listing.'
-      operationId: list_export_jobs_apis_intake_v2_workspaces__workspace__export_jobs_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          description: Page size.
-          default: 10
-          title: Page Size
-        description: Page size.
-      - name: sort
-        in: query
-        required: false
-        schema:
-          allOf:
-          - $ref: '#/components/schemas/ExportJobSortField'
-          description: The field to sort by. To sort in decreasing order, use `-`
-            in front of the field name.
-          default: created_at
-        description: The field to sort by. To sort in decreasing order, use `-` in
-          front of the field name.
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/ExportJobFilter'
-        description: Filter export jobs by name, status, output_file_url, created_at,
-          and updated_at.
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExportJobsPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    post:
-      tags:
-      - Exports
-      summary: Create Export Job
-      description: 'Export entries to an external file.
-
-
-        Use the `longest_per_thread` filter to export only the longest entry per thread,
-
-        which is useful for thread-based exports.
-
-
-        Supported output file URLs:
-
-
-        - NeMo Datastore: nds://workspace/dataset_name
-
-        - HuggingFace Dataset: hf://datasets/org/name/path/to/file
-
-        - Local filesystem: file:///path/to/export (for development)'
-      operationId: create_export_job_apis_intake_v2_workspaces__workspace__export_jobs_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ExportJobInput'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExportJob'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/export/jobs/{name}:
-    get:
-      tags:
-      - Exports
-      summary: Get Export Job Status
-      description: Check the status of an export job.
-      operationId: get_export_job_status_apis_intake_v2_workspaces__workspace__export_jobs__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExportJob'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/intake/v2/workspaces/{workspace}/export/preview:
-    post:
-      tags:
-      - Exports
-      summary: Preview Export
-      description: Preview export data without writing to a file (max 100 records).
-      operationId: preview_export_apis_intake_v2_workspaces__workspace__export_preview_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ExportPreviewRequest'
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ExportPreviewResponse'
         '422':
           description: Validation Error
           content:
@@ -6790,9 +6038,9 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/SpanFilter'
-        description: Filter spans by session_id, parent_span_id, project, evaluation
-          context fields, source, kind, status, model, tool_name, provider, agent_id,
-          agent_name, prompt_name, prompt_version, and started_at.
+        description: Filter spans by session_id, trace_id, parent_span_id, project,
+          evaluation context fields, source, kind, status, model, tool_name, provider,
+          agent_id, agent_name, prompt_name, prompt_version, and started_at.
       responses:
         '200':
           description: Successful Response
@@ -9546,519 +8794,6 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs:
-    post:
-      tags:
-      - Safe Synthesizer
-      summary: Create Job
-      operationId: create_job_apis_safe_synthesizer_v2_workspaces__workspace__jobs_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SafeSynthesizerJobRequest'
-      responses:
-        '201':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: List Jobs
-      operationId: list_jobs_apis_safe_synthesizer_v2_workspaces__workspace__jobs_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: page
-        in: query
-        required: false
-        schema:
-          type: integer
-          exclusiveMinimum: 0
-          description: Page number.
-          default: 1
-          title: Page
-        description: Page number.
-      - name: page_size
-        in: query
-        required: false
-        schema:
-          type: integer
-          exclusiveMinimum: 0
-          description: Page size.
-          default: 10
-          title: Page Size
-        description: Page size.
-      - name: sort
-        in: query
-        required: false
-        schema:
-          allOf:
-          - $ref: '#/components/schemas/SafeSynthesizerJobsSortField'
-          description: The field to sort by. To sort in decreasing order, use `-`
-            in front of the field name.
-          default: -created_at
-        description: The field to sort by. To sort in decreasing order, use `-` in
-          front of the field name.
-      - in: query
-        name: filter
-        style: deepObject
-        required: false
-        explode: true
-        schema:
-          $ref: '#/components/schemas/SafeSynthesizerJobsListFilter'
-        description: Filter jobs on various criteria.
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SafeSynthesizerJobsPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/adapter/download:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Download Job Result Adapter
-      operationId: download_job_result_adapter_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results_adapter_download_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '404':
-          description: Not Found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/evaluation-report/download:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Download Job Result Evaluation-Report
-      operationId: download_job_result_evaluation_report_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results_evaluation_report_download_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '404':
-          description: Not Found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/summary/download:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Download Job Result Summary
-      operationId: download_job_result_summary_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results_summary_download_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SafeSynthesizerSummary'
-        '404':
-          description: Not Found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/synthetic-data/download:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Download Job Result Synthetic-Data
-      operationId: download_job_result_synthetic_data_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results_synthetic_data_download_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '404':
-          description: Not Found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Get Job Result
-      operationId: get_job_result_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformJobResultResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}/download:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Download Job Result
-      operationId: download_job_result_apis_safe_synthesizer_v2_workspaces__workspace__jobs__job__results__name__download_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: job
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Job
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/octet-stream:
-              schema:
-                type: string
-                format: binary
-        '404':
-          description: Not Found
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Get Job
-      operationId: get_job_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-    delete:
-      tags:
-      - Safe Synthesizer
-      summary: Delete Job
-      operationId: delete_job_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__delete
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '204':
-          description: Successful Response
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/cancel:
-    post:
-      tags:
-      - Safe Synthesizer
-      summary: Cancel Job
-      operationId: cancel_job_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__cancel_post
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SafeSynthesizerJob'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/logs:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Get Job Logs
-      operationId: get_job_logs_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__logs_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      - name: limit
-        in: query
-        required: false
-        schema:
-          title: Limit
-          type: integer
-      - name: page_cursor
-        in: query
-        required: false
-        schema:
-          title: Page Cursor
-          type: string
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformJobLogPage'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/results:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: List Job Results
-      operationId: list_job_results_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__results_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformJobListResultResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/status:
-    get:
-      tags:
-      - Safe Synthesizer
-      summary: Get Job Status
-      operationId: get_job_status_apis_safe_synthesizer_v2_workspaces__workspace__jobs__name__status_get
-      parameters:
-      - name: workspace
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Workspace
-      - name: name
-        in: path
-        required: true
-        schema:
-          type: string
-          title: Name
-      responses:
-        '200':
-          description: Successful Response
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/PlatformJobStatusResponse'
-        '422':
-          description: Validation Error
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/HTTPValidationError'
   /apis/secrets/v2/rotate-encryption-keys:
     post:
       tags:
@@ -10996,6 +9731,116 @@ components:
       - scores
       title: AggregatedMetricResult
       description: Result of aggregating metric scores with full statistics.
+    Annotation:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotation'
+      - $ref: '#/components/schemas/NoteAnnotation'
+      - $ref: '#/components/schemas/MetadataAnnotation'
+      - $ref: '#/components/schemas/LabelAnnotation'
+      title: Annotation
+      description: Discriminated annotation read response. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotation'
+          label: '#/components/schemas/LabelAnnotation'
+          metadata: '#/components/schemas/MetadataAnnotation'
+          note: '#/components/schemas/NoteAnnotation'
+    AnnotationFilter:
+      additionalProperties: false
+      properties:
+        span_id:
+          description: Return only annotations attached to this span.
+          title: Span Id
+          type: string
+        session_id:
+          description: Return only annotations attached to this session.
+          title: Session Id
+          type: string
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/AnnotationKind'
+          description: Return only annotations of this kind (`feedback`, `note`, `label`,
+            or `metadata`).
+        name:
+          description: Return only `label` annotations with this `name` (e.g., `severity`,
+            `helpfulness`).
+          title: Name
+          type: string
+        value_text:
+          description: Return only annotations with this text value. For `feedback`
+            annotations this is `positive` or `negative`; for `label` annotations
+            with `value_type=text` this is the label's value.
+          title: Value Text
+          type: string
+        value_numeric:
+          allOf:
+          - $ref: '#/components/schemas/NumericFilter'
+          description: Return only `label` annotations whose numeric value falls within
+            the given range. Applies to labels with `value_type=numeric`.
+        created_by:
+          description: Return only annotations created by this user.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Return only annotations created within the given time range.
+      title: AnnotationFilter
+      type: object
+    AnnotationInput:
+      oneOf:
+      - $ref: '#/components/schemas/FeedbackAnnotationInput'
+      - $ref: '#/components/schemas/NoteAnnotationInput'
+      - $ref: '#/components/schemas/MetadataAnnotationInput'
+      - $ref: '#/components/schemas/LabelAnnotationInput'
+      title: AnnotationInput
+      description: Discriminated annotation create body. The shape varies by `kind`.
+      discriminator:
+        propertyName: kind
+        mapping:
+          feedback: '#/components/schemas/FeedbackAnnotationInput'
+          label: '#/components/schemas/LabelAnnotationInput'
+          metadata: '#/components/schemas/MetadataAnnotationInput'
+          note: '#/components/schemas/NoteAnnotationInput'
+    AnnotationKind:
+      enum:
+      - feedback
+      - label
+      - note
+      - metadata
+      title: AnnotationKind
+      type: string
+    AnnotationSortField:
+      type: string
+      enum:
+      - created_at
+      - -created_at
+      title: AnnotationSortField
+    AnnotationsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Annotation'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: AnnotationsPage
     AnswerAccuracyMetric:
       properties:
         name:
@@ -11254,157 +10099,6 @@ components:
       - judge_model
       title: AnswerAccuracyMetricResponse
       description: Response type for AnswerAccuracy metrics.
-    App:
-      properties:
-        id:
-          type: string
-          title: Id
-          description: Unique identifier
-        name:
-          type: string
-          title: Name
-          description: App name
-        workspace:
-          type: string
-          title: Workspace
-          description: Workspace identifier
-        description:
-          title: Description
-          description: App description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this app
-          type: string
-        locked:
-          type: boolean
-          title: Locked
-          description: Lock status
-          default: false
-        created_at:
-          title: Created At
-          description: Creation timestamp
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          description: Last update timestamp
-          type: string
-          format: date-time
-      type: object
-      required:
-      - id
-      - name
-      - workspace
-      title: App
-      description: Schema for App responses.
-    AppFilter:
-      additionalProperties: false
-      description: Filter for Apps.
-      properties:
-        workspace:
-          description: Filter by workspace id.
-          title: Workspace
-          type: string
-        name:
-          description: Filter by app name.
-          title: Name
-          type: string
-        project:
-          description: Filter by project name.
-          title: Project
-          type: string
-        description:
-          description: Filter by app description.
-          title: Description
-          type: string
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on creation date.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on update date.
-      title: AppFilter
-      type: object
-    AppInput:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: App name (unique within workspace)
-        description:
-          title: Description
-          description: App description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this app
-          type: string
-        locked:
-          type: boolean
-          title: Locked
-          description: If true, this record cannot be automatically updated when entries
-            are ingested.
-          default: false
-      type: object
-      required:
-      - name
-      title: AppInput
-      description: Schema for creating a new App.
-    AppSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - name
-      - -name
-      - updated_at
-      - -updated_at
-      title: AppSortField
-      description: Sort fields for Apps.
-    AppUpdate:
-      properties:
-        description:
-          title: Description
-          description: App description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this app
-          type: string
-        locked:
-          title: Locked
-          description: Lock status
-          type: boolean
-      type: object
-      title: AppUpdate
-      description: Schema for updating an existing App.
-    AppsPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/App'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: AppsPage
     AtifAgent:
       properties:
         name:
@@ -12873,6 +11567,59 @@ components:
       - not_cacheable
       title: CacheStatus
       description: Cache status for files in external storage backends.
+    CapturedChatCompletionsRequest:
+      properties:
+        messages:
+          items:
+            $ref: '#/components/schemas/CapturedChatMessage'
+          type: array
+          title: Messages
+          description: Messages comprising the conversation.
+        model:
+          type: string
+          title: Model
+          description: The model identifier used for this request.
+      additionalProperties: true
+      type: object
+      required:
+      - messages
+      - model
+      title: CapturedChatCompletionsRequest
+      description: Flexible captured chat-completions request.
+    CapturedChatCompletionsResponse:
+      oneOf:
+      - required:
+        - choices
+      - required:
+        - error
+      properties:
+        choices:
+          title: Choices
+          items:
+            additionalProperties: true
+            type: object
+          type: array
+        error:
+          title: Error
+          additionalProperties: true
+          type: object
+      additionalProperties: true
+      type: object
+      title: CapturedChatCompletionsResponse
+      description: Flexible captured chat-completions response.
+    CapturedChatMessage:
+      properties:
+        role:
+          allOf:
+          - $ref: '#/components/schemas/ChatMessageRole'
+          description: The role of the message sender.
+      additionalProperties: true
+      type: object
+      required:
+      - role
+      title: CapturedChatMessage
+      description: A flexible message model that requires a valid role field but allows
+        provider-specific fields.
     ChatCompletionAssistantMessageParam:
       properties:
         role:
@@ -13062,9 +11809,9 @@ components:
     ChatCompletionsIngestRequest:
       properties:
         request:
-          $ref: '#/components/schemas/FlexibleEntryRequestInput'
+          $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
-          $ref: '#/components/schemas/FlexibleEntryResponse'
+          $ref: '#/components/schemas/CapturedChatCompletionsResponse'
         session_id:
           title: Session Id
           description: Groups related chat-completions calls without forcing them
@@ -13081,6 +11828,29 @@ components:
         provider:
           title: Provider
           type: string
+        cost_usd:
+          title: Cost Usd
+          description: Total estimated cost of this model call in USD. This matches
+            ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.
+          type: number
+          minimum: 0.0
+        cost_input_usd:
+          title: Cost Input Usd
+          description: Estimated input-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_output_usd:
+          title: Cost Output Usd
+          description: Estimated output-token cost of this model call in USD.
+          type: number
+          minimum: 0.0
+        cost_details:
+          additionalProperties:
+            type: number
+            minimum: 0.0
+          type: object
+          title: Cost Details
+          description: Additional estimated cost breakdown fields in USD.
       additionalProperties: false
       type: object
       required:
@@ -13100,32 +11870,17 @@ components:
       - session_id
       - span_id
       title: ChatCompletionsIngestResponse
-    ClassifyConfig:
-      properties:
-        enable_classify:
-          title: Enable Classify
-          description: Enable column classification.
-          type: boolean
-        entities:
-          title: Entities
-          description: List of entity types to classify.
-          items:
-            type: string
-          type: array
-        num_samples:
-          title: Num Samples
-          description: Number of column values to sample for classification.
-          default: 3
-          type: integer
-        classify_model_provider:
-          title: Classify Model Provider
-          description: Name of the model provider in the Inference Gateway for column
-            classification. The job compiler will resolve this to the appropriate
-            endpoint URL.
-          type: string
-      type: object
-      title: ClassifyConfig
-      description: Configuration for column classification using an LLM.
+    ChatMessageRole:
+      type: string
+      enum:
+      - user
+      - system
+      - assistant
+      - developer
+      - tool
+      - function
+      title: ChatMessageRole
+      description: Valid role values for captured chat-completions messages.
     ClavataRailConfig:
       properties:
         server_endpoint:
@@ -13181,71 +11936,6 @@ components:
       - policy
       title: ClavataRailOptions
       description: Configuration data for the Clavata API
-    Column:
-      properties:
-        name:
-          title: Name
-          description: Column name.
-          type: string
-        position:
-          anyOf:
-          - type: integer
-          - items:
-              type: integer
-            type: array
-          title: Position
-          description: Column position.
-        condition:
-          title: Condition
-          description: Column condition.
-          type: string
-        value:
-          title: Value
-          description: Rename to value.
-          type: string
-        entity:
-          anyOf:
-          - type: string
-          - items:
-              type: string
-            type: array
-          title: Entity
-          description: Column entity match.
-        type:
-          anyOf:
-          - type: string
-          - items:
-              type: string
-            type: array
-          title: Type
-          description: Column type match.
-      type: object
-      title: Column
-      description: Rule matcher for selecting columns by name, position, condition,
-        entity, or type.
-    ColumnActions:
-      properties:
-        add:
-          title: Add
-          description: Columns to add.
-          items:
-            $ref: '#/components/schemas/Column'
-          type: array
-        drop:
-          title: Drop
-          description: Columns to drop.
-          items:
-            $ref: '#/components/schemas/Column'
-          type: array
-        rename:
-          title: Rename
-          description: Columns to rename.
-          items:
-            $ref: '#/components/schemas/Column'
-          type: array
-      type: object
-      title: ColumnActions
-      description: Container for column add, drop, and rename operations.
     ComputeResourceSpec:
       properties:
         cpu:
@@ -14871,53 +13561,6 @@ components:
       type: object
       title: CrowdStrikeAIDRRailConfig
       description: Configuration data for the CrowdStrike AIDR API
-    DataParameters:
-      properties:
-        group_training_examples_by:
-          title: Group Training Examples By
-          description: Column to group training examples by. This is useful when you
-            want the model to learn inter-record correlations for a given grouping
-            of records.
-          type: string
-        order_training_examples_by:
-          title: Order Training Examples By
-          description: Column to order training examples by. This is useful when you
-            want the model to learn sequential relationships for a given ordering
-            of records. If you provide this parameter, you must also provide ``group_training_examples_by``.
-          type: string
-        max_sequences_per_example:
-          anyOf:
-          - type: string
-            const: auto
-          - type: integer
-          title: Max Sequences Per Example
-          description: If specified, adds at most this number of sequences per example.
-            Supports 'auto' where a value of 1 is chosen if differential privacy is
-            enabled, and 10 otherwise. If not specified or set to 'auto', fills up
-            context. Required for DP to limit contribution of each example.
-          default: auto
-        holdout:
-          type: number
-          title: Holdout
-          description: Amount of records to hold out for evaluation. If this is a
-            float between 0 and 1, that ratio of records is held out. If an integer
-            greater than 1, that number of records is held out. If the value is equal
-            to zero, no holdout will be performed. Must be >= 0.
-          default: 0.05
-        max_holdout:
-          type: integer
-          title: Max Holdout
-          description: Maximum number of records to hold out. Overrides any behavior
-            set by ``holdout``. Must be >= 0.
-          default: 2000
-        random_state:
-          title: Random State
-          description: Random state for holdout split to ensure reproducibility.
-          type: integer
-      type: object
-      title: DataParameters
-      description: Configuration for grouping, ordering, and splitting input data
-        for training and evaluation.
     DatasetMetadataContent:
       properties:
         schema:
@@ -15027,47 +13670,6 @@ components:
       type: object
       title: DialogRails
       description: Configuration of topical rails.
-    DifferentialPrivacyHyperparams:
-      properties:
-        dp_enabled:
-          type: boolean
-          title: dp_enabled
-          description: Enable differentially-private training with DP-SGD.
-          default: false
-        epsilon:
-          type: number
-          title: epsilon
-          description: Target privacy budget -- lower values provide stronger privacy.
-            Must be > 0.
-          default: 8.0
-        delta:
-          anyOf:
-          - type: string
-            const: auto
-          - type: number
-          title: delta
-          description: Probability of accidentally leaking information. Should be
-            much smaller than 1/n where n is the number of training records. Setting
-            to 'auto' uses delta of 1/n^1.2. Must be in [0, 1) or 'auto'.
-          default: auto
-        per_sample_max_grad_norm:
-          type: number
-          title: per_sample_max_grad_norm
-          description: Maximum L2 norm for per-sample gradient clipping. Must be >
-            0.
-          default: 1.0
-      type: object
-      title: DifferentialPrivacyHyperparams
-      description: 'Hyperparameters for differential privacy during training.
-
-
-        These parameters configure differential privacy (DP) training using DP-SGD
-        algorithm.
-
-        When enabled, they provide formal privacy guarantees by adding calibrated
-        noise
-
-        during training.'
     DistributedGPUExecutionProviderInput:
       properties:
         provider:
@@ -15449,422 +14051,6 @@ components:
       - data
       title: EntityUpdate
       description: Schema for updating an entity.
-    Entry:
-      properties:
-        id:
-          type: string
-          title: Id
-          description: Unique identifier
-        name:
-          type: string
-          title: Name
-          description: Entry name (auto-generated)
-        workspace:
-          type: string
-          title: Workspace
-          description: Workspace identifier
-        external_id:
-          title: External Id
-          description: Client-provided identifier
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this entry
-          type: string
-        data:
-          allOf:
-          - $ref: '#/components/schemas/EntryDataOutput'
-          description: Entry data containing request and response
-        usage:
-          allOf:
-          - $ref: '#/components/schemas/Usage'
-          description: Structured usage metrics (model served, latency, cost, token
-            counts).
-        context:
-          allOf:
-          - $ref: '#/components/schemas/EntryContext'
-          description: Metadata describing producer, task, trace
-        user_rating:
-          allOf:
-          - $ref: '#/components/schemas/UserRating'
-          description: User's rating/evaluation
-        events:
-          items:
-            oneOf:
-            - $ref: '#/components/schemas/UserFeedbackEvent'
-            - $ref: '#/components/schemas/UserActionEvent'
-            - $ref: '#/components/schemas/ReviewerAnnotationEvent'
-            - $ref: '#/components/schemas/EvaluatorResultEvent'
-            discriminator:
-              propertyName: event_type
-              mapping:
-                evaluator_result: '#/components/schemas/EvaluatorResultEvent'
-                reviewer_annotation: '#/components/schemas/ReviewerAnnotationEvent'
-                user_action: '#/components/schemas/UserActionEvent'
-                user_feedback: '#/components/schemas/UserFeedbackEvent'
-          type: array
-          title: Events
-          description: Events associated with this entry
-        custom_fields:
-          title: Custom Fields
-          description: Free-form metadata bag for client-defined fields.
-          additionalProperties: true
-          type: object
-        created_at:
-          title: Created At
-          description: Creation timestamp
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          description: Last update timestamp
-          type: string
-          format: date-time
-      type: object
-      required:
-      - id
-      - name
-      - workspace
-      - data
-      - context
-      title: Entry
-      description: Schema for Entry responses.
-    EntryContext:
-      properties:
-        app:
-          type: string
-          title: App
-          description: Reference to the app that produced this entry, in the form
-            `workspace/name`. If the app doesn't exist, it will be automatically created
-            when the entry is ingested.
-        task:
-          title: Task
-          description: Name of the task within the app (e.g., 'chat', 'completion',
-            'tool-call'). If the task doesn't exist, it will be automatically created
-            when the entry is ingested.
-          type: string
-        thread_id:
-          title: Thread Id
-          description: Logical thread identifier that groups related entries in a
-            multi-turn conversation. If provided, entries with the same thread_id
-            are treated as part of the same conversation. If omitted, the entry is
-            treated as a single-turn interaction (e.g., a standalone tool call or
-            completion).
-          type: string
-        user_id:
-          title: User Id
-          description: Identifier of the application's end-user who triggered this
-            LLM interaction. This represents the person using your application (e.g.,
-            'customer_123', 'employee@company.com'), NOT the service account that
-            created the entry record (see ownership.created_by for that). Use this
-            to track which of your users a conversation belongs to, filter entries
-            by user, and enable per-user analytics. Format is application-defined.
-          type: string
-        trace_id:
-          title: Trace Id
-          description: Distributed trace identifier (e.g., W3C traceparent). Intake
-            stores it verbatim and does not use it at ingestion time; helps with later
-            cross-system joins.
-          type: string
-        session_id:
-          title: Session Id
-          description: Long-lived session identifier (e.g., user account or browser
-            session). Stored for post-processing analytics; not used by the Intake
-            service at runtime.
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: UTC timestamp when the entry was created.
-      type: object
-      required:
-      - app
-      - task
-      title: EntryContext
-      description: 'Contextual metadata attached to every entry record.
-
-
-        Keeping these grouped in a dedicated object avoids polluting the top-level
-
-        entity schema and makes it trivial to extend without breaking compatibility.'
-    EntryContextFilter:
-      description: Filter for entry context fields.
-      properties:
-        app:
-          description: Filter by app reference (workspace/name).
-          title: App
-          type: string
-        task:
-          description: Filter by task reference.
-          title: Task
-          type: string
-        thread_id:
-          description: Filter by thread ID.
-          title: Thread Id
-          type: string
-        user_id:
-          description: Filter by user ID.
-          title: User Id
-          type: string
-        session_id:
-          description: Filter by session ID.
-          title: Session Id
-          type: string
-      title: EntryContextFilter
-      type: object
-    EntryDataInput:
-      properties:
-        request:
-          allOf:
-          - $ref: '#/components/schemas/FlexibleEntryRequestInput'
-          description: Raw request payload recorded from the client.
-        response:
-          allOf:
-          - $ref: '#/components/schemas/FlexibleEntryResponse'
-          description: Raw response payload generated by the model.
-      type: object
-      required:
-      - request
-      - response
-      title: EntryDataInput
-      description: Entry data containing the request and response for an LLM interaction.
-    EntryDataOutput:
-      properties:
-        request:
-          allOf:
-          - $ref: '#/components/schemas/FlexibleEntryRequestOutput'
-          description: Raw request payload recorded from the client.
-        response:
-          allOf:
-          - $ref: '#/components/schemas/FlexibleEntryResponse'
-          description: Raw response payload generated by the model.
-      type: object
-      required:
-      - request
-      - response
-      title: EntryDataOutput
-      description: Entry data containing the request and response for an LLM interaction.
-    EntryFilter:
-      additionalProperties: false
-      description: Filter for Entries.
-      properties:
-        id:
-          anyOf:
-          - type: string
-          - additionalProperties: true
-            type: object
-          description: 'Filter by entry ID. Supports operators like {''in'': [''entry-ABC'',
-            ''entry-XYZ'']} for multiple IDs.'
-          title: Id
-        workspace:
-          description: Filter by workspace id.
-          title: Workspace
-          type: string
-        project:
-          description: Filter by project name.
-          title: Project
-          type: string
-        external_id:
-          anyOf:
-          - type: string
-          - additionalProperties: true
-            type: object
-          description: 'Filter by external ID. Supports operators like {''in'': [''id1'',
-            ''id2'']} for multiple IDs.'
-          title: External Id
-        context:
-          allOf:
-          - $ref: '#/components/schemas/EntryContextFilter'
-          description: Filter by context fields.
-        user_rating:
-          allOf:
-          - $ref: '#/components/schemas/EntryUserRatingFilter'
-          description: Filter by user rating fields.
-        model:
-          description: Filter by the served model recorded in usage (e.g., 'gpt-4o',
-            'meta/llama-3.1-70b-instruct').
-          title: Model
-          type: string
-        has_thumb:
-          description: Filter by presence of thumb feedback.
-          title: Has Thumb
-          type: boolean
-        has_rating:
-          description: Filter by presence of rating.
-          title: Has Rating
-          type: boolean
-        has_opinion:
-          description: Filter by presence of opinion.
-          title: Has Opinion
-          type: boolean
-        has_rewrite:
-          description: Filter by presence of rewrite.
-          title: Has Rewrite
-          type: boolean
-        has_events:
-          description: Filter by presence of any events.
-          title: Has Events
-          type: boolean
-        longest_per_thread:
-          description: If true, return only the longest entry per thread (based on
-            message count).
-          title: Longest Per Thread
-          type: boolean
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on creation date.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on update date.
-      title: EntryFilter
-      type: object
-    EntryInput:
-      properties:
-        external_id:
-          title: External Id
-          description: Optional client-provided identifier (e.g., completion_id from
-            an LLM provider)
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this entry
-          type: string
-        data:
-          allOf:
-          - $ref: '#/components/schemas/EntryDataInput'
-          description: Entry data containing request and response
-        usage:
-          allOf:
-          - $ref: '#/components/schemas/Usage'
-          description: Structured usage metrics (model served, latency, cost, token
-            counts).
-        context:
-          allOf:
-          - $ref: '#/components/schemas/EntryContext'
-          description: Metadata describing producer, task, trace
-        user_rating:
-          allOf:
-          - $ref: '#/components/schemas/UserRating'
-          description: User's rating/evaluation of the AI response
-        events:
-          items:
-            oneOf:
-            - $ref: '#/components/schemas/UserFeedbackEvent'
-            - $ref: '#/components/schemas/UserActionEvent'
-            - $ref: '#/components/schemas/ReviewerAnnotationEvent'
-            - $ref: '#/components/schemas/EvaluatorResultEvent'
-            discriminator:
-              propertyName: event_type
-              mapping:
-                evaluator_result: '#/components/schemas/EvaluatorResultEvent'
-                reviewer_annotation: '#/components/schemas/ReviewerAnnotationEvent'
-                user_action: '#/components/schemas/UserActionEvent'
-                user_feedback: '#/components/schemas/UserFeedbackEvent'
-          type: array
-          title: Events
-          description: Events associated with this entry
-        custom_fields:
-          title: Custom Fields
-          description: Free-form metadata bag for client-defined fields (e.g., external
-            experiment metadata).
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      - context
-      title: EntryInput
-      description: Schema for creating a new Entry.
-    EntrySortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      title: EntrySortField
-      description: Sort fields for Entries.
-    EntryUpdate:
-      properties:
-        data:
-          allOf:
-          - $ref: '#/components/schemas/EntryDataInput'
-          description: Entry data containing request and response
-        usage:
-          allOf:
-          - $ref: '#/components/schemas/Usage'
-          description: Structured usage metrics (model served, latency, cost, token
-            counts).
-        context:
-          allOf:
-          - $ref: '#/components/schemas/EntryContext'
-          description: Metadata describing producer, task, trace
-        user_rating:
-          allOf:
-          - $ref: '#/components/schemas/UserRating'
-          description: User's rating/evaluation of the AI response
-        events:
-          title: Events
-          description: Events associated with this entry
-          items:
-            oneOf:
-            - $ref: '#/components/schemas/UserFeedbackEvent'
-            - $ref: '#/components/schemas/UserActionEvent'
-            - $ref: '#/components/schemas/ReviewerAnnotationEvent'
-            - $ref: '#/components/schemas/EvaluatorResultEvent'
-            discriminator:
-              propertyName: event_type
-              mapping:
-                evaluator_result: '#/components/schemas/EvaluatorResultEvent'
-                reviewer_annotation: '#/components/schemas/ReviewerAnnotationEvent'
-                user_action: '#/components/schemas/UserActionEvent'
-                user_feedback: '#/components/schemas/UserFeedbackEvent'
-          type: array
-        custom_fields:
-          title: Custom Fields
-          description: Free-form metadata bag for client-defined fields (replaces
-            existing value when provided).
-          additionalProperties: true
-          type: object
-      type: object
-      title: EntryUpdate
-      description: Schema for updating an existing Entry.
-    EntryUserRatingFilter:
-      description: Filter for entry user rating fields.
-      properties:
-        thumb:
-          allOf:
-          - $ref: '#/components/schemas/ThumbDirection'
-          description: Filter by thumb direction.
-      title: EntryUserRatingFilter
-      type: object
-    EntrysPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/Entry'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: EntrysPage
     ErrorResponse:
       properties:
         detail:
@@ -15950,72 +14136,6 @@ components:
       additionalProperties: false
       type: object
       title: EvaluationContext
-    EvaluationParameters:
-      properties:
-        mia_enabled:
-          type: boolean
-          title: mia_enabled
-          description: Enable membership inference attack evaluation for privacy assessment.
-          default: true
-        aia_enabled:
-          type: boolean
-          title: aia_enabled
-          description: Enable attribute inference attack evaluation for privacy assessment.
-          default: true
-        sqs_report_columns:
-          type: integer
-          title: Sqs Report Columns
-          description: Number of columns to include in statistical quality reports.
-          default: 250
-        sqs_report_rows:
-          type: integer
-          title: Sqs Report Rows
-          description: Number of rows to include in statistical quality reports.
-          default: 5000
-        mandatory_columns:
-          title: mandatory_columns
-          description: Number of mandatory columns that must be used in evaluation.
-          type: integer
-        enabled:
-          type: boolean
-          title: enabled
-          description: Enable or disable evaluation.
-          default: true
-        quasi_identifier_count:
-          type: integer
-          title: Quasi Identifier Count
-          description: Number of quasi-identifiers to sample for privacy attacks.
-          default: 3
-        pii_replay_enabled:
-          type: boolean
-          title: pii_replay_enabled
-          description: Enable PII Replay detection.
-          default: true
-        pii_replay_entities:
-          title: Pii Replay Entities
-          description: List of entities for PII Replay. If not provided, default entities
-            will be used.
-          items:
-            type: string
-          type: array
-        pii_replay_columns:
-          title: Pii Replay Columns
-          description: List of columns for PII Replay. If not provided, only entities
-            will be used.
-          items:
-            type: string
-          type: array
-      type: object
-      title: EvaluationParameters
-      description: 'Configuration for evaluating synthetic data quality and privacy.
-
-
-        This class controls which evaluation metrics are computed and how they are
-        configured.
-
-        It includes privacy attack evaluations, statistical quality metrics, and downstream
-
-        machine learning performance assessments.'
     Evaluator.Model:
       properties:
         url:
@@ -16106,67 +14226,6 @@ components:
       - BOOLEAN
       - TEXT
       title: EvaluatorResultDataType
-    EvaluatorResultEvent:
-      properties:
-        id:
-          title: Id
-          description: Unique identifier for the event. Populated when retrieved from
-            database.
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: UTC timestamp when the record was created.
-        created_by:
-          title: Created By
-          description: Identifier of the user or system that generated the record.
-            Can be set of key-value pairs.
-          additionalProperties:
-            type: string
-          type: object
-        event_type:
-          type: string
-          const: evaluator_result
-          title: Event Type
-          default: evaluator_result
-        name:
-          type: string
-          maxLength: 256
-          title: Name
-          description: Identifier of the evaluator that produced this result (e.g.,
-            'harbor.verifier', 'evaluator.llm_judge', 'auditor.pii_probe').
-        score:
-          anyOf:
-          - type: integer
-          - type: number
-          - type: string
-          title: Score
-          description: 'The result value: a number (e.g., reward, rating, probability)
-            or a string (e.g., ''pass'', ''fail'', a category label). Semantics are
-            defined by the evaluator.'
-        metadata:
-          title: Metadata
-          description: Free-form additional context about this result (e.g., supporting
-            metrics, trial_name, rubric_version, evaluator config snapshot).
-          additionalProperties: true
-          type: object
-      additionalProperties: false
-      type: object
-      required:
-      - name
-      title: EvaluatorResultEvent
-      description: 'Result produced by an automated evaluator.
-
-
-        Use this for any non-human scorer that emits a judgement about an entry:
-
-        eval-framework verifier rewards, LLM-judge ratings, auditor probe results,
-        etc.
-
-        Distinct from UserFeedbackEvent (human end-user feedback) and ReviewerAnnotationEvent
-
-        (human expert annotation).'
     EvaluatorResultFilter:
       properties:
         span_id:
@@ -16277,31 +14336,6 @@ components:
       required:
       - data
       title: EvaluatorResultsPage
-    EventsCreateRequest:
-      properties:
-        events:
-          items:
-            oneOf:
-            - $ref: '#/components/schemas/UserFeedbackEvent'
-            - $ref: '#/components/schemas/UserActionEvent'
-            - $ref: '#/components/schemas/ReviewerAnnotationEvent'
-            - $ref: '#/components/schemas/EvaluatorResultEvent'
-            discriminator:
-              propertyName: event_type
-              mapping:
-                evaluator_result: '#/components/schemas/EvaluatorResultEvent'
-                reviewer_annotation: '#/components/schemas/ReviewerAnnotationEvent'
-                user_action: '#/components/schemas/UserActionEvent'
-                user_feedback: '#/components/schemas/UserFeedbackEvent'
-          type: array
-          minItems: 1
-          title: Events
-          description: List of events to add to the entry.
-      type: object
-      required:
-      - events
-      title: EventsCreateRequest
-      description: Request to add events to an entry.
     ExactMatchMetric:
       properties:
         name:
@@ -16560,295 +14594,6 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
-    ExportConfig:
-      properties:
-        filters:
-          title: Filters
-          description: Filter criteria for selecting entries (workspace, app, task,
-            thread_id, external_id, has_thumb, has_rating, longest_per_thread, model,
-            etc.)
-          additionalProperties: true
-          type: object
-        search:
-          title: Search
-          description: Search criteria for finding entries
-          additionalProperties: true
-          type: object
-        limit:
-          title: Limit
-          description: Maximum number of entries to export. None means no limit.
-          default: 1000
-          type: integer
-        format_options:
-          title: Format Options
-          description: Format options for the export (e.g., row_transformation)
-          additionalProperties: true
-          type: object
-      type: object
-      title: ExportConfig
-      description: 'Configuration for an export job.
-
-
-        Defines what entries to export and how to format them.'
-    ExportConfigInput:
-      properties:
-        filters:
-          title: Filters
-          description: Filter criteria for selecting entries (workspace, app, task,
-            thread_id, external_id, has_thumb, has_rating, longest_per_thread, model,
-            etc.)
-          additionalProperties: true
-          type: object
-        search:
-          title: Search
-          description: Search criteria for finding entries
-          additionalProperties: true
-          type: object
-        limit:
-          title: Limit
-          description: Maximum number of entries to export. None means no limit.
-          default: 1000
-          type: integer
-        format_options:
-          title: Format Options
-          description: Format options for the export (e.g., row_transformation)
-          additionalProperties: true
-          type: object
-      type: object
-      title: ExportConfigInput
-      description: 'Input schema for export configuration.
-
-
-        Defines what entries to export and how to format them.'
-    ExportJob:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Entity name within the workspace
-          default: ''
-        workspace:
-          type: string
-          pattern: ^[\w\-\+.@:]+$
-          title: Workspace
-          description: Workspace identifier
-        project:
-          title: Project
-          description: The name of the project associated with this entity.
-          type: string
-        status:
-          allOf:
-          - $ref: '#/components/schemas/JobStatus'
-          description: Job status
-          default: pending
-        config:
-          allOf:
-          - $ref: '#/components/schemas/ExportConfig'
-          description: The export configuration defining filters, search criteria,
-            and format options.
-        output_file_url:
-          title: Output File Url
-          description: The place where the exported file should be written (file://,
-            hf://, nds://, etc.)
-          type: string
-          minLength: 1
-          format: uri
-        status_details:
-          allOf:
-          - $ref: '#/components/schemas/ExportStatusDetails'
-          description: Details about the status of the export job.
-        id:
-          type: string
-          title: Id
-          readOnly: true
-        created_at:
-          title: Created At
-          readOnly: true
-          type: string
-          format: date-time
-        created_by:
-          title: Created By
-          readOnly: true
-          nullable: true
-          type: string
-        updated_at:
-          title: Updated At
-          readOnly: true
-          type: string
-          format: date-time
-        updated_by:
-          title: Updated By
-          readOnly: true
-          nullable: true
-          type: string
-        entity_id:
-          type: string
-          title: Entity Id
-          description: Alias for id for backwards compatibility.
-          readOnly: true
-        parent:
-          title: Parent
-          description: Parent entity ID for nested entities.
-          readOnly: true
-          type: string
-      type: object
-      required:
-      - workspace
-      - config
-      - id
-      - created_at
-      - created_by
-      - updated_at
-      - updated_by
-      - entity_id
-      - parent
-      title: ExportJob
-      description: 'Export job tracking entry exports to external datastores.
-
-
-        Export jobs track the status of background export tasks.'
-    ExportJobFilter:
-      additionalProperties: false
-      description: Filter for ExportJobs.
-      properties:
-        id:
-          description: Filter by export job ID.
-          title: Id
-          type: string
-        workspace:
-          description: Filter by workspace id.
-          title: Workspace
-          type: string
-        name:
-          description: Filter by export job name.
-          title: Name
-          type: string
-        status:
-          allOf:
-          - $ref: '#/components/schemas/JobStatus'
-          description: Filter by job status.
-        output_file_url:
-          description: Filter by output file URL.
-          title: Output File Url
-          type: string
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on creation date.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on update date.
-      title: ExportJobFilter
-      type: object
-    ExportJobInput:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/ExportConfigInput'
-          description: Export configuration
-        output_file_url:
-          type: string
-          minLength: 1
-          format: uri
-          title: Output File Url
-          description: The place where the exported file should be written (file://,
-            hf://, nds://, etc.)
-      type: object
-      required:
-      - config
-      - output_file_url
-      title: ExportJobInput
-      description: Request payload for creating an export job.
-    ExportJobSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      - status
-      - -status
-      title: ExportJobSortField
-      description: Sort fields for ExportJobs.
-    ExportJobsPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/ExportJob'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: ExportJobsPage
-    ExportPreviewRequest:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/ExportConfigInput'
-          description: Export configuration for preview
-      type: object
-      required:
-      - config
-      title: ExportPreviewRequest
-      description: Request payload for previewing export data without writing to a
-        file.
-    ExportPreviewResponse:
-      properties:
-        data:
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-          title: Data
-          description: Preview data (max 100 records)
-        count:
-          type: integer
-          title: Count
-          description: Number of records returned
-        config:
-          allOf:
-          - $ref: '#/components/schemas/ExportConfigInput'
-          description: The configuration used for this preview
-      type: object
-      required:
-      - data
-      - count
-      - config
-      title: ExportPreviewResponse
-      description: Response containing preview data from the export configuration.
-    ExportStatusDetails:
-      properties:
-        entries_count:
-          type: integer
-          title: Entries Count
-          description: Number of entries exported
-          default: 0
-        progress:
-          title: Progress
-          description: Progress percentage (0-100)
-          type: number
-        error_message:
-          title: Error Message
-          description: Error message if the job failed
-          type: string
-      type: object
-      title: ExportStatusDetails
-      description: Detailed status information for an export job.
     ExtendedBenchmark:
       properties:
         name:
@@ -17486,6 +15231,87 @@ components:
       - judge_model
       title: FaithfulnessMetricResponse
       description: Response type for Faithfulness metrics.
+    FeedbackAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value
+      title: FeedbackAnnotation
+      description: Thumbs-up / thumbs-down feedback on a span or session.
+    FeedbackAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: feedback
+          title: Kind
+          description: Discriminator. Always `feedback` for this variant.
+        value:
+          type: string
+          enum:
+          - positive
+          - negative
+          title: Value
+          description: Sentiment of the feedback.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value
+      title: FeedbackAnnotationInput
+      description: Thumbs-up / thumbs-down feedback on a span or session.
     FiddlerGuardrails:
       properties:
         fiddler_endpoint:
@@ -17840,156 +15666,6 @@ components:
           description: Filter models with adapters with this fine-tuning type.
       title: FinetuningTypeFilter
       type: object
-    FlexibleEntryRequestInput:
-      properties:
-        messages:
-          items:
-            $ref: '#/components/schemas/FlexibleMessage'
-          type: array
-          title: Messages
-          description: A list of messages comprising the conversation. Each message
-            must have a valid role. Additional fields like `content`, `tool_calls`,
-            etc. are provider-specific.
-        model:
-          type: string
-          title: Model
-          description: The model identifier used for this request (e.g., 'gpt-4',
-            'llama-3-70b', 'claude-3-opus').
-      additionalProperties: true
-      type: object
-      required:
-      - messages
-      - model
-      title: FlexibleEntryRequestInput
-      description: 'Flexible entry request that accepts any object shape.
-
-
-        This flexibility enables the Intake service to store requests from various
-        LLM providers
-
-        (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal,
-        etc.)
-
-        without requiring schema updates.
-
-
-        Required fields: `messages` and `model`
-
-        Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`,
-
-        `stream`, `response_format`, etc.'
-    FlexibleEntryRequestOutput:
-      properties:
-        messages:
-          items:
-            $ref: '#/components/schemas/FlexibleMessage'
-          type: array
-          title: Messages
-          description: A list of messages comprising the conversation. Each message
-            must have a valid role. Additional fields like `content`, `tool_calls`,
-            etc. are provider-specific.
-        model:
-          type: string
-          title: Model
-          description: The model identifier used for this request (e.g., 'gpt-4',
-            'llama-3-70b', 'claude-3-opus').
-      additionalProperties: true
-      type: object
-      required:
-      - messages
-      - model
-      title: FlexibleEntryRequestOutput
-      description: 'Flexible entry request that accepts any object shape.
-
-
-        This flexibility enables the Intake service to store requests from various
-        LLM providers
-
-        (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal,
-        etc.)
-
-        without requiring schema updates.
-
-
-        Required fields: `messages` and `model`
-
-        Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`,
-
-        `stream`, `response_format`, etc.'
-    FlexibleEntryResponse:
-      oneOf:
-      - required:
-        - choices
-      - required:
-        - error
-      properties:
-        choices:
-          title: Choices
-          description: A list of response choices generated by the model. Each choice
-            typically contains a message object with role, content, and optional tool_calls.
-            The structure varies by provider but commonly includes fields like `index`,
-            `message`, and `finish_reason`.
-          items:
-            additionalProperties: true
-            type: object
-          type: array
-        error:
-          title: Error
-          description: 'Error envelope returned by the provider when the call failed
-            (e.g., OpenAI''s `{message, type, code, param}` shape). Mutually exclusive
-            with `choices`: a response carries one or the other.'
-          additionalProperties: true
-          type: object
-      additionalProperties: true
-      type: object
-      title: FlexibleEntryResponse
-      description: 'Flexible entry response that accepts any object shape.
-
-
-        This flexibility enables the Intake service to store responses from various
-        LLM providers
-
-        and future model types without requiring schema updates.
-
-
-        Required: either `choices` (successful response) or `error` (failed call).
-
-        Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-        etc.'
-    FlexibleMessage:
-      properties:
-        role:
-          allOf:
-          - $ref: '#/components/schemas/MessageRole'
-          description: 'The role of the message sender. Must be one of: user, system,
-            assistant, developer, tool, or function.'
-      additionalProperties: true
-      type: object
-      required:
-      - role
-      title: FlexibleMessage
-      description: 'A flexible message model that requires a valid role field but
-        allows any other fields.
-
-
-        This flexibility enables the Intake service to store messages from various
-        LLM providers
-
-        and future model types without requiring schema updates. Additional fields
-        like `content`,
-
-        `name`, `tool_calls`, `tool_call_id`, etc. are all accepted.
-
-
-        Examples of additional fields:
-
-        - `content`: The message text or content
-
-        - `name`: Name of the user or function
-
-        - `tool_calls`: Tool/function calls in the message
-
-        - `tool_call_id`: ID of the tool call being responded to'
     FloatFilter:
       additionalProperties: false
       properties:
@@ -18149,106 +15825,6 @@ components:
         Provides configuration for running jobs on GPU resources with
 
         resource requests and limits.'
-    GenerateParameters:
-      properties:
-        num_records:
-          type: integer
-          title: num_records
-          description: Number of records to generate.
-          default: 1000
-        temperature:
-          type: number
-          title: temperature
-          description: Sampling temperature for controlling randomness (higher = more
-            random).
-          default: 0.9
-        repetition_penalty:
-          type: number
-          title: repetition_penalty
-          description: The value used to control the likelihood of the model repeating
-            the same token. Must be > 0.
-          default: 1.0
-        top_p:
-          type: number
-          title: top_p
-          description: Nucleus sampling probability for token selection. Must be in
-            (0, 1].
-          default: 1.0
-        patience:
-          type: integer
-          title: patience
-          description: Number of consecutive generations where the ``invalid_fraction_threshold``
-            is reached before stopping generation. Must be >= 1.
-          default: 3
-        invalid_fraction_threshold:
-          type: number
-          title: invalid_fraction_threshold
-          description: The fraction of invalid records that will stop generation after
-            the ``patience`` limit is reached. Must be in [0, 1].
-          default: 0.8
-        use_structured_generation:
-          type: boolean
-          title: use_structured_generation
-          description: Whether to use structured generation for better format control.
-          default: false
-        structured_generation_backend:
-          type: string
-          enum:
-          - auto
-          - xgrammar
-          - guidance
-          - outlines
-          - lm-format-enforcer
-          title: structured_generation_backend
-          description: 'The backend used by vLLM when ``use_structured_generation``
-            is ``True``. Supported backends: ''outlines'', ''guidance'', ''xgrammar'',
-            ''lm-format-enforcer''. ''auto'' will allow vLLM to choose the backend.'
-          default: auto
-        structured_generation_schema_method:
-          type: string
-          enum:
-          - regex
-          - json_schema
-          title: structured_generation_schema_method
-          description: The method used to generate the schema from your dataset and
-            pass it to the generation backend. 'regex' uses a custom regex construction
-            method that tends to be more comprehensive than 'json_schema' at the cost
-            of speed.
-          default: regex
-        structured_generation_use_single_sequence:
-          type: boolean
-          title: structured_generation_use_single_sequence
-          description: Whether to use a regex that matches exactly one sequence or
-            record if ``max_sequences_per_example`` is 1.
-          default: false
-        enforce_timeseries_fidelity:
-          type: boolean
-          title: enforce_timeseries_fidelity
-          description: Enforce time-series fidelity by enforcing order, intervals,
-            start and end times of the records.
-          default: false
-        validation:
-          allOf:
-          - $ref: '#/components/schemas/ValidationParameters'
-          description: Validation parameters controlling validation logic and automatic
-            fixes when parsing LLM output and converting to tabular data.
-        attention_backend:
-          title: attention_backend
-          description: 'The attention backend for the vLLM engine. Common values:
-            ''FLASHINFER'', ''FLASH_ATTN'', ''TRITON_ATTN'', ''FLEX_ATTENTION''. If
-            ``None`` or ''auto'', vLLM will auto-select the best available backend.'
-          default: auto
-          type: string
-      type: object
-      title: GenerateParameters
-      description: 'Configuration parameters for synthetic data generation.
-
-
-        These parameters control how synthetic data is generated after the model is
-        trained.
-
-        They affect the quality, diversity, and validity of the generated synthetic
-        records.'
     GenerationLog:
       properties:
         activated_rails:
@@ -18457,81 +16033,6 @@ components:
       - name
       - -name
       title: GenericSortField
-    GlinerConfig:
-      properties:
-        enable_gliner:
-          type: boolean
-          title: Enable Gliner
-          description: Enable GLiNER NER module.
-          default: true
-        enable_batch_mode:
-          type: boolean
-          title: Enable Batch Mode
-          description: Enable GLiNER batch mode.
-          default: true
-        batch_size:
-          type: integer
-          title: Batch Size
-          description: GLiNER batch size.
-          default: 8
-        chunk_length:
-          type: integer
-          title: Chunk Length
-          description: GLiNER batch chunk length in characters.
-          default: 512
-        gliner_model:
-          type: string
-          title: Gliner Model
-          description: GLiNER model name.
-          default: nvidia/gliner-PII
-      type: object
-      title: GlinerConfig
-      description: Configuration for the GLiNER named-entity recognition model.
-    Globals:
-      properties:
-        locales:
-          title: Locales
-          description: List of locales.
-          examples:
-          - en_US
-          items:
-            type: string
-          type: array
-        seed:
-          title: Seed
-          description: Optional random seed.
-          type: integer
-          exclusiveMaximum: 2147483647.0
-          exclusiveMinimum: -2147483647.0
-        classify:
-          allOf:
-          - $ref: '#/components/schemas/ClassifyConfig'
-          description: Column classification configuration.
-          default:
-            num_samples: 3
-        ner:
-          allOf:
-          - $ref: '#/components/schemas/NERConfig'
-          description: Named Entity Recognition configuration.
-          default:
-            ner_threshold: 0.3
-            enable_regexps: false
-            gliner:
-              batch_size: 8
-              chunk_length: 512
-              enable_batch_mode: true
-              enable_gliner: true
-              gliner_model: nvidia/gliner-PII
-        lock_columns:
-          title: Lock Columns
-          description: List of columns to preserve as immutable across all transformations.
-          items:
-            type: string
-          type: array
-      type: object
-      title: Globals
-      description: Global settings for the PII replacer including locales, seed, NER,
-        and classification.
     GuardrailCheckRequest:
       properties:
         model:
@@ -19347,16 +16848,6 @@ components:
             these variables.
       type: object
       title: JobExecutionProfileConfig
-    JobStatus:
-      type: string
-      enum:
-      - pending
-      - running
-      - completed
-      - failed
-      - cancelled
-      title: JobStatus
-      description: Job status enum.
     K8sNIMOperatorConfig:
       properties:
         resources:
@@ -20156,6 +17647,123 @@ components:
       - model
       - scores
       title: LLMJudgeMetricResponse
+    LabelAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` is a text label (`text`) or a number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. A string when `value_type=text`, a number
+            when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures, when set.
+          type: string
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotation
+      description: Categorical or numeric label attached to a span or session.
+    LabelAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: label
+          title: Kind
+          description: Discriminator. Always `label` for this variant.
+        value_type:
+          type: string
+          enum:
+          - text
+          - numeric
+          title: Value Type
+          description: Whether `value` should be interpreted as text (`text`) or a
+            number (`numeric`).
+        value:
+          anyOf:
+          - type: string
+          - type: number
+          title: Value
+          description: The label's value. Must be a string when `value_type=text`
+            and a number when `value_type=numeric`.
+        name:
+          title: Name
+          description: Name identifying what the label measures (e.g., `severity`,
+            `helpfulness`). Optional for text labels; required for numeric labels.
+          type: string
+          maxLength: 256
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - value_type
+      - value
+      title: LabelAnnotationInput
+      description: 'Categorical or numeric label attached to a span or session.
+
+
+        Use `value_type=text` for tag-style labels (e.g., `regression`, `needs-review`)
+        and
+
+        `value_type=numeric` for scored labels (e.g., a 1-5 helpfulness rating). Numeric
+        labels
+
+        must include a `name` to identify what the score measures.'
     LinearLayerSpec:
       properties:
         name:
@@ -20296,17 +17904,6 @@ components:
       - num_mamba_layers
       title: MambaConfig
       description: Mamba/State Space Model configuration.
-    MessageRole:
-      type: string
-      enum:
-      - user
-      - system
-      - assistant
-      - developer
-      - tool
-      - function
-      title: MessageRole
-      description: Valid role values for entry request messages.
     MessageTemplate:
       properties:
         type:
@@ -20323,6 +17920,84 @@ components:
       - content
       title: MessageTemplate
       description: Template for a message structure.
+    MetadataAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: The metadata key/value pairs.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - metadata
+      title: MetadataAnnotation
+      description: Structured key/value metadata attached to a span or session.
+    MetadataAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: metadata
+          title: Kind
+          description: Discriminator. Always `metadata` for this variant.
+        metadata:
+          additionalProperties: true
+          type: object
+          minProperties: 1
+          title: Metadata
+          description: Arbitrary key/value pairs. Must contain at least one entry.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - metadata
+      title: MetadataAnnotationInput
+      description: Structured key/value metadata attached to a span or session.
     MetricEvaluationJob:
       properties:
         id:
@@ -22378,38 +20053,6 @@ components:
       type: object
       title: MultilingualConfig
       description: Configuration for multilingual refusal messages.
-    NERConfig:
-      properties:
-        ner_threshold:
-          type: number
-          title: Ner Threshold
-          description: NER model threshold.
-          default: 0.3
-        enable_regexps:
-          type: boolean
-          title: Enable Regexps
-          description: Enable NER regular expressions (experimental).
-          default: false
-        gliner:
-          allOf:
-          - $ref: '#/components/schemas/GlinerConfig'
-          description: GLiNER NER configuration.
-          default:
-            enable_gliner: true
-            enable_batch_mode: true
-            batch_size: 8
-            chunk_length: 512
-            gliner_model: nvidia/gliner-PII
-        ner_entities:
-          title: Ner Entities
-          description: List of entity types to recognize. If unset, classification
-            entity types are used.
-          items:
-            type: string
-          type: array
-      type: object
-      title: NERConfig
-      description: Configuration for Named Entity Recognition.
     NGCStorageConfig:
       properties:
         read_chunk_size:
@@ -23080,6 +20723,83 @@ components:
       - judge_model
       title: NoiseSensitivityMetricResponse
       description: Response type for NoiseSensitivity metrics.
+    NoteAnnotation:
+      properties:
+        annotation_id:
+          type: string
+          title: Annotation Id
+        workspace:
+          type: string
+          title: Workspace
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to, or omitted for session-level
+            annotations.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+        created_by:
+          title: Created By
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+        ingested_at:
+          type: string
+          format: date-time
+          title: Ingested At
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          title: Text
+          description: The note content.
+      type: object
+      required:
+      - annotation_id
+      - workspace
+      - session_id
+      - created_at
+      - ingested_at
+      - kind
+      - text
+      title: NoteAnnotation
+      description: Free-text note attached to a span or session.
+    NoteAnnotationInput:
+      properties:
+        span_id:
+          title: Span Id
+          description: Id of the span this annotation applies to. Omit to annotate
+            the whole session instead of a specific span.
+          type: string
+        session_id:
+          type: string
+          title: Session Id
+          description: Id of the session this annotation belongs to. Always required.
+        kind:
+          type: string
+          const: note
+          title: Kind
+          description: Discriminator. Always `note` for this variant.
+        text:
+          type: string
+          maxLength: 10000
+          minLength: 1
+          title: Text
+          description: The note content. 1 to 10,000 characters.
+      additionalProperties: false
+      type: object
+      required:
+      - session_id
+      - kind
+      - text
+      title: NoteAnnotationInput
+      description: Free-text note attached to a span or session.
     NumberCheckMetric:
       properties:
         name:
@@ -23407,6 +21127,23 @@ components:
       - right_template
       title: NumberCheckMetricResponse
       description: Response type for NumberCheckMetric.
+    NumericFilter:
+      additionalProperties: false
+      description: "Range filter for numeric annotation values.\n\nAt least one of\
+        \ `$gte` or `$lte` must be supplied \u2014 an empty `{}` is not a\nmeaningful\
+        \ filter and is rejected."
+      minProperties: 1
+      properties:
+        $gte:
+          description: Include only values greater than or equal to this number.
+          title: $Gte
+          type: number
+        $lte:
+          description: Include only values less than or equal to this number.
+          title: $Lte
+          type: number
+      title: NumericFilter
+      type: object
     OIDCDiscoveryResponse:
       properties:
         issuer:
@@ -23807,28 +21544,6 @@ components:
       - p100
       title: Percentiles
       description: Percentile distribution of scores.
-    PiiReplacerConfig:
-      properties:
-        globals:
-          allOf:
-          - $ref: '#/components/schemas/Globals'
-          description: Global configuration options.
-        steps:
-          items:
-            $ref: '#/components/schemas/StepDefinition'
-          type: array
-          maxItems: 10
-          minItems: 1
-          title: Steps
-          description: List of transformation steps to perform on input data.
-      type: object
-      required:
-      - steps
-      title: PiiReplacerConfig
-      description: 'Configuration for PII replacer.
-
-
-        Defines how PII data should be detected and replaced in a dataset.'
     PlatformJobEnvironmentVariable:
       properties:
         name:
@@ -26708,108 +24423,6 @@ components:
       - embeddings_model
       title: RetrieverPipelineInput
       description: Pipeline configuration for retriever-based evaluations.
-    ReviewerAnnotationEvent:
-      properties:
-        id:
-          title: Id
-          description: Unique identifier for the event. Populated when retrieved from
-            database.
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: UTC timestamp when the record was created.
-        created_by:
-          title: Created By
-          description: Identifier of the user or system that generated the record.
-            Can be set of key-value pairs.
-          additionalProperties:
-            type: string
-          type: object
-        event_type:
-          type: string
-          const: reviewer_annotation
-          title: Event Type
-          default: reviewer_annotation
-        thumb:
-          allOf:
-          - $ref: '#/components/schemas/ThumbDirection'
-          description: "Binary feedback: \"up\" for \U0001F44D or \"down\" for \U0001F44E\
-            . Mutually exclusive with `rating`. Use this for simple thumbs up/down\
-            \ UI elements."
-        rating:
-          title: Rating
-          description: Numeric rating (e.g., 1-5 stars) provided by the end user.
-            Mutually exclusive with `thumb`. Use this for star ratings or numeric
-            scales.
-          type: number
-          minimum: 0.0
-        opinion:
-          title: Opinion
-          description: Free-text comment from the end user describing their opinion
-            of the response.
-          type: string
-          maxLength: 2000
-          minLength: 1
-        rewrite:
-          title: Rewrite
-          description: End-user's suggested text replacement for the generated response.
-            This is the user's idea of what the response should have been.
-          type: string
-          maxLength: 10000
-          minLength: 1
-        chosen_index:
-          title: Chosen Index
-          description: Zero-based index of the response option the user selected when
-            multiple responses were returned. Use this when showing users multiple
-            completion choices and tracking which one they picked.
-          type: integer
-          minimum: 0.0
-        categories:
-          title: Categories
-          description: 'Application-specific category ratings as key-value pairs.
-            Use this for custom rating dimensions (e.g., {''helpfulness'': 4, ''accuracy'':
-            5, ''tone'': ''professional''}). Useful for radio buttons, dropdowns,
-            or multi-dimensional rating systems.'
-          additionalProperties:
-            anyOf:
-            - type: number
-            - type: string
-          type: object
-        response_override:
-          title: Response Override
-          description: 'Complete JSON object that replaces the original model response
-            when exporting data. Unlike the `rewrite` field (which is just text),
-            this can include tool calls, function outputs, and all other response
-            metadata. When an entry with response_override is exported, you can choose
-            to use this corrected response instead of the original. Example: {''choices'':
-            [{''message'': {''role'': ''assistant'', ''content'': ''Corrected text'',
-            ''tool_calls'': [...]}}]}'
-          additionalProperties: true
-          type: object
-      additionalProperties: false
-      type: object
-      title: ReviewerAnnotationEvent
-      description: 'Structured annotation supplied by a reviewer or expert evaluator.
-
-
-        A reviewer annotation is similar to user feedback but includes an additional
-        capability
-
-        to provide a complete replacement response. This is useful when human experts
-        need to
-
-        correct not just the text but also structured elements like tool calls, function
-        outputs,
-
-        or other response metadata.
-
-
-        Inherits all feedback fields from UserFeedbackEvent (thumb, rating, opinion,
-        rewrite,
-
-        chosen_index, categories) and adds response_override for full response replacement.'
     RoleBinding:
       properties:
         id:
@@ -26929,73 +24542,6 @@ components:
       required:
       - data
       title: RoleBindingsPage
-    Row:
-      properties:
-        name:
-          anyOf:
-          - type: string
-          - items:
-              type: string
-            type: array
-          title: Name
-          description: Row name.
-        condition:
-          title: Condition
-          description: Row condition match.
-          type: string
-        foreach:
-          title: Foreach
-          description: Foreach expression.
-          type: string
-        value:
-          title: Value
-          description: Row value definition.
-          type: string
-        entity:
-          anyOf:
-          - type: string
-          - items:
-              type: string
-            type: array
-          title: Entity
-          description: Row entity match.
-        type:
-          anyOf:
-          - type: string
-          - items:
-              type: string
-            type: array
-          title: Type
-          description: Row type match.
-        fallback_value:
-          title: Fallback Value
-          description: Row fallback value.
-          type: string
-        description:
-          title: Description
-          description: Rule description for human consumption.
-          type: string
-      type: object
-      title: Row
-      description: Rule matcher for selecting rows by name, condition, entity, or
-        type.
-    RowActions:
-      properties:
-        drop:
-          title: Drop
-          description: Rows to drop.
-          items:
-            $ref: '#/components/schemas/Row'
-          type: array
-        update:
-          title: Update
-          description: Rows to update.
-          items:
-            $ref: '#/components/schemas/Row'
-          type: array
-      type: object
-      title: RowActions
-      description: Container for row drop and update operations.
     RowScore:
       properties:
         row_index:
@@ -27303,320 +24849,6 @@ components:
       required:
       - bucket
       title: S3StorageConfig
-    SafeSynthesizerJob:
-      properties:
-        id:
-          title: Id
-          type: string
-        name:
-          type: string
-          title: Name
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        workspace:
-          title: Workspace
-          type: string
-        created_at:
-          title: Created At
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          type: string
-          format: date-time
-        spec:
-          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
-        status:
-          $ref: '#/components/schemas/PlatformJobStatus'
-        status_details:
-          title: Status Details
-          additionalProperties: true
-          type: object
-        error_details:
-          title: Error Details
-          additionalProperties: true
-          type: object
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - name
-      - spec
-      title: SafeSynthesizerJob
-    SafeSynthesizerJobConfig:
-      properties:
-        data_source:
-          type: string
-          title: Data Source
-          description: The data source for the job.
-        config:
-          allOf:
-          - $ref: '#/components/schemas/SafeSynthesizerParameters'
-          description: The Safe Synthesizer parameters configuration.
-        hf_token_secret:
-          title: Hf Token Secret
-          description: Name of platform secret containing the HuggingFace token. Must
-            exist in the same workspace as the job.
-          type: string
-        enable_synthesis:
-          type: boolean
-          title: Enable Synthesis
-          description: Whether to run LLM training and generation phases. When False
-            the task only performs PII replacement and returns the processed data.
-          default: true
-      type: object
-      required:
-      - data_source
-      - config
-      title: SafeSynthesizerJobConfig
-      description: 'Configuration model for Safe Synthesizer jobs.
-
-
-        Used primarily internally to configure a run submitted to the NeMo Jobs
-
-        Microservice.'
-    SafeSynthesizerJobRequest:
-      properties:
-        name:
-          title: Name
-          type: string
-        description:
-          title: Description
-          type: string
-        project:
-          title: Project
-          type: string
-        spec:
-          $ref: '#/components/schemas/SafeSynthesizerJobConfig'
-        ownership:
-          title: Ownership
-          additionalProperties: true
-          type: object
-        custom_fields:
-          title: Custom Fields
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - spec
-      title: SafeSynthesizerJobRequest
-    SafeSynthesizerJobsListFilter:
-      additionalProperties: false
-      properties:
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs created at 'gte' datetime or 'lte' datetime.
-        name:
-          description: Name of the job.
-          title: Name
-          type: string
-        workspace:
-          description: Workspace of the job.
-          title: Workspace
-          type: string
-        project:
-          description: Project containing the job.
-          title: Project
-          type: string
-        status:
-          allOf:
-          - $ref: '#/components/schemas/PlatformJobStatus'
-          description: The current status.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Jobs updated at 'gte' datetime or 'lte' datetime.
-      title: SafeSynthesizerJobsListFilter
-      type: object
-    SafeSynthesizerJobsPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/SafeSynthesizerJob'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: SafeSynthesizerJobsPage
-    SafeSynthesizerJobsSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - updated_at
-      - -updated_at
-      title: SafeSynthesizerJobsSortField
-    SafeSynthesizerParameters:
-      properties:
-        data:
-          allOf:
-          - $ref: '#/components/schemas/DataParameters'
-          description: Configuration controlling how input data is grouped and split
-            for training and evaluation.
-        evaluation:
-          allOf:
-          - $ref: '#/components/schemas/EvaluationParameters'
-          description: Parameters for evaluating the quality of generated synthetic
-            data.
-        training:
-          allOf:
-          - $ref: '#/components/schemas/TrainingHyperparams'
-          description: Hyperparameters for model training such as learning rate, batch
-            size, and LoRA adapter settings.
-        generation:
-          allOf:
-          - $ref: '#/components/schemas/GenerateParameters'
-          description: Parameters governing synthetic data generation including temperature,
-            top-p, and number of records to produce.
-        privacy:
-          allOf:
-          - $ref: '#/components/schemas/DifferentialPrivacyHyperparams'
-          description: Differential-privacy hyperparameters. When ``None``, differential
-            privacy is disabled entirely.
-        time_series:
-          allOf:
-          - $ref: '#/components/schemas/TimeSeriesParameters'
-          description: Configuration for time-series mode. Time-series pipeline is
-            currently experimental.
-        replace_pii:
-          allOf:
-          - $ref: '#/components/schemas/PiiReplacerConfig'
-          description: PII replacement configuration. When ``None``, PII replacement
-            is skipped.
-      type: object
-      title: SafeSynthesizerParameters
-      description: 'Main configuration class for the Safe Synthesizer pipeline.
-
-
-        This is the top-level configuration class that orchestrates all aspects of
-
-        synthetic data generation including training, generation, privacy, evaluation,
-
-        and data handling. It provides validation to ensure parameter compatibility.'
-    SafeSynthesizerSummary:
-      properties:
-        synthetic_data_quality_score:
-          title: Synthetic Data Quality Score
-          description: Weighted composite of the five sub-scores below (SQS). Higher
-            is better (0--10 scale).
-          type: number
-        column_correlation_stability_score:
-          title: Column Correlation Stability Score
-          description: How closely pairwise column correlations in synthetic data
-            match the original for numeric and categorical columns.
-          type: number
-        deep_structure_stability_score:
-          title: Deep Structure Stability Score
-          description: PCA-based comparison of multivariate structure between real
-            and synthetic data for numeric and categorical columns.
-          type: number
-        column_distribution_stability_score:
-          title: Column Distribution Stability Score
-          description: Per-column Jensen-Shannon distance between training and synthetic
-            distributions averaged across all numeric and categorical columns.
-          type: number
-        text_semantic_similarity_score:
-          title: Text Semantic Similarity Score
-          description: Embedding-based semantic closeness between real and synthetic
-            free-text columns.
-          type: number
-        text_structure_similarity_score:
-          title: Text Structure Similarity Score
-          description: Jensen-Shannon divergence over sentence count, words-per-sentence,
-            and characters-per-word distributions between real and synthetic free-text
-            columns.
-          type: number
-        data_privacy_score:
-          title: Data Privacy Score
-          description: Composite of MIA and AIA protection scores.
-          type: number
-        membership_inference_protection_score:
-          title: Membership Inference Protection Score
-          description: Resistance to attacks that try to determine whether a record
-            was in the training set.
-          type: number
-        attribute_inference_protection_score:
-          title: Attribute Inference Protection Score
-          description: Resistance to attacks that try to infer sensitive attributes
-            from quasi-identifiers.
-          type: number
-        num_valid_records:
-          title: Num Valid Records
-          description: Count of synthetic records that passed schema and format validation.
-          type: integer
-        num_invalid_records:
-          title: Num Invalid Records
-          description: Count of synthetic records filtered out during validation.
-          type: integer
-        num_prompts:
-          title: Num Prompts
-          description: Total LLM generation prompts issued.
-          type: integer
-        valid_record_fraction:
-          title: Valid Record Fraction
-          description: 'Ratio of valid records: ``num_valid_records / (num_valid_records
-            + num_invalid_records)``.'
-          type: number
-        timing:
-          allOf:
-          - $ref: '#/components/schemas/SafeSynthesizerTiming'
-          description: Per-stage wall-clock durations.
-      type: object
-      required:
-      - timing
-      title: SafeSynthesizerSummary
-      description: Aggregated quality, privacy, and record-count metrics for a pipeline
-        run.
-    SafeSynthesizerTiming:
-      properties:
-        total_time_sec:
-          title: Total Time Sec
-          description: Total end-to-end pipeline duration in seconds.
-          type: number
-        pii_replacer_time_sec:
-          title: Pii Replacer Time Sec
-          description: Time spent on PII replacement.
-          type: number
-        training_time_sec:
-          title: Training Time Sec
-          description: Time spent on model training.
-          type: number
-        generation_time_sec:
-          title: Generation Time Sec
-          description: Time spent generating synthetic records.
-          type: number
-        evaluation_time_sec:
-          title: Evaluation Time Sec
-          description: Time spent evaluating synthetic data quality.
-          type: number
-      type: object
-      title: SafeSynthesizerTiming
-      description: Wall-clock durations for each pipeline stage.
     SecretRef:
       type: string
       pattern: ^[a-z0-9_-]+(/[a-z0-9_-]+)?$
@@ -27881,6 +25113,10 @@ components:
           description: Filter by span session id.
           title: Session Id
           type: string
+        trace_id:
+          description: Filter by canonical trace id.
+          title: Trace Id
+          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -28025,31 +25261,6 @@ components:
       - success
       - unknown
       title: StatusEnum
-    StepDefinition:
-      properties:
-        vars:
-          title: Vars
-          description: Variable names and templates.
-          additionalProperties:
-            anyOf:
-            - type: string
-            - additionalProperties: true
-              type: object
-            - items: {}
-              type: array
-          type: object
-        columns:
-          allOf:
-          - $ref: '#/components/schemas/ColumnActions'
-          description: Columns transform configuration.
-        rows:
-          allOf:
-          - $ref: '#/components/schemas/RowActions'
-          description: Rows transform configurations.
-      type: object
-      title: StepDefinition
-      description: Single transformation step with optional variables, column actions,
-        and row actions.
     StepLifecycle:
       properties:
         staleness_timeout_seconds:
@@ -28845,117 +26056,6 @@ components:
       type: object
       title: SystemMetricResponse
       description: Response type for SystemMetric.
-    Task:
-      properties:
-        id:
-          type: string
-          title: Id
-          description: Unique identifier
-        name:
-          type: string
-          title: Name
-          description: Task name
-        workspace:
-          type: string
-          title: Workspace
-          description: Workspace identifier
-        app:
-          type: string
-          title: App
-          description: Parent app reference (workspace/name)
-        description:
-          title: Description
-          description: Task description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this task
-          type: string
-        locked:
-          type: boolean
-          title: Locked
-          description: Lock status
-          default: false
-        created_at:
-          title: Created At
-          description: Creation timestamp
-          type: string
-          format: date-time
-        updated_at:
-          title: Updated At
-          description: Last update timestamp
-          type: string
-          format: date-time
-      type: object
-      required:
-      - id
-      - name
-      - workspace
-      - app
-      title: Task
-      description: Schema for Task responses.
-    TaskFilter:
-      additionalProperties: false
-      description: Filter for Tasks.
-      properties:
-        workspace:
-          description: Filter by workspace id.
-          title: Workspace
-          type: string
-        name:
-          description: Filter by task name.
-          title: Name
-          type: string
-        app:
-          description: Filter by app reference (workspace/name).
-          title: App
-          type: string
-        project:
-          description: Filter by project name.
-          title: Project
-          type: string
-        description:
-          description: Filter by task description.
-          title: Description
-          type: string
-        created_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on creation date.
-        updated_at:
-          allOf:
-          - $ref: '#/components/schemas/DatetimeFilter'
-          description: Filter entities based on update date.
-      title: TaskFilter
-      type: object
-    TaskInput:
-      properties:
-        name:
-          type: string
-          title: Name
-          description: Task name
-        description:
-          title: Description
-          description: Task description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this task
-          type: string
-        locked:
-          type: boolean
-          title: Locked
-          description: If true, this record cannot be automatically updated when entries
-            are ingested.
-          default: false
-      type: object
-      required:
-      - name
-      title: TaskInput
-      description: 'Schema for creating a new Task.
-
-
-        Note: workspace and app are automatically set from the URL path.'
     TaskPrompt:
       properties:
         task:
@@ -29017,117 +26117,6 @@ components:
       - task
       title: TaskPrompt
       description: Configuration for prompts that will be used for a specific task.
-    TaskSortField:
-      type: string
-      enum:
-      - created_at
-      - -created_at
-      - name
-      - -name
-      - updated_at
-      - -updated_at
-      title: TaskSortField
-      description: Sort fields for Tasks.
-    TaskUpdate:
-      properties:
-        description:
-          title: Description
-          description: Task description
-          type: string
-        project:
-          title: Project
-          description: The name of the project associated with this task
-          type: string
-        locked:
-          title: Locked
-          description: Lock status
-          type: boolean
-      type: object
-      title: TaskUpdate
-      description: Schema for updating an existing Task.
-    TasksPage:
-      properties:
-        data:
-          items:
-            $ref: '#/components/schemas/Task'
-          type: array
-          title: Data
-        pagination:
-          allOf:
-          - $ref: '#/components/schemas/PaginationData'
-          description: Pagination information.
-        sort:
-          title: Sort
-          description: The field on which the results are sorted.
-          type: string
-        filter:
-          title: Filter
-          description: Filtering information.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - data
-      title: TasksPage
-    ThumbDirection:
-      type: string
-      enum:
-      - up
-      - down
-      title: ThumbDirection
-      description: Possible thumb feedback choices.
-    TimeSeriesParameters:
-      properties:
-        is_timeseries:
-          type: boolean
-          title: Is Timeseries
-          description: Whether to treat the dataset as time series. When enabled,
-            either ``timestamp_column`` or ``timestamp_interval_seconds`` is required.
-            For grouped time series, ``group_training_examples_by`` needs to be set.
-          default: false
-        timestamp_column:
-          title: Timestamp Column
-          description: Name of the column containing timestamps used to order records
-            when ``is_timeseries`` is ``True``. Required only when ``is_timeseries``
-            is ``True`` and ``timestamp_interval_seconds`` is not provided.
-          type: string
-        timestamp_interval_seconds:
-          title: Timestamp Interval Seconds
-          description: Interval in seconds between timestamps. If not provided, the
-            timestamp column will be used to infer the interval.
-          type: integer
-        timestamp_format:
-          title: Timestamp Format
-          description: 'Format of the timestamp column. Accepts either: (1) Python
-            strftime format codes for string timestamps (e.g., ''%Y-%m-%d %H:%M:%S'',
-            ''%m/%d/%Y''), or (2) ''elapsed_seconds'' for numeric (int/float) timestamps
-            representing seconds as an increasing counter (e.g., 0, 60, 120 for 1-minute
-            intervals). If not provided, the format will be inferred from the data.'
-          type: string
-        start_timestamp:
-          anyOf:
-          - type: string
-          - type: integer
-          title: Start Timestamp
-          description: Start timestamp. If not provided, the first timestamp in the
-            timestamp column will be used.
-        stop_timestamp:
-          anyOf:
-          - type: string
-          - type: integer
-          title: Stop Timestamp
-          description: Stop timestamp. If not provided, the last timestamp in the
-            timestamp column will be used.
-      type: object
-      title: TimeSeriesParameters
-      description: 'Configuration for time-series mode in the Safe Synthesizer pipeline.
-
-
-        Controls whether a dataset is treated as time-series data, including
-
-        timestamp column selection, interval inference, and format validation.
-
-        The time-series pipeline is currently experimental.'
     ToolCallAccuracyMetric:
       properties:
         name:
@@ -30096,175 +27085,6 @@ components:
           default: false
       type: object
       title: TracingConfig
-    TrainingHyperparams:
-      properties:
-        num_input_records_to_sample:
-          anyOf:
-          - type: string
-            const: auto
-          - type: integer
-          title: num_input_records_to_sample
-          description: Number of records the model will see during training. This
-            parameter is a proxy for training time. For example, if its value is the
-            same size as the input dataset, this is like training for a single epoch.
-            If its value is larger, this is like training for multiple (possibly fractional)
-            epochs. If its value is smaller, this is like training for a fraction
-            of an epoch. Supports 'auto' where a reasonable value is chosen based
-            on other config params and data.
-          default: auto
-        batch_size:
-          type: integer
-          title: batch_size
-          description: The batch size per device for training. Must be >= 1.
-          default: 1
-        gradient_accumulation_steps:
-          type: integer
-          title: gradient_accumulation_steps
-          description: Number of update steps to accumulate the gradients for, before
-            performing a backward/update pass. This technique increases the effective
-            batch size that will fit into GPU memory. Must be >= 1.
-          default: 8
-        weight_decay:
-          type: number
-          title: weight_decay
-          description: The weight decay to apply to all layers except all bias and
-            LayerNorm weights in the AdamW optimizer. Must be in (0, 1).
-          default: 0.01
-        warmup_ratio:
-          type: number
-          title: warmup_ratio
-          description: Ratio of total training steps used for a linear warmup from
-            0 to the learning rate. Must be > 0.
-          default: 0.05
-        lr_scheduler:
-          type: string
-          title: lr_scheduler
-          description: The scheduler type to use. See the HuggingFace documentation
-            of ``SchedulerType`` for all possible values.
-          default: cosine
-        learning_rate:
-          anyOf:
-          - type: string
-            const: auto
-          - type: number
-          title: learning_rate
-          description: The initial learning rate for `AdamW` optimizer. Must be in
-            (0, 1). Setting to 'auto' uses a model-specific default if one exists.
-          default: auto
-        lora_r:
-          type: integer
-          title: lora_r
-          description: The rank of the LoRA update matrices. Lower rank results in
-            smaller update matrices with fewer trainable parameters. Must be > 0.
-          default: 32
-        lora_alpha_over_r:
-          type: number
-          title: lora_alpha_over_r
-          description: The ratio of the LoRA scaling factor (alpha) to the LoRA rank.
-            Empirically, this parameter works well when set to 0.5, 1, or 2. Must
-            be in [0.5, 3].
-          default: 1.0
-        lora_target_modules:
-          items:
-            type: string
-          type: array
-          title: lora_target_modules
-          description: 'The list of transformer modules to apply LoRA to. Possible
-            modules: ''q_proj'', ''k_proj'', ''v_proj'', ''o_proj'', ''gate_proj'',
-            ''up_proj'', ''down_proj''.'
-          default:
-          - q_proj
-          - k_proj
-          - v_proj
-          - o_proj
-        use_unsloth:
-          anyOf:
-          - type: string
-            const: auto
-          - type: boolean
-          title: use_unsloth
-          description: Whether to use Unsloth for optimized training.
-          default: auto
-        rope_scaling_factor:
-          anyOf:
-          - type: string
-            const: auto
-          - type: integer
-          title: rope_scaling_factor
-          description: Scale the base LLM's context length by this factor using RoPE
-            scaling. Must be >= 1 or 'auto'.
-          default: auto
-        validation_ratio:
-          type: number
-          title: validation_ratio
-          description: The fraction of the training data used for validation. Must
-            be in [0, 1]. If set to 0, no validation will be performed. If set larger
-            than 0, validation loss will be computed and reported throughout training.
-          default: 0.0
-        validation_steps:
-          type: integer
-          title: validation_steps
-          description: The number of steps between validation checks for the HF Trainer
-            arguments. Must be > 0.
-          default: 15
-        pretrained_model:
-          type: string
-          title: pretrained_model
-          description: Pretrained model to use for fine-tuning. Defaults to SmolLM3.
-            May be a Hugging Face model ID (loaded from the Hugging Face Hub or cache)
-            or a local path. See security note in docs before using untrusted sources.
-          default: HuggingFaceTB/SmolLM3-3B
-        quantize_model:
-          type: boolean
-          title: quantize_model
-          description: Whether to quantize the model during training. This can reduce
-            memory usage and potentially speed up training, but may also impact model
-            accuracy.
-          default: false
-        quantization_bits:
-          type: integer
-          enum:
-          - 4
-          - 8
-          title: quantization_bits
-          description: The number of bits to use for quantization if ``quantize_model``
-            is ``True``. Accepts 8 or 4.
-          default: 8
-        peft_implementation:
-          type: string
-          title: peft_implementation
-          description: 'The PEFT (Parameter-Efficient Fine-Tuning) implementation
-            to use. Options: ''lora'' for Low-Rank Adaptation, ''QLORA'' for Quantized
-            LoRA.'
-          default: QLORA
-        max_vram_fraction:
-          type: number
-          title: max_vram_fraction
-          description: The fraction of the total VRAM to use for training. Modify
-            this to allow longer sequences. Must be in [0, 1].
-          default: 0.8
-        attn_implementation:
-          type: string
-          title: attn_implementation
-          description: 'The attention implementation to use for model loading. Default
-            uses Flash Attention 3 via the HuggingFace Kernels Hub (requires the ''kernels''
-            pip package; falls back to ''sdpa'' if the ''kernels'' package is not
-            installed). Other common values: ''flash_attention_2'' (requires flash-attn
-            pip package), ''sdpa'' (PyTorch scaled dot product attention), ''eager''
-            (standard PyTorch). Custom HuggingFace Kernels Hub paths (e.g. ''kernels-community/flash-attn2'')
-            are also supported.'
-          default: kernels-community/vllm-flash-attn3
-      type: object
-      title: TrainingHyperparams
-      description: 'Hyperparameters that control the training process behavior.
-
-
-        This class contains all the fine-tuning hyperparameters that control how the
-        model
-
-        learns, including learning rates, batch sizes, LoRA configuration, and optimization
-
-        settings. These parameters directly affect training performance and quality.'
     TrendMicroRailConfig:
       properties:
         v1_url:
@@ -30665,221 +27485,6 @@ components:
         reasons.
 
         Use PUT /status endpoint to update status-related fields only.'
-    Usage:
-      properties:
-        model:
-          title: Model
-          description: The actual model that served the request (after any routing).
-            May differ from the model in the request body.
-          type: string
-        started_at:
-          format: date-time
-          title: Started At
-          description: UTC timestamp when the upstream LLM call started.
-          type: string
-        ended_at:
-          format: date-time
-          title: Ended At
-          description: UTC timestamp when the upstream LLM call ended.
-          type: string
-        latency_ms:
-          minimum: 0.0
-          title: Latency Ms
-          description: Wall-clock latency of the upstream LLM call, in milliseconds.
-          type: integer
-        cost_usd:
-          minimum: 0.0
-          title: Cost Usd
-          description: Total estimated cost of this call, in USD.
-          type: number
-        cost_input_usd:
-          minimum: 0.0
-          title: Cost Input Usd
-          description: Estimated cost attributed to input tokens, in USD.
-          type: number
-        cost_output_usd:
-          minimum: 0.0
-          title: Cost Output Usd
-          description: Estimated cost attributed to output tokens, in USD.
-          type: number
-        input_tokens:
-          minimum: 0.0
-          title: Input Tokens
-          description: Number of input tokens consumed.
-          type: integer
-        output_tokens:
-          minimum: 0.0
-          title: Output Tokens
-          description: Number of output tokens produced.
-          type: integer
-        cached_tokens:
-          minimum: 0.0
-          title: Cached Tokens
-          description: Number of input tokens served from a prompt cache (subset of
-            input_tokens).
-          type: integer
-      type: object
-      title: Usage
-      description: 'Structured usage metrics captured at log time.
-
-
-        Every field is optional so producers can populate whatever they have without
-
-        schema breakage. Stored as the entry-level ``usage`` field so filters can
-
-        reach it via ``data.usage.<field>`` entity-store paths.'
-    UserActionEvent:
-      properties:
-        id:
-          title: Id
-          description: Unique identifier for the event. Populated when retrieved from
-            database.
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: UTC timestamp when the record was created.
-        created_by:
-          title: Created By
-          description: Identifier of the user or system that generated the record.
-            Can be set of key-value pairs.
-          additionalProperties:
-            type: string
-          type: object
-        event_type:
-          type: string
-          const: user_action
-          title: Event Type
-          default: user_action
-        action:
-          type: string
-          maxLength: 256
-          title: Action
-          description: "Descriptive name for the action taken by the user (e.g., 'share_clicked',\
-            \ 'code_copied', 'link_followed'). Use snake-case or kebab-case. This\
-            \ is a label, not a unique identifier\u2014multiple events can have the\
-            \ same action name."
-        metadata:
-          additionalProperties:
-            anyOf:
-            - type: string
-              maxLength: 256
-            - items:
-                type: string
-                maxLength: 256
-              type: array
-            - type: boolean
-            - type: integer
-            - type: number
-          propertyNames:
-            maxLength: 256
-          type: object
-          maxProperties: 16
-          title: Metadata
-          description: 'Optional key-value pairs with additional context about the
-            action (max 16 entries). Use this for details like user IDs, item IDs,
-            timestamps, A/B test variants, or any other information useful for downstream
-            training or evaluation pipelines. Example: {''user_id'': ''12345'', ''experiment'':
-            ''variant_b'', ''item_purchased'': ''product_456''}.'
-      additionalProperties: false
-      type: object
-      required:
-      - action
-      title: UserActionEvent
-      description: "Free-form user action captured by the client application.\n\n\
-        Use this to track arbitrary user interactions with AI responses, such as copying\
-        \ code,\nclicking share buttons, making purchases, or any other measurable\
-        \ action.\n\nThe action identifier must be \u2264256 characters and should\
-        \ use snake-case or kebab-case\nfor consistency (e.g., ``share_clicked``,\
-        \ ``code_copied``, ``purchase_made``)."
-    UserFeedbackEvent:
-      properties:
-        id:
-          title: Id
-          description: Unique identifier for the event. Populated when retrieved from
-            database.
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          title: Created At
-          description: UTC timestamp when the record was created.
-        created_by:
-          title: Created By
-          description: Identifier of the user or system that generated the record.
-            Can be set of key-value pairs.
-          additionalProperties:
-            type: string
-          type: object
-        event_type:
-          type: string
-          const: user_feedback
-          title: Event Type
-          default: user_feedback
-        thumb:
-          allOf:
-          - $ref: '#/components/schemas/ThumbDirection'
-          description: "Binary feedback: \"up\" for \U0001F44D or \"down\" for \U0001F44E\
-            . Mutually exclusive with `rating`. Use this for simple thumbs up/down\
-            \ UI elements."
-        rating:
-          title: Rating
-          description: Numeric rating (e.g., 1-5 stars) provided by the end user.
-            Mutually exclusive with `thumb`. Use this for star ratings or numeric
-            scales.
-          type: number
-          minimum: 0.0
-        opinion:
-          title: Opinion
-          description: Free-text comment from the end user describing their opinion
-            of the response.
-          type: string
-          maxLength: 2000
-          minLength: 1
-        rewrite:
-          title: Rewrite
-          description: End-user's suggested text replacement for the generated response.
-            This is the user's idea of what the response should have been.
-          type: string
-          maxLength: 10000
-          minLength: 1
-        chosen_index:
-          title: Chosen Index
-          description: Zero-based index of the response option the user selected when
-            multiple responses were returned. Use this when showing users multiple
-            completion choices and tracking which one they picked.
-          type: integer
-          minimum: 0.0
-        categories:
-          title: Categories
-          description: 'Application-specific category ratings as key-value pairs.
-            Use this for custom rating dimensions (e.g., {''helpfulness'': 4, ''accuracy'':
-            5, ''tone'': ''professional''}). Useful for radio buttons, dropdowns,
-            or multi-dimensional rating systems.'
-          additionalProperties:
-            anyOf:
-            - type: number
-            - type: string
-          type: object
-      additionalProperties: false
-      type: object
-      title: UserFeedbackEvent
-      description: 'Structured feedback supplied by an end-user.
-
-
-        This event captures various forms of end-user feedback about a model''s response,
-
-        including binary thumbs up/down ratings, numeric scores, free-text opinions,
-
-        suggested rewrites, and structured category ratings.
-
-
-        Either `thumb` or `rating` should be provided (they are mutually exclusive),
-        but all
-
-        feedback fields are optional to accommodate different feedback collection
-        patterns.'
     UserMessagesConfig:
       properties:
         embeddings_only:
@@ -30904,71 +27509,6 @@ components:
       type: object
       title: UserMessagesConfig
       description: Configuration for how the user messages are interpreted.
-    UserRating:
-      properties:
-        thumb:
-          allOf:
-          - $ref: '#/components/schemas/ThumbDirection'
-          description: "Binary feedback: \"up\" for \U0001F44D or \"down\" for \U0001F44E\
-            . Mutually exclusive with `rating`. Use this for simple thumbs up/down\
-            \ UI elements."
-        rating:
-          title: Rating
-          description: Numeric rating (e.g., 1-5 stars) provided by the end user.
-            Mutually exclusive with `thumb`. Use this for star ratings or numeric
-            scales.
-          type: number
-          minimum: 0.0
-        opinion:
-          title: Opinion
-          description: Free-text comment from the end user describing their opinion
-            of the response.
-          type: string
-          maxLength: 2000
-          minLength: 1
-        rewrite:
-          title: Rewrite
-          description: End-user's suggested text replacement for the generated response.
-            This is the user's idea of what the response should have been.
-          type: string
-          maxLength: 10000
-          minLength: 1
-        chosen_index:
-          title: Chosen Index
-          description: Zero-based index of the response option the user selected when
-            multiple responses were returned. Use this when showing users multiple
-            completion choices and tracking which one they picked.
-          type: integer
-          minimum: 0.0
-        categories:
-          title: Categories
-          description: 'Application-specific category ratings as key-value pairs.
-            Use this for custom rating dimensions (e.g., {''helpfulness'': 4, ''accuracy'':
-            5, ''tone'': ''professional''}). Useful for radio buttons, dropdowns,
-            or multi-dimensional rating systems.'
-          additionalProperties:
-            anyOf:
-            - type: number
-            - type: string
-          type: object
-      type: object
-      title: UserRating
-      description: 'User''s rating/evaluation of an AI response.
-
-
-        This captures various forms of end-user feedback about a model''s response,
-        including
-
-        binary thumbs up/down ratings, numeric scores, free-text opinions, suggested
-        rewrites,
-
-        and structured category ratings.
-
-
-        Either `thumb` or `rating` should be provided (they are mutually exclusive),
-        but all
-
-        fields are optional to accommodate different feedback collection patterns.'
     ValidationError:
       properties:
         loc:
@@ -30996,40 +27536,6 @@ components:
       - msg
       - type
       title: ValidationError
-    ValidationParameters:
-      properties:
-        group_by_accept_no_delineator:
-          type: boolean
-          title: group_by_accept_no_delineator
-          description: Whether to accept completions without both beginning and end
-            of sequence delineators as a single sequence.
-          default: false
-        group_by_ignore_invalid_records:
-          type: boolean
-          title: group_by_ignore_invalid_records
-          description: Whether to ignore invalid records in a sequence and proceed
-            with the valid records.
-          default: false
-        group_by_fix_non_unique_value:
-          type: boolean
-          title: group_by_fix_non_unique_value
-          description: Whether to automatically fix non-unique group-by values in
-            a sequence by using the first unique value for all records.
-          default: false
-        group_by_fix_unordered_records:
-          type: boolean
-          title: group_by_fix_unordered_records
-          description: Whether to automatically fix unordered records in a sequence
-            by sorting the records.
-          default: false
-      type: object
-      title: ValidationParameters
-      description: 'Configuration for record and sequence validation.
-
-
-        These parameters control the validation and automatic fixes when going
-
-        from LLM output to tabular data.'
     VirtualModel:
       properties:
         name:

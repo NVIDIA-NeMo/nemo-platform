@@ -28,6 +28,7 @@ import json
 import logging
 import os
 from typing import AsyncIterator
+from urllib.parse import urljoin, urlparse, urlunparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -156,7 +157,15 @@ async def _proxy(
     ``content-length`` is stripped from forwarded headers because chunked
     transfer encoding makes the original value invalid.
     """
-    target_url = endpoint.rstrip("/") + "/" + trailing_uri
+    endpoint_parsed = urlparse(endpoint)
+    if not endpoint_parsed.scheme or not endpoint_parsed.netloc:
+        raise HTTPException(status_code=500, detail="Deployment endpoint is misconfigured.")
+    joined = urlparse(urljoin(endpoint.rstrip("/") + "/", trailing_uri))
+    if joined.scheme != endpoint_parsed.scheme or joined.netloc != endpoint_parsed.netloc:
+        raise HTTPException(status_code=400, detail="Invalid proxy target URI.")
+    target_url = urlunparse(
+        (endpoint_parsed.scheme, endpoint_parsed.netloc, joined.path, joined.params, joined.query, "")
+    )
     if request.url.query:
         target_url = f"{target_url}?{request.url.query}"
 
@@ -176,7 +185,10 @@ async def _proxy(
     async def _stream_with_headers() -> AsyncIterator[bytes]:
         read_timeout = float(os.environ.get("NEMO_AGENTS_GATEWAY_READ_TIMEOUT", "300"))
         async with httpx.AsyncClient(
-            timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0)
+            timeout=httpx.Timeout(connect=10.0, read=read_timeout, write=60.0, pool=10.0),
+            # SSRF defense in depth: never let an agent's 3xx response redirect
+            # us off the validated origin.
+            follow_redirects=False,
         ) as client:
             async with client.stream(
                 method=request.method,

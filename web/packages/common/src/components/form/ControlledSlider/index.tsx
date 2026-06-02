@@ -2,16 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { UseControllerComponentProps } from '@nemo/common/src/types';
-import { FormField, Slider, SliderProps } from '@nvidia/foundations-react-core';
+import { FormField, Slider } from '@nvidia/foundations-react-core';
+import type { ComponentProps } from 'react';
 import { useController } from 'react-hook-form';
 
-// Extract only the single slider props for horizontal orientation
-type HorizontalSingleSliderProps = Extract<
-  SliderProps,
-  { kind?: 'single'; orientation?: 'horizontal' }
->;
+type SliderProps = ComponentProps<typeof Slider>;
 
-interface Props extends HorizontalSingleSliderProps, UseControllerComponentProps {
+interface Props extends SliderProps, UseControllerComponentProps {
   /**
    * Validate the value of the slider before changing it
    * @returns true if the value is valid, false otherwise
@@ -48,7 +45,6 @@ export const ControlledSlider = ({
       {...formFieldProps}
     >
       <Slider
-        kind="single"
         orientation="horizontal"
         className="mb-5"
         value={
@@ -58,7 +54,7 @@ export const ControlledSlider = ({
         min={sliderProps.min ?? 0}
         max={sliderProps.max ?? 100}
         step={sliderProps.step ?? 1}
-        stepPosition="bottom"
+        stepPosition="end"
         aria-label={sliderProps['aria-label'] || 'Controlled slider'}
         onValueChange={handleValueChange}
         onBlur={onBlur}

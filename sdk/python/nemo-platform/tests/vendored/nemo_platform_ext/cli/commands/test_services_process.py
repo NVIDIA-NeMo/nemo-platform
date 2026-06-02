@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -17,6 +18,9 @@ from nemo_platform.cli.commands.services._process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
+    _pid_alive,
+    _snapshot_children,
+    _sweep_orphans,
     acquire_lock,
     compute_scope,
     instance_dir,
@@ -540,3 +544,240 @@ class TestStartBackground:
             start_background(scope="mode-test", base_dir=base_dir)
 
         assert captured_env.get("_NMP_LAUNCH_MODE") == "background"
+
+
+# ---------------------------------------------------------------------------
+# _snapshot_children / _sweep_orphans
+# ---------------------------------------------------------------------------
+
+
+def _wait_for_children(pid: int, timeout: float = 5.0) -> list[psutil.Process]:
+    """Poll until *pid* has at least one child process, or timeout."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            children = psutil.Process(pid).children(recursive=True)
+            if children:
+                return children
+        except psutil.NoSuchProcess:
+            break
+        time.sleep(0.1)
+    return []
+
+
+_SPAWN_CHILD_SCRIPT = (
+    "import subprocess, sys, time; "
+    "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+    "time.sleep(60)"
+)
+
+
+class TestSnapshotChildren:
+    def test_captures_child_processes(self) -> None:
+        parent = subprocess.Popen(
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            _wait_for_children(parent.pid)
+            children = _snapshot_children(parent.pid)
+            assert len(children) >= 1
+            child_pids = [c.pid for c in children]
+            assert all(isinstance(p, int) for p in child_pids)
+        finally:
+            for c in psutil.Process(parent.pid).children(recursive=True):
+                c.kill()
+            parent.kill()
+            parent.wait(timeout=5)
+
+    def test_returns_empty_for_dead_pid(self) -> None:
+        assert _snapshot_children(999999999) == []
+
+    def test_returns_empty_for_process_with_no_children(self) -> None:
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            children = _snapshot_children(proc.pid)
+            assert children == []
+        finally:
+            proc.kill()
+            proc.wait(timeout=5)
+
+
+class TestSweepOrphans:
+    def test_terminates_surviving_children(self) -> None:
+        procs = []
+        for _ in range(3):
+            p = subprocess.Popen(
+                [sys.executable, "-c", "import time; time.sleep(60)"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            procs.append(p)
+        try:
+            ps_children = [psutil.Process(p.pid) for p in procs]
+            killed = _sweep_orphans(ps_children, timeout=3.0)
+            assert len(killed) == 3
+            for p in procs:
+                p.wait(timeout=5)
+                assert p.poll() is not None
+        finally:
+            for p in procs:
+                if p.poll() is None:
+                    p.kill()
+                    p.wait(timeout=5)
+
+    def test_noop_when_all_already_exited(self) -> None:
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        ps_child = psutil.Process(proc.pid)
+        proc.kill()
+        proc.wait(timeout=5)
+        killed = _sweep_orphans([ps_child], timeout=1.0)
+        assert killed == []
+
+    def test_escalates_to_sigkill(self) -> None:
+        proc = subprocess.Popen(
+            [
+                sys.executable,
+                "-c",
+                "import signal, time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            time.sleep(0.3)
+            ps_child = psutil.Process(proc.pid)
+            killed = _sweep_orphans([ps_child], timeout=2.0)
+            assert proc.pid in killed
+            proc.wait(timeout=5)
+            assert proc.poll() is not None
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+
+# ---------------------------------------------------------------------------
+# stop_instance — child sweep integration
+# ---------------------------------------------------------------------------
+
+
+class TestStopInstanceChildSweep:
+    def test_sweeps_surviving_children(self, base_dir: Path) -> None:
+        """Parent + child spawned; stop should kill both and report the child."""
+        parent = subprocess.Popen(
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            _wait_for_children(parent.pid)
+
+            scope = "sweep-test"
+            fd = acquire_lock(scope, base_dir=base_dir)
+            desc = InstanceDescriptor(
+                pid=parent.pid,
+                scope=scope,
+                host="127.0.0.1",
+                port=8080,
+                mode="background",
+                create_time=psutil.Process(parent.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+            os.close(fd)
+
+            result = stop_instance(scope, base_dir=base_dir, timeout=5.0)
+            assert parent.pid in result.stopped_pids
+            assert len(result.swept_children) >= 1
+            for child_pid in result.swept_children:
+                assert not _pid_alive(child_pid)
+            parent.wait(timeout=5)
+        finally:
+            try:
+                for c in psutil.Process(parent.pid).children(recursive=True):
+                    c.kill()
+            except psutil.NoSuchProcess:
+                pass  # Parent already exited — children cleaned up.
+            if parent.poll() is None:
+                parent.kill()
+                parent.wait(timeout=5)
+
+    def test_swept_children_empty_when_no_children(self, base_dir: Path) -> None:
+        """Process with no children -- swept_children should be empty."""
+        proc = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(60)"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            scope = "clean-stop"
+            fd = acquire_lock(scope, base_dir=base_dir)
+            desc = InstanceDescriptor(
+                pid=proc.pid,
+                scope=scope,
+                host="127.0.0.1",
+                port=8080,
+                mode="background",
+                create_time=psutil.Process(proc.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+            os.close(fd)
+
+            result = stop_instance(scope, base_dir=base_dir, timeout=5.0)
+            assert proc.pid in result.stopped_pids
+            assert result.swept_children == []
+            proc.wait(timeout=5)
+        finally:
+            if proc.poll() is None:
+                proc.kill()
+                proc.wait(timeout=5)
+
+    def test_restart_path_sweeps_children(self, base_dir: Path) -> None:
+        """The restart flow calls stop_instance(force=True); verify it sweeps children too."""
+        parent = subprocess.Popen(
+            [sys.executable, "-c", _SPAWN_CHILD_SCRIPT],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        try:
+            _wait_for_children(parent.pid)
+            child_pids_before = [c.pid for c in psutil.Process(parent.pid).children(recursive=True)]
+            assert len(child_pids_before) >= 1
+
+            scope = "restart-sweep"
+            fd = acquire_lock(scope, base_dir=base_dir)
+            desc = InstanceDescriptor(
+                pid=parent.pid,
+                scope=scope,
+                host="127.0.0.1",
+                port=8080,
+                mode="foreground",
+                create_time=psutil.Process(parent.pid).create_time(),
+            )
+            write_descriptor(desc, base_dir=base_dir)
+            os.close(fd)
+
+            result = stop_instance(scope, base_dir=base_dir, force=True, timeout=5.0)
+            assert parent.pid in result.stopped_pids
+            assert len(result.swept_children) >= 1
+            for child_pid in result.swept_children:
+                assert not _pid_alive(child_pid)
+            parent.wait(timeout=5)
+        finally:
+            try:
+                for c in psutil.Process(parent.pid).children(recursive=True):
+                    c.kill()
+            except psutil.NoSuchProcess:
+                pass  # Parent already exited — children cleaned up.
+            if parent.poll() is None:
+                parent.kill()
+                parent.wait(timeout=5)

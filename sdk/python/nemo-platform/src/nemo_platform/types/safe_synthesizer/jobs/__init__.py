@@ -16,6 +16,3 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from __future__ import annotations
-
-from .safe_synthesizer_timing import SafeSynthesizerTiming as SafeSynthesizerTiming
-from .safe_synthesizer_summary import SafeSynthesizerSummary as SafeSynthesizerSummary

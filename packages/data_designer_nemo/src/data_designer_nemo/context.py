@@ -21,6 +21,7 @@ from data_designer.engine.secret_resolver import (
     PlaintextResolver,
     SecretResolver,
 )
+from data_designer_nemo.errors import NDDError
 from data_designer_nemo.fileset_file_seed_reader import FilesetFileSeedReader
 from data_designer_nemo.model_provider import (
     make_local_first_model_provider_registry,
@@ -40,7 +41,15 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 
 class DataDesignerContext(Protocol):
-    async def validate(self, config: dd.DataDesignerConfig) -> None: ...
+    async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
+        """Run validators and return all collected errors (empty if config is valid).
+
+        Implementations should run every sub-check, accumulating ``NDDError`` (config
+        and internal) results into the returned list rather than raising on the
+        first failure. Truly unexpected errors (programmer error, transport-layer
+        failures outside the validators themselves) still propagate as exceptions.
+        """
+        ...
 
     def get_secret_resolver(self) -> SecretResolver: ...
 
@@ -65,8 +74,13 @@ class LocalDataDesignerContext:
             ]
         )
 
-    async def validate(self, config: dd.DataDesignerConfig) -> None:
-        validate_seed_config_for_execution_context(config, is_local=True)
+    async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
+        errors: list[NDDError] = []
+        try:
+            validate_seed_config_for_execution_context(config, is_local=True)
+        except NDDError as e:
+            errors.append(e)
+        return errors
 
     def get_seed_readers(self) -> list[SeedReader]:
         return [
@@ -103,12 +117,28 @@ class RemoteDataDesignerContext:
     def get_secret_resolver(self) -> SecretResolver:
         return NMPSecretResolver(self._sdk, self._workspace)
 
-    async def validate(self, config: dd.DataDesignerConfig) -> None:
+    async def validate(self, config: dd.DataDesignerConfig) -> list[NDDError]:
         sdk = self._async_sdk()
-        validate_no_tool_configs(config)
-        validate_seed_config_for_execution_context(config, is_local=False)
-        await validate_seed(config, self._workspace, sdk)
-        await ensure_nemotron_personas_filesets(config, sdk)
+        errors: list[NDDError] = []
+
+        try:
+            validate_no_tool_configs(config)
+        except NDDError as e:
+            errors.append(e)
+        try:
+            validate_seed_config_for_execution_context(config, is_local=False)
+        except NDDError as e:
+            errors.append(e)
+        try:
+            await validate_seed(config, self._workspace, sdk)
+        except NDDError as e:
+            errors.append(e)
+        try:
+            await ensure_nemotron_personas_filesets(config, sdk)
+        except NDDError as e:
+            errors.append(e)
+
+        return errors
 
     def get_seed_readers(self) -> list[SeedReader]:
         return [

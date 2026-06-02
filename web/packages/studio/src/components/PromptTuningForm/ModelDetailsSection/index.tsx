@@ -17,7 +17,7 @@ import type {
   PromptTuningFormFields,
   PromptTuningFormSectionProps,
 } from '@studio/routes/PromptTuningFormRoute/utils';
-import { FC, FormEvent, useMemo, useState } from 'react';
+import { FC, useMemo, useState } from 'react';
 import { useController, useFormContext, useWatch } from 'react-hook-form';
 
 export const ModelDetailsSection: FC<
@@ -88,9 +88,7 @@ export const ModelDetailsSection: FC<
     if (!nextOpen) field.onBlur();
   };
 
-  const setCompiledSystemPrompt = (event: FormEvent<HTMLDivElement>) => {
-    if (!(event.target instanceof HTMLTextAreaElement)) return;
-    const newSystemPromptTemplate = event.target.value;
+  const setCompiledSystemPrompt = (newSystemPromptTemplate: string) => {
     try {
       const compiledSystemPrompt = compileSystemPrompt({
         systemPromptTemplate: newSystemPromptTemplate,

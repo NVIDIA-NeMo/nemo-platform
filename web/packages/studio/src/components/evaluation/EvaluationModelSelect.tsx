@@ -127,8 +127,8 @@ export const EvaluationModelSelect = <TFieldValues extends FieldValues = FieldVa
               value={search}
               onChange={handleSearchChange}
               attributes={{
-                TextInputValue: {
-                  'data-testid': 'model-filter',
+                Input: {
+                  ['data-testid' as never]: 'model-filter',
                 },
               }}
             />

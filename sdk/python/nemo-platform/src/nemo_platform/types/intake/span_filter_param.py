@@ -93,3 +93,6 @@ class SpanFilterParam(TypedDict, total=False):
 
     tool_name: str
     """Filter by tool name."""
+
+    trace_id: str
+    """Filter by canonical trace id."""

@@ -337,7 +337,9 @@ def _validate_auth_header_format(v: str | None) -> str | None:
     """
     if v is None:
         return v
-    env = Environment()
+    # Validates an auth-header template (rendered to HTTP, not HTML).
+    # Autoescape would corrupt secrets containing `&`, `<`, `>`, or quotes.
+    env = Environment(autoescape=False)  # noqa: S701  # nosec B701
     try:
         ast = env.parse(v)
     except Exception as exc:

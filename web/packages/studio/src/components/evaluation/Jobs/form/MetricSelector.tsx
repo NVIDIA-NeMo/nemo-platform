@@ -53,7 +53,7 @@ export const MetricSelector: FC<MetricSelectorProps> = () => {
                     {...props}
                     value={field.value ?? ''}
                     onValueChange={field.onChange}
-                    attributes={{ TextInputValue: { placeholder: 'quality' } }}
+                    attributes={{ Input: { placeholder: 'quality' } }}
                   />
                 )}
               </FormField>
@@ -75,7 +75,7 @@ export const MetricSelector: FC<MetricSelectorProps> = () => {
                     value={field.value ?? ''}
                     onValueChange={field.onChange}
                     attributes={{
-                      TextInputValue: { placeholder: 'Overall quality of the response' },
+                      Input: { placeholder: 'Overall quality of the response' },
                     }}
                   />
                 )}
@@ -103,7 +103,7 @@ export const MetricSelector: FC<MetricSelectorProps> = () => {
                       type="number"
                       value={field.value != null ? String(field.value) : ''}
                       onValueChange={(v) => field.onChange(v === '' ? undefined : Number(v))}
-                      attributes={{ TextInputValue: { placeholder: '1' } }}
+                      attributes={{ Input: { placeholder: '1' } }}
                     />
                   )}
                 </FormField>
@@ -129,7 +129,7 @@ export const MetricSelector: FC<MetricSelectorProps> = () => {
                       type="number"
                       value={field.value != null ? String(field.value) : ''}
                       onValueChange={(v) => field.onChange(v === '' ? undefined : Number(v))}
-                      attributes={{ TextInputValue: { placeholder: '5' } }}
+                      attributes={{ Input: { placeholder: '5' } }}
                     />
                   )}
                 </FormField>
@@ -187,7 +187,7 @@ export const MetricSelector: FC<MetricSelectorProps> = () => {
                     value={field.value ?? ''}
                     onValueChange={field.onChange}
                     attributes={{
-                      TextInputValue: {
+                      Input: {
                         className: 'font-mono',
                         placeholder: 'Leave empty to use JSON parser',
                       },

@@ -6,6 +6,7 @@
 import json
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import urlparse
 
 import pytest
 from fastapi import FastAPI
@@ -498,7 +499,7 @@ def test_proxy_body_cross_workspace_lora_routes(
     # The proxied body carries the served_model_name (flat-dir encoding) resolved
     # via the cross-workspace composite key.
     call_args = mock_proxy_client.request.call_args
-    assert "nim.workspace-a.example.com" in call_args.kwargs["url"]
+    assert urlparse(call_args.kwargs["url"]).hostname == "nim.workspace-a.example.com"
     assert "workspace-b" not in call_args.kwargs["url"]
     body_data = json.loads(call_args.kwargs["data"])
     assert body_data["model"] == "ws-b--adapter"
@@ -550,7 +551,7 @@ def test_proxy_body_bare_cross_workspace_lora_routes(
     assert mock_proxy_client.request.called
 
     call_args = mock_proxy_client.request.call_args
-    assert "nim.workspace-a.example.com" in call_args.kwargs["url"]
+    assert urlparse(call_args.kwargs["url"]).hostname == "nim.workspace-a.example.com"
     body_data = json.loads(call_args.kwargs["data"])
     assert body_data["model"] == "ws-b--adapter"
 

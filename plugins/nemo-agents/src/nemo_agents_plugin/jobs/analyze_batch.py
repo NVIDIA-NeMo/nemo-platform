@@ -29,7 +29,7 @@ class AnalyzeBatchJob(NemoJob):
     """Analyze a batch of eval-suite results — mechanical clustering + LLM hypotheses."""
 
     name: ClassVar[str] = "analyze"
-    description: ClassVar[str] = "Analyze a batch — platform-job form. Daily use: `nemo agents analyze`."
+    description: ClassVar[str] = "Analyze a batch of eval-suite results (clusters, regressions, hypotheses)."
     container: ClassVar[str] = "cpu-tasks"
 
     def run(self, config: dict) -> dict:

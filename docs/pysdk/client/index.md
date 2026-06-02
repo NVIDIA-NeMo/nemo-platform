@@ -176,7 +176,7 @@ For endpoint details, see the [REST API Reference](../../api/index.md).
 - **entities**: Generic entity CRUD
 - **secrets**: Secret management
 - **iam**: Identity and access management
-- **members**: Workspace member and RBAC management
+- **workspaces.members**: Workspace member and RBAC management
 
 ### Response Handling
 

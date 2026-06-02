@@ -13,6 +13,7 @@ import httpx
 import pytest
 from nemo_evaluator.sdk.resources import AsyncEvaluator, Evaluator
 from nemo_evaluator.sdk.standalone_sdk.backend import AsyncNMPBackend, NMPBackend
+from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.execution.backends.base import EvaluationBackend, SyncEvaluationBackend
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
@@ -91,6 +92,7 @@ class TestNMPBackend:
             params=request.params,
             target=request.target,
             dataset_glob_pattern=request.dataset_glob_pattern,
+            field_mapping=request.field_mapping,
             prompt_template=request.prompt_template,
             aggregate_fields=request.aggregate_fields,
         )
@@ -103,11 +105,31 @@ class TestNMPBackend:
         remote_evaluate = mocker.patch.object(resource._executor, "evaluate_remote", return_value=expected)
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         request = EvaluationRequest(dataset=[{"expected": "a", "output": "a"}])
+        packager = CloudpickleMetricBundlePackager()
 
-        result = NMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
+        result = NMPBackend(resource, execution_mode="remote", metric_bundle_packager=packager).evaluate(
+            metric=metric, request=request
+        )
 
         assert result is expected
-        remote_evaluate.assert_called_once_with(metric=metric, request=request)
+        remote_evaluate.assert_called_once_with(
+            metric=metric,
+            request=request,
+            metric_bundle_packager=packager,
+        )
+        local_evaluate.assert_not_called()
+
+    def test_evaluate_remote_requires_metric_bundle_packager(self, mocker: MockerFixture) -> None:
+        resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
+        local_evaluate = mocker.patch.object(resource._executor, "evaluate")
+        remote_evaluate = mocker.patch.object(resource._executor, "evaluate_remote")
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+        request = EvaluationRequest(dataset=[{"expected": "a", "output": "a"}])
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            NMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
+
+        remote_evaluate.assert_not_called()
         local_evaluate.assert_not_called()
 
     def test_evaluate_benchmark_local_delegates_to_resource_executor(self, mocker: MockerFixture) -> None:
@@ -127,7 +149,10 @@ class TestNMPBackend:
         result = NMPBackend(resource).evaluate_benchmark(metrics=metrics, request=request)
 
         assert result is expected
-        evaluate_benchmark.assert_called_once_with(metrics=metrics, request=request)
+        evaluate_benchmark.assert_called_once_with(
+            metrics=metrics,
+            request=request,
+        )
 
     def test_evaluate_benchmark_remote_raises_without_local_run(self, mocker: MockerFixture) -> None:
         resource = Evaluator(cast(NeMoPlatform, _SyncPlatform()))
@@ -187,6 +212,7 @@ class TestAsyncNMPBackend:
             params=request.params,
             target=request.target,
             dataset_glob_pattern=request.dataset_glob_pattern,
+            field_mapping=request.field_mapping,
             prompt_template=request.prompt_template,
             aggregate_fields=request.aggregate_fields,
         )
@@ -202,11 +228,32 @@ class TestAsyncNMPBackend:
         )
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
         request = EvaluationRequest(dataset=[{"expected": "a", "output": "a"}])
+        packager = CloudpickleMetricBundlePackager()
 
-        result = await AsyncNMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
+        result = await AsyncNMPBackend(resource, execution_mode="remote", metric_bundle_packager=packager).evaluate(
+            metric=metric, request=request
+        )
 
         assert result is expected
-        remote_evaluate.assert_awaited_once_with(metric=metric, request=request)
+        remote_evaluate.assert_awaited_once_with(
+            metric=metric,
+            request=request,
+            metric_bundle_packager=packager,
+        )
+        local_evaluate.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_evaluate_remote_requires_metric_bundle_packager(self, mocker: MockerFixture) -> None:
+        resource = AsyncEvaluator(cast(AsyncNeMoPlatform, _AsyncPlatform()))
+        local_evaluate = mocker.patch.object(resource._executor, "evaluate", new=AsyncMock())
+        remote_evaluate = mocker.patch.object(resource._executor, "evaluate_remote", new=AsyncMock())
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.output}}")
+        request = EvaluationRequest(dataset=[{"expected": "a", "output": "a"}])
+
+        with pytest.raises(ValueError, match="metric_bundle_packager is required"):
+            await AsyncNMPBackend(resource, execution_mode="remote").evaluate(metric=metric, request=request)
+
+        remote_evaluate.assert_not_awaited()
         local_evaluate.assert_not_awaited()
 
     @pytest.mark.asyncio
@@ -227,7 +274,10 @@ class TestAsyncNMPBackend:
         result = await AsyncNMPBackend(resource).evaluate_benchmark(metrics=metrics, request=request)
 
         assert result is expected
-        evaluate_benchmark.assert_awaited_once_with(metrics=metrics, request=request)
+        evaluate_benchmark.assert_awaited_once_with(
+            metrics=metrics,
+            request=request,
+        )
 
     @pytest.mark.asyncio
     async def test_evaluate_benchmark_remote_raises_without_local_run(self, mocker: MockerFixture) -> None:

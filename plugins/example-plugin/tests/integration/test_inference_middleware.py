@@ -34,7 +34,6 @@ from nmp.testing.mock_chat_completions import (
 
 pytestmark = [pytest.mark.integration]
 
-DEFAULT_WORKSPACE = "default"
 EXAMPLE_PLUGIN_NAME = "nemo-example-middleware"
 EXAMPLE_PLUGIN_CONFIG_TYPE = ExampleMiddlewareConfig.__entity_type__
 
@@ -77,21 +76,21 @@ class TestRequestMiddleware:
             ],
         )
         h.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=h.workspace,
             name=f"example-provider-{test_id}",
             served_models={model_name: model_name},
         )
 
         with h.use_plugin(EXAMPLE_PLUGIN_NAME, ExampleInferenceMiddleware()):
             h.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 name=virtual_model_name,
-                default_model_entity=f"{DEFAULT_WORKSPACE}/{model_name}",
+                default_model_entity=f"{h.workspace}/{model_name}",
                 request_middleware=[_build_middleware_call(blocked_keywords=["violence"])],
             )
 
             response = h.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 body={
                     "model": virtual_model_name,
                     "messages": [{"role": "user", "content": "Tell me about flowers."}],
@@ -109,16 +108,16 @@ class TestRequestMiddleware:
         block_message = "That topic is off-limits."
 
         h.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=h.workspace,
             name=f"example-provider-{test_id}",
             served_models={model_name: model_name},
         )
 
         with h.use_plugin(EXAMPLE_PLUGIN_NAME, ExampleInferenceMiddleware()):
             h.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 name=virtual_model_name,
-                default_model_entity=f"{DEFAULT_WORKSPACE}/{model_name}",
+                default_model_entity=f"{h.workspace}/{model_name}",
                 request_middleware=[
                     _build_middleware_call(
                         blocked_keywords=["violence"],
@@ -128,7 +127,7 @@ class TestRequestMiddleware:
             )
 
             response = h.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 body={
                     "model": virtual_model_name,
                     "messages": [{"role": "user", "content": "Tell me about violence."}],
@@ -171,21 +170,21 @@ class TestResponseMiddleware:
             ],
         )
         h.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=h.workspace,
             name=f"example-provider-{test_id}",
             served_models={model_name: model_name},
         )
 
         with h.use_plugin(EXAMPLE_PLUGIN_NAME, ExampleInferenceMiddleware()):
             h.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 name=virtual_model_name,
-                default_model_entity=f"{DEFAULT_WORKSPACE}/{model_name}",
+                default_model_entity=f"{h.workspace}/{model_name}",
                 response_middleware=[_build_middleware_call(blocked_keywords=["secret"])],
             )
 
             response = h.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 body={
                     "model": virtual_model_name,
                     "messages": [{"role": "user", "content": "Share the answer."}],
@@ -233,21 +232,21 @@ class TestResponseMiddleware:
             ],
         )
         h.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=h.workspace,
             name=f"example-stream-provider-{test_id}",
             served_models={model_name: model_name},
         )
 
         with h.use_plugin(EXAMPLE_PLUGIN_NAME, ExampleInferenceMiddleware()):
             h.add_virtual_model(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 name=virtual_model_name,
-                default_model_entity=f"{DEFAULT_WORKSPACE}/{model_name}",
+                default_model_entity=f"{h.workspace}/{model_name}",
                 response_middleware=[_build_middleware_call(blocked_keywords=["secret"])],
             )
 
             chunks = h.stream_chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=h.workspace,
                 body={
                     "model": virtual_model_name,
                     "messages": [{"role": "user", "content": "Share the answer."}],

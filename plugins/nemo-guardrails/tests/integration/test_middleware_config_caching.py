@@ -16,11 +16,9 @@ import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness, IGWPluginHarness
-from nmp.guardrails.service import GuardrailsService
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
 from .utils import (
-    DEFAULT_WORKSPACE,
     GUARDRAILS_PLUGIN_NAME,
     GuardrailsTestDataNames,
     make_guardrails_test_data_names,
@@ -98,17 +96,17 @@ class TestMiddlewareConfigCaching:
         return "Paris is the capital of France."
 
     @staticmethod
-    def _middleware_call(config_name: str) -> MiddlewareCallParam:
+    def _middleware_call(workspace: str, config_name: str) -> MiddlewareCallParam:
         return {
             "name": GUARDRAILS_PLUGIN_NAME,
             "config_type": GUARDRAILS_PLUGIN_CONFIG_TYPE,
-            "config_id": f"{DEFAULT_WORKSPACE}/{config_name}",
+            "config_id": f"{workspace}/{config_name}",
         }
 
     @staticmethod
     def _delete_config_if_present(harness: IGWPluginHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=DEFAULT_WORKSPACE)
+            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -127,7 +125,7 @@ class TestMiddlewareConfigCaching:
     ) -> None:
         with pytest.raises(nemo_platform.APIStatusError) as exc_info:
             harness.chat_completions(
-                workspace=DEFAULT_WORKSPACE,
+                workspace=harness.workspace,
                 body={
                     "model": model,
                     "messages": [{"role": "user", "content": cls.USER_INPUT}],
@@ -154,27 +152,30 @@ class TestMiddlewareConfigCaching:
         *,
         config_version: str,
     ) -> GuardrailsTestDataNames:
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="main-model")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="main-model",
+            workspace=harness.workspace,
+        )
 
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
 
         harness.sdk.guardrail.configs.create(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed self-check config for middleware cache tests",
             data=self._config_data(version=config_version, main_base_url=harness.nim_base_url),
         )
 
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.request_virtual_model_name,
             default_model_entity=test_data_names.main_model_entity_ref,
-            request_middleware=[self._middleware_call(test_data_names.guardrail_config_name)],
-            response_middleware=[self._middleware_call(test_data_names.guardrail_config_name)],
+            request_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
+            response_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
         )
         return test_data_names
 
@@ -207,7 +208,7 @@ class TestMiddlewareConfigCaching:
         )
 
         response = harness.chat_completions(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             body=self._chat_completions_body(model=test_data_names.request_virtual_model_name),
         )
 
@@ -234,7 +235,7 @@ class TestMiddlewareConfigCaching:
         igw_loopback_harness: Callable[..., IGWLoopbackHarness],
     ) -> None:
         """A refreshed entity-backed config should affect the next real Guardrails execution."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(harness, config_version="v1")
@@ -249,7 +250,7 @@ class TestMiddlewareConfigCaching:
                 # Update the config referenced by the VirtualModel
                 harness.sdk.guardrail.configs.update(
                     name=test_data_names.guardrail_config_name,
-                    workspace=DEFAULT_WORKSPACE,
+                    workspace=harness.workspace,
                     data=self._config_data(version="v2", main_base_url=harness.nim_base_url),
                 )
 
@@ -279,7 +280,7 @@ class TestMiddlewareConfigCaching:
         igw_loopback_harness: Callable[..., IGWLoopbackHarness],
     ) -> None:
         """Deleting a referenced config should fail closed after IGW refreshes middleware config refs."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(harness, config_version="v1")
@@ -294,7 +295,7 @@ class TestMiddlewareConfigCaching:
                 # Delete the config referenced by the VirtualModel.
                 harness.sdk.guardrail.configs.delete(
                     name=test_data_names.guardrail_config_name,
-                    workspace=DEFAULT_WORKSPACE,
+                    workspace=harness.workspace,
                 )
                 self._refresh_caches(harness)
 
@@ -312,7 +313,7 @@ class TestMiddlewareConfigCaching:
         igw_loopback_harness: Callable[..., IGWLoopbackHarness],
     ) -> None:
         """Recreating the same config_id should let the next refresh recover the failing VM."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(harness, config_version="v1")
@@ -320,7 +321,7 @@ class TestMiddlewareConfigCaching:
                 # Delete the config referenced by the VirtualModel.
                 harness.sdk.guardrail.configs.delete(
                     name=test_data_names.guardrail_config_name,
-                    workspace=DEFAULT_WORKSPACE,
+                    workspace=harness.workspace,
                 )
                 self._refresh_caches(harness)
 
@@ -333,7 +334,7 @@ class TestMiddlewareConfigCaching:
 
                 # Recreate the config referenced by the VirtualModel.
                 harness.sdk.guardrail.configs.create(
-                    workspace=DEFAULT_WORKSPACE,
+                    workspace=harness.workspace,
                     name=test_data_names.guardrail_config_name,
                     description="Recreated self-check config for middleware cache tests",
                     data=self._config_data(version="v2", main_base_url=harness.nim_base_url),

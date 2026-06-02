@@ -216,7 +216,7 @@ def format_licenses(
                     if normalize_package_name(name) in local_packages:
                         continue
 
-                    # Check overrides (use base name so +cu128 variants match)
+                    # Check overrides (use base name so +cu129 variants match)
                     override_key = get_override_key_for_package(name, version)
                     if override_key in overrides:
                         license_str = overrides[override_key]
@@ -264,7 +264,7 @@ def generate_lockfile_without_dev_dependencies(
     Args:
         lockfile_dir: Path to the directory containing the lockfile
         output_lockfile: Path to the output lockfile
-        extras: Optional list of extras to include (e.g., ["cu128"])
+        extras: Optional list of extras to include (e.g., ["cu129"])
         packages: Optional list of workspace packages to include via --package flag.
             Required when extras reference workspace member dependencies, since
             uv export does not propagate workspace packages' extras' transitive
@@ -339,7 +339,7 @@ def generate_project_licenses(
         overrides_file: Optional path to license overrides
         cwd: Working directory for osv-scanner
         format_type: Output format (table, jsonl, json, csv, markdown, text)
-        extras: Optional list of extras to include (e.g., ["cu128"])
+        extras: Optional list of extras to include (e.g., ["cu129"])
         packages: Optional list of workspace packages to include via --package flag
 
     Returns:
@@ -385,7 +385,6 @@ def get_projects(workspace_root: Path) -> list[dict]:
             "output_file": license_dir / main_license_name,
             "cwd": workspace_root,
             "overrides_file": OVERRIDES_FILE,
-            "extras": ["cu128"],  # we want to pull in the nemo-safe-synthesizer[cu128] package and its transitive deps
             "packages": ["nemoplatform"],
         },
     ]

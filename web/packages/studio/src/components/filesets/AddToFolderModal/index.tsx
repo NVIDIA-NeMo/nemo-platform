@@ -289,7 +289,7 @@ export const AddToFolderModal: FC<AddToFolderModalProps> = ({
                     status={status}
                     aria-label="destination-folder-select"
                   />
-                  <SelectContent portal>
+                  <SelectContent>
                     {/* Parent folder option (if not at root) */}
                     {canGoUp && (
                       <SelectItem value={PARENT_FOLDER_VALUE}>{PARENT_FOLDER_DISPLAY}</SelectItem>

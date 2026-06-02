@@ -7,12 +7,16 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Sequence
-from typing import Any, Literal, Protocol, runtime_checkable
+from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from typing import Any, AsyncIterator, Iterator, cast
 
 import httpx
 from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.utils import download_dataset, download_dataset_sync
 from nemo_evaluator.sdk import http_utils
-from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult, local_result_path
+from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import (
     AsyncEvaluatorJobResource,
     EvaluatorJob,
@@ -20,11 +24,16 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
+from nemo_evaluator.sdk.values.filesets import FilesetRef
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundlePackager, bundle_metric
+from nemo_evaluator_sdk import Evaluator as SDKEvaluator
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.config import EvaluationRequest, normalize_params
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
+    DatasetInput,
+    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -34,20 +43,25 @@ from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationRe
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nmp.evaluator.app.values import FilesetRef
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
+_ResolvedDataset = DatasetInput | str | Path
 
-@runtime_checkable
-class _SerializableMetric(Protocol):
-    """Metric shape required for evaluator plugin job serialization."""
 
-    def model_dump(self, *, mode: Literal["json"]) -> dict[str, Any]:
-        """Return the metric as a JSON-serializable payload."""
-        ...
+class MetricBundlePackagerPolicyError(RuntimeError):
+    """Raised when plugin backend metric packaging is not configured."""
+
+
+def _require_metric_bundle_packager(metric_bundle_packager: MetricBundlePackager | None) -> MetricBundlePackager:
+    if metric_bundle_packager is None:
+        raise MetricBundlePackagerPolicyError(
+            "Packaging runtime metrics for evaluator plugin submission requires an explicit metric_bundle_packager. "
+            "Pass CloudpickleMetricBundlePackager() to opt in to cloudpickle metric bundles."
+        )
+    return metric_bundle_packager
 
 
 def _dataset_config(request: EvaluationRequest) -> list[dict[str, Any]] | FilesetRef:
@@ -65,10 +79,62 @@ def _dataset_config(request: EvaluationRequest) -> list[dict[str, Any]] | Filese
     )
 
 
-def _build_evaluate_spec(*, metrics: Metric | Sequence[Metric], request: EvaluationRequest) -> EvaluateSpec:
+def _fileset_dataset(request: EvaluationRequest) -> FilesetRef:
+    if not isinstance(request.dataset, FilesetRef):
+        raise TypeError("request dataset is not a FilesetRef")
+    if request.dataset_glob_pattern is None:
+        return request.dataset
+    if "#" in request.dataset.root:
+        raise ValueError("dataset_glob_pattern cannot be used when FilesetRef already includes a fragment.")
+    return request.dataset.with_fragment(request.dataset_glob_pattern)
+
+
+@contextmanager
+def _sync_resolved_dataset(
+    request: EvaluationRequest, platform: NeMoPlatform
+) -> Iterator[tuple[_ResolvedDataset, str | None]]:
+    if not isinstance(request.dataset, FilesetRef):
+        yield request.dataset, request.dataset_glob_pattern
+        return
+
+    dataset = _fileset_dataset(request)
+    with TemporaryDirectory(prefix="nemo-evaluator-fileset-") as temp_dir:
+        resolved = download_dataset_sync(
+            sdk=platform,
+            dataset=dataset,
+            destination=str(Path(temp_dir) / "dataset"),
+        )
+        yield cast(_ResolvedDataset, resolved), None
+
+
+@asynccontextmanager
+async def _async_resolved_dataset(
+    request: EvaluationRequest, platform: AsyncNeMoPlatform
+) -> AsyncIterator[tuple[_ResolvedDataset, str | None]]:
+    if not isinstance(request.dataset, FilesetRef):
+        yield request.dataset, request.dataset_glob_pattern
+        return
+
+    dataset = _fileset_dataset(request)
+    with TemporaryDirectory(prefix="nemo-evaluator-fileset-") as temp_dir:
+        resolved = await download_dataset(
+            sdk=platform,
+            dataset=dataset,
+            destination=str(Path(temp_dir) / "dataset"),
+        )
+        yield cast(_ResolvedDataset, resolved), None
+
+
+def _build_evaluate_spec(
+    *,
+    metrics: Metric | Sequence[Metric],
+    request: EvaluationRequest,
+    metric_bundle_packager: MetricBundlePackager | None = None,
+) -> EvaluateSpec:
     """Build the evaluator plugin spec shared by local and remote execution."""
+    effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
     spec = {
-        "metric": metrics_config(metrics),
+        "metrics": bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager),
         "dataset": _dataset_config(request),
         "params": request.params.model_dump(mode="json") if request.params else None,
     }
@@ -76,6 +142,8 @@ def _build_evaluate_spec(*, metrics: Metric | Sequence[Metric], request: Evaluat
         spec["target"] = request.target.model_dump(mode="json")
     if request.prompt_template is not None:
         spec["prompt_template"] = request.prompt_template
+    if request.field_mapping is not None:
+        spec["field_mapping"] = request.field_mapping.model_dump(mode="json")
     return EvaluateSpec.model_validate(spec)
 
 
@@ -150,9 +218,14 @@ class _SyncEvaluatorPluginExecutor:
         *,
         metric: Metric,
         request: EvaluationRequest,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluationResult:
         """Submit, poll, and download a remote evaluator plugin metric job."""
-        spec = _build_evaluate_spec(metrics=metric, request=request)
+        spec = _build_evaluate_spec(
+            metrics=metric,
+            request=request,
+            metric_bundle_packager=metric_bundle_packager,
+        )
 
         job = self.create(
             spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
@@ -173,6 +246,7 @@ class _SyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -182,18 +256,20 @@ class _SyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
-        spec = _build_evaluate_spec(metrics=metric, request=request)
-
-        payload = self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-
-        result_path = local_result_path(payload)
-        result = EvaluationResult.model_validate_json(result_path.read_text(encoding="utf-8"))
+        with _sync_resolved_dataset(request, self._platform) as (resolved_dataset, resolved_pattern):
+            result = SDKEvaluator().run_sync(
+                metrics=metric,
+                dataset=resolved_dataset,
+                config=request.params,
+                target=request.target,
+                dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
+                prompt_template=request.prompt_template,
+            )
         return filter_evaluation_result(result, aggregate_fields)
 
     def submit(
@@ -204,7 +280,9 @@ class _SyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
@@ -212,9 +290,14 @@ class _SyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
         )
-        spec = _build_evaluate_spec(metrics=metric, request=request)
+        spec = _build_evaluate_spec(
+            metrics=metric,
+            request=request,
+            metric_bundle_packager=metric_bundle_packager,
+        )
 
         job = self.create(
             spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
@@ -229,15 +312,16 @@ class _SyncEvaluatorPluginExecutor:
         request: EvaluationRequest,
     ) -> BenchmarkEvaluationResult:
         """Evaluate multiple metrics through local in-process plugin execution."""
-        spec = _build_evaluate_spec(metrics=metrics, request=request)
-
-        payload = self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-
-        result_path = local_result_path(payload)
-        result = BenchmarkEvaluationResult.model_validate_json(result_path.read_text(encoding="utf-8"))
+        with _sync_resolved_dataset(request, self._platform) as (resolved_dataset, resolved_pattern):
+            result = SDKEvaluator().run_sync(
+                metrics=metrics,
+                dataset=resolved_dataset,
+                config=request.params,
+                target=request.target,
+                dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
+                prompt_template=request.prompt_template,
+            )
         return filter_benchmark_result(result, request.aggregate_fields)
 
 
@@ -318,7 +402,9 @@ class _AsyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a remote evaluator plugin metric job and return the job resource."""
         request = EvaluationRequest(
@@ -326,9 +412,14 @@ class _AsyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
         )
-        spec = _build_evaluate_spec(metrics=metric, request=request)
+        spec = _build_evaluate_spec(
+            metrics=metric,
+            request=request,
+            metric_bundle_packager=metric_bundle_packager,
+        )
 
         job = await self.create(
             spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
@@ -341,9 +432,14 @@ class _AsyncEvaluatorPluginExecutor:
         *,
         metric: Metric,
         request: EvaluationRequest,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluationResult:
         """Submit, poll, and download a remote evaluator plugin metric job."""
-        spec = _build_evaluate_spec(metrics=metric, request=request)
+        spec = _build_evaluate_spec(
+            metrics=metric,
+            request=request,
+            metric_bundle_packager=metric_bundle_packager,
+        )
 
         job = await self.create(
             spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
@@ -364,6 +460,7 @@ class _AsyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -373,19 +470,20 @@ class _AsyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
-        spec = _build_evaluate_spec(metrics=metric, request=request)
-
-        payload = await self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-
-        result_path = local_result_path(payload)
-        result_text = await asyncio.to_thread(result_path.read_text, encoding="utf-8")
-        result = EvaluationResult.model_validate_json(result_text)
+        async with _async_resolved_dataset(request, self._platform) as (resolved_dataset, resolved_pattern):
+            result = await SDKEvaluator().run(
+                metrics=metric,
+                dataset=resolved_dataset,
+                config=request.params,
+                target=request.target,
+                dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
+                prompt_template=request.prompt_template,
+            )
         return filter_evaluation_result(result, aggregate_fields)
 
     async def evaluate_benchmark(
@@ -395,28 +493,24 @@ class _AsyncEvaluatorPluginExecutor:
         request: EvaluationRequest,
     ) -> BenchmarkEvaluationResult:
         """Evaluate multiple metrics through local in-process plugin execution."""
-        spec = _build_evaluate_spec(metrics=metrics, request=request)
-
-        payload = await self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-
-        result_path = local_result_path(payload)
-        result_text = await asyncio.to_thread(result_path.read_text, encoding="utf-8")
-        result = BenchmarkEvaluationResult.model_validate_json(result_text)
+        async with _async_resolved_dataset(request, self._platform) as (resolved_dataset, resolved_pattern):
+            result = await SDKEvaluator().run(
+                metrics=metrics,
+                dataset=resolved_dataset,
+                config=request.params,
+                target=request.target,
+                dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
+                prompt_template=request.prompt_template,
+            )
         return filter_benchmark_result(result, request.aggregate_fields)
 
 
-def metric_config(metric: object) -> dict[str, Any]:
-    """Serialize one metric config for evaluator plugin job submission."""
-    if not isinstance(metric, _SerializableMetric):
-        raise TypeError("metrics must provide model_dump(mode='json') for evaluator plugin execution")
-    return metric.model_dump(mode="json")
-
-
-def metrics_config(metrics: object | Sequence[object]) -> dict[str, Any] | list[dict[str, Any]]:
-    """Serialize one metric or a benchmark metric sequence for an evaluator plugin spec."""
+def bundle_metrics_for_spec(
+    metrics: Metric | Sequence[Metric], *, metric_bundle_packager: MetricBundlePackager
+) -> list[MetricBundle]:
+    """Package one metric or a benchmark metric sequence for an evaluator plugin spec."""
     if isinstance(metrics, Sequence) and not isinstance(metrics, (str, bytes)):
-        return [metric_config(metric) for metric in metrics]
-    return metric_config(metrics)
+        metric_sequence = cast(Sequence[Metric], metrics)
+        return [bundle_metric(metric, metric_bundle_packager) for metric in metric_sequence]
+    return [bundle_metric(cast(Metric, metrics), metric_bundle_packager)]

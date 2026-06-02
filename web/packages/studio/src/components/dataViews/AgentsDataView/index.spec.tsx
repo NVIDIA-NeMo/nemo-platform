@@ -142,8 +142,10 @@ describe('CombinedAgentsTable', () => {
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
 
-      expect(await screen.findByRole('menuitem', { name: 'Deploy' })).toBeInTheDocument();
-      expect(screen.getByRole('menuitem', { name: 'Delete' })).toBeInTheDocument();
+      const deployItems = await screen.findAllByRole('menuitem', { name: 'Deploy' });
+      const deleteItems = screen.getAllByRole('menuitem', { name: 'Delete' });
+      expect(deployItems.length).toBeGreaterThan(0);
+      expect(deleteItems.length).toBeGreaterThan(0);
     });
   });
 
@@ -311,9 +313,44 @@ describe('CombinedAgentsTable', () => {
 
       const menuButtons = screen.getAllByRole('button', { name: /actions/i });
       await user.click(menuButtons[0]);
-      await user.click(await screen.findByRole('menuitem', { name: 'Delete' }));
+      const deleteItems = await screen.findAllByRole('menuitem', { name: 'Delete' });
+      await user.click(deleteItems[0]);
 
       expect(await screen.findByText('Delete Agent')).toBeInTheDocument();
+    });
+
+    it('shows a friendly toast when delete is blocked by active deployments (409)', async () => {
+      server.use(
+        http.delete(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`, () =>
+          HttpResponse.json(
+            {
+              detail:
+                "Agent 'react-agent' has active deployments that must be removed first: rag-agent-prod. Use DELETE /deployments/{name} to remove them.",
+            },
+            { status: 409 }
+          )
+        )
+      );
+
+      const user = userEvent.setup();
+      renderTable();
+
+      await screen.findByText(MOCK_AGENTS[0].name);
+
+      const menuButtons = screen.getAllByRole('button', { name: /actions/i });
+      await user.click(menuButtons[0]);
+      const deleteItems = await screen.findAllByRole('menuitem', { name: 'Delete' });
+      await user.click(deleteItems[0]);
+
+      const confirmDialog = await screen.findByRole('dialog');
+      await user.click(within(confirmDialog).getByRole('button', { name: 'Delete' }));
+
+      const errorToast = await screen.findByTestId('mock-toast-error');
+      expect(errorToast).toHaveTextContent(
+        'Agent has active deployments. Please delete all deployments before deleting agent.'
+      );
+      // The generic fallback toast should not appear.
+      expect(screen.queryByText(/Something went wrong\. Please try again\./i)).toBeNull();
     });
   });
 });

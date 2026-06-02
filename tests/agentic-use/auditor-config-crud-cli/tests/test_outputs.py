@@ -26,9 +26,8 @@ def client() -> NeMoPlatform:
 
 def test_harbor_test_config_deleted(client: NeMoPlatform) -> None:
     """Test that harbor-test-config was deleted after CRUD operations."""
-    configs = client.audit.configs.list()
-    # audit.configs.list() returns a list directly, not a paginated response
-    config_names = [c.name for c in configs]
+    configs = client.auditor.configs.list(workspace=WORKSPACE)
+    config_names = [c["name"] for c in configs["data"]]
     assert "harbor-test-config" not in config_names, (
         f"Config 'harbor-test-config' should have been deleted but still exists! Found: {config_names}"
     )
@@ -36,7 +35,7 @@ def test_harbor_test_config_deleted(client: NeMoPlatform) -> None:
 
 def test_harbor_final_config_exists(client: NeMoPlatform) -> None:
     """Test that harbor-final-config was created and has correct metadata."""
-    response = client.audit.configs.retrieve(name="harbor-final-config")
+    response = client.auditor.configs.get(workspace=WORKSPACE, name="harbor-final-config")
     assert response.name == "harbor-final-config", f"Expected config name 'harbor-final-config', got '{response.name}'"
     assert response.description == "Final config for verification", (
         f"Expected description 'Final config for verification', got '{response.description}'"
@@ -45,7 +44,7 @@ def test_harbor_final_config_exists(client: NeMoPlatform) -> None:
 
 def test_harbor_final_config_probe_spec(client: NeMoPlatform) -> None:
     """Test that harbor-final-config uses the dan.DanInTheWild probe."""
-    response = client.audit.configs.retrieve(name="harbor-final-config")
+    response = client.auditor.configs.get(workspace=WORKSPACE, name="harbor-final-config")
     probe_spec = response.plugins.probe_spec
     assert "dan.DanInTheWild" in probe_spec, f"Expected probe_spec to contain 'dan.DanInTheWild', got '{probe_spec}'"
 
@@ -64,30 +63,30 @@ def test_agent_performed_crud_operations() -> None:
         return any(all(p in cmd for p in patterns) for cmd in commands)
 
     # Agent should have listed global configs
-    assert has_command("audit", "configs", "list"), f"Agent did not list audit configs. Commands: {commands}"
+    assert has_command("auditor", "configs", "list"), f"Agent did not list audit configs. Commands: {commands}"
 
     # Agent should have created harbor-test-config
-    assert has_command("audit", "configs", "create", "harbor-test-config"), (
+    assert has_command("auditor", "configs", "create", "harbor-test-config"), (
         f"Agent did not create 'harbor-test-config'. Commands: {commands}"
     )
 
     # Agent should have retrieved the config
-    assert has_command("audit", "configs", "get", "harbor-test-config"), (
+    assert has_command("auditor", "configs", "get", "harbor-test-config"), (
         f"Agent did not retrieve 'harbor-test-config'. Commands: {commands}"
     )
 
     # Agent should have updated the config
-    assert has_command("audit", "configs", "update", "harbor-test-config"), (
+    assert has_command("auditor", "configs", "update", "harbor-test-config"), (
         f"Agent did not update 'harbor-test-config'. Commands: {commands}"
     )
 
     # Agent should have deleted harbor-test-config
-    assert has_command("audit", "configs", "delete", "harbor-test-config"), (
+    assert has_command("auditor", "configs", "delete", "harbor-test-config"), (
         f"Agent did not delete 'harbor-test-config'. Commands: {commands}"
     )
 
     # Agent should have created harbor-final-config
-    assert has_command("audit", "configs", "create", "harbor-final-config"), (
+    assert has_command("auditor", "configs", "create", "harbor-final-config"), (
         f"Agent did not create 'harbor-final-config'. Commands: {commands}"
     )
 

@@ -35,14 +35,14 @@ describe('ParamsDropdown', () => {
     it('uses 1024 as the default for max tokens', async () => {
       renderOpen();
       await screen.findByText('Max Tokens');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       expect(inputs[1]).toHaveValue(1024);
     });
 
     it('calls onInferenceParamsChange with updated temperature', async () => {
       const { onInferenceParamsChange } = renderOpen();
       await screen.findByText('Temperature');
-      const [temperatureInput] = screen.getAllByTestId('nv-text-input-element');
+      const [temperatureInput] = screen.getAllByRole('spinbutton');
       fireEvent.change(temperatureInput, { target: { value: '0.7' } });
       expect(onInferenceParamsChange).toHaveBeenCalledWith(
         expect.objectContaining({ temperature: 0.7 })
@@ -52,7 +52,7 @@ describe('ParamsDropdown', () => {
     it('calls onInferenceParamsChange with only max_tokens when max tokens input changes', async () => {
       const { onInferenceParamsChange } = renderOpen();
       await screen.findByText('Max Tokens');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       fireEvent.change(inputs[1], { target: { value: '512' } });
       expect(onInferenceParamsChange).toHaveBeenCalledWith(
         expect.objectContaining({ max_tokens: 512 })
@@ -65,7 +65,7 @@ describe('ParamsDropdown', () => {
     it('calls onInferenceParamsChange with updated top_p', async () => {
       const { onInferenceParamsChange } = renderOpen();
       await screen.findByText('Top P');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       fireEvent.change(inputs[2], { target: { value: '0.9' } });
       expect(onInferenceParamsChange).toHaveBeenCalledWith(expect.objectContaining({ top_p: 0.9 }));
     });
@@ -75,7 +75,7 @@ describe('ParamsDropdown', () => {
         inferenceParams: { temperature: 0.5, top_p: 0.8 },
       });
       await screen.findByText('Temperature');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       fireEvent.change(inputs[1], { target: { value: '256' } });
       expect(onInferenceParamsChange).toHaveBeenCalledWith(
         expect.objectContaining({ temperature: 0.5, top_p: 0.8, max_tokens: 256 })
@@ -85,7 +85,7 @@ describe('ParamsDropdown', () => {
     it('displays inferenceParams initial values', async () => {
       renderOpen({ inferenceParams: { temperature: 0.5, max_tokens: 256, top_p: 0.8 } });
       await screen.findByText('Temperature');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       expect(inputs[0]).toHaveValue(0.5);
       expect(inputs[1]).toHaveValue(256);
       expect(inputs[2]).toHaveValue(0.8);
@@ -94,7 +94,7 @@ describe('ParamsDropdown', () => {
     it('disables all slider inputs when disabled', async () => {
       renderOpen({ disabled: true });
       await screen.findByText('Temperature');
-      const inputs = screen.getAllByTestId('nv-text-input-element');
+      const inputs = screen.getAllByRole('spinbutton');
       inputs.forEach((input) => expect(input).toBeDisabled());
     });
   });

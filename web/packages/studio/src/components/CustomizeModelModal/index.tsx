@@ -7,6 +7,7 @@ import {
   Button,
   Flex,
   ModalContent,
+  ModalDialog,
   ModalFooter,
   ModalHeading,
   ModalMain,
@@ -61,75 +62,76 @@ export const CustomizeModelModal: FC<CustomizeModelModalProps> = ({
 
   return (
     <ModalRoot open={open} onOpenChange={onClose}>
-      <ModalContent className="w-2xl">
-        <ModalHeading>Customize a Model</ModalHeading>
-        <ModalMain className="overflow-y-auto">
-          <Stack gap="density-lg" padding="density-lg">
-            {canCustomize ? (
-              <Text kind="body/regular/md">
-                Select a method to use for customizing your model for your specific use case.
-              </Text>
-            ) : (
-              <Banner kind="inline" status="warning">
-                This model doesn&apos;t support customization. Fine-tuning requires the base weights
-                (a fileset) on the model, and prompt-tuning requires a deployment with LoRA enabled.
-              </Banner>
-            )}
-            <RadioGroupRoot
-              name="customization-method"
-              value={selectedMethod}
-              onValueChange={(value) => setSelectedMethod(value as CustomizationMethod)}
-              className="w-full"
-            >
-              <Stack gap="density-md">
-                {CUSTOMIZATION_METHODS.map((method) => (
-                  <RadioCard
-                    key={method.value}
-                    value={method.value}
-                    disabled={isMethodDisabled(method.value)}
-                    label={
-                      <Flex gap="density-xl" align="center" wrap="wrap">
-                        <Text kind="body/bold/lg">{method.title}</Text>
-                        <Flex gap="density-sm" align="center" wrap="wrap">
-                          {method.tags.map((tag) => (
-                            <Tag key={tag} kind="solid" color={method.tagColor}>
-                              <span>{tag}</span>
-                            </Tag>
-                          ))}
+      <ModalDialog>
+        <ModalContent className="w-2xl">
+          <ModalHeading>Customize a Model</ModalHeading>
+          <ModalMain className="overflow-y-auto">
+            <Stack gap="density-lg" padding="density-lg">
+              {canCustomize ? (
+                <Text kind="body/regular/md">
+                  Select a method to use for customizing your model for your specific use case.
+                </Text>
+              ) : (
+                <Banner kind="inline" status="warning">
+                  This model doesn&apos;t support customization. Fine-tuning requires the base
+                  weights (a fileset) on the model, and prompt-tuning requires a deployment with
+                  LoRA enabled.
+                </Banner>
+              )}
+              <RadioGroupRoot
+                name="customization-method"
+                value={selectedMethod}
+                onValueChange={(value) => setSelectedMethod(value as CustomizationMethod)}
+                className="w-full"
+              >
+                <Stack gap="density-md">
+                  {CUSTOMIZATION_METHODS.map((method) => (
+                    <RadioCard
+                      key={method.value}
+                      value={method.value}
+                      disabled={isMethodDisabled(method.value)}
+                      label={
+                        <Flex gap="density-xl" align="center" wrap="wrap">
+                          <Text kind="body/bold/lg">{method.title}</Text>
+                          <Flex gap="density-sm" align="center" wrap="wrap">
+                            {method.tags.map((tag) => (
+                              <Tag key={tag} kind="solid" color={method.tagColor}>
+                                <span>{tag}</span>
+                              </Tag>
+                            ))}
+                          </Flex>
                         </Flex>
-                      </Flex>
-                    }
-                    description={
-                      <Stack gap="density-md" className="text-left">
-                        <Text kind="body/regular/md" color="secondary">
-                          {method.description}
-                        </Text>
-                        <Text kind="body/regular/md" color="secondary">
-                          <Text kind="label/bold/md" asChild>
-                            <span>Best for:</span>
-                          </Text>{' '}
-                          {method.bestFor}
-                        </Text>
-                      </Stack>
-                    }
-                    attributes={{
-                      RadioGroupItem: { labelSide: 'left' },
-                    }}
-                  />
-                ))}
-              </Stack>
-            </RadioGroupRoot>
-          </Stack>
-        </ModalMain>
-        <ModalFooter className="flex w-full justify-end gap-2">
-          <Button kind="tertiary" onClick={onClose} type="button">
-            Cancel
-          </Button>
-          <Button color="brand" onClick={handleContinue} type="button" disabled={!canCustomize}>
-            Continue
-          </Button>
-        </ModalFooter>
-      </ModalContent>
+                      }
+                      description={
+                        <Stack gap="density-md" className="text-left">
+                          <Text kind="body/regular/md" color="secondary">
+                            {method.description}
+                          </Text>
+                          <Text kind="body/regular/md" color="secondary">
+                            <Text kind="label/bold/md" asChild>
+                              <span>Best for:</span>
+                            </Text>{' '}
+                            {method.bestFor}
+                          </Text>
+                        </Stack>
+                      }
+                      labelSide="left"
+                    />
+                  ))}
+                </Stack>
+              </RadioGroupRoot>
+            </Stack>
+          </ModalMain>
+          <ModalFooter className="flex w-full justify-end gap-2">
+            <Button kind="tertiary" onClick={onClose} type="button">
+              Cancel
+            </Button>
+            <Button color="brand" onClick={handleContinue} type="button" disabled={!canCustomize}>
+              Continue
+            </Button>
+          </ModalFooter>
+        </ModalContent>
+      </ModalDialog>
     </ModalRoot>
   );
 };

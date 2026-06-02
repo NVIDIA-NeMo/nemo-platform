@@ -33,9 +33,9 @@ Install the {{platform_name}} SDK with Safe Synthesizer support. Run the followi
 
 ```shell
 if command -v uv &> /dev/null; then
- uv pip install nemo-platform[services] kagglehub matplotlib
+ uv pip install nemo-platform[all] kagglehub matplotlib
 else
- pip install nemo-platform[services] kagglehub matplotlib
+ pip install nemo-platform[all] kagglehub matplotlib
 fi
 ```
 

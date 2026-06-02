@@ -103,13 +103,58 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
             client_context,
         )
 
-    message = result.output
-    if result.exception is not None:
-        message = f"{message}\n{result.exception}"
+    # The helpful diagnostic must reach the user via stdout/stderr, not just via
+    # the raw exception object. Earlier versions of this plugin returned a raw
+    # ``NDDInvalidConfigError`` from a Pydantic before-validator; Pydantic v2 only
+    # wraps ``ValueError`` / ``AssertionError`` / ``PydanticCustomError`` from
+    # before-validators, so the original exception escaped ``model_validate`` raw,
+    # past the framework's ``except ValidationError`` clause, leaving the user
+    # with empty output and exit code 1. The validator now translates plugin
+    # errors into ``ValueError`` so Pydantic wraps them properly; this test
+    # asserts the resulting user-visible message.
     assert result.exit_code != 0
-    assert "Dataframe seed sources (seed_type=df) are not supported on the NeMo Platform" in message
-    assert "Field required" not in message
-    assert "No such file" not in message
+    assert "Dataframe seed sources (seed_type=df) are not supported on the NeMo Platform" in result.output
+    assert "Field required" not in result.output
+    assert "No such file" not in result.output
+
+
+def test_create_run_rejects_dataframe_seed_with_clear_error(tmp_path: Path) -> None:
+    """``create run`` of a ``df``-seed config produces a clear, user-visible error.
+
+    Same root cause as the ``preview run`` case above: the ``df`` seed is rejected
+    by a Pydantic before-validator on ``DataDesignerJobConfig``. The user-visible
+    message comes through ``CreateRenderer.on_error``, which catches the exception
+    and formats it for the terminal.
+    """
+    config_path = u.write_config_file(
+        tmp_path,
+        """
+import data_designer.config as dd
+import pandas as pd
+
+
+def load_config_builder() -> dd.DataDesignerConfigBuilder:
+    builder = dd.DataDesignerConfigBuilder()
+    builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
+    builder.add_column(dd.ExpressionColumnConfig(name="value", expr="{{ a }}"))
+    return builder
+""",
+        name="dataframe_seed_create_config.py",
+    )
+
+    with u.make_mock_client_context(workspace="default") as client_context:
+        result = u.invoke_cli(
+            ["create", "run", str(config_path), "--num-records", "3"],
+            client_context,
+        )
+
+    assert result.exit_code != 0
+    # ``CreateRenderer.on_error`` runs the message through Rich, which line-wraps
+    # to the terminal width, so we assert on fragments rather than the full
+    # ``"Dataframe seed sources (seed_type=df) are not supported..."`` substring.
+    assert "Dataframe seed sources" in result.output
+    assert "seed_type=df" in result.output
+    assert "Field required" not in result.output
 
 
 def test_create_run_reports_artifacts_and_dataset_path(tmp_path: Path) -> None:

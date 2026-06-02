@@ -43,31 +43,35 @@ describe('CreateInferenceProviderSidePanel', () => {
   describe('Rendering', () => {
     it('renders nothing when closed', () => {
       render(<CreateInferenceProviderSidePanel {...defaultProps} open={false} />);
-      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('nv-side-panel-content')).not.toBeInTheDocument();
     });
 
     it('renders dialog with title and intro when open', async () => {
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByText('Add Inference Provider')).toBeInTheDocument();
-      expect(screen.getByText('Select a provider to add to your workspace.')).toBeInTheDocument();
-      expect(screen.getByRole('combobox', { name: /model provider/i })).toBeInTheDocument();
-      expect(screen.getByText(/API Key Secret/)).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Name' })).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Host URL' })).toBeInTheDocument();
+      const panel = await screen.findByTestId('nv-side-panel-content');
+      expect(panel).toBeInTheDocument();
+      expect(within(panel).getByText('Add Inference Provider')).toBeInTheDocument();
+      expect(
+        within(panel).getByText('Select a provider to add to your workspace.')
+      ).toBeInTheDocument();
+      expect(within(panel).getByRole('combobox', { name: /model provider/i })).toBeInTheDocument();
+      expect(within(panel).getByText(/API Key Secret/)).toBeInTheDocument();
+      expect(within(panel).getByRole('textbox', { name: 'Name' })).toBeInTheDocument();
+      expect(within(panel).getByRole('textbox', { name: 'Host URL' })).toBeInTheDocument();
     });
 
     it('renders submit and cancel actions', async () => {
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Add Provider' })).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+      const panel = await screen.findByTestId('nv-side-panel-content');
+      expect(panel).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Add Provider' })).toBeInTheDocument();
+      expect(within(panel).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
     });
 
     it('shows search field and grouped sections when Model Provider menu is open', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       expect(screen.getByPlaceholderText('Search by name...')).toBeInTheDocument();
       expect(screen.getByText('Pre-configured Providers')).toBeInTheDocument();
@@ -77,7 +81,7 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('when OpenAI compatible endpoint is selected, shows Name and Host URL fields', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /openai compatible endpoint/i }));
       expect(within(dialog).getByRole('textbox', { name: 'Name' })).toBeInTheDocument();
@@ -89,7 +93,7 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('selecting NVIDIA Build pre-fills form so Add Provider is enabled', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /^nvidia build$/i }));
       expect(await screen.findByRole('button', { name: 'Add Provider' })).toBeEnabled();
@@ -98,7 +102,7 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('selecting OpenAI compatible endpoint clears name and host URL after NVIDIA Build', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /^nvidia build$/i }));
       await openModelProviderSelect(user);
@@ -114,7 +118,7 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('shows validation error for invalid name characters', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /openai compatible endpoint/i }));
       const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
@@ -128,7 +132,7 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('shows validation error for invalid URL', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /openai compatible endpoint/i }));
       const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
@@ -167,7 +171,7 @@ describe('CreateInferenceProviderSidePanel', () => {
       );
 
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const dialog = await screen.findByRole('dialog');
+      const dialog = await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /openai compatible endpoint/i }));
       fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), {
@@ -216,7 +220,7 @@ describe('CreateInferenceProviderSidePanel', () => {
       );
 
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /^nvidia build$/i }));
       await user.click(screen.getByRole('button', { name: 'Add Provider' }));
@@ -243,7 +247,7 @@ describe('CreateInferenceProviderSidePanel', () => {
       );
 
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       await user.click(screen.getByRole('option', { name: /^nvidia build$/i }));
       await user.click(screen.getByRole('button', { name: 'Add Provider' }));
@@ -261,8 +265,8 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('calls onClose when Cancel is clicked', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      expect(await screen.findByRole('dialog')).toBeInTheDocument();
-      await user.click(screen.getByRole('button', { name: 'Cancel' }));
+      const panel = await screen.findByTestId('nv-side-panel-content');
+      await user.click(within(panel).getByRole('button', { name: 'Cancel' }));
       expect(mockOnClose).toHaveBeenCalled();
     });
   });
@@ -271,19 +275,23 @@ describe('CreateInferenceProviderSidePanel', () => {
     it('opens Create Secret modal when New Secret is chosen from the secret dropdown', async () => {
       const user = userEvent.setup();
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      const panel = await screen.findByRole('dialog');
+      const panel = await screen.findByTestId('nv-side-panel-content');
 
       await user.click(within(panel).getByRole('combobox', { name: /api key secret/i }));
       await user.click(await screen.findByRole('menuitem', { name: 'New Secret' }));
 
-      expect(await screen.findByRole('dialog', { name: 'Create Secret' })).toBeInTheDocument();
+      await waitFor(() => {
+        const modal = screen.getByTestId('nv-modal-content');
+        expect(modal).toHaveAttribute('data-state', 'open');
+        expect(within(modal).getByRole('heading', { name: 'Create Secret' })).toBeInTheDocument();
+      });
     });
   });
 
   describe('defaultPreset prop', () => {
     it('shows NVIDIA Build as the selected provider in the combobox when defaultPreset="build"', async () => {
       render(<CreateInferenceProviderSidePanel {...defaultProps} defaultPreset="build" />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       const combobox = screen.getByRole('combobox', { name: /model provider/i });
       expect(combobox).toHaveTextContent(/nvidia build/i);
       expect(await screen.findByRole('button', { name: 'Add Provider' })).toBeEnabled();
@@ -291,7 +299,7 @@ describe('CreateInferenceProviderSidePanel', () => {
 
     it('defaults to OpenAI Compatible Endpoint when no defaultPreset is provided', async () => {
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       const combobox = screen.getByRole('combobox', { name: /model provider/i });
       expect(combobox).toHaveTextContent(/openai compatible endpoint/i);
     });
@@ -326,10 +334,10 @@ describe('CreateInferenceProviderSidePanel', () => {
       );
 
       render(<CreateInferenceProviderSidePanel {...defaultProps} />);
-      await screen.findByRole('dialog');
+      await screen.findByTestId('nv-side-panel-content');
       await openModelProviderSelect(user);
       const buildOption = screen.getByRole('option', { name: /^nvidia build$/i });
-      expect(buildOption).toHaveAttribute('aria-disabled', 'true');
+      expect(buildOption).toBeDisabled();
     });
   });
 });

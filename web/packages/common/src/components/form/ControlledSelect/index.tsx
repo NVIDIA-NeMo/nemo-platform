@@ -59,7 +59,6 @@ export const ControlledSelect = <T extends 'single' | 'multiple' = 'single'>({
     >
       {() => {
         const baseProps = {
-          kind,
           value,
           onBlur,
           slotEnd: loading && <TextInputSpinner />,

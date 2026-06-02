@@ -1,0 +1,349 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Batch task entry point for the safe-synthesizer service.
+
+This module serves as the entry point for the safe-synthesizer batch task,
+which generates synthetic data using the Nemo Safe Synthesizer SDK.
+"""
+
+import os
+
+# Disable PyTorch inductor remote cache to avoid Redis warnings from vLLM.
+# These must be set before any PyTorch imports.
+os.environ.setdefault("TORCHINDUCTOR_FX_GRAPH_REMOTE_CACHE", "0")
+os.environ.setdefault("TORCHINDUCTOR_AUTOTUNE_REMOTE_CACHE", "0")
+
+import argparse
+import json
+import logging
+import sys
+import tempfile
+import time
+from pathlib import Path
+from typing import cast
+
+import pandas as pd
+from datasets import Dataset, DatasetDict, load_dataset
+from nemo_platform import NeMoPlatform
+from nemo_platform.filesets import parse_fileset_ref
+from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
+from nemo_safe_synthesizer.observability import initialize_observability
+from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
+from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig
+from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.jsonl_loader import load_jsonl_file
+from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.logging_setup import configure_logging
+from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.model_init import init_models_sync
+from nmp.common.config import get_platform_config
+from nmp.common.jobs.constants import (
+    DEFAULT_TASK_STORAGE_PATH,
+    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+    NEMO_JOB_ID_ENVVAR,
+    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+    NEMO_JOB_WORKSPACE_ENVVAR,
+)
+from nmp.common.jobs.file_manager import FilesetFileManager
+from nmp.common.sdk_factory import get_platform_sdk
+
+configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
+
+logger = logging.getLogger("safe_synthesizer")
+
+
+def download_from_fileset(fileset_url: str) -> pd.DataFrame:
+    """Download a dataset from a fileset and load it as a DataFrame."""
+    workspace = os.environ.get(NEMO_JOB_WORKSPACE_ENVVAR, "default")
+    workspace, fileset_name, _ = parse_fileset_ref(fileset_url, workspace_fallback=workspace)
+    sdk = get_platform_sdk()
+
+    file_manager = FilesetFileManager(
+        workspace=workspace,
+        fileset_name=fileset_name,
+        sdk=sdk,
+        ensure_fileset_exists=False,
+    )
+
+    logger.info("Downloading dataset from fileset: %s", fileset_url)
+    tmp_dir_path = file_manager.download_from_url(fileset_url)
+    local_path = tmp_dir_path.path
+
+    try:
+        if not local_path.exists():
+            raise FileNotFoundError(f"Failed to download file from fileset. File not found at: {local_path}")
+        if local_path.stat().st_size == 0:
+            raise ValueError(f"Downloaded file is empty: {local_path}")
+        return _load_file_as_dataframe(local_path)
+    finally:
+        tmp_dir_path.cleanup_tmp_dir()
+
+
+def _load_file_as_dataframe(local_path: Path) -> pd.DataFrame:
+    """Load a local file as a DataFrame based on extension."""
+    suffix = local_path.suffix.lower()
+    if suffix == ".csv":
+        logger.info("Loading CSV file: %s", local_path)
+        return pd.read_csv(local_path)
+    elif suffix == ".parquet":
+        logger.info("Loading Parquet file: %s", local_path)
+        return pd.read_parquet(local_path)
+    elif suffix == ".jsonl":
+        logger.info("Loading JSONL file: %s", local_path)
+        return load_jsonl_file(str(local_path))
+    elif suffix == ".json":
+        logger.info("Loading JSON file: %s", local_path)
+        return pd.read_json(local_path)
+    return _load_local_dataset(str(local_path))
+
+
+def _load_local_dataset(path: str) -> pd.DataFrame:
+    """Load a dataset from a local path using JSONL repair or HuggingFace datasets."""
+    jsonl_files = []
+    other_files = []
+
+    if os.path.isdir(path):
+        for filename in os.listdir(path):
+            filepath = os.path.join(path, filename)
+            if os.path.isfile(filepath):
+                if filename.endswith(".jsonl"):
+                    jsonl_files.append(filepath)
+                elif filename.endswith((".csv", ".parquet", ".json")):
+                    other_files.append(filepath)
+    elif os.path.isfile(path):
+        if path.endswith(".jsonl"):
+            jsonl_files.append(path)
+        else:
+            other_files.append(path)
+
+    if jsonl_files:
+        if len(jsonl_files) > 1:
+            logger.warning("Multiple JSONL files found (%d), using the first one", len(jsonl_files))
+        return load_jsonl_file(jsonl_files[0])
+
+    hf_dataset = load_dataset(path=path)
+    if isinstance(hf_dataset, DatasetDict):
+        if len(hf_dataset) > 1:
+            logger.warning("Multiple datasets found (%d), using the first one", len(hf_dataset))
+        hf_dataset = hf_dataset[list(hf_dataset.keys())[0]]
+    if not isinstance(hf_dataset, Dataset):
+        raise ValueError(f"Expected a dataset at {path!r}, got {type(hf_dataset).__name__}")
+    return cast(pd.DataFrame, hf_dataset.to_pandas())
+
+
+def upload_results(result: SafeSynthesizerResults, adapter_path: Path | None = None):
+    """Upload job results to the files service using FilesetFileManager."""
+    job_id = os.environ.get(NEMO_JOB_ID_ENVVAR)
+    if not job_id:
+        raise ValueError(f"{NEMO_JOB_ID_ENVVAR} is not set")
+
+    workspace = os.environ.get(NEMO_JOB_WORKSPACE_ENVVAR, "default")
+    sdk = get_platform_sdk()
+    fileset_name = f"job-results-{job_id}"
+    file_manager = FilesetFileManager(
+        workspace=workspace,
+        fileset_name=fileset_name,
+        sdk=sdk,
+        ensure_fileset_exists=True,
+    )
+    file_manager.validate_storage()
+
+    job = sdk.jobs.retrieve(name=job_id, workspace=workspace)
+    attempt_id = job.attempt_id
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_path = Path(temp_dir)
+
+        if result.synthetic_data is None:
+            raise ValueError("Safe Synthesizer did not produce synthetic data")
+        result_csv_path = temp_path / "result.csv"
+        result.synthetic_data.to_csv(result_csv_path, index=False)
+        artifact_url = file_manager.upload(result_csv_path, f"results/{attempt_id}/synthetic-data")
+        _create_job_result(sdk, workspace, job_id, "synthetic-data", artifact_url)
+
+        summary_json_path = temp_path / "summary.json"
+        with open(summary_json_path, "w", encoding="utf-8") as f:
+            json.dump(result.summary.model_dump(), f)
+        artifact_url = file_manager.upload(summary_json_path, f"results/{attempt_id}/summary")
+        _create_job_result(sdk, workspace, job_id, "summary", artifact_url)
+
+        if result.evaluation_report_html:
+            report_html_path = temp_path / "report.html"
+            with open(report_html_path, "w", encoding="utf-8") as f:
+                f.write(result.evaluation_report_html)
+            artifact_url = file_manager.upload(report_html_path, f"results/{attempt_id}/evaluation-report")
+            _create_job_result(sdk, workspace, job_id, "evaluation-report", artifact_url)
+
+    if adapter_path is not None and adapter_path.exists():
+        artifact_url = file_manager.upload(adapter_path, f"results/{attempt_id}/adapter")
+        _create_job_result(sdk, workspace, job_id, "adapter", artifact_url)
+
+
+def write_results_local(result: SafeSynthesizerResults, output_dir: Path, adapter_path: Path | None = None) -> None:
+    """Write NSS results to the host filesystem for local CUDA development."""
+    if result.synthetic_data is None:
+        raise ValueError("Safe Synthesizer did not produce synthetic data")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    result.synthetic_data.to_csv(output_dir / "synthetic-data.csv", index=False)
+    with open(output_dir / "summary.json", "w", encoding="utf-8") as f:
+        json.dump(result.summary.model_dump(), f, indent=2)
+    if result.evaluation_report_html:
+        (output_dir / "evaluation-report.html").write_text(result.evaluation_report_html, encoding="utf-8")
+    if adapter_path is not None and adapter_path.exists():
+        adapter_target = output_dir / "adapter"
+        if adapter_path.is_dir():
+            import shutil
+
+            if adapter_target.exists():
+                shutil.rmtree(adapter_target)
+            shutil.copytree(adapter_path, adapter_target)
+
+
+def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_name: str, artifact_url: str):
+    """Create a job result record."""
+    sdk.jobs.results.create(
+        name=result_name,
+        job=job_name,
+        workspace=workspace,
+        artifact_url=artifact_url,
+        artifact_storage_type="fileset",
+    )
+    logger.info("Created job result: %s", result_name)
+
+
+def _setup_classify_endpoint():
+    """Set up the NIM_ENDPOINT_URL for column classification from platform env vars."""
+    endpoint_path = os.environ.get("CLASSIFY_LLM_ENDPOINT_PATH")
+    if endpoint_path:
+        models_url = os.environ.get("NMP_MODELS_URL")
+        if not models_url:
+            logger.warning(
+                "CLASSIFY_LLM_ENDPOINT_PATH is set but NMP_MODELS_URL is not available. "
+                "Column classification may not work correctly."
+            )
+            return
+        full_url = models_url.rstrip("/") + endpoint_path
+        os.environ["NIM_ENDPOINT_URL"] = full_url
+        logger.info("Configured column classification endpoint: %s", full_url)
+
+
+def run_config(
+    job_config: SafeSynthesizerJobConfig, data_source: pd.DataFrame, save_path: Path
+) -> tuple[SafeSynthesizerResults, Path | None]:
+    """Run NSS against a validated config and already-loaded data source."""
+    enable_synthesis: bool = job_config.enable_synthesis
+    logger.info("enable_synthesis=%s", enable_synthesis)
+    logger.info("Nemo Safe Synthesizer runtime job config: %s", job_config.model_dump_json(indent=2))
+    logger.info("Using save_path: %s", save_path)
+
+    http_backoff = None
+    original_max_retries = None
+    try:
+        from huggingface_hub.utils._http import http_backoff
+
+        if http_backoff.__kwdefaults__ is not None:
+            original_max_retries = http_backoff.__kwdefaults__.get("max_retries")
+            http_backoff.__kwdefaults__["max_retries"] = 0
+
+        if not enable_synthesis:
+            job_config.config.data.holdout = 0
+            job_config.config.data.max_holdout = 0
+
+        ss: SafeSynthesizer = SafeSynthesizer(config=job_config.config, save_path=save_path).with_data_source(
+            data_source
+        )
+        if enable_synthesis:
+            ss.run()
+        else:
+            ss.process_data()
+            total_time = time.monotonic() - (ss._total_start or time.monotonic())
+            pii_replaced_df = getattr(ss, "_train_df", None)
+            if pii_replaced_df is None:
+                raise RuntimeError("process_data() completed but _train_df is None")
+            from nemo_safe_synthesizer.results import make_nss_results
+
+            ss.results = make_nss_results(generate_results=pii_replaced_df, total_time=total_time)
+    finally:
+        if http_backoff is not None and http_backoff.__kwdefaults__ is not None and original_max_retries is not None:
+            http_backoff.__kwdefaults__["max_retries"] = original_max_retries
+
+    adapter_path = ss._workdir.adapter_path if ss._workdir and enable_synthesis else None
+    return ss.results, adapter_path
+
+
+def run_from_env() -> None:
+    """Run in the platform task-container environment."""
+    initialize_observability()
+    files_url = get_platform_config().get_service_url("files")
+    if files_url:
+        logger.info("Initializing model weights from Files API...")
+        results = init_models_sync(files_api_url=files_url)
+        failed = [m for m, success in results.items() if not success]
+        if failed:
+            logger.warning("Some models failed to download: %s", failed)
+        else:
+            logger.info("Successfully initialized %d model(s)", len(results))
+    else:
+        logger.debug("Files API URL not configured, skipping model initialization")
+
+    _setup_classify_endpoint()
+
+    data_source_url = os.environ.get("DATA_SOURCE")
+    if data_source_url is None:
+        raise ValueError("DATA_SOURCE is not set")
+
+    data_source = download_from_fileset(fileset_url=data_source_url)
+    config_file_path = os.environ.get(NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR)
+    if not config_file_path:
+        raise ValueError(f"{NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR} is not set")
+    with open(config_file_path, "r", encoding="utf-8") as f:
+        raw_job_config: dict = json.load(f)
+
+    job_config = SafeSynthesizerJobConfig.model_validate(raw_job_config)
+    save_path = Path(os.environ.get(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, DEFAULT_TASK_STORAGE_PATH))
+    result, adapter_path = run_config(job_config, data_source, save_path)
+    upload_results(result=result, adapter_path=adapter_path)
+
+
+def run_local(spec_file: Path, workspace: str, output_dir: Path, data_source: Path | None = None) -> None:
+    """Run NSS on the host GPU from a job spec file."""
+    os.environ.setdefault(NEMO_JOB_WORKSPACE_ENVVAR, workspace)
+    with open(spec_file, "r", encoding="utf-8") as f:
+        raw_job_config = json.load(f)
+    job_config = SafeSynthesizerJobConfig.model_validate(raw_job_config)
+    if data_source is None:
+        loaded_data = download_from_fileset(job_config.data_source)
+    else:
+        loaded_data = _load_file_as_dataframe(data_source)
+    result, adapter_path = run_config(job_config, loaded_data, output_dir / "work")
+    write_results_local(result, output_dir, adapter_path)
+
+
+def main(argv: list[str] | None = None) -> None:
+    """Run the task entry point from either platform env vars or CLI args."""
+    argv = sys.argv[1:] if argv is None else argv
+    if not argv:
+        run_from_env()
+        return
+
+    parser = argparse.ArgumentParser(prog="python -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    local_parser = subparsers.add_parser("run-local", help="Run a Safe Synthesizer job from a local spec file.")
+    local_parser.add_argument("--spec-file", required=True, type=Path)
+    local_parser.add_argument("--workspace", default="default")
+    local_parser.add_argument("--output-dir", required=True, type=Path)
+    local_parser.add_argument("--data-source", type=Path)
+
+    args = parser.parse_args(argv)
+    if args.command == "run-local":
+        run_local(
+            spec_file=args.spec_file,
+            workspace=args.workspace,
+            output_dir=args.output_dir,
+            data_source=args.data_source,
+        )
+        return
+
+    parser.error(f"unknown command: {args.command}")
+
+
+if __name__ == "__main__":
+    main()

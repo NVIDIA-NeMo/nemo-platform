@@ -7,24 +7,34 @@
  * Runs prettier and eslint fix on generated API files, and prefixes unused parameters with underscores.
  */
 
-import { execSync } from 'child_process';
-import { mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import prettier from 'prettier';
+import { serviceConfigs } from './constants';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Get the service path from command line args
-const servicePath = process.argv[2];
+const ALLOWED_SERVICE_PATHS: ReadonlySet<string> = new Set(
+  Object.values(serviceConfigs).map((c) => c.path)
+);
+const rawServicePath = process.argv[2];
 
-if (!servicePath) {
+if (!rawServicePath) {
   console.error('Error: Service path is required');
   console.error('Usage: node format-generated.js <service-path>');
   process.exit(1);
 }
 
+if (!ALLOWED_SERVICE_PATHS.has(rawServicePath)) {
+  console.error(`Error: Unknown service path: ${rawServicePath}`);
+  console.error(`Allowed: ${[...ALLOWED_SERVICE_PATHS].join(', ')}`);
+  process.exit(1);
+}
+
+const servicePath = rawServicePath;
 const generatedPath = path.join(__dirname, '..', 'generated', servicePath);
 
 console.log(`\n📝 Processing generated files in ${generatedPath}...`);
@@ -36,15 +46,14 @@ function getTsFiles(dir: string): string[] {
   const files: string[] = [];
 
   try {
-    const entries = readdirSync(dir);
+    const entries = readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry);
-      const stat = statSync(fullPath);
+      const fullPath = path.join(dir, entry.name);
 
-      if (stat.isDirectory()) {
+      if (entry.isDirectory()) {
         files.push(...getTsFiles(fullPath));
-      } else if (entry.endsWith('.ts')) {
+      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
         files.push(fullPath);
       }
     }
@@ -435,53 +444,64 @@ function splitZodTagFile(filePath: string): number {
 }
 
 function splitZodTagFilesIn(zodDir: string): void {
-  let entries: string[];
+  let entries: Dirent[];
   try {
-    entries = readdirSync(zodDir);
+    entries = readdirSync(zodDir, { withFileTypes: true });
   } catch {
     return;
   }
   for (const entry of entries) {
-    const fullPath = path.join(zodDir, entry);
-    if (!entry.endsWith('.ts')) continue;
-    if (!statSync(fullPath).isFile()) continue;
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+    const fullPath = path.join(zodDir, entry.name);
     const count = splitZodTagFile(fullPath);
     if (count > 0) {
-      console.log(`    Split ${entry} into ${count} operation files`);
+      console.log(`    Split ${entry.name} into ${count} operation files`);
     }
   }
 }
 
-try {
-  // Step 1: Prefix unused parameters with underscore
+async function formatWithPrettier(dir: string): Promise<void> {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await formatWithPrettier(fullPath);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const fileInfo = await prettier.getFileInfo(fullPath);
+    if (fileInfo.ignored || !fileInfo.inferredParser) continue;
+    const opts = (await prettier.resolveConfig(fullPath)) ?? {};
+    const source = readFileSync(fullPath, 'utf-8');
+    const formatted = await prettier.format(source, { ...opts, filepath: fullPath });
+    if (formatted !== source) {
+      writeFileSync(fullPath, formatted, 'utf-8');
+    }
+  }
+}
+
+async function run(): Promise<void> {
   console.log('Prefixing unused parameters...');
   const tsFiles = getTsFiles(generatedPath);
   let modifiedCount = 0;
-
   for (const file of tsFiles) {
     if (prefixUnusedParameters(file)) {
       modifiedCount++;
     }
   }
-
   console.log(`  Modified ${modifiedCount} file(s)`);
 
-  // Step 2: Split large orval-generated zod tag files into per-operation files.
-  // Each tag file (e.g. zod/evaluator.ts) gets replaced with a barrel and a
-  // sibling directory of per-operation files (zod/evaluator/<op>.ts).
   const zodDir = path.join(generatedPath, 'zod');
   console.log('Splitting zod tag files by operation...');
   splitZodTagFilesIn(zodDir);
 
-  // Step 3: Run prettier
   console.log('Running prettier...');
-  execSync(`prettier --write ${generatedPath}`, {
-    stdio: 'inherit',
-    cwd: path.join(__dirname, '..'),
-  });
+  await formatWithPrettier(generatedPath);
 
   console.log('✅ Successfully processed generated files\n');
-} catch (error) {
+}
+
+run().catch((error) => {
   console.error('❌ Error during processing:', (error as Error).message);
   process.exit(1);
-}
+});

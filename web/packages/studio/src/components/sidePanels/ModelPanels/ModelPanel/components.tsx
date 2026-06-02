@@ -182,7 +182,7 @@ export const ModelParametersAccordion = ({
 
   const inferenceAccordion = isDefined(model.api_endpoint)
     ? {
-        iconSide: 'left' as const,
+        chevronPosition: 'start' as const,
         slotTrigger: 'Inference',
         slotContent: (
           <Stack gap="4">
@@ -249,7 +249,7 @@ export const ModelParametersAccordion = ({
   const customizationAccordion =
     showCustomizationDetails && isCustomizedModel
       ? {
-          iconSide: 'left' as const,
+          chevronPosition: 'start' as const,
           slotTrigger: 'Customization Parameters',
           slotContent: (
             <Stack gap="2">
@@ -289,7 +289,7 @@ export const ModelParametersAccordion = ({
 
   const promptAccordion = isDefined(model.prompt)
     ? {
-        iconSide: 'left' as const,
+        chevronPosition: 'start' as const,
         slotTrigger: 'Prompt',
         slotContent: (
           <Stack gap="2">
@@ -327,7 +327,7 @@ export const ModelParametersAccordion = ({
     artifactData?.tensor_parallelism;
   const artifactAccordion = showArtifact
     ? {
-        iconSide: 'left' as const,
+        chevronPosition: 'start' as const,
         slotTrigger: 'Artifact Data',
         slotContent: (
           <Stack gap="2">
@@ -351,7 +351,7 @@ export const ModelParametersAccordion = ({
     : undefined;
 
   const modelParametersAccordion = {
-    iconSide: 'left' as const,
+    chevronPosition: 'start' as const,
     slotTrigger: 'Base Model Parameters',
     slotContent: (
       <Stack gap="2">
@@ -392,7 +392,7 @@ export const ModelParametersAccordion = ({
   const adapterAccordion =
     showCustomizationDetails && adapter
       ? {
-          iconSide: 'left' as const,
+          chevronPosition: 'start' as const,
           slotTrigger: 'Adapter Details',
           slotContent: (
             <Stack gap="2">

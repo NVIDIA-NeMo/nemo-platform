@@ -28,7 +28,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend
+from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend, _resolve_nat_bin
 from nmp.common.config import Configuration, nmp_user_data_dir
 
 
@@ -291,3 +291,55 @@ async def test_real_subprocess_exit_writes_log_at_recorded_path(tmp_path: Path) 
     assert status is not None
     assert status.status == "failed"
     assert "exited with code 1" in status.error
+
+
+# ---------------------------------------------------------------------------
+# _resolve_nat_bin: how the runner finds the `nat` executable.
+#
+# The runner spawns `nat start fastapi` per deployment.  Resolution must work
+# under every supported install path (activated venv, agentic container,
+# `uv tool install`, and explicit override) without requiring users to massage
+# PATH themselves.
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_nat_bin_uses_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    """`shutil.which` is preferred — covers activated venvs and the container."""
+    monkeypatch.setattr("shutil.which", lambda name: f"/usr/local/bin/{name}")
+    assert _resolve_nat_bin() == "/usr/local/bin/nat"
+
+
+def test_resolve_nat_bin_uses_sibling_of_sys_executable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When `nat` is not on PATH, look next to `sys.executable`.
+
+    This is the `uv tool install nemo-platform` case: the tool venv contains
+    `nat` (it's co-installed with `nemo` via the `[services]` chain), but the
+    venv's `bin/` is not prepended to PATH, so `shutil.which` returns None.
+    """
+    monkeypatch.setattr("shutil.which", lambda _: None)
+
+    fake_venv_bin = tmp_path / "bin"
+    fake_venv_bin.mkdir()
+    fake_python = fake_venv_bin / "python"
+    fake_python.touch()
+    fake_nat = fake_venv_bin / "nat"
+    fake_nat.write_text("#!/bin/sh\necho nat-stub\n")
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+
+    assert _resolve_nat_bin() == str(fake_nat)
+
+
+def test_resolve_nat_bin_falls_back_to_container_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """When nothing else matches, return the container path. This preserves
+    backwards-compatible behavior in the agentic container even if the PATH
+    lookup somehow fails inside it."""
+    monkeypatch.setattr("shutil.which", lambda _: None)
+
+    # sys.executable points somewhere with no sibling `nat`.
+    fake_bin = tmp_path / "bin"
+    fake_bin.mkdir()
+    fake_python = fake_bin / "python"
+    fake_python.touch()
+    monkeypatch.setattr(sys, "executable", str(fake_python))
+
+    assert _resolve_nat_bin() == "/app/.venv/bin/nat"

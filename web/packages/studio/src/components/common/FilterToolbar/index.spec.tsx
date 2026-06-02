@@ -53,7 +53,7 @@ describe('FilterToolbar', () => {
   it('displays filter tags when filters are active', () => {
     render(<FilterToolbar {...defaultProps} />);
     // Assuming FilterTags renders something like "Test Filter: active-value"
-    expect(screen.getByText(/Test Filter/)).toBeInTheDocument();
+    expect(screen.getAllByText(/Test Filter/).length).toBeGreaterThan(0);
   });
 
   it('handles disabled state correctly', () => {

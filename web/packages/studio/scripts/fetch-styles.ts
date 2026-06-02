@@ -14,6 +14,7 @@ import { parse } from 'yaml';
 
 const PKG = '@nvidia/foundations-react-core';
 const CDN = 'https://webassets.nvidia.com/kaizen-ui-foundations';
+const CDN_URL = new URL(CDN);
 const FILES = ['base-external.css', 'components.css'];
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -69,7 +70,10 @@ async function readCachedVersion() {
 }
 
 async function fetchCss(version: string, file: string) {
-  const url = `${CDN}/${version}/${file}`;
+  const url = new URL(`${encodeURIComponent(version)}/${encodeURIComponent(file)}`, `${CDN}/`);
+  if (url.protocol !== 'https:' || url.host !== CDN_URL.host) {
+    throw new Error(`Refusing to fetch from disallowed origin: ${url.origin}`);
+  }
   const res = await fetch(url);
   if (!res.ok) {
     throw new Error(`Failed to fetch ${url}: ${res.status} ${res.statusText}`);

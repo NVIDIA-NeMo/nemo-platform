@@ -10,9 +10,7 @@ import {
 import { APIRequestContext } from '@playwright/test';
 
 export class CustomizationsAPI {
-  constructor(private request: APIRequestContext) {
-    this.request = request;
-  }
+  constructor(private request: APIRequestContext) {}
 
   async createCustomizationJob(data: CustomizationJobInput) {
     const response = await this.request.post(`${NMP_BASE_URL}/v1/customization/jobs`, {

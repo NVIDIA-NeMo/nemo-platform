@@ -29,7 +29,7 @@ export const DirectoryQuickActions: FC<Props> = ({ datasetId, directory, current
   const { mutateAsync: deleteDirectory, error: deleteError } = useDatasetDirectoryDelete();
   const { getQueryParam } = useQueryParams();
 
-  const folderFromQuery = getQueryParam(QUERY_PARAMETERS.datasetFolder);
+  const folderFromQuery = getQueryParam(QUERY_PARAMETERS.filesetFolder);
   const path = resolveDatasetFilePath(
     directory.path,
     currentFolder ?? folderFromQuery ?? undefined

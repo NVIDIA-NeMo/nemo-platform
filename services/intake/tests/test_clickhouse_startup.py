@@ -3,18 +3,15 @@
 
 """Tests for Intake startup when ClickHouse is unavailable."""
 
+import asyncio
 import logging
-from typing import cast
 
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from nmp.intake.config import ClickHouseConfig, IntakeConfig
 from nmp.intake.service import IntakeService
-from nmp.testing import create_test_client
 
 
-def test_intake_starts_without_clickhouse_and_trace_routes_return_503(
+def test_intake_ready_when_clickhouse_is_unavailable(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     intake_config = IntakeConfig(
@@ -26,22 +23,18 @@ def test_intake_starts_without_clickhouse_and_trace_routes_return_503(
         )
     )
     caplog.set_level(logging.WARNING, logger="nmp.intake.service")
+    service = IntakeService().with_config(intake_config)
 
-    with create_test_client(
-        IntakeService,
-        client_type=TestClient,
-        service_configs={IntakeService: intake_config},
-    ) as client:
-        app = cast(FastAPI, client.app)
-        service = cast(IntakeService, app.state.intake_service)
-
+    async def check_readiness() -> bool:
+        await service.on_startup()
         assert service.clickhouse_client is not None
-        assert client.get("/openapi.json").status_code == 200
-        assert any(
-            "ClickHouse schema setup was not run during Intake startup" in record.message for record in caplog.records
-        )
+        try:
+            return await service.is_ready()
+        finally:
+            await service.on_shutdown()
 
-        response = client.get("/apis/intake/v2/workspaces/default/spans")
-
-    assert response.status_code == 503
-    assert response.json()["detail"] == "ClickHouse spans storage unavailable"
+    assert asyncio.run(check_readiness()) is True
+    assert any(
+        "ClickHouse schema setup was not run during Intake startup" in record.message for record in caplog.records
+    )
+    assert not any("ClickHouse readiness check failed" in record.message for record in caplog.records)

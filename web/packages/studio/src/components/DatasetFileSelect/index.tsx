@@ -15,8 +15,10 @@ import {
   SelectRoot,
   SelectTrigger,
 } from '@nvidia/foundations-react-core';
-import { FeedbackAddToDatasetFileSource } from '@studio/api/intake/constants';
-import { LOADING_FILES_OPTION } from '@studio/components/DatasetFileSelect/constants';
+import {
+  FeedbackAddToDatasetFileSource,
+  LOADING_FILES_OPTION,
+} from '@studio/components/DatasetFileSelect/constants';
 import { MultiselectOption } from '@studio/constants/mutliselect';
 import { Plus } from 'lucide-react';
 import { FC, ReactNode, useMemo } from 'react';
@@ -118,7 +120,7 @@ export const DatasetFileSelect: FC<Props> = ({
               status={status}
               aria-label="dataset-file-select"
             />
-            <SelectContent portal={false}>
+            <SelectContent>
               {isError && (
                 <SelectItem value="" disabled>
                   Error loading files

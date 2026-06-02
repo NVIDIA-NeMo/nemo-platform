@@ -64,8 +64,6 @@ from nemo_platform.types import (
 
 # [Projects](src/nemo_platform/resources/projects/api.md)
 
-# [Members](src/nemo_platform/resources/members/api.md)
-
 # [Adapters](src/nemo_platform/resources/adapters/api.md)
 
 # [Intake](src/nemo_platform/resources/intake/api.md)

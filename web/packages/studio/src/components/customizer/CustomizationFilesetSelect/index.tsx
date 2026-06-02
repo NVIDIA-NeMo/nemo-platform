@@ -181,7 +181,7 @@ export const CustomizationFilesetSelect: FC<CustomizationFilesetSelectProps> = (
               ) : undefined
             }
           />
-          <SelectContent portal={false}>
+          <SelectContent>
             {filesets.map((f) => {
               const ref = getEntityReference(f);
               return (

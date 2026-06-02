@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -117,6 +118,78 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     filtered_spans = filtered.json()["data"]
     assert len(filtered_spans) == 1
     assert filtered_spans[0]["span_id"] == "chatcmpl-test-abc123"
+
+
+def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-costs"),
+        "session_id": "session-costs",
+        "cost_usd": 0.0061,
+        "cost_input_usd": 0.0024,
+        "cost_output_usd": 0.0037,
+        "cost_details": {
+            "total": 0.99,
+            "input": 0.98,
+            "output": 0.97,
+            "base_input": 0.0018,
+            "cached_input": 0.0004,
+            "cache_write": 0.0002,
+        },
+    }
+    response = client.post(INGEST_URL, json=body)
+    assert response.status_code == 201, response.text
+
+    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-costs"})
+    assert listed.status_code == 200, listed.text
+    span = listed.json()["data"][0]
+    assert Decimal(str(span["cost_total_usd"])) == Decimal("0.0061")
+    assert Decimal(str(span["cost_input_usd"])) == Decimal("0.0024")
+    assert Decimal(str(span["cost_output_usd"])) == Decimal("0.0037")
+    assert Decimal(str(span["cost_details"]["base_input"])) == Decimal("0.0018")
+    assert Decimal(str(span["cost_details"]["cached_input"])) == Decimal("0.0004")
+    assert Decimal(str(span["cost_details"]["cache_write"])) == Decimal("0.0002")
+
+
+def test_chat_completions_ingest_rejects_producer_cost_total_alias(client: TestClient):
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-cost-total-alias"),
+        "session_id": "session-cost-total-alias",
+        "cost_total_usd": 0.0061,
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 422, response.text
+
+
+def test_chat_completions_ingest_uses_only_openai_usage_fields(client: TestClient):
+    body = {
+        "request": _openai_request(model="aws/anthropic/bedrock-claude-opus-4-7"),
+        "response": _openai_response(
+            id="chatcmpl-openai-usage-only",
+            model="aws/anthropic/bedrock-claude-opus-4-7",
+            usage={
+                "input_tokens": 30,
+                "output_tokens": 7,
+                "cache_read_input_tokens": 5,
+                "cache_creation_input_tokens": 3,
+                "output_tokens_details": {"reasoning_tokens": 2},
+            },
+        ),
+        "session_id": "session-openai-usage-only",
+    }
+    response = client.post(INGEST_URL, json=body)
+    assert response.status_code == 201, response.text
+
+    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-openai-usage-only"})
+    assert listed.status_code == 200, listed.text
+    span = listed.json()["data"][0]
+    assert "input_tokens" not in span
+    assert "output_tokens" not in span
+    assert "total_tokens" not in span
+    assert "cached_tokens" not in span
+    assert span["usage_details"] == {}
 
 
 # ---------------------------------------------------------------------------

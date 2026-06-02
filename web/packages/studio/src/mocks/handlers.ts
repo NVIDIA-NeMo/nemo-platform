@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  type AnnotationInput,
   HTTPValidationError,
   type MetricEvaluationJob,
   ModelEntitySortField,
@@ -18,6 +19,15 @@ import { modelsHandlers } from '@studio/mocks/handlers/models';
 import { sampleDatasetsHandlers } from '@studio/mocks/handlers/sampleDatasets';
 import { secretsHandlers } from '@studio/mocks/handlers/secrets';
 import { workspacesHandlers } from '@studio/mocks/handlers/workspaces';
+import {
+  createMockAnnotation,
+  deleteMockAnnotation,
+  mockAnnotationsPage,
+  mockSpanById,
+  mockSpansPage,
+  mockTraceById,
+  mockTracesPage,
+} from '@studio/mocks/intake/telemetry';
 import { randomUUID } from 'crypto';
 import { http, HttpResponse } from 'msw';
 
@@ -501,22 +511,65 @@ export const handlers = [
   ),
 
   // Intake
-  http.get('*/apis/intake/v2/workspaces/:workspace/entries', async () => {
-    const { entriesPage1 } = await import('@studio/mocks/intake/entries');
-    return HttpResponse.json(entriesPage1);
+  http.get('*/apis/intake/v2/workspaces/:workspace/traces', () => {
+    return HttpResponse.json(mockTracesPage);
   }),
-  http.options('*/apis/intake/v2/workspaces/:workspace/entries', () => HttpResponse.json({})),
-  http.get('*/apis/intake/v2/workspaces/:workspace/export/jobs', async () => {
-    const { mockExportJobsPage } = await import('@studio/mocks/intake/exportJobs');
-    return HttpResponse.json(mockExportJobsPage);
+  http.get('*/apis/intake/v2/workspaces/:workspace/traces/:traceId', ({ params }) => {
+    const trace = mockTraceById(String(params['traceId']));
+    return trace ? HttpResponse.json(trace) : new HttpResponse(null, { status: 404 });
   }),
-  http.post('*/apis/intake/v2/workspaces/:workspace/export/jobs', async () => {
-    const { exportJob1 } = await import('@studio/mocks/intake/exportJobs');
-    return HttpResponse.json(exportJob1);
+  http.get('*/apis/intake/v2/workspaces/:workspace/spans', ({ request }) => {
+    const url = new URL(request.url);
+    const traceId = url.searchParams.get('filter[trace_id]');
+    const data = traceId
+      ? mockSpansPage.data.filter((span) => span.trace_id === traceId)
+      : mockSpansPage.data;
+
+    return HttpResponse.json({
+      ...mockSpansPage,
+      data,
+      pagination: {
+        ...mockSpansPage.pagination,
+        current_page_size: data.length,
+        total_results: data.length,
+        total_pages: data.length > 0 ? 1 : 0,
+      },
+      filter: traceId ? { trace_id: traceId } : undefined,
+    });
   }),
-  http.get('*/apis/intake/v2/workspaces/:workspace/export/jobs/:jobId', async () => {
-    const { exportJob1 } = await import('@studio/mocks/intake/exportJobs');
-    return HttpResponse.json(exportJob1);
+  http.get('*/apis/intake/v2/workspaces/:workspace/spans/:spanId', ({ params }) => {
+    const span = mockSpanById(String(params['spanId']));
+    return span ? HttpResponse.json(span) : new HttpResponse(null, { status: 404 });
+  }),
+  http.get('*/apis/intake/v2/workspaces/:workspace/annotations', ({ request }) => {
+    const url = new URL(request.url);
+    const spanId = url.searchParams.get('filter[span_id]') ?? undefined;
+    const parsedPage = Number(url.searchParams.get('page') ?? '1');
+    const parsedPageSize = Number(url.searchParams.get('page_size') ?? '100');
+    const page = Number.isInteger(parsedPage) && parsedPage > 0 ? parsedPage : 1;
+    const pageSize = Number.isInteger(parsedPageSize) && parsedPageSize > 0 ? parsedPageSize : 100;
+    return HttpResponse.json(
+      mockAnnotationsPage({
+        spanId,
+        page,
+        pageSize,
+      })
+    );
+  }),
+  http.post('*/apis/intake/v2/workspaces/:workspace/annotations', async ({ request, params }) => {
+    const data = (await request.json()) as AnnotationInput;
+    return HttpResponse.json(
+      createMockAnnotation({
+        workspace: String(params['workspace']),
+        data,
+      })
+    );
+  }),
+  http.delete('*/apis/intake/v2/workspaces/:workspace/annotations/:annotationId', ({ params }) => {
+    const deleted = deleteMockAnnotation(String(params['annotationId']));
+    return deleted
+      ? new HttpResponse(null, { status: 200 })
+      : new HttpResponse(null, { status: 404 });
   }),
   // Agents V2
   http.get(

@@ -20,6 +20,7 @@ class TestConstants:
     # Basic values
     SOURCE = "test-source"
     PROJECT = "test-project"
+    WORKSPACE = "test-workspace"
 
     # Descriptions
     DESC_TEST = "A test job for round-trip testing"
@@ -34,10 +35,24 @@ class TestConstants:
         "complex": {"learning_rate": 0.001, "batch_size": 32, "epochs": 10},
     }
 
+    # The Jobs API translates `cpu/<profile>` steps into `subprocess/<profile>` steps
+    # before validation when a matching subprocess profile is configured (see
+    # `translate_cpu_container_steps_to_subprocess` in
+    # services/core/jobs/src/nmp/core/jobs/api/v2/jobs/endpoints.py). That translation
+    # requires the source step to declare an entrypoint and/or command on its
+    # container, since the subprocess backend has no notion of an image to fall back
+    # on. Real plugin compilers (Data Designer create, Evaluator metrics, hello-world,
+    # etc.) all set both fields; the fixture mirrors that so submissions through the
+    # core /apis/jobs/v2/workspaces/{ws}/jobs endpoint validate successfully and we
+    # exercise the same translation path the user-facing tutorials do.
     TEST_EXECUTOR = CPUExecutionProvider(
         provider="cpu",
         profile="default",
-        container=ContainerSpec(image="test-image"),
+        container=ContainerSpec(
+            image="test-image",
+            entrypoint=["python", "-m"],
+            command=["nmp.testing.fake_task"],
+        ),
         resources=ComputeResources(
             limits=ComputeResourceSpec(
                 cpu="5",

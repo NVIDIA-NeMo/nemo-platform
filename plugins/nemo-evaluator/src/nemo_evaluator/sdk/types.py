@@ -8,13 +8,14 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, TypeAlias
 
+from nemo_evaluator.sdk.values.filesets import FilesetRef
 from nemo_evaluator_sdk.values import (
     DatasetInput,
+    FieldMapping,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nmp.evaluator.app.values import FilesetRef
 
 # TODO: remove this type if we decide nemo_evaluator_sdk will not support remote execution.
 ExecutionMode: TypeAlias = Literal["local", "remote"]
@@ -24,6 +25,8 @@ __all__ = [
     "RunConfig",
     "RunConfigOnline",
     "RunConfigOnlineModel",
+    "FilesetRef",
+    "FieldMapping",
     "ExecutionMode",
     "PluginDatasetInput",
 ]

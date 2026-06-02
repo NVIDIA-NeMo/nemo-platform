@@ -95,7 +95,7 @@ class SpanRepository:
 
     async def get_span(self, *, workspace: str, span_id: str) -> IntakeSpan | None:
         columns_sql = ", ".join(SPAN_COLUMNS)
-        external_result = await self._client.query(
+        result = await self._client.query(
             f"""
             SELECT {columns_sql}
             FROM {self._client.table("spans")} FINAL
@@ -104,28 +104,10 @@ class SpanRepository:
             """,
             parameters={"workspace": workspace, "span_id": span_id},
         )
-        external_rows = result_rows(external_result)
-        if external_rows:
-            return _row_to_span(external_rows[0])
-
-        try:
-            internal_id = int(span_id)
-        except ValueError:
+        rows = result_rows(result)
+        if not rows:
             return None
-
-        internal_result = await self._client.query(
-            f"""
-            SELECT {columns_sql}
-            FROM {self._client.table("spans")} FINAL
-            WHERE workspace = %(workspace)s AND id = %(id)s AND is_deleted = 0
-            LIMIT 1
-            """,
-            parameters={"workspace": workspace, "id": internal_id},
-        )
-        internal_rows = result_rows(internal_result)
-        if not internal_rows:
-            return None
-        return _row_to_span(internal_rows[0])
+        return _row_to_span(rows[0])
 
 
 def _span_where(filters: SpanListFilter) -> tuple[str, dict[str, Any]]:

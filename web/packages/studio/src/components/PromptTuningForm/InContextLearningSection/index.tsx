@@ -19,7 +19,7 @@ import {
   PromptTuningFormSectionProps,
 } from '@studio/routes/PromptTuningFormRoute/utils';
 import { Plus, CircleCheckBig, File } from 'lucide-react';
-import { FC, useMemo, useState } from 'react';
+import { FC, useId, useMemo, useState } from 'react';
 import { useForm, useFormContext, useWatch } from 'react-hook-form';
 
 export const InContextLearningSection: FC<PromptTuningFormSectionProps> = ({ isEditable }) => {
@@ -31,6 +31,7 @@ export const InContextLearningSection: FC<PromptTuningFormSectionProps> = ({ isE
   });
   const [openModal, setOpenModal] = useState<'import' | 'view' | undefined>(undefined);
   const [selectedICL, setSelectedICL] = useState<{ fileName: string; content?: string }>();
+  const previewPanelId = useId();
   const iclFewShotExamples = useWatch({ control: parentForm.control, name: 'iclFewShotExamples' });
   const systemPromptTemplate =
     useWatch({
@@ -98,6 +99,7 @@ export const InContextLearningSection: FC<PromptTuningFormSectionProps> = ({ isE
         )}
       </Stack>
       <SidePanel
+        id={previewPanelId}
         className="w-[800px]"
         bordered
         modal

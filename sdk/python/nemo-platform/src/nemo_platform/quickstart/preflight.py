@@ -194,10 +194,10 @@ class PreflightChecker:
         """Check if the configured host port is available or NeMo Platform is already running."""
         from .validators import is_quickstart_running
 
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.bind(("0.0.0.0", self.config.host_port))
-            sock.close()
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("0.0.0.0", self.config.host_port))  # noqa: S104  # nosec B104
             self.results.append(
                 PreflightResult(
                     name="Port Available",

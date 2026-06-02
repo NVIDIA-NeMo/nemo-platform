@@ -154,13 +154,13 @@ describe('DatasetsTable', () => {
       },
       { timeout: LG_SELECTOR_TIMEOUT }
     );
-    const checkbox = getCheckboxAt(index);
-    if (checkbox.getAttribute('aria-checked') !== 'true') {
+    const checkbox = getCheckboxAt(index) as HTMLInputElement;
+    if (!checkbox.checked) {
       await user.click(checkbox);
     }
     await waitFor(
       () => {
-        expect(getCheckboxAt(index)).toHaveAttribute('aria-checked', 'true');
+        expect(getCheckboxAt(index)).toBeChecked();
       },
       { timeout: LG_SELECTOR_TIMEOUT }
     );
@@ -173,13 +173,13 @@ describe('DatasetsTable', () => {
       },
       { timeout: LG_SELECTOR_TIMEOUT }
     );
-    const checkbox = getCheckboxAt(index);
-    if (checkbox.getAttribute('aria-checked') === 'true') {
+    const checkbox = getCheckboxAt(index) as HTMLInputElement;
+    if (checkbox.checked) {
       await user.click(checkbox);
     }
     await waitFor(
       () => {
-        expect(getCheckboxAt(index)).not.toHaveAttribute('aria-checked', 'true');
+        expect(getCheckboxAt(index)).not.toBeChecked();
       },
       { timeout: LG_SELECTOR_TIMEOUT }
     );
@@ -527,10 +527,7 @@ describe('DatasetsTable', () => {
 
       await selectRow(0);
       // Implicit assertion: reaching this line without throwing is a pass
-      expect(screen.getAllByRole('checkbox', { name: /(De)?select row/i })[0]).toHaveAttribute(
-        'aria-checked',
-        'true'
-      );
+      expect(screen.getAllByRole('checkbox', { name: /(De)?select row/i })[0]).toBeChecked();
     });
   });
 

@@ -127,7 +127,8 @@ class TestParsedFilterRemove:
 
     def test_remove_from_none(self):
         pf = ParsedFilter(operation=None, _field_map=SampleFilter._get_entity_field_map())
-        assert pf.remove("status") is None
+        result = pf.remove("status")
+        assert result is None
 
     def test_remove_non_eq_not_removed(self):
         op = ComparisonOperation(operator=FilterOperator.LIKE, field="name", value="llama")

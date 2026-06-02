@@ -82,8 +82,11 @@ export interface FilesetFileExplorerProps {
   isLoading: boolean;
   /** Whether files are currently being fetched */
   isFilesFetching: boolean;
-  /** Callback when a file is selected for viewing */
-  onFileSelect: (filePath: string) => void;
+  /** Callback when a file is selected for viewing. When omitted, file rows are
+   *  non-interactive (no row-click navigation, no "View File" quick action).
+   *  Hosts that don't yet have a preview surface should leave this undefined
+   *  rather than passing a no-op, so the view affordance isn't exposed. */
+  onFileSelect?: (filePath: string) => void;
   /** Gates the fileset metadata fetch. Defaults to true.
    *  Hosts that mount the explorer behind a panel animation can pass the panel's
    *  open state to suppress fetches while closed. */
@@ -94,7 +97,7 @@ export interface FilesetFileExplorerProps {
   extraColumns?: ExtraColumn[];
   /** Fires when the user explicitly toggles a folder open or closed (row click).
    *  Does NOT fire for the explorer's own auto-expansion from `currentFolder`.
-   *  Hosts can use this to sync URL state (e.g. drop `?datasetFolder=` when the
+   *  Hosts can use this to sync URL state (e.g. drop `?filesetFolder=` when the
    *  user collapses the folder that was named in the URL). */
   onFolderToggle?: (folderPath: string, isExpanded: boolean) => void;
 }
@@ -250,7 +253,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
               }
             }}
             attributes={{
-              CheckboxBox: {
+              CheckboxInput: {
                 'aria-label': `Select all files and directories`,
                 'aria-labelledby': undefined,
               },
@@ -325,7 +328,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                   }
                 }}
                 attributes={{
-                  CheckboxBox: {
+                  CheckboxInput: {
                     'aria-label': `Select path ${node.path}`,
                     'aria-labelledby': undefined,
                   },
@@ -363,14 +366,17 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
             ),
             onCellSelect: () => {
               if (node.type === 'file') {
-                onFileSelect(node.path);
+                onFileSelect?.(node.path);
               } else if (node.type === 'directory') {
                 handleUserFolderToggle(node.path);
               }
             },
             attributes: {
               TableDataCell: {
-                className: 'cursor-pointer',
+                // Directories always toggle on click; files only do so when a
+                // view handler is wired up. Skip the pointer cursor for files
+                // without a handler so the row doesn't look interactive.
+                className: node.type === 'directory' || onFileSelect ? 'cursor-pointer' : undefined,
               },
             },
           },

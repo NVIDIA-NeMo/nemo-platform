@@ -4,9 +4,7 @@
 import { type Page } from '@playwright/test';
 
 export class ProjectSafeSynthesizerPage {
-  constructor(public readonly page: Page) {
-    this.page = page;
-  }
+  constructor(public readonly page: Page) {}
 
   async goto(projectNamespace: string, projectName: string) {
     await this.page.goto(`projects/${projectNamespace}/${projectName}/safe-synthesizer`);

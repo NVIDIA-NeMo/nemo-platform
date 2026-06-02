@@ -5,12 +5,13 @@ from unittest.mock import AsyncMock, Mock, patch
 
 import data_designer.config as dd
 import nemo_data_designer_plugin.testing.utils as u
+import pandas as pd
 import pytest
+from data_designer_nemo.errors import NDDInternalError, NDDInvalidConfigError
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
 from nemo_data_designer_plugin.jobs.create import CreateJob
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig, DataDesignerStepConfig
 from nemo_platform import AsyncNeMoPlatform
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
 
 def test_create_job_runs_step_config() -> None:
@@ -92,7 +93,7 @@ async def test_validate_user_models_belong_to_accessible_providers() -> None:
 
     with (
         u.make_mock_client_context() as client_context,
-        pytest.raises(PlatformJobCompilationError) as exc_info,
+        pytest.raises(NDDInvalidConfigError) as exc_info,
     ):
         await u.compile_create_job(dd_job_config, sdk=client_context.async_sdk)
     assert unknown_provider in str(exc_info.value)
@@ -124,7 +125,7 @@ async def test_validate_user_models_are_allowed_by_providers() -> None:
     with (
         u.make_mock_client_context() as client_context,
         u.setup_mock_providers(client_context),
-        pytest.raises(PlatformJobCompilationError) as exc_info,
+        pytest.raises(NDDInvalidConfigError) as exc_info,
     ):
         await u.compile_create_job(dd_job_config, sdk=client_context.async_sdk)
     assert forbidden_model in str(exc_info.value)
@@ -152,7 +153,7 @@ async def test_validate_model_alias_values_in_column_configs() -> None:
     )
     dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
 
-    with u.make_mock_client_context(), pytest.raises(PlatformJobCompilationError) as exc_info:
+    with u.make_mock_client_context(), pytest.raises(NDDInvalidConfigError) as exc_info:
         await u.compile_create_job(dd_job_config)
     assert model_alias in str(exc_info.value)
     assert "Unrecognized model alias" in str(exc_info.value)
@@ -173,7 +174,7 @@ async def test_validate_profilers() -> None:
     builder.add_profiler(dd.JudgeScoreProfilerConfig(model_alias=model_alias))
     dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
 
-    with u.make_mock_client_context(), pytest.raises(PlatformJobCompilationError) as exc_info:
+    with u.make_mock_client_context(), pytest.raises(NDDInvalidConfigError) as exc_info:
         await u.compile_create_job(dd_job_config)
     assert model_alias in str(exc_info.value)
     assert "Unrecognized model alias" in str(exc_info.value)
@@ -197,7 +198,7 @@ async def test_validate_hf_token_secret() -> None:
     with (
         u.make_mock_client_context() as client_context,
         u.setup_mock_secret(client_context),
-        pytest.raises(PlatformJobCompilationError),
+        pytest.raises(NDDInvalidConfigError),
     ):
         await u.compile_create_job(dd_job_config, sdk=client_context.async_sdk)
 
@@ -228,7 +229,7 @@ async def test_validate_fileset_seed_source_is_accessible() -> None:
     with (
         u.make_mock_client_context(workspace="workspace") as client_context,
         u.setup_mock_file(client_context),
-        pytest.raises(PlatformJobCompilationError),
+        pytest.raises(NDDInvalidConfigError),
     ):
         await u.compile_create_job(dd_job_config, workspace="workspace", sdk=client_context.async_sdk)
 
@@ -279,3 +280,64 @@ async def test_successful_compilation() -> None:
     assert len(dd_step_config.model_providers) == 1
     model_provider = dd_step_config.model_providers[0]
     assert model_provider.name == u.RESTRICTED_PROVIDER_NAME
+
+
+@pytest.mark.asyncio
+async def test_to_spec_aggregates_multiple_config_errors() -> None:
+    """A single ``to_spec`` call surfaces every config problem at once."""
+    # Tool configs are remote-only invalid AND the seed type is unsupported on the platform.
+    builder = dd.DataDesignerConfigBuilder(
+        model_configs=[u.make_model_config()],
+        tool_configs=[dd.ToolConfig(tool_alias="hello", providers=["provider"])],
+    )
+    builder.with_seed_dataset(dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a", "b"]),
+        )
+    )
+    dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_providers(client_context),
+        pytest.raises(NDDInvalidConfigError) as exc_info,
+    ):
+        await u.compile_create_job(dd_job_config, sdk=client_context.async_sdk)
+
+    msg = str(exc_info.value)
+    # Both messages must surface together (no short-circuit on the first failure).
+    assert "Tool configs" in msg
+    assert "seed data" in msg
+
+
+@pytest.mark.asyncio
+async def test_to_spec_pure_internal_errors_raise_internal_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When validate produces only internal errors, ``to_spec`` raises NDDInternalError (500 path)."""
+    builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config()])
+    builder.add_column(
+        column_config=dd.SamplerColumnConfig(
+            name="foo",
+            sampler_type=dd.SamplerType.CATEGORY,
+            params=dd.CategorySamplerParams(values=["a", "b"]),
+        )
+    )
+    dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
+
+    async def _internal_only(self, _config):
+        return [NDDInternalError("simulated internal failure")]
+
+    monkeypatch.setattr(
+        "data_designer_nemo.context.RemoteDataDesignerContext.validate",
+        _internal_only,
+    )
+
+    with (
+        u.make_mock_client_context() as client_context,
+        u.setup_mock_providers(client_context),
+        pytest.raises(NDDInternalError) as exc_info,
+    ):
+        await u.compile_create_job(dd_job_config, sdk=client_context.async_sdk)
+    assert "simulated internal failure" in str(exc_info.value)

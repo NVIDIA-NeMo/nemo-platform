@@ -5,7 +5,7 @@ import { FormField, TextInput } from '@nvidia/foundations-react-core';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { Search } from 'lucide-react';
 import { ComponentProps } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 
 interface FormValues {
   searchString: string;
@@ -29,10 +29,10 @@ export const SearchBar = ({
   ...inputProps
 }: Props) => {
   const { register, handleSubmit, setValue } = useForm<FormValues>({
-    defaultValues: { searchString: inputProps.defaultValue ?? '' },
+    defaultValues: { searchString: String(inputProps.defaultValue ?? '') },
   });
 
-  const handleOnSubmit = (formData: FormValues) => {
+  const handleOnSubmit: SubmitHandler<FormValues> = (formData) => {
     onSubmit?.(formData.searchString);
     if (resetOnSubmit) {
       setValue('searchString', '');

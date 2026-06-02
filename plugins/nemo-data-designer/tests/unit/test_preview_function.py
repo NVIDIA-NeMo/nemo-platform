@@ -13,7 +13,6 @@ import pytest
 from data_designer_nemo.context import DataDesignerContext, LocalDataDesignerContext
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_data_designer_plugin.functions import _preview_worker as worker_module
 from nemo_data_designer_plugin.functions import preview as preview_module
 from nemo_data_designer_plugin.functions._types import LogFrame, PreviewSpec
 from nemo_data_designer_plugin.functions.preview import PreviewFunction
@@ -37,7 +36,13 @@ def _config() -> dd.DataDesignerConfig:
 
 
 def _patch_preview_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(preview_module, "get_model_configs", lambda config: [])
+    # Bypass real model-config extraction so the test config's incomplete
+    # ``ModelConfig`` (no provider) doesn't fail provider resolution. The
+    # call site lives inside ``data_designer_nemo.runnable.resolve_runnable_config``
+    # since the cross-call-site refactor.
+    from data_designer_nemo import runnable as runnable_module
+
+    monkeypatch.setattr(runnable_module, "get_model_configs", lambda config: [])
 
 
 @pytest.mark.asyncio
@@ -53,7 +58,11 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
         assert isinstance(dd_ctx, LocalDataDesignerContext)
         send_frame(LogFrame(level="info", message="generated"))
 
-    monkeypatch.setattr(worker_module, "make_preview_dataset", fake_worker)
+    # Patch the symbol on ``preview_module`` (not ``_preview_worker``) because
+    # ``preview.py`` imports ``make_preview_dataset`` at module load time, so
+    # the local reference inside ``PreviewFunction.run`` does not pick up
+    # patches applied to ``_preview_worker.make_preview_dataset``.
+    monkeypatch.setattr(preview_module, "make_preview_dataset", fake_worker)
 
     frames = [
         frame
@@ -81,7 +90,7 @@ def test_preview_route_streams_ndjson_and_heartbeats(monkeypatch: pytest.MonkeyP
         time.sleep(0.05)
         send_frame(LogFrame(level="info", message=f"generated in {workspace}"))
 
-    monkeypatch.setattr(worker_module, "make_preview_dataset", slow_worker)
+    monkeypatch.setattr(preview_module, "make_preview_dataset", slow_worker)
 
     app = FastAPI()
     app.dependency_overrides[get_sdk_client] = lambda: AsyncMock(spec=AsyncNeMoPlatform)

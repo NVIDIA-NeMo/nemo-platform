@@ -19,11 +19,13 @@ from nemo_evaluator.sdk.job_resources import (
     EvaluatorJobResource,
 )
 from nemo_evaluator.sdk.types import (
+    FieldMapping,
     PluginDatasetInput,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
+from nemo_evaluator.shared.metric_bundles.bundles import MetricBundlePackager
 from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
@@ -83,16 +85,25 @@ class Evaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
+        if metric_bundle_packager is None:
+            raise ValueError(
+                "metric_bundle_packager is required for submit(); "
+                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
+            )
         return self._executor.submit(
             metric=metric,
             dataset=dataset,
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
     def run(
@@ -103,6 +114,7 @@ class Evaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -113,6 +125,7 @@ class Evaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -166,6 +179,7 @@ class AsyncEvaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -176,6 +190,7 @@ class AsyncEvaluator:
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -188,16 +203,25 @@ class AsyncEvaluator:
         config: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
+        metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
         """Submit a metric job through the evaluator plugin executor."""
+        if metric_bundle_packager is None:
+            raise ValueError(
+                "metric_bundle_packager is required for submit(); "
+                "pass CloudpickleMetricBundlePackager() to enable metric bundling."
+            )
         return await self._executor.submit(
             metric=metric,
             dataset=dataset,
             params=config,
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
+            metric_bundle_packager=metric_bundle_packager,
         )
 
 

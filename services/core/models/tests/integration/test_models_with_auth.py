@@ -32,6 +32,7 @@ from nmp.testing import (
     TEST_ADMIN_EMAIL,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -289,11 +290,11 @@ def viewer_workspace(sdk: NeMoPlatform):
 
     admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
     admin_sdk.workspaces.create(name=workspace)
-    admin_sdk.members.create(
+    grant_workspace_role(
+        admin_sdk,
         workspace=workspace,
         principal=viewer_email,
         roles=["Viewer"],
-        wait_role_propagation=True,
     )
 
     model_name = short_unique_name("mdl")
@@ -488,11 +489,11 @@ class TestEditorModelsAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -509,11 +510,11 @@ class TestEditorModelsAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -527,11 +528,11 @@ class TestEditorModelsAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -549,11 +550,11 @@ class TestEditorModelsAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -575,11 +576,11 @@ class TestProviderSecretPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -598,11 +599,11 @@ class TestProviderSecretPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -623,11 +624,11 @@ class TestProviderSecretPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.secrets.create(workspace=workspace, name="my-api-key", value="test-value")
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -648,11 +649,11 @@ class TestProviderSecretPermissions:
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
             admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoSecrets"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -681,11 +682,11 @@ class TestProviderSecretPermissions:
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
             admin_sdk.secrets.create(workspace=workspace, name="should-be-denied", value="test")
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoSecrets"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -710,11 +711,11 @@ class TestProviderDeploymentRefPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -733,11 +734,11 @@ class TestProviderDeploymentRefPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -757,11 +758,11 @@ class TestProviderDeploymentRefPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoDeploymentRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -782,11 +783,11 @@ class TestProviderDeploymentRefPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoDeploymentRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -811,11 +812,11 @@ class TestDeploymentConfigPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -834,11 +835,11 @@ class TestDeploymentConfigPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -863,11 +864,11 @@ class TestDeploymentConfigPermissions:
             name=config_name,
             nim_deployment={"model_name": "test-model", "gpu": 1},
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -892,11 +893,11 @@ class TestDeploymentConfigPermissions:
             name=config_name,
             nim_deployment={"model_name": "test-model", "gpu": 1},
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -916,11 +917,11 @@ class TestDeploymentConfigPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoModelRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -947,11 +948,11 @@ class TestDeploymentConfigPermissions:
                 name=config_name,
                 nim_deployment={"model_name": "test-model", "gpu": 1},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoModelRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -982,11 +983,11 @@ class TestDeploymentPermissions:
             name=config_name,
             nim_deployment={"model_name": "test-model", "gpu": 1},
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1016,11 +1017,11 @@ class TestDeploymentPermissions:
             name=deploy_name,
             config=config_name,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1045,11 +1046,11 @@ class TestDeploymentPermissions:
                 name=config_name,
                 nim_deployment={"model_name": "test-model", "gpu": 1},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoDeploymentConfigRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -1081,11 +1082,11 @@ class TestDeploymentPermissions:
                 name=deploy_name,
                 config=config_name,
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoDeploymentConfigRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -1115,11 +1116,11 @@ class TestFilesetPermissions:
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1143,11 +1144,11 @@ class TestFilesetPermissions:
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1171,11 +1172,11 @@ class TestFilesetPermissions:
         admin_sdk.files.upload_content(
             content=b"x", remote_path="placeholder.txt", fileset=fileset_name, workspace=workspace
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1196,11 +1197,11 @@ class TestFilesetPermissions:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1219,11 +1220,11 @@ class TestFilesetPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.models.create(workspace=workspace, name=model_name)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1242,11 +1243,11 @@ class TestFilesetPermissions:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.models.create(workspace=workspace, name=model_name)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -1267,11 +1268,11 @@ class TestFilesetPermissions:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoFilesetRead"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -1305,11 +1306,11 @@ class TestTrustRemoteCodePermission:
             name=fileset_name,
             storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
@@ -1336,11 +1337,11 @@ class TestTrustRemoteCodePermission:
                 name=fileset_name,
                 storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["Editor"],
-                wait_role_propagation=True,
             )
 
             with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
@@ -1369,11 +1370,11 @@ class TestTrustRemoteCodePermission:
             name=fileset_name,
             storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
@@ -1402,11 +1403,11 @@ class TestTrustRemoteCodePermission:
                 name=fileset_name,
                 storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["Editor"],
-                wait_role_propagation=True,
             )
 
             with patch.object(
@@ -1451,11 +1452,11 @@ class TestTrustRemoteCodePermission:
                 name=new_fs,
                 storage={"type": "huggingface", "repo_id": "Qwen/Qwen3-0.6B"},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["Editor"],
-                wait_role_propagation=True,
             )
 
             with patch.object(models_config.trust_remote_code, "hf_allow_list", ["nvidia/*"]):
@@ -1483,11 +1484,11 @@ class TestTrustRemoteCodePermission:
                 name=fileset_name,
                 storage={"type": "huggingface", "repo_id": "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-BF16"},
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["Editor"],
-                wait_role_propagation=True,
             )
 
             with patch.object(
