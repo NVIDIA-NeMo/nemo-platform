@@ -166,10 +166,11 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
         ref={containerRef}
         popover="manual"
         // Popover elements default to `display: none`; the arbitrary variant
-        // restores our flex layout when the popover is open. `position: fixed`
-        // is preserved so the container anchors to the viewport corner — the
-        // top-layer escape only governs stacking, not positioning.
-        className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 m-0 hidden flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md [&:popover-open]:flex"
+        // restores our flex layout when the popover is open. The UA stylesheet
+        // also sets `[popover] { inset: 0; margin: auto; }` (centers the
+        // element); `left-auto bottom-auto m-0` releases those so `top-...` +
+        // `right-4` anchor cleanly to the upper-right corner.
+        className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 left-auto bottom-auto m-0 hidden flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md [&:popover-open]:flex"
       >
         {toasts.map((toast) => (
           <Toast
