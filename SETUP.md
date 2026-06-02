@@ -73,23 +73,23 @@ The README documents the streamlined path. Prefer this over the manual steps bel
 
 === "Interactive"
 
-    ```bash
-    make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-    source .venv/bin/activate
-    nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
-    ```
+```bash
+make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
+source .venv/bin/activate
+nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
+```
 
 === "Non-interactive (CI)"
 
-    ```bash
-    export NVIDIA_API_KEY=nvapi...
-    nemo setup --auto --start-services --install-skills --deploy-agent
-    ```
+```bash
+export NVIDIA_API_KEY=nvapi...
+nemo setup --auto --start-services --install-skills --deploy-agent
+```
 
 `make bootstrap` is the umbrella for three finer-grained targets — use these if you only need a subset:
 
 | Target | What it does |
-|---|---|
+| --- | --- |
 | `make bootstrap-python` | Creates `.venv` and runs `uv sync` (Python deps + workspace packages) |
 | `make bootstrap-studio` | Installs web deps via `pnpm` and builds Studio assets for FastAPI |
 
@@ -157,7 +157,7 @@ nemo agents invoke --agent calculator-agent --input "What is 12 * 8?"
 The platform is running. Don't leave the user with "you're good to go" — offer a menu of what they can do next based on what they originally asked for. Match the user's intent to one of the patterns from the [README's "Coding agent integration" section](/README.md#coding-agent-integration):
 
 | User says… | Goal | Follow-up skill |
-|---|---|---|
+| --- | --- | --- |
 | "Optimize my agent", "my agent is too slow / using too many tokens" | Cost / latency optimization via routing or skill tuning | `nemo-agents-optimize` |
 | "Secure my agent", "my agent is producing dangerous output" | Content safety / red-team / leak audit | `nemo-agents-secure`, `nemo-guardrails`, `nemo-auditor` |
 | "Can my agent use multiple models?", "split traffic across N backends" | Multi-backend routing via Switchyard | (inline; see `inference` skill) |
