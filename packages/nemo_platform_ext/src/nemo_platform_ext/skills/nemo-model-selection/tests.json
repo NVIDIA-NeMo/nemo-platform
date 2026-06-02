@@ -52,6 +52,26 @@
       "expected_skill": "nemo-model-selection"
     },
     {
+      "type": "implicit",
+      "prompt": "I want to use bedrock/claude-3-5-sonnet for my agent. Does it fit a tool-heavy workflow?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I have a custom fine-tune of Qwen3-30B I want to use. Walk me through whether it's appropriate.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "implicit",
+      "prompt": "Platform is configured with OpenAI as the provider. Which gpt model should the agent use?",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
+      "type": "contextual",
+      "prompt": "I've already picked gpt-4o-mini. Tell me what I'm trading off vs alternatives.",
+      "expected_skill": "nemo-model-selection"
+    },
+    {
       "type": "negative-control",
       "prompt": "I want to build a NeMo agent but I haven't thought through what it needs to do yet.",
       "expected_skill_not": "nemo-model-selection"

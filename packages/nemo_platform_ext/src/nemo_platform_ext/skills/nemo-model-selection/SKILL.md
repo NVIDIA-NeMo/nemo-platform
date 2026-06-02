@@ -22,11 +22,11 @@ allowed-tools: [Read, Bash]
 
 # NeMo Platform model selection
 
-Recommends a NIM model for a new agent. Plain-English first, benchmark numbers second, never the other way around. Output: one recommended model with a one-sentence reason, ready to drop into a spec or NAT workflow YAML.
+Recommends a model for a new agent (NIM or any other provider configured on the running platform). Plain-English first, benchmark numbers second, never the other way around. Output: one recommended model with a one-sentence reason, ready to drop into a spec or NAT workflow YAML.
 
 ## Pre-flight
 
-Load the benchmark cache if it exists. The cache adds fresh scores and richer per-model "strong at" / "watch out for" wording to the static knowledge below.
+### 1. Load the benchmark cache
 
 ```bash
 test -f packages/nemo_platform_ext/src/nemo_platform_ext/skills/nemo-model-selection/references/benchmark_cache.json && echo "cache_present" || echo "cache_missing"
@@ -37,6 +37,45 @@ If `cache_missing`, proceed with the static table in this file. Tell the user on
 ```bash
 python scripts/refresh-benchmark-cache.py
 ```
+
+The cache (schema v6+) carries four things the rest of this skill reads:
+- `models[]` — editorial entries for a curated set of NIMs with `strong_at`, `watch_out_for`, `intent_hints`, `derived_from` lineage, and direct/inferred scores.
+- `upstream_index.bfcl_v4` and `upstream_index.arena_elo` — full BFCL and per-category Arena Elo tables for ~84 and ~360 models respectively. Use these to look up scores for ANY model name, not just the registered ones.
+- `namespace_to_type[]` — namespace-prefix → NAT `_type` value mapping for the YAML emitter.
+- `name_decomposition_rules[]` — pattern→hint rules for synthesizing `intent_hints` when an unknown model name lands.
+
+### 2. Fetch the live model list from the running platform
+
+```bash
+curl -fsS http://localhost:8080/v1/models 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); names=[m.get('id') for m in d.get('data',[])]; print('\n'.join(n for n in names if n))" 2>/dev/null || echo "PLATFORM_UNREACHABLE"
+```
+
+Interpretation:
+- **List of model ids returned** → these are the candidates the user can actually pick from. Carry them through to Step 1+.
+- `PLATFORM_UNREACHABLE` → platform isn't up. Fall back gracefully: tell the user "I can't reach the local platform, so I'll recommend from the curated NIM set in the cache instead of your actual available models. Start the platform with `nemo services run` if you want recommendations grounded in what's deployed."
+
+The `/v1/models` response is OpenAI-shaped (`{data: [{id, ...}, ...]}`); the parse above extracts the `id` field per entry. If the platform's response shape differs, adjust the parse but keep the failure mode (graceful fallback to closed registry, never silently steer the user).
+
+## Step 0 — Pick the conversation direction
+
+Before the profile questions, ask which path the user is on:
+
+```
+Quick check before I ask the design questions:
+
+A. **You're choosing a model.** Walk me through what the agent does and I'll
+   recommend from what's deployed.
+B. **You already have a model in mind.** Tell me which one — I'll assess
+   whether it fits your task and surface what to watch for.
+
+Which are we doing? (If unsure, A is the default.)
+```
+
+If the user picks **A** → continue to Step 1 with the recommend flow.
+If the user picks **B** → continue to Step 1 with the assess flow:
+- Skip the "recommend a model" framing entirely in Step 2.
+- Still ask the three profile questions in Step 1 (you need them to evaluate fit).
+- In Step 2, produce a fit assessment for the user's named model rather than a recommendation — same evidence-quality flagging, but the output frames as "here's what we know about <their model> for <their task>" not "use this model."
 
 ## Step 1 — Profile the agent
 
@@ -64,23 +103,39 @@ Before I recommend a model, three quick things about what the agent will do:
 
 Do not propose a model before all three answers are in. Push back on "you decide" — commit to a default and announce it ("I'll assume cloud and a tool-heavy agent. Tell me if that's wrong.").
 
-## Step 1.5 — Pick a presentation pattern based on evidence quality
+## Step 1.5 — Build the candidate set and pick a presentation pattern
 
-The cache marks each benchmark score with `source: "direct"` or `source: "inferred_from_ancestor"`, and carries `intent_hints` for models with no benchmark coverage. Pick the presentation pattern based on what's available for the candidate model that best matches the user's profile answer to question 2 (primary capability).
+### Building candidates
+
+The candidate set is what the user can actually pick from. It comes from three joins:
+
+1. **Start with the pre-flight model list from `/v1/models`** (or, if `PLATFORM_UNREACHABLE`, fall back to the cache's `models[]` editorial registry).
+2. **For each available model id, look up evidence** in this order:
+   - Token-match against the editorial `models[]` entries → if hit, use the full editorial record (lineage, intent_hints, direct + inferred scores)
+   - If no editorial match, token-match against `upstream_index.bfcl_v4` keys → if hit, use that BFCL score with `source: "direct_external"`
+   - Same for `upstream_index.arena_elo` for per-category Elo
+   - If neither editorial nor upstream matches, synthesize `intent_hints` by walking `name_decomposition_rules[]` and collecting every hint whose `pattern` token appears in the decomposed model id. Mark evidence as `source: "name_only"`.
+3. **Rank candidates by the user's profile** — primary capability axis determines which score field dominates.
+
+When `/v1/models` was unreachable, also tell the user the rest of this flow is operating on the curated NIM set, not their actual deployment.
+
+### Picking the presentation pattern
+
+The pattern depends on the *evidence quality* of the candidate that best matches the profile:
 
 ```
-Identify the candidate model that best matches the profile.
-Inspect scores.<primary_axis>.source for that candidate, where primary_axis is:
+Identify the best-matching candidate.
+Inspect its evidence for the primary axis from profile question 2:
   - "code"               → scores.arena_elo.coding  AND  scores.bfcl_v4
   - "tools"              → scores.bfcl_v4
   - "long documents"     → scores.arena_elo.hard_prompts
   - "general/instruction"→ scores.arena_elo.overall AND scores.arena_elo.instruction_following
 
-If the relevant scores all have source == "direct":
+If the relevant scores all have source ∈ {"direct", "direct_external"}:
   → Pattern A (single recommendation, current Step 2 template)
 
 If one or more relevant scores have source == "inferred_from_ancestor",
-or the candidate has scores == {} but has intent_hints:
+or the candidate has scores == {} (name-only) but has intent_hints:
   → Pattern B (forced trade-off, withhold model name until user resolves it)
 
 If 3+ candidates have similar profiles and similar evidence-quality:
@@ -221,7 +276,7 @@ If they're editing a NAT workflow YAML directly (e.g. tweaking the `agent.yml` `
 ```yaml
 llms:
   primary_llm:
-    _type: nim
+    _type: <nat-type>
     model_name: <model-string>
     # Chosen because: <one plain-English sentence — same words you used above>
     # Evidence: <direct | inferred from <ancestor-id> | name-intent only — eval recommended>
@@ -232,6 +287,27 @@ workflow:
   llm_name: primary_llm
   tool_names: []
 ```
+
+#### Picking the right `_type`
+
+Match the chosen model's namespace prefix against `namespace_to_type[]` from the cache:
+
+```
+For each rule in cache.namespace_to_type:
+  if model_string.startswith(rule.prefix):
+    use rule.nat_type for the YAML _type field
+    if rule.note is present, surface it once to the user
+    stop
+If no rule matches:
+  Tell the user the namespace is unrecognized. Run this to confirm the right type:
+    uv run nat info components -t llm_provider
+  Until the user provides the type, leave _type as <TBD-verify> in the emitted YAML
+  rather than guessing.
+```
+
+Common mappings the cache carries today: `nim/*`, `openai/*`, `anthropic/*`, `bedrock/*`, plus vendor-published NIM names (`qwen/*`, `meta/*`, `nvidia/*`, `microsoft/*`, `mistralai/*`) that route through the NIM provider when served by the platform. Ollama's local endpoint maps to `_type: openai` since it exposes an OpenAI-compatible API.
+
+When the chosen model is non-NIM, also remind the user to set `base_url` and `api_key` (or the equivalent env vars) in the LLM block — those are mandatory for non-NIM providers and aren't auto-filled like they are for the platform's NIM defaults.
 
 ### Pair the model with the right agent type
 

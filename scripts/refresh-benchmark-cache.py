@@ -111,6 +111,39 @@ class CacheSources(TypedDict):
     arena_elo: str
 
 
+class UpstreamIndex(TypedDict):
+    """Full upstream tables, retained in the cache so the skill can token-match
+    arbitrary model names from /v1/models without re-fetching at recommendation time.
+
+    `bfcl_v4` keys are model names with variant tags already stripped; values are
+    raw 0–1 scores (max across (FC)/(Prompt) variants).
+    `arena_elo` keys are model names from the lmarena dataset; values are
+    {category: Elo} dicts. Both tables are pre-tokenized at lookup time by the
+    consumer — we keep them in their natural casing here.
+    """
+    bfcl_v4: dict[str, float]
+    arena_elo: dict[str, dict[str, float]]
+
+
+class NamespaceRule(TypedDict):
+    """One row in the namespace_to_type lookup. The skill matches the user's
+    model id by namespace prefix to pick the NAT `_type` value for the YAML emitter."""
+    prefix: str           # e.g. "openai/", "anthropic/", "bedrock/"
+    nat_type: str         # e.g. "openai", "anthropic", "aws_bedrock"
+    note: str             # short justification or caveat surfaced to the user
+
+
+class NameDecompositionRule(TypedDict):
+    """One row in the name_decomposition_rules reference. The skill uses these
+    when an unknown model name lands and needs synthesized intent_hints —
+    each rule's `pattern` is a token to look for; `hint` is the plain-English
+    bullet to add to the candidate's intent_hints list when the token is present.
+    """
+    pattern: str          # token to look for in the decomposed name
+    hint: str             # plain-English bullet to emit when this token is found
+    category: str         # 'family' | 'size' | 'tuning' | 'specialization' | 'version'
+
+
 class Cache(TypedDict):
     """Top-level shape written to benchmark_cache.json."""
     generated_at: str
@@ -118,6 +151,9 @@ class Cache(TypedDict):
     sources: CacheSources
     benchmarks: dict[str, BenchmarkEntry]
     models: list[CacheModelEntry]
+    upstream_index: UpstreamIndex
+    namespace_to_type: list[NamespaceRule]
+    name_decomposition_rules: list[NameDecompositionRule]
 
 # ---------------------------------------------------------------------------
 # Upstream data sources
@@ -454,6 +490,95 @@ NIM_MODEL_PROFILES: dict[str, ModelProfile] = {
         ],
     },
 }
+
+# ---------------------------------------------------------------------------
+# Provider-type inference table
+#
+# Maps the namespace prefix of a model id (the part before '/') to the NAT
+# workflow YAML `_type` value the LLM provider block should use. Editorial.
+# When a prefix isn't listed, the skill instructs the user to run
+# `nat info components -t llm_provider` to confirm the right type.
+# ---------------------------------------------------------------------------
+
+NAMESPACE_TO_TYPE: list[NamespaceRule] = [
+    {"prefix": "nim/", "nat_type": "nim", "note": "NVIDIA NIM — the platform's native provider type."},
+    {"prefix": "openai/", "nat_type": "openai", "note": "OpenAI direct API."},
+    {"prefix": "anthropic/", "nat_type": "anthropic", "note": "Anthropic direct API. Verify with `nat info components -t llm_provider`."},
+    {"prefix": "bedrock/", "nat_type": "aws_bedrock", "note": "AWS Bedrock. Verify with `nat info components -t llm_provider`; exact type may be `aws_bedrock` or `bedrock`."},
+    {"prefix": "ollama/", "nat_type": "openai", "note": "Local Ollama exposes an OpenAI-compatible endpoint; use `_type: openai` with the Ollama base_url."},
+    # Vendor-published NIM names without explicit nim/ prefix — these are still served
+    # by the platform's NIM provider when listed in /v1/models, so they map to `nim`.
+    {"prefix": "qwen/", "nat_type": "nim", "note": "Qwen models served through NIM."},
+    {"prefix": "meta/", "nat_type": "nim", "note": "Meta Llama models served through NIM."},
+    {"prefix": "nvidia/", "nat_type": "nim", "note": "NVIDIA-published models (Nemotron family) served through NIM."},
+    {"prefix": "microsoft/", "nat_type": "nim", "note": "Microsoft Phi models served through NIM."},
+    {"prefix": "mistralai/", "nat_type": "nim", "note": "Mistral models served through NIM when published there."},
+]
+
+# ---------------------------------------------------------------------------
+# Name decomposition rules
+#
+# When an unknown model name lands (custom fine-tune, vendor model we haven't
+# registered, etc.) the skill synthesizes intent_hints by checking which of
+# these tokens appear in the decomposed name. Editorial — patterns can be
+# extended without code changes, the skill reads from the cache.
+# ---------------------------------------------------------------------------
+
+NAME_DECOMPOSITION_RULES: list[NameDecompositionRule] = [
+    # Family
+    {"pattern": "qwen3", "category": "family", "hint": "Qwen3 family — Alibaba's instruction-tuned series with a public tool-calling track record"},
+    {"pattern": "qwen2", "category": "family", "hint": "Qwen2 family — older Alibaba generation, generally superseded by Qwen3 where available"},
+    {"pattern": "llama", "category": "family", "hint": "Meta Llama family — widely deployed, well-characterized baseline"},
+    {"pattern": "nemotron", "category": "family", "hint": "NVIDIA Nemotron — Llama-derived post-trained variant emphasizing reasoning over function calling"},
+    {"pattern": "phi", "category": "family", "hint": "Microsoft Phi family — small-but-capable models tuned for quality-per-parameter"},
+    {"pattern": "mistral", "category": "family", "hint": "Mistral family — French open-weight models, generally strong on European languages"},
+    {"pattern": "mixtral", "category": "family", "hint": "Mistral Mixtral — sparse MoE variant of the Mistral line"},
+    {"pattern": "claude", "category": "family", "hint": "Anthropic Claude family — frontier closed-weight model, strong on instruction-following and code"},
+    {"pattern": "gpt", "category": "family", "hint": "OpenAI GPT family — frontier closed-weight model"},
+    {"pattern": "gemini", "category": "family", "hint": "Google Gemini family — frontier closed-weight model with strong multimodal support"},
+    {"pattern": "deepseek", "category": "family", "hint": "DeepSeek family — Chinese open-weight models with strong code and reasoning track record"},
+
+    # Size markers (parameter counts)
+    {"pattern": "0.6b", "category": "size", "hint": "0.6B parameters — very small, edge/embedded class"},
+    {"pattern": "1.7b", "category": "size", "hint": "1.7B parameters — small, low-VRAM"},
+    {"pattern": "3b", "category": "size", "hint": "~3B parameters — small dense, fits single consumer GPU"},
+    {"pattern": "4b", "category": "size", "hint": "~4B parameters — small dense, fits single consumer GPU"},
+    {"pattern": "7b", "category": "size", "hint": "~7B parameters — small-mid dense, fits 12–16 GB VRAM"},
+    {"pattern": "8b", "category": "size", "hint": "~8B parameters — small-mid dense, fits single consumer GPU"},
+    {"pattern": "14b", "category": "size", "hint": "~14B parameters — mid dense, needs 24+ GB for self-hosting"},
+    {"pattern": "30b", "category": "size", "hint": "~30B parameters — mid-large; pair with active-param suffix for MoE variants"},
+    {"pattern": "32b", "category": "size", "hint": "~32B parameters — mid-large dense"},
+    {"pattern": "49b", "category": "size", "hint": "~49B parameters — large dense, distilled-from-larger variants are common"},
+    {"pattern": "70b", "category": "size", "hint": "~70B parameters — large dense, cloud or multi-GPU self-host"},
+    {"pattern": "235b", "category": "size", "hint": "~235B parameters total — very large; check for MoE active-param suffix"},
+    {"pattern": "253b", "category": "size", "hint": "~253B parameters — very large dense"},
+    {"pattern": "405b", "category": "size", "hint": "~405B parameters — frontier dense scale"},
+
+    # MoE active-params marker (suffix like a3b, a22b)
+    {"pattern": "a3b", "category": "size", "hint": "Sparse MoE with ~3B active parameters per forward pass — fast inference at moderate quality"},
+    {"pattern": "a22b", "category": "size", "hint": "Sparse MoE with ~22B active parameters per forward pass"},
+
+    # Tuning
+    {"pattern": "instruct", "category": "tuning", "hint": "Instruction-tuned — designed to follow user directions, not base-model completion"},
+    {"pattern": "chat", "category": "tuning", "hint": "Chat-tuned — optimized for conversational back-and-forth"},
+    {"pattern": "base", "category": "tuning", "hint": "Base model — pretraining only, no instruction tuning. Usually wrong for agents."},
+    {"pattern": "rlhf", "category": "tuning", "hint": "RLHF-tuned — aligned via reinforcement learning from human feedback"},
+    {"pattern": "dpo", "category": "tuning", "hint": "DPO-tuned — aligned via direct preference optimization"},
+    {"pattern": "thinking", "category": "tuning", "hint": "Reasoning/thinking variant — exposes intermediate chain-of-thought; usually slower but better on hard problems"},
+
+    # Specialization
+    {"pattern": "coder", "category": "specialization", "hint": "Code-specialized fine-tune — strong on software engineering tasks, weaker on general reasoning"},
+    {"pattern": "code", "category": "specialization", "hint": "Code-specialized variant — strong on software engineering tasks"},
+    {"pattern": "vl", "category": "specialization", "hint": "Vision-language variant — accepts image input"},
+    {"pattern": "vision", "category": "specialization", "hint": "Vision-language variant — accepts image input"},
+    {"pattern": "math", "category": "specialization", "hint": "Math-specialized variant — strong on numerical/symbolic reasoning"},
+
+    # Versions / variants — kept loose since vendors aren't consistent
+    {"pattern": "mini", "category": "size", "hint": "'Mini' variant — small parameter count within the family; distinct from the same family's full-size model"},
+    {"pattern": "super", "category": "size", "hint": "'Super' tier — middle ground within NVIDIA's Nemotron lineup"},
+    {"pattern": "ultra", "category": "size", "hint": "'Ultra' tier — largest size within NVIDIA's Nemotron lineup"},
+]
+
 
 # ---------------------------------------------------------------------------
 # Fetchers
@@ -893,13 +1018,19 @@ def build_cache(bfcl: dict[str, float], arena_elo: dict[str, dict[str, float]]) 
 
     return {
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "schema_version": "5",
+        "schema_version": "6",
         "sources": {
             "bfcl": BFCL_CSV_URL,
             "arena_elo": ARENA_ELO_ROWS_URL,
         },
         "benchmarks": BENCHMARK_REGISTRY,
         "models": models,
+        "upstream_index": {
+            "bfcl_v4": bfcl,
+            "arena_elo": arena_elo,
+        },
+        "namespace_to_type": NAMESPACE_TO_TYPE,
+        "name_decomposition_rules": NAME_DECOMPOSITION_RULES,
     }
 
 
@@ -971,12 +1102,30 @@ def merge_cache(existing: Cache | None, fresh: Cache) -> Cache:
             "scores": merged_scores,
         })
 
+    # Upstream tables also merge: fresh wins per key, old fills gaps when the
+    # current fetch was partial (rate-limited).
+    merged_upstream: UpstreamIndex = {
+        "bfcl_v4": {**existing.get("upstream_index", {}).get("bfcl_v4", {}), **fresh["upstream_index"]["bfcl_v4"]},
+        "arena_elo": {**existing.get("upstream_index", {}).get("arena_elo", {})},
+    }
+    # Per-model arena dicts need their own merge so a partial fetch doesn't drop
+    # categories the cache previously had for the same model.
+    for model_name, fresh_cats in fresh["upstream_index"]["arena_elo"].items():
+        merged_upstream["arena_elo"][model_name] = {
+            **merged_upstream["arena_elo"].get(model_name, {}),
+            **fresh_cats,
+        }
+
     return {
         "generated_at": fresh["generated_at"],
         "schema_version": fresh["schema_version"],
         "sources": fresh["sources"],
         "benchmarks": fresh["benchmarks"],
         "models": merged_models,
+        "upstream_index": merged_upstream,
+        # Reference tables come fresh from the registry, not the cache — these are editorial
+        "namespace_to_type": fresh["namespace_to_type"],
+        "name_decomposition_rules": fresh["name_decomposition_rules"],
     }
 
 
