@@ -50,6 +50,8 @@ nemo config set --base-url https://nmp.example.com
 nemo auth login
 ```
 
+`nemo auth login` is the normal path for OIDC-enabled clusters. It uses the configured base URL to call `/apis/auth/discovery`, then follows the auth flow that cluster advertises. For local quickstart without an IdP, use `nemo auth login --unsigned-token --email <email>` instead.
+
 ### 2. Verify Your Connection
 
 ```bash

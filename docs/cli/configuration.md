@@ -11,6 +11,12 @@ The quickest way to connect to an existing deployment is:
 nemo auth login --base-url https://nmp.example.com
 ```
 
+That command first calls `https://nmp.example.com/apis/auth/discovery` to learn how the cluster expects clients to authenticate:
+
+- OIDC-enabled cluster: starts interactive sign-in and stores a token in the active context
+- Auth-disabled cluster: no token is needed for normal CLI usage
+- Quickstart unsigned mode: use `nemo auth login --unsigned-token --email <email>` instead of OIDC login
+
 To configure a named context:
 
 ```bash
@@ -74,6 +80,21 @@ nemo config set --access-token -
 ```
 
 When setting an access token, you'll be prompted to enter it securely (input is hidden).
+
+### Choosing the Right Base URL
+
+Authentication is context-specific. If the active context points at the wrong cluster, `nemo auth login` will discover the wrong auth settings and may show a confusing UX, such as:
+
+- prompting for browser login against the wrong IdP
+- appearing to skip login because the selected cluster has auth disabled
+- rejecting an unsigned token because the selected cluster expects OIDC
+
+Check the active cluster before troubleshooting auth:
+
+```bash
+nemo config view
+curl -s https://nmp.example.com/apis/auth/discovery | python -m json.tool
+```
 
 ## Environment Variables
 

@@ -50,6 +50,14 @@ To deploy the {{platform_name}}, follow these steps after completing the [Prereq
  The installation process takes approximately 10 minutes for image downloads, container startup, and communication establishment. The time it takes might vary depending on the speed of your network connection.
  Pods might appear in pending or restarting states during the installation process.
 
+ If you enable authentication in your Helm values, users do not log in with a cluster-local password. Instead, clients discover the cluster's OIDC settings from `/apis/auth/discovery` and then run `nemo auth login` against the cluster URL:
+
+ ```sh
+ nemo auth login --base-url https://<your-platform-url>
+ ```
+
+ `nemo auth login --unsigned-token ...` is not the normal Helm path. That quickstart shortcut is intended only for explicitly unsigned local development environments.
+
 5. Verify the pod status:
 
  ```sh

@@ -6,6 +6,22 @@ How to log in, make authenticated API calls, and manage tokens with the CLI and 
 
 ## Log In
 
+Before login, make sure the CLI is pointed at the cluster you actually want to use. `nemo auth login` authenticates against the active `base_url`, and the CLI discovers that cluster's auth settings from `/apis/auth/discovery`.
+
+```bash
+# One-time setup for a cluster
+nemo config set --base-url https://nmp.example.com
+
+# Or set the URL as part of login
+nemo auth login --base-url https://nmp.example.com
+```
+
+How to choose the right login flow:
+
+- Use `nemo auth login` for any shared or Helm-managed cluster with OIDC enabled.
+- Use `nemo auth login --unsigned-token --email <email>` only for local quickstart or other explicitly unsigned development setups.
+- If `/apis/auth/discovery` reports `auth_enabled: false`, no login is required for that cluster.
+
 The device flow is the recommended login method. It opens your browser to authenticate with your organization's identity provider.
 
 ```bash
@@ -34,6 +50,20 @@ Token expires: 2026-02-15T14:30:00Z
 
 All CLI and SDK commands now use the stored token automatically.
 
+### What `nemo auth login` Discovers
+
+When you run `nemo auth login`, the CLI does not have the OIDC token endpoint hard-coded. Instead it:
+
+1. Reads the active `base_url` from the command line, environment, or current context.
+2. Calls `{BASE_URL}/apis/auth/discovery`.
+3. Uses the returned issuer, token endpoint, device authorization endpoint, client ID, and default scopes to drive login.
+
+This means two clusters can present different login UX:
+
+- a quickstart or dev cluster may not require OIDC at all
+- a production cluster may start device flow immediately
+- different clusters can point at different IdPs or scopes
+
 ### Requesting Specific Scopes
 
 By default, the CLI requests the scopes configured in `auth.oidc.default_scopes` (typically `platform:read platform:write` plus OIDC standard scopes like `openid profile email offline_access`). Restrict the token's access by specifying fewer scopes:
@@ -50,6 +80,16 @@ For CI pipelines, use the password grant to obtain a token without a browser: `n
 
 !!! warning
     Password grant sends credentials directly to the IdP and **bypasses MFA**. Many production IdPs disable it. Use a dedicated service account with minimal scopes where possible.
+
+### Unsigned Login for Quickstart Only
+
+Unsigned login exists so local quickstart users can exercise identity-aware APIs without standing up an IdP:
+
+```bash
+nemo auth login --unsigned-token --email alice@example.com
+```
+
+Use this only when the platform is explicitly configured for unsigned development mode. On an OIDC-backed cluster, unsigned login is the wrong flow and requests should use a real bearer token from `nemo auth login`.
 
 ## Make API Calls
 

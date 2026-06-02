@@ -70,7 +70,19 @@ source /path/to/venv/bin/activate
     nemo auth login
     ```
 
-3. Check that your API key is valid and has the required permissions.
+3. Check what the cluster is advertising:
+
+    ```bash
+    curl -s https://nmp.example.com/apis/auth/discovery | python -m json.tool
+    ```
+
+    Use the result to match the flow to the cluster:
+
+    - `auth_enabled: true` means the cluster expects OIDC-backed credentials, so use `nemo auth login`
+    - `auth_enabled: false` means the cluster is not enforcing auth
+    - quickstart unsigned login with `--unsigned-token` is only valid for explicitly unsigned development setups
+
+4. Check that your token or other credentials are valid and have the required permissions.
 
 ## Debugging
 

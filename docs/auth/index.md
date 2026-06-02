@@ -20,6 +20,12 @@ How you **obtain** the token depends on your context:
 -   **HTTP** — For raw HTTP calls, fetch a token from your IdP (or from the CLI using `nemo auth token`) and pass it in the `Authorization: Bearer <token>` header.
 -   **Studio** — When auth is enabled, Studio automatically redirects you to your IdP to sign in and uses the resulting token for all API calls.
 
+The cluster tells clients which auth experience to use through `GET {BASE_URL}/apis/auth/discovery`:
+
+-   If `auth_enabled` is `true`, the CLI and SDK treat the cluster as authenticated and `nemo auth login` uses the OIDC settings returned by discovery.
+-   If `auth_enabled` is `false`, the cluster accepts unauthenticated requests and `nemo auth login` is not required.
+-   Quickstart is a special development-only case: it can mint an unsigned token for a local instance even when you do not have an external IdP.
+
 !!! tip
     **Quickstart shortcut** — When running {{platform_name}} quickstart without an OIDC provider, you can use an unsigned JWT:
 
@@ -27,7 +33,7 @@ How you **obtain** the token depends on your context:
 
     Quickstart-generated unsigned tokens expire after 24 hours.
 
-    Unsigned JWT login only works for quickstart and must not be used in production. See [Getting Started](#quickstart-development) below.
+    Unsigned JWT login only works for quickstart and must not be used for shared or Helm-managed clusters. Helm deployments should use OIDC-backed `nemo auth login`. See [Getting Started](#quickstart-development) below.
 
 ## Getting Started
 
@@ -110,6 +116,15 @@ After authorization is enabled, all API requests must include an identity. The C
 ### Production / Helm Deployment
 
 For production or Helm-based deployments, enable auth by setting `platformConfig.auth.enabled: true` in your Helm values and configure the `auth:` section in platform config. Refer to [Auth Configuration](deployment/configuration.md) for the full reference and [OIDC Setup](authentication/oidc.md) to connect your identity provider.
+
+From a user perspective, the login flow on a Helm cluster works like this:
+
+1. Point the CLI at the cluster URL with `nemo auth login --base-url https://nmp.example.com` or `nemo config set --base-url ...`.
+2. The CLI calls `/apis/auth/discovery` on that cluster.
+3. If discovery reports OIDC settings, the CLI starts device flow and stores the resulting token in the active context.
+4. If discovery reports `auth_enabled: false`, CLI and SDK commands run without a stored token.
+
+This is why users can see different UX on different clusters even with the same CLI install: the cluster's discovery response determines whether sign-in is needed and which OIDC endpoints the CLI should use.
 
 ## Where to Go Next
 

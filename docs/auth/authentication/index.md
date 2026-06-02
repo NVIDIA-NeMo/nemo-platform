@@ -2,7 +2,7 @@
 
 {{platform_name}} authenticates requests using **OpenID Connect (OIDC)**. You register an OAuth application in your identity provider, configure {{platform_name}} with the issuer and client ID, and users sign in via the CLI, SDK, or browser. {{platform_name}} validates the JWT on every request and extracts the user's identity for authorization.
 
-For the quickstart (no IdP), see the [email-based shortcut](../index.md). For the authorization model, see [Authorization Concepts](../concepts.md).
+For quickstart-only local development without an IdP, see the [email-based shortcut](../index.md). For the authorization model, see [Authorization Concepts](../concepts.md).
 
 ## Connect Your Identity Provider
 
@@ -49,6 +49,12 @@ Response:
 ```
 
 The CLI and SDK call this endpoint automatically during `nemo auth login` or when initializing the client.
+
+This endpoint explains most of the user-facing login behavior:
+
+- If `auth_enabled` is `true`, `nemo auth login` uses the returned OIDC metadata to start device flow or password grant login.
+- If `auth_enabled` is `false`, the cluster is effectively unsigned from the client's perspective and commands can run without OIDC login.
+- If you are using quickstart with `--unsigned-token`, that is a local development shortcut, not discovery-driven OIDC login.
 
 ## Related
 
