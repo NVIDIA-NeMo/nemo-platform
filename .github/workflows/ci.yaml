@@ -202,14 +202,11 @@ jobs:
             coverage.xml
             coverage.json
 
-  # One job, one (package x python) matrix — kept as a single job rather
-  # than split per-package because the build path is identical and the
-  # matrix definition is the natural place to change what's covered.
-  # nemo-platform's wheel force-includes auth's policy.wasm at build time;
-  # nemo-platform-plugin doesn't, but plugin rows still wait on policy-wasm
-  # because needs: is per-job. ~5s of harmless wait per plugin row.
-  wheel-test:
-    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
+  # Build wheels for all packages × python versions. Downstream jobs
+  # (wheel-test, python-e2e-test) download these artifacts instead
+  # of rebuilding.
+  wheel-build:
+    name: ${{ matrix.package }} wheel build (py${{ matrix.python-version }})
     needs: [policy-wasm]
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -240,25 +237,53 @@ jobs:
           # build, but stamp_sdk_version.py requires \d{14}.
           nightly-timestamp: "19700101000000"
           python-version: ${{ matrix.python-version }}
+      - name: Upload wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
+          path: ${{ steps.build.outputs.wheel-path }}
+          retention-days: 7
+          if-no-files-found: error
 
-      # The two install+test steps below intentionally share a small preamble
-      # (mkdir + cp). Hoisting it into a separate step would cost more in
-      # workflow indirection than the 3 duplicated lines save.
+  # Test each wheel: install from the artifact and run basic CLI /
+  # import checks.
+  wheel-test:
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
+    needs: [wheel-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nemo-platform, nemo-platform-plugin]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Download wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/wheelcheck
+
       - name: Install + test nemo-platform CLI
         if: matrix.package == 'nemo-platform'
         shell: bash
         env:
-          WHEEL: ${{ steps.build.outputs.wheel-path }}
           PYTHON_VERSION: ${{ matrix.python-version }}
           NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
         run: |
           set -euo pipefail
-          # Copy the wheel out of $GITHUB_WORKSPACE so the test cd's away
-          # from the source tree and Python can't reach back into it.
-          mkdir -p "${RUNNER_TEMP}/wheelcheck"
-          cp "${WHEEL}" "${RUNNER_TEMP}/wheelcheck/"
-          uv tool install --force --python "${PYTHON_VERSION}" \
-            "${RUNNER_TEMP}/wheelcheck/$(basename "${WHEEL}")[services]"
+          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
+          uv tool install --force --python "${PYTHON_VERSION}" "${WHEEL}[services]"
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
           bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
@@ -267,22 +292,18 @@ jobs:
         if: matrix.package == 'nemo-platform-plugin'
         shell: bash
         env:
-          WHEEL: ${{ steps.build.outputs.wheel-path }}
           PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/wheelcheck"
-          cp "${WHEEL}" "${RUNNER_TEMP}/wheelcheck/"
+          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
-          uv pip install --python .venv/bin/python "$(basename "${WHEEL}")"
+          uv pip install --python .venv/bin/python "${WHEEL}"
           unset PYTHONPATH VIRTUAL_ENV
           # Import the package + a couple of representative submodules
           # (cli, commands). These are the surfaces a plugin author would
           # touch first; if any of them fail to import, the wheel is
-          # broken in a way that surfaces immediately on day one. If
-          # the plugin's public API surface changes substantially, this
-          # list should be revisited.
+          # broken in a way that surfaces immediately on day one.
           .venv/bin/python -c "
           import nemo_platform_plugin
           import nemo_platform_plugin.cli
@@ -290,14 +311,46 @@ jobs:
           print('nemo_platform_plugin', getattr(nemo_platform_plugin, '__version__', '<no __version__>'))
           "
 
-      - name: Upload wheel
+  # E2E tests: start services from the workspace venv and run the e2e
+  # suite against the real process.
+  python-e2e-test:
+    name: Python e2e tests
+    needs: [policy-wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Download policy WASM
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: Run e2e tests
+        run: make test-e2e
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG: ${{ runner.temp }}/services.log
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "::group::Server log"
+          cat "${{ runner.temp }}/services.log" 2>/dev/null || echo "No server log found"
+          echo "::endgroup::"
+      - name: Upload test artifacts
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
-          path: ${{ steps.build.outputs.wheel-path }}
-          retention-days: 7
-          if-no-files-found: error
+          name: python-e2e-test-results
+          retention-days: 30
+          path: |
+            report.xml
+            ${{ runner.temp }}/services.log
 
   # Required-check pin: branch protection should reference this aggregator
   # rather than the per-row matrix jobs, so the matrix can grow or shrink
@@ -314,10 +367,6 @@ jobs:
         shell: bash
         env:
           MATRIX_RESULT: ${{ needs.wheel-test.result }}
-          # Per-row results, useful for debugging which (package, python)
-          # combination failed. GitHub doesn't expose individual matrix
-          # results by name; the workflow run UI is the canonical place
-          # to look. We surface a pointer in the failure message.
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail

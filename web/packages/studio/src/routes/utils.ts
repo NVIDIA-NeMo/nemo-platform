@@ -26,6 +26,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
+import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -367,6 +368,15 @@ export const getDatasetDetailRoute = (
   options?: { tab?: DatasetDetailTab }
 ) => {
   const base = generatePath(ROUTES.workspace.datasetDetail, { workspace, datasetName });
+  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
+};
+
+export const getModelDetailRoute = (
+  workspace: string,
+  modelName: string,
+  options?: { tab?: ModelDetailTab }
+) => {
+  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 

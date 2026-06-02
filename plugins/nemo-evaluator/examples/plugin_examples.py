@@ -16,6 +16,7 @@ from tempfile import TemporaryDirectory
 from typing import TYPE_CHECKING, Any, cast
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
+from nemo_evaluator.sdk import FilesetRef
 from nemo_evaluator.sdk.resources import AsyncEvaluator
 from nemo_evaluator.sdk.resources import Evaluator as SyncEvaluator
 from nemo_evaluator.sdk.types import (
@@ -40,7 +41,6 @@ from nemo_evaluator_sdk.values import (
 from nemo_evaluator_sdk.values.results import EvaluationResult
 from nemo_platform import APIError, AsyncNeMoPlatform, ConflictError, NeMoPlatform, NotFoundError
 from nemo_platform.types.files import HuggingfaceStorageConfigParam
-from nmp.evaluator.app.values import FilesetRef
 
 if TYPE_CHECKING:
     import numpy as np

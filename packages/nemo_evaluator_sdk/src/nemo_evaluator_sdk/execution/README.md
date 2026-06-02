@@ -29,19 +29,9 @@ result = await evaluator.run(
 )
 ```
 
-```python
-# Evaluator plugin execution through the plugin-owned SDK.
-from nemo_evaluator.sdk.standalone_sdk.backend import AsyncNMPBackend
-
-client = AsyncNeMoPlatform(workspace="default")
-evaluator = Evaluator(client=AsyncNMPBackend(client.evaluator))
-result = await evaluator.run(metrics=metric, dataset=data)
-```
-
 ## Design Notes
 
 - `Evaluator()` uses `LocalBackend`.
-- `Evaluator(client=...)` accepts an evaluator backend object. For NeMo Platform
-  execution, wrap the mounted evaluator resource in `NMPBackend` or
-  `AsyncNMPBackend` from the evaluator plugin package.
-- `nemo_platform` and `nemo_evaluator` are optional for local SDK evaluation.
+- `Evaluator(client=...)` accepts an evaluator backend object. Platform-specific
+  backend adapters are provided by
+  [`nemo-evaluator-plugin`](../../../../../plugins/nemo-evaluator/README.md).

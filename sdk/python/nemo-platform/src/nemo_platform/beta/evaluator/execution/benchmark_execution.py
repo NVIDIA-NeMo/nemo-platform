@@ -35,7 +35,11 @@ from nemo_platform.beta.evaluator.execution.metric_execution import (
     generate_online_sample,
     generate_online_sample_agent,
 )
-from nemo_platform.beta.evaluator.execution.scoring import build_metric_input, corpus_output_spec, nan_metric_result
+from nemo_platform.beta.evaluator.execution.samples import build_metric_input, build_offline_sample
+from nemo_platform.beta.evaluator.execution.scoring import (
+    corpus_output_spec,
+    nan_metric_result,
+)
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import (
     InferenceFn,
@@ -339,7 +343,7 @@ async def _run_producer_workers(
                             default_headers=default_headers,
                         )
                 else:
-                    sample = {}
+                    sample = build_offline_sample(item)
                     # TODO: Consider matching ComputeMetricPipeline by applying
                     # offline postprocess hooks after reconciling service
                     # progress tracking so sample hooks do not double count.
@@ -541,7 +545,8 @@ async def evaluate_benchmark(
             public identifier used to namespace aggregate score names.
         rows: Dataset rows to evaluate.
         target: Model or agent used for online inference. Pass ``None`` for
-            offline benchmarks; metric workers then receive empty sample dicts.
+            offline benchmarks; metric workers then receive the offline sample
+            built from each row.
         inference_fn: Optional inference callable. Defaults to SDK's
             ``make_inference_request`` / ``make_agent_inference_request`` based
             on the ``target`` type.

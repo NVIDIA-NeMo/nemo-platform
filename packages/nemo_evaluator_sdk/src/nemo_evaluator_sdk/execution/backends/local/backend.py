@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from logging import getLogger
 from typing import Any
 
+from nemo_evaluator_sdk.dataset_schemas.compatibility import apply_column_mapping_to_row
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
 from nemo_evaluator_sdk.execution.benchmark_execution import evaluate_benchmark as sdk_evaluate_benchmark
 from nemo_evaluator_sdk.execution.config import EvaluationRequest
@@ -21,6 +22,18 @@ from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationRe
 from nemo_evaluator_sdk.values.results import EvaluationResult
 
 log = getLogger(__name__)
+
+
+def _prepare_request_rows(request: EvaluationRequest) -> list[dict[str, Any]]:
+    """Load request rows and apply any canonical field mapping."""
+    rows = prepare_dataset_rows(
+        request.dataset,
+        request.dataset_glob_pattern,
+        request.params.limit_samples if request.params else None,
+    )
+    if request.field_mapping is None:
+        return rows
+    return [apply_column_mapping_to_row(row, request.field_mapping) for row in rows]
 
 
 class LocalBackend:
@@ -84,11 +97,7 @@ class LocalBackend:
         Returns:
             A namespaced single-metric result.
         """
-        rows = prepare_dataset_rows(
-            request.dataset,
-            request.dataset_glob_pattern,
-            request.params.limit_samples,
-        )
+        rows = _prepare_request_rows(request)
         return await self._evaluate_one(
             metric=metric,
             metric_key=metric_type_name(metric),
@@ -114,11 +123,7 @@ class LocalBackend:
         Returns:
             A completed multi-metric result.
         """
-        rows = prepare_dataset_rows(
-            request.dataset,
-            request.dataset_glob_pattern,
-            request.params.limit_samples if request.params else None,
-        )
+        rows = _prepare_request_rows(request)
         metric_keys = unique_metric_keys(metrics)
         prepared_metrics = [
             await prepare_metric_for_execution(

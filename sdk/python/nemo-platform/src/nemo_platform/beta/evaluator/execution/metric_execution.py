@@ -29,6 +29,7 @@ from nemo_platform.beta.evaluator.execution.pipeline import (
     GeneratedSampleScoringPipeline,
     PipelineRuntime,
 )
+from nemo_platform.beta.evaluator.execution.samples import build_offline_sample
 from nemo_platform.beta.evaluator.execution.scoring import (
     empty_evaluation_result,
     finalize_evaluation_result,
@@ -454,8 +455,8 @@ class ComputeMetricPipeline:
             workers; in offline mode it still limits scorer fanout.
         metric: Runtime metric implementation used to score each row.
         target: Optional target used to generate per-row samples before scoring.
-            If None, the pipeline runs without inference and starts from an empty
-            sample payload.
+            If None, the pipeline runs without inference and starts from the
+            offline sample built from the row.
         metric_key: Metric identifier used for `RowScore.metrics` and for
             synthesized NaN/error results.
         prompt_template: Request template used to render online inference
@@ -469,8 +470,7 @@ class ComputeMetricPipeline:
         preprocess_hooks: Hooks applied before online inference requests are
             sent.
         postprocess_hooks: Hooks applied after online inference responses are
-            received, and also to the empty offline response payload when no target
-            is configured.
+            received, and also to the offline sample when no target is configured.
     """
 
     rows: list[dict[str, Any]]
@@ -570,9 +570,9 @@ class ComputeMetricPipeline:
         self.postprocess_hooks = list(postprocess_hooks) if postprocess_hooks is not None else []
 
     async def generate_sample(self, index: int, row: dict[str, Any]) -> dict[str, Any]:
-        """Generate the sample payload for one dataset row, or an empty offline sample."""
+        """Generate the sample payload for one dataset row, including offline row-derived fields."""
         if self.target is None:
-            response = {}
+            response = build_offline_sample(row)
             for hook in self.postprocess_hooks or ():
                 response = hook.postprocess(response, id=f"{index}")
             return response

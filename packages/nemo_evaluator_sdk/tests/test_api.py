@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from jinja2 import UndefinedError
 from nemo_evaluator_sdk import Evaluator
-from nemo_evaluator_sdk.execution.scoring import build_metric_input
+from nemo_evaluator_sdk.execution.samples import build_metric_input
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput
 from nemo_evaluator_sdk.values.results import (

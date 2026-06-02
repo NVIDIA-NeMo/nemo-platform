@@ -12,6 +12,7 @@ from typing import Annotated, Any, ClassVar, Self, TypeAlias, cast
 
 from nemo_evaluator.jobs.utils import resolve_run_dataset
 from nemo_evaluator.resolvers import PlatformModelResolver
+from nemo_evaluator.sdk.values.filesets import FilesetRef
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, unbundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricPayload  # noqa: F401
 from nemo_evaluator_sdk import Evaluator
@@ -21,6 +22,7 @@ from nemo_evaluator_sdk.execution.metric_execution import run_sync
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricWithModels
 from nemo_evaluator_sdk.values import (
     Agent,
+    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -32,7 +34,6 @@ from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-from nmp.evaluator.app.values import FilesetRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 TargetSpec = Model | Agent
@@ -76,6 +77,9 @@ class EvaluateSpec(BaseModel):
     target: TargetSpec | None = Field(default=None, description="Optional model or agent target for online evaluation.")
     prompt_template: str | dict[str, Any] | None = Field(
         default=None, description="Optional prompt template for online target generation."
+    )
+    field_mapping: FieldMapping | None = Field(
+        default=None, description="Optional mapping from canonical evaluator fields to dataset columns."
     )
 
     @model_validator(mode="after")
@@ -189,6 +193,8 @@ class EvaluateJob(NemoJob):
             "target": spec.target,
             "prompt_template": spec.prompt_template,
         }
+        if spec.field_mapping is not None:
+            common_kwargs["field_mapping"] = spec.field_mapping
         runtime_metrics = metrics if len(metrics) > 1 else metrics[0]
         result = evaluator.run_sync(metrics=runtime_metrics, **common_kwargs)
         result_files = self._write_result_files(result, ctx.storage.persistent)

@@ -7,6 +7,7 @@ from collections.abc import Iterable, Sequence
 from logging import Logger, getLogger
 from typing import Any
 
+from nemo_platform.beta.evaluator.execution.samples import build_metric_input
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import requests_log_var
 from nemo_platform.beta.evaluator.metrics.aggregation import (
@@ -16,11 +17,8 @@ from nemo_platform.beta.evaluator.metrics.aggregation import (
     rubric_definitions_from_metric,
 )
 from nemo_platform.beta.evaluator.metrics.protocol import (
-    CandidateOutput,
     CorpusMetric,
-    DatasetRow,
     Metric,
-    MetricInput,
     MetricOutput,
     MetricOutputSpec,
     MetricResult,
@@ -33,28 +31,6 @@ from nemo_platform.beta.evaluator.values import (
 )
 
 logger = getLogger(__name__)
-
-
-_CANDIDATE_SAMPLE_FIELDS = frozenset({"output_text", "response", "trajectory"})
-
-
-def build_metric_input(row: dict[str, Any], sample: dict[str, Any], index: int | None = None) -> MetricInput:
-    """Build the metric protocol input from dataset row and generated sample payloads."""
-    output_text = sample.get("output_text")
-    metadata = {
-        key: value
-        for key, value in sample.items()
-        if key not in _CANDIDATE_SAMPLE_FIELDS or (key == "output_text" and not isinstance(output_text, str))
-    }
-    return MetricInput(
-        row=DatasetRow(row_index=index, data=row),
-        candidate=CandidateOutput(
-            output_text=output_text if isinstance(output_text, str) else None,
-            response=sample.get("response"),
-            trajectory=sample.get("trajectory"),
-            metadata=metadata,
-        ),
-    )
 
 
 def nan_metric_result(outputs: Iterable[MetricOutputSpec]) -> MetricResult:

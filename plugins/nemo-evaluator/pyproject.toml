@@ -8,8 +8,8 @@ dependencies = [
     "cloudpickle>=3.1.1",
     "nemo-evaluator-sdk",
     "nemo-platform-plugin",
-    "nemo-platform",
-    "nmp-evaluator",
+    "nemo-platform-sdk",
+    "nmp-common",
     "pydantic>=2.10.6",
     "typer>=0.20.0",
 ]
@@ -42,8 +42,8 @@ packages = ["src/nemo_evaluator"]
 [tool.uv.sources]
 nemo-evaluator-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
-nemo-platform = { workspace = true }
-nmp-evaluator = { workspace = true }
+nemo-platform-sdk = { workspace = true }
+nmp-common = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "ruff>=0.11.8"]

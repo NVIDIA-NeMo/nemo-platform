@@ -92,6 +92,7 @@ class TestNMPBackend:
             params=request.params,
             target=request.target,
             dataset_glob_pattern=request.dataset_glob_pattern,
+            field_mapping=request.field_mapping,
             prompt_template=request.prompt_template,
             aggregate_fields=request.aggregate_fields,
         )
@@ -211,6 +212,7 @@ class TestAsyncNMPBackend:
             params=request.params,
             target=request.target,
             dataset_glob_pattern=request.dataset_glob_pattern,
+            field_mapping=request.field_mapping,
             prompt_template=request.prompt_template,
             aggregate_fields=request.aggregate_fields,
         )

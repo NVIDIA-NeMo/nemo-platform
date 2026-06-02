@@ -6,6 +6,8 @@ import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Button, PageHeader, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { DatasetsTable } from '@studio/components/DatasetsTable';
+import { NewDatasetButton } from '@studio/components/NewDatasetButton';
+import { NewModelFilesetButton } from '@studio/components/NewModelFilesetButton';
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
@@ -14,6 +16,7 @@ import { PanelManagement } from '@studio/routes/FilesetListRoute/PanelManagement
 import {
   getDatasetDetailRoute,
   getFilesetDetailsRoute,
+  getModelDetailRoute,
   getNewFilesetRoute,
   getWorkspaceFilesetsRoute,
 } from '@studio/routes/utils';
@@ -30,13 +33,11 @@ export const FilesetListRoute: FC = () => {
 
   const getDatasetRoute = useCallback(
     (dataset: FilesetOutput) => {
-      // Bifurcate by purpose when the feature flag is on:
-      //   dataset -> new dedicated detail page
-      //   model   -> model detail page (owned by parallel team; helper not yet available -
-      //              falls through to the side-panel URL until the model team's bead lands)
-      //   other   -> existing side panel
       if (FILESET_DETAILS_ENABLED && dataset.purpose === 'dataset') {
         return getDatasetDetailRoute(workspace, dataset.name);
+      }
+      if (FILESET_DETAILS_ENABLED && dataset.purpose === 'model') {
+        return getModelDetailRoute(workspace, dataset.name);
       }
       return getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true }));
     },
@@ -58,9 +59,16 @@ export const FilesetListRoute: FC = () => {
           slotHeading="Filesets"
           slotDescription="Filesets organize files by purpose — Generic, Dataset, or Model. Purpose determines which metadata fields are available and can't be changed after creation. Use Dataset for training and evaluation data, Model for model weights and checkpoints, and Generic for everything else."
           slotActions={
-            <Button asChild color="brand">
-              <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
-            </Button>
+            FILESET_DETAILS_ENABLED ? (
+              <>
+                <NewDatasetButton color="brand" />
+                <NewModelFilesetButton color="brand" />
+              </>
+            ) : (
+              <Button asChild color="brand">
+                <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
+              </Button>
+            )
           }
         />
         <DatasetsTable

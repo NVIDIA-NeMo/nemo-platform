@@ -14,6 +14,7 @@ from typing import Any, AsyncIterator, Iterator, cast
 
 import httpx
 from nemo_evaluator.jobs.evaluate import EvaluateJob, EvaluateSpec
+from nemo_evaluator.jobs.utils import download_dataset, download_dataset_sync
 from nemo_evaluator.sdk import http_utils
 from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult
 from nemo_evaluator.sdk.job_resources import (
@@ -23,6 +24,7 @@ from nemo_evaluator.sdk.job_resources import (
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
 from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
+from nemo_evaluator.sdk.values.filesets import FilesetRef
 from nemo_evaluator.shared.metric_bundles.bundles import MetricBundle, MetricBundlePackager, bundle_metric
 from nemo_evaluator_sdk import Evaluator as SDKEvaluator
 from nemo_evaluator_sdk.datasets.loader import prepare_dataset_rows
@@ -31,6 +33,7 @@ from nemo_evaluator_sdk.metrics.protocol import Metric
 from nemo_evaluator_sdk.values import (
     Agent,
     DatasetInput,
+    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
@@ -40,8 +43,6 @@ from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationRe
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
-from nmp.evaluator.app.datasets.nmp_datasets.fileset import download_dataset, download_dataset_sync
-from nmp.evaluator.app.values import FilesetRef
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
@@ -141,6 +142,8 @@ def _build_evaluate_spec(
         spec["target"] = request.target.model_dump(mode="json")
     if request.prompt_template is not None:
         spec["prompt_template"] = request.prompt_template
+    if request.field_mapping is not None:
+        spec["field_mapping"] = request.field_mapping.model_dump(mode="json")
     return EvaluateSpec.model_validate(spec)
 
 
@@ -243,6 +246,7 @@ class _SyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -252,6 +256,7 @@ class _SyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -262,6 +267,7 @@ class _SyncEvaluatorPluginExecutor:
                 config=request.params,
                 target=request.target,
                 dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
                 prompt_template=request.prompt_template,
             )
         return filter_evaluation_result(result, aggregate_fields)
@@ -274,6 +280,7 @@ class _SyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> EvaluatorJobResource:
@@ -283,6 +290,7 @@ class _SyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
         )
         spec = _build_evaluate_spec(
@@ -311,6 +319,7 @@ class _SyncEvaluatorPluginExecutor:
                 config=request.params,
                 target=request.target,
                 dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
                 prompt_template=request.prompt_template,
             )
         return filter_benchmark_result(result, request.aggregate_fields)
@@ -393,6 +402,7 @@ class _AsyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         metric_bundle_packager: MetricBundlePackager | None = None,
     ) -> AsyncEvaluatorJobResource:
@@ -402,6 +412,7 @@ class _AsyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
         )
         spec = _build_evaluate_spec(
@@ -449,6 +460,7 @@ class _AsyncEvaluatorPluginExecutor:
         params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
         target: Model | Agent | None = None,
         dataset_glob_pattern: str | None = None,
+        field_mapping: FieldMapping | None = None,
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
@@ -458,6 +470,7 @@ class _AsyncEvaluatorPluginExecutor:
             params=normalize_params(params, target),
             target=target,
             dataset_glob_pattern=dataset_glob_pattern,
+            field_mapping=field_mapping,
             prompt_template=prompt_template,
             aggregate_fields=aggregate_fields,
         )
@@ -468,6 +481,7 @@ class _AsyncEvaluatorPluginExecutor:
                 config=request.params,
                 target=request.target,
                 dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
                 prompt_template=request.prompt_template,
             )
         return filter_evaluation_result(result, aggregate_fields)
@@ -486,6 +500,7 @@ class _AsyncEvaluatorPluginExecutor:
                 config=request.params,
                 target=request.target,
                 dataset_glob_pattern=resolved_pattern,
+                field_mapping=request.field_mapping,
                 prompt_template=request.prompt_template,
             )
         return filter_benchmark_result(result, request.aggregate_fields)

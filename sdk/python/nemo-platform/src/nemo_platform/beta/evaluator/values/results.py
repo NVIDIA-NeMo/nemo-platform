@@ -3,9 +3,6 @@
 
 """Result types for evaluator SDK runtime."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/values/results.py
-# Migrated from: services/evaluator/src/nmp/evaluator/app/values/scores.py
-
 from __future__ import annotations
 
 import json
