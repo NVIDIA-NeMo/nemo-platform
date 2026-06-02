@@ -5,7 +5,6 @@
 
 import types
 import uuid
-from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Type, Union, get_args, get_origin
 
 import base58

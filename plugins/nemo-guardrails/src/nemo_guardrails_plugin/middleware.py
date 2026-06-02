@@ -63,6 +63,7 @@ from nemo_guardrails_plugin.streaming import (
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
 from nemo_platform.types.guardrail import GenerationLogOptionsParam
 from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
+from nemo_platform_plugin.config import get_common_service_config
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,
@@ -75,11 +76,10 @@ from nemo_platform_plugin.inference_middleware import (
     NemoInferenceMiddleware,
     VirtualModel,
 )
-from nemoguardrails.rails.llm.llmrails import LLMRails
-from nemoguardrails.rails.llm.options import GenerationResponse
-from nemo_platform_plugin.config import get_common_service_config
 from nemo_platform_plugin.refs import parse_entity_ref
 from nemo_platform_plugin.task_sdk import get_async_platform_sdk
+from nemoguardrails.rails.llm.llmrails import LLMRails
+from nemoguardrails.rails.llm.options import GenerationResponse
 
 logger = logging.getLogger(__name__)
 

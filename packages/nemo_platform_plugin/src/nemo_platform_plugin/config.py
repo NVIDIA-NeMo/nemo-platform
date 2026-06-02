@@ -118,6 +118,7 @@ def nmp_user_data_dir() -> Path:
         return Path(xdg).expanduser() / _DATA_DIR_NAME
     return _FALLBACK_DATA_DIR.expanduser()
 
+
 if environ.get(NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR, "") != "":
     logger.setLevel(logging.ERROR)
 

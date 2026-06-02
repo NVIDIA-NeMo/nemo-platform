@@ -15,12 +15,9 @@ from nemo_platform_plugin.task_sdk import (
     TaskSDKProvider,
     _on_behalf_of_headers,
     _read_principal_from_env,
-    _resolve_provider,
-    get_platform_sdk,
     get_task_sdk,
     set_task_sdk_provider,
 )
-
 
 # ---------------------------------------------------------------------------
 # _read_principal_from_env

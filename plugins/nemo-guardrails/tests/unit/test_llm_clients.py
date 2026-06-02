@@ -54,10 +54,12 @@ def _make_fake_sdk(**custom_headers: str) -> MagicMock:
 
 class TestBuildPlatformHeaders:
     def test_returns_custom_headers_from_sdk(self) -> None:
-        sdk = _make_fake_sdk(**{
-            "X-NMP-Principal-Id": "service:guardrails-test",
-            "traceparent": "00-platform",
-        })
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
         assert build_platform_headers(sdk) == {
             "X-NMP-Principal-Id": "service:guardrails-test",
             "traceparent": "00-platform",
@@ -73,10 +75,12 @@ class TestRequestHeadersContext:
         assert get_request_headers() == {}
 
     def test_sets_platform_headers_and_resets_after_exit(self) -> None:
-        sdk = _make_fake_sdk(**{
-            "X-NMP-Principal-Id": "service:guardrails-test",
-            "traceparent": "00-platform",
-        })
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
 
         assert get_request_headers() == {}
 
@@ -125,10 +129,12 @@ class TestHeaderAwareChatNVIDIA:
         assert client.model == "default/safety"
         assert client.default_headers == {"X-Static": "yes"}
 
-        sdk = _make_fake_sdk(**{
-            "X-NMP-Principal-Id": "service:guardrails-test",
-            "traceparent": "00-platform",
-        })
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
         with platform_headers_context(sdk):
             _inputs, _payload, headers = client._prepare_inputs_and_payload([])
             assert headers == {

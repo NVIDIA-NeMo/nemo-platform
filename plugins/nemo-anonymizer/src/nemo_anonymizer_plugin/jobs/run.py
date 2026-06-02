@@ -23,6 +23,7 @@ from nemo_anonymizer_plugin.app.task_config import (
 )
 from nemo_anonymizer_plugin.tasks.anonymizer.run import run_step_config
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.config import get_qualified_image
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.jobs.api_factory import (
@@ -34,7 +35,6 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nemo_platform_plugin.config import get_qualified_image
 from pydantic import BaseModel
 
 
