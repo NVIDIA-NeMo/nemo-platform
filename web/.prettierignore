@@ -3,3 +3,7 @@ helm/
 
 # Lock file
 pnpm-lock.yaml
+
+# Build output
+dist/
+packages/*/dist/

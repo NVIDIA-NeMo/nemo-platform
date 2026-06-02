@@ -8,6 +8,7 @@ import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
   type FC,
+  type FormEvent,
   type ReactNode,
   useCallback,
   useState,
@@ -66,7 +67,7 @@ const LandingComposer = ({
   input: string;
   onChange: (value: string) => void;
 }) => {
-  const handleSubmit = (event: React.SubmitEvent<HTMLFormElement>) => {
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
   };
 
