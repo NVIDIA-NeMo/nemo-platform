@@ -46,7 +46,7 @@ When something goes wrong with authentication or authorization, start here. Prob
 1. Check your role binding in the workspace:
 
  ```bash
- nemo members list --workspace <workspace-name>
+ nemo workspaces members list --workspace <workspace-name>
  ```
 
  Verify your email appears and has the expected role (Viewer, Editor, or Admin).
@@ -114,7 +114,7 @@ The `client_id` in {{platform_name}} config doesn't match the application in you
 3. Verify you have the Admin role:
 
  ```bash
- nemo members list --workspace <workspace-name>
+ nemo workspaces members list --workspace <workspace-name>
  ```
 
 ## "Gateway-Level Auth Isn't Working"

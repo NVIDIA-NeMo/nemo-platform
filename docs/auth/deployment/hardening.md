@@ -18,7 +18,7 @@ For the security architecture, see [Security Model](../security-model.md). For c
 - [ ] **Review default workspace bindings**: The `default` workspace grants Editor to `*` (all authenticated users). If your deployment requires tighter control, restrict this after bootstrap.
 - [ ] **Restrict PlatformAdmin**: Only one email should have PlatformAdmin. This role bypasses all authorization — treat it like a root account.
 - [ ] **Use scoped tokens for CI/CD**: Request `platform:read` only for pipelines that don't need to modify resources. See [API Scopes](../authorization/api-scopes.md).
-- [ ] **Audit workspace access**: Periodically review workspace members (`nemo members list --workspace <name>`) and remove stale access.
+- [ ] **Audit workspace access**: Periodically review workspace members (`nemo workspaces members list --workspace <name>`) and remove stale access.
 - [ ] **Use wildcard bindings carefully**: Only grant `*` (all users) a role when you intentionally want shared access. Prefer Viewer over Editor for public workspaces.
 
 ## Gateway and Network

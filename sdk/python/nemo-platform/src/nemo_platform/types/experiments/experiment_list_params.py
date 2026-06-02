@@ -15,20 +15,26 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from .members import (
-    MembersResource,
-    AsyncMembersResource,
-    MembersResourceWithRawResponse,
-    AsyncMembersResourceWithRawResponse,
-    MembersResourceWithStreamingResponse,
-    AsyncMembersResourceWithStreamingResponse,
-)
+from __future__ import annotations
 
-__all__ = [
-    "MembersResource",
-    "AsyncMembersResource",
-    "MembersResourceWithRawResponse",
-    "AsyncMembersResourceWithRawResponse",
-    "MembersResourceWithStreamingResponse",
-    "AsyncMembersResourceWithStreamingResponse",
-]
+from typing_extensions import Literal, TypedDict
+
+from .experiment_filter_param import ExperimentFilterParam
+
+__all__ = ["ExperimentListParams"]
+
+
+class ExperimentListParams(TypedDict, total=False):
+    workspace: str
+
+    filter: ExperimentFilterParam
+    """Filter experiments by name, experiment_group_id, agent_name, and dataset_name."""
+
+    page: int
+    """Page number."""
+
+    page_size: int
+    """Page size."""
+
+    sort: Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+    """Sort field; prefix with '-' for descending."""

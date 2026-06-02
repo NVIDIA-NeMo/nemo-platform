@@ -71,10 +71,10 @@ def create_members(
         [bold red]Required fields:[/] principal
 
         [green]Examples:[/]
-        nemo members create --input-file config.json
-        nemo members create --input-data '{"principal": "value"}'
-        echo '{"json": "data"}' | nemo members create --input-file -
-        nemo members create --<option> "value"
+        nemo workspaces members create --input-file config.json
+        nemo workspaces members create --input-data '{"principal": "value"}'
+        echo '{"json": "data"}' | nemo workspaces members create --input-file -
+        nemo workspaces members create --<option> "value"
     """
     # Read base input (optional if all fields provided via flags)
     if input_file or input_data:
@@ -95,7 +95,7 @@ def create_members(
     validate_required_fields(
         input_payload,
         ["principal"],
-        "members create",
+        "workspaces members create",
         {
             "principal": "The principal identifier (email, user ID, or group ID) (required)",
         },
@@ -105,11 +105,11 @@ def create_members(
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
-    if handle_code_generation(["members"], "create", all_kwargs, output_format, state):
+    if handle_code_generation(["workspaces", "members"], "create", all_kwargs, output_format, state):
         return
 
     client = state.get_client()
-    result = client.members.create(**all_kwargs)
+    result = client.workspaces.members.create(**all_kwargs)
 
     format_output(
         result,
@@ -153,7 +153,7 @@ def delete_members(
         workspace=workspace,
         wait_role_propagation=wait_role_propagation,
     )
-    client.members.delete(principal_id, **kwargs)
+    client.workspaces.members.delete(principal_id, **kwargs)
 
     typer.echo("✓ Deleted successfully")
 
@@ -195,12 +195,12 @@ def list_members(
         workspace=workspace,
     )
 
-    if handle_code_generation(["members"], "list", kwargs, output_format, state):
+    if handle_code_generation(["workspaces", "members"], "list", kwargs, output_format, state):
         return
 
     client = state.get_client()
     path_args = ()
-    items = client.members.list(*path_args, **kwargs)
+    items = client.workspaces.members.list(*path_args, **kwargs)
 
     format_output(
         items,
@@ -256,10 +256,10 @@ def update_members(
         [bold red]Required fields:[/] roles
 
         [green]Examples:[/]
-        nemo members update <principal_id> --input-file config.json
-        nemo members update <principal_id> --input-data '{"roles": "value"}'
-        echo '{"json": "data"}' | nemo members update <principal_id> --input-file -
-        nemo members update <principal_id> --<option> "value"
+        nemo workspaces members update <principal_id> --input-file config.json
+        nemo workspaces members update <principal_id> --input-data '{"roles": "value"}'
+        echo '{"json": "data"}' | nemo workspaces members update <principal_id> --input-file -
+        nemo workspaces members update <principal_id> --<option> "value"
     """
     # Read base input (optional if all fields provided via flags)
     if input_file or input_data:
@@ -278,7 +278,7 @@ def update_members(
     validate_required_fields(
         input_payload,
         ["roles"],
-        "members update",
+        "workspaces members update",
         {
             "roles": "Updated list of roles for the principal (can be repeated) (required)",
         },
@@ -289,11 +289,11 @@ def update_members(
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
-    if handle_code_generation(["members"], "update", all_kwargs, output_format, state):
+    if handle_code_generation(["workspaces", "members"], "update", all_kwargs, output_format, state):
         return
 
     client = state.get_client()
-    result = client.members.update(**all_kwargs)
+    result = client.workspaces.members.update(**all_kwargs)
 
     format_output(
         result,

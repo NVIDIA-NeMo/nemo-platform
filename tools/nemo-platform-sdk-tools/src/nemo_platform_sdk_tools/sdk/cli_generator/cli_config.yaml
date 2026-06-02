@@ -41,10 +41,6 @@ top_level:
   jobs:
     panel: Core plugins
     help: Manage jobs.
-  members:
-    panel: Core plugins
-    help: Manage members.
-    hidden: true
   models:
     panel: Core plugins
     help: Manage models.
@@ -71,7 +67,7 @@ config:
       columns:
       - name
       - description
-- resource: [members]
+- resource: [workspaces, members]
   methods:
     list:
       columns:
@@ -302,6 +298,14 @@ config:
       skip: true
     live_global:
       skip: true
+
+# Experiments are in the OpenAPI spec and SDK (for the frontend) but not yet exposed
+# as CLI commands; drop the skip once the feature is production-ready.
+- resource: [experiments]
+  skip: true
+
+- resource: [experiment_groups]
+  skip: true
 
 - resource: [secrets]
   methods:

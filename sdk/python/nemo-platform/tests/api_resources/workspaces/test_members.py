@@ -25,7 +25,7 @@ import pytest
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
 from nemo_platform.types.shared import DeleteResponse
-from nemo_platform.types.members import (
+from nemo_platform.types.workspaces import (
     WorkspaceMember,
     WorkspaceMemberListResponse,
 )
@@ -39,7 +39,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_create(self, client: NeMoPlatform) -> None:
-        member = client.members.create(
+        member = client.workspaces.members.create(
             workspace="workspace",
             principal="user@example.com",
         )
@@ -48,7 +48,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
-        member = client.members.create(
+        member = client.workspaces.members.create(
             workspace="workspace",
             principal="user@example.com",
             wait_role_propagation=True,
@@ -59,7 +59,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
-        response = client.members.with_raw_response.create(
+        response = client.workspaces.members.with_raw_response.create(
             workspace="workspace",
             principal="user@example.com",
         )
@@ -72,7 +72,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
-        with client.members.with_streaming_response.create(
+        with client.workspaces.members.with_streaming_response.create(
             workspace="workspace",
             principal="user@example.com",
         ) as response:
@@ -88,7 +88,7 @@ class TestMembers:
     @parametrize
     def test_path_params_create(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.members.with_raw_response.create(
+            client.workspaces.members.with_raw_response.create(
                 workspace="",
                 principal="user@example.com",
             )
@@ -96,7 +96,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_update(self, client: NeMoPlatform) -> None:
-        member = client.members.update(
+        member = client.workspaces.members.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -106,7 +106,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_update_with_all_params(self, client: NeMoPlatform) -> None:
-        member = client.members.update(
+        member = client.workspaces.members.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -117,7 +117,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_update(self, client: NeMoPlatform) -> None:
-        response = client.members.with_raw_response.update(
+        response = client.workspaces.members.with_raw_response.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -131,7 +131,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_update(self, client: NeMoPlatform) -> None:
-        with client.members.with_streaming_response.update(
+        with client.workspaces.members.with_streaming_response.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -148,14 +148,14 @@ class TestMembers:
     @parametrize
     def test_path_params_update(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.members.with_raw_response.update(
+            client.workspaces.members.with_raw_response.update(
                 principal_id="principal_id",
                 workspace="",
                 roles=["Viewer"],
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `principal_id` but received ''"):
-            client.members.with_raw_response.update(
+            client.workspaces.members.with_raw_response.update(
                 principal_id="",
                 workspace="workspace",
                 roles=["Viewer"],
@@ -164,7 +164,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_list(self, client: NeMoPlatform) -> None:
-        member = client.members.list(
+        member = client.workspaces.members.list(
             workspace="workspace",
         )
         assert_matches_type(WorkspaceMemberListResponse, member, path=["response"])
@@ -172,7 +172,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_list(self, client: NeMoPlatform) -> None:
-        response = client.members.with_raw_response.list(
+        response = client.workspaces.members.with_raw_response.list(
             workspace="workspace",
         )
 
@@ -184,7 +184,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_list(self, client: NeMoPlatform) -> None:
-        with client.members.with_streaming_response.list(
+        with client.workspaces.members.with_streaming_response.list(
             workspace="workspace",
         ) as response:
             assert not response.is_closed
@@ -199,14 +199,14 @@ class TestMembers:
     @parametrize
     def test_path_params_list(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.members.with_raw_response.list(
+            client.workspaces.members.with_raw_response.list(
                 workspace="",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_delete(self, client: NeMoPlatform) -> None:
-        member = client.members.delete(
+        member = client.workspaces.members.delete(
             principal_id="principal_id",
             workspace="workspace",
         )
@@ -215,7 +215,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_method_delete_with_all_params(self, client: NeMoPlatform) -> None:
-        member = client.members.delete(
+        member = client.workspaces.members.delete(
             principal_id="principal_id",
             workspace="workspace",
             wait_role_propagation=True,
@@ -225,7 +225,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_raw_response_delete(self, client: NeMoPlatform) -> None:
-        response = client.members.with_raw_response.delete(
+        response = client.workspaces.members.with_raw_response.delete(
             principal_id="principal_id",
             workspace="workspace",
         )
@@ -238,7 +238,7 @@ class TestMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     def test_streaming_response_delete(self, client: NeMoPlatform) -> None:
-        with client.members.with_streaming_response.delete(
+        with client.workspaces.members.with_streaming_response.delete(
             principal_id="principal_id",
             workspace="workspace",
         ) as response:
@@ -254,13 +254,13 @@ class TestMembers:
     @parametrize
     def test_path_params_delete(self, client: NeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            client.members.with_raw_response.delete(
+            client.workspaces.members.with_raw_response.delete(
                 principal_id="principal_id",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `principal_id` but received ''"):
-            client.members.with_raw_response.delete(
+            client.workspaces.members.with_raw_response.delete(
                 principal_id="",
                 workspace="workspace",
             )
@@ -274,7 +274,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.create(
+        member = await async_client.workspaces.members.create(
             workspace="workspace",
             principal="user@example.com",
         )
@@ -283,7 +283,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.create(
+        member = await async_client.workspaces.members.create(
             workspace="workspace",
             principal="user@example.com",
             wait_role_propagation=True,
@@ -294,7 +294,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.members.with_raw_response.create(
+        response = await async_client.workspaces.members.with_raw_response.create(
             workspace="workspace",
             principal="user@example.com",
         )
@@ -307,7 +307,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.members.with_streaming_response.create(
+        async with async_client.workspaces.members.with_streaming_response.create(
             workspace="workspace",
             principal="user@example.com",
         ) as response:
@@ -323,7 +323,7 @@ class TestAsyncMembers:
     @parametrize
     async def test_path_params_create(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.members.with_raw_response.create(
+            await async_client.workspaces.members.with_raw_response.create(
                 workspace="",
                 principal="user@example.com",
             )
@@ -331,7 +331,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_update(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.update(
+        member = await async_client.workspaces.members.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -341,7 +341,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_update_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.update(
+        member = await async_client.workspaces.members.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -352,7 +352,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.members.with_raw_response.update(
+        response = await async_client.workspaces.members.with_raw_response.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -366,7 +366,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_update(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.members.with_streaming_response.update(
+        async with async_client.workspaces.members.with_streaming_response.update(
             principal_id="principal_id",
             workspace="workspace",
             roles=["Viewer"],
@@ -383,14 +383,14 @@ class TestAsyncMembers:
     @parametrize
     async def test_path_params_update(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.members.with_raw_response.update(
+            await async_client.workspaces.members.with_raw_response.update(
                 principal_id="principal_id",
                 workspace="",
                 roles=["Viewer"],
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `principal_id` but received ''"):
-            await async_client.members.with_raw_response.update(
+            await async_client.workspaces.members.with_raw_response.update(
                 principal_id="",
                 workspace="workspace",
                 roles=["Viewer"],
@@ -399,7 +399,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_list(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.list(
+        member = await async_client.workspaces.members.list(
             workspace="workspace",
         )
         assert_matches_type(WorkspaceMemberListResponse, member, path=["response"])
@@ -407,7 +407,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_list(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.members.with_raw_response.list(
+        response = await async_client.workspaces.members.with_raw_response.list(
             workspace="workspace",
         )
 
@@ -419,7 +419,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_list(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.members.with_streaming_response.list(
+        async with async_client.workspaces.members.with_streaming_response.list(
             workspace="workspace",
         ) as response:
             assert not response.is_closed
@@ -434,14 +434,14 @@ class TestAsyncMembers:
     @parametrize
     async def test_path_params_list(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.members.with_raw_response.list(
+            await async_client.workspaces.members.with_raw_response.list(
                 workspace="",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.delete(
+        member = await async_client.workspaces.members.delete(
             principal_id="principal_id",
             workspace="workspace",
         )
@@ -450,7 +450,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_method_delete_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
-        member = await async_client.members.delete(
+        member = await async_client.workspaces.members.delete(
             principal_id="principal_id",
             workspace="workspace",
             wait_role_propagation=True,
@@ -460,7 +460,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_raw_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        response = await async_client.members.with_raw_response.delete(
+        response = await async_client.workspaces.members.with_raw_response.delete(
             principal_id="principal_id",
             workspace="workspace",
         )
@@ -473,7 +473,7 @@ class TestAsyncMembers:
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
     async def test_streaming_response_delete(self, async_client: AsyncNeMoPlatform) -> None:
-        async with async_client.members.with_streaming_response.delete(
+        async with async_client.workspaces.members.with_streaming_response.delete(
             principal_id="principal_id",
             workspace="workspace",
         ) as response:
@@ -489,13 +489,13 @@ class TestAsyncMembers:
     @parametrize
     async def test_path_params_delete(self, async_client: AsyncNeMoPlatform) -> None:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
-            await async_client.members.with_raw_response.delete(
+            await async_client.workspaces.members.with_raw_response.delete(
                 principal_id="principal_id",
                 workspace="",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `principal_id` but received ''"):
-            await async_client.members.with_raw_response.delete(
+            await async_client.workspaces.members.with_raw_response.delete(
                 principal_id="",
                 workspace="workspace",
             )

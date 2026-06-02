@@ -8,7 +8,9 @@ from typing import Annotated, Literal
 
 import typer
 
+from nemo_platform_ext.cli.commands.api.workspaces import members
 from nemo_platform_ext.cli.core.api import build_kwargs
+from nemo_platform_ext.cli.core.api import merge_filter_dict as merge_filter_dict
 from nemo_platform_ext.cli.core.code_generator import handle_code_generation
 from nemo_platform_ext.cli.core.context import CLIContext
 from nemo_platform_ext.cli.core.errors import handle_errors
@@ -16,6 +18,7 @@ from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_w
 from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
 from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
 from nemo_platform_ext.cli.core.stdin_utils import read_data_input_with_flags, validate_required_fields
+from nemo_platform_ext.cli.core.stdin_utils import read_payload as read_payload
 from nemo_platform_ext.cli.core.types import (
     EntityOutputFormatOption,
     ListOutputFormatOption,
@@ -24,6 +27,8 @@ from nemo_platform_ext.cli.core.types import (
 )
 
 app = create_typer_app(name="workspaces", help="Manage workspaces")
+
+app.add_typer(members.app, name="members")
 
 
 @app.command("create")
