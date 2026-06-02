@@ -26,7 +26,7 @@ wraps it in a small FastAPI server (`model/server.py` + `model/Dockerfile`).
 | Surface | Entry point | Purpose |
 |---|---|---|
 | Service | `nemo.services` → `jailbreak-detect` | Deployment CRUD + `classify` proxy at `/apis/jailbreak-detect` |
-| Controller | `nemo.controllers` → `jailbreak-detect` | Reconciles deployments against a backend (Docker now; Jobs/k8s seam) |
+| Controller | `nemo.controllers` → `jailbreak-detect` | Reconciles deployments against a backend (Docker now; Jobs/k8s extension point) |
 | CLI | `nemo.cli` → `jailbreak-detect` | `nemo jailbreak-detect deploy \| status \| teardown` |
 
 The **entity** `JailbreakDetectorDeployment` is the source of truth: the service
@@ -81,8 +81,8 @@ rails:
 
 ## Backends
 
-- **`docker`** (default): the controller manages a local container via the `docker` CLI — parity with the NIM tutorial. The endpoint is resolved as `http://localhost:<port>`, so this backend assumes the controller and container share a host (local/dev). Each deployment needs a **distinct host port**; a collision surfaces as a `docker run` bind error that marks the deployment `failed`.
-- **`jobs`**: stubbed seam in `deployment/backend.py` for a production path on the platform Jobs/Executor system (k8s/slurm). Entities and the controller are already backend-agnostic.
+- **`docker`** (default): the controller manages a local container via the `docker` CLI. The endpoint is resolved as `http://localhost:<port>`, so this backend assumes the controller and container share a host (local/dev). Each deployment needs a **distinct host port**; a collision surfaces as a `docker run` bind error that marks the deployment `failed`.
+- **`jobs`**: not yet implemented; an extension point in `deployment/backend.py` for running on the platform Jobs/Executor system (k8s/slurm). Entities and the controller are already backend-agnostic.
 
 Deleting a deployment marks it `stopping`; the controller stops the backend and removes the entity on its next cycle. If the controller is not running, the entity stays in `stopping` until it is.
 

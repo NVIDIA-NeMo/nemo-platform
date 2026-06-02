@@ -4,11 +4,11 @@
 """Deployment backends for the jailbreak-detection model server.
 
 The controller talks to the model server through a small backend interface so
-the same reconcile loop drives different runtimes. ``DockerBackend`` is the
-local/dev path (parity with the NIM tutorial); ``JobsBackend`` is the seam for
-a future production path on top of the platform Jobs/Executor system (k8s,
-slurm). Both produce an :class:`DeploymentResult` carrying the
-backend-specific handle and the resolved endpoint URL.
+the same reconcile loop drives different runtimes. ``DockerBackend`` runs the
+server as a local container; ``JobsBackend`` is the extension point for running
+it on the platform Jobs/Executor system (k8s, slurm). Both produce a
+:class:`DeploymentResult` carrying the backend-specific handle and the resolved
+endpoint URL.
 """
 
 from __future__ import annotations
@@ -150,12 +150,12 @@ class DockerBackend:
 
 
 class JobsBackend:
-    """Production deployment path via the platform Jobs/Executor system.
+    """Deployment via the platform Jobs/Executor system (k8s/slurm).
 
-    Seam for k8s/slurm deployment. Entities and the controller are already
-    backend-agnostic, so wiring this in is additive: implement these three
-    methods against the Jobs SDK (submit a service job, resolve its
-    inference-gateway URL, cancel it) without touching the reconcile loop.
+    Not yet implemented. Entities and the controller are backend-agnostic, so
+    adding it is additive: implement these three methods against the Jobs SDK
+    (submit a service job, resolve its inference-gateway URL, cancel it) without
+    touching the reconcile loop.
     """
 
     async def ensure_started(self, spec: DeploymentSpec) -> DeploymentResult:

@@ -1,25 +1,23 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Decomposed NemoGuard JailbreakDetect model.
+"""NemoGuard JailbreakDetect model.
 
-This is the Option C core: the two-stage pipeline lifted out of the
-``nemoguardrails`` library (``library/jailbreak_detection/model_based/models.py``)
-so it can be served independently of the NVIDIA NIM and have its deployment
-lifecycle owned by NeMo Platform.
+A two-stage pipeline, ported from the ``nemoguardrails`` library
+(``library/jailbreak_detection/model_based/models.py``) so it can be served
+independently of the NVIDIA NIM.
 
 Stage 1 — ``SnowflakeEmbed``: the ``Snowflake/snowflake-arctic-embed-m-long``
-transformer encoder, used purely as a frozen feature extractor. The CLS-token
+transformer encoder, used as a frozen feature extractor. The CLS-token
 embedding is taken (``model(**tokens)[0][:, 0]``), matching the upstream
-implementation exactly.
+implementation.
 
 Stage 2 — ``JailbreakClassifier``: a scikit-learn random forest exported to
 ONNX (``snowflake.onnx`` from the gated ``nvidia/NemoGuard-JailbreakDetect``
 Hugging Face repo), run on CPU through ``onnxruntime``.
 
-This module intentionally has **no dependency on nemo_platform** so the model
-container stays lean. It is imported both by the standalone server
-(``server.py``) and by the plugin's tests.
+This module has no dependency on ``nemo_platform`` so the model container stays
+lean; it is imported by both the standalone server (``server.py``) and the tests.
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unit tests for the decomposed classifier scoring logic (no torch/onnx needed)."""
+"""Unit tests for the classifier scoring logic (no torch/onnx needed)."""
 
 from __future__ import annotations
 
