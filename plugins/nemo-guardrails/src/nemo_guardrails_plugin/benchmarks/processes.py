@@ -15,10 +15,11 @@ mid-run. This module wraps ``subprocess.Popen`` in a context-managed
 * merges stdout/stderr into a per-process log file under ``run_dir/logs/``,
 * escalates SIGTERM → SIGKILL on shutdown if the child doesn't exit in time.
 
-``supervised_processes`` starts the children in order and guarantees every
-already-started child is stopped if a later one fails to come up. ``wait_http``
-is the readiness probe the caller uses between starts, so we only move on to
-the next child once the previous one is actually serving requests.
+``supervised_processes`` starts the children in order, polls each spec's
+``health_url`` before moving on, and guarantees every already-started child is
+stopped if a later one fails to come up. ``wait_http`` implements the readiness
+probe used by ``supervised_processes`` and for externally managed dependencies
+(ex. ``--reuse-services``).
 """
 
 from __future__ import annotations
@@ -34,6 +35,8 @@ from pathlib import Path
 from typing import IO, Iterator
 
 import httpx
+
+from nemo_guardrails_plugin.benchmarks.bootstrap import build_env
 
 log = logging.getLogger(__name__)
 
@@ -67,6 +70,11 @@ class SupervisedProcess:
     # Extra env vars to overlay on top of the parent's ``os.environ`` (e.g.
     # ``PYTHONPATH``, ``NMP_DATA_DIR``). ``None`` means "inherit unchanged".
     env: dict[str, str] | None = None
+    # Readiness probe polled after ``start()`` when this process is entered via
+    # ``supervised_processes``. ``None`` skips the probe (e.g. when reusing an
+    # externally managed dependency).
+    health_url: str | None = None
+    health_timeout_seconds: float = 60.0
     # The live ``Popen`` handle, populated by ``start()`` and consulted by
     # ``stop()``. Excluded from ``__init__`` and ``repr`` since it's pure state.
     _proc: subprocess.Popen[bytes] | None = field(default=None, init=False, repr=False)
@@ -95,7 +103,7 @@ class SupervisedProcess:
             self._proc = subprocess.Popen(
                 self.cmd,
                 cwd=str(self.cwd),
-                env={**os.environ, **(self.env or {})},
+                env=build_env(extra_env=self.env),
                 stdout=self._log_fh,
                 stderr=subprocess.STDOUT,
                 start_new_session=True,
@@ -180,6 +188,12 @@ def supervised_processes(specs: list[SupervisedProcess]) -> Iterator[list[Superv
     with ExitStack() as stack:
         for spec in specs:
             stack.enter_context(spec)
+            if spec.health_url is not None:
+                wait_http(
+                    spec.health_url,
+                    timeout_seconds=spec.health_timeout_seconds,
+                    label=spec.name,
+                )
         yield specs
 
 

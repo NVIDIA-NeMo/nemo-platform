@@ -56,13 +56,19 @@ def ensure_aiperf_venv(venv_dir: Path) -> Path:
     return python_bin
 
 
-def env_with_venv_on_path(venv_dir: Path) -> dict[str, str]:
-    """Return ``os.environ`` with the venv's ``bin/`` prepended to ``PATH``.
+def build_env(
+    *,
+    venv_bin_path: Path | str | None = None,
+    extra_env: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return a child-process environment based on ``os.environ``.
 
-    The upstream ``python -m benchmark.aiperf`` wrapper shells out to a literal
-    ``aiperf`` binary via ``subprocess.run``, so the venv's bin dir must be
-    discoverable on ``PATH`` before whatever was inherited from the parent.
+    Optionally prepends ``venv_bin_path`` to ``PATH`` and overlays ``extra_env``.
     """
     env = dict(os.environ)
-    env["PATH"] = f"{venv_dir / 'bin'}{os.pathsep}{env.get('PATH', '')}"
+    if venv_bin_path:
+        bin_path = str(venv_bin_path)
+        env["PATH"] = f"{bin_path}{os.pathsep}{env.get('PATH', '')}"
+    if extra_env:
+        env.update(extra_env)
     return env

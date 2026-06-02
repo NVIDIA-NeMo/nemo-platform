@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -20,6 +19,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+
+from nemo_guardrails_plugin.benchmarks.bootstrap import build_env
 
 log = logging.getLogger(__name__)
 
@@ -94,6 +95,7 @@ def run_aiperf_sweep(
     runtime_config: Path,
     log_path: Path,
     python_executable: str | None = None,
+    venv_bin_path: Path | str | None = None,
     extra_env: dict[str, str] | None = None,
 ) -> int:
     """Run ``python -m benchmark.aiperf --config-file ...`` and tee output.
@@ -102,9 +104,9 @@ def run_aiperf_sweep(
     non-zero code as a sweep-level failure or as a fail-fast.
 
     ``python_executable`` should point at the python in the dedicated aiperf
-    venv (see :mod:`nemo_guardrails_plugin.benchmarks.bootstrap`). ``extra_env``
-    is used to prepend that venv's ``bin/`` to ``PATH`` so the ``aiperf`` CLI
-    is resolvable when the wrapper shells out to it.
+    venv (see :mod:`nemo_guardrails_plugin.benchmarks.bootstrap`). ``venv_bin_path``
+    prepends that venv's ``bin/`` to ``PATH`` so the ``aiperf`` CLI is resolvable
+    when the wrapper shells out to it.
 
     Note: AIPerf's built-in pre-flight check does a GET on
     ``urljoin(config.base_config.url, "/v1/models")`` with no override
@@ -123,9 +125,13 @@ def run_aiperf_sweep(
         str(runtime_config),
     ]
 
-    env = {**os.environ, "PYTHONPATH": str(nemoguardrails_repo_root)}
-    if extra_env:
-        env.update(extra_env)
+    env = build_env(
+        venv_bin_path=venv_bin_path,
+        extra_env={
+            "PYTHONPATH": str(nemoguardrails_repo_root),
+            **(extra_env or {}),
+        },
+    )
 
     log_path.parent.mkdir(parents=True, exist_ok=True)
 

@@ -79,6 +79,48 @@ The default sweep runs concurrency levels:
 
 With the default 60-second benchmark duration, expect the benchmark to run for ~10 minutes after service bootstrap.
 
+### Monitoring progress
+
+After bootstrap and seeding, the terminal prints `Running aiperf sweep: ...` while
+AIPerf runs. AIPerf stdout/stderr is redirected to `logs/aiperf.log`, not the
+harness terminal. When the run finishes successfully, the last harness line looks
+like:
+
+```text
+Sweep summary: 7 run(s), 0 failure(s); per-sweep outputs under ...
+```
+
+**Tail the sweep log** (replace `<run-id>` with your `--run-id` or timestamp
+directory name):
+
+```bash
+tail -f plugins/nemo-guardrails/benchmarks/artifacts/runs/<run-id>/logs/aiperf.log
+```
+
+Look for lines like `Run 3/7` and `Run 3 completed successfully`.
+
+**Watch completed sweep directories**:
+
+```bash
+ls plugins/nemo-guardrails/benchmarks/artifacts/runs/<run-id>/aiperf_results/*/*/
+```
+
+Each finished level appears as `concurrency1/`, `concurrency2/`, etc., with
+`process_result.json` and `profile_export_aiperf.csv` inside. A directory with
+an empty `profile_export.jsonl` is usually the sweep currently in progress.
+
+**Confirm the process is still running**:
+
+```bash
+pgrep -fl "benchmark.aiperf"
+```
+
+**Normal log noise during bootstrap**:
+
+- With the `--verbose` flag, `Connection refused` on `:8080` for up to ~1–3 minutes while `nemo services run` starts.
+- `409 Conflict` during seeding when resources from a prior run already exist.
+- One failed smoke-test attempt (`404` on the VirtualModel) before the IGW route propagates.
+
 ## What the harness starts
 
 - The upstream benchmark **mock app LLM** on `http://localhost:8000`,
@@ -174,6 +216,18 @@ a schema change), delete that directory for a fully fresh run:
 
 ```bash
 rm -rf plugins/nemo-guardrails/benchmarks/artifacts/nmp-data
+```
+
+To remove outputs from a specific run (logs, generated configs, AIPerf results):
+
+```bash
+rm -rf plugins/nemo-guardrails/benchmarks/artifacts/runs/<run-id>
+```
+
+To clear all run outputs:
+
+```bash
+rm -rf plugins/nemo-guardrails/benchmarks/artifacts/runs/*
 ```
 
 In CI this is automatic — every job gets a fresh runner, so `nmp-data`

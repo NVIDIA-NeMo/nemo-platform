@@ -9,7 +9,7 @@ The harness orchestrates the entire benchmark run by running the following steps
 2. Write a per-run AIPerf config under ``runs/<id>/generated/``.
 3. Start the two mock LLM servers from ``${NEMO_GUARDRAILS_REPO_ROOT}/benchmark``.
 4. Start (or reuse) ``nemo services run``.
-5. Wait for health, seed NMP resources via the SDK, smoke-test the VirtualModel.
+5. Wait for per-process health probes, seed NMP resources via the SDK, smoke-test the VirtualModel.
 6. Invoke ``python -m benchmark.aiperf run --config-file ...`` for the sweep.
 7. Collect per-sweep results and exit non-zero on any failure.
 
@@ -32,12 +32,11 @@ from nemo_guardrails_plugin.benchmarks.aiperf_runner import (
     prepare_runtime_aiperf_config,
     run_aiperf_sweep,
 )
-from nemo_guardrails_plugin.benchmarks.bootstrap import (
-    ensure_aiperf_venv,
-    env_with_venv_on_path,
-)
+from nemo_guardrails_plugin.benchmarks.bootstrap import ensure_aiperf_venv
 from nemo_guardrails_plugin.benchmarks.constants import (
     AIPERF_SHIM_BASE_URL,
+    APP_PROVIDER_URL,
+    CS_PROVIDER_URL,
     IGW_CHAT_PATH,
     NMP_BASE_URL,
     NMP_HEALTH_PATH,
@@ -59,8 +58,8 @@ from nemo_platform import APIStatusError, NeMoPlatform
 
 log = logging.getLogger("nemo_guardrails_plugin.benchmarks")
 
-_MOCK_START_TIMEOUT_SECONDS = 60
-_NMP_START_TIMEOUT_SECONDS = 180
+_MOCK_HEALTH_TIMEOUT_SECONDS = 60.0
+_NMP_HEALTH_TIMEOUT_SECONDS = 180.0
 
 
 _REQUIRED_NEMOGUARDRAILS_FILES = (
@@ -102,7 +101,7 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
     workdir = paths.nemoguardrails_repo_root / "benchmark"
 
     # Helper to build a ``SupervisedProcess`` for one of the mock LLM servers.
-    def spec(name: str, port: int, env_file: Path) -> SupervisedProcess:
+    def spec(name: str, port: int, env_file: Path, *, health_url: str) -> SupervisedProcess:
         return SupervisedProcess(
             name=name,
             cmd=[
@@ -119,6 +118,8 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
             log_path=paths.log_dir / f"{name}.log",
             cwd=workdir,
             env=env,
+            health_url=health_url,
+            health_timeout_seconds=_MOCK_HEALTH_TIMEOUT_SECONDS,
         )
 
     return [
@@ -127,6 +128,7 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
             "mock-app-llm",
             8000,
             paths.nemoguardrails_repo_root / "benchmark/mock_llm_server/configs/meta-llama-3.3-70b-instruct.env",
+            health_url=f"{APP_PROVIDER_URL}/health",
         ),
         # Content-safety LLM mock server
         spec(
@@ -134,6 +136,7 @@ def _build_mock_nim_processes(paths: RunPaths, workers: int) -> list[SupervisedP
             8001,
             paths.nemoguardrails_repo_root
             / "benchmark/mock_llm_server/configs/nvidia-llama-3.1-nemoguard-8b-content-safety.env",
+            health_url=f"{CS_PROVIDER_URL}/health",
         ),
     ]
 
@@ -150,6 +153,8 @@ def _build_nmp_process(paths: RunPaths) -> SupervisedProcess:
         log_path=paths.log_dir / "nmp-services.log",
         cwd=paths.nmp_repo_root,
         env={"NMP_BASE_URL": NMP_BASE_URL, "NMP_DATA_DIR": str(paths.nmp_data_dir)},
+        health_url=f"{NMP_BASE_URL}{NMP_HEALTH_PATH}",
+        health_timeout_seconds=_NMP_HEALTH_TIMEOUT_SECONDS,
     )
 
 
@@ -165,6 +170,8 @@ def _build_aiperf_shim_process(paths: RunPaths) -> SupervisedProcess:
         cmd=[sys.executable, "-m", "nemo_guardrails_plugin.benchmarks.shim"],
         log_path=paths.log_dir / "aiperf-shim.log",
         cwd=paths.nmp_repo_root,
+        health_url=f"{AIPERF_SHIM_BASE_URL}/__shim/health",
+        health_timeout_seconds=_MOCK_HEALTH_TIMEOUT_SECONDS,
     )
 
 
@@ -291,28 +298,13 @@ def main(argv: list[str] | None = None) -> int:
             # Pop the cleanup so processes outlive this script.
             stack.pop_all()
 
-        log.info("Waiting for all services to be ready...")
-
-        wait_http(
-            "http://localhost:8000/health",
-            timeout_seconds=_MOCK_START_TIMEOUT_SECONDS,
-            label="mock app LLM",
-        )
-        wait_http(
-            "http://localhost:8001/health",
-            timeout_seconds=_MOCK_START_TIMEOUT_SECONDS,
-            label="mock content-safety LLM",
-        )
-        wait_http(
-            f"{NMP_BASE_URL}{NMP_HEALTH_PATH}",
-            timeout_seconds=_NMP_START_TIMEOUT_SECONDS,
-            label="NMP services",
-        )
-        wait_http(
-            f"{AIPERF_SHIM_BASE_URL}/__shim/health",
-            timeout_seconds=_MOCK_START_TIMEOUT_SECONDS,
-            label="AIPerf shim",
-        )
+        if args.reuse_services:
+            log.info("Waiting for existing NMP services at %s...", NMP_BASE_URL)
+            wait_http(
+                f"{NMP_BASE_URL}{NMP_HEALTH_PATH}",
+                timeout_seconds=_NMP_HEALTH_TIMEOUT_SECONDS,
+                label="nmp-services",
+            )
 
         log.info(f"All services are ready. Seeding benchmark resources in workspace {WORKSPACE}...")
 
@@ -337,7 +329,7 @@ def main(argv: list[str] | None = None) -> int:
             runtime_config=paths.runtime_config,
             log_path=paths.log_dir / "aiperf.log",
             python_executable=str(aiperf_python),
-            extra_env=env_with_venv_on_path(paths.aiperf_venv_dir),
+            venv_bin_path=paths.aiperf_venv_dir / "bin",
         )
 
     sweep_results = collect_sweep_results(paths.aiperf_output_dir)
