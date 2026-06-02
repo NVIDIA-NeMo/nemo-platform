@@ -1,8 +1,0 @@
-# Hidden template to DRY package jobs
-.pnpm:
-  image: ${NODE_IMAGE}
-  before_script:
-    - cd web
-    - npm i -g corepack@0.31.0
-    - corepack enable
-    - pnpm install --frozen-lockfile
