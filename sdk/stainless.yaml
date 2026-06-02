@@ -1081,3 +1081,30 @@ resources:
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/traces
           retrieve: get /apis/intake/v2/workspaces/{workspace}/traces/{id}
+  experiment_groups:
+    standalone_api: true
+    models:
+      experiment_group_filter: ExperimentGroupFilter
+      experiment_group_request: ExperimentGroupRequest
+      experiment_group_response: ExperimentGroupResponse
+      experiment_group_responses_page: ExperimentGroupResponsesPage
+    methods:
+      create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
+      list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+  experiments:
+    standalone_api: true
+    models:
+      evaluator_aggregate: EvaluatorAggregate
+      experiment_filter: ExperimentFilter
+      experiment_request: ExperimentRequest
+      experiment_response: ExperimentResponse
+      experiment_responses_page: ExperimentResponsesPage
+    methods:
+      create: post /apis/intake/v2/workspaces/{workspace}/experiments
+      list: get /apis/intake/v2/workspaces/{workspace}/experiments
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}

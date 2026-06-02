@@ -22,6 +22,7 @@ import { RootRedirect } from '@studio/routes/RootRedirect';
 import {
   agentsRoutes,
   gateBaseModelsRoutes,
+  gateCodingAgentStudioRoutes,
   gateCustomizationRoutes,
   gateDatasetsRoutes,
   gateDeploymentsRoutes,
@@ -310,6 +311,11 @@ const AgentsListRoute =
       default: m.AgentsListRoute,
     }))
   );
+const ClaudeCodeChatRoute = lazy(() =>
+  import('@studio/routes/agents/ClaudeCodeChatRoute').then((m) => ({
+    default: m.ClaudeCodeChatRoute,
+  }))
+);
 const AgentOptimizationsRoute =
   AGENTS_ENABLED &&
   lazy(() =>
@@ -406,6 +412,17 @@ export const routes: RouteObject[] = [
                   ),
                   errorElement: <ErrorPanel title="Workspace" />,
                 },
+                ...gateCodingAgentStudioRoutes([
+                  {
+                    path: ROUTES.workspace.claudeCodeChat,
+                    element: (
+                      <Suspense fallback={<Loading description="Loading..." />}>
+                        <ClaudeCodeChatRoute />
+                      </Suspense>
+                    ),
+                    errorElement: <ErrorPanel title="Claude Code" />,
+                  },
+                ]),
               ]),
               ...gateBaseModelsRoutes([
                 {
