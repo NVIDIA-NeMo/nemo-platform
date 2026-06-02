@@ -177,7 +177,14 @@ class DefaultSDKProvider:
             default_headers=headers,
         )
 
-    def _make_sdk(self, cls: type[_SDKT], *, as_service: str | None = None, internal: bool = False, on_behalf_of: str | None = None) -> _SDKT:
+    def _make_sdk(
+        self,
+        cls: type[_SDKT],
+        *,
+        as_service: str | None = None,
+        internal: bool = False,
+        on_behalf_of: str | None = None,
+    ) -> _SDKT:
         headers = self._build_headers(as_service=as_service, internal=internal, on_behalf_of=on_behalf_of)
         return cls(base_url=self._base_url(), default_headers=headers or None)
 
