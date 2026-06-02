@@ -6,7 +6,7 @@
 from __future__ import annotations
 
 import numpy as np
-from nemo_jailbreak_detect.model.classifier import JailbreakClassifier
+from classifier import JailbreakClassifier
 
 
 class _FakeEmbed:

@@ -5,8 +5,8 @@
 
 from __future__ import annotations
 
+import server
 from fastapi.testclient import TestClient
-from nemo_jailbreak_detect.model import server
 
 
 class _FakeClassifier:

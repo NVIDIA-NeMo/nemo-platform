@@ -112,9 +112,9 @@ class JailbreakClassifier:
 def ensure_model_downloaded(classifier_dir: str) -> Path:
     """Ensure ``snowflake.onnx`` exists locally, downloading it if needed.
 
-    Mirrors the upstream loader: honours a pre-populated directory (e.g. baked
-    into the container image) and only reaches Hugging Face when the file is
-    absent.
+    Honours an already-populated directory (e.g. a mounted cache) and only
+    reaches Hugging Face when the file is absent. The repo is gated, so the
+    download uses ``HF_TOKEN`` from the environment when present.
     """
     directory = Path(classifier_dir)
     directory.mkdir(parents=True, exist_ok=True)
