@@ -9,7 +9,7 @@ NVIDIA <br>
 ### License/Terms of Use: <br>
 Apache 2.0 <br>
 ## Use Case: <br>
-Developers and engineers who need to create synthetic datasets, generate data, or build data generation pipelines using the NeMo Data Designer library. <br>
+Developers and engineers who need to create synthetic datasets, generate training data, or build data generation pipelines using the Data Designer library within the NeMo Platform. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -21,26 +21,24 @@ Mitigation: Review and scan skill before deployment. <br>
 ## Reference(s): <br>
 - [NeMo Platform Plugin Additions](references/nemo-platform-plugin-additions.md) <br>
 - [Person Sampling Reference](references/person-sampling.md) <br>
-- [Seed Datasets Reference](references/seed-datasets.md) <br>
 - [Preview and Review](references/preview-review.md) <br>
-- [Interactive Workflow](workflows/interactive.md) <br>
-- [Autopilot Workflow](workflows/autopilot.md) <br>
+- [Seed Datasets](references/seed-datasets.md) <br>
 
 
 ## Skill Output: <br>
 **Output Type(s):** [Code, Files] <br>
 **Output Format:** [Python script with PEP 723 inline metadata] <br>
 **Output Parameters:** [1D] <br>
-**Other Properties Related to Output:** [None] <br>
+**Other Properties Related to Output:** [Outputs a Python file with a load_config_builder() function returning a DataDesignerConfigBuilder] <br>
 
 ## Evaluation Agents Used: <br>
-- claude-code <br>
-- codex <br>
+- Claude Code (`claude-code`) <br>
+- Codex (`codex`) <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 4 internal evaluation tasks with 2 attempts per task (pass threshold: 50%). <br>
+Evaluated against 4 internal evaluation tasks with 2 attempts per task; pass threshold 50%. <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -65,10 +63,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 97% (+8%) | 89% (+8%) |
-| Discoverability | 2 | 88% (+26%) | 80% (+8%) |
-| Effectiveness | 2 | 91% (-7%) | 79% (+15%) |
-| Efficiency | 2 | 69% (+19%) | 74% (+17%) |
+| Correctness | 2 | 97% (+0%) | 91% (+8%) |
+| Discoverability | 2 | 89% (+0%) | 82% (+2%) |
+| Effectiveness | 2 | 96% (+1%) | 91% (+26%) |
+| Efficiency | 2 | 73% (-0%) | 74% (-1%) |
 
 ## Skill Version(s): <br>
 0.1.0 (source: pyproject.toml) <br>
