@@ -5,7 +5,6 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { ControlledTextArea } from '@nemo/common/src/components/form/ControlledTextArea';
 import { ControlledTextInput } from '@nemo/common/src/components/form/ControlledTextInput';
 import { FormModal } from '@nemo/common/src/components/FormModal';
-import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { toValidFilesetName } from '@nemo/common/src/utils/filesetName';
 import {
@@ -24,9 +23,10 @@ import {
 } from '@studio/components/FilesetCreateModal/constants';
 import { useRemoteRepoMetadata } from '@studio/hooks/useRemoteRepoMetadata';
 import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
+import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
-import { getDatasetDetailRoute, getFilesetDetailsRoute } from '@studio/routes/utils';
+import { getDatasetDetailRoute, getModelDetailRoute } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
   isHuggingFaceUrl,
@@ -184,10 +184,8 @@ export const FilesetCreateModal: FC<FilesetCreateModalProps> = ({
       }
 
       // Post-create navigation, per ASTD-167:
-      //   Dataset purpose: External -> Card tab (README rendered there);
-      //                    Local    -> Files tab (user uploads next).
-      //   Model purpose: no Card/Files tabs yet (model detail route owned by
-      //                  parallel team, not landed). Side-panel for now.
+      //   External -> Card tab (where the README renders)
+      //   Local    -> Files tab (where the user uploads next)
       handleClose();
       if (purpose === FilesetPurpose.dataset) {
         navigate(
@@ -197,15 +195,10 @@ export const FilesetCreateModal: FC<FilesetCreateModalProps> = ({
         );
         return;
       }
-      // The filesets route param is an encoded "workspace/name" entity
-      // reference (parsed by `getPartsFromReference`), not a bare name.
       navigate(
-        getFilesetDetailsRoute(
-          fileset.workspace,
-          getEntityReference(fileset, { encode: true }),
-          undefined,
-          true
-        )
+        getModelDetailRoute(fileset.workspace, fileset.name, {
+          tab: isExternal ? ModelDetailTab.Card : ModelDetailTab.Files,
+        })
       );
     },
     [storageMode, createFileset, workspace, purpose, toast, navigate, handleClose]
