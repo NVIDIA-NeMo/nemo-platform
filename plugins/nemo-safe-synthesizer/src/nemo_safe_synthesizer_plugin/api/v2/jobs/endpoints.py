@@ -36,8 +36,8 @@ from nemo_safe_synthesizer.config.job import SafeSynthesizerParameters as SafeSy
 from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
 from nemo_safe_synthesizer_plugin.config import config
 from nemo_safe_synthesizer_plugin.runtime import runtime_task_command
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.config import get_qualified_image
 from pydantic import Field, model_validator
 from pydantic.json_schema import SkipJsonSchema
 

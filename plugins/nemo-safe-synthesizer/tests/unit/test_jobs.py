@@ -7,7 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from nemo_platform import NotFoundError, PermissionDeniedError
 from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
-from nmp.common.jobs.exceptions import PlatformJobCompilationError
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 
 nss_job = pytest.importorskip("nemo_safe_synthesizer.config.job")
 nss_pii = pytest.importorskip("nemo_safe_synthesizer.config.replace_pii")
