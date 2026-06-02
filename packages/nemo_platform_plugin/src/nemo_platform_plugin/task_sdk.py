@@ -69,7 +69,6 @@ class TaskSDKProvider(Protocol):
         The returned client authenticates as ``service:{service_name}`` and,
         when ``NMP_PRINCIPAL`` is set, acts on behalf of the job creator.
         """
-        ...
 
     def get_platform_sdk(
         self,
@@ -83,7 +82,6 @@ class TaskSDKProvider(Protocol):
         Lower-level than :meth:`get_task_sdk` — callers choose their own
         auth mode.
         """
-        ...
 
     def get_async_platform_sdk(
         self,
@@ -97,9 +95,6 @@ class TaskSDKProvider(Protocol):
         Used by middleware and controllers that run inside the platform
         service process.
         """
-        ...
-
-    ...
 
 
 # ---------------------------------------------------------------------------
@@ -243,8 +238,7 @@ class DefaultTaskSDKProvider:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-_provider: TaskSDKProvider | None = None
-_provider_resolved: bool = False
+_state: dict[str, Any] = {"provider": None, "resolved": False}
 
 
 def set_task_sdk_provider(provider: TaskSDKProvider | None) -> None:
@@ -253,18 +247,14 @@ def set_task_sdk_provider(provider: TaskSDKProvider | None) -> None:
     Pass ``None`` to clear the override and fall back to entry-point
     discovery on the next call.
     """
-    global _provider, _provider_resolved
-    _provider = provider
-    _provider_resolved = provider is not None
+    _state["provider"] = provider
+    _state["resolved"] = provider is not None
 
 
 def _resolve_provider() -> TaskSDKProvider:
     """Resolve the provider once: entry-point → default."""
-    global _provider, _provider_resolved
-
-    if _provider_resolved:
-        assert _provider is not None
-        return _provider
+    if _state["resolved"]:
+        return _state["provider"]
 
     # Scan entry-points.
     eps = entry_points(group="nemo.task_sdk_provider")
@@ -276,8 +266,8 @@ def _resolve_provider() -> TaskSDKProvider:
                 loaded = loaded()
             if isinstance(loaded, TaskSDKProvider):
                 logger.debug("Using task SDK provider from entry-point %r", ep.name)
-                _provider = loaded
-                _provider_resolved = True
+                _state["provider"] = loaded
+                _state["resolved"] = True
                 return loaded
         except Exception:
             logger.warning("Failed to load task SDK provider %r; skipping", ep.name, exc_info=True)
@@ -285,8 +275,8 @@ def _resolve_provider() -> TaskSDKProvider:
     # Fall back to the built-in default.
     logger.debug("No entry-point task SDK provider found; using DefaultTaskSDKProvider")
     default = DefaultTaskSDKProvider()
-    _provider = default
-    _provider_resolved = True
+    _state["provider"] = default
+    _state["resolved"] = True
     return default
 
 
