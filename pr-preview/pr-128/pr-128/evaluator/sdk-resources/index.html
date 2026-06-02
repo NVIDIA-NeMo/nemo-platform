@@ -4618,7 +4618,7 @@ Use <code>submit</code> when you want to create a durable remote platform job an
 <td><code>dataset</code></td>
 <td><code>PluginDatasetInput</code></td>
 <td>Yes</td>
-<td>Inline rows, a local dataset path, or a fileset reference.</td>
+<td>Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors.</td>
 </tr>
 <tr>
 <td><code>config</code></td>
@@ -4667,7 +4667,7 @@ Use <code>submit</code> when you want to create a durable remote platform job an
 <td><code>dataset</code></td>
 <td><code>PluginDatasetInput</code></td>
 <td>Yes</td>
-<td>Inline rows, a local dataset path, or a fileset reference.</td>
+<td>Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors.</td>
 </tr>
 <tr>
 <td><code>config</code></td>
@@ -4677,9 +4677,9 @@ Use <code>submit</code> when you want to create a durable remote platform job an
 </tr>
 <tr>
 <td><code>target</code></td>
-<td><code>Model \| Agent \| None</code></td>
+<td><code>Model \| ModelRef \| Agent \| None</code></td>
 <td>No</td>
-<td>Model or agent target used when the submitted job should generate outputs before scoring.</td>
+<td>Model, model reference, or agent target used when the submitted job should generate outputs before scoring.</td>
 </tr>
 <tr>
 <td><code>prompt_template</code></td>
