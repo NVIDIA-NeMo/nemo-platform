@@ -31,8 +31,8 @@ Confirm the platform is up and check what deployed agents exist before doing any
 ```bash
 # Ground truth: anything bound to :8080?
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-# Functional check: API answers?
-curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -qE "^[24][0-9][0-9]$" || { echo "PLATFORM_WEDGED"; exit 1; }
+# Functional check: platform readiness endpoint answers?
+curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
 .venv/bin/nemo agents deployments list 2>/dev/null
 ```
 
@@ -98,5 +98,5 @@ If `INVOKE_FAILED` or `EMPTY_RESPONSE`: surface that to the user and stop. Do no
 
 - **Routing must be explicit.** Silently picking a target and sending a query is the failure mode this skill exists to prevent. Announce first.
 - **`nemo chat` and `nemo agents invoke` take different model id formats.** Chat uses entity-name (hyphens). Agents use whatever the YAML specifies. Pass through what the user says; do not auto-translate.
-- **No `curl` against platform HTTP endpoints.** The CLI is the documented interface. Hand-rolled HTTP is not a substitute.
+- **Use `curl` only for the pre-flight health probe.** The CLI is the documented interface for agent and model operations. Hand-rolled HTTP is not a substitute.
 - **Loop in this skill, not in another.** Do not invoke `nemo-skill-selection` between turns. Stay here until the user asks to do something else.
