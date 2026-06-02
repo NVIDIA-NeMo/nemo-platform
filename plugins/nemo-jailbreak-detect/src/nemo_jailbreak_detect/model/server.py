@@ -40,6 +40,9 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="NeMo Jailbreak Detect", version="0.1.0")
 cli_app = typer.Typer(help="NeMo jailbreak-detection model server.")
 
+# Identifier reported by the OpenAI-style /v1/models discovery endpoint.
+MODEL_ID = "nvidia/nemoguard-jailbreak-detect"
+
 # Loaded once at startup and reused across requests.
 _classifier: JailbreakClassifier | None = None
 
@@ -66,6 +69,15 @@ def get_classifier() -> JailbreakClassifier:
 @app.get("/v1/health/ready")
 def health_ready() -> dict[str, str]:
     return {"object": "health-response", "message": "ready"}
+
+
+@app.get("/v1/models")
+def list_models() -> dict:
+    """OpenAI-style model discovery. Static — this server hosts a single model."""
+    return {
+        "object": "list",
+        "data": [{"id": MODEL_ID, "object": "model", "owned_by": "nvidia"}],
+    }
 
 
 @app.post("/v1/classify", response_model=ClassifyResponse)
