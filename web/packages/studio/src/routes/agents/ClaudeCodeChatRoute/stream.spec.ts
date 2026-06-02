@@ -3,8 +3,10 @@
 
 import {
   getAssistantTextFromClaudeEvent,
+  parseJsonObject,
   parseSseChunk,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
+import { websiteLogger } from '@studio/util/logger';
 
 describe('Claude Code stream utilities', () => {
   it('parses SSE events and preserves incomplete trailing data', () => {
@@ -38,5 +40,16 @@ describe('Claude Code stream utilities', () => {
         },
       })
     ).toBe('I can check that.\n\nUsing Bash...');
+  });
+
+  it('returns undefined and logs when JSON parsing fails', () => {
+    const loggerSpy = vi.spyOn(websiteLogger, 'error').mockImplementation(() => undefined);
+
+    expect(parseJsonObject('{')).toBeUndefined();
+    expect(loggerSpy).toHaveBeenCalledWith(
+      expect.stringContaining('Failed to parse Claude Code stream JSON')
+    );
+
+    loggerSpy.mockRestore();
   });
 });

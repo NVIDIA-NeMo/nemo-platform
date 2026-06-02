@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { websiteLogger } from '@studio/util/logger';
+
 interface ServerSentEvent {
   event?: string;
   data: string;
@@ -83,5 +85,12 @@ export const getAssistantTextFromClaudeEvent = (event: unknown): string => {
 
 export const parseJsonObject = (value: string): unknown => {
   if (!value) return undefined;
-  return JSON.parse(value) as unknown;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch (error) {
+    websiteLogger.error(
+      `Failed to parse Claude Code stream JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return undefined;
+  }
 };

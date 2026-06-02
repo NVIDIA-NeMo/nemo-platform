@@ -102,25 +102,36 @@ export const streamClaudeCodeMessage = async ({
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffered = '';
+  let shouldCancelReader = true;
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        shouldCancelReader = false;
+        break;
+      }
 
-    buffered += decoder.decode(value, { stream: true });
-    const parsed = parseSseChunk(buffered);
-    buffered = parsed.rest;
+      buffered += decoder.decode(value, { stream: true });
+      const parsed = parseSseChunk(buffered);
+      buffered = parsed.rest;
 
-    for (const event of parsed.events) {
-      if (!handleSseEvent(event, handlers)) return;
+      for (const event of parsed.events) {
+        if (!handleSseEvent(event, handlers)) return;
+      }
     }
-  }
 
-  buffered += decoder.decode();
-  if (buffered) {
-    const parsed = parseSseChunk(`${buffered}\n\n`);
-    for (const event of parsed.events) {
-      if (!handleSseEvent(event, handlers)) return;
+    buffered += decoder.decode();
+    if (buffered) {
+      const parsed = parseSseChunk(`${buffered}\n\n`);
+      for (const event of parsed.events) {
+        if (!handleSseEvent(event, handlers)) return;
+      }
     }
+  } finally {
+    if (shouldCancelReader) {
+      await reader.cancel().catch(() => undefined);
+    }
+    reader.releaseLock();
   }
 };
