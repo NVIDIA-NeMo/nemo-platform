@@ -21,6 +21,38 @@ import { ToastContext } from './useToast';
 export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastDescriptor[]>([]);
   const timeoutRefs = useRef<Record<string, NodeJS.Timeout>>({});
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // KUI v1 modals use the native <dialog> element via showModal(), which puts
+  // them in the browser's top layer. The top layer ignores z-index from the
+  // normal stacking context, so toasts rendered as ordinary fixed-position
+  // children disappear behind any open modal's backdrop.
+  //
+  // Fix: render the toast container as a manual Popover. Popovers also enter
+  // the top layer, and "last opened wins" — re-issuing showPopover() promotes
+  // the container above any dialog that opened after it.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (toasts.length > 0) {
+      try {
+        el.hidePopover();
+      } catch {
+        // not currently shown — ignore
+      }
+      try {
+        el.showPopover();
+      } catch {
+        // Popover API not supported on this browser; fall back to z-index only.
+      }
+    } else {
+      try {
+        el.hidePopover();
+      } catch {
+        // already hidden — ignore
+      }
+    }
+  }, [toasts.length]);
 
   // Cleanup all timeouts when component unmounts to prevent state updates after unmount
   useEffect(() => {
@@ -130,7 +162,15 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      <div className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 flex flex-col items-end gap-4 z-1100 max-w-md">
+      <div
+        ref={containerRef}
+        popover="manual"
+        // Popover elements default to `display: none`; the arbitrary variant
+        // restores our flex layout when the popover is open. `position: fixed`
+        // is preserved so the container anchors to the viewport corner — the
+        // top-layer escape only governs stacking, not positioning.
+        className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 m-0 hidden flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md [&:popover-open]:flex"
+      >
         {toasts.map((toast) => (
           <Toast
             key={toast.id}
