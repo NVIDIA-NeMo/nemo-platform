@@ -71,18 +71,20 @@ Replace the path with whatever was chosen in Q2 (`$NMP_DATA_DIR`, `$XDG_DATA_HOM
 
 The README documents the streamlined path. Prefer this over the manual steps below whenever the task fits — it covers prerequisites install, service startup, provider registration, default-model selection, and demo agent deployment in one shot:
 
-```bash
-make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
-source .venv/bin/activate
-nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
-```
+=== "Interactive"
 
-Non-interactive equivalent (useful for CI / agent-driven invocations):
+    ```bash
+    make bootstrap           # installs Python deps, Studio assets, and plugins (including demo calculator agent)
+    source .venv/bin/activate
+    nemo setup               # interactive: prompts for provider, picks default model, optionally deploys calculator-agent
+    ```
 
-```bash
-export NVIDIA_API_KEY=nvapi...
-nemo setup --auto --start-services --install-skills --deploy-agent
-```
+=== "Non-interactive (CI)"
+
+    ```bash
+    export NVIDIA_API_KEY=nvapi...
+    nemo setup --auto --start-services --install-skills --deploy-agent
+    ```
 
 `make bootstrap` is the umbrella for three finer-grained targets — use these if you only need a subset:
 
