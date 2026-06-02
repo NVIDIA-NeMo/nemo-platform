@@ -11,12 +11,12 @@ from unittest.mock import patch
 import pytest
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.task_sdk import (
-    DefaultTaskSDKProvider,
-    TaskSDKProvider,
+    DefaultSDKProvider,
+    SDKProvider,
     _on_behalf_of_headers,
     _read_principal_from_env,
     get_task_sdk,
-    set_task_sdk_provider,
+    set_sdk_provider,
 )
 
 # ---------------------------------------------------------------------------
@@ -83,11 +83,11 @@ class TestOnBehalfOfHeaders:
 
 
 # ---------------------------------------------------------------------------
-# DefaultTaskSDKProvider
+# DefaultSDKProvider
 # ---------------------------------------------------------------------------
 
 
-class TestDefaultTaskSDKProvider:
+class TestDefaultSDKProvider:
     def test_get_task_sdk_with_principal(self, monkeypatch):
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.setenv(
@@ -95,7 +95,7 @@ class TestDefaultTaskSDKProvider:
             json.dumps({"id": "creator@ex.com", "email": "creator@ex.com", "groups": ["team"]}),
         )
 
-        provider = DefaultTaskSDKProvider()
+        provider = DefaultSDKProvider()
         sdk = provider.get_task_sdk("evaluator")
 
         assert isinstance(sdk, NeMoPlatform)
@@ -108,7 +108,7 @@ class TestDefaultTaskSDKProvider:
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        provider = DefaultTaskSDKProvider()
+        provider = DefaultSDKProvider()
         sdk = provider.get_task_sdk("evaluator")
 
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:evaluator"
@@ -118,7 +118,7 @@ class TestDefaultTaskSDKProvider:
         monkeypatch.delenv("NMP_BASE_URL", raising=False)
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        provider = DefaultTaskSDKProvider()
+        provider = DefaultSDKProvider()
         sdk = provider.get_task_sdk("test")
         assert sdk.base_url == "http://localhost:8080"
 
@@ -126,7 +126,7 @@ class TestDefaultTaskSDKProvider:
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        provider = DefaultTaskSDKProvider()
+        provider = DefaultSDKProvider()
         sdk = provider.get_platform_sdk(as_service="my-svc", internal=True)
 
         assert sdk.default_headers["X-NMP-Principal-Id"] == "service:my-svc"
@@ -136,7 +136,7 @@ class TestDefaultTaskSDKProvider:
         monkeypatch.setenv("NMP_BASE_URL", "http://test:9090")
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
-        provider = DefaultTaskSDKProvider()
+        provider = DefaultSDKProvider()
         sdk = provider.get_platform_sdk(as_service="svc", on_behalf_of="user@ex.com")
 
         assert sdk.default_headers["X-NMP-Principal-On-Behalf-Of"] == "user@ex.com"
@@ -150,10 +150,10 @@ class TestDefaultTaskSDKProvider:
 class TestProviderResolution:
     def setup_method(self):
         # Reset global state before each test.
-        set_task_sdk_provider(None)
+        set_sdk_provider(None)
 
     def teardown_method(self):
-        set_task_sdk_provider(None)
+        set_sdk_provider(None)
 
     def test_explicit_provider_takes_precedence(self, monkeypatch):
         monkeypatch.delenv("NMP_BASE_URL", raising=False)
@@ -166,7 +166,7 @@ class TestProviderResolution:
             def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
                 return NeMoPlatform(base_url="http://custom:1234")
 
-        set_task_sdk_provider(CustomProvider())
+        set_sdk_provider(CustomProvider())
         sdk = get_task_sdk("test")
         assert sdk.base_url == "http://custom:1234"
 
@@ -190,11 +190,11 @@ class TestProviderResolution:
             def get_platform_sdk(self, **kwargs) -> NeMoPlatform:
                 return NeMoPlatform(base_url="http://custom:1234")
 
-        set_task_sdk_provider(CustomProvider())
+        set_sdk_provider(CustomProvider())
         assert get_task_sdk("x").base_url == "http://custom:1234"
 
         # Clear the override
-        set_task_sdk_provider(None)
+        set_sdk_provider(None)
         with patch("nemo_platform_plugin.task_sdk.entry_points", return_value=[]):
             sdk = get_task_sdk("x")
         assert sdk.base_url == "http://re-resolved:8080"
@@ -207,4 +207,4 @@ class TestProviderResolution:
 
 class TestProtocolConformance:
     def test_default_provider_is_protocol_instance(self):
-        assert isinstance(DefaultTaskSDKProvider(), TaskSDKProvider)
+        assert isinstance(DefaultSDKProvider(), SDKProvider)

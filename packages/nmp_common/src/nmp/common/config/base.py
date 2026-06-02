@@ -17,6 +17,7 @@ from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_DEFAULT as NMP_CONF
 from nemo_platform_plugin.config import NMP_CONFIG_FILE_PATH_ENV_VAR as NMP_CONFIG_FILE_PATH_ENV_VAR
 from nemo_platform_plugin.config import NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR as NMP_CONFIG_WARNINGS_DISABLED_ENV_VAR
 from nemo_platform_plugin.config import NMP_PREFIX_BASE as NMP_PREFIX_BASE
+from nemo_platform_plugin.config import CommonServiceConfig as CommonServiceConfig
 
 # Re-export everything from nemo-platform-plugin config (canonical source)
 from nemo_platform_plugin.config import Configuration as Configuration
@@ -42,13 +43,6 @@ NMP_CONTROLLERS_ENV_VAR = "NMP_CONTROLLERS"
 NMP_SIDECARS_ENV_VAR = "NMP_SIDECARS"
 
 T = _PluginPlatformConfig  # Backward compat for TypeVar usage
-
-
-# --------------------------------------------------------------------------
-# Re-export CommonServiceConfig from plugin
-# --------------------------------------------------------------------------
-
-from nemo_platform_plugin.config import CommonServiceConfig as CommonServiceConfig
 
 
 class PlatformConfig(_PluginPlatformConfig):

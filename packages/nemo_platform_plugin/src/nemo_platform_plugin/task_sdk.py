@@ -13,11 +13,11 @@ shared HTTP clients, OTEL headers, etc.) when ``nmp-common`` is installed.
 Lookup order for the provider
 -----------------------------
 
-1. **Explicit override** — set via :func:`set_task_sdk_provider` (for tests).
+1. **Explicit override** — set via :func:`set_sdk_provider` (for tests).
 2. **Entry-point discovery** — scans the ``nemo.task_sdk_provider`` group.
    When ``nmp-common`` is installed in the image (platform deployment), its
    provider is picked up automatically.
-3. **Built-in default** — :class:`DefaultTaskSDKProvider`, an env-var-based
+3. **Built-in default** — :class:`DefaultSDKProvider`, an env-var-based
    implementation that reads ``NMP_BASE_URL`` and ``NMP_PRINCIPAL``.  Works
    for local development and gateway-routed task containers.
 
@@ -56,7 +56,7 @@ _NMP_PRINCIPAL_ENVVAR = "NMP_PRINCIPAL"
 
 
 @runtime_checkable
-class TaskSDKProvider(Protocol):
+class SDKProvider(Protocol):
     """Contract for building authenticated SDK handles.
 
     Implementations live outside this module — the default is below;
@@ -146,7 +146,7 @@ def _on_behalf_of_headers(principal: dict[str, Any]) -> dict[str, str]:
     return headers
 
 
-class DefaultTaskSDKProvider:
+class DefaultSDKProvider:
     """Env-var-based provider that ships with the plugin package.
 
     Reads ``NMP_BASE_URL`` (default ``http://localhost:8080``) and
@@ -241,7 +241,7 @@ class DefaultTaskSDKProvider:
 _state: dict[str, Any] = {"provider": None, "resolved": False}
 
 
-def set_task_sdk_provider(provider: TaskSDKProvider | None) -> None:
+def set_sdk_provider(provider: SDKProvider | None) -> None:
     """Override the provider (primarily for tests).
 
     Pass ``None`` to clear the override and fall back to entry-point
@@ -251,7 +251,7 @@ def set_task_sdk_provider(provider: TaskSDKProvider | None) -> None:
     _state["resolved"] = provider is not None
 
 
-def _resolve_provider() -> TaskSDKProvider:
+def _resolve_provider() -> SDKProvider:
     """Resolve the provider once: entry-point → default."""
     if _state["resolved"]:
         return _state["provider"]
@@ -264,7 +264,7 @@ def _resolve_provider() -> TaskSDKProvider:
             loaded = factory() if callable(factory) and not isinstance(factory, type) else factory
             if isinstance(loaded, type):
                 loaded = loaded()
-            if isinstance(loaded, TaskSDKProvider):
+            if isinstance(loaded, SDKProvider):
                 logger.debug("Using task SDK provider from entry-point %r", ep.name)
                 _state["provider"] = loaded
                 _state["resolved"] = True
@@ -273,8 +273,8 @@ def _resolve_provider() -> TaskSDKProvider:
             logger.warning("Failed to load task SDK provider %r; skipping", ep.name, exc_info=True)
 
     # Fall back to the built-in default.
-    logger.debug("No entry-point task SDK provider found; using DefaultTaskSDKProvider")
-    default = DefaultTaskSDKProvider()
+    logger.debug("No entry-point task SDK provider found; using DefaultSDKProvider")
+    default = DefaultSDKProvider()
     _state["provider"] = default
     _state["resolved"] = True
     return default
@@ -358,14 +358,3 @@ def get_forwarding_headers(sdk: NeMoPlatform | AsyncNeMoPlatform) -> dict[str, s
     # (service principal, internal marker, on-behalf-of, OTEL, etc.)
     # — everything the platform SDK factory injects.
     return dict(sdk._custom_headers)
-
-
-__all__ = [
-    "DefaultTaskSDKProvider",
-    "TaskSDKProvider",
-    "get_async_platform_sdk",
-    "get_forwarding_headers",
-    "get_platform_sdk",
-    "get_task_sdk",
-    "set_task_sdk_provider",
-]

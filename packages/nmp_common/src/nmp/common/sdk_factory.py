@@ -328,8 +328,8 @@ def get_entity_parts(name: str, default_workspace: str | None = None) -> tuple[s
 # ---------------------------------------------------------------------------
 
 
-class PlatformTaskSDKProvider:
-    """Rich :class:`~nemo_platform_plugin.task_sdk.TaskSDKProvider` that uses
+class PlatformSDKProvider:
+    """Rich :class:`~nemo_platform_plugin.task_sdk.SDKProvider` that uses
     platform internals (shared HTTP clients, URL routing, OTEL headers, auth
     context vars).
 

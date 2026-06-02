@@ -8,6 +8,8 @@ import uuid
 from typing import Any, Dict, List, Optional, Type, Union, get_args, get_origin
 
 import base58
+from nemo_platform_plugin.refs import ParsedEntityRef as ParsedEntityRef
+from nemo_platform_plugin.refs import parse_entity_ref as parse_entity_ref
 from nmp.common.entities.values import DatetimeFilter
 from pydantic import BaseModel, ConfigDict, create_model
 
@@ -210,10 +212,6 @@ def make_filter_class(
 
 # Backward-compat alias
 make_search_class = make_filter_class
-
-
-from nemo_platform_plugin.refs import ParsedEntityRef as ParsedEntityRef
-from nemo_platform_plugin.refs import parse_entity_ref as parse_entity_ref
 
 
 def parse_model_entity_ref(identifier: str, default_workspace: str | None = None) -> ParsedEntityRef:

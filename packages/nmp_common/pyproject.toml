@@ -69,7 +69,7 @@ dev-dependencies = [
 ]
 
 [project.entry-points."nemo.task_sdk_provider"]
-platform = "nmp.common.sdk_factory:PlatformTaskSDKProvider"
+platform = "nmp.common.sdk_factory:PlatformSDKProvider"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/nmp_common", "src/nmp"]
