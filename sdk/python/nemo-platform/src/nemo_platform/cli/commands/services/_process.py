@@ -183,20 +183,57 @@ class ForegroundInstanceError(Exception):
 
 @dataclass(frozen=True)
 class PortConflict:
+    """Structured port conflict for terminal rendering by CLI callers."""
+
     kind: Literal["foreign", "nemo_instance"]
     port: int
     scope: str | None = None
 
 
+def _normalize_bind_host(host: str) -> str:
+    """Normalize bind hosts for descriptor comparison."""
+    if host == "localhost":
+        return "127.0.0.1"
+    return host
+
+
+def _instance_owns_listener(
+    scope: str,
+    host: str,
+    port: int,
+    *,
+    base_dir: Path | None = None,
+) -> bool:
+    """Return True when a live instance for *scope* is bound to *host*:*port*."""
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return False
+    desc = read_descriptor(scope, base_dir=base_dir)
+    if desc is None:
+        return False
+    return desc.port == port and _normalize_bind_host(desc.host) == _normalize_bind_host(host)
+
+
 def is_port_bindable(host: str, port: int) -> bool:
-    """Return True if *host*:*port* can be bound."""
+    """Return True if *host*:*port* can be bound on at least one address family.
+
+    Uses ``getaddrinfo`` so IPv4 and IPv6 hosts (for example ``::``) are probed
+    with the correct socket family instead of always using ``AF_INET``.
+    """
     try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            sock.bind((host, port))  # noqa: S104  # nosec B104
-        return True
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
     except OSError:
         return False
+    if not infos:
+        return False
+    for family, socktype, proto, _, sockaddr in infos:
+        try:
+            with socket.socket(family, socktype, proto) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(sockaddr)  # noqa: S104  # nosec B104
+            return True
+        except OSError:
+            continue
+    return False
 
 
 def check_port_available_for_start(
@@ -208,17 +245,22 @@ def check_port_available_for_start(
 ) -> PortConflict | None:
     """Return conflict info when *port* cannot be bound, else None.
 
+    Classifies conflicts as ``nemo_instance`` only when a live instance for
+    *scope* is recorded on the same host and port. Otherwise reports ``foreign``.
     Does not log or print — callers render to the terminal.
     """
     if is_port_bindable(host, port):
         return None
-    if is_instance_alive(scope, base_dir=base_dir):
+    if _instance_owns_listener(scope, host, port, base_dir=base_dir):
         return PortConflict(kind="nemo_instance", port=port, scope=scope)
     return PortConflict(kind="foreign", port=port)
 
 
 def format_port_conflict(err: PortConflict) -> list[str]:
-    """Return actionable message lines for terminal display."""
+    """Return actionable message lines for terminal display.
+
+    Message text depends on ``err.kind`` (foreign process vs NeMo instance).
+    """
     if err.kind == "nemo_instance":
         return [
             f"Port {err.port} is in use by a NeMo Platform instance for this directory.",

@@ -451,7 +451,7 @@ class TestServicesRestart:
         desc = InstanceDescriptor(
             pid=os.getpid(),
             scope=scope,
-            host="10.0.0.1",
+            host="127.0.0.1",
             port=9000,
             mode="background",
             create_time=1.0,
@@ -482,7 +482,7 @@ class TestServicesRestart:
         _, kwargs = mock_start.call_args
         assert kwargs["services"] == ["entities", "models"]
         assert kwargs["controllers"] == ["jobs"]
-        assert kwargs["host"] == "10.0.0.1"
+        assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 9000
 
 

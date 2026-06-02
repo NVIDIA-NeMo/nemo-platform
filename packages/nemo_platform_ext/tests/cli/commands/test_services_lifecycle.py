@@ -564,6 +564,17 @@ class TestPortAvailability:
         port = _find_free_port()
         fd = acquire_lock(scope, base_dir=base_dir)
         try:
+            write_descriptor(
+                InstanceDescriptor(
+                    pid=os.getpid(),
+                    scope=scope,
+                    host="127.0.0.1",
+                    port=port,
+                    mode="background",
+                    create_time=1.0,
+                ),
+                base_dir=base_dir,
+            )
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(("127.0.0.1", port))
@@ -578,6 +589,41 @@ class TestPortAvailability:
             assert conflict.kind == "nemo_instance"
             assert conflict.scope == scope
             assert conflict.port == port
+        finally:
+            os.close(fd)
+
+    def test_check_port_returns_foreign_when_alive_instance_uses_different_port(self, tmp_path: Path) -> None:
+        """Live instance on another port must not claim a foreign listener as NeMo-owned."""
+        base_dir = tmp_path / "state"
+        scope = "explicit-instance"
+        nemo_port = _find_free_port()
+        foreign_port = _find_free_port()
+        fd = acquire_lock(scope, base_dir=base_dir)
+        try:
+            write_descriptor(
+                InstanceDescriptor(
+                    pid=os.getpid(),
+                    scope=scope,
+                    host="127.0.0.1",
+                    port=nemo_port,
+                    mode="background",
+                    create_time=1.0,
+                ),
+                base_dir=base_dir,
+            )
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("127.0.0.1", foreign_port))
+                sock.listen(1)
+                conflict = check_port_available_for_start(
+                    "127.0.0.1",
+                    foreign_port,
+                    scope,
+                    base_dir=base_dir,
+                )
+            assert conflict is not None
+            assert conflict.kind == "foreign"
+            assert conflict.port == foreign_port
         finally:
             os.close(fd)
 
