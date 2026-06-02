@@ -38,12 +38,12 @@ from ..._response import (
     async_to_streamed_response_wrapper,
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
-from ..._exceptions import ConflictError
 from ..._base_client import AsyncPaginator, make_request_options
 from ...types.workspaces import workspace_list_params, workspace_create_params, workspace_update_params
 from ...types.workspaces.workspace import Workspace
 from ...types.shared.delete_response import DeleteResponse
 from ...types.shared.generic_sort_field import GenericSortField
+from ..._exceptions import ConflictError
 
 __all__ = ["WorkspacesResource", "AsyncWorkspacesResource"]
 
@@ -146,7 +146,7 @@ class WorkspacesResource(SyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return self.retrieve(name=name)
+            return self.retrieve(name = name)
 
     def retrieve(
         self,
@@ -454,7 +454,7 @@ class AsyncWorkspacesResource(AsyncAPIResource):
         except ConflictError:
             if not exist_ok:
                 raise
-            return await self.retrieve(name=name)
+            return await self.retrieve(name = name)
 
     async def retrieve(
         self,

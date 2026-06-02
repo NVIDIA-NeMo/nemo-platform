@@ -5,9 +5,9 @@ Types:
 ```python
 from nemo_platform.types.workspaces import (
     Workspace,
+    WorkspaceParam,
+    WorkspaceUpdate,
     WorkspacesPage,
-    WorkspaceMember,
-    WorkspaceMemberListResponse,
 )
 ```
 
@@ -20,6 +20,17 @@ Methods:
 - <code title="delete /apis/entities/v2/workspaces/{name}">client.workspaces.<a href="./src/nemo_platform/resources/workspaces/workspaces.py">delete</a>(name) -> <a href="./src/nemo_platform/types/shared/delete_response.py">DeleteResponse</a></code>
 
 ## Members
+
+Types:
+
+```python
+from nemo_platform.types.workspaces import (
+    WorkspaceMember,
+    WorkspaceMemberListResponse,
+    WorkspaceMemberParam,
+    WorkspaceMemberUpdate,
+)
+```
 
 Methods:
 

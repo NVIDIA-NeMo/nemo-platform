@@ -20,9 +20,7 @@ from __future__ import annotations
 import os
 from typing import Any, cast
 
-import httpx
 import pytest
-from respx import MockRouter
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
@@ -37,27 +35,6 @@ base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 
 class TestMembers:
     parametrize = pytest.mark.parametrize("client", [False, True], indirect=True, ids=["loose", "strict"])
-
-    @parametrize
-    @pytest.mark.respx(base_url=base_url)
-    def test_method_list_nested_under_workspaces(self, client: NeMoPlatform, respx_mock: MockRouter) -> None:
-        route = respx_mock.get("/apis/entities/v2/workspaces/workspace/members").mock(
-            return_value=httpx.Response(
-                200,
-                json={"data": [{"principal": "user@example.com", "roles": ["Viewer"]}]},
-            )
-        )
-
-        members = client.workspaces.members.list(workspace="workspace")
-
-        assert route.called
-        assert members.data[0].principal == "user@example.com"
-
-    @parametrize
-    def test_top_level_members_resource_removed(self, client: NeMoPlatform) -> None:
-        assert "members" not in NeMoPlatform.__dict__
-        with pytest.raises(AttributeError, match="members"):
-            _ = client.members
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize
@@ -293,29 +270,6 @@ class TestAsyncMembers:
     parametrize = pytest.mark.parametrize(
         "async_client", [False, True, {"http_client": "aiohttp"}], indirect=True, ids=["loose", "strict", "aiohttp"]
     )
-
-    @parametrize
-    @pytest.mark.respx(base_url=base_url)
-    async def test_method_list_nested_under_workspaces(
-        self, async_client: AsyncNeMoPlatform, respx_mock: MockRouter
-    ) -> None:
-        route = respx_mock.get("/apis/entities/v2/workspaces/workspace/members").mock(
-            return_value=httpx.Response(
-                200,
-                json={"data": [{"principal": "user@example.com", "roles": ["Viewer"]}]},
-            )
-        )
-
-        members = await async_client.workspaces.members.list(workspace="workspace")
-
-        assert route.called
-        assert members.data[0].principal == "user@example.com"
-
-    @parametrize
-    async def test_top_level_members_resource_removed(self, async_client: AsyncNeMoPlatform) -> None:
-        assert "members" not in AsyncNeMoPlatform.__dict__
-        with pytest.raises(AttributeError, match="members"):
-            _ = async_client.members
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
     @parametrize

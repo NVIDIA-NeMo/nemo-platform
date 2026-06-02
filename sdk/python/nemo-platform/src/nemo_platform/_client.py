@@ -17,8 +17,8 @@
 
 from __future__ import annotations
 
+import os
 from typing import TYPE_CHECKING, Any, Mapping
-from pathlib import Path
 from typing_extensions import Self, override
 
 import httpx
@@ -36,6 +36,7 @@ from ._types import (
 )
 from ._utils import (
     is_given,
+    is_mapping_t,
     get_async_library,
 )
 from ._compat import cached_property
@@ -47,9 +48,9 @@ from ._base_client import (
     SyncAPIClient,
     AsyncAPIClient,
 )
+from pathlib import Path
 
 if TYPE_CHECKING:
-    from .models import ModelsResource, AsyncModelsResource
     from .resources import (
         iam,
         jobs,
@@ -66,9 +67,10 @@ if TYPE_CHECKING:
         workspaces,
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
-    from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.jobs.jobs import JobsResource, AsyncJobsResource
+    from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
+    from .models import ModelsResource, AsyncModelsResource
     from .resources.secrets.secrets import SecretsResource, AsyncSecretsResource
     from .resources.adapters.adapters import AdaptersResource, AsyncAdaptersResource
     from .resources.entities.entities import EntitiesResource, AsyncEntitiesResource
@@ -93,7 +95,6 @@ __all__ = [
 class NeMoPlatform(SyncAPIClient):
     # client options
     workspace: str | None
-
     def __init__(
         self,
         *,
@@ -135,7 +136,6 @@ class NeMoPlatform(SyncAPIClient):
         .. code-block:: python
 
             from nemo_platform import NeMoPlatform
-
             client = NeMoPlatform()
 
         Example — explicit token for automation:
@@ -144,7 +144,6 @@ class NeMoPlatform(SyncAPIClient):
 
             import os
             from nemo_platform import NeMoPlatform
-
             client = NeMoPlatform(
                 base_url=os.environ["NMP_BASE_URL"],
                 access_token=os.environ["NMP_ACCESS_TOKEN"],
@@ -201,7 +200,7 @@ class NeMoPlatform(SyncAPIClient):
                 default_headers = client_init_kwargs.default_headers
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
+                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
 
         self.workspace = workspace
 
@@ -475,12 +474,10 @@ class AsyncNeMoPlatform(AsyncAPIClient):
             import asyncio
             from nemo_platform import AsyncNeMoPlatform
 
-
             async def main() -> None:
                 client = AsyncNeMoPlatform()
                 page = await client.workspaces.list()
                 print(page.data)
-
 
             asyncio.run(main())
 
@@ -491,7 +488,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
             import asyncio, os
             from nemo_platform import AsyncNeMoPlatform
 
-
             async def main() -> None:
                 client = AsyncNeMoPlatform(
                     base_url=os.environ["NMP_BASE_URL"],
@@ -500,7 +496,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 )
                 page = await client.workspaces.list()
                 print(page.data)
-
 
             asyncio.run(main())
 
@@ -554,7 +549,7 @@ class AsyncNeMoPlatform(AsyncAPIClient):
                 default_headers = client_init_kwargs.default_headers
                 http_client = client_init_kwargs.http_client
             except Exception as e:
-                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}") from e
+                raise RuntimeError(f"NeMoPlatform client initialization failed: {e}")
 
         self.workspace = workspace
 
