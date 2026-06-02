@@ -24,6 +24,7 @@ import logging
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,6 +42,9 @@ logger = logging.getLogger(__name__)
 LOCK_FILENAME = "services.lock"
 DESCRIPTOR_FILENAME = "instance.json"
 LOG_FILENAME = "services.log"
+
+DEFAULT_SERVICES_BIND_HOST = "127.0.0.1"
+SUGGESTED_ALT_PORT = 9090
 
 _SIGTERM_POLL_INTERVAL = 0.25
 _DEFAULT_STOP_TIMEOUT = 30.0
@@ -170,6 +174,63 @@ class ForegroundInstanceError(Exception):
             f"Instance '{scope}' (pid {pid}) is running in the foreground. "
             "Use Ctrl-C in its terminal to stop it, or pass --force."
         )
+
+
+# ---------------------------------------------------------------------------
+# Port availability (preflight before bind)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PortConflict:
+    kind: Literal["foreign", "nemo_instance"]
+    port: int
+    scope: str | None = None
+
+
+def is_port_bindable(host: str, port: int) -> bool:
+    """Return True if *host*:*port* can be bound."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind((host, port))  # noqa: S104  # nosec B104
+        return True
+    except OSError:
+        return False
+
+
+def check_port_available_for_start(
+    host: str,
+    port: int,
+    scope: str,
+    *,
+    base_dir: Path | None = None,
+) -> PortConflict | None:
+    """Return conflict info when *port* cannot be bound, else None.
+
+    Does not log or print — callers render to the terminal.
+    """
+    if is_port_bindable(host, port):
+        return None
+    if is_instance_alive(scope, base_dir=base_dir):
+        return PortConflict(kind="nemo_instance", port=port, scope=scope)
+    return PortConflict(kind="foreign", port=port)
+
+
+def format_port_conflict(err: PortConflict) -> list[str]:
+    """Return actionable message lines for terminal display."""
+    if err.kind == "nemo_instance":
+        return [
+            f"Port {err.port} is in use by a NeMo Platform instance for this directory.",
+            "Stop it first with: nemo services stop",
+            "Or restart with:    nemo services restart",
+        ]
+    return [
+        f"Port {err.port} is already in use by another process.",
+        "Free the port or choose a different one:",
+        f"lsof -i :{err.port}          (see what's listening)",
+        f"nemo services run --port {SUGGESTED_ALT_PORT}",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +531,7 @@ def start_background(
     controller_group: str | None = None,
     sidecars: list[str] | None = None,
     config_path: str | None = None,
-    host: str = "127.0.0.1",
+    host: str = DEFAULT_SERVICES_BIND_HOST,
     port: int = 8080,
     base_dir: Path | None = None,
     data_dir: str | None = None,

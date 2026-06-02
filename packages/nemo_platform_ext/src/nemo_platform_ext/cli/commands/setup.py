@@ -677,6 +677,27 @@ def _kill_existing_services(base_url: str) -> None:
     stop_instance(scope, timeout=2.0, force=True)
 
 
+def _ensure_port_available_for_start(base_url: str) -> None:
+    """Fail fast when the services port cannot be bound."""
+    from nemo_platform_ext.cli.commands.services._process import (
+        DEFAULT_SERVICES_BIND_HOST,
+        check_port_available_for_start,
+        compute_scope,
+        format_port_conflict,
+    )
+
+    port = _resolve_services_port(base_url)
+    scope = compute_scope(port=port)
+    conflict = check_port_available_for_start(DEFAULT_SERVICES_BIND_HOST, port, scope)
+    if conflict is None:
+        return
+    lines = format_port_conflict(conflict)
+    console.print(f"{CROSS} {lines[0]}")
+    for line in lines[1:]:
+        console.print(f"  {line}")
+    raise typer.Exit(1)
+
+
 def _maybe_start_services(
     base_url: str,
     auto: bool,
@@ -744,6 +765,7 @@ def _maybe_start_services(
             _pause(1)
     else:
         console.print("  Starting platform services...")
+    _ensure_port_available_for_start(base_url)
     proc = _start_services_background(base_url, data_dir=data_dir)
 
     from nemo_platform_ext.cli.commands.services._process import compute_scope, log_path_for
