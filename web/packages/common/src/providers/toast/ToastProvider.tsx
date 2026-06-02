@@ -33,24 +33,18 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   // the container above any dialog that opened after it.
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    // Feature-detect once. Older browsers fall back to z-index-only behaviour
+    // (broken under top-layer dialogs, same as before this fix).
+    if (!el || typeof el.showPopover !== 'function') return;
+
+    const isOpen = el.matches(':popover-open');
     if (toasts.length > 0) {
-      try {
-        el.hidePopover();
-      } catch {
-        // not currently shown — ignore
-      }
-      try {
-        el.showPopover();
-      } catch {
-        // Popover API not supported on this browser; fall back to z-index only.
-      }
-    } else {
-      try {
-        el.hidePopover();
-      } catch {
-        // already hidden — ignore
-      }
+      // Toggle to re-promote above any dialog that opened after the previous
+      // showPopover() — top-layer order is "last opened wins".
+      if (isOpen) el.hidePopover();
+      el.showPopover();
+    } else if (isOpen) {
+      el.hidePopover();
     }
   }, [toasts.length]);
 
