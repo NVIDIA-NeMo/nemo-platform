@@ -7,6 +7,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
   AGENTS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   DATA_DESIGNER_ENABLED,
   DEPLOYMENTS_ENABLED,
   GUARDRAILS_ENABLED,
@@ -168,6 +169,11 @@ const NoMatchRoute = lazy(() =>
 const PromptTuningFormRoute = lazy(() =>
   import('@studio/routes/PromptTuningFormRoute/index').then((module) => ({
     default: module.PromptTuningFormRoute,
+  }))
+);
+const DashboardLandingRoute = lazy(() =>
+  import('@studio/routes/DashboardLandingRoute').then((module) => ({
+    default: module.DashboardLandingRoute,
   }))
 );
 const ModelCompareRoute =
@@ -391,7 +397,13 @@ export const routes: RouteObject[] = [
               ...gateDashboardRoutes([
                 {
                   path: ROUTES.workspace.dashboard,
-                  element: <WorkspaceDashboardRoute />,
+                  element: CODING_AGENT_STUDIO_ENABLED ? (
+                    <Suspense fallback={<Loading description="Loading Dashboard..." />}>
+                      <DashboardLandingRoute />
+                    </Suspense>
+                  ) : (
+                    <WorkspaceDashboardRoute />
+                  ),
                   errorElement: <ErrorPanel title="Workspace" />,
                 },
               ]),

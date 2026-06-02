@@ -5,6 +5,7 @@ import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/nam
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -41,7 +42,7 @@ export const gateCustomizationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(CUSTOMIZER_ENABLED, routes);
 
 export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(DASHBOARD_ENABLED, routes);
+  gateRoutes(DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED, routes);
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
@@ -126,7 +127,8 @@ export const getWorkspaceIndexRoute = (workspace: string) => {
 };
 
 export const getWorkspaceDetailsDefaultRoute = (workspace: string) => {
-  if (DASHBOARD_ENABLED) return getWorkspaceDashboardRoute(workspace);
+  if (DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED)
+    return getWorkspaceDashboardRoute(workspace);
   if (AGENTS_ENABLED) return getAgentsListRoute(workspace);
   if (BASE_MODELS_ENABLED) return getWorkspaceBaseModelsRoute(workspace);
   if (JOBS_ENABLED) return getWorkspaceJobsRoute(workspace);
