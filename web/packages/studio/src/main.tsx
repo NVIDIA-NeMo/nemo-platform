@@ -5,6 +5,7 @@
 // we import this file before the remaining dependencies.
 import '@studio/telemetry/telemetry';
 
+import '@fontsource-variable/mona-sans/wght.css';
 import '@studio/index.css';
 
 import { App } from '@studio/App';
