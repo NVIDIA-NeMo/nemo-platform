@@ -236,7 +236,7 @@ export const ControlledSearchableSelect = ({
           status={status || (error ? 'error' : undefined)}
           {...selectProps}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)">
+        <SelectContent className="w-(--radix-popper-anchor-width) bg-surface-raised border border-base rounded-md shadow-md overflow-hidden">
           <Block className="p-2 w-full sticky top-0 bg-surface z-10">
             <TextInput
               ref={searchInputRef}
