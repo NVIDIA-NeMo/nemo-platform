@@ -124,8 +124,9 @@ export const DatasetFileManagementSidePanel: FC<DatasetFileManagementSidePanelPr
     setLockedDefaultTab(undefined);
   }, [datasetId]);
 
-  const activeTab = userPickedTab ?? lockedDefaultTab ?? SidePanelTab.Files;
-  const showTabs = isExternalFileset(fileset);
+  const isLocal = fileset !== undefined && fileset.storage.type === 'local';
+  const showTabs = !isLocal;
+  const activeTab = userPickedTab ?? lockedDefaultTab ?? SidePanelTab.Card;
 
   const handleOpenChange = (isOpen: boolean) => {
     if (!isOpen) {

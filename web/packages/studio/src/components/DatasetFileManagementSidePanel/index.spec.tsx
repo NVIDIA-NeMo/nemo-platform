@@ -1,11 +1,29 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { GITKEEP_FILENAME } from '@studio/components/FilesTable/utils';
 import { render } from '@studio/tests/util/render';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+
+// Tabs only render for external filesets; local filesets render the explorer
+// directly. These tests focus on the explorer's behavior, so we hand the
+// panel a local fileset by default.
+const localFileset: FilesetOutput = {
+  id: 'default/test-dataset',
+  name: 'test-dataset',
+  workspace: 'default',
+  description: '',
+  purpose: FilesetPurpose.dataset,
+  storage: { type: 'local', path: '/tmp/test-dataset' } as FilesetOutput['storage'],
+  metadata: {},
+  custom_fields: {},
+  project: '',
+  created_at: '',
+  updated_at: '',
+};
 
 vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({
@@ -26,6 +44,7 @@ describe('DatasetFileManagementSidePanel', () => {
     filesList: [],
     isLoading: false,
     isFilesFetching: false,
+    fileset: localFileset,
     onFolderChange: vi.fn(),
     onFileSelect: vi.fn(),
     onClose: vi.fn(),
