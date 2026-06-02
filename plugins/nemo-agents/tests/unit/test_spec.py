@@ -19,7 +19,9 @@ from nemo_agents_plugin.spec import (
     AgentSpec,
     Framework,
     FrameworkResolution,
+    Harness,
     ModelChoice,
+    Scope,
 )
 from pydantic import ValidationError
 
@@ -30,13 +32,24 @@ def _valid_spec_kwargs(**overrides: Any) -> dict[str, Any]:
     base: dict[str, Any] = {
         "name": "it-helpdesk",
         "eval_command": "make eval",
-        "job": "answer IT helpdesk questions about VPN, password reset, and software access",
-        "audience": "internal employees",
-        "categories": ["vpn", "password reset", "software access"],
+        "role": "answer IT helpdesk questions about VPN, password reset, and software access",
+        "purpose": "Help internal employees resolve common IT access issues quickly and escalate when needed.",
+        "scope": Scope(
+            audience="internal employees",
+            categories=["vpn", "password reset", "software access"],
+        ),
         "tools": "Prompt-only.",
         "model": ModelChoice(mode="cloud", family="Nemotron Super 49B"),
         "framework": Framework(resolution=FrameworkResolution.LANGGRAPH_NAT),
-        "success_criteria": ["VPN troubleshooting reaches a resolution or escalation"],
+        "harness": Harness(
+            description="NAT workflow harness with ReAct loop and platform-managed tool dispatch.",
+            agent_loop="ReAct loop in NAT",
+            tool_dispatch="NAT tool registry",
+            runtime="NAT workflow",
+        ),
+        "behavior": "Give concise troubleshooting steps and escalate when account-specific access is required.",
+        "success_criteria": "Employees resolve common IT issues or reach the right escalation path without sharing secrets.",
+        "evaluation_setup": "Run `make eval`; it checks VPN, password reset, and software-access flows.",
     }
     base.update(overrides)
     return base
@@ -50,7 +63,7 @@ class TestValidSpec:
         assert reloaded == spec
 
 
-class TestJobValidation:
+class TestRoleValidation:
     @pytest.mark.parametrize(
         "vague",
         [
@@ -63,14 +76,14 @@ class TestJobValidation:
             "assist users",
         ],
     )
-    def test_vague_jobs_rejected(self, vague: str) -> None:
+    def test_vague_roles_rejected(self, vague: str) -> None:
         # Some vague phrases are below the min-length floor; pad so the
         # validator hits the phrase check, not the length check.
         padded = f"   {vague}   " if len(vague.strip()) < 20 else vague
         with pytest.raises(ValidationError, match="too vague"):
-            AgentSpec(**_valid_spec_kwargs(job=padded.ljust(25)))
+            AgentSpec(**_valid_spec_kwargs(role=padded.ljust(25)))
 
-    def test_job_short_after_strip_rejected(self) -> None:
+    def test_role_short_after_strip_rejected(self) -> None:
         # Regression: Pydantic v2 ``min_length`` runs before the
         # ``@field_validator``, so a whitespace-padded short string passes the
         # built-in check. The validator must re-enforce the floor on the
@@ -79,13 +92,20 @@ class TestJobValidation:
         padded_short = " " * 25 + "short" + " " * 25
         assert len(padded_short) > 20 and len(padded_short.strip()) < 20
         with pytest.raises(ValidationError, match="at least 20 characters"):
-            AgentSpec(**_valid_spec_kwargs(job=padded_short))
+            AgentSpec(**_valid_spec_kwargs(role=padded_short))
 
 
-class TestCategoriesValidation:
+class TestScopeValidation:
     def test_empty_category_rejected(self) -> None:
         with pytest.raises(ValidationError, match="empty"):
-            AgentSpec(**_valid_spec_kwargs(categories=["vpn", "", "software"]))
+            AgentSpec(
+                **_valid_spec_kwargs(
+                    scope=Scope(
+                        audience="internal employees",
+                        categories=["vpn", "", "software"],
+                    )
+                )
+            )
 
 
 class TestExtraFieldsForbidden:

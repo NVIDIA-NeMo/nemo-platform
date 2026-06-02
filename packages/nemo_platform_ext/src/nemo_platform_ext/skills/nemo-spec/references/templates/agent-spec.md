@@ -1,15 +1,16 @@
 ---
 name: <canonical-agent-name>
-eval_command: <CLI command to run evaluations against this agent; omit the key entirely if no eval suite is wired yet>
+eval_command: <CLI command to run the current evaluation setup; omit the key entirely if no eval suite is wired yet>
 ---
 
 # Agent Spec: <name>
 
 > This file is the agent's AGENTSpec.md — the durable contract that
-> describes the intended behavior of the agent under test (AUT). The analyst
-> and experimentalist agents in the NeMo optimization loop read this file as
-> their primary context. Keep it accurate; stale entries here directly
-> degrade the quality of generated Insights and PRs.
+> describes the intended behavior, capabilities, validation setup, and change
+> boundaries for the agent under test (AUT). The analyst and experimentalist
+> agents in the NeMo optimization loop read this file as their primary
+> context. Keep it accurate; stale entries here directly degrade the quality
+> of generated Insights and PRs.
 >
 > The structured layout below is parseable by `AgentSpec` (Pydantic model in
 > `nemo_agents_plugin.spec`). If you hand-edit this file, preserve the section
@@ -18,36 +19,44 @@ eval_command: <CLI command to run evaluations against this agent; omit the key e
 >
 > Section rules:
 >
-> - **Bullet sections** (`Constraints`, `Open Questions`): list items only.
->   If the list is empty, write `_(none)_` instead of leaving the section blank.
-> - **Labeled-bullet sections** (`Model`, `Framework`, `Allowed Changes`):
+> - **Bullet sections** (`Unresolved Questions`): list items only. If the list
+>   is empty, write `_(none)_` instead of leaving the section blank.
+> - **Labeled-bullet sections** (`Scope`, `Model`, `Framework`, `Harness`, `Change Scope`):
 >   `- Label: value` lines only. No prose, no blank-line-separated paragraphs.
-> - **Free-form sections** (`Job`, `Audience`, `Tools`, `Feedback Signals`,
->   `Eval Command Notes`): any markdown. `Tools` accepts a markdown table or the
->   literal string `Prompt-only.`
+>   For list-valued labels inside `Scope`, separate items with semicolons, or
+>   write `_(none)_`.
+> - **Free-form sections** (`Role`, `Purpose`, `Tools`, `Behavior`,
+>   `Success Criteria`, `Evaluation Setup`, `Signals`): any markdown. `Tools`
+>   accepts a markdown table or the literal string `Prompt-only.`
 
-## Job
+## Role
 
-<one concrete sentence describing what the agent does>
+<one concrete sentence describing the role this agent plays for its users; this
+is the fast, human-readable one-liner another agent should remember>
 
-## Audience
+## Purpose
 
-<who talks to it — internal employees, external customers, developers, etc.>
+<one or two short paragraphs explaining why the agent exists, what user value
+it provides, and the decision, workflow, or business context it supports>
 
-## Categories
+## Scope
 
-- <category 1>
-- <category 2>
-- <category 3>
+- Audience: <who talks to it — internal employees, external customers, developers, etc.>
+- Categories: <3-6 task buckets, separated by semicolons; e.g. VPN; password reset; software access>
+- In scope: <capabilities, user intents, or situations the agent is expected to handle; semicolon-separated or `_(none)_`>
+- Out of scope: <capabilities, user intents, or situations the agent should not handle; semicolon-separated or `_(none)_`>
 
 ## Tools
 
-<table of tools the agent calls beyond the model itself, or the literal
-string `Prompt-only.` if none>
+<tools, APIs, and knowledge sources the agent can use, or the literal string
+`Prompt-only.` if none. For each tool/source, capture purpose, credentials or
+scopes, side effects, data freshness, expected failures, and anything an
+analyst should know when deciding whether a trace shows bad agent behavior or
+a normal tool/source limitation.>
 
-| Tool | Purpose | Credentials needed |
-|---|---|---|
-| current_datetime | clock for time-sensitive answers | none |
+| Tool or source | Purpose | Credentials/scopes | Side effects | Freshness / expected failures |
+|---|---|---|---|---|
+| current_datetime | clock for time-sensitive answers | none | none | current at call time |
 
 ## Model
 
@@ -57,18 +66,48 @@ string `Prompt-only.` if none>
 ## Framework
 
 - Resolution: <langgraph-nat | needs-wrapper>
-- Source framework: <only when resolution is `needs-wrapper`; e.g. `crewai`, `autogen`, `langchain`, `pydantic-ai`>
-- Notes: <optional free-form note>
+- Source framework: <only when resolution is `needs-wrapper`; e.g. `crewai`, `autogen`, `langchain`, `pydantic-ai`, `custom service`; omit if not needed>
+- Notes: <temporary NeMo Platform compatibility note, such as wrapper plan, version constraints, migration path, or `_(none)_`>
 
-## Constraints
+## Harness
 
-- <negative requirement, e.g. "never give medical advice">
+- Description: <the extra-model layer that makes the model behave as an agent: loop, tools, context, state, constraints, observation, and validation>
+- Agent loop: <how model calls, tool calls, observations, retries, and stop conditions are orchestrated; omit if unknown>
+- Tool dispatch: <how tool calls are validated, routed, executed, and returned to the model; omit if unknown>
+- Context management: <how prompts, history, retrieval, compaction, and context windows are managed; omit if unknown>
+- State management: <how session state, memory, artifacts, or durable workspace state are stored and reused; omit if unknown>
+- Guardrails: <permission, safety, policy, sandboxing, or middleware controls around agent actions; omit if unknown>
+- Observability: <tracing, logging, metrics, replay, or audit data emitted by the harness; omit if unknown>
+- Verification: <checks, validators, tests, self-verification, or recovery loops run before work is accepted; omit if unknown>
+- Runtime: <execution environment, e.g. NAT workflow, FastAPI service, hosted vendor agent, CLI command, notebook; omit if unknown>
+- Notes: <caveats, recovery behavior, budget controls, or other harness details; use `_(none)_` if there are none>
+
+Use `_(none)_` for this whole section if the harness details are unknown.
+
+## Behavior
+
+<behavioral rules and boundaries: constraints, refusal and escalation policy,
+tone, safety/compliance requirements, accepted limitations, and known non-goals.
+Use this to tell analyst agents what counts as divergence and what should not
+be filed as a failure.>
 
 ## Success Criteria
 
-- <concrete check question with what a pass looks like, OR named metric threshold like `tool_call_accuracy >= 0.85`>
+<what good production behavior looks like for this agent, independent of the
+current eval suite. Capture desired user outcomes, quality standards,
+escalation quality, accuracy expectations, latency or cost expectations where
+relevant, and representative examples of successful behavior.>
 
-## Allowed Changes
+## Evaluation Setup
+
+<the current validation setup. Include how to run it (also reflected by
+`eval_command` front matter when there is a runnable command), what datasets or
+checks it uses, what scorers or metrics measure, pass/fail thresholds, and
+known coverage gaps relative to the success criteria. If no eval suite is wired
+yet, say that explicitly and describe any partial/manual validation that
+exists.>
+
+## Change Scope
 
 - System prompt: yes
 - Tools: yes
@@ -77,21 +116,15 @@ string `Prompt-only.` if none>
 - Model swap (within mode): yes
 - Skills: yes
 - Fine-tuning: no
-- Notes: <optional free-form note>
+- Notes: <vetoes, exceptions, required human approvals, or other scope clarifications; use `_(none)_` if there are none>
 
-## Feedback Signals
+## Signals
 
-<how the analyst should prioritize issues for this agent — e.g. "highest
-priority: thumbs-down on escalation flows; ignore: internal QA traffic". Use
+<how observers and analyst agents should interpret telemetry, user feedback,
+eval outcomes, and trace patterns. Include high-priority signals, noisy signals
+to ignore, traffic or cohort caveats, and agent identity details if needed. Use
 `defaults` if nothing specific.>
 
-## Eval Command Notes
+## Unresolved Questions
 
-<free-form notes on eval state when the suite is not well-defined yet
-(coverage gaps, why). The runnable command itself lives in the
-`eval_command` front matter, not here. Use `_(none)_` if there is
-nothing to note.>
-
-## Open Questions
-
-- <anything unresolved for the build step>
+- <optional unresolved fact that affects safe use, evaluation, or modification of the agent; remove once answered>

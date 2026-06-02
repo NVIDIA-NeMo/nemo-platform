@@ -35,15 +35,15 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-# A "job" answer below this length is almost always too vague to be useful
+# A "role" answer below this length is almost always too vague to be useful
 # downstream (e.g. "help with stuff", "answer questions"). The exact cutoff is
 # a heuristic — the real guard is the vague-phrase check in
-# :meth:`AgentSpec._validate_job`.
-_MIN_JOB_LENGTH = 20
+# :meth:`AgentSpec._validate_role`.
+_MIN_ROLE_LENGTH = 20
 
 # Vague stems we reject outright. Match is case-insensitive on the full
-# (stripped) job string.
-_VAGUE_JOB_PHRASES = frozenset(
+# (stripped) role string.
+_VAGUE_ROLE_PHRASES = frozenset(
     {
         "help with stuff",
         "help users",
@@ -55,30 +55,87 @@ _VAGUE_JOB_PHRASES = frozenset(
 )
 
 
-class FrameworkResolution(str, Enum):
-    """Resolved framework status for the agent.
+class Harness(BaseModel):
+    """The model-surrounding execution layer that turns a model into an agent.
 
-    The ``nemo-explore`` skill forces the user to pick one of these before
-    handoff. ``nemo-spec`` refuses to write if the value is missing.
+    In current agent terminology, the harness is the extra-model layer that
+    manages the agent loop, tool dispatch, context/state, orchestration,
+    guardrails, observability, recovery, and verification. It is descriptive
+    standard metadata, not a NeMo Platform capability gate.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    description: str = Field(
+        min_length=1,
+        description=(
+            "Human-readable description of the extra-model layer that makes "
+            "the model behave as an agent: loop, tools, context, state, "
+            "constraints, observation, and validation."
+        ),
+    )
+    agent_loop: str | None = Field(
+        default=None,
+        description="How model calls, tool calls, observations, retries, and stop conditions are orchestrated.",
+    )
+    tool_dispatch: str | None = Field(
+        default=None,
+        description="How tool calls are validated, routed, executed, and returned to the model.",
+    )
+    context_management: str | None = Field(
+        default=None,
+        description="How prompts, conversation history, retrieval, compaction, and context windows are managed.",
+    )
+    state_management: str | None = Field(
+        default=None,
+        description="How session state, memory, artifacts, or durable workspace state are stored and reused.",
+    )
+    guardrails: str | None = Field(
+        default=None,
+        description="Permission, safety, policy, sandboxing, or middleware controls enforced around agent actions.",
+    )
+    observability: str | None = Field(
+        default=None,
+        description="Tracing, logging, metrics, replay, or audit data emitted by the harness.",
+    )
+    verification: str | None = Field(
+        default=None,
+        description="Checks, validators, tests, self-verification, or recovery loops run before work is accepted.",
+    )
+    runtime: str | None = Field(
+        default=None,
+        description=(
+            "Runtime or execution environment, e.g. NAT workflow, FastAPI "
+            "service, hosted vendor agent, CLI command, notebook, or unknown."
+        ),
+    )
+    notes: str | None = Field(
+        default=None,
+        description="Free-form notes — caveats, recovery behavior, budget controls, or other harness details.",
+    )
+
+
+class FrameworkResolution(str, Enum):
+    """Temporary NeMo Platform framework compatibility status.
+
+    This field exists while NeMo Platform's build path supports only
+    LangGraph-wrapped NAT agents. It is expected to relax or disappear as
+    broader framework support lands; do not treat it as part of the portable
+    AGENTSpec standard.
     """
 
     LANGGRAPH_NAT = "langgraph-nat"
     """LangGraph wrapped in NVIDIA NeMo Agent Toolkit (NAT) — the supported
-    build path."""
+    NeMo build path today."""
 
     NEEDS_WRAPPER = "needs-wrapper"
     """The agent is in another framework (CrewAI, AutoGen, plain LangChain,
-    Pydantic AI, etc.) and needs a user-written NAT wrapper before
-    ``nemo-build-agent`` can do anything useful."""
+    Pydantic AI, custom service, etc.) and needs a user-written NAT wrapper
+    before ``nemo-build-agent`` can do anything useful."""
 
 
 class Framework(BaseModel):
-    """The agent's framework, resolved against NAT support.
-
-    Marked planned-deprecation: this guard exists today because NAT only
-    supports LangGraph-wrapped agents. It is expected to relax as NAT expands.
-    Do not bake assumptions about this field's permanence into other code.
-    """
+    """Temporary NeMo-specific framework compatibility hint."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -87,14 +144,49 @@ class Framework(BaseModel):
         default=None,
         description=(
             "Name of the source framework (e.g. 'crewai', 'autogen', "
-            "'langchain', 'pydantic-ai') when ``resolution`` is "
-            "``needs-wrapper``. Ignored otherwise."
+            "'langchain', 'pydantic-ai', 'custom service') when resolution "
+            "is ``needs-wrapper``. Ignored otherwise."
         ),
     )
     notes: str | None = Field(
         default=None,
-        description="Free-form notes — wrapper plan, version constraints, etc.",
+        description="Free-form notes — wrapper plan, version constraints, migration path, etc.",
     )
+
+
+class Scope(BaseModel):
+    """Who the agent serves and which work it should, and should not, cover."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    audience: str = Field(
+        min_length=1,
+        description="Who talks to the agent. Shapes tone, assumptions, and safety surface.",
+    )
+    categories: list[str] = Field(
+        min_length=3,
+        max_length=6,
+        description="3-6 task buckets the agent handles; useful for analysis, routing, and reporting.",
+    )
+    in_scope: list[str] = Field(
+        default_factory=list,
+        description="Capabilities, user intents, or situations the agent is expected to handle.",
+    )
+    out_of_scope: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Capabilities, user intents, or situations the agent should not handle. "
+            "Use this to keep analysts from filing intended non-goals as failures."
+        ),
+    )
+
+    @field_validator("categories", "in_scope", "out_of_scope")
+    @classmethod
+    def _strip_non_empty_list(cls, value: list[str]) -> list[str]:
+        cleaned = [item.strip() for item in value if item and item.strip()]
+        if len(cleaned) != len(value):
+            raise ValueError("list contains empty entries")
+        return cleaned
 
 
 class ModelChoice(BaseModel):
@@ -115,7 +207,7 @@ class ModelChoice(BaseModel):
     )
 
 
-class AllowedChanges(BaseModel):
+class ChangeScope(BaseModel):
     """Permissions list controlling what the experimentalist agent in the
     optimization loop is allowed to modify when fixing Insights.
 
@@ -136,7 +228,10 @@ class AllowedChanges(BaseModel):
     fine_tuning: bool = False
     notes: str | None = Field(
         default=None,
-        description="Free-form notes — vetoes, exceptions, scope clarifications.",
+        description=(
+            "Free-form notes — vetoes, exceptions, human approval requirements, "
+            "or other scope clarifications."
+        ),
     )
 
 
@@ -147,8 +242,9 @@ class AgentSpec(BaseModel):
     ``eval_command`` render as YAML front matter; all other fields render as
     ``##`` body sections in declared order.
 
-    The two hard preconditions for handoff to ``nemo-spec`` are ``job`` and
-    ``framework`` — both must validate before the spec is written.
+    The two hard preconditions for handoff to ``nemo-spec`` are ``role`` and
+    the temporary NeMo-specific ``framework`` compatibility field — both must
+    validate before the spec is written.
 
     Known issues / failure patterns are deliberately **not** in this schema.
     They are first-class Insight entities owned by the insights plugin.
@@ -171,66 +267,90 @@ class AgentSpec(BaseModel):
         ),
     )
 
-    job: str = Field(
-        min_length=_MIN_JOB_LENGTH,
-        description="One concrete sentence describing what the agent does.",
+    role: str = Field(
+        min_length=_MIN_ROLE_LENGTH,
+        description="One concrete sentence describing the role this agent plays for its users.",
     )
-    audience: str = Field(
+    purpose: str = Field(
         min_length=1,
-        description="Who talks to the agent. Shapes tone and safety surface.",
+        description=(
+            "One or two short paragraphs explaining why the agent exists, what "
+            "user value it provides, and the decision or workflow context it supports."
+        ),
     )
-    categories: list[str] = Field(
-        min_length=3,
-        max_length=6,
-        description="3-6 task buckets the agent handles.",
-    )
+    scope: Scope = Field(description="Audience, task categories, and explicit in/out boundaries.")
     tools: str = Field(
         min_length=1,
         description=(
-            "Tools the agent can call, rendered as a markdown table, or the "
-            "literal string 'Prompt-only.' Default at explore time is "
-            "prompt-only plus ``current_datetime``."
+            "Tools, APIs, and knowledge sources the agent can use, rendered as "
+            "markdown. Include purpose, credentials/scopes, side effects, data "
+            "freshness, expected failures, and external knowledge sources where relevant. "
+            "Use the literal string 'Prompt-only.' if none."
         ),
     )
     model: ModelChoice
     framework: Framework = Field(
         description=(
-            "Resolved framework status. Required. Marked planned-deprecation — see :class:`Framework` for why."
+            "Temporary NeMo Platform framework compatibility hint. This is "
+            "not intended to be a permanent part of the portable AGENTSpec "
+            "standard; it exists until NeMo Platform supports more agent frameworks."
         ),
-        json_schema_extra={"x-planned-deprecation": "tracked under FP-161"},
+        json_schema_extra={"x-planned-deprecation": "temporary until broader framework support"},
     )
-    constraints: list[str] = Field(
-        default_factory=list,
-        description="Negative requirements. Empty list is allowed but rare.",
+    harness: Harness | None = Field(
+        default=None,
+        description=(
+            "Optional description of the extra-model execution layer: agent "
+            "loop, tool dispatch, context/state, guardrails, observability, "
+            "verification, and runtime."
+        ),
     )
-    success_criteria: list[str] = Field(
+    behavior: str = Field(
         min_length=1,
         description=(
-            "Concrete check questions with good-answer descriptions, or named "
-            "metric thresholds (e.g. ``tool_call_accuracy >= 0.85``)."
+            "Behavioral rules and boundaries: constraints, refusal and escalation "
+            "policy, tone, safety/compliance requirements, accepted limitations, "
+            "and known non-goals."
         ),
     )
-    allowed_changes: AllowedChanges = Field(default_factory=AllowedChanges)
-    feedback_signals: str | None = Field(
-        default=None,
-        description=("How the analyst should prioritize issues. 'defaults' if the user has nothing specific."),
+    success_criteria: str = Field(
+        min_length=1,
+        description=(
+            "What good production behavior looks like for this agent, independent "
+            "of the current eval suite. Capture desired user outcomes, quality "
+            "standards, escalation quality, accuracy expectations, latency or cost "
+            "expectations where relevant, and representative examples of success."
+        ),
     )
-    eval_command_notes: str | None = Field(
+    evaluation_setup: str = Field(
+        min_length=1,
+        description=(
+            "The current validation setup: how to run it, what datasets or "
+            "checks it uses, what its scorers or metrics measure, pass/fail "
+            "thresholds, and known coverage gaps relative to the success criteria. "
+            "State explicitly if no eval suite is wired yet."
+        ),
+    )
+    change_scope: ChangeScope = Field(default_factory=ChangeScope)
+    signals: str | None = Field(
         default=None,
         description=(
-            "Free-form context on eval state when the suite is not well-"
-            "defined yet (coverage gaps, why). The runnable command lives in "
-            "``eval_command``."
+            "How observers and analyst agents should interpret telemetry, user "
+            "feedback, eval outcomes, and trace patterns. Include high-priority "
+            "signals, noisy signals to ignore, and agent identity details if needed."
         ),
     )
-    open_questions: list[str] = Field(
+    unresolved_questions: list[str] = Field(
         default_factory=list,
-        description="Unresolved items the build skill should know about.",
+        description=(
+            "Optional unresolved facts that affect safe use, evaluation, or "
+            "modification of the agent. Remove items once answered."
+        ),
     )
 
-    @field_validator("job")
+    @field_validator("role")
     @classmethod
-    def _validate_job(cls, value: str) -> str:
+    def _validate_role(cls, value: str) -> str:
         # Two post-strip checks. The vague-phrase check runs first so a
         # whitespace-padded vague phrase ("   help with stuff   ") surfaces
         # the more useful diagnosis rather than the length floor.
@@ -239,23 +359,15 @@ class AgentSpec(BaseModel):
         # built-in ``min_length`` runs against the raw value, so padded
         # short strings would otherwise bypass it.
         stripped = value.strip()
-        if stripped.lower() in _VAGUE_JOB_PHRASES:
+        if stripped.lower() in _VAGUE_ROLE_PHRASES:
             raise ValueError(
-                f"'job' is too vague ({stripped!r}). Write one concrete sentence "
-                "describing what the agent actually does."
+                f"'role' is too vague ({stripped!r}). Write one concrete sentence "
+                "describing the role this agent plays for its users."
             )
-        if len(stripped) < _MIN_JOB_LENGTH:
+        if len(stripped) < _MIN_ROLE_LENGTH:
             raise ValueError(
-                f"'job' must be at least {_MIN_JOB_LENGTH} characters after trimming "
+                f"'role' must be at least {_MIN_ROLE_LENGTH} characters after trimming "
                 f"(got {len(stripped)}). Write one concrete sentence describing what "
-                "the agent does."
+                "role the agent plays."
             )
         return stripped
-
-    @field_validator("categories")
-    @classmethod
-    def _strip_categories(cls, value: list[str]) -> list[str]:
-        cleaned = [c.strip() for c in value if c and c.strip()]
-        if len(cleaned) != len(value):
-            raise ValueError("'categories' contains empty entries")
-        return cleaned

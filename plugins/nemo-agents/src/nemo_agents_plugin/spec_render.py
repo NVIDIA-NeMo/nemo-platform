@@ -13,7 +13,7 @@ Format:
 * YAML front matter for the small primitive fields (``name``, ``eval_command``).
 * One ``## <Section>`` header per body field, in the order declared on the
   :class:`AgentSpec` model.
-* Structured nested types (``Framework``, ``ModelChoice``, ``AllowedChanges``)
+* Structured nested types (``Harness``, ``ModelChoice``, ``ChangeScope``, ``Scope``)
   render as labeled bullet lists that are still hand-editable.
 
 Round-trip guarantee: ``parse_spec(render_spec(spec)) == spec``. We assert
@@ -29,32 +29,35 @@ from typing import Any
 import yaml
 from nemo_agents_plugin.spec import (
     AgentSpec,
-    AllowedChanges,
+    ChangeScope,
     Framework,
     FrameworkResolution,
+    Harness,
     ModelChoice,
+    Scope,
 )
 
 # Order matters: it defines the on-disk section order. Keep aligned with the
 # field order on :class:`AgentSpec`.
 _BODY_SECTIONS: tuple[tuple[str, str], ...] = (
-    ("job", "Job"),
-    ("audience", "Audience"),
-    ("categories", "Categories"),
+    ("role", "Role"),
+    ("purpose", "Purpose"),
+    ("scope", "Scope"),
     ("tools", "Tools"),
     ("model", "Model"),
     ("framework", "Framework"),
-    ("constraints", "Constraints"),
+    ("harness", "Harness"),
+    ("behavior", "Behavior"),
     ("success_criteria", "Success Criteria"),
-    ("allowed_changes", "Allowed Changes"),
-    ("feedback_signals", "Feedback Signals"),
-    ("eval_command_notes", "Eval Command Notes"),
-    ("open_questions", "Open Questions"),
+    ("evaluation_setup", "Evaluation Setup"),
+    ("change_scope", "Change Scope"),
+    ("signals", "Signals"),
+    ("unresolved_questions", "Unresolved Questions"),
 )
 
-# Header rendered for each AllowedChanges boolean. Order is fixed so the
+# Header rendered for each ChangeScope boolean. Order is fixed so the
 # round-trip is deterministic.
-_ALLOWED_CHANGES_LABELS: tuple[tuple[str, str], ...] = (
+_CHANGE_SCOPE_LABELS: tuple[tuple[str, str], ...] = (
     ("system_prompt", "System prompt"),
     ("tools", "Tools"),
     ("middleware", "Middleware"),
@@ -63,7 +66,7 @@ _ALLOWED_CHANGES_LABELS: tuple[tuple[str, str], ...] = (
     ("skills", "Skills"),
     ("fine_tuning", "Fine-tuning"),
 )
-_LABEL_TO_ALLOWED_FIELD: dict[str, str] = {label.lower(): attr for attr, label in _ALLOWED_CHANGES_LABELS}
+_LABEL_TO_CHANGE_SCOPE_FIELD: dict[str, str] = {label.lower(): attr for attr, label in _CHANGE_SCOPE_LABELS}
 
 
 class SpecRenderError(ValueError):
@@ -99,19 +102,25 @@ def render_spec(spec: AgentSpec) -> str:
 
 
 def _render_field(attr: str, value: object) -> str:
-    if attr in {"job", "audience"}:
+    if attr in {"role", "purpose", "tools", "behavior", "success_criteria", "evaluation_setup"}:
         assert isinstance(value, str)
         return value
-    if attr in {"feedback_signals", "eval_command_notes"}:
+    if attr == "signals":
         return value if isinstance(value, str) else "_(none)_"
-    if attr in {"categories", "constraints", "success_criteria", "open_questions"}:
+    if attr == "unresolved_questions":
         assert isinstance(value, list)
         if not value:
             return "_(none)_"
         return "\n".join(f"- {item}" for item in value)
-    if attr == "tools":
-        assert isinstance(value, str)
-        return value
+    if attr == "scope":
+        assert isinstance(value, Scope)
+        lines = [
+            f"- Audience: {value.audience}",
+            f"- Categories: {_render_inline_list(value.categories)}",
+            f"- In scope: {_render_inline_list(value.in_scope)}",
+            f"- Out of scope: {_render_inline_list(value.out_of_scope)}",
+        ]
+        return "\n".join(lines)
     if attr == "model":
         assert isinstance(value, ModelChoice)
         return f"- Mode: {value.mode}\n- Family: {value.family}"
@@ -123,13 +132,43 @@ def _render_field(attr: str, value: object) -> str:
         if value.notes is not None:
             lines.append(f"- Notes: {value.notes}")
         return "\n".join(lines)
-    if attr == "allowed_changes":
-        assert isinstance(value, AllowedChanges)
-        lines = [f"- {label}: {'yes' if getattr(value, field) else 'no'}" for field, label in _ALLOWED_CHANGES_LABELS]
+    if attr == "harness":
+        if value is None:
+            return "_(none)_"
+        assert isinstance(value, Harness)
+        lines = [f"- Description: {value.description}"]
+        if value.agent_loop is not None:
+            lines.append(f"- Agent loop: {value.agent_loop}")
+        if value.tool_dispatch is not None:
+            lines.append(f"- Tool dispatch: {value.tool_dispatch}")
+        if value.context_management is not None:
+            lines.append(f"- Context management: {value.context_management}")
+        if value.state_management is not None:
+            lines.append(f"- State management: {value.state_management}")
+        if value.guardrails is not None:
+            lines.append(f"- Guardrails: {value.guardrails}")
+        if value.observability is not None:
+            lines.append(f"- Observability: {value.observability}")
+        if value.verification is not None:
+            lines.append(f"- Verification: {value.verification}")
+        if value.runtime is not None:
+            lines.append(f"- Runtime: {value.runtime}")
+        if value.notes is not None:
+            lines.append(f"- Notes: {value.notes}")
+        return "\n".join(lines)
+    if attr == "change_scope":
+        assert isinstance(value, ChangeScope)
+        lines = [f"- {label}: {'yes' if getattr(value, field) else 'no'}" for field, label in _CHANGE_SCOPE_LABELS]
         if value.notes is not None:
             lines.append(f"- Notes: {value.notes}")
         return "\n".join(lines)
     raise SpecRenderError(f"unknown field {attr!r}")
+
+
+def _render_inline_list(items: list[str]) -> str:
+    """Render a short list inside one labeled bullet."""
+
+    return "; ".join(items) if items else "_(none)_"
 
 
 # ---------------------------------------------------------------------------
@@ -218,16 +257,25 @@ def _parse_field(attr: str, raw: str) -> object:
     stripped = raw.strip()
     placeholder = stripped == "_(none)_"
 
-    if attr in {"job", "audience"}:
+    if attr in {"role", "purpose", "tools", "behavior", "success_criteria", "evaluation_setup"}:
         return stripped
-    if attr in {"feedback_signals", "eval_command_notes"}:
+    if attr == "signals":
         return None if placeholder or not stripped else stripped
-    if attr in {"categories", "constraints", "success_criteria", "open_questions"}:
+    if attr == "unresolved_questions":
         if placeholder or not stripped:
-            return _OMIT if attr in {"constraints", "open_questions"} else []
+            return _OMIT
         return list(_parse_bullet_list(stripped))
-    if attr == "tools":
-        return stripped
+    if attr == "scope":
+        labels = _parse_labeled_bullets(stripped)
+        try:
+            return Scope(
+                audience=labels["audience"],
+                categories=_parse_inline_list(labels["categories"]),
+                in_scope=_parse_inline_list(labels.get("in scope", "_(none)_")),
+                out_of_scope=_parse_inline_list(labels.get("out of scope", "_(none)_")),
+            )
+        except KeyError as exc:
+            raise SpecRenderError(f"scope section missing key {exc.args[0]!r}") from exc
     if attr == "model":
         labels = _parse_labeled_bullets(stripped)
         try:
@@ -247,18 +295,36 @@ def _parse_field(attr: str, raw: str) -> object:
             source_framework=labels.get("source framework"),
             notes=labels.get("notes"),
         )
-    if attr == "allowed_changes":
+    if attr == "harness":
+        if placeholder or not stripped:
+            return _OMIT
+        labels = _parse_labeled_bullets(stripped)
+        if "description" not in labels:
+            raise SpecRenderError("harness section missing 'Description'")
+        return Harness(
+            description=labels["description"],
+            agent_loop=labels.get("agent loop"),
+            tool_dispatch=labels.get("tool dispatch"),
+            context_management=labels.get("context management"),
+            state_management=labels.get("state management"),
+            guardrails=labels.get("guardrails"),
+            observability=labels.get("observability"),
+            verification=labels.get("verification"),
+            runtime=labels.get("runtime"),
+            notes=labels.get("notes"),
+        )
+    if attr == "change_scope":
         labels = _parse_labeled_bullets(stripped)
         notes = labels.pop("notes", None)
         fields: dict[str, object] = {}
         for raw_label, value in labels.items():
-            field_name = _LABEL_TO_ALLOWED_FIELD.get(raw_label)
+            field_name = _LABEL_TO_CHANGE_SCOPE_FIELD.get(raw_label)
             if field_name is None:
-                raise SpecRenderError(f"unknown allowed-changes label: {raw_label!r}")
+                raise SpecRenderError(f"unknown change-scope label: {raw_label!r}")
             fields[field_name] = _parse_bool(value, raw_label)
         if notes is not None:
             fields["notes"] = notes
-        return AllowedChanges(**fields)  # type: ignore[arg-type]
+        return ChangeScope(**fields)  # type: ignore[arg-type]
     raise SpecRenderError(f"unknown field {attr!r}")
 
 
@@ -288,6 +354,13 @@ def _parse_labeled_bullets(block: str) -> dict[str, str]:
             raise SpecRenderError(f"duplicate label: {label!r}")
         out[label] = value
     return out
+
+
+def _parse_inline_list(value: str) -> list[str]:
+    stripped = value.strip()
+    if not stripped or stripped == "_(none)_":
+        return []
+    return [item.strip() for item in stripped.split(";") if item.strip()]
 
 
 def _parse_bool(value: str, label: str) -> bool:

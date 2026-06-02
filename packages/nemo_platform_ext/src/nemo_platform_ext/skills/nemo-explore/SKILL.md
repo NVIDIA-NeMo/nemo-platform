@@ -38,7 +38,7 @@ fields you could not fill.
 
 ## The schema you are filling
 
-The spec has two front-matter fields and twelve body sections. Two are hard
+The spec has two front-matter fields and thirteen body sections. Two are hard
 requirements: handoff to `nemo-spec` is blocked until both are resolved.
 
 **Front matter**
@@ -46,24 +46,25 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | Field | Required | Guidance |
 | :---- | :---- | :---- |
 | `name` | yes | Canonical agent name. Use the directory or workflow name if obvious; ask if not. |
-| `eval_command` | optional | CLI to run evals. Leave blank if no eval suite is wired yet; the eval-setup skill (M2) will fill it. |
+| `eval_command` | optional | CLI to run the current eval setup. Leave blank if no eval suite is wired yet; the eval-setup skill (M2) will fill it. |
 
 **Body sections** (in order)
 
 | # | Section | Required | What "good" looks like |
 | :---- | :---- | :---- | :---- |
-| 1 | Job | **yes** | One concrete sentence. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are rejected. |
-| 2 | Audience | yes | Who talks to it: internal employees, external customers, developers. Shapes tone and what is safe to say. |
-| 3 | Categories | yes | 3 to 6 task buckets the agent handles. |
-| 4 | Tools | yes | Table of tools the agent can call, or "Prompt-only." Default is prompt-only plus `current_datetime`. Tools beyond that need a follow-up about credentials. |
+| 1 | Role | **yes** | One concrete sentence describing the role this agent plays. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are rejected. |
+| 2 | Purpose | yes | One or two short paragraphs explaining why the agent exists, what user value it provides, and the decision, workflow, or business context it supports. |
+| 3 | Scope | yes | Audience, 3-6 task categories, expected in-scope work, and explicit out-of-scope work/non-goals. |
+| 4 | Tools | yes | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Capture purpose, credentials/scopes, side effects, freshness, and expected failures. |
 | 5 | Model | yes | Mode (cloud vs local NIM) + model family/size. Example: "cloud, Nemotron Super 49B." `nemo-build-agent` resolves to a specific model entity ID later. |
-| 6 | Framework | **yes** | Must resolve to one of: LangGraph + NAT (supported), or "needs NAT wrapper" with a note naming the source framework (CrewAI, AutoGen, plain LangChain, Pydantic AI). Do not skip. |
-| 7 | Constraints | optional | Negative requirements. "Cannot mention competitors", "must redirect medical questions", response length cap, etc. |
-| 8 | Success Criteria | yes | 2–3 concrete check questions with what a good answer looks like, OR named metric thresholds if evals exist (e.g., `tool_call_accuracy >= 0.85`). |
-| 9 | Allowed Changes | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
-| 10 | Feedback Signals | optional | How the analyst should prioritize issues. High-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
-| 11 | Eval Command Notes | optional | Free-form notes on eval state when evals are not well-defined yet. The bash one-liner lives in the `eval_command` front matter; this section is for context (what coverage is missing, why). |
-| 12 | Open Questions | optional | Unresolved items the build skill should know about. |
+| 6 | Framework | **yes** | Temporary NeMo Platform compatibility field. Must resolve to one of: LangGraph + NAT (supported), or "needs NAT wrapper" with source-framework context. |
+| 7 | Harness | optional | Modern harness description: the extra-model layer around the agent — loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Use `_(none)_` if unknown. |
+| 8 | Behavior | yes | Behavioral rules and boundaries: constraints, refusal/escalation policy, tone, safety/compliance requirements, accepted limitations, and known non-goals. |
+| 9 | Success Criteria | yes | What good production behavior looks like, independent of current evals: desired user outcomes, quality standards, escalation quality, accuracy expectations, latency/cost expectations if relevant, and examples of success. |
+| 10 | Evaluation Setup | yes | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
+| 11 | Change Scope | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
+| 12 | Signals | optional | How analysts should interpret telemetry, user feedback, eval outcomes, and trace patterns. Include high-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
+| 13 | Unresolved Questions | optional | Unresolved facts that affect safe use, evaluation, or modification of the agent. Remove once answered. |
 
 Known issues / failure patterns are tracked as first-class Insight entities by
 the insights plugin — do not duplicate them into the spec.
@@ -105,24 +106,33 @@ the user the full set of unfilled fields.
    Typical inferences per field:
 
    - **name** — directory name, workflow name, or top-level package name.
-   - **Job** — first paragraph of README, system prompt preamble, or
+   - **Role** — first paragraph of README, system prompt preamble, or
      top-level docstring. Often partial; usually needs user confirmation.
-   - **Audience** — sometimes in README ("for internal support staff").
-   - **Categories** — from the system prompt's enumerated capabilities, or
-     from named tool clusters.
-   - **Tools** — from `@tool` decorators, NAT tool registry, or
-     `create_react_agent(tools=[...])`.
+   - **Purpose** — product docs, README motivation, system prompt preamble,
+     or workflow context.
+   - **Scope** — audience from docs or prompts; categories from enumerated
+     capabilities or named tool clusters; in/out boundaries from prompt rules.
+   - **Tools** — from `@tool` decorators, NAT tool registry,
+     `create_react_agent(tools=[...])`, retrieval/corpus config, or API clients.
    - **Model** — model id strings in workflow YAML, env vars, config files.
    - **Framework** — `langgraph` import + NAT workflow YAML → "LangGraph +
      NAT." `crewai` / `autogen` / `pydantic_ai` imports → flag wrapper work.
      Plain `langchain` without `langgraph` → flag wrapper work.
-   - **Constraints** — sometimes called out in system prompt ("never give
-     medical advice").
-   - **Success Criteria** — rare in code; look for existing eval suites.
-   - **Allowed Changes** — not in the code; ask the user.
-   - **Feedback Signals** — not in the code; ask the user.
+   - **Harness** — `langgraph` imports, NAT workflow YAML, `crewai` /
+     `autogen` / `pydantic_ai` imports, service entrypoints, CLI commands,
+     Dockerfiles, notebooks, or deployment configs. Capture what exists
+     descriptively; platform-specific wrapper needs can go in notes.
+   - **Behavior** — system prompt rules ("never give medical advice"),
+     refusal/escalation policy, tone, accepted limitations, and non-goals.
+   - **Success Criteria** — desired production outcomes, quality standards,
+     escalation quality, accuracy expectations, and examples of successful behavior.
+   - **Evaluation Setup** — Makefile targets, scripts, CI config, eval YAMLs,
+     metric definitions, thresholds, and coverage notes.
+   - **Change Scope** — not in the code; ask the user.
+   - **Signals** — usually not in the code; ask the user.
    - **`eval_command`** — Makefile target, scripts directory, CI config.
-   - **Open Questions** — TODOs / FIXMEs in agent-adjacent code.
+   - **Unresolved Questions** — TODOs / FIXMEs in agent-adjacent code that
+     affect safe use, evaluation, or modification.
 
 ## Step 2 — One review pass, not a Q&A loop
 
@@ -143,9 +153,9 @@ shape as the on-disk file). For fields you defaulted, note the default in
 parentheses so the user knows they can override:
 
 - `Tools: Prompt-only.` *(default — say so if the agent needs tools)*
-- `Allowed Changes:` all defaults on, fine-tuning off *(default — call out
+- `Change Scope:` all defaults on, fine-tuning off *(default — call out
   anything you want to lock down)*
-- `Feedback Signals: defaults` *(default — replace if you have specific
+- `Signals: defaults` *(default — replace if you have specific
   priority/ignore rules)*
 
 **Do not** walk the schema field by field. **Do not** ask for confirmation on
@@ -155,7 +165,7 @@ interrogation.
 
 Allowed exceptions where a follow-up question is justified:
 
-1. A **hard-required field** (`Job`, `Framework`) is missing — list those
+1. A **hard-required field** (`Role`, `Framework`) is missing — list those
    explicitly and ask for them in the same single round-trip.
 2. The user's reply to the review block surfaces a contradiction that needs
    one targeted clarification (e.g. they say "drop the search tool" but the
@@ -166,7 +176,7 @@ Allowed exceptions where a follow-up question is justified:
 After the user's reply, apply the corrections and check the two hard
 preconditions:
 
-1. **Job** is a concrete one-sentence answer (not "help with stuff").
+1. **Role** is a concrete one-sentence answer (not "help with stuff").
 2. **Framework** is resolved (`langgraph-nat` or `needs-wrapper` with a
    source-framework name).
 
@@ -185,7 +195,7 @@ to Filesets") and trigger it.
 - **They want to redo the whole thing.** That usually means the codebase
   scan got something fundamentally wrong. Re-scan with their correction in
   mind, then re-present once.
-- **They keep changing their mind on Job.** Stop. Tell them the agent will
+- **They keep changing their mind on Role.** Stop. Tell them the agent will
   not be useful until they can write one concrete sentence and offer to
   come back later. Do not loop on rewording.
 
@@ -197,7 +207,7 @@ to Filesets") and trigger it.
 - **Tool over-spec is the most common error.** Users ask for a search tool
   when prompt-only would work. Probe: "Do you have evidence the model alone
   fails on these?" If no, drop the tool.
-- **"No constraints" usually means "I haven't thought about it."** Probe
+- **"No behavior constraints" usually means "I haven't thought about it."** Probe
   once: "Anything that should never appear — names, phone numbers, competitor
   mentions?" One probe, then move on.
 - **Do not skip the codebase scan even when the user seems eager to dive
@@ -205,10 +215,10 @@ to Filesets") and trigger it.
   to ask shorter, sharper questions. Asking something the codebase already
   answers loses trust immediately.
 - **NeMo Platform optimizes LangGraph agents wrapped in NAT today.** Other
-  frameworks need a user-written wrapper. Surface that in the Framework
-  field, not at the build step. This check is expected to relax as NAT
-  expands; do not bake it into anything irreversible.
-- **Allowed Changes is a permissions list, not a wishlist.** It controls
+  frameworks may still be valid AGENTSpec harnesses, but need a user-written
+  wrapper for the current NeMo build path. Record that as Harness notes; do
+  not make the standard schema a NeMo-specific capability gate.
+- **Change Scope is a permissions list, not a wishlist.** It controls
   what the experimentalist agent will edit. Walk the defaults explicitly so
   the user knows what they're consenting to.
 - **Do not invent Known Issues fields.** Known issues / recurring failure

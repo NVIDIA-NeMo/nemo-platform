@@ -59,12 +59,12 @@ satisfy two non-negotiables. If either is missing or ambiguous, **stop and
 route back to `nemo-explore` for that field only** — do not invent a
 default.
 
-1. **Job** — one concrete sentence describing what the agent does. Vague
+1. **Role** — one concrete sentence describing the role this agent plays. Vague
    answers ("help with stuff", "answer questions") are rejected at write
    time by the `AgentSpec` validator and will fail the file write.
-2. **Framework** — resolved to one of `langgraph-nat` or `needs-wrapper`
-   (with a source-framework name when `needs-wrapper`). The Pydantic model
-   refuses to construct without it.
+2. **Framework** — temporary NeMo Platform compatibility status, resolved to
+   one of `langgraph-nat` or `needs-wrapper` (with source-framework context
+   when `needs-wrapper`). The Pydantic model refuses to construct without it.
 
 The `AgentSpec` Pydantic model (`nemo_agents_plugin.spec`) enforces both at
 construction time; this skill enforces them upstream so the user sees a
@@ -74,7 +74,7 @@ clear gap-question rather than a stack trace.
 
 1. **Confirm the agent name.** Lowercase, hyphens, short: `it-helpdesk`,
    `support-triage`, `code-reviewer`. If the user has not named it, propose
-   two options based on the job. Must match `[a-z][a-z0-9-]*`.
+   two options based on the role. Must match `[a-z][a-z0-9-]*`.
 
 2. **Pre-flight: check the local file.** If `agents/${NAME}.spec.md` exists,
    ask the user whether to overwrite or pick a different name.
@@ -119,7 +119,7 @@ clear gap-question rather than a stack trace.
    from pathlib import Path
    from nemo_agents_plugin.spec_render import parse_spec
    spec = parse_spec(Path('agents/${NAME}.spec.md').read_text())
-   print(f'valid: name={spec.name} job={spec.job[:60]!r}')
+   print(f'valid: name={spec.name} role={spec.role[:60]!r}')
    " || { echo "spec_invalid"; exit 1; }
    ```
 
@@ -146,7 +146,7 @@ clear gap-question rather than a stack trace.
     - `nemo-build-agent` will read `agents/<name>.spec.md`, produce the
       workflow YAML, and call `nemo agents create`. It does not need a
       `--spec-file-ref` flag — the spec's location is derivable.
-    - The `eval-setup` skill (M2) will fill in the `Eval Command Notes`
+    - The `eval-setup` skill (M2) will fill in the `Evaluation Setup`
       section and the `eval_command` front matter when ready.
     - The analyst agent (insights plugin, separate workstream) reads the
       same canonical fileset server-side once traces exist.
@@ -179,7 +179,7 @@ all print, and the user has confirmed the contents.
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `local_missing` after write | Wrong working directory or permission denied | Run `pwd`; check the user is in the cloned repo |
-| `schema_invalid` | Spec malformed — unknown section, missing required field, vague job, unresolved framework | Read the parser error; fix the named section in place; do not silently work around |
+| `schema_invalid` | Spec malformed — unknown section, missing required field, vague role, unresolved framework, or malformed harness description | Read the parser error; fix the named section in place; do not silently work around |
 | `fileset_missing` after upload | Files service down or auth missing | Check `nemo workspaces list`; if that fails, the platform is unreachable — re-upload after `nemo-status` clears |
 | User says "this is wrong" | Spec captured the wrong answers | Edit the relevant section in place; re-validate; re-upload |
 | Name validation keeps failing | User keeps proposing names with underscores or capitals | Pin the regex `[a-z][a-z0-9-]*` and show one example that passes |
@@ -211,7 +211,7 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
   `nemo_agents_plugin.entities` and every consumer follows.
 - **Names with underscores or capitals break tools.** Validate against
   `[a-z][a-z0-9-]*`.
-- **Job and Framework are hard requirements.** Do not write the spec with
+- **Role and Framework are hard requirements.** Do not write the spec with
   either missing. Route back to `nemo-explore` for the missing field only.
 - **Do not duplicate Insights into the spec.** Known issues / recurring
   failure patterns live in the Insights plugin as first-class entities; the
