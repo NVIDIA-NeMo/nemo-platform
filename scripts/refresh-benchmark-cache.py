@@ -24,6 +24,7 @@ Stdlib only. No third-party dependencies.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 import sys
@@ -723,9 +724,19 @@ def fetch_bfcl_scores() -> dict[str, float]:
         print(f"FAILED ({exc})")
         return {}
 
+    if not raw.strip():
+        print("FAILED (empty response)")
+        return {}
+
     scores: dict[str, float] = {}
-    lines = raw.strip().splitlines()
-    header = [h.strip().lower() for h in lines[0].split(",")]
+    # csv.reader handles quoted/escaped fields correctly if Berkeley ever starts
+    # quoting model names (today they don't, but the parser shouldn't depend on it).
+    reader = csv.reader(raw.splitlines())
+    try:
+        header = [h.strip().lower() for h in next(reader)]
+    except StopIteration:
+        print("FAILED (empty CSV)")
+        return {}
     try:
         model_idx = header.index("model")
         score_idx = header.index("overall acc")
@@ -733,11 +744,10 @@ def fetch_bfcl_scores() -> dict[str, float]:
         print("FAILED (unexpected CSV header)")
         return {}
 
-    for line in lines[1:]:
-        parts = line.split(",")
+    for parts in reader:
         if len(parts) <= max(model_idx, score_idx):
             continue
-        model = parts[model_idx].strip().strip('"')
+        model = parts[model_idx].strip()
         # Strip " (FC)", " (Prompt)" and similar variant tags
         for tag in (" (FC)", " (Prompt)", " (Function Calling)"):
             if model.endswith(tag):
