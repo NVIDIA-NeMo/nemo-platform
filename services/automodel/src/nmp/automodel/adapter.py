@@ -5,9 +5,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, cast
-
-from pydantic import BaseModel
+from typing import Any, Literal
 
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
@@ -20,6 +18,7 @@ from nmp.automodel.api.v2.jobs.schemas import (
     WandBParams,
 )
 from nmp.common.api.common import SecretRef
+from pydantic import BaseModel
 
 
 def _map_finetuning_type(value: str) -> str:

@@ -37,8 +37,8 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from langchain_core.language_models.base import BaseLanguageModel
-from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform.types.guardrail import GuardrailRailsConfig as PlatformRailsConfig
+from nemo_platform.types.guardrail import OutputRailsStreamingConfig
 from nemo_platform_plugin.inference_middleware import OpenAICompatibleInferenceTarget
 from nemoguardrails import RailsConfig as LibraryRailsConfig
 from nemoguardrails.rails.llm.config import Model

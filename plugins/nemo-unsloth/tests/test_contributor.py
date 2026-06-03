@@ -42,9 +42,7 @@ class TestIdentity:
         # Remote container submit needs the same set of platform services
         # automodel needs: workspace/auth, jobs API, secrets, files + models.
         for required in ("entities", "auth", "jobs", "files", "secrets", "models"):
-            assert required in contributor.dependencies, (
-                f"{required!r} missing from {contributor.dependencies!r}"
-            )
+            assert required in contributor.dependencies, f"{required!r} missing from {contributor.dependencies!r}"
 
 
 class TestAuthz:

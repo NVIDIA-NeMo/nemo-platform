@@ -136,7 +136,7 @@
 {"name": "langgraph-checkpoint", "license": "MIT", "compatible": true}
 {"name": "langgraph-prebuilt", "license": "MIT", "compatible": true}
 {"name": "langgraph-sdk", "license": "MIT", "compatible": true}
-{"name": "langsmith", "license": "UNKNOWN", "compatible": false}
+{"name": "langsmith", "license": "MIT", "compatible": true}
 {"name": "lark", "license": "MIT", "compatible": true}
 {"name": "litellm", "license": "MIT", "compatible": true}
 {"name": "loguru", "license": "MIT", "compatible": true}
