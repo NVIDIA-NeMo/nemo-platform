@@ -76,7 +76,7 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
         "nmp.automodel.app.jobs.compiler.fetch_model_entity",
         AsyncMock(return_value=_make_mock_model_entity()),
     )
-    contract_dir = Path(__file__).resolve().parents[3] / "tests" / "customizer-automodel-contract" / "input_configs"
+    contract_dir = Path(__file__).resolve().parent / "contract" / "input_configs"
     input_path = contract_dir / "llama-3.2-1b" / "llama_3_2_1b_lora.json"
     if not input_path.exists():
         pytest.skip("contract configs not present")

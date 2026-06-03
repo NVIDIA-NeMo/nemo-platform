@@ -1,31 +1,38 @@
 #!/bin/bash
 set -e
 
-echo '=== Pre-pulling training image ==='
+source /app/image-env.sh
+
+echo '=== Pre-pulling nmp-automodel job images ==='
 if command -v docker &> /dev/null && [ -S /var/run/docker.sock ]; then
-    # The customizer dispatches training jobs using this image
-    # gpu-finetune-test:latest must be pre-built on the host
-    docker image inspect gpu-finetune-test:latest > /dev/null 2>&1 && \
-        echo 'gpu-finetune-test:latest found' || \
-        echo 'WARNING: gpu-finetune-test:latest not found - build it with: docker build -f tests/agentic-use/gpu-direct-lora-finetune-cli/environment/Dockerfile -t gpu-finetune-test:latest .'
+    TRAINING_IMAGE="${NMP_IMAGE_REGISTRY}/nmp-automodel-training:${NMP_IMAGE_TAG}"
+    TASKS_IMAGE="${NMP_IMAGE_REGISTRY}/nmp-automodel-tasks:${NMP_IMAGE_TAG}"
+
+    docker pull "$TRAINING_IMAGE" && echo "Pulled ${TRAINING_IMAGE}" || \
+        echo "WARNING: Failed to pull ${TRAINING_IMAGE} — bake and push with BASE_TAG_AUTOMODEL=${BASE_TAG_AUTOMODEL}"
+    docker pull "$TASKS_IMAGE" && echo "Pulled ${TASKS_IMAGE}" || \
+        echo "WARNING: Failed to pull ${TASKS_IMAGE} — bake and push with BASE_TAG_AUTOMODEL=${BASE_TAG_AUTOMODEL}"
 else
-    echo 'WARNING: Docker not available'
+    echo 'WARNING: Docker not available for image pre-pull'
 fi
 
 echo '=== Creating workspace ==='
-/app/.venv/bin/nmp workspaces create --name lora-training-workspace || echo 'Workspace may already exist'
+/app/.venv/bin/nemo workspaces create --name lora-training-workspace || echo 'Workspace may already exist'
 
-echo '=== Registering model entity ==='
-# Register a model entity that the customizer can reference.
-# The model name is what users pass to the customizer API.
-/app/.venv/bin/nmp models create --workspace lora-training-workspace \
+echo '=== Registering model weights fileset and entity ==='
+/app/.venv/bin/nemo files filesets create smollm-135m-weights \
+    --workspace lora-training-workspace \
+    --purpose model \
+    --exist-ok \
+    --storage '{"type":"huggingface","repo_id":"HuggingFaceTB/SmolLM-135M","repo_type":"model","revision":"main"}' \
+    2>&1 || echo 'Weights fileset may already exist'
+
+/app/.venv/bin/nemo models create smollm-135m \
+    --workspace lora-training-workspace \
+    --exist-ok \
     --input-data '{
         "name": "smollm-135m",
-        "spec": {
-            "num_parameters": 135000000,
-            "is_chat": false,
-            "family": "smollm"
-        },
+        "fileset": "lora-training-workspace/smollm-135m-weights",
         "custom_fields": {
             "hf_model_id": "HuggingFaceTB/SmolLM-135M"
         }

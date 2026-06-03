@@ -54,7 +54,7 @@ def job_ctx_minimal(tmp_path: Path) -> NMPJobContext:
 def training_step_config(tmp_path: Path) -> TrainingStepConfig:
     """Create a minimal real TrainingStepConfig for integrations tests."""
     return TrainingStepConfig(
-        backend=TrainingBackend.AUTOMODEL,
+        backend=TrainingBackend.NEMO_RL,
         model=ModelConfig(path="/models/test-model", name="meta/llama-test"),
         dataset=TrainingStepConfig.DatasetConfig(path="/datasets/train"),
         training=TrainingStepConfig.TrainingConfig(training_type=TrainingType.SFT),

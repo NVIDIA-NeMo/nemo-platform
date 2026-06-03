@@ -5,7 +5,7 @@
 
 from unittest.mock import MagicMock
 
-from nmp.customizer.tasks.training.backends.automodel.callbacks import TrainingProgressCallback
+from nmp.automodel.tasks.training.backends.callbacks import TrainingProgressCallback
 
 
 class TestTrainingProgressCallback:
@@ -22,8 +22,6 @@ class TestTrainingProgressCallback:
 
     def _last_report_kwargs(self, mock_reporter: MagicMock) -> dict:
         return mock_reporter.report_running.call_args.kwargs
-
-    # --- Accumulation ---
 
     def test_train_step_accumulates_metrics(self):
         callback, reporter = self._make_callback()
@@ -65,7 +63,6 @@ class TestTrainingProgressCallback:
         assert len(kwargs["metrics"]["val_loss"]) == 1
 
     def test_metrics_included_in_every_update(self):
-        """Each report_running call should contain the full accumulated metrics."""
         callback, reporter = self._make_callback()
 
         callback.report_train_step(step=1, epoch=1, loss=3.21)
@@ -77,10 +74,7 @@ class TestTrainingProgressCallback:
         second_call_kwargs = reporter.report_running.call_args_list[1].kwargs
         assert len(second_call_kwargs["metrics"]["train_loss"]) == 2
 
-    # --- Flat field naming ---
-
     def test_train_step_uses_train_loss_flat_field(self):
-        """The flat field should be 'train_loss', not 'loss'."""
         callback, reporter = self._make_callback()
 
         callback.report_train_step(step=1, epoch=1, loss=3.21)
@@ -98,10 +92,7 @@ class TestTrainingProgressCallback:
         assert kwargs["lr"] == 0.0002
         assert kwargs["grad_norm"] == 1.5
 
-    # --- Server seeding (pause/resume) ---
-
     def test_seeds_from_server_on_init(self):
-        """Callback should pre-populate metrics from the server."""
         prior = {
             "train_loss": [
                 {"step": 1, "epoch": 1, "value": 3.21},
@@ -118,7 +109,6 @@ class TestTrainingProgressCallback:
         reporter.fetch_current_metrics.assert_called_once()
 
     def test_seeded_metrics_included_in_first_report(self):
-        """After seeding, the first report should include both old and new metrics."""
         prior = {
             "train_loss": [{"step": 1, "epoch": 1, "value": 3.21}],
             "val_loss": [],
@@ -134,7 +124,6 @@ class TestTrainingProgressCallback:
         ]
 
     def test_seeded_val_metrics_preserved_across_train_steps(self):
-        """Val metrics from a prior run should appear in subsequent train step reports."""
         prior = {
             "train_loss": [{"step": 1, "epoch": 1, "value": 3.21}],
             "val_loss": [{"step": 1, "epoch": 1, "value": 3.50}],
@@ -146,8 +135,6 @@ class TestTrainingProgressCallback:
         kwargs = self._last_report_kwargs(reporter)
         assert len(kwargs["metrics"]["val_loss"]) == 1
         assert kwargs["metrics"]["val_loss"][0]["value"] == 3.50
-
-    # --- Delegation ---
 
     def test_report_training_start_delegates(self):
         callback, reporter = self._make_callback()

@@ -23,7 +23,7 @@ Job JSON for `nemo customization automodel submit` uses **`AutomodelJobInput`** 
 uv run nemo customization automodel explain
 ```
 
-**Contract examples:** `tests/customizer-automodel-contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
+**Contract examples:** `services/automodel/tests/contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
 
 ## Job JSON layout
 

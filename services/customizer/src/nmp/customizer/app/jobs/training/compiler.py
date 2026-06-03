@@ -16,6 +16,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
     StepLifecycle,
 )
+from nmp.common.jobs.exceptions import PlatformJobCompilationError
 from nmp.common.jobs.image import get_qualified_image
 from nmp.common.model_utils import is_embedding_model
 from nmp.customizer.api.v2.jobs.schemas import (
@@ -412,21 +413,20 @@ def _extract_model_name(job_spec: CustomizationJobOutput) -> str | None:
 def _determine_backend(job_spec: CustomizationJobOutput) -> TrainingBackend:
     """Determine which backend to use based on the training type.
 
-    Decision logic:
-    1. DPO → nemo_rl (RL training requires nemo-rl library)
-    2. Everything else (SFT, Distillation) → automodel
+    Legacy customizer only compiles DPO jobs (nemo_rl). SFT, LoRA, and distillation
+    are handled by the nmp-automodel plugin.
     """
     if TrainingType(job_spec.training.type) == TrainingType.DPO:
         return TrainingBackend.NEMO_RL
 
-    return TrainingBackend.AUTOMODEL
+    raise PlatformJobCompilationError(
+        f"Training type '{job_spec.training.type}' is not supported by legacy customizer. "
+        "Use the nmp-automodel plugin for SFT, LoRA, and distillation jobs."
+    )
 
 
 def _get_training_image(backend: TrainingBackend) -> str:
     """Get the training image for a backend."""
-    if backend == TrainingBackend.AUTOMODEL:
-        return config.training_automodel_image or get_qualified_image("customizer-automodel")
-    elif backend == TrainingBackend.NEMO_RL:
+    if backend == TrainingBackend.NEMO_RL:
         return config.training_rl_image or get_qualified_image("customizer-rl")
-    else:
-        raise ValueError(f"No training image configured for backend: {backend}")
+    raise ValueError(f"No training image configured for backend: {backend}")

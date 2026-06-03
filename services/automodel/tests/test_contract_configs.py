@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CONTRACT_DIR = REPO_ROOT / "tests" / "customizer-automodel-contract"
+CONTRACT_DIR = Path(__file__).resolve().parent / "contract"
 GENERATE_SCRIPT = CONTRACT_DIR / "generate_configs.py"
 
 # v1 excludes embedding SFT until product expands scope.
