@@ -1306,5 +1306,76 @@ def extract_role_permissions_recursive(
     return perms
 
 
+@app.command("sync-plugins")
+def sync_plugins(
+    auth_path: Path = typer.Option(
+        None, "--auth", "-a", help="Path to static authorization configuration file (relative to project root)"
+    ),
+    dry_run: bool = typer.Option(False, "--dry-run", "-n", help="Show what would change without writing"),
+):
+    """Merge plugin ``nemo.authz`` / ``get_authz_contribution`` data into static-authz.yaml.
+
+    Run from the repo root with workspace plugins installed (``uv sync``). This
+    materializes runtime plugin policy into the committed bundle for CI and
+    environments that only load ``static-authz.yaml``.
+    """
+    project_root = get_project_root()
+    if auth_path is None:
+        auth_path = (
+            project_root
+            / "services"
+            / "core"
+            / "auth"
+            / "src"
+            / "nmp"
+            / "core"
+            / "auth"
+            / "assets"
+            / "static-authz.yaml"
+        )
+    else:
+        auth_path = project_root / auth_path
+
+    try:
+        from nemo_platform_plugin.authz_discovery import discover_authz_contribution_dicts
+        from nmp.common.auth.authz_merge import merge_authz_contributions
+    except ImportError as exc:
+        console.print(f"[red]Cannot import plugin authz discovery: {exc}[/red]")
+        console.print("[yellow]Run from repo root with workspace packages installed (uv sync).[/yellow]")
+        raise typer.Exit(code=1) from exc
+
+    contributions = discover_authz_contribution_dicts()
+    if not contributions:
+        console.print("[yellow]No plugin authz contributions discovered.[/yellow]")
+        raise typer.Exit(code=0)
+
+    auth_config = load_yaml(auth_path)
+    before_endpoints = set(auth_config.get("authz", {}).get("endpoints", {}).keys())
+    merged = merge_authz_contributions(auth_config, contributions)
+    after_endpoints = set(merged.get("authz", {}).get("endpoints", {}).keys())
+    added_paths = sorted(after_endpoints - before_endpoints)
+
+    console.print(f"[bold]Merging {len(contributions)} plugin authz contribution(s)...[/bold]")
+    for path in added_paths:
+        methods = sorted(merged["authz"]["endpoints"][path].keys())
+        console.print(f"  [green]+[/green] {path} ({', '.join(methods)})")
+
+    if not added_paths:
+        console.print("[dim]No new endpoint paths (contributions may already be present).[/dim]")
+
+    if dry_run:
+        console.print("[dim]Dry run — not writing file.[/dim]")
+        return
+
+    sorted_endpoints = {}
+    for path in sorted(merged["authz"]["endpoints"].keys()):
+        sorted_methods = dict(sorted(merged["authz"]["endpoints"][path].items()))
+        sorted_endpoints[path] = sorted_methods
+    merged["authz"]["endpoints"] = sorted_endpoints
+
+    save_yaml(auth_path, merged)
+    console.print(f"[green]✓ Updated {auth_path}[/green]")
+
+
 if __name__ == "__main__":
     app()

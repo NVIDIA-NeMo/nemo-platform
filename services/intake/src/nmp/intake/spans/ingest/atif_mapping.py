@@ -445,8 +445,8 @@ def _span_attributes(
         cost_total_usd=cost_total_usd,
     )
     attribute_bags = semantic_attributes.to_bags()
-    if evaluation_context is not None:
-        attribute_bags.put_json("evaluation.metadata", evaluation_context.metadata)
+    if evaluation_context is not None and evaluation_context.metadata:
+        attribute_bags.put_json("experiment.metadata", evaluation_context.metadata)
     if raw_attributes is not None:
         attribute_bags.put_json("atif.raw", raw_attributes)
     return attribute_bags

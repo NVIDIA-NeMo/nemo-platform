@@ -3,14 +3,9 @@
 
 """Experiment and ExperimentGroup entity definitions for the Intake service.
 
-These are entity-store (Postgres) entities, distinct from the ClickHouse-backed
-telemetry (spans, evaluator_results). They hold the durable, producer-supplied
-metadata that organizes telemetry into leaderboard-shaped views.
-
-Cross-run rollups (per-evaluator aggregate scores, run count, and the unions of
-evaluator/model names) are intentionally *not* stored here. They are derived from
-ClickHouse and hydrated onto the read model at query time; see
-``nmp.intake.api.v2.experiments.schemas.ExperimentResponse``.
+These are entity-store rows, distinct from ClickHouse telemetry. They hold the
+durable, producer-supplied metadata that organizes telemetry into leaderboard
+views. Rollups are derived from ClickHouse at read time.
 """
 
 from __future__ import annotations
@@ -35,8 +30,7 @@ class ExperimentGroup(EntityBase):
 class Experiment(EntityBase):
     """A single agent/config run against a dataset: one row on a leaderboard.
 
-    ``name`` is the producer-supplied, workspace-unique experiment id (e.g.
-    ``"terminal-bench-2_claude-code_opus_baseline"``); create is keyed on it.
+    ``name`` is the producer-supplied, workspace-unique experiment id.
     """
 
     __entity_type__: ClassVar[str] = "experiment"
