@@ -44,10 +44,7 @@ jobs:
               ref: pr.head.sha,
             });
 
-            const actor =
-              commit.data.author?.login ||
-              commit.data.commit.author?.name ||
-              '';
+            const actor = commit.data.author?.login || '';
             const title = commit.data.commit.message.split('\n')[0];
 
             const okActor = actor === process.env.SIGNATURE_ACTOR;
@@ -57,7 +54,7 @@ jobs:
               core.setFailed(
                 'Files under skills/ changed in this PR, but HEAD is not the trusted NVSkills signature commit. ' +
                 'Ask a maintainer/admin to comment /nvskills-ci. If new skills/ content was pushed after signing, rerun /nvskills-ci. ' +
-                `Expected HEAD author "${process.env.SIGNATURE_ACTOR}" and commit title prefix "${process.env.SIGNATURE_TITLE}". ` +
+                `Expected HEAD GitHub author "${process.env.SIGNATURE_ACTOR}" and commit title prefix "${process.env.SIGNATURE_TITLE}". ` +
                 `See ${process.env.ONBOARDING_DOC}.`
               );
             }
