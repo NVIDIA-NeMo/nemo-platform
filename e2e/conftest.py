@@ -83,8 +83,8 @@ def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool
             )
             if resp.status_code == 200:
                 return True
-        except httpx.RequestError:
-            pass
+        except httpx.RequestError as exc:
+            logger.debug("Auth readiness probe failed; will retry: %s", exc)
         time.sleep(_HEALTH_POLL_INTERVAL)
     return False
 
