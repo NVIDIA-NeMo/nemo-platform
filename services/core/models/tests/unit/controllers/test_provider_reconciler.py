@@ -3,6 +3,7 @@
 
 """Unit tests for ModelProviderReconciler."""
 
+import logging
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -11,6 +12,7 @@ from nemo_platform import AsyncNeMoPlatform
 from nemo_platform._exceptions import APIStatusError, ConflictError, NotFoundError
 from nemo_platform.types.inference import ServedModelMapping
 from nemo_platform.types.inference.model_provider import ModelProvider
+from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.provider_reconciler import (
     PROVIDER_ERROR_RETRY_INTERVAL_SECONDS,
@@ -57,6 +59,31 @@ def test_infer_backend_format():
     assert _infer_backend_format("my-claude-like-model") == "OPENAI_CHAT"
 
 
+def _make_discoverable_provider(
+    *,
+    name: str = "test-provider",
+    workspace: str = "test-ns",
+    host_url: str = "https://test-provider.com/v1",
+    created_at: datetime | None = None,
+    updated_at: datetime | None = None,
+) -> ModelProvider:
+    """Build a ModelProvider suitable for autodiscovery unit tests."""
+    now = datetime.now(timezone.utc)
+    return ModelProvider(
+        name=name,
+        workspace=workspace,
+        host_url=host_url,
+        created_at=created_at or now,
+        updated_at=updated_at or now,
+    )
+
+
+@pytest.fixture
+def controller_config():
+    """Default controller config for provider reconciler tests."""
+    return ControllerConfig()
+
+
 @pytest.fixture
 def mock_models_sdk():
     """Create a mock AsyncNeMoPlatform SDK."""
@@ -66,13 +93,15 @@ def mock_models_sdk():
     sdk.inference.virtual_models.create = AsyncMock(return_value=None)
     sdk.inference.virtual_models.delete = AsyncMock(return_value=None)
     sdk.inference.virtual_models.list = MagicMock(return_value=_AsyncPaginator([]))
+    sdk.inference.gateway.provider.get = AsyncMock()
+    sdk.with_options = MagicMock(return_value=sdk)
     return sdk
 
 
 @pytest.fixture
-def reconciler(mock_models_sdk):
+def reconciler(mock_models_sdk, controller_config):
     """Create a ModelProviderReconciler instance."""
-    return ModelProviderReconciler(models_sdk=mock_models_sdk)
+    return ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=controller_config)
 
 
 # ============================================================================
@@ -81,7 +110,7 @@ def reconciler(mock_models_sdk):
 
 
 @pytest.mark.asyncio
-async def test_get_available_models_from_provider_success(reconciler, mock_models_sdk):
+async def test_get_available_models_from_provider_success(reconciler, mock_models_sdk, controller_config):
     """Test successfully getting models from OpenAI-compliant provider."""
     mock_models_sdk.inference.gateway.provider.get = AsyncMock(
         return_value={
@@ -94,13 +123,7 @@ async def test_get_available_models_from_provider_success(reconciler, mock_model
         }
     )
 
-    model_provider = ModelProvider(
-        name="test-provider",
-        workspace="test-ns",
-        host_url="https://test-provider.com/v1",
-        created_at=datetime.now(),
-        updated_at=datetime.now(),
-    )
+    model_provider = _make_discoverable_provider()
     result = await reconciler._discover_models(model_provider)
 
     assert isinstance(result, DiscoverySuccess)
@@ -109,6 +132,110 @@ async def test_get_available_models_from_provider_success(reconciler, mock_model
         "v1/models",
         workspace="test-ns",
         name="test-provider",
+        timeout=controller_config.provider_discovery_timeout_seconds,
+    )
+    mock_models_sdk.with_options.assert_called_once_with(
+        max_retries=controller_config.provider_discovery_max_retries,
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_models_passes_configured_timeout(mock_models_sdk):
+    """Discovery should honor controller_config.provider_discovery_timeout_seconds."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    config = ControllerConfig(provider_discovery_timeout_seconds=240)
+    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
+
+    await reconciler._discover_models(_make_discoverable_provider())
+
+    mock_models_sdk.inference.gateway.provider.get.assert_called_once_with(
+        "v1/models",
+        workspace="test-ns",
+        name="test-provider",
+        timeout=240,
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_models_uses_discovery_sdk_with_configured_retries(mock_models_sdk):
+    """Discovery SDK should be created with controller_config.provider_discovery_max_retries."""
+    discovery_sdk = MagicMock()
+    discovery_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
+
+    config = ControllerConfig(provider_discovery_max_retries=0)
+    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
+
+    await reconciler._discover_models(_make_discoverable_provider())
+
+    mock_models_sdk.with_options.assert_called_once_with(max_retries=0)
+    discovery_sdk.inference.gateway.provider.get.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_discover_models_uses_discovery_sdk_with_nonzero_retries(mock_models_sdk):
+    """Discovery SDK should honor a non-zero provider_discovery_max_retries override."""
+    discovery_sdk = MagicMock()
+    discovery_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
+
+    config = ControllerConfig(provider_discovery_max_retries=2)
+    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
+
+    await reconciler._discover_models(_make_discoverable_provider())
+
+    mock_models_sdk.with_options.assert_called_once_with(max_retries=2)
+    discovery_sdk.inference.gateway.provider.get.assert_called_once_with(
+        "v1/models",
+        workspace="test-ns",
+        name="test-provider",
+        timeout=config.provider_discovery_timeout_seconds,
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_models_transient_http_error_logs_debug_not_warning(reconciler, mock_models_sdk, caplog):
+    """Transient gateway HTTP errors must log at debug, not warning."""
+    mock_response = MagicMock()
+    mock_response.status_code = 502
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(
+        side_effect=APIStatusError(
+            "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
+            response=mock_response,
+            body={"detail": "Backend networking error: Connection refused"},
+        )
+    )
+
+    with caplog.at_level(logging.DEBUG):
+        result = await reconciler._discover_models(_make_discoverable_provider())
+
+    assert isinstance(result, DiscoveryTransientError)
+    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
+        for r in caplog.records
+    )
+
+
+@pytest.mark.asyncio
+async def test_discover_models_transient_exception_logs_debug_not_warning(reconciler, mock_models_sdk, caplog):
+    """Network/timeout exceptions during discovery must log at debug, not warning."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(side_effect=Exception("Request timed out."))
+
+    with caplog.at_level(logging.DEBUG):
+        result = await reconciler._discover_models(_make_discoverable_provider())
+
+    assert isinstance(result, DiscoveryTransientError)
+    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
+        for r in caplog.records
     )
 
 

@@ -336,6 +336,23 @@ class ControllerConfig(BaseModel):
         description="Maximum delay in seconds between drift recovery attempts (caps exponential backoff)",
     )
 
+    provider_discovery_timeout_seconds: int = Field(
+        default=180,
+        ge=1,
+        description=(
+            "Per-request timeout in seconds for GET /v1/models provider autodiscovery via the inference gateway. "
+            "External providers (e.g. NVIDIA Build) can return large model lists and need longer than the SDK default."
+        ),
+    )
+    provider_discovery_max_retries: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "SDK retry count for provider autodiscovery requests. The controller loop already retries on "
+            "each cycle; disabling SDK retries avoids multi-minute retry storms on slow upstreams."
+        ),
+    )
+
     @field_validator("backends", mode="before")
     @classmethod
     def validate_backends(cls, v: Any) -> dict[str, BackendConfig]:
