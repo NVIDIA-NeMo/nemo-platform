@@ -93,5 +93,5 @@ def test_elapsed_column_renders_minutes_seconds(elapsed: float | None, expected:
             self.finished = False
             self.finished_time = None
 
-    rendered = _MinutesSecondsElapsedColumn().render(_StubTask(elapsed))  # type: ignore[arg-type]
+    rendered = _MinutesSecondsElapsedColumn().render(_StubTask(elapsed))
     assert rendered.plain == expected

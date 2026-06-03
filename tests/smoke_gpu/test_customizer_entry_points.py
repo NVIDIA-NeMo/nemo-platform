@@ -18,7 +18,6 @@ import pytest
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.smoke_customizer_automodel
 @pytest.mark.smoke_customizer_rl
 @pytest.mark.smoke_customizer_tasks
 @pytest.mark.smoke_gpu_tasks

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Poll automodel job until top-level status is terminal.
-# Usage: poll_automodel_job.sh automodel-<job-id> [interval_seconds]
+# Poll customization job until top-level status is terminal.
+# Usage: poll_customization_job.sh <plugin>-<job-id> [interval_seconds]
 # Requires: NEMO_BASE_URL or NMP_BASE_URL, run from nemo-platform root with `uv run`.
 # Exit 0 on completed; exit 1 on error, cancelled, or get-status failure.
 
 set -euo pipefail
 
-JOB="${1:?usage: poll_automodel_job.sh automodel-<id> [interval_seconds]}"
-INTERVAL="${2:-90}"
+JOB="${1:?usage: poll_customization_job.sh <plugin>-<id> [interval_seconds]}"
+INTERVAL="${2:-15}"
 
 while true; do
   JSON=$(uv run nemo jobs get-status "$JOB" 2>/dev/null) || {

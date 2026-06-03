@@ -18,6 +18,7 @@ from nmp.automodel.api.v2.jobs.schemas import (
     WandBParams,
 )
 from nmp.common.api.common import SecretRef
+from pydantic import BaseModel
 
 
 def _map_finetuning_type(value: str) -> str:
@@ -99,9 +100,9 @@ def _build_integrations(spec: dict[str, Any]) -> IntegrationParams | None:
     return IntegrationParams(wandb=wandb_params, mlflow=raw.get("mlflow"))
 
 
-def automodel_spec_to_compiler_output(spec: dict[str, Any] | Any) -> CustomizationJobOutput:
+def automodel_spec_to_compiler_output(spec: dict[str, Any] | BaseModel) -> CustomizationJobOutput:
     """Map simplified Automodel job output (plugin schema) to ``CustomizationJobOutput``."""
-    if hasattr(spec, "model_dump"):
+    if isinstance(spec, BaseModel):
         data = spec.model_dump(mode="python")
     else:
         data = dict(spec)
@@ -116,13 +117,11 @@ def automodel_spec_to_compiler_output(spec: dict[str, Any] | Any) -> Customizati
             name=output["name"],
             type=out_type,
             fileset=output["fileset"],
-            description=output.get("description"),
         )
     else:
         output_resp = output
 
     return CustomizationJobOutput(
-        name=data.get("name"),
         model=data["model"],
         dataset=training_uri,
         training=_build_training_block(data),

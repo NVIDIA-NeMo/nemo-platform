@@ -241,9 +241,9 @@ def result_manager_factory(
         job_name=job_name,
         workspace=workspace,
         attempt_id=attempt_id,
-        file_manager_cls=file_manager_cls,  # type: ignore
-        files_sdk=files_sdk,  # type: ignore
-        jobs_sdk=jobs_sdk,  # type: ignore
+        file_manager_cls=file_manager_cls,
+        files_sdk=files_sdk,
+        jobs_sdk=jobs_sdk,
     )
 
 

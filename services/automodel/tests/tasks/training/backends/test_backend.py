@@ -15,8 +15,8 @@ sys.modules["nemo_automodel"] = MagicMock()
 sys.modules["nemo_automodel._transformers"] = MagicMock()
 sys.modules["nemo_automodel._transformers.registry"] = MagicMock()
 
-from nmp.customizer.tasks.training.backends.automodel.backend import AutomodelBackend  # noqa: E402
-from nmp.customizer.tasks.training.backends.automodel.checkpoints import ModelType  # noqa: E402
+from nmp.automodel.tasks.training.backends.backend import AutomodelBackend  # noqa: E402
+from nmp.automodel.tasks.training.backends.checkpoints import ModelType  # noqa: E402
 
 
 class TestAutomodelBackend:
@@ -35,7 +35,7 @@ class TestAutomodelBackend:
 
         expected_path = tmp_path / "best.ckpt"
         mock_find_best_checkpoint = mocker.patch(
-            "nmp.customizer.tasks.training.backends.automodel.backend.find_best_checkpoint",
+            "nmp.automodel.tasks.training.backends.backend.find_best_checkpoint",
             return_value=expected_path,
         )
 
@@ -61,7 +61,7 @@ class TestAutomodelBackend:
 
         checkpoint_info = MagicMock()
         mock_process_checkpoint = mocker.patch(
-            "nmp.customizer.tasks.training.backends.automodel.backend.process_checkpoint",
+            "nmp.automodel.tasks.training.backends.backend.process_checkpoint",
             return_value=checkpoint_info,
         )
 

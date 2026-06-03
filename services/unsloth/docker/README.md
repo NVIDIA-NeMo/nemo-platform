@@ -8,12 +8,11 @@ model_entity).
 |-------|------------|------|
 | `nmp-unsloth-training` | `Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
 
-Default tag is `nmp-unsloth-training:local` (no registry prefix) — suitable for
-in-daemon builds via `--load`. Set `IMAGE_REGISTRY` to add a prefix when you
-want to push:
+Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
 
-- Local:  `nmp-unsloth-training:local`
-- Pushed: `${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}`
+Tags use the same bake variables as automodel (`IMAGE_REGISTRY`, `BAKE_TAG`; defaults in `docker-bake.hcl`):
+
+- Default: `${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}` (e.g. `…/nmp-unsloth-training:local` with `--load`)
 
 Future-proofing: a leaner CPU image (`nmp-unsloth-tasks`) can be added
 later for the file_io / model_entity steps. The compiler already routes
@@ -29,22 +28,22 @@ cd /path/to/Platform
 
 # --- Option A: local build (loads into the local daemon, no registry needed) ---
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --load \
   --set "*.platform=linux/amd64"
-# Result: `nmp-unsloth-training:local` in `docker images`.
+# Result: `${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}` in `docker images`.
 
 # --- Option B: push to a registry ---
 docker login nvcr.io
 export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
-export IMAGE_TAG="$(git rev-parse --short HEAD)"
+export BAKE_TAG="$(git rev-parse --short HEAD)"
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --push \
   --set "*.platform=linux/amd64"
-# Result: `${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}` in the registry.
+# Result: `${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}` in the registry.
 ```
 
 The build pulls the NGC PyTorch base, then runs unsloth's canonical install
@@ -56,6 +55,12 @@ in two steps:
    xformers) at versions tested upstream — we deliberately don't pin any of
    them on our end, because unsloth's pyproject already has precise
    `!=X.Y.Z` blocklists for known-broken releases.
+1b. Flash Attention 2 (Dockerfile step 1b) — source build with
+    `--no-build-isolation` against the NGC base torch (cached Docker layer).
+    Parallelism is capped via `MAX_JOBS` (default `2`, override with bake arg
+    `FLASH_ATTN_MAX_JOBS`) and `NVCC_THREADS=1` to avoid OOM during nvcc.
+    Unsloth does not depend on `flash-attn`; without it you may see
+    `FA2 = False` and `Xformers = None` on newer CUDA stacks.
 2. Editable install of the platform glue: `nemo-platform-sdk`,
    `nemo-platform-plugin`, `nmp-common`, `nmp-unsloth`.
 
@@ -109,7 +114,7 @@ Pick **one** of the following depending on where the GPU host will pull from:
 
 ```bash
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --load \
   --set "*.platform=linux/amd64"
@@ -120,25 +125,26 @@ docker buildx bake \
 
 ```bash
 export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
-export IMAGE_TAG="$(git rev-parse --short HEAD)"
+export BAKE_TAG="$(git rev-parse --short HEAD)"
 
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --push \
   --set "*.platform=linux/amd64"
-# → ${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG} in the registry.
+# → ${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG} in the registry.
 ```
 
 **C) Air-gapped GPU host** (save + `scp` + `docker load`):
 
 ```bash
-export IMAGE_TAG="$(git rev-parse --short HEAD)"
+export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export BAKE_TAG="$(git rev-parse --short HEAD)"
 docker buildx build \
   -f services/unsloth/docker/Dockerfile.nmp-unsloth-training \
   --output type=docker,dest=/tmp/nmp-unsloth-training.tar \
   --target runtime \
-  -t "nmp-unsloth-training:${IMAGE_TAG}" \
+  -t "${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}" \
   --build-context "platform-workspace=path-to-platform-workspace" \
   .
 
@@ -152,11 +158,11 @@ On the host running `nemo services run`, set the full image ref. For a local
 build this is just the bare name:
 
 ```bash
-# Local build:
-export NMP_UNSLOTH_TRAINING_IMAGE="nmp-unsloth-training:local"
+# Local bake (--load; matches docker-bake.hcl defaults):
+export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-nvcr.io/0921617854601259/nemo-platform-dev}/nmp-unsloth-training:${BAKE_TAG:-local}"
 
 # Or, when you pushed (Option B above):
-export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}"
+export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}"
 
 # Restart so the env var takes effect.
 nemo services restart
@@ -166,7 +172,7 @@ Or persist in `~/.nemo/config.yaml`:
 
 ```yaml
 unsloth:
-  training_image: nmp-unsloth-training:local
+  training_image: nvcr.io/0921617854601259/nemo-platform-dev/nmp-unsloth-training:local
 ```
 
 ### 3. Prepare model + dataset filesets

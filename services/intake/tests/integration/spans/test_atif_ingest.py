@@ -4,12 +4,32 @@
 """ATIF ingest tests."""
 
 import json
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import pytest
 from fastapi.testclient import TestClient
 
 _HISTORICAL_GTE = "2024-01-01T00:00:00Z"
+
+
+def _recent_base_time() -> datetime:
+    """Return a UTC timestamp safely inside the spans list 30-day default lookback."""
+    return datetime.now(timezone.utc) - timedelta(hours=2)
+
+
+def _atif_timestamp(dt: datetime) -> str:
+    """Format a UTC datetime the way ATIF ingest payloads expect."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%S") + f".{dt.microsecond:06d}Z"
+
+
+def _span_started_at(dt: datetime) -> str:
+    """Format a UTC datetime the way span list/get APIs return started_at."""
+    return dt.replace(tzinfo=None).isoformat(timespec="microseconds")
+
+
+def _span_ended_at(dt: datetime) -> str:
+    return _span_started_at(dt)
 
 
 def test_atif_ingest_rejects_loose_steps_payload(client: TestClient):
@@ -176,6 +196,13 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "metadata": {"trial": "sample-test-case-a__trial-a"},
     }
     _create_experiment(client, evaluation_context["evaluation_id"])
+    base_time = _recent_base_time()
+    user_step_time = base_time
+    agent_step_2_time = base_time + timedelta(seconds=5, milliseconds=636)
+    agent_step_3_time = base_time + timedelta(seconds=10, milliseconds=528)
+    verifier_started_at = base_time + timedelta(minutes=3, seconds=1, microseconds=657282)
+    verifier_finished_at = base_time + timedelta(minutes=8, seconds=45, microseconds=570079)
+    another_session_step_time = user_step_time - timedelta(minutes=4, seconds=29)
     tool_call = {
         "tool_call_id": "tooluse_tuIapjh62ZTI1pildiC9sg",
         "function_name": "Bash",
@@ -209,8 +236,8 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
             "trial_name": "sample-test-case-a__trial-a",
             "trial_uri": "artifact://sample-run/sample-test-case-a__trial-a",
             "verifier": {
-                "started_at": "2026-05-04T19:01:01.657282Z",
-                "finished_at": "2026-05-04T19:06:45.570079Z",
+                "started_at": _atif_timestamp(verifier_started_at),
+                "finished_at": _atif_timestamp(verifier_finished_at),
             },
             "verifier_result": {"rewards": {"reward": 0.0}},
         },
@@ -235,7 +262,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "steps": [
             {
                 "step_id": 1,
-                "timestamp": "2026-05-04T18:57:59.943Z",
+                "timestamp": _atif_timestamp(user_step_time),
                 "source": "user",
                 "message": 'You need to create a file called "/app/solution.txt" with the word found in '
                 '"secret_file.txt" in the "secrets.7z" archive.',
@@ -243,7 +270,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
             },
             {
                 "step_id": 2,
-                "timestamp": "2026-05-04T18:58:05.579Z",
+                "timestamp": _atif_timestamp(agent_step_2_time),
                 "source": "agent",
                 "model_name": "provider/sample-model",
                 "reasoning_content": "The archive exists; inspect available tooling.",
@@ -285,7 +312,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
             },
             {
                 "step_id": 3,
-                "timestamp": "2026-05-04T18:58:10.471Z",
+                "timestamp": _atif_timestamp(agent_step_3_time),
                 "source": "agent",
                 "model_name": "provider/sample-model",
                 "message": "The archive exists but 7z isn't installed. Let me install it and extract the file.",
@@ -367,8 +394,8 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert "evaluation_context" not in trajectory_raw
     assert "experiment.metadata" not in trajectory_raw
     assert "evaluation.metadata" not in trajectory_raw
-    assert trajectory["started_at"] == "2026-05-04T18:57:59.943000"
-    assert trajectory["ended_at"] == "2026-05-04T19:06:45.570079"
+    assert trajectory["started_at"] == _span_started_at(user_step_time)
+    assert trajectory["ended_at"] == _span_ended_at(verifier_finished_at)
 
     for span in spans:
         if span["name"] == "sample-agent":
@@ -489,7 +516,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "steps": [
             {
                 "step_id": 1,
-                "timestamp": "2026-05-04T18:53:30.000Z",
+                "timestamp": _atif_timestamp(another_session_step_time),
                 "source": "user",
                 "message": "Run the second sample task.",
             }
@@ -566,6 +593,10 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     per-step metrics that sum to it. The trajectory span must NOT carry token attributes,
     or the trace-level rollup would sum them and report 2x the real total.
     """
+    base_time = _recent_base_time()
+    user_step_time = base_time
+    agent_step_2_time = base_time + timedelta(seconds=5)
+    agent_step_3_time = base_time + timedelta(seconds=10)
     body = {
         "schema_version": "ATIF-v1.6",
         "session_id": "atif-rollup-no-double-count",
@@ -586,13 +617,13 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
         "steps": [
             {
                 "step_id": 1,
-                "timestamp": "2026-05-04T19:00:00Z",
+                "timestamp": _atif_timestamp(user_step_time),
                 "source": "user",
                 "message": "Help me with a task.",
             },
             {
                 "step_id": 2,
-                "timestamp": "2026-05-04T19:00:05Z",
+                "timestamp": _atif_timestamp(agent_step_2_time),
                 "source": "agent",
                 "model_name": "test-provider/test-model",
                 "message": "Here is the first response.",
@@ -605,7 +636,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
             },
             {
                 "step_id": 3,
-                "timestamp": "2026-05-04T19:00:10Z",
+                "timestamp": _atif_timestamp(agent_step_3_time),
                 "source": "agent",
                 "model_name": "test-provider/test-model",
                 "message": "Here is the follow-up.",

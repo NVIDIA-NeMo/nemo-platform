@@ -9,7 +9,7 @@
 # Both only ship source distributions on PyPI and require nvcc to compile.
 # The two builds are independent stages so BuildKit runs them in parallel.
 # Each image stores its wheel at /wheels/*.whl.
-# Build via Platform bake group: docker buildx bake -f docker-bake.automodel.hcl nmp-automodel-gpu-wheels
+# Build via Platform bake group: docker buildx bake -f docker-bake.hcl nmp-automodel-gpu-wheels
 #
 # Build args:
 #   CAUSAL_CONV1D_VERSION  - git tag to build              (default: v1.5.3)

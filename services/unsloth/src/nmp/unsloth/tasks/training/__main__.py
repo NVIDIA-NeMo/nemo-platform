@@ -88,7 +88,7 @@ def main() -> int:
     ctx = JobContext(
         workspace=os.environ.get("NEMO_JOB_WORKSPACE", "default"),
         storage=storage,
-        results=None,  # type: ignore[arg-type]
+        results=None,
         job_id=os.environ.get("NEMO_JOB_ID"),
     )
 
@@ -109,7 +109,9 @@ def main() -> int:
     hf_home = storage.ephemeral / "hf"
     hf_home.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("HF_HOME", str(hf_home))
-    logger.info(f"Container: UNSLOTH_COMPILE_LOCATION={os.environ['UNSLOTH_COMPILE_LOCATION']} HF_HOME={os.environ['HF_HOME']}")
+    logger.info(
+        f"Container: UNSLOTH_COMPILE_LOCATION={os.environ['UNSLOTH_COMPILE_LOCATION']} HF_HOME={os.environ['HF_HOME']}"
+    )
 
     try:
         result = train_sft(
@@ -117,6 +119,7 @@ def main() -> int:
             ctx,
             model_path=config.model_path,
             dataset_path=config.dataset_path,
+            validation_path=config.validation_path,
             output_path=config.output_path,
         )
     except Exception:

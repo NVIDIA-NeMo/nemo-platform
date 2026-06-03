@@ -56,7 +56,7 @@ def test_preview_worker_sends_original_text_column_metadata(
     worker_module._make_preview(
         frames.append,
         _preview_spec(tmp_path),
-        data=object(),  # type: ignore[arg-type]
+        data=object(),
         model_configs_yaml="",
         dd_providers=None,
         num_records=1,

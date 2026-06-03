@@ -18,7 +18,7 @@ training driver hits:
 
 - ``unsloth.FastLanguageModel.from_pretrained(...)``  → :class:`ModelLoadSpec`
 - ``unsloth.FastLanguageModel.get_peft_model(...)``   → :class:`LoRAParams`
-- ``transformers.TrainingArguments`` + ``trl.SFTTrainer(...)`` →
+- ``trl.SFTConfig`` + ``trl.SFTTrainer(...)`` →
   :class:`ScheduleSpec`, :class:`BatchSpec`, :class:`OptimizerSpec`,
   :class:`HardwareSpec`, :class:`IntegrationsSpec`
 - Output saving (``model.save_pretrained{,_merged}``) → :class:`OutputResponse`

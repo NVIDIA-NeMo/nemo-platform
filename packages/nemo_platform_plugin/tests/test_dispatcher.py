@@ -156,7 +156,7 @@ class TestExitCodes:
             name = "non-dict"
 
             def run(self, config: dict) -> dict:
-                return "hello"  # type: ignore[return-value]
+                return "hello"
 
         rc = run_task(_Job, sdk=_DEFAULT_SDK)
 

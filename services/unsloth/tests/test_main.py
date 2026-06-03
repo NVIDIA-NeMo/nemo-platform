@@ -39,7 +39,7 @@ def _step_config() -> TrainingStepConfig:
         model=ModelLoadSpec(name="default/base"),
         dataset=DatasetSpec(path="default/training"),
         training=TrainingSpec(lora=LoRAParams()),
-        schedule={"max_steps": 1},  # type: ignore[arg-type]
+        schedule={"max_steps": 1},
         output=OutputResponse(name="r", type="adapter", save_method="lora", fileset="r"),
     )
     return TrainingStepConfig(

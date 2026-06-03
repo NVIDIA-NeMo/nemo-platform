@@ -52,3 +52,17 @@ def test_directory_returns_sorted_files(tmp_path: Path) -> None:
 def test_empty_directory_raises(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError, match="No .jsonl/.json files"):
         _resolve_local_data_files(str(tmp_path))
+
+
+def test_split_train_picks_train_jsonl_only(tmp_path: Path) -> None:
+    (tmp_path / "train.jsonl").write_text('{"text": "train"}\n')
+    (tmp_path / "validation.jsonl").write_text('{"text": "val"}\n')
+    assert _resolve_local_data_files(str(tmp_path), split="train") == str(tmp_path / "train.jsonl")
+
+
+def test_split_validation_picks_validation_jsonl_only(tmp_path: Path) -> None:
+    (tmp_path / "train.jsonl").write_text('{"text": "train"}\n')
+    (tmp_path / "validation.jsonl").write_text('{"text": "val"}\n')
+    assert _resolve_local_data_files(str(tmp_path), split="validation") == str(
+        tmp_path / "validation.jsonl",
+    )

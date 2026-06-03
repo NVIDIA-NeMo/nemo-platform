@@ -3,7 +3,7 @@
 # an unsloth customization job (file_io download, training, file_io upload,
 # model_entity).
 #
-# Two install steps:
+# Install steps:
 #   1. `uv pip install unsloth --torch-backend=auto`. This is unsloth's
 #      canonical install command (per their README). It pulls unsloth +
 #      unsloth_zoo + the entire HF stack (transformers, trl, peft, accelerate,
@@ -11,17 +11,19 @@
 #      pyproject.toml has constrained — including explicit !=X.Y.Z blocklists
 #      for known-broken transformers/trl releases. We deliberately don't
 #      second-guess these pins; they're tested upstream.
+#   1b. flash-attn — optional for unsloth and not installed by step 1. Without
+#       it Unsloth falls back when xformers is also missing (common on newer CUDA
+#       stacks), logging "FA2 = False / Xformers = None". Installed immediately
+#       after unsloth so pip does not re-resolve the HF stack.
 #   2. Editable installs of the platform glue (nemo-platform SDK, plugin,
 #      nmp-common, nmp-unsloth) from the in-repo workspace slice.
 #
 # Publish target: nmp-unsloth-training
-# Default tag:    `local` (override via IMAGE_TAG at build time).
+# Default tag:    `local` (override via BAKE_TAG at build time).
 
-# NGC PyTorch base. 25.04-py3 ships PyTorch 2.7 + CUDA 12.8 + Python 3.12,
-# which is the newest combination with first-class bitsandbytes wheel support.
-# Bumping to 25.06-py3 (CUDA 12.9) or 26.02-py3 (CUDA 13.x) loses bitsandbytes
-# because its published wheels currently top out at CUDA 12.8.
-ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:25.04-py3
+# NGC PyTorch base. 26.02-py3 ships PyTorch 2.11 + CUDA 13.1 + Python 3.12.
+# Override at build time: --set nmp-unsloth-training.args.PYTORCH_BASE=...
+ARG PYTORCH_BASE=nvcr.io/nvidia/pytorch:26.02-py3
 
 FROM ${PYTORCH_BASE} AS base
 
@@ -38,9 +40,9 @@ ENV VIRTUAL_ENV=/opt/venv \
     OTEL_PYTHON_EXCLUDED_URLS="health"
 ENV PATH="/opt/venv/bin:/root/.local/bin:${PATH}"
 
-# --system-site-packages lets the venv inherit the NGC base's pre-built torch
-# (CUDA 12.8 build). Without this, `uv pip install unsloth --torch-backend=auto`
-# would have to download a fresh torch wheel from PyPI, ballooning image size.
+# --system-site-packages lets the venv inherit the NGC base's pre-built torch.
+# Without this, `uv pip install unsloth --torch-backend=auto` would download a
+# fresh torch wheel from PyPI, ballooning image size.
 RUN uv venv ${UV_PROJECT_ENVIRONMENT} --system-site-packages
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -52,11 +54,10 @@ ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
 
-COPY --from=platform-workspace / /app
 WORKDIR /app
 
 RUN mkdir -p /home/${USERNAME}/.cache && \
-    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME} /app/services/unsloth
+    chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}
 
 # Step 1: install unsloth via its own resolver. --torch-backend=auto tells uv
 # to detect the existing torch's CUDA build (from --system-site-packages
@@ -65,6 +66,26 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --torch-backend=auto \
     unsloth
+
+# TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
+# /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
+# Cap parallel nvcc/ninja work — default uses all CPUs and OOMs typical build hosts.
+# Put flash attention back in when we have a working wheel in a separate image.
+# ARG FLASH_ATTN_MAX_JOBS=40
+# ARG NVCC_THREADS=1
+# RUN --mount=type=cache,target=/root/.cache/uv \
+#     --mount=type=cache,target=/root/.cache/pip \
+#     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+#     ninja einops packaging && \
+#     CUDA_HOME=/usr/local/cuda-13.1 \
+#     MAX_JOBS=${FLASH_ATTN_MAX_JOBS} \
+#     NVCC_THREADS=${NVCC_THREADS} \
+#     FLASH_ATTN_FORCE_BUILD=TRUE \
+#     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+#     --no-build-isolation flash-attn==2.8.3
+
+COPY --from=platform-workspace / /app
+RUN chown -R ${USER_UID}:${USER_GID} /app
 
 # Step 2: install the platform glue editably. No [unsloth] extra here — that's
 # what we just installed in step 1, and re-triggering it would force the

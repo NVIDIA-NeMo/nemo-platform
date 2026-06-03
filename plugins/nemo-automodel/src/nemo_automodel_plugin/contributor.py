@@ -10,9 +10,9 @@ from typing import ClassVar
 import typer
 from fastapi import APIRouter
 from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
+from nemo_platform_plugin.jobs.api_factory import JobRouteOption
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import RouterSpec
-from nmp.common.jobs.api_factory import JobRouteOption
 
 from nemo_automodel_plugin.config import generate_automodel_id, get_config
 from nemo_automodel_plugin.jobs.jobs import AutomodelJob

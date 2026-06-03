@@ -46,10 +46,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -74,12 +71,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -135,10 +127,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -167,10 +156,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -202,10 +188,7 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                model={
-                    "name": "name",
-                    "url": "url",
-                },
+                model="workspace/model_name",
                 scores=[
                     {
                         "name": "name",
@@ -227,10 +210,7 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                model={
-                    "name": "name",
-                    "url": "url",
-                },
+                model="workspace/model_name",
                 scores=[
                     {
                         "name": "name",
@@ -254,10 +234,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -267,12 +244,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -296,10 +268,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -313,10 +282,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -333,20 +299,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -355,10 +315,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -368,12 +325,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -397,10 +349,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -414,10 +363,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -434,20 +380,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -456,10 +396,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -469,12 +406,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -497,10 +429,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -514,10 +443,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -534,20 +460,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -556,10 +476,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -569,12 +486,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -597,10 +509,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -614,10 +523,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -634,20 +540,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -656,10 +556,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -669,12 +566,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -697,10 +589,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -714,10 +603,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -734,20 +620,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -756,10 +636,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -769,12 +646,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -797,10 +669,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -814,10 +683,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -834,20 +700,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -856,10 +716,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -869,12 +726,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -897,10 +749,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -914,10 +763,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -934,20 +780,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -956,10 +796,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -969,12 +806,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -997,10 +829,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -1014,10 +843,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -1034,20 +860,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -1056,14 +876,8 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -1073,18 +887,8 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -1108,14 +912,8 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -1129,14 +927,8 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -1153,28 +945,16 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                embeddings_model={
-                    "name": "name",
-                    "url": "url",
-                },
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                embeddings_model="workspace/model_name",
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                embeddings_model={
-                    "name": "name",
-                    "url": "url",
-                },
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                embeddings_model="workspace/model_name",
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -1183,10 +963,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -1196,12 +973,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -1224,10 +996,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -1241,10 +1010,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -1261,20 +1027,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -1283,10 +1043,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -1296,12 +1053,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -1324,10 +1076,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -1341,10 +1090,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -1361,20 +1107,14 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -1775,7 +1515,7 @@ class TestMetrics:
                 }
             ],
             url="url",
-            api_key_secret="api_key_secret",
+            api_key_secret="my-secret",
             description="description",
             labels={"foo": "string"},
             max_retries=0,
@@ -1859,7 +1599,7 @@ class TestMetrics:
             workspace="workspace",
             evaluator_name="evaluator_name",
             url="url",
-            api_key_secret="api_key_secret",
+            api_key_secret="my-secret",
             description="description",
             labels={"foo": "string"},
             max_retries=0,
@@ -2323,7 +2063,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         )
         assert_matches_type(MetricEvaluationResponse, metric, path=["response"])
 
@@ -2333,7 +2073,7 @@ class TestMetrics:
         metric = client.evaluation.metrics.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
             aggregate_fields=["nan_count"],
         )
         assert_matches_type(MetricEvaluationResponse, metric, path=["response"])
@@ -2344,7 +2084,7 @@ class TestMetrics:
         response = client.evaluation.metrics.with_raw_response.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         )
 
         assert response.is_closed is True
@@ -2358,7 +2098,7 @@ class TestMetrics:
         with client.evaluation.metrics.with_streaming_response.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -2375,7 +2115,7 @@ class TestMetrics:
             client.evaluation.metrics.with_raw_response.evaluate(
                 workspace="",
                 dataset={"rows": [{"foo": "bar"}]},
-                metric="26f1kl_-n-71/4m_-__-35-",
+                metric="workspace/metric-name",
             )
 
 
@@ -2390,10 +2130,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -2418,12 +2155,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -2479,10 +2211,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -2511,10 +2240,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            model={
-                "name": "name",
-                "url": "url",
-            },
+            model="workspace/model_name",
             scores=[
                 {
                     "name": "name",
@@ -2546,10 +2272,7 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                model={
-                    "name": "name",
-                    "url": "url",
-                },
+                model="workspace/model_name",
                 scores=[
                     {
                         "name": "name",
@@ -2571,10 +2294,7 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                model={
-                    "name": "name",
-                    "url": "url",
-                },
+                model="workspace/model_name",
                 scores=[
                     {
                         "name": "name",
@@ -2598,10 +2318,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -2611,12 +2328,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -2640,10 +2352,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -2657,10 +2366,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -2677,20 +2383,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -2699,10 +2399,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -2712,12 +2409,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -2741,10 +2433,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -2758,10 +2447,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -2778,20 +2464,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -2800,10 +2480,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -2813,12 +2490,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -2841,10 +2513,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -2858,10 +2527,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -2878,20 +2544,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -2900,10 +2560,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -2913,12 +2570,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -2941,10 +2593,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -2958,10 +2607,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -2978,20 +2624,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3000,10 +2640,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3013,12 +2650,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3041,10 +2673,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3058,10 +2687,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3078,20 +2704,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3100,10 +2720,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3113,12 +2730,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3141,10 +2753,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3158,10 +2767,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3178,20 +2784,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3200,10 +2800,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3213,12 +2810,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3241,10 +2833,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3258,10 +2847,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3278,20 +2864,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3300,10 +2880,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3313,12 +2890,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3341,10 +2913,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3358,10 +2927,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3378,20 +2944,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3400,14 +2960,8 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3417,18 +2971,8 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3452,14 +2996,8 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3473,14 +3011,8 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            embeddings_model={
-                "name": "name",
-                "url": "url",
-            },
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            embeddings_model="workspace/model_name",
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3497,28 +3029,16 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                embeddings_model={
-                    "name": "name",
-                    "url": "url",
-                },
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                embeddings_model="workspace/model_name",
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                embeddings_model={
-                    "name": "name",
-                    "url": "url",
-                },
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                embeddings_model="workspace/model_name",
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3527,10 +3047,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3540,12 +3057,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3568,10 +3080,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3585,10 +3094,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3605,20 +3111,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -3627,10 +3127,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
         assert_matches_type(MetricCreateResponse, metric, path=["response"])
 
@@ -3640,12 +3137,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-                "api_key_secret": "api_key_secret",
-                "format": "nim",
-            },
+            judge_model="workspace/model_name",
             description="description",
             ignore_request_failure=True,
             inference={
@@ -3668,10 +3160,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         )
 
         assert response.is_closed is True
@@ -3685,10 +3174,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.create(
             name="name",
             workspace="workspace",
-            judge_model={
-                "name": "name",
-                "url": "url",
-            },
+            judge_model="workspace/model_name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -3705,20 +3191,14 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="name",
                 workspace="",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.evaluation.metrics.with_raw_response.create(
                 name="",
                 workspace="workspace",
-                judge_model={
-                    "name": "name",
-                    "url": "url",
-                },
+                judge_model="workspace/model_name",
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -4119,7 +3599,7 @@ class TestAsyncMetrics:
                 }
             ],
             url="url",
-            api_key_secret="api_key_secret",
+            api_key_secret="my-secret",
             description="description",
             labels={"foo": "string"},
             max_retries=0,
@@ -4203,7 +3683,7 @@ class TestAsyncMetrics:
             workspace="workspace",
             evaluator_name="evaluator_name",
             url="url",
-            api_key_secret="api_key_secret",
+            api_key_secret="my-secret",
             description="description",
             labels={"foo": "string"},
             max_retries=0,
@@ -4667,7 +4147,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         )
         assert_matches_type(MetricEvaluationResponse, metric, path=["response"])
 
@@ -4677,7 +4157,7 @@ class TestAsyncMetrics:
         metric = await async_client.evaluation.metrics.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
             aggregate_fields=["nan_count"],
         )
         assert_matches_type(MetricEvaluationResponse, metric, path=["response"])
@@ -4688,7 +4168,7 @@ class TestAsyncMetrics:
         response = await async_client.evaluation.metrics.with_raw_response.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         )
 
         assert response.is_closed is True
@@ -4702,7 +4182,7 @@ class TestAsyncMetrics:
         async with async_client.evaluation.metrics.with_streaming_response.evaluate(
             workspace="workspace",
             dataset={"rows": [{"foo": "bar"}]},
-            metric="26f1kl_-n-71/4m_-__-35-",
+            metric="workspace/metric-name",
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -4719,5 +4199,5 @@ class TestAsyncMetrics:
             await async_client.evaluation.metrics.with_raw_response.evaluate(
                 workspace="",
                 dataset={"rows": [{"foo": "bar"}]},
-                metric="26f1kl_-n-71/4m_-__-35-",
+                metric="workspace/metric-name",
             )

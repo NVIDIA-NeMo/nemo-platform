@@ -5,13 +5,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 import typer
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.authz import AuthzContribution
-    from nemo_platform_plugin.service import RouterSpec
+from nemo_platform_plugin.authz import AuthzContribution
+from nemo_platform_plugin.service import RouterSpec
 
 
 @runtime_checkable
@@ -30,7 +28,9 @@ class CustomizationContributor(Protocol):
     def get_authz_contribution(self) -> AuthzContribution | None:
         """Optional authorization policy (endpoints + permissions) for this contributor.
 
-        Implement to return :class:`~nemo_platform_plugin.authz.AuthzContribution`, or
-        register a ``nemo.authz`` entry point instead.
+        Return :class:`~nemo_platform_plugin.authz.AuthzContribution`. Policy is
+        aggregated by :class:`~nemo_customizer.router.CustomizationRouterService`
+        (``nemo.services``) at discovery time — do not register a separate
+        ``nemo.authz`` entry point for customization backends.
         """
         ...

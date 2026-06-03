@@ -114,14 +114,14 @@ class TestBenchmarkJobResults:
             workspace="workspace",
             aggregate_fields=["nan_count"],
             filter={
-                "benchmark": "26f1kl_-n-71/4m_-__-35-",
+                "benchmark": "workspace/benchmark-name",
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
                 "dataset": "string",
                 "metrics": "metrics",
-                "model": "26f1kl_-n-71/4m_-__-35-",
+                "model": "workspace/model_name",
                 "name": "name",
             },
             page=0,
@@ -299,14 +299,14 @@ class TestAsyncBenchmarkJobResults:
             workspace="workspace",
             aggregate_fields=["nan_count"],
             filter={
-                "benchmark": "26f1kl_-n-71/4m_-__-35-",
+                "benchmark": "workspace/benchmark-name",
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
                 "dataset": "string",
                 "metrics": "metrics",
-                "model": "26f1kl_-n-71/4m_-__-35-",
+                "model": "workspace/model_name",
                 "name": "name",
             },
             page=0,

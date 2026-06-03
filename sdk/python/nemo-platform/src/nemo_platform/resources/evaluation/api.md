@@ -28,6 +28,7 @@ from nemo_platform.types.evaluation import (
     FaithfulnessMetric,
     FaithfulnessMetricParam,
     FieldMapping,
+    Fileset,
     FilesetRef,
     InferenceParams,
     JsonScoreParser,
@@ -237,7 +238,6 @@ Types:
 ```python
 from nemo_platform.types.evaluation import (
     BuiltInDataset,
-    Fileset,
     MetricEvaluationJob,
     MetricEvaluationJobRequest,
     MetricEvaluationJobsListFilter,

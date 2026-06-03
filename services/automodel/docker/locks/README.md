@@ -1,6 +1,6 @@
 # Mamba / causal-conv1d wheel build locks
 
-Copied from `nmp/docker/locks/` for building `causal-conv1d-wheel` and `mamba-ssm-wheel` images from the Platform repo (see `Dockerfile.mamba-wheel` and `docker-bake.automodel.hcl` group `nmp-automodel-gpu-wheels`).
+Copied from `nmp/docker/locks/` for building `causal-conv1d-wheel` and `mamba-ssm-wheel` images from the Platform repo (see `Dockerfile.mamba-wheel` and `docker-bake.hcl` group `nmp-automodel-gpu-wheels`).
 
 To refresh locks after dependency changes:
 

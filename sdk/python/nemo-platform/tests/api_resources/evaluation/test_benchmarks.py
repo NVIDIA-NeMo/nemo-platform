@@ -46,7 +46,7 @@ class TestBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         )
         assert_matches_type(BenchmarkCreateResponse, benchmark, path=["response"])
@@ -58,7 +58,7 @@ class TestBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
             extended_response=True,
             field_mapping={
@@ -83,7 +83,7 @@ class TestBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         )
 
@@ -99,7 +99,7 @@ class TestBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         ) as response:
             assert not response.is_closed
@@ -118,7 +118,7 @@ class TestBenchmarks:
                 workspace="",
                 dataset="string",
                 description="description",
-                metrics=["26f1kl_-n-71/4m_-__-35-"],
+                metrics=["workspace/metric-name"],
                 name="name",
             )
 
@@ -317,7 +317,7 @@ class TestAsyncBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         )
         assert_matches_type(BenchmarkCreateResponse, benchmark, path=["response"])
@@ -329,7 +329,7 @@ class TestAsyncBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
             extended_response=True,
             field_mapping={
@@ -354,7 +354,7 @@ class TestAsyncBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         )
 
@@ -370,7 +370,7 @@ class TestAsyncBenchmarks:
             workspace="workspace",
             dataset="string",
             description="description",
-            metrics=["26f1kl_-n-71/4m_-__-35-"],
+            metrics=["workspace/metric-name"],
             name="name",
         ) as response:
             assert not response.is_closed
@@ -389,7 +389,7 @@ class TestAsyncBenchmarks:
                 workspace="",
                 dataset="string",
                 description="description",
-                metrics=["26f1kl_-n-71/4m_-__-35-"],
+                metrics=["workspace/metric-name"],
                 name="name",
             )
 

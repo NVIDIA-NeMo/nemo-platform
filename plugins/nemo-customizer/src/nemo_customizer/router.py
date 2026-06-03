@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import ClassVar
 
 from fastapi import APIRouter
+from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod, combine_authz_contributions
 from nemo_platform_plugin.discovery import (
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover_customization_contributors,
@@ -43,7 +44,7 @@ def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
     # Map (method, full_path) -> contributor key
     seen: dict[tuple[str, str], str] = {}
     for key, contributor in contributors.items():
-        for spec in contributor.get_routers():  # type: ignore[union-attr]
+        for spec in contributor.get_routers():
             prefix = spec.prefix.rstrip("/")
             for route in spec.router.routes:
                 methods = getattr(route, "methods", None) or {"*"}
@@ -53,10 +54,35 @@ def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
                     op = (method, full_path)
                     if op in seen:
                         raise CustomizationRouterError(
-                            f"Route collision: contributors {seen[op]!r} and {key!r} "
-                            f"both handle {method} {full_path}",
+                            f"Route collision: contributors {seen[op]!r} and {key!r} both handle {method} {full_path}",
                         )
                     seen[op] = key
+
+
+def _hub_authz_contribution() -> AuthzContribution:
+    """Authz for the customization router hub (authenticated health check only)."""
+    return AuthzContribution(
+        endpoints={
+            "/apis/customization/healthz": {
+                "get": AuthzEndpointMethod(permissions=[], scopes=[]),
+            },
+        },
+    )
+
+
+def _authz_from_contributors(contributors: dict[str, object]) -> AuthzContribution | None:
+    """Collect and merge authz from installed customization backends."""
+    backend_parts: list[AuthzContribution] = []
+    for contributor in contributors.values():
+        getter = getattr(contributor, "get_authz_contribution", None)
+        if not callable(getter):
+            continue
+        contrib = getter()
+        if contrib is not None:
+            backend_parts.append(contrib)
+    if not backend_parts:
+        return None
+    return combine_authz_contributions(_hub_authz_contribution(), *backend_parts)
 
 
 class CustomizationRouterService(NemoService):
@@ -75,6 +101,11 @@ class CustomizationRouterService(NemoService):
             )
         _assert_no_route_collisions(self._contributors)
         type(self).dependencies = merge_router_dependencies(self._contributors)
+
+    @classmethod
+    def get_authz_contribution(cls) -> AuthzContribution | None:
+        """Merge backend contributor authz (automodel, unsloth, …) for policy discovery."""
+        return _authz_from_contributors(discover_customization_contributors())
 
     def get_routers(self) -> list[RouterSpec]:
         router = APIRouter()

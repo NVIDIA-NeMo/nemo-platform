@@ -105,7 +105,7 @@ class EntityBase(BaseModel):
         "_db_version",
     }
 
-    __entity_type__: ClassVar[str] = EntityTypeDefault()  # type: ignore[assignment]
+    __entity_type__: ClassVar[str] = EntityTypeDefault()
 
     model_config = {"populate_by_name": True}
 

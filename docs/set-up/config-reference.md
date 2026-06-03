@@ -766,8 +766,6 @@ customizer:
   port: 8000
   # Enable debug mode | default: False
   debug: false
-  # Override container image for Automodel training. If not set, uses platform defaults.
-  training_automodel_image:
   # Override container image for DPO training. If not set, uses platform defaults.
   training_rl_image:
   # default: '1'

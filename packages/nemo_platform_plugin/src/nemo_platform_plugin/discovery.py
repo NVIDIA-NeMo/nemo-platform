@@ -45,19 +45,17 @@ import logging
 import os
 from functools import cache
 from importlib.metadata import EntryPoint, entry_points
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
+from nemo_platform_plugin.cli import NemoCLI
+from nemo_platform_plugin.controller import NemoController
+from nemo_platform_plugin.customization_contributor import CustomizationContributor
+from nemo_platform_plugin.function import NemoFunction
+from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.cli import NemoCLI
-    from nemo_platform_plugin.controller import NemoController
-    from nemo_platform_plugin.customization_contributor import CustomizationContributor
-    from nemo_platform_plugin.function import NemoFunction
-    from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
-    from nemo_platform_plugin.job import NemoJob
-    from nemo_platform_plugin.seed import NemoSeedJob
-    from nemo_platform_plugin.service import NemoService
+from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.seed import NemoSeedJob
+from nemo_platform_plugin.service import NemoService
 
 logger = logging.getLogger(__name__)
 

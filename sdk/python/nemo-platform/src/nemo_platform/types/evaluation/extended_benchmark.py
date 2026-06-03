@@ -19,6 +19,7 @@ from typing import Dict, List, Union, Optional
 from datetime import datetime
 from typing_extensions import Annotated, TypeAlias
 
+from .fileset import Fileset
 from ..._utils import PropertyInfo
 from ..._models import BaseModel
 from .f1_metric import F1Metric
@@ -29,7 +30,6 @@ from .rouge_metric import RougeMetric
 from .field_mapping import FieldMapping
 from .remote_metric import RemoteMetric
 from .system_metric import SystemMetric
-from ..files.fileset import Fileset
 from .llm_judge_metric import LLMJudgeMetric
 from .exact_match_metric import ExactMatchMetric
 from .faithfulness_metric import FaithfulnessMetric

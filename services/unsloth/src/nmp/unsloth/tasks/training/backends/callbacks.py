@@ -1,23 +1,20 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+"""Training progress callbacks for Unsloth Jobs-service reporting."""
+
 import logging
 
-from nmp.customizer.tasks.training.progress import JobsServiceProgressReporter
+from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
 
 
 class TrainingProgressCallback:
-    """
-    Callback for reporting Automodel training progress to the Jobs service.
+    """Report Unsloth training progress to the Jobs service.
 
-    This class composes JobsServiceProgressReporter and provides training-specific
-    methods for reporting detailed metrics during training.
-
-    Metric accumulation: train_loss and val_loss are accumulated as time-series
-    lists and included in every status_details update under a ``metrics`` key,
-    enabling loss-curve reconstruction from job status.
+    Metric accumulation matches Automodel: ``train_loss`` and ``val_loss``
+    time series are included under ``metrics`` on every update.
     """
 
     def __init__(self, reporter: JobsServiceProgressReporter):
@@ -34,16 +31,20 @@ class TrainingProgressCallback:
             )
 
     def _build_metrics_summary(self) -> dict[str, list[dict[str, float | int]]]:
-        """Build the accumulated metrics payload for inclusion in status_details."""
         return {
             "train_loss": list(self._train_metrics),
             "val_loss": list(self._val_metrics),
         }
 
-    def report_training_start(self, max_steps: int, num_epochs: int) -> None:
-        """Report that training has started with schedule information."""
+    def report_training_start(self, max_steps: int, num_epochs: int, *, backend: str = "unsloth") -> None:
         self._reporter.configure_progress_tracking(max_steps, num_epochs)
-        self._reporter.report_running(phase="training", step=0, max_steps=max_steps, num_epochs=num_epochs)
+        self._reporter.report_running(
+            phase="training",
+            step=0,
+            max_steps=max_steps,
+            num_epochs=num_epochs,
+            backend=backend,
+        )
 
     def report_train_step(
         self,
@@ -52,8 +53,9 @@ class TrainingProgressCallback:
         loss: float,
         lr: float | None = None,
         grad_norm: float | None = None,
+        *,
+        backend: str = "unsloth",
     ) -> None:
-        """Report training step with metrics."""
         self._train_metrics.append({"step": step, "epoch": epoch, "value": loss})
         self._reporter.report_running(
             phase="training",
@@ -62,33 +64,46 @@ class TrainingProgressCallback:
             train_loss=loss,
             lr=lr,
             grad_norm=grad_norm,
+            backend=backend,
             metrics=self._build_metrics_summary(),
         )
 
-    def report_validation(self, step: int, epoch: int, val_loss: float) -> None:
-        """Report validation results."""
+    def report_validation(
+        self,
+        step: int,
+        epoch: int,
+        val_loss: float,
+        *,
+        backend: str = "unsloth",
+    ) -> None:
         self._val_metrics.append({"step": step, "epoch": epoch, "value": val_loss})
         self._reporter.report_running(
             phase="validation",
             step=step,
             epoch=epoch,
             val_loss=val_loss,
+            backend=backend,
             metrics=self._build_metrics_summary(),
         )
 
-    def report_checkpoint_saved(self, step: int, epoch: int, checkpoint_path: str | None = None) -> None:
-        """Report that a checkpoint was saved."""
+    def report_checkpoint_saved(
+        self,
+        step: int,
+        epoch: int,
+        checkpoint_path: str | None = None,
+        *,
+        backend: str = "unsloth",
+    ) -> None:
         self._reporter.report_running(
             phase="checkpoint_saved",
             step=step,
             epoch=epoch,
             checkpoint_path=checkpoint_path,
+            backend=backend,
         )
 
-    def report_epoch_end(self, step: int, epoch: int) -> None:
-        """Report that an epoch has completed."""
-        self._reporter.report_running(phase="epoch_end", step=step, epoch=epoch)
+    def report_epoch_end(self, step: int, epoch: int, *, backend: str = "unsloth") -> None:
+        self._reporter.report_running(phase="epoch_end", step=step, epoch=epoch, backend=backend)
 
     def close(self) -> None:
-        """Clean up resources."""
         self._reporter.close()

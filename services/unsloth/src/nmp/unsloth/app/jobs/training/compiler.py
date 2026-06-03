@@ -36,7 +36,7 @@ logger = logging.getLogger(__name__)
 def compile_training_step(
     job_spec: UnslothJobOutput,
     base_env: list[EnvironmentVariable],
-    *,
+    validation_dataset_path: str | None = None,
     profile: str | None = None,
 ) -> PlatformJobStep:
     """Build the GPU training :class:`PlatformJobStep`.
@@ -49,6 +49,9 @@ def compile_training_step(
         job_spec: Canonical job spec to serialize into the step config.
         base_env: Environment variables carried into every step
             (e.g. ``PERSISTENT_JOB_STORAGE_PATH``).
+        validation_dataset_path: Local path the file_io download step
+            populated for validation. ``None`` when the job has no
+            validation split.
         profile: GPU execution profile (e.g. ``gpu`` or
             ``gpu_distributed``). When ``None`` the executor's default
             is used.
@@ -57,10 +60,11 @@ def compile_training_step(
         spec=job_spec,
         model_path=DEFAULT_MODEL_PATH,
         dataset_path=DEFAULT_DATASET_PATH,
+        validation_path=validation_dataset_path,
         output_path=DEFAULT_OUTPUT_MODEL_PATH,
     )
 
-    executor_kwargs: dict = {
+    executor: GPUExecutionProviderSpec = {
         "provider": "gpu",
         "container": ContainerSpec(
             image=get_training_image(),
@@ -72,11 +76,11 @@ def compile_training_step(
         "resources": ResourcesSpec(),
     }
     if profile is not None:
-        executor_kwargs["profile"] = profile
+        executor["profile"] = profile
 
     return PlatformJobStep(
         name="training",
-        executor=GPUExecutionProviderSpec(**executor_kwargs),
+        executor=executor,
         environment=base_env,
         config=step_config.model_dump(mode="json"),
     )

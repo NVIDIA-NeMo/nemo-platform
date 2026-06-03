@@ -1,18 +1,38 @@
-# nmp-automodel image bake - run from Platform repo root (context = ".").
+# NeMo Platform GPU image bake — run from Platform repo root (context = ".").
 #
-# Inspect targets (no build; finishes in ~0s):
-#   docker buildx bake --print -f docker-bake.automodel.hcl nmp-automodel-gpu-wheels
+# Groups:
+#   nmp-automodel-gpu-wheels   causal-conv1d-wheel, mamba-ssm-wheel
+#   nmp-automodel              base, tasks, training, smoke-test targets
+#   nmp-unsloth                nmp-unsloth-training
 #
-# Build wheels (override registry/tag via env, not --set):
+# Automodel — inspect wheels (no build):
+#   docker buildx bake --print -f docker-bake.hcl nmp-automodel-gpu-wheels
+#
+# Automodel — build and push wheels:
 #   export WHEELS_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
 #   export WHEELS_TAG=$(git rev-parse --short HEAD)
-#   docker buildx bake -f docker-bake.automodel.hcl nmp-automodel-gpu-wheels --push
+#   docker buildx bake -f docker-bake.hcl nmp-automodel-gpu-wheels --push
 #
-# Build automodel images:
-#   docker buildx bake -f docker-bake.automodel.hcl nmp-automodel-base-builder
+# Automodel — build runtime images:
+#   docker buildx bake -f docker-bake.hcl nmp-automodel-base-builder
 #
-# Published tags: nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-{base,tasks,training}:<tag>
-# NVCR allows only one repo segment after the registry prefix (no nmp/automodel-base nesting).
+# Unsloth — local build (--load):
+#   docker buildx bake -f docker-bake.hcl nmp-unsloth-training --load \
+#     --set "*.platform=linux/amd64"
+#
+# Unsloth — push to registry:
+#   export IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export BAKE_TAG=$(git rev-parse --short HEAD)
+#   docker buildx bake -f docker-bake.hcl nmp-unsloth-training --push \
+#     --set "*.platform=linux/amd64"
+#
+# Published tags:
+#   ${IMAGE_REGISTRY}/nmp-automodel-{base,tasks,training}:${BAKE_TAG}
+#   ${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}
+
+# ---------------------------------------------------------------------------
+# Shared / automodel variables
+# ---------------------------------------------------------------------------
 
 variable "IMAGE_REGISTRY" {
   default = "nvcr.io/0921617854601259/nemo-platform-dev"
@@ -56,8 +76,20 @@ variable "CAUSAL_CONV1D_VERSION" {
 
 # For local builds: --set "*.platform=linux/amd64"
 variable "BUILD_PLATFORMS" {
-  default = ["linux/arm64"]
+  default = ["linux/amd64", "linux/arm64"]
 }
+
+# ---------------------------------------------------------------------------
+# Unsloth variables
+# ---------------------------------------------------------------------------
+
+variable "BUILD_PLATFORM" {
+  default = "linux/amd64"
+}
+
+# ---------------------------------------------------------------------------
+# Automodel helpers
+# ---------------------------------------------------------------------------
 
 function "wheel_tags" {
   params = [name]
@@ -73,6 +105,10 @@ function "get_mamba_ssm_wheel_image" {
   params = []
   result = "${WHEELS_REGISTRY}/mamba-ssm-wheel:${WHEELS_TAG}"
 }
+
+# ---------------------------------------------------------------------------
+# Groups
+# ---------------------------------------------------------------------------
 
 group "nmp-automodel-gpu-wheels" {
   targets = [
@@ -91,7 +127,14 @@ group "nmp-automodel" {
   ]
 }
 
-# Pre-built mamba-ssm / causal-conv1d wheels (cp311, cp312, cu13.1.1). Pushed to WHEELS_REGISTRY.
+group "nmp-unsloth" {
+  targets = ["nmp-unsloth-training"]
+}
+
+# ---------------------------------------------------------------------------
+# Automodel — GPU wheels
+# ---------------------------------------------------------------------------
+
 target "causal-conv1d-wheel" {
   target     = "causal-conv1d-wheel"
   context    = "."
@@ -117,14 +160,15 @@ target "mamba-ssm-wheel" {
   platforms = BUILD_PLATFORMS
 }
 
-target "platform-workspace" {
+target "automodel-platform-workspace" {
   target     = "platform-workspace"
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.platform-workspace"
+  platforms = BUILD_PLATFORMS
 }
 
 target "nmp-automodel-base-builder" {
-  target          = "nmp-automodel-base-builder"
+  target          = "nmp-automodel-base"
   context         = "."
   dockerfile      = "services/automodel/docker/Dockerfile.nmp-automodel-base"
   no-cache-filter = ["automodel-clone"]
@@ -141,7 +185,7 @@ target "nmp-automodel-tasks-docker" {
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.nmp-automodel-tasks"
   contexts = {
-    platform-workspace = "target:platform-workspace"
+    platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = "target:nmp-automodel-base-builder"
   }
   tags = ["${IMAGE_REGISTRY}/nmp-automodel-tasks:${BAKE_TAG}"]
@@ -157,7 +201,7 @@ target "nmp-automodel-training-docker" {
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.nmp-automodel-training"
   contexts = {
-    platform-workspace = "target:platform-workspace"
+    platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = "target:nmp-automodel-base-builder"
   }
   tags = ["${IMAGE_REGISTRY}/nmp-automodel-training:${BAKE_TAG}"]
@@ -173,7 +217,7 @@ target "nmp-automodel-tasks-smoke-test" {
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.nmp-automodel-tasks"
   contexts = {
-    platform-workspace = "target:platform-workspace"
+    platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = "target:nmp-automodel-base-builder"
   }
   args = {
@@ -190,7 +234,7 @@ target "nmp-automodel-training-smoke-test" {
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.nmp-automodel-training"
   contexts = {
-    platform-workspace = "target:platform-workspace"
+    platform-workspace = "target:automodel-platform-workspace"
     nmp-automodel-base = "target:nmp-automodel-base-builder"
   }
   args = {
@@ -199,5 +243,28 @@ target "nmp-automodel-training-smoke-test" {
     SMOKE_MARKER       = "smoke_nmp_automodel_training"
   }
   output    = ["type=cacheonly"]
+  platforms = BUILD_PLATFORMS
+}
+
+# ---------------------------------------------------------------------------
+# Unsloth
+# ---------------------------------------------------------------------------
+
+target "unsloth-platform-workspace" {
+  context    = "."
+  dockerfile = "services/unsloth/docker/Dockerfile.platform-workspace"
+  target     = "platform-workspace"
+  output     = ["type=cacheonly"]
+  platforms = BUILD_PLATFORMS
+}
+
+target "nmp-unsloth-training" {
+  context    = "."
+  dockerfile = "services/unsloth/docker/Dockerfile.nmp-unsloth-training"
+  target     = "runtime"
+  contexts = {
+    platform-workspace = "target:unsloth-platform-workspace"
+  }
+  tags = ["${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}"]
   platforms = BUILD_PLATFORMS
 }

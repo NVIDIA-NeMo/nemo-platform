@@ -712,7 +712,7 @@ class TestProcessRequest:
             )
 
         assert isinstance(result, ImmediateResponse)
-        data: dict[str, Any] = result.data  # type: ignore[assignment]
+        data: dict[str, Any] = result.data
         assert "guardrails_data" not in data
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["<inline:my-test>"]
 

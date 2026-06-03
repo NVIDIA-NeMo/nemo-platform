@@ -30,10 +30,10 @@ def apply_automodel_job_cli_overrides(group: typer.Typer) -> None:
 
 
 def _pluck_callback(group: typer.Typer, verb: str) -> Callable[..., None]:
-    callback = next(c for c in group.registered_commands if c.name == verb).callback
-    if callback is None:
+    command = next((c for c in group.registered_commands if c.name == verb), None)
+    if command is None or command.callback is None:
         raise RuntimeError(f"missing {verb!r} callback to override")
-    return callback
+    return command.callback
 
 
 def _drop_command(group: typer.Typer, name: str) -> None:

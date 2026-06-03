@@ -36,28 +36,27 @@ def contributor() -> object:
 
 class TestIdentity:
     def test_name(self, contributor: object) -> None:
-        assert contributor.name == "unsloth"  # type: ignore[attr-defined]
+        assert contributor.name == "unsloth"
 
     def test_dependencies_match_submit_path(self, contributor: object) -> None:
         # Remote container submit needs the same set of platform services
         # automodel needs: workspace/auth, jobs API, secrets, files + models.
         for required in ("entities", "auth", "jobs", "files", "secrets", "models"):
-            assert required in contributor.dependencies, (  # type: ignore[attr-defined]
-                f"{required!r} missing from {contributor.dependencies!r}"  # type: ignore[attr-defined]
-            )
+            assert required in contributor.dependencies, f"{required!r} missing from {contributor.dependencies!r}"
 
 
 class TestAuthz:
     def test_authz_contribution_targets_unsloth_collection(self, contributor: object) -> None:
-        ac = contributor.get_authz_contribution()  # type: ignore[attr-defined]
+        ac = contributor.get_authz_contribution()
         repr_ = repr(ac)
         assert "unsloth" in repr_
 
 
 class TestRouters:
     def test_returns_two_router_specs(self, contributor: object) -> None:
+        specs = ()
         try:
-            specs = contributor.get_routers()  # type: ignore[attr-defined]
+            specs = contributor.get_routers()
         except ImportError as exc:
             pytest.skip(f"router deps unavailable in this env: {exc}")
         assert len(specs) == 2
@@ -72,7 +71,7 @@ class TestRouters:
 class TestCLI:
     def test_cli_root_help_lists_three_verbs(self, contributor: object) -> None:
         try:
-            cli = contributor.get_cli()  # type: ignore[attr-defined]
+            cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
         runner = CliRunner()
@@ -85,7 +84,7 @@ class TestCLI:
 
     def test_run_hard_fails(self, contributor: object) -> None:
         try:
-            cli = contributor.get_cli()  # type: ignore[attr-defined]
+            cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
         runner = CliRunner()
@@ -97,7 +96,7 @@ class TestCLI:
 
     def test_submit_help_shows_job_json_positional(self, contributor: object) -> None:
         try:
-            cli = contributor.get_cli()  # type: ignore[attr-defined]
+            cli = contributor.get_cli()
         except ImportError as exc:
             pytest.skip(f"CLI deps unavailable in this env: {exc}")
         runner = CliRunner()

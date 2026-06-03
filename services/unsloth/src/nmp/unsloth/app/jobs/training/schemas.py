@@ -24,4 +24,12 @@ class TrainingStepConfig(BaseModel):
     spec: UnslothJobOutput = Field(description="Canonical job spec for the training run.")
     model_path: str = Field(description="Local filesystem path where the model weights were downloaded.")
     dataset_path: str = Field(description="Local filesystem path where the training dataset was downloaded.")
+    validation_path: str | None = Field(
+        default=None,
+        description=(
+            "Local filesystem path where the validation dataset was downloaded. "
+            "When set, overrides ``spec.dataset.validation_path`` so the trainer "
+            "reads on-disk JSONL instead of treating the platform ref as an HF id."
+        ),
+    )
     output_path: str = Field(description="Local filesystem path the training driver should save the checkpoint to.")

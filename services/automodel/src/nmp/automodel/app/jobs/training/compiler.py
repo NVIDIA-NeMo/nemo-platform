@@ -6,6 +6,16 @@
 import logging
 
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.jobs.api_factory import (
+    ContainerSpec,
+    DistributedGPUExecutionProviderSpec,
+    EnvironmentVariable,
+    EnvironmentVariableFromSecret,
+    GPUExecutionProviderSpec,
+    PlatformJobStep,
+    ResourcesSpec,
+    StepLifecycle,
+)
 from nmp.automodel.api.v2.jobs.schemas import (
     AnyTraining,
     CustomizationJobOutput,
@@ -31,16 +41,6 @@ from nmp.automodel.app.jobs.training.schemas import (
 from nmp.automodel.config import config
 from nmp.automodel.entities.values import Precision, TrainingType
 from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_training_image
-from nmp.common.jobs.api_factory import (
-    ContainerSpec,
-    DistributedGPUExecutionProviderSpec,
-    EnvironmentVariable,
-    EnvironmentVariableFromSecret,
-    GPUExecutionProviderSpec,
-    PlatformJobStep,
-    ResourcesSpec,
-    StepLifecycle,
-)
 from nmp.common.model_utils import is_embedding_model
 
 logger = logging.getLogger(__name__)

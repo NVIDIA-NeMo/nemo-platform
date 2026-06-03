@@ -1,15 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Verify that the agent submitted a LoRA customization job via the NeMo Platform customizer API.
+"""Verify that the agent submitted a LoRA job via the automodel customization plugin.
 
-Tests workspace/fileset creation, dataset upload, and customization job submission
-through the real NeMo Platform pipeline.
+Tests workspace/fileset creation, dataset upload, and automodel job submission
+through the NeMo Platform customization + jobs pipeline.
 """
 
 import base64
 import json
 import os
+from typing import Any
 
 import pytest
 from nemo_platform import NeMoPlatform
@@ -41,6 +42,16 @@ def client() -> NeMoPlatform:
     )
 
 
+def _list_automodel_jobs(client: NeMoPlatform) -> list[dict[str, Any]]:
+    """List automodel customization jobs in the eval workspace."""
+    url = f"{str(client.base_url).rstrip('/')}/apis/customization/v2/workspaces/{WORKSPACE}/automodel/jobs"
+    response = client._client.get(url)
+    response.raise_for_status()
+    payload = response.json()
+    data = payload.get("data", payload if isinstance(payload, list) else [])
+    return data if isinstance(data, list) else []
+
+
 def test_workspace_exists(client: NeMoPlatform):
     """Verify the lora-training-workspace exists."""
     response = client.workspaces.list()
@@ -62,17 +73,17 @@ def test_fileset_has_data(client: NeMoPlatform):
 
 
 def test_customization_job_created(client: NeMoPlatform):
-    """Verify that a customization job was submitted via the NeMo Platform customizer API."""
-    jobs = client.customization.jobs.list(workspace=WORKSPACE)
-    assert len(jobs.data) > 0, "No customization jobs found in workspace"
+    """Verify that an automodel customization job was submitted."""
+    jobs = _list_automodel_jobs(client)
+    assert len(jobs) > 0, "No automodel customization jobs found in workspace"
 
 
 def test_customization_job_has_spec(client: NeMoPlatform):
-    """Verify the customization job has a valid training spec."""
-    jobs = client.customization.jobs.list(workspace=WORKSPACE)
-    assert len(jobs.data) > 0, "No customization jobs found"
-    job = jobs.data[0]
-    assert job.spec is not None, "Customization job has no spec"
+    """Verify the automodel job has a valid training spec."""
+    jobs = _list_automodel_jobs(client)
+    assert len(jobs) > 0, "No automodel customization jobs found"
+    job = jobs[0]
+    assert job.get("spec") is not None, "Automodel job has no spec"
 
 
 def test_customization_job_dispatched(client: NeMoPlatform):
@@ -81,19 +92,15 @@ def test_customization_job_dispatched(client: NeMoPlatform):
     With the Docker socket mounted and GPU available, the jobs controller should
     schedule the training container. The job should reach at least 'pending' status.
     """
-    jobs = client.customization.jobs.list(workspace=WORKSPACE)
-    assert len(jobs.data) > 0, "No customization jobs found"
-    job = jobs.data[0]
+    jobs = _list_automodel_jobs(client)
+    assert len(jobs) > 0, "No automodel customization jobs found"
+    job = jobs[0]
 
-    # Give the jobs controller a moment to process
-    status = getattr(job, "status", "unknown")
+    status = job.get("status", "unknown")
     if hasattr(status, "lower"):
         status = status.lower()
 
-    # Any status beyond 'created' means the jobs controller picked it up
     dispatched_statuses = {"pending", "running", "completed", "error", "cancelled", "paused"}
-    # 'created' is also acceptable - it means the job was submitted correctly
-    # even if the controller hasn't picked it up yet
     valid_statuses = dispatched_statuses | {"created", "unknown"}
 
     assert status in valid_statuses, f"Job in unexpected status: '{status}'. Expected one of: {valid_statuses}"

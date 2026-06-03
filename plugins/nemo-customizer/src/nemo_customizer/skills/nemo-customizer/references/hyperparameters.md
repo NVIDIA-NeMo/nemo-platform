@@ -23,7 +23,7 @@ Job JSON for `nemo customization automodel submit` uses **`AutomodelJobInput`** 
 uv run nemo customization automodel explain
 ```
 
-**Contract examples:** `tests/customizer-automodel-contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
+**Contract examples:** `services/automodel/tests/contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
 
 ## Job JSON layout
 
@@ -106,7 +106,7 @@ Full template:
 
 ## Field reference
 
-### `training`
+### Automodel `training`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -125,7 +125,7 @@ Full template:
 
 LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
-### `schedule`
+### Automodel `schedule`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -136,7 +136,7 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 **Gotcha:** Do **not** set `max_steps` with `epochs` for normal training. `max_steps` stops early (e.g. `epochs: 1` + `max_steps: 100` ends at step 100). Use `max_steps` **alone** only for smoke tests.
 
-### `batch`
+### Automodel `batch`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -150,7 +150,7 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro_batch_size`. See **`SKILL.md` § Multi-GPU** for data parallel vs tensor parallel.
 
-### `optimizer`
+### Automodel `optimizer`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -173,7 +173,7 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 
 **MoE:** If `expert_parallel_size > 1` and multiple GPUs, `tensor_parallel_size` must be **1**.
 
-### `integrations` (optional)
+### Automodel `integrations` (optional)
 
 ```json
 "integrations": {
@@ -197,7 +197,7 @@ Apply user overrides to `/tmp/job.json` before submit. For **batch / GPU count /
 | Quick smoke test | `max_steps` only (e.g. 10–50), **omit or ignore epoch goal**; or `epochs: 1` on tiny slice |
 | Reproducibility | Set `schedule.seed` |
 
-### Learning rate (LoRA SFT, starting points)
+### Automodel learning rate (LoRA SFT, starting points)
 
 | Model scale | Suggested `learning_rate` |
 |-------------|---------------------------|
@@ -207,7 +207,7 @@ Apply user overrides to `/tmp/job.json` before submit. For **batch / GPU count /
 
 Schema default is `5e-6` (conservative). Fixtures: `qwen3_0.6b_sft_lora.json` uses `5e-5`; `minimal_sft_lora.json` uses `5e-6`.
 
-### LoRA rank / alpha
+### Automodel LoRA rank / alpha
 
 **Deployment cap:** Default **NIM** and **vLLM** LoRA serving paths support rank **≤ 32**. Use `rank` 32 (not higher) when the fine-tuned adapter will be deployed for inference on those stacks unless the user confirms a higher rank is supported.
 
@@ -314,7 +314,7 @@ Verify: `nemo models get <teacher-entity> --workspace default`. Reuse an existin
 
 # Unsloth job JSON
 
-Job JSON for `nemo customization unsloth run` uses **`UnslothJobInput`** (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`). Only fields in that schema are accepted (`extra="forbid"`). The canonical post-transform shape lives in `services/unsloth/src/nmp/unsloth/schemas.py` (`UnslothJobOutput`) and is what the training driver consumes.
+Job JSON for `nemo customization unsloth submit` uses **`UnslothJobInput`** (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`). Only fields in that schema are accepted (`extra="forbid"`). The canonical post-transform shape lives in `services/unsloth/src/nmp/unsloth/schemas.py` (`UnslothJobOutput`) and is what the training driver consumes in the GPU container.
 
 **Schema dump:**
 
@@ -322,13 +322,13 @@ Job JSON for `nemo customization unsloth run` uses **`UnslothJobInput`** (`plugi
 uv run nemo customization unsloth explain
 ```
 
-Unsloth is **single-GPU, local, in-process** (BYO-venv). There is no `parallelism` block, no `tensor_parallel_size`, and no platform `execution_profile` — `hardware.gpus` selects which CUDA device the local interpreter uses. Multi-GPU sharding → use automodel.
+Unsloth is **submit-only, single-GPU inside the training container**. There is no `parallelism` block and no `training.execution_profile` in job JSON — pass `--profile` on `nemo customization unsloth submit` instead (default `gpu`). `hardware.gpus` sets `CUDA_VISIBLE_DEVICES` in the container before `import torch`. Multi-GPU sharding → use automodel.
 
 ## Job JSON layout (unsloth)
 
 | Section | Purpose |
 |---------|---------|
-| `name` | Optional job name (auto-generated if omitted, mostly cosmetic for local run) |
+| `name` | Optional job name (auto-generated if omitted) |
 | `model` | **Object** — base model entity ref + how to load it (4-bit, dtype, max_seq_length) |
 | `dataset` | Single fileset ref (`path`) + optional `validation_path`; row shape selector (`text_field`, `apply_chat_template`, `packing`) |
 | `training` | Method (`sft`), adapter shape (`lora`/`full`), LoRA hyperparams, gradient checkpointing |
@@ -435,7 +435,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `apply_chat_template` | `false` | Set `true` for rows with a `messages` array (preferred when the tokenizer has a chat template). |
 | `packing` | `false` | trl.SFTTrainer packing for throughput on short rows. |
 
-### `training`
+### Unsloth `training`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -458,7 +458,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 `lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "full"`.
 
-### `schedule`
+### Unsloth `schedule`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -474,7 +474,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 **Hard mutex enforced by the schema:** `epochs` xor `max_steps`; `warmup_steps` xor `warmup_ratio`. Validation errors surface at submit time.
 
-### `batch`
+### Unsloth `batch`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -483,7 +483,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 `effective_batch = per_device_train_batch_size × gradient_accumulation_steps`. No GBS divisibility math (single GPU). Starting points by model size are in `SKILL.md` § Batch sizing — unsloth.
 
-### `optimizer`
+### Unsloth `optimizer`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -497,10 +497,10 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 | Field | Default | Notes |
 |-------|---------|-------|
-| `gpus` | `null` | Comma-separated CUDA indices: `"0"` or `"0,1"` (Unsloth only uses one). Sets `CUDA_VISIBLE_DEVICES` **before** `import torch`. **Selection, not reservation.** Leave unset to inherit the caller's env. |
+| `gpus` | `null` | Comma-separated CUDA indices inside the training container: `"0"` (typical). Sets `CUDA_VISIBLE_DEVICES` **before** `import torch`. **Selection, not reservation.** Unsloth uses one GPU per training process. |
 | `precision` | `"bf16"` | `"bf16"` (Ampere+) or `"fp16"`. |
 
-### `integrations`
+### Unsloth `integrations`
 
 ```json
 "integrations": {
@@ -516,7 +516,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `wandb.run_name` | Becomes `TrainingArguments.run_name`. |
 | `report_to` | List of `"wandb"`, `"tensorboard"`, `"mlflow"`, `"none"`. Empty default = `["none"]`. |
 
-The user sets `WANDB_API_KEY` themselves in `$UNSLOTH_VENV` (or shell) — the plugin does **not** manage that secret. No `api_key_secret` field today.
+The platform pulls `WANDB_API_KEY` from Secrets when W&B is enabled — the plugin does **not** read a local shell env for training containers. No `api_key_secret` field in job JSON today.
 
 ### `output`
 
@@ -532,7 +532,7 @@ After `to_spec`, the canonical `OutputResponse` also carries `type` (`"adapter"`
 
 VRAM / batch tuning is in **`SKILL.md` § Batch sizing — unsloth**. Below covers non-batch fields.
 
-### Learning rate (LoRA SFT, starting points)
+### Unsloth learning rate (LoRA SFT, starting points)
 
 Same scale as automodel (the underlying optimizer math is the same):
 
@@ -544,7 +544,7 @@ Same scale as automodel (the underlying optimizer math is the same):
 
 Schema default is `2e-4` (Unsloth notebook default — works for small adapters with `adamw_8bit`). Skill defaults are conservative `5e-5`.
 
-### LoRA rank / alpha
+### Unsloth LoRA rank / alpha
 
 | Use case | `rank` | `alpha` |
 |----------|--------|---------|
@@ -594,4 +594,4 @@ Not supported by unsloth today (`training_type` is `Literal["sft"]`). Use automo
 | JSON examples (automodel) | `plugins/nemo-automodel/tests/fixtures/*.json` | Copy-paste templates (ignore fixture `max_steps` in prod) |
 | JSON example (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` | Smoke-test template (ignore `max_steps` for real runs) |
 | Full spec doc (automodel) | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |
-| Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | `--venv` setup, CUDA caveat, container-submit roadmap |
+| Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | Submit-only CLI, 4-step container job, GPU selection |

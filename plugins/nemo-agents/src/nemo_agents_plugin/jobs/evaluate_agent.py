@@ -150,7 +150,7 @@ class EvaluateAgentJob(NemoJob):
     spec_schema: ClassVar[type[BaseModel]] = EvaluateAgentSpec
 
     @classmethod
-    async def compile(  # type: ignore[override]
+    async def compile(
         cls,
         *,
         workspace: str,

@@ -14,7 +14,7 @@ This module handles configuration generation for DPO training type,
 converting the internal TrainingStepConfig format to NeMo RL's YAML format.
 
 Example of similar config but for AutoModel training
-- services/customizer/src/nmp/customizer/tasks/training/backends/automodel/config.py
+- services/automodel/src/nmp/automodel/tasks/training/backends/config.py
 """
 
 import logging

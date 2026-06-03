@@ -59,7 +59,7 @@ def config_file(workspace_dir: Path) -> Path:
     """Create a minimal training config file."""
     config_path = workspace_dir / "config.json"
     config_data = {
-        "backend": "automodel",
+        "backend": "nemo_rl",
         "model": {"path": "/models/test-model", "name": "test/model"},
         "dataset": {"path": "/data/train.jsonl"},
         "training": {"training_type": "sft", "finetuning_type": "lora"},
@@ -120,7 +120,7 @@ def mock_dist_ctx_worker() -> MagicMock:
 def mock_backend() -> MagicMock:
     """Create a mock training backend."""
     backend = MagicMock()
-    backend.backend_type = TrainingBackend.AUTOMODEL
+    backend.backend_type = TrainingBackend.NEMO_RL
     backend.compile_config.return_value = {"model": {"path": "/test"}, "training": {"lr": 1e-4}}
     backend.execute_training.return_value = TrainingMetrics(total_steps=100, total_epochs=1, final_loss=0.5)
     backend.find_best_checkpoint.return_value = Path("/checkpoints/best")
@@ -184,7 +184,7 @@ class TestLoadConfig:
         ):
             runner = TrainingRunner(backend=mock_backend)
 
-            assert runner._config.backend == TrainingBackend.AUTOMODEL
+            assert runner._config.backend == TrainingBackend.NEMO_RL
             assert runner._config.model.path == "/models/test-model"
             assert runner._config.seed == 42
 
@@ -236,7 +236,7 @@ class TestCompileConfigPhase:
     ):
         """Test that worker waits for coordinator and loads config from disk."""
         # Pre-create the config file that coordinator would have written
-        config_path = workspace_dir / f"{TrainingBackend.AUTOMODEL.value}_config.yaml"
+        config_path = workspace_dir / f"{TrainingBackend.NEMO_RL.value}_config.yaml"
         config_path.write_text("model:\n  path: /test\ntraining:\n  lr: 0.0001\n")
 
         with (
@@ -488,7 +488,7 @@ class TestRunFlow:
     ):
         """Test that workers return success immediately after training sync without entering postprocessing."""
         # Pre-create the library config that the coordinator would have written
-        config_path = workspace_dir / f"{TrainingBackend.AUTOMODEL.value}_config.yaml"
+        config_path = workspace_dir / f"{TrainingBackend.NEMO_RL.value}_config.yaml"
         config_path.write_text("model:\n  path: /test\ntraining:\n  lr: 0.0001\n")
 
         with (

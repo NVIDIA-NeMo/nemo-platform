@@ -19,15 +19,13 @@ Unsloth monkey-patches transformer modules at import time. Out-of-order
 imports silently degrade performance.
 """
 
-from __future__ import annotations
-
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any, Literal
 
-if TYPE_CHECKING:
-    from nemo_platform_plugin.job_context import JobContext
-    from nmp.unsloth.schemas import UnslothJobOutput
+from nemo_platform_plugin.job_context import JobContext
+from nmp.unsloth.schemas import UnslothJobOutput
+from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +38,7 @@ def train_sft(
     dataset_path: str | None = None,
     validation_path: str | None = None,
     output_path: str | None = None,
+    progress_callback: TrainingProgressCallback | None = None,
 ) -> dict[str, Any]:
     """Run SFT with Unsloth's FastLanguageModel + LoRA.
 
@@ -61,6 +60,9 @@ def train_sft(
             step's expected location. When ``None`` falls back to
             ``ctx.storage.persistent / spec.output.name`` (matches the
             historical local-run layout — kept for tests).
+        progress_callback: Optional Jobs-service progress reporter.
+            When ``None``, a callback is created from platform job
+            environment variables (no-op when Jobs context is absent).
 
     Returns:
         A result dict with final training loss, step count, output
@@ -76,8 +78,7 @@ def train_sft(
     # reorder.
     import unsloth  # noqa: F401  (import-side-effects required)
     from datasets import Dataset, load_dataset
-    from transformers import TrainingArguments
-    from trl import SFTTrainer
+    from trl import SFTConfig, SFTTrainer
     from unsloth import FastLanguageModel
 
     if spec.training.training_type != "sft":
@@ -163,6 +164,7 @@ def train_sft(
         tokenizer=tokenizer,
         load_dataset=load_dataset,
         Dataset=Dataset,
+        split="train",
     )
     eval_ds = None
     resolved_validation_path = validation_path or spec.dataset.validation_path
@@ -174,9 +176,10 @@ def train_sft(
             tokenizer=tokenizer,
             load_dataset=load_dataset,
             Dataset=Dataset,
+            split="validation",
         )
 
-    # ── TrainingArguments ─────────────────────────────────────────────
+    # ── SFTConfig ───────────────────────────────────────────────────
     bf16 = spec.hardware.precision == "bf16"
     fp16 = spec.hardware.precision == "fp16"
 
@@ -196,6 +199,10 @@ def train_sft(
         "report_to": list(
             spec.integrations.report_to if spec.integrations is not None else ["none"],
         ),
+        # SFT-specific — belong on SFTConfig in trl>=0.13, not on SFTTrainer.
+        "dataset_text_field": spec.dataset.text_field,
+        "max_length": spec.model.max_seq_length,
+        "packing": spec.dataset.packing,
     }
     if spec.schedule.warmup_ratio is not None:
         args_kwargs["warmup_ratio"] = spec.schedule.warmup_ratio
@@ -206,6 +213,8 @@ def train_sft(
     if spec.schedule.save_steps is not None:
         args_kwargs["save_steps"] = spec.schedule.save_steps
         args_kwargs["save_strategy"] = "steps"
+    else:
+        args_kwargs["save_strategy"] = "epoch"
     if spec.schedule.eval_steps is not None:
         args_kwargs["eval_steps"] = spec.schedule.eval_steps
         args_kwargs["eval_strategy"] = "steps"
@@ -218,19 +227,25 @@ def train_sft(
         if spec.integrations.wandb.project:
             os.environ.setdefault("WANDB_PROJECT", spec.integrations.wandb.project)
 
-    args = TrainingArguments(**args_kwargs)
+    args = SFTConfig(**args_kwargs)
+
+    progress = progress_callback or _create_progress_callback()
+    from nmp.unsloth.tasks.training.backends.hf_trainer_callback import (
+        create_hf_trainer_progress_callback,
+    )
 
     trainer = SFTTrainer(
         model=model,
-        tokenizer=tokenizer,
+        processing_class=tokenizer,
         train_dataset=train_ds,
         eval_dataset=eval_ds,
-        dataset_text_field=spec.dataset.text_field,
-        max_seq_length=spec.model.max_seq_length,
-        packing=spec.dataset.packing,
         args=args,
+        callbacks=[create_hf_trainer_progress_callback(progress)],
     )
-    train_result = trainer.train()
+    try:
+        train_result = trainer.train()
+    finally:
+        progress.close()
 
     # ── Save ──────────────────────────────────────────────────────────
     saved_path = _save_model(model, tokenizer, output_dir, spec)
@@ -248,13 +263,33 @@ def train_sft(
     }
 
 
-def _resolve_local_data_files(path: str) -> str | list[str]:
+def _create_progress_callback() -> TrainingProgressCallback:
+    """Build a Jobs-service progress callback from platform env vars."""
+    from nmp.unsloth.app.jobs.context import NMPJobContext
+    from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
+
+    return TrainingProgressCallback(JobsServiceProgressReporter(NMPJobContext.from_env()))
+
+
+TRAIN_FILE = "train.jsonl"
+VAL_FILE = "validation.jsonl"
+
+
+def _resolve_local_data_files(
+    path: str,
+    *,
+    split: Literal["train", "validation"] | None = None,
+) -> str | list[str]:
     """Resolve a local dataset path to the JSON/JSONL file(s) to load.
 
     A file path is returned unchanged. A directory (the file_io download
     step's output dir) is expanded to the sorted ``.jsonl`` files inside
     it, falling back to ``.json``. Both ``.json``/``.jsonl`` and nested
     layouts are handled via a recursive glob.
+
+    When both ``train.jsonl`` and ``validation.jsonl`` live in the same
+    directory, pass ``split`` so training and eval each load the right
+    file instead of concatenating every JSONL in the folder.
 
     Raises:
         FileNotFoundError: if ``path`` is a directory with no JSON/JSONL
@@ -265,6 +300,15 @@ def _resolve_local_data_files(path: str) -> str | list[str]:
     p = Path(path).expanduser()
     if not p.is_dir():
         return str(p)
+
+    if split == "train":
+        train_file = p / TRAIN_FILE
+        if train_file.is_file():
+            return str(train_file)
+    elif split == "validation":
+        val_file = p / VAL_FILE
+        if val_file.is_file():
+            return str(val_file)
 
     for pattern in ("*.jsonl", "*.json"):
         files = sorted(str(f) for f in p.rglob(pattern))
@@ -285,6 +329,7 @@ def _load_training_dataset(
     tokenizer: Any,
     load_dataset: Any,
     Dataset: Any,
+    split: Literal["train", "validation"] | None = None,
 ) -> Any:
     """Load a JSONL or HF dataset; optionally apply the chat template.
 
@@ -301,7 +346,7 @@ def _load_training_dataset(
     in-process plugin run hands us a concrete file).
     """
     is_local = path.endswith((".jsonl", ".json")) or path.startswith(("/", "./", "~"))
-    raw = Dataset.from_json(_resolve_local_data_files(path)) if is_local else load_dataset(path)
+    raw = Dataset.from_json(_resolve_local_data_files(path, split=split)) if is_local else load_dataset(path)
 
     if not apply_chat_template:
         return raw

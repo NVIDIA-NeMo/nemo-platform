@@ -19,13 +19,13 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .dataset_metadata_content_param import DatasetMetadataContentParam
-from ..shared_params.model_metadata_content import ModelMetadataContent
+from .model_metadata_content import ModelMetadataContent
+from ..files.dataset_metadata_content_param import DatasetMetadataContentParam
 
-__all__ = ["FilesetMetadataParamParam"]
+__all__ = ["FilesetMetadata"]
 
 
-class FilesetMetadataParamParam(TypedDict, total=False):
+class FilesetMetadata(TypedDict, total=False):
     """Tagged metadata container - the key indicates the type.
 
     Example:

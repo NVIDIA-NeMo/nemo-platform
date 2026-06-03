@@ -21,7 +21,7 @@ from typing import Dict, Union
 from typing_extensions import Required, TypeAlias, TypedDict
 
 from ..files.ngc_storage_config_param import NGCStorageConfigParam
-from ..files.fileset_metadata_param_param import FilesetMetadataParamParam
+from ..shared_params.fileset_metadata import FilesetMetadata
 from ..files.huggingface_storage_config_param import HuggingfaceStorageConfigParam
 
 __all__ = ["FilesetParam", "Storage"]
@@ -38,7 +38,7 @@ class FilesetParam(TypedDict, total=False):
     custom_fields: Dict[str, object]
     """Custom fields for the fileset."""
 
-    metadata: FilesetMetadataParamParam
+    metadata: FilesetMetadata
     """Tagged metadata container - the key indicates the type.
 
     Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(

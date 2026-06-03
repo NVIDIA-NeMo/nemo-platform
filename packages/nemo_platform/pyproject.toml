@@ -143,7 +143,7 @@ evaluator-service = [
   "kubernetes>=31.0.0",
   "openai>=1.61.0",
   "ragas==0.3.5",
-  "langchain-community>=0.3.27,<0.4",
+  "langchain-community>=0.3.31,<0.4",
   "pymilvus==2.6.9",
   "langchain-nvidia-ai-endpoints>=1.0.0,<2.0.0",
   "nemo-evaluator-sdk",
@@ -434,13 +434,6 @@ nmp-common = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-platform-seed-service = [
-  "nmp-common",
-  "nmp-auth",
-  "nmp-guardrails",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
 plugins = [
     "nemo-platform[nemo-agents-example-calculator]",
     "nemo-platform[nemo-agents-plugin]",
@@ -468,7 +461,6 @@ services = [
   "nmp-common",
   "pyleak>=0.1.0",
   "rich>=14.1.0",
-  "nemo-platform[platform-seed-service]",
   "nemo-platform[core-service]",
   "nemo-platform[studio-service]",
   "nemo-platform[intake-service]",
@@ -650,7 +642,6 @@ nmp-inference-gateway = { source = "../../services/core/inference-gateway/src/nm
 nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
 nmp-customizer = { source = "../../services/customizer/src/nmp/customizer", module = "nmp/customizer", deps_group = "customizer-service" }
 nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
-nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
 nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
 

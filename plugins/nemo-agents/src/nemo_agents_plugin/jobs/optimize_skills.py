@@ -220,4 +220,4 @@ class OptimizeSkillsJob(NemoJob):
                 trace_parser=cfg.trace_parser,
             )
         )
-        return _serialize(state)  # type: ignore[return-value]
+        return _serialize(state)

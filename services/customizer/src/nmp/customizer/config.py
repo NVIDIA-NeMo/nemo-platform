@@ -25,12 +25,6 @@ class CustomizerConfig(create_service_config_class("customizer")):  # type: igno
     )
 
     # Container image overrides for training tasks.
-    training_automodel_image: str | None = Field(
-        default=None,
-        description="Override container image for Automodel training. If not set, uses platform defaults.",
-    )
-
-    # Container image overrides for training tasks.
     training_rl_image: str | None = Field(
         default=None,
         description="Override container image for DPO training. If not set, uses platform defaults.",

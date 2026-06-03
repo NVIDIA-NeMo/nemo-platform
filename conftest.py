@@ -213,8 +213,9 @@ def pytest_collection_modifyitems(config, items):
         "e2e",
         "smoke_gpu_tasks",
         "smoke_customizer_tasks",
-        "smoke_customizer_automodel",
         "smoke_customizer_rl",
+        "smoke_nmp_automodel_tasks",
+        "smoke_nmp_automodel_training",
         "integration",
         "regression",
         "canary",
@@ -304,4 +305,4 @@ def _patched_reschedule(self, node):
     _original_reschedule(self, node)
 
 
-LoadScopeScheduling._reschedule = _patched_reschedule  # type: ignore[invalid-assignment]
+LoadScopeScheduling._reschedule = _patched_reschedule
