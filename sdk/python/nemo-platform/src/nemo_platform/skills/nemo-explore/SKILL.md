@@ -26,7 +26,7 @@ allowed-tools: [Read, Glob, Grep, Bash]
 # NeMo Platform agent explore
 
 Capture what the agent should do before any code or YAML. The output of this
-skill is the data that `nemo-spec` writes into `agents/<name>-spec/AGENTSpec.md` — the
+skill is the data that `nemo-spec` writes into `agents/<name>-spec/AGENT-SPEC.md` — the
 durable contract that the analyst and experimentalist agents in the NeMo
 optimization loop read as their primary context. Underspecified input here
 directly degrades the quality of generated Insights and PRs downstream.
@@ -72,12 +72,12 @@ the insights plugin — do not duplicate them into the spec.
 
 ## Pre-flight
 
-Check whether a spec already exists for this agent. If `agents/<name>-spec/AGENTSpec.md`
+Check whether a spec already exists for this agent. If `agents/<name>-spec/AGENT-SPEC.md`
 is present, ask the user whether they want to edit the existing spec or start
 over. If they want to edit, route to `nemo-spec` directly.
 
 ```bash
-ls agents/*-spec/AGENTSpec.md 2>/dev/null || echo "no specs yet"
+ls agents/*-spec/AGENT-SPEC.md 2>/dev/null || echo "no specs yet"
 ```
 
 ## Step 1 — Explore the codebase
@@ -185,7 +185,7 @@ the user provides it. Do not hand off with a hard requirement blank —
 `nemo-spec` will reject the write.
 
 If both are satisfied, announce the handoff in one line ("Handing off to
-`nemo-spec` to write `agents/<name>-spec/AGENTSpec.md` and upload the canonical copy
+`nemo-spec` to write `agents/<name>-spec/AGENT-SPEC.md` and upload the canonical copy
 to Filesets") and trigger it.
 
 ## If the user pushes back

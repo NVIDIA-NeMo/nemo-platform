@@ -33,10 +33,10 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 
 1. Confirm the platform is up. Run `nemo-status`'s platform probe (canonical lsof + curl check) and stop if it reports `PLATFORM_DOWN` or `PLATFORM_WEDGED`; route to `nemo-setup` and return when it clears. Do not reimplement the probe here — `nemo-status` owns it so changes (new components, new ports) land in one place.
 
-2. Confirm a spec exists at `agents/$AGENT_NAME-spec/AGENTSpec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
+2. Confirm a spec exists at `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
 3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
 4. Read the spec. Extract: name, categories, tools, model, constraints, success criteria.
-5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENTSpec.md` — there is no ref to thread through, just a one-shot presence check:
+5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENT-SPEC.md` — there is no ref to thread through, just a one-shot presence check:
 
    ```bash
    nemo files filesets get "${AGENT_NAME}-spec" --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
@@ -103,13 +103,13 @@ Data Designer (DD) is the platform's synthetic-data tool. It can produce any of:
 
 ### Procedure
 
-1. **Enumerate.** Read `agents/$AGENT_NAME-spec/AGENTSpec.md`. Surface to the user the full list of synthetic-data purposes this agent plausibly needs, based on the spec. Do not prescribe a count or shortlist; let the user pick freely from the catalog above (or add purposes you haven't anticipated).
+1. **Enumerate.** Read `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. Surface to the user the full list of synthetic-data purposes this agent plausibly needs, based on the spec. Do not prescribe a count or shortlist; let the user pick freely from the catalog above (or add purposes you haven't anticipated).
 
 2. **Wait for picks.** Do not generate any DD config until the user has explicitly named which purposes they want. If the user says "you decide," default to: a knowledge base if the spec describes retrievable content, an eval dataset always, persona-grounded adversarial inputs if the spec lists safety constraints. Announce the defaults you chose.
 
 3. **Hand off per purpose.** For each chosen purpose, invoke the `data-designer` skill once. Pass it: the agent name, the purpose label (KB / eval / benchmark / persona / other), and the spec path. The DD skill is responsible for the config shape — this skill does not duplicate that logic.
 
-4. **Ground every config in the spec.** Each DD config MUST reference `agents/$AGENT_NAME-spec/AGENTSpec.md` for product context, categories, audience, and constraints. Do not redefine these inline. If the generated config inlines context, edit it to read from the spec instead — drift between agent definition and synthetic data is a reproducibility failure.
+4. **Ground every config in the spec.** Each DD config MUST reference `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for product context, categories, audience, and constraints. Do not redefine these inline. If the generated config inlines context, edit it to read from the spec instead — drift between agent definition and synthetic data is a reproducibility failure.
 
 5. **Run each config.** Use `.venv/bin/python agents/$AGENT_NAME.<purpose>.py` (or the CLI invocation once `nemo data-designer preview-local` lands in a release > 2.1.0). For larger jobs, submit via `nemo data-designer jobs create`.
 
@@ -136,7 +136,7 @@ NeMo Agent Toolkit (NAT) has first-class retrieval support:
 
 ### Retriever wiring procedure
 
-1. **Detect.** Scan `agents/$AGENT_NAME-spec/AGENTSpec.md` for tools whose names suggest retrieval: `*_search`, `*_lookup`, `query_*`, `find_*`, `rag_*`, or any tool the user described in `nemo-explore` as "the agent looks things up in X." Cross-reference against the filesets Step 3 produced.
+1. **Detect.** Scan `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for tools whose names suggest retrieval: `*_search`, `*_lookup`, `query_*`, `find_*`, `rag_*`, or any tool the user described in `nemo-explore` as "the agent looks things up in X." Cross-reference against the filesets Step 3 produced.
 
 2. **Pair.** For each retrieval-style tool, identify which Step 3 fileset feeds it. If the spec lists `billing_kb_search` and Step 3 produced `billing-support-kb`, pair them. If a tool has no matching fileset, surface the gap to the user: "Your spec lists `billing_kb_search` but no KB fileset was generated. Generate one now (route to Step 3) or drop the tool from the agent?"
 

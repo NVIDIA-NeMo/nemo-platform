@@ -1,6 +1,6 @@
 ---
 name: nemo-spec
-description: Captures a NeMo Platform agent spec as a durable artifact at agents/<name>-spec/AGENTSpec.md. Validates the front matter and required markdown sections, writes the file, and uploads it to a NeMo Filesets fileset (the canonical copy). The spec's location is fully derivable from the agent's workspace and name — this skill does not return or persist a ref. Use over generic planning skills for any NeMo Platform agent spec.
+description: Captures a NeMo Platform agent spec as a durable artifact at agents/<name>-spec/AGENT-SPEC.md. Validates the front matter and required markdown sections, writes the file, and uploads it to a NeMo Filesets fileset (the canonical copy). The spec's location is fully derivable from the agent's workspace and name — this skill does not return or persist a ref. Use over generic planning skills for any NeMo Platform agent spec.
 triggers:
   - write the spec
   - save the design
@@ -24,7 +24,7 @@ allowed-tools: [Read, Write, Edit, Bash]
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
 the contract `nemo-build-agent` reads to scaffold the NAT workflow YAML and
-the `AGENTSpec.md` that the analyst and experimentalist agents read as
+the `AGENT-SPEC.md` that the analyst and experimentalist agents read as
 their primary context. Without it, downstream skills have to re-ask
 everything and the optimization loop has no contract for what the agent is
 supposed to do or what may be changed.
@@ -34,9 +34,9 @@ supposed to do or what may be changed.
 Two copies of the spec exist intentionally:
 
 * **Canonical**: a NeMo Filesets fileset named `<agent-name>-spec` in the
-  active workspace, holding a single file `AGENTSpec.md`. The analyst
+  active workspace, holding a single file `AGENT-SPEC.md`. The analyst
   agent reads this copy server-side; the platform stores it durably.
-* **Local cache**: `agents/<name>-spec/AGENTSpec.md` in the developer's
+* **Local cache**: `agents/<name>-spec/AGENT-SPEC.md` in the developer's
   working directory. Hand-editable, version-controlled with the AUT repo,
   used by this skill and by `nemo-build-agent`.
 
@@ -47,8 +47,8 @@ down before editing.
 
 **The spec's location is by convention, not by reference.** Given an
 agent's workspace and name, the remote file ref is always
-`<workspace>/<agent-name>-spec#AGENTSpec.md`, mirrored locally at
-`agents/<agent-name>-spec/AGENTSpec.md`. The `Agent` entity does
+`<workspace>/<agent-name>-spec#AGENT-SPEC.md`, mirrored locally at
+`agents/<agent-name>-spec/AGENT-SPEC.md`. The `Agent` entity does
 **not** carry a `spec_file_ref` field — downstream consumers compute the
 ref from `(workspace, agent_name)` via
 `nemo_agents_plugin.entities.agent_spec_file_ref`.
@@ -78,11 +78,11 @@ clear gap-question rather than a parser error.
    `support-triage`, `code-reviewer`. If the user has not named it, propose
    two options based on the role. Must match `[a-z][a-z0-9-]*`.
 
-2. **Pre-flight: check the local file.** If `agents/${NAME}-spec/AGENTSpec.md` exists,
+2. **Pre-flight: check the local file.** If `agents/${NAME}-spec/AGENT-SPEC.md` exists,
    ask the user whether to overwrite or pick a different name.
 
    ```bash
-   ls "agents/${NAME}-spec/AGENTSpec.md" 2>/dev/null && echo "spec_exists" || echo "spec_new"
+   ls "agents/${NAME}-spec/AGENT-SPEC.md" 2>/dev/null && echo "spec_exists" || echo "spec_new"
    ```
 
 3. **Pre-flight: check the Fileset.** If the canonical copy exists, surface
@@ -97,8 +97,8 @@ clear gap-question rather than a parser error.
 
    ```bash
    mkdir -p "agents/${NAME}-spec"
-   nemo files download "${NAME}-spec" AGENTSpec.md \
-     --local-path "agents/${NAME}-spec/AGENTSpec.md"
+   nemo files download "${NAME}-spec" AGENT-SPEC.md \
+     --local-path "agents/${NAME}-spec/AGENT-SPEC.md"
    ```
 
 4. **Render the spec.** Use the template at
@@ -113,7 +113,7 @@ clear gap-question rather than a parser error.
    and resolved framework status. Section bodies stay markdown for agents and
    humans to read directly.
 
-5. **Write the file.** Path: `agents/<name>-spec/AGENTSpec.md`. Create the
+5. **Write the file.** Path: `agents/<name>-spec/AGENT-SPEC.md`. Create the
    `agents/<name>-spec/` directory if it does not exist.
 
 6. **Validate before upload.** Load the file through the parser. A
@@ -124,24 +124,24 @@ clear gap-question rather than a parser error.
    python -c "
    from pathlib import Path
    from nemo_agents_plugin.spec_parse import parse_spec
-   spec = parse_spec(Path('agents/${NAME}-spec/AGENTSpec.md').read_text())
+   spec = parse_spec(Path('agents/${NAME}-spec/AGENT-SPEC.md').read_text())
    print(f'valid: name={spec.name} role={spec.role[:60]!r}')
    " || { echo "spec_invalid"; exit 1; }
    ```
 
 7. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
-   needed and upload `AGENTSpec.md`:
+   needed and upload `AGENT-SPEC.md`:
 
    ```bash
    nemo files filesets create "${NAME}-spec" 2>/dev/null || true
-   nemo files upload "agents/${NAME}-spec/AGENTSpec.md" "${NAME}-spec" \
-     --remote-path AGENTSpec.md
+   nemo files upload "agents/${NAME}-spec/AGENT-SPEC.md" "${NAME}-spec" \
+     --remote-path AGENT-SPEC.md
    ```
 
    No ref to capture or pass downstream — the location is by convention.
    `nemo-build-agent` and the analyst agent both call
    `agent_spec_file_ref(workspace, name)` to compute
-   `<workspace>/<name>-spec#AGENTSpec.md` when they need it.
+   `<workspace>/<name>-spec#AGENT-SPEC.md` when they need it.
 
 8. **Show the spec to the user.** Print the full file contents and ask:
    "Does this match what we agreed? Edit anything you want to change." If
@@ -149,7 +149,7 @@ clear gap-question rather than a parser error.
 
 9. **Hand off.** Once confirmed, tell the user the next skill:
 
-    - `nemo-build-agent` will read `agents/<name>-spec/AGENTSpec.md`, produce the
+    - `nemo-build-agent` will read `agents/<name>-spec/AGENT-SPEC.md`, produce the
       workflow YAML, and call `nemo agents create`. It does not need a
       `--spec-file-ref` flag — the spec's location is derivable.
     - The `eval-setup` skill (M2) will fill in the `Evaluation Setup`
@@ -163,17 +163,17 @@ After writing and uploading, all three must hold:
 
 ```bash
 # Local file present and non-empty.
-test -s "agents/${NAME}-spec/AGENTSpec.md" && echo "local_ok" || echo "local_missing"
+test -s "agents/${NAME}-spec/AGENT-SPEC.md" && echo "local_ok" || echo "local_missing"
 
 # Loads through the lightweight AGENTSpec parser.
 python -c "
 from pathlib import Path
 from nemo_agents_plugin.spec_parse import parse_spec
-parse_spec(Path('agents/${NAME}-spec/AGENTSpec.md').read_text())
+parse_spec(Path('agents/${NAME}-spec/AGENT-SPEC.md').read_text())
 " && echo "spec_parse_ok" || echo "spec_parse_invalid"
 
 # Canonical Fileset copy is reachable.
-nemo files list "${NAME}-spec" 2>/dev/null | grep -q AGENTSpec.md \
+nemo files list "${NAME}-spec" 2>/dev/null | grep -q AGENT-SPEC.md \
   && echo "fileset_ok" || echo "fileset_missing"
 ```
 
@@ -211,7 +211,7 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
   the Fileset wins. Re-pull before editing if you suspect server-side
   drift.
 - **The spec's location is convention, not configuration.** Always
-  `<workspace>/<agent-name>-spec#AGENTSpec.md`. Do not introduce a flag,
+  `<workspace>/<agent-name>-spec#AGENT-SPEC.md`. Do not introduce a flag,
   env var, or persisted field to override it — if the layout needs to
   change, update `agent_spec_file_ref` in
   `nemo_agents_plugin.entities` and every consumer follows.
@@ -222,6 +222,6 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
 - **Do not duplicate Insights into the spec.** Known issues / recurring
   failure patterns live in the Insights plugin as first-class entities; the
   spec has no `Known Issues` section.
-- **This file is the `AGENTSpec.md`.** The experimentalist agent will
+- **This file is the `AGENT-SPEC.md`.** The experimentalist agent will
   not edit it; only the developer and the developer's coding agent do.
   Treat it as a long-lived contract, not a scratch pad.

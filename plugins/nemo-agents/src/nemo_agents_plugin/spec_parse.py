@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Parse and lightly validate AGENTSpec.md.
+"""Parse and lightly validate AGENT-SPEC.md.
 
 This module intentionally does not model every markdown section as structured
 Python. It validates the machine-readable front matter and the required section
@@ -19,7 +19,7 @@ from nemo_agents_plugin.spec import AGENT_SPEC_SECTION_TITLES, AgentSpec
 
 
 class SpecParseError(ValueError):
-    """Raised when AGENTSpec.md cannot be parsed or fails lightweight validation."""
+    """Raised when AGENT-SPEC.md cannot be parsed or fails lightweight validation."""
 
 
 _FRONT_MATTER_RE = re.compile(r"\A---\s*\n(.*?)\n---\s*\n", re.DOTALL)
@@ -27,7 +27,7 @@ _SECTION_RE = re.compile(r"^## +(.+?)\s*$", re.MULTILINE)
 
 
 def parse_spec(markdown: str) -> AgentSpec:
-    """Parse AGENTSpec.md into front matter plus raw markdown sections."""
+    """Parse AGENT-SPEC.md into front matter plus raw markdown sections."""
 
     front_match = _FRONT_MATTER_RE.match(markdown)
     if front_match is None:

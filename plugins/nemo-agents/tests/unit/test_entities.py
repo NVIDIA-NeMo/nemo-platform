@@ -196,8 +196,8 @@ class TestSpecLocationConvention:
     def test_spec_location_convention(self) -> None:
         assert agent_spec_fileset_name("checkout-bot") == "checkout-bot-spec"
         ref = agent_spec_file_ref("default", "checkout-bot")
-        assert str(ref) == "default/checkout-bot-spec#AGENTSpec.md"
-        assert agent_spec_local_path("checkout-bot").as_posix() == "agents/checkout-bot-spec/AGENTSpec.md"
+        assert str(ref) == "default/checkout-bot-spec#AGENT-SPEC.md"
+        assert agent_spec_local_path("checkout-bot").as_posix() == "agents/checkout-bot-spec/AGENT-SPEC.md"
 
 
 # ---------------------------------------------------------------------------

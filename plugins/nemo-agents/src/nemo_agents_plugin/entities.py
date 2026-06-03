@@ -33,16 +33,16 @@ DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting
 #
 # Layout:
 #   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
-#   - File inside fileset:   ``AGENTSpec.md`` (industry-standard name)
-#   - Full file ref:         ``{workspace}/{agent-name}-spec#AGENTSpec.md``
-#   - Local cache:           ``agents/{agent-name}-spec/AGENTSpec.md``
+#   - File inside fileset:   ``AGENT-SPEC.md`` (industry-standard name)
+#   - Full file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
+#   - Local cache:           ``agents/{agent-name}-spec/AGENT-SPEC.md``
 #
 # This is intentionally **not** an Optional field on the Agent. The
 # relationship is 1:1 and convention-bound; carrying a stored ref would
 # duplicate state with no resilience benefit (rename of either entity
 # orphans both representations equally).
 
-AGENT_SPEC_FILENAME = "AGENTSpec.md"
+AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
 """Canonical filename inside the agent's spec fileset."""
 
 
@@ -61,7 +61,7 @@ def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_R
 
 
 def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
-    """Return the canonical file ref ``workspace/<name>-spec#AGENTSpec.md``.
+    """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``.
 
     Use this anywhere downstream code needs to point at an agent's spec —
     do not reconstruct the path inline. If the layout ever changes (e.g.

@@ -6,7 +6,7 @@ author: <human or agent that created this spec>
 
 # Agent Spec: <name>
 
-> This file is the agent's AGENTSpec.md — the durable contract that
+> This file is the agent's AGENT-SPEC.md — the durable contract that
 > describes the intended behavior, capabilities, validation setup, and change
 > boundaries for the agent under test (AUT). The analyst and experimentalist
 > agents in the NeMo optimization loop read this file as their primary

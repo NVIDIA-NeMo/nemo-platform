@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Smoke tests for lightweight AGENTSpec.md parsing."""
+"""Smoke tests for lightweight AGENT-SPEC.md parsing."""
 
 from __future__ import annotations
 
