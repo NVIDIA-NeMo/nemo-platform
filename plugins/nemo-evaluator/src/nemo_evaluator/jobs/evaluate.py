@@ -177,6 +177,7 @@ class EvaluateJob(NemoJob):
         from nemo_evaluator.jobs.compiler import compile_evaluate_job
 
         canonical_spec = spec if isinstance(spec, EvaluateSpec) else EvaluateSpec.model_validate(spec.model_dump())
+        canonical_spec.params = normalize_params(canonical_spec.params, canonical_spec.target)
         return compile_evaluate_job(canonical_spec, profile=profile)
 
     @staticmethod
