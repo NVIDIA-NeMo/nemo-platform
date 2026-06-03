@@ -60,15 +60,17 @@ curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8080/status
 .venv/bin/nemo models list | head -10
 ```
 
+The `/status` response is JSON; parse `services.ready`, `services.not_ready`, `controllers.healthy`, and `controllers.status` before rendering the summary block.
+
 2. **Present one summary block.** Illustrative format (adapt fields to whatever the CLI returns; do not invent ones the commands above did not produce):
 
 ```
 NeMo Platform status
 
-Platform:   running
-Services:   <ready_count> ready, <not_ready_count> not ready
+Platform:    running
+Services:    <ready_count> ready, <not_ready_count> not ready
 Controllers: healthy
-Agents:     <count>
+Agents:      <count>
   <name1> active
   <name2> stopped
 Providers:
