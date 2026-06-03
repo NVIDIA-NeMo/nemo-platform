@@ -137,7 +137,6 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
     if "principals" not in static_data["authz"]:
         static_data["authz"]["principals"] = {}
     static_data["authz"]["domains"] = _build_domain_registry(static_data)
-    static_data["authz"].setdefault("domain_policies", {})
 
     # Fetch dynamic data from EntityClient if available
     if entities_client:

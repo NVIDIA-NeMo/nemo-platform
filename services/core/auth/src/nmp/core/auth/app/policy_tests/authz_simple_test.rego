@@ -39,9 +39,6 @@ mock_authz_data := {
     "domains": {
         "models": {"name": "models", "version": "core", "kind": "core"},
         "agents": {"name": "agents", "version": "1.2.3", "kind": "extension"}
-    },
-    "domain_policies": {
-        "agents": {"enabled": true}
     }
 }
 
@@ -184,12 +181,10 @@ test_allow_public_workspace if {
     result.allowed == true
 }
 
-test_domain_policy_not_required_when_config_missing if {
-    not authz.has_domain_policy("models")
-        with data.authz.domain_policies as mock_authz_data.domain_policies
-}
-
-test_domain_policy_detected_when_config_present if {
-    authz.has_domain_policy("agents")
-        with data.authz.domain_policies as mock_authz_data.domain_policies
+test_known_domain_metadata_is_available if {
+    domain := common.get_domain_metadata("/apis/models/v2/workspaces/test-ns/models")
+        with data.authz.domains as mock_authz_data.domains
+    domain.name == "models"
+    domain.version == "core"
+    domain.kind == "core"
 }

@@ -61,7 +61,6 @@ def minimal_authz_data():
             "domains": {
                 "models": {"name": "models", "version": "core", "kind": "core"},
             },
-            "domain_policies": {},
             "workspaces": {
                 "public-workspace": {},
             },
@@ -192,7 +191,7 @@ class TestAllowEntrypoint:
         )
         assert result["allowed"] is True
 
-    def test_allow_keeps_working_when_domain_metadata_is_present_without_policy(self, minimal_authz_data):
+    def test_allow_keeps_working_when_domain_metadata_is_present(self, minimal_authz_data):
         set_policy_data(minimal_authz_data)
         result = evaluate(
             "allow",
