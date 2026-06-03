@@ -53,6 +53,21 @@ DEFAULT_JUDGE_MAX_RETRIES = 3
 DEFAULT_JUDGE_MAX_WORKER = 1
 log = logging.getLogger(__name__)
 
+RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
+    "agent_goal_accuracy": MetricType.AGENT_GOAL_ACCURACY.value,
+    "nv_accuracy": MetricType.ANSWER_ACCURACY.value,
+    "context_entity_recall": MetricType.CONTEXT_ENTITY_RECALL.value,
+    "context_precision": MetricType.CONTEXT_PRECISION.value,
+    "context_recall": MetricType.CONTEXT_RECALL.value,
+    "nv_context_relevance": MetricType.CONTEXT_RELEVANCE.value,
+    "faithfulness": MetricType.FAITHFULNESS.value,
+    "noise_sensitivity": MetricType.NOISE_SENSITIVITY.value,
+    "nv_response_groundedness": MetricType.RESPONSE_GROUNDEDNESS.value,
+    "answer_relevancy": MetricType.RESPONSE_RELEVANCY.value,
+    "tool_call_accuracy": MetricType.TOOL_CALL_ACCURACY.value,
+    "topic_adherence": MetricType.TOPIC_ADHERENCE.value,
+}
+
 
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
 @cache
@@ -245,20 +260,20 @@ class BaseRAGASMetric(MetricBase):
         return {metric_name: float("nan") for metric_name in metric_names}
 
     def _align_scores_to_output_spec(self, scores: dict[str, float]) -> dict[str, float]:
-        """Map RAGAS internal metric keys (e.g. ``nv_accuracy``) to declared output names."""
+        """Map known RAGAS metric keys (e.g. ``nv_accuracy``) to declared output names."""
         declared = [output.name for output in self.output_spec()]
         if not declared or not scores:
             return scores
 
-        if all(name in scores for name in declared):
-            return {name: scores[name] for name in declared}
-
-        undeclared = {name: value for name, value in scores.items() if name not in declared}
-        if len(declared) == 1 and len(undeclared) == 1:
-            return {declared[0]: next(iter(undeclared.values()))}
-
-        aligned = {name: scores[name] for name in declared if name in scores}
-        return aligned if aligned else scores
+        translated_scores = {
+            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
+        }
+        aligned = {
+            name: scores[name] if name in scores else translated_scores[name]
+            for name in declared
+            if name in scores or name in translated_scores
+        }
+        return aligned if aligned else translated_scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
         """Get the LLM judge instance based on configuration."""
@@ -341,14 +356,14 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluate failed with parse/output error; returning NaN score",
                 extra={"error": str(error), "metric_type": self.type},
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
         except (httpx.HTTPError, TimeoutError) as error:
             if self._ignore_request_failure():
                 self._log.warning(
                     "RAGAS judge inference failed and is ignored by metric policy; returning NaN score",
                     extra={"error": str(error), "metric_type": self.type},
                 )
-                return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+                return self._nan_scores_for_metrics(metrics)
             raise
         except Exception:
             raise
@@ -363,7 +378,7 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluation returned no scores; returning NaN score",
                 extra={"metric_type": self.type},
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
 
         invalid_score_names = _invalid_score_names(scores)
         if invalid_score_names:
@@ -374,7 +389,7 @@ class BaseRAGASMetric(MetricBase):
                     "invalid_score_names": sorted(invalid_score_names),
                 },
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
 
         return self._align_scores_to_output_spec(scores)
 
