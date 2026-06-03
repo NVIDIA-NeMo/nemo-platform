@@ -122,3 +122,15 @@ def test_local_otel_logger_close_flushes_and_shuts_down():
     mock_otel_logger.emit.assert_called_once()
     mock_provider.force_flush.assert_called_once()
     mock_provider.shutdown.assert_called_once()
+
+
+def test_local_otel_logger_emits_timestamp():
+    mock_otel_logger = MagicMock()
+    mock_provider = MagicMock()
+    otel_logger = SubprocessOtelLogger(mock_otel_logger, mock_provider)
+
+    otel_logger.emit("hello", "stdout")
+
+    timestamp = mock_otel_logger.emit.call_args.kwargs["timestamp"]
+    assert isinstance(timestamp, int)
+    assert timestamp > 0

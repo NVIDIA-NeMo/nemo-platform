@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 from nemo_platform_ext.quickstart.config import QuickstartConfig, _is_internal_tag
+from nemo_platform_ext.quickstart.platform_config import PlatformConfig
 from nemo_platform_ext.quickstart.validators import validate_config
 
 
@@ -224,6 +225,43 @@ class TestQuickstartConfigBackwardCompatibility:
         assert not hasattr(config, "registry_user")
         assert config.registry_password is None
         assert not config.has_registry_credentials_for_image()
+
+
+class TestPlatformConfig:
+    """Tests for quickstart platform config serialization."""
+
+    def test_save_writes_canonical_global_config(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "platform-config.yaml"
+        config = PlatformConfig(nvidia_api_key="nvapi-test")
+
+        config.save(config_path)
+
+        saved = yaml.safe_load(config_path.read_text())
+        assert saved["platform"]["nvidia_api_key"] == "nvapi-test"
+        assert saved["files"]["default_storage_config"] == {
+            "type": "local",
+            "path": "/data/files_storage",
+        }
+
+    def test_load_reads_canonical_global_config(self, tmp_path: Path) -> None:
+        config_path = tmp_path / "platform-config.yaml"
+        config_path.write_text(
+            yaml.safe_dump(
+                {
+                    "platform": {"nvidia_api_key": "nvapi-test"},
+                    "files": {
+                        "default_storage_config": {
+                            "type": "local",
+                            "path": "/custom/files",
+                        }
+                    },
+                }
+            )
+        )
+
+        config = PlatformConfig.load(config_path)
+
+        assert config.nvidia_api_key == "nvapi-test"
 
 
 class TestIsInternalTag:

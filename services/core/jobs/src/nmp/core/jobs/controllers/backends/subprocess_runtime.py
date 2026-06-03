@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -42,7 +43,9 @@ class SubprocessOtelLogger:
     def emit(self, message: str, stream_name: str) -> None:
         severity_number = SeverityNumber.INFO if stream_name == "stdout" else SeverityNumber.ERROR
         severity_text = "INFO" if stream_name == "stdout" else "ERROR"
+        timestamp = time.time_ns()
         self.logger.emit(
+            timestamp=timestamp,
             body=message,
             timestamp=time_ns(),
             severity_number=severity_number,

@@ -204,6 +204,27 @@ class TestCreateEnvironmentGPU:
 
         assert env["NMP_DOCKER_RESERVED_GPU_DEVICE_IDS"] == "0"
 
+    def test_platform_config_mount_uses_platform_config_path(self, tmp_path: Path):
+        config = QuickstartConfig(platform_config_path=tmp_path / "platform-config.yaml")
+        config.platform_config_path.write_text("files: {}\n")
+        manager = ContainerManager.__new__(ContainerManager)
+        manager.config = config
+
+        mounts = manager._create_mounts()
+
+        assert any(mount["Target"] == "/etc/nmp/platform-config.yaml" for mount in mounts)
+
+    def test_sets_config_file_path_for_platform_config(self, tmp_path: Path):
+        manager = self._make_manager()
+        manager.config.platform_config_path = tmp_path / "platform-config.yaml"
+        manager.config.platform_config_path.write_text("files: {}\n")
+        mock_platform_config = MagicMock()
+        mock_platform_config.to_env_vars.return_value = {}
+
+        env = manager._create_environment(mock_platform_config)
+
+        assert env["NMP_CONFIG_FILE_PATH"] == "/etc/nmp/platform-config.yaml"
+
 
 class TestCreateEnvironmentRegistryCredentials:
     """Tests for registry credential env var passthrough."""
@@ -544,9 +565,7 @@ class TestStartCleansUpBeforeCreatingNetwork:
             patch.object(manager, "_create_mounts", return_value=[]),
             patch.object(manager, "_create_environment", return_value={}),
             patch.object(manager, "_remove_existing_container", side_effect=lambda: call_order.append("container")),
-            patch.object(
-                manager, "_remove_model_deployments", side_effect=lambda **kw: call_order.append("deployments")
-            ),
+            patch.object(manager, "_remove_model_deployments", side_effect=lambda: call_order.append("deployments")),
             patch.object(manager, "_remove_existing_network", side_effect=lambda: call_order.append("network")),
         ):
             manager.start(platform_config=MagicMock(), pull=False)

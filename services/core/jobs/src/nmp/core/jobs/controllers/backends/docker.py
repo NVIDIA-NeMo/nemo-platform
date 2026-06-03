@@ -753,7 +753,20 @@ chmod -R 777 {job_vol}/{storage_subpath}
         return is_cancelling_or_pausing
 
     def get_jobs_launcher_binary(self) -> io.BytesIO | None:
-        """Get a copy of the jobs-launcher binary as a tar stream to include in the job container."""
+        """Get a copy of the jobs-launcher binary as a tar stream to include in the job container.
+
+        Warning:
+        - ``launcher_tool_path`` is resolved on the jobs-controller host filesystem, not inside
+          the job container image.
+        - The controller copies that host-side binary into the job container at ``/jobs-launcher``
+          and rewrites the entrypoint to execute it.
+        - This assumes the binary at ``launcher_tool_path`` matches the target job container OS
+          and CPU architecture.
+        - If that assumption does not hold, the binary may be injected successfully but fail at
+          runtime inside the container.
+        - Cross-architecture execution is only expected to work when the container runtime has
+          emulation configured, for example via ``binfmt_misc``/QEMU.
+        """
         jobs_launcher_stream = None
         if os.path.exists(self._execution_profile_config.launcher_tool_path):
             jobs_launcher_stream = io.BytesIO()

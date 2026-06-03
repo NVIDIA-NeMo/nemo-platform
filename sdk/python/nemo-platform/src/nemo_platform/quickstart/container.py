@@ -8,10 +8,15 @@ from __future__ import annotations
 import logging
 import os
 import sys
-import typing
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TypedDict
+
+from docker.models.containers import Container
+from docker.models.networks import Network
+from docker.types import Mount
+
+from docker import DockerClient
 
 from ._registry import image_registry_host
 from .config import QuickstartConfig
@@ -25,7 +30,6 @@ if typing.TYPE_CHECKING:
     from docker.types import Mount
 
     from docker import DockerClient
-
 
 class PullProgress(TypedDict):
     """Progress update from image pull operation."""
@@ -306,6 +310,7 @@ class ContainerManager:
         env["XDG_CONFIG_HOME"] = "/data/.config"
         env["XDG_DATA_HOME"] = "/data/.local/share"
         env["XDG_CACHE_HOME"] = "/data/.cache"
+        env["XDG_STATE_HOME"] = "/data/.local/state"
 
         # Database in mounted /data so it persists across container restarts
         env["DATABASE_URL"] = "sqlite:////data/nmp-platform.db"

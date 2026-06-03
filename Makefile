@@ -19,6 +19,10 @@ endif
 PYTEST_EXTRA ?=
 PYTHON_VERSION ?= 3.11
 BOOTSTRAP_CREATE_VENV ?= 1
+NMP_IMAGE_REGISTRY ?= my-registry
+NMP_IMAGE_TAG ?= local
+BUILD_CONTEXT ?= .
+DOCKERFILE_ROOT ?= .
 
 # Display platform info
 $(info local system architecture: $(PLATFORM)/$(ARCH))
@@ -140,6 +144,21 @@ update-cli: generate-cli-commands vendor-nemo-platform-ext generate-cli-referenc
 .PHONY: clean-python
 clean-python: ## remove python virtual environment
 	rm -rf .venv/
+
+.PHONY: load/%
+load/%: ## Build and load a local single-arch image from bake target %-docker
+	BUILD_ARCH=$(BUILD_ARCH) \
+	BUILD_CONTEXT=$(BUILD_CONTEXT) \
+	NMP_IMAGE_REGISTRY=$(NMP_IMAGE_REGISTRY) \
+	NMP_IMAGE_TAG=$(NMP_IMAGE_TAG) \
+	docker buildx bake --load $*-docker
+
+.PHONY: push/%
+push/%: ## Build and push a multi-arch image manifest from bake target %-docker
+	BUILD_CONTEXT=$(BUILD_CONTEXT) \
+	NMP_IMAGE_REGISTRY=$(NMP_IMAGE_REGISTRY) \
+	NMP_IMAGE_TAG=$(NMP_IMAGE_TAG) \
+	docker buildx bake --push $*-docker
 
 .PHONY: verify-python-version
 verify-python-version: ## Verify Python version and install if necessary

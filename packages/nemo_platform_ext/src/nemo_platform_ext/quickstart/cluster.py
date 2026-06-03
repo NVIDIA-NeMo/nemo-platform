@@ -107,6 +107,13 @@ class QuickstartCluster:
         # Initialize storage directories
         self._storage_manager.initialize()
 
+        # Quickstart always generates a canonical global config for the container
+        # unless the user explicitly supplied one.
+        if self.config.platform_config_path is None:
+            generated_config_path = self.config.storage_path / "platform-config.yaml"
+            self.platform_config.save(generated_config_path)
+            self.config.platform_config_path = generated_config_path.resolve()
+
         self._container_manager.start(
             platform_config=self.platform_config,
             pull=pull,

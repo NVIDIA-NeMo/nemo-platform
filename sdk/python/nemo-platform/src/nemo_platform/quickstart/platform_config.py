@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
@@ -53,7 +54,30 @@ class PlatformConfig(BaseModel):
             except yaml.YAMLError as e:
                 raise ValueError(f"Error parsing platform config at {path}: {e}") from e
 
+        if "platform" in config_data or "files" in config_data:
+            values: dict[str, Any] = {}
+            platform_config = config_data.get("platform")
+            if isinstance(platform_config, dict):
+                nvidia_api_key = platform_config.get("nvidia_api_key")
+                if isinstance(nvidia_api_key, str):
+                    values["nvidia_api_key"] = nvidia_api_key
+            return cls.model_validate(values)
+
         return cls.model_validate(config_data)
+
+    def to_config_dict(self) -> dict[str, Any]:
+        """Convert quickstart settings to the global config shape mounted in the container."""
+        config_data: dict[str, Any] = {
+            "files": {
+                "default_storage_config": {
+                    "type": "local",
+                    "path": "/data/files_storage",
+                }
+            }
+        }
+        if self.nvidia_api_key:
+            config_data["platform"] = {"nvidia_api_key": self.nvidia_api_key}
+        return config_data
 
     def save(self, path: Path) -> None:
         """Save platform config to YAML file.
@@ -63,7 +87,7 @@ class PlatformConfig(BaseModel):
         """
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        config_data = self.model_dump(mode="json", exclude_none=True)
+        config_data = self.to_config_dict()
 
         with open(path, "w") as f:
             yaml.safe_dump(config_data, f, default_flow_style=False, sort_keys=False)

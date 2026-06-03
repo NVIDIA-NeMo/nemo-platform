@@ -286,8 +286,10 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
                 error_details={"message": "Local subprocess metadata not found"},
             )
 
-        if step.status == PlatformJobStatus.CANCELLING and metadata.process.poll() is None:
-            self._terminate_process(metadata)
+        if step.status in (PlatformJobStatus.CANCELLING, PlatformJobStatus.PAUSING):
+            if metadata.process.poll() is None:
+                self._terminate_process(metadata)
+            return self._create_step_update(step, metadata)
 
         ttl_seconds = (
             self._execution_profile_config.ttl_seconds_active
@@ -471,6 +473,8 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
         if exit_code is None:
             if step.status == PlatformJobStatus.CANCELLING:
                 return PlatformJobStatus.CANCELLING, {"message": "Job is cancelling", **status_details}, {}, ""
+            if step.status == PlatformJobStatus.PAUSING:
+                return PlatformJobStatus.PAUSING, {"message": "Job is pausing", **status_details}, {}, ""
             return PlatformJobStatus.ACTIVE, {"message": "Job is running", **status_details}, {}, ""
 
         self._finish_logs(metadata)
@@ -479,6 +483,13 @@ class SubprocessJobBackend(JobBackend[SubprocessExecutionProvider, SubprocessJob
             return (
                 PlatformJobStatus.CANCELLED,
                 {"message": f"Job was cancelled with exit code {exit_code}", **status_details},
+                {},
+                "",
+            )
+        if step.status == PlatformJobStatus.PAUSING:
+            return (
+                PlatformJobStatus.PAUSED,
+                {"message": f"Job paused with exit code {exit_code}", **status_details},
                 {},
                 "",
             )

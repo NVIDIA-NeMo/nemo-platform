@@ -76,11 +76,13 @@ jobs:
     #   profile: gpu
     #   backend: docker
     #   config:
+    #     # Path to the jobs-launcher binary on the local filesystem
     #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
     # - provider: gpu
     #   profile: gpu
     #   backend: docker
     #   config:
+    #     # Path to the jobs-launcher binary on the local filesystem
     #     launcher_tool_path: ./services/core/jobs/jobs-launcher/jobs-launcher
 
   # Local path to the jobs-launcher binary used by the Docker job backend

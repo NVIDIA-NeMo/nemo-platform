@@ -33,11 +33,13 @@ from typing import IO, Any
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
+from nmp.common.jobs.image import image_builder
 from nmp.testing import NemoRun, get_repo_root
+from nmp.testing.e2e import DEFAULT_REGISTRY, DEFAULT_TAG
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    """Enable mock inference provider for e2e tests.
+    """Enable mock inference provider for e2e tests and register markers.
 
     Sets the env var and clears the Configuration cache so that
     InferenceGatewayConfig picks up the new value. The cache must be
@@ -50,6 +52,7 @@ def pytest_configure(config: pytest.Config) -> None:
 
     Configuration.clear_cache()
 
+    config.addinivalue_line("markers", "feature(*names): test requires named platform feature(s), e.g. auth")
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +61,7 @@ _HEALTH_POLL_INTERVAL = 1.0
 _AUTH_READY_TIMEOUT = 60
 _E2E_ADMIN_EMAIL = "admin@example.com"
 _SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
+_AUTH_ENABLED = os.environ.get("NMP_E2E_AUTH_ENABLED", "").lower() in {"1", "true", "yes"}
 
 # Number of log lines to dump from the services log on test failure.
 _TAIL_LINES_ON_FAILURE = 100
@@ -261,6 +265,22 @@ def background_process(
             proc.wait(timeout=5)
 
 
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skip feature-gated E2E tests unless the local harness enables them."""
+    for item in items:
+        feature_marker = item.get_closest_marker("feature")
+        if not feature_marker:
+            continue
+
+        required_features = set(feature_marker.args)
+        if "auth" in required_features and not _AUTH_ENABLED:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason="Auth-gated E2E test. Re-run with NMP_E2E_AUTH_ENABLED=1 against auth-enabled services."
+                )
+            )
+
+
 # ---- Services log tail on failure ------------------------------------------
 
 
@@ -364,6 +384,14 @@ def sdk(_services: str) -> NeMoPlatform:
         max_retries=2,
         default_headers=headers,
     )
+
+
+@pytest.fixture(scope="session")
+def image() -> Any:
+    """Resolve fully qualified NeMo image names for E2E jobs."""
+    registry = os.environ.get("NMP_E2E_REGISTRY", DEFAULT_REGISTRY)
+    tag = os.environ.get("NMP_E2E_TAG", DEFAULT_TAG)
+    return image_builder(registry=registry, tag=tag)
 
 
 @pytest.fixture(scope="function")

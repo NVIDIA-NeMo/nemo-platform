@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+import datetime
 import os
 import sys
 import time
@@ -148,6 +149,7 @@ def test_schedule_terminates_process_when_post_popen_setup_fails(
         update = backend.schedule(step.step_spec.executor, step)
 
     assert update.status == PlatformJobStatus.ERROR
+    assert update.error_details is not None
     assert "initialize subprocess runtime" in update.error_details["message"]
     mock_terminate.assert_called_once()
     assert backend._process_registry.is_empty()
@@ -203,6 +205,46 @@ def test_sync_nonzero_exit_sets_error(mock_nmp_client, tmp_path, mock_platform_c
 
     assert update.status == PlatformJobStatus.ERROR
     assert update.error_details == {"message": "Job exited with code 7"}
+
+
+def test_sync_pausing_transitions_to_paused(mock_nmp_client, tmp_path, mock_platform_config, test_step_pausing):
+    backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
+    step = _step_with_command(test_step_pausing, ["/bin/sh", "-c", "sleep 30"])
+
+    _schedule_without_otel_export(backend, step)
+    key = SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
+    metadata = backend._process_registry.get(key)
+    assert metadata is not None
+
+    update = backend.sync(step)
+    assert update.status in (PlatformJobStatus.PAUSING, PlatformJobStatus.PAUSED)
+
+    metadata.process.wait(timeout=5)
+    update = backend.sync(step)
+
+    assert update.status == PlatformJobStatus.PAUSED
+    last_call = mock_nmp_client.jobs.tasks.create_or_update.call_args
+    assert last_call.kwargs["status"] == PlatformJobStatus.PAUSED.value
+
+
+def test_sync_pausing_skips_before_active_ttl(mock_nmp_client, tmp_path, mock_platform_config, test_step_pausing):
+    backend = _subprocess_backend(mock_nmp_client, tmp_path, mock_platform_config)
+    backend._execution_profile_config.ttl_seconds_before_active = 1
+    step = _step_with_command(test_step_pausing, ["/bin/sh", "-c", "sleep 30"])
+
+    _schedule_without_otel_export(backend, step)
+    key = SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
+    metadata = backend._process_registry.get(key)
+    assert metadata is not None
+
+    old_timestamp = step.created_at - datetime.timedelta(days=365)
+    step.created_at = old_timestamp
+    step.updated_at = old_timestamp
+
+    update = backend.sync(step)
+
+    assert update.status in (PlatformJobStatus.PAUSING, PlatformJobStatus.PAUSED)
+    assert update.error_details == {}
 
 
 def test_missing_command_fails_without_process(mock_nmp_client, tmp_path, mock_platform_config, test_step_pending):
@@ -285,6 +327,7 @@ def test_schedule_python_command_does_not_depend_on_runtime_path(
         SubprocessProcessKey(step.workspace, step.job, str(step.attempt_id), step.name)
     )
     assert metadata is not None
+    assert isinstance(metadata.process.args, list)
     assert metadata.process.args[0] == sys.executable
     assert metadata.process.wait(timeout=5) == 0
 

@@ -1,7 +1,10 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from importlib.resources import files
+
 import pytest
+import yaml
 from nmp.platform_runner import registry
 from nmp.platform_runner.config import (
     ResolvedRunConfiguration,
@@ -46,6 +49,13 @@ def test_default_config_path_points_to_bundled_local_config():
     path = default_config_path()
 
     assert path.endswith(("nmp/platform_runner/config/local.yaml", "nemo_platform/services/runner/config/local.yaml"))
+
+
+def test_bundled_local_config_uses_host_safe_files_storage_path():
+    config_path = files("nmp.platform_runner").joinpath("config/local.yaml")
+    config = yaml.safe_load(config_path.read_text())
+
+    assert config["files"]["default_storage_config"]["path"] == "~/.local/share/nemo/files"
 
 
 def test_no_arguments_defaults_to_all_services_and_default_controllers():

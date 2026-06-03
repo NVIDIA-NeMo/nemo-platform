@@ -548,6 +548,94 @@ jobs:
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
 
+  # Docker quickstart E2E tests: build local images, start quickstart, and
+  # run the jobs-focused E2E suite against the live containerized stack.
+  python-e2e-docker-test:
+    name: Python docker e2e tests
+    needs: [policy-wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Download policy WASM
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: Build local quickstart images
+        run: |
+          make load/nmp-api
+          make load/nmp-cpu-tasks
+      - name: Start quickstart
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+        run: |
+          uv run --frozen nemo quickstart up --image my-registry/nmp-api:local --no-pull --force
+      - name: Run Docker jobs e2e tests
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          NMP_BASE_URL: http://localhost:8080
+        run: |
+          uv run --frozen pytest e2e/test_jobs.py -k 'not pause_resume' -v --run-e2e --junitxml=report-docker.xml
+      - name: Dump quickstart status and logs
+        if: always()
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+        run: |
+          echo "::group::Quickstart status"
+          uv run --frozen nemo quickstart status || true
+          echo "::endgroup::"
+          echo "::group::Quickstart logs"
+          uv run --frozen nemo quickstart logs || true
+          echo "::endgroup::"
+      - name: Stop quickstart
+        if: always()
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+        run: |
+          uv run --frozen nemo quickstart down || true
+      - name: Upload Docker e2e test artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-e2e-docker-test-results
+          retention-days: 30
+          path: |
+            report-docker.xml
+
+  # Required-check pin: branch protection should reference this aggregator
+  # rather than the per-row matrix jobs, so the matrix can grow or shrink
+  # without admin intervention. Skipped counts as pass.
+  wheel-test-aggregate:
+    name: Wheel build + test
+    needs: [wheel-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check matrix result
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.wheel-test.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "${MATRIX_RESULT}" in
+            success|skipped)
+              echo "wheel-test matrix: ${MATRIX_RESULT}"
+              ;;
+            *)
+              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
+              echo "::error::see per-row results: ${RUN_URL}"
+              exit 1
+              ;;
+          esac
+
   web-typecheck:
     name: Web typecheck
     needs: [changes]
