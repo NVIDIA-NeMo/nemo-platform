@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import cast
+from typing import ClassVar, cast
 
 from nemo_agents_plugin.config import ControllerConfig
 from nemo_agents_plugin.entities import AgentDeployment
@@ -50,6 +50,7 @@ class AgentDeploymentController(NemoController):
     """
 
     name = "agents-deployment"
+    dependencies: ClassVar[list[str]] = ["entities"]
 
     def __init__(self) -> None:
         self._backend: RunnerBackend | None = None

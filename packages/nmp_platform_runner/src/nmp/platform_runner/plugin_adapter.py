@@ -24,8 +24,10 @@ from collections.abc import Callable
 from fastapi import FastAPI
 from nemo_platform_plugin.controller import NemoController
 from nemo_platform_plugin.service import NemoService
+from nmp.common.config import get_platform_config
 from nmp.common.controller import Controller, Loop, TimedLoopWaiter, TrackLastExecutionTime
 from nmp.common.service import RouterConfig, Service
+from nmp.common.service.api.health import wait_for_service_ready
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +128,38 @@ class NemoControllerAdapter(Controller):
             self._loop.close()
 
 
+def _wait_for_controller_dependencies(
+    controller_cls: type[NemoController],
+    stop_signal: threading.Event,
+) -> bool:
+    """Poll until declared service dependencies are ready.
+
+    Returns False when shutdown is requested during the wait; True otherwise
+    (including when a dependency times out — the caller may proceed anyway).
+    """
+    dependencies = list(controller_cls.dependencies)
+    if not dependencies:
+        return True
+
+    platform_config = get_platform_config()
+    for dep in dependencies:
+        if wait_for_service_ready(platform_config, dep, stop_signal):
+            continue
+        if stop_signal.is_set():
+            logger.info(
+                "Shutdown requested before %r dependency %r became ready",
+                controller_cls.name,
+                dep,
+            )
+            return False
+        logger.warning(
+            "Plugin controller %r dependency %r did not become ready in time — starting anyway",
+            controller_cls.name,
+            dep,
+        )
+    return True
+
+
 def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[threading.Event], None]:
     """Return a ``run(stop_signal)`` function that drives a :class:`NemoController`.
 
@@ -136,11 +170,12 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
     Lifecycle inside the returned function:
 
     1. Instantiate *controller_cls*.
-    2. Call ``on_startup()`` on the adapter's event loop.
-    3. Wrap in :class:`~nmp.common.controller.Loop` with a
+    2. Wait for each service in ``dependencies`` via ``wait_for_service_ready``.
+    3. Call ``on_startup()`` on the adapter's event loop.
+    4. Wrap in :class:`~nmp.common.controller.Loop` with a
        :class:`~nmp.common.controller.TimedLoopWaiter` honouring *stop_signal*.
-    4. Start the loop thread and join it (blocking until stop).
-    5. The loop's ``shutdown_func`` calls :meth:`NemoControllerAdapter.shutdown`
+    5. Start the loop thread and join it (blocking until stop).
+    6. The loop's ``shutdown_func`` calls :meth:`NemoControllerAdapter.shutdown`
        which runs ``on_shutdown()`` and closes the event loop.
 
     Args:
@@ -154,7 +189,10 @@ def make_controller_run_func(controller_cls: type[NemoController]) -> Callable[[
         controller = controller_cls()
         adapter = NemoControllerAdapter(controller)
 
-        # Run on_startup before the reconcile loop begins.
+        if not _wait_for_controller_dependencies(controller_cls, stop_signal):
+            adapter._loop.close()
+            return
+
         try:
             adapter._loop.run_until_complete(controller.on_startup())
         except Exception:
