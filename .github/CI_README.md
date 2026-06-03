@@ -54,7 +54,7 @@ reusable actions, and supporting docs.
   Merge-blocking PR check for `skills/` changes. It passes immediately when a
   PR does not touch `skills/`. When `skills/` files changed, it requires the PR
   head commit to be the trusted NVSkills signature commit from
-  `NVSKILLS_SIGNATURE_PUSH_ACTOR` (default `nv-skills-ci[bot]`) with commit
+  `NVSKILLS_SIGNATURE_PUSH_ACTOR` (default `svc-nvskills-signing`) with commit
   title prefix `NVSKILLS_SIGNATURE_COMMIT_TITLE` (default
   `Attach NVSkills validation signatures`). If new `skills/` content is pushed
   after signing, a maintainer or admin must rerun `/nvskills-ci`. Repository

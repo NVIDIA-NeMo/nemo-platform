@@ -16,7 +16,7 @@ jobs:
       - name: Require trusted NVSkills signature for skills changes
         uses: actions/github-script@v7
         env:
-          SIGNATURE_ACTOR: ${{ vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'nv-skills-ci[bot]' }}
+          SIGNATURE_ACTOR: ${{ vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing' }}
           SIGNATURE_TITLE: ${{ vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures' }}
           ONBOARDING_DOC: https://nvidia.atlassian.net/wiki/spaces/GAIT/pages/3483240468/Github+First+-+Outbound+Repos+Onboarding+doc+-+NVCARPS#Review-Internal-Pipeline-Logs
         with:
