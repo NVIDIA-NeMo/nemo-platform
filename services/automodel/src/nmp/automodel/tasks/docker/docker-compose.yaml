@@ -9,7 +9,7 @@
 #
 # Prerequisites:
 #   - Build the image first (from Platform repo root):
-#       docker buildx bake -f docker-bake.automodel.hcl nmp-automodel-tasks-docker
+#       docker buildx bake -f docker-bake.hcl nmp-automodel-tasks-docker
 #   - Have NeMo Platform running at http://localhost:8080
 #   - Create sample_config.json (or use the one provided)
 

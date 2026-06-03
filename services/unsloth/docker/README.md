@@ -8,12 +8,14 @@ model_entity).
 |-------|------------|------|
 | `nmp-unsloth-training` | `Dockerfile.nmp-unsloth-training` | NGC PyTorch base + Unsloth ML stack + platform glue. ENTRYPOINT is `/opt/venv/bin/python`. |
 
+Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
+
 Default tag is `nmp-unsloth-training:local` (no registry prefix) — suitable for
-in-daemon builds via `--load`. Set `IMAGE_REGISTRY` to add a prefix when you
+in-daemon builds via `--load`. Set `UNSLOTH_IMAGE_REGISTRY` to add a prefix when you
 want to push:
 
 - Local:  `nmp-unsloth-training:local`
-- Pushed: `${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}`
+- Pushed: `${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}`
 
 Future-proofing: a leaner CPU image (`nmp-unsloth-tasks`) can be added
 later for the file_io / model_entity steps. The compiler already routes
@@ -29,7 +31,7 @@ cd /path/to/Platform
 
 # --- Option A: local build (loads into the local daemon, no registry needed) ---
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --load \
   --set "*.platform=linux/amd64"
@@ -37,14 +39,14 @@ docker buildx bake \
 
 # --- Option B: push to a registry ---
 docker login nvcr.io
-export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export UNSLOTH_IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
 export IMAGE_TAG="$(git rev-parse --short HEAD)"
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --push \
   --set "*.platform=linux/amd64"
-# Result: `${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}` in the registry.
+# Result: `${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}` in the registry.
 ```
 
 The build pulls the NGC PyTorch base, then runs unsloth's canonical install
@@ -109,7 +111,7 @@ Pick **one** of the following depending on where the GPU host will pull from:
 
 ```bash
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --load \
   --set "*.platform=linux/amd64"
@@ -119,15 +121,15 @@ docker buildx bake \
 **B) Push to a registry the GPU host will pull from**:
 
 ```bash
-export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export UNSLOTH_IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
 export IMAGE_TAG="$(git rev-parse --short HEAD)"
 
 docker buildx bake \
-  -f services/unsloth/docker/docker-bake.hcl \
+  -f docker-bake.hcl \
   nmp-unsloth-training \
   --push \
   --set "*.platform=linux/amd64"
-# → ${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG} in the registry.
+# → ${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG} in the registry.
 ```
 
 **C) Air-gapped GPU host** (save + `scp` + `docker load`):
@@ -156,7 +158,7 @@ build this is just the bare name:
 export NMP_UNSLOTH_TRAINING_IMAGE="nmp-unsloth-training:local"
 
 # Or, when you pushed (Option B above):
-export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}"
+export NMP_UNSLOTH_TRAINING_IMAGE="${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}"
 
 # Restart so the env var takes effect.
 nemo services restart

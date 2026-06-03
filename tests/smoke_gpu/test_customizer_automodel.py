@@ -3,7 +3,7 @@
 
 """nmp-automodel image import smoke tests.
 
-Built as part of the docker-bake.automodel.hcl bake group (smoke-test stage) and run
+Built as part of the docker-bake.hcl bake group (smoke-test stage) and run
 on a CPU runner — no GPU hardware required.
 
 Two failure classes are caught at .so load time, before any GPU device is touched:

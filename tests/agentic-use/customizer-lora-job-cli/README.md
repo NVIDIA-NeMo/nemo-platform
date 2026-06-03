@@ -21,7 +21,7 @@ export NMP_IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
 echo "$NMP_IMAGE_TAG"
 
 # Bake/push nmp-automodel images (and platform task images as needed)
-docker buildx bake -f docker-bake.automodel.hcl --push
+docker buildx bake -f docker-bake.hcl --push
 ```
 
 The eval container sources `environment/image-env.sh`, which defaults to the same registry and derives `NMP_IMAGE_TAG` from `git rev-parse --short HEAD` when unset.
