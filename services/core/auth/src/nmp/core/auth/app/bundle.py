@@ -42,6 +42,13 @@ def _build_domain_registry(static_data: dict) -> dict[str, dict[str, str]]:
     endpoints = static_data.get("authz", {}).get("endpoints", {})
     domain_names = _extract_domain_names_from_endpoints(endpoints)
     manifests = discover_manifests()
+    conflicts = domain_names & manifests.keys()
+    if conflicts:
+        conflicting_names = ", ".join(sorted(conflicts))
+        raise ValueError(
+            "Domain name conflict between core API endpoints and extension manifests: "
+            f"{conflicting_names}"
+        )
 
     domains: dict[str, dict[str, str]] = {}
     for name in sorted(domain_names | manifests.keys()):

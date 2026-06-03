@@ -135,3 +135,24 @@ async def test_build_authorization_data_merges_extension_manifest_domain_metadat
         "version": "1.2.3",
         "kind": "extension",
     }
+
+
+@pytest.mark.asyncio
+async def test_build_authorization_data_rejects_domain_manifest_collisions(monkeypatch):
+    """Extension manifests must not override core-inferred API domains."""
+    from nemo_platform_plugin.interface import PluginManifest
+    from nmp.core.auth.app.bundle import build_authorization_data
+
+    monkeypatch.setattr(
+        "nmp.core.auth.app.bundle.discover_manifests",
+        lambda: {
+            "models": PluginManifest(
+                name="models",
+                version="9.9.9",
+                description="Conflicting Models API",
+            )
+        },
+    )
+
+    with pytest.raises(ValueError, match="Domain name conflict"):
+        await build_authorization_data(None)
