@@ -72,17 +72,41 @@ def _admin_headers() -> dict[str, str]:
 
 
 def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool:
-    """Poll until platform seed has created admin role bindings."""
+    """Poll until auth seed and workspace list visibility are consistent for the admin principal."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
+        probe_name = f"auth-probe-{uuid.uuid4().hex[:8]}"
         try:
-            resp = httpx.get(
+            create_resp = httpx.post(
+                f"{url}/apis/entities/v2/workspaces",
+                json={"name": probe_name},
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
+            if create_resp.status_code != 201:
+                time.sleep(_HEALTH_POLL_INTERVAL)
+                continue
+
+            list_resp = httpx.get(
                 f"{url}/apis/entities/v2/workspaces",
                 headers=_admin_headers(),
-                timeout=2.0,
+                timeout=5.0,
             )
-            if resp.status_code == 200:
-                return True
+            if list_resp.status_code == 200:
+                names = [item["name"] for item in list_resp.json().get("data", [])]
+                if probe_name in names:
+                    httpx.delete(
+                        f"{url}/apis/entities/v2/workspaces/{probe_name}",
+                        headers=_admin_headers(),
+                        timeout=5.0,
+                    )
+                    return True
+
+            httpx.delete(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}",
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
         except httpx.RequestError as exc:
             logger.debug("Auth readiness probe failed; will retry: %s", exc)
         time.sleep(_HEALTH_POLL_INTERVAL)
