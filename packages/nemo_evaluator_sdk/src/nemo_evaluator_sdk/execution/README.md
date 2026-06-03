@@ -13,8 +13,6 @@ The execution package exposes a single public entrypoint:
 - `RunConfig`
   A Pydantic config type for execution-only settings such as parallelism and
   sample limits.
-- `EvaluationRequest`
-  The normalized request object passed into evaluation backends.
 - `EvaluationBackend`
   The protocol implemented by result-returning execution backends.
 

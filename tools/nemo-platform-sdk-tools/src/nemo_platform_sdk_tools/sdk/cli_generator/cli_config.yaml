@@ -299,6 +299,14 @@ config:
     live_global:
       skip: true
 
+# Experiments are in the OpenAPI spec and SDK (for the frontend) but not yet exposed
+# as CLI commands; drop the skip once the feature is production-ready.
+- resource: [experiments]
+  skip: true
+
+- resource: [experiment_groups]
+  skip: true
+
 - resource: [secrets]
   methods:
     create:

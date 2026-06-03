@@ -73,6 +73,10 @@ For token-level access restrictions, see [API Scopes](api-scopes.md). For the RB
 | `intake.annotations.(create \| delete)` | Create, delete intake annotations |  | ✓ | ✓ |
 | `intake.evaluator-results.(read \| list)` | Read, list intake evaluator-results | ✓ | ✓ | ✓ |
 | `intake.evaluator-results.create` | Create intake evaluator results |  | ✓ | ✓ |
+| `intake.experiment-groups.read` | Read intake experiment groups | ✓ | ✓ | ✓ |
+| `intake.experiment-groups.(create \| update \| delete)` | Create, update, delete intake experiment-groups |  | ✓ | ✓ |
+| `intake.experiments.read` | Read intake experiments | ✓ | ✓ | ✓ |
+| `intake.experiments.(create \| update \| delete)` | Create, update, delete intake experiments |  | ✓ | ✓ |
 | `intake.ingest.create` | Ingest traces into intake |  | ✓ | ✓ |
 | `intake.spans.(read \| list)` | Read, list intake spans | ✓ | ✓ | ✓ |
 | `intake.traces.read` | Read intake traces | ✓ | ✓ | ✓ |

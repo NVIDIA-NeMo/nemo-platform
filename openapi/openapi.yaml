@@ -5881,6 +5881,423 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups:
+    post:
+      tags:
+      - Experiment Groups
+      summary: Create Experiment Group
+      operationId: create_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentGroupRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '409':
+          description: Experiment group already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Experiment Groups
+      summary: List Experiment Groups
+      operationId: list_experiment_groups_apis_intake_v2_workspaces__workspace__experiment_groups_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          - -updated_at
+          - updated_at
+          - -name
+          - name
+          type: string
+          description: Sort field; prefix with '-' for descending.
+          default: -created_at
+          title: Sort
+        description: Sort field; prefix with '-' for descending.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentGroupFilter'
+        description: Filter experiment groups by name.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponsesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+    get:
+      tags:
+      - Experiment Groups
+      summary: Get Experiment Group
+      operationId: get_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '404':
+          description: Experiment group not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Experiment Groups
+      summary: Update Experiment Group
+      operationId: update_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentGroupRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentGroupResponse'
+        '404':
+          description: Experiment group not found
+        '409':
+          description: Attempt to rename the group
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiment Groups
+      summary: Delete Experiment Group
+      operationId: delete_experiment_group_apis_intake_v2_workspaces__workspace__experiment_groups__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Experiment group not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments:
+    post:
+      tags:
+      - Experiments
+      summary: Create Experiment
+      operationId: create_experiment_apis_intake_v2_workspaces__workspace__experiments_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentRequest'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '409':
+          description: Experiment already exists
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Experiments
+      summary: List Experiments
+      operationId: list_experiments_apis_intake_v2_workspaces__workspace__experiments_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - name: sort
+        in: query
+        required: false
+        schema:
+          enum:
+          - -created_at
+          - created_at
+          - -updated_at
+          - updated_at
+          - -name
+          - name
+          type: string
+          description: Sort field; prefix with '-' for descending.
+          default: -created_at
+          title: Sort
+        description: Sort field; prefix with '-' for descending.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentFilter'
+        description: Filter experiments by name, experiment_group_id, agent_name,
+          and dataset_name.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponsesPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+    get:
+      tags:
+      - Experiments
+      summary: Get Experiment
+      operationId: get_experiment_apis_intake_v2_workspaces__workspace__experiments__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Experiments
+      summary: Update Experiment
+      operationId: update_experiment_apis_intake_v2_workspaces__workspace__experiments__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExperimentRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentResponse'
+        '404':
+          description: Experiment not found
+        '409':
+          description: Attempt to change an immutable field
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Experiments
+      summary: Delete Experiment
+      operationId: delete_experiment_apis_intake_v2_workspaces__workspace__experiments__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '204':
+          description: Successful Response
+        '404':
+          description: Experiment not found
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/ingest/atif:
     post:
       tags:
@@ -14167,6 +14584,30 @@ components:
       - name
       title: Evaluator.Model
       description: Model definition for use without persisting to the Models API.
+    EvaluatorAggregate:
+      properties:
+        sum:
+          title: Sum
+          type: number
+        mean:
+          title: Mean
+          type: number
+        median:
+          title: Median
+          type: number
+        p90:
+          title: P90
+          type: number
+        p95:
+          title: P95
+          type: number
+        p99:
+          title: P99
+          type: number
+      type: object
+      title: EvaluatorAggregate
+      description: Cross-run statistics for one evaluator. Populated by the rollup
+        path (later PR).
     EvaluatorResult:
       properties:
         evaluator_result_id:
@@ -14594,6 +15035,267 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
+    ExperimentFilter:
+      additionalProperties: false
+      description: Filter for listing Experiments.
+      properties:
+        name:
+          description: Filter experiments by name.
+          title: Name
+          type: string
+        experiment_group_id:
+          description: Filter experiments by owning group id.
+          title: Experiment Group Id
+          type: string
+        agent_name:
+          description: Filter experiments by agent name.
+          title: Agent Name
+          type: string
+        dataset_name:
+          description: Filter experiments by dataset name.
+          title: Dataset Name
+          type: string
+      title: ExperimentFilter
+      type: object
+    ExperimentGroupFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentGroups.
+      properties:
+        name:
+          description: Filter groups by name.
+          title: Name
+          type: string
+      title: ExperimentGroupFilter
+      type: object
+    ExperimentGroupRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Workspace-unique group name.
+        description:
+          title: Description
+          description: Human-readable purpose of the group.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      title: ExperimentGroupRequest
+      description: Request body for creating an ExperimentGroup.
+    ExperimentGroupResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        workspace:
+          type: string
+          title: Workspace
+        description:
+          title: Description
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      title: ExperimentGroupResponse
+      description: ExperimentGroup as served by the API.
+    ExperimentGroupResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentGroupResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentGroupResponsesPage
+    ExperimentRequest:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Producer-supplied, workspace-unique experiment id.
+        experiment_group_id:
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup; optional. Soft reference,
+            not validated.
+          type: string
+        agent_name:
+          type: string
+          title: Agent Name
+          description: Name of the agent under test.
+        agent_version:
+          type: string
+          title: Agent Version
+          description: Version of the agent under test.
+        dataset_name:
+          type: string
+          title: Dataset Name
+          description: Producer-supplied dataset name.
+        dataset_version:
+          title: Dataset Version
+          description: Producer-supplied dataset version.
+          type: string
+        source_link:
+          title: Source Link
+          description: Optional URL for the source experiment.
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+          description: Free-form producer metadata.
+        description:
+          title: Description
+          description: Human-readable description.
+          type: string
+        summary:
+          title: Summary
+          description: Human-authored summary of results.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - name
+      - agent_name
+      - agent_version
+      - dataset_name
+      title: ExperimentRequest
+      description: Request body for creating an Experiment.
+    ExperimentResponse:
+      properties:
+        id:
+          type: string
+          title: Id
+        name:
+          type: string
+          title: Name
+        workspace:
+          type: string
+          title: Workspace
+        experiment_group_id:
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup; null when ungrouped.
+            Soft reference, not validated.
+          type: string
+        agent_name:
+          type: string
+          title: Agent Name
+        agent_version:
+          type: string
+          title: Agent Version
+        dataset_name:
+          type: string
+          title: Dataset Name
+        dataset_version:
+          title: Dataset Version
+          type: string
+        source_link:
+          title: Source Link
+          type: string
+          minLength: 1
+          format: uri
+        metadata:
+          additionalProperties: true
+          type: object
+          title: Metadata
+        description:
+          title: Description
+          type: string
+        summary:
+          title: Summary
+          type: string
+        created_at:
+          title: Created At
+          type: string
+          format: date-time
+        updated_at:
+          title: Updated At
+          type: string
+          format: date-time
+        evaluator_names:
+          items:
+            type: string
+          type: array
+          title: Evaluator Names
+        model_names:
+          items:
+            type: string
+          type: array
+          title: Model Names
+        aggregate_scores:
+          title: Aggregate Scores
+          additionalProperties:
+            $ref: '#/components/schemas/EvaluatorAggregate'
+          type: object
+        run_count:
+          type: integer
+          title: Run Count
+          default: 0
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - agent_name
+      - agent_version
+      - dataset_name
+      title: ExperimentResponse
+      description: Experiment as served by the API, including ClickHouse-hydrated
+        rollups.
+    ExperimentResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentResponsesPage
     ExtendedBenchmark:
       properties:
         name:

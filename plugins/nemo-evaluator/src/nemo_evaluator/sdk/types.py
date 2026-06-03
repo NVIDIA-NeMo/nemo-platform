@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal, TypeAlias
 
-from nemo_evaluator.sdk.values.filesets import FilesetRef
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator_sdk.values import (
     DatasetInput,
     FieldMapping,

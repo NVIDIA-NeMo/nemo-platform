@@ -10,6 +10,7 @@ Agents are NAT workflow YAML files. The plugin provides:
 - **Gateway** — reverse-proxy agent traffic through `/apis/agents/…/-/…`
 - **CLI** — `nemo agents` subcommand for platform-managed workflows
 - **Evaluation** — delegate to `nat eval` against live agent endpoints
+- **Packaging** — containerize agents with a single `nemo agents package` command that progressively renders, builds, and publishes
 
 ---
 
@@ -224,6 +225,272 @@ The job pre-flights every LLM `model_name` against
 `sdk.inference.virtual_models.retrieve` before invoking `nat eval`, so a
 missing or mistyped model fails fast with a message naming the model and
 suggesting recovery options instead of an opaque subprocess error.
+
+---
+
+## Packaging command — containerize agents as Docker images
+
+The plugin ships a single `package` command that encapsulates the render →
+validate → build → publish pipeline.  Flags control how far the pipeline
+runs, so one command covers the entire inner-loop → outer-loop transition.
+The command works locally — no running platform is required.
+
+| Requirement | Notes |
+|---|---|
+| Docker | A running Docker daemon (Docker Desktop / Podman / etc.) |
+| `jinja2` | `uv pip install 'nemo-agents-plugin[container]'` |
+| `python-on-whales` | included in the `[container]` extra |
+
+### Progressive pipeline
+
+| Invocation | Stages run | Output |
+|---|---|---|
+| `package --no-build` | render | `Dockerfile` + `.dockerignore` |
+| `package` *(default)* | render → validate → build | Local Docker image |
+| `package --publish --registry <url>` | render → validate → build → publish | Local image + registry push |
+
+Validation always runs before a build unless `--skip-validation` is passed.
+`--no-build` skips the build (and therefore validation) and only emits files.
+
+### `package` — render, build, and publish in one command
+
+Render-only (inspect or edit the Dockerfile before building):
+
+```bash
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --nat-version 1.5.0 \
+    --no-build
+```
+
+Output:
+```
+Dockerfile written to examples/Dockerfile
+.dockerignore written to examples/.dockerignore
+```
+
+Build (default — render + validate + build):
+
+```bash
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --nat-version 1.5.0 \
+    --tag my-agent:1.0
+```
+
+Output:
+```
+Building image 'my-agent:1.0' from context examples ...
+Successfully built my-agent:1.0
+Image ready: my-agent:1.0
+```
+
+Full pipeline — build and publish in one call:
+
+```bash
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --nat-version 1.5.0 \
+    --tag my-agent:1.0 \
+    --publish --registry nvcr.io/my-org
+```
+
+Output:
+```
+Building image 'my-agent:1.0' from context examples ...
+Successfully built my-agent:1.0
+Image ready: my-agent:1.0
+Tagging my-agent:1.0 -> nvcr.io/my-org/my-agent:1.0
+Pushing nvcr.io/my-org/my-agent:1.0 ...
+Successfully pushed nvcr.io/my-org/my-agent:1.0
+Published: nvcr.io/my-org/my-agent:1.0
+```
+
+**With an existing Dockerfile** (skip the render stage entirely):
+
+```bash
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --dockerfile examples/Dockerfile \
+    --nat-version 1.5.0 \
+    --tag my-agent:1.0
+```
+
+**Project mode** — if the agent ships inside a Python project, pass `--pyproject`:
+
+```bash
+nemo agents package \
+    --agent configs/agent.yaml \
+    --pyproject pyproject.toml \
+    --nat-version 1.5.0
+```
+
+### Flag reference
+
+**Pipeline control:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--no-build` | `False` | Stop after render; emit Dockerfile + `.dockerignore` only |
+| `--publish` | `False` | After building, tag and push to `--registry` |
+| `--registry`, `-r` | *(none)* | Remote registry URL (required when `--publish` is set) |
+| `--push-tag` | `<registry>/<tag>` | Override the fully-qualified remote tag |
+
+**Source inputs:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--agent`, `-c` | *(required)* | Path to the NAT workflow YAML |
+| `--pyproject` | *(none)* | Path to `pyproject.toml` (enables project mode) |
+| `--format` | `docker` | Packaging format. Only `docker` (Jinja2 Dockerfile) is implemented; `whl` is reserved for future wheel-based builds and is rejected at flag-validation time. |
+| `--dockerfile` | *(render on-the-fly)* | Use an existing Dockerfile instead of rendering |
+| `--template` | built-in | Path to an external Jinja2 Dockerfile template |
+
+**Build options:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--tag`, `-t` | `<agent-name>-<agent-id>:<agent-version>` | Image tag |
+| `--platform` | local daemon's native platform | Target platform (e.g. `linux/amd64`). At most one value -- multi-arch builds via buildx are not yet implemented and are rejected at flag-validation time with an actionable message pointing at `docker buildx imagetools create`. |
+| `--nat-version` | `$NAT_VERSION` env var, then a baked-in fallback (currently `1.7.0`) | NAT package version to install. Strongly recommended to pass explicitly so image tags, labels, and the `nvidia-nat[most]==<ver>` constraint are reproducible. When neither the flag nor the env var is set, the fallback is used and the CLI prints a warning. |
+| `--output`, `-o` | `<config-dir>/Dockerfile` | Where to write Dockerfile (with `--no-build`) |
+| `--skip-validation` | `False` | Bypass `validate_agent_config` before build |
+
+**Hardening overrides:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--allow-root` | `False` | Disable non-root `USER` hardening |
+| `--no-ignore` | *(generates by default)* | Skip `.dockerignore` generation |
+
+**OCI labels:**
+
+| Flag | Default | Description |
+|---|---|---|
+| `--agent-version` | from pyproject or `YY.MM.DD` | Override agent version label |
+| `--agent-author` | from `git config user.name` | Override agent author label |
+
+### Full example — inspect, build, publish
+
+```bash
+# 1. Render the Dockerfile so you can review it
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --nat-version 1.5.0 \
+    --agent-version 1.0.0 \
+    --no-build
+
+# 2. (Optional) Edit examples/Dockerfile, then build against the edited file
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --dockerfile examples/Dockerfile \
+    --nat-version 1.5.0 \
+    --tag my-react-agent:1.0.0
+
+# 3. Build & publish in one step (when skipping the review step)
+nemo agents package \
+    --agent examples/react-agent.yml \
+    --nat-version 1.5.0 \
+    --tag my-react-agent:1.0.0 \
+    --publish --registry nvcr.io/my-org
+```
+
+### Image tagging convention
+
+When `--tag` is not provided, the image tag is computed automatically as:
+
+```
+<agent-name>-<agent-id>:<agent-version>
+```
+
+Each component is resolved through a fallback chain:
+
+| Component | Resolution order |
+|---|---|
+| **agent-name** | `pyproject.toml` `[project].name` → config file stem (e.g. `react-agent` from `react-agent.yml`) |
+| **agent-version** | `--agent-version` flag → `pyproject.toml` `[project].version` → today's date as `YY.MM.DD` |
+| **agent-id** | Truncated (12-char) SHA-256 hash of the config YAML content (+ `pyproject.toml` content when present) |
+
+Examples:
+
+| Scenario | Tag |
+|---|---|
+| Standalone `react-agent.yml`, no flags | `react-agent-f7e8d9c0b1a2:26.04.10` |
+| With pyproject (`name=calculator`, `version=2.3.0`) | `calculator-a1b2c3d4e5f6:2.3.0` |
+| With `--agent-version 1.0.0` override | `react-agent-f7e8d9c0b1a2:1.0.0` |
+
+The agent ID is **content-addressable** — identical config (and pyproject) content
+always produces the same ID. Changing any line in either file produces a
+different ID, giving every build a traceable fingerprint.
+
+### OCI image labels
+
+Generated Dockerfiles include image labels that follow the
+[OCI Image Spec annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md).
+Standard OCI keys are used where a mapping exists; agent-specific metadata uses
+the `com.nemo.agent.*` namespace.
+
+**Standard OCI labels:**
+
+| Label | Value |
+|---|---|
+| `org.opencontainers.image.title` | Agent name (same as tag name component) |
+| `org.opencontainers.image.version` | Agent version (same as tag version component) |
+| `org.opencontainers.image.authors` | `--agent-author` → `git config user.name` → `"unknown"` |
+| `org.opencontainers.image.created` | Build timestamp (ISO 8601 / RFC 3339) |
+| `org.opencontainers.image.description` | `pyproject.toml` `[project].description` → `"{workflow._type} agent"` → `""` |
+| `org.opencontainers.image.revision` | `git rev-parse HEAD` → `""` |
+| `org.opencontainers.image.source` | `git remote get-url origin` → `""` |
+| `org.opencontainers.image.licenses` | `pyproject.toml` `[project].license` (SPDX expression) — omitted when absent |
+
+**Custom agent labels:**
+
+| Label | Value |
+|---|---|
+| `com.nemo.agent.id` | Content-addressable SHA-256 hash (12 chars) |
+| `com.nemo.agent.framework` | `"nemo_agent_toolkit"` when config has a `workflow` key, else `"unknown"` |
+| `com.nemo.agent.nat-version` | NAT version used at build time |
+| `com.nemo.agent.contract-version` | Packaging format version (`"1.0"`) |
+
+### Agent config validation
+
+The `package` command validates the agent config before building (skip with
+`--skip-validation`). Validation checks:
+
+- File is valid YAML that parses to a mapping (dict)
+- Top-level `workflow` key exists and is a mapping
+- `workflow._type` is present and non-empty (missing `_type` is an error; an
+  unrecognized value — e.g. a workflow registered by a NAT plugin the
+  validator does not know about — only emits a warning and the build
+  proceeds). Built-in types: `react_agent`, `tool_calling_agent`,
+  `reasoning_agent`, `rewoo_agent`
+- Every name in `workflow.tool_names` is defined in `functions` or `function_groups`
+- `workflow.llm_name` is defined in `llms`
+
+Multiple errors are collected and reported together rather than failing on the first.
+
+### Security defaults
+
+Generated Dockerfiles apply several hardening measures by default:
+
+| Default | Override |
+|---|---|
+| Non-root `USER agent` (uid 1000) | `--allow-root` |
+| `apt-get --no-install-recommends` | *(none — always applied)* |
+| `rm -rf /var/lib/apt/lists/*` after install | *(none — always applied)* |
+| `.dockerignore` excludes `.env`, `.git/`, `*.pem`, `credentials.json`, `__pycache__/`, `.venv/`, `node_modules/` | `--no-ignore` |
+
+### Rendering modes
+
+The Dockerfile template has two modes, selected automatically:
+
+| Mode | Trigger | Install strategy |
+|---|---|---|
+| **Config-only** | No `--pyproject` | `uv pip install "nvidia-nat[most]==${NAT_VERSION}"` |
+| **Project** | `--pyproject` provided | `uv pip install .` (installs the project and its declared deps) |
+
+In project mode the entire project directory is the build context and the config
+path is resolved relative to the `pyproject.toml` parent directory.
 
 ---
 
