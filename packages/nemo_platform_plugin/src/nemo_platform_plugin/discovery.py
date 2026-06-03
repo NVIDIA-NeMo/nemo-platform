@@ -216,8 +216,12 @@ def discover_manifests() -> dict[str, PluginManifest]:
                 # ``dist.metadata`` is ``email.message.Message``-compatible
                 # and supports ``.get`` at runtime; ty's stub for
                 # ``importlib.metadata.PackageMetadata`` doesn't expose it.
-                version = dist.metadata.get("Version", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
-                description = dist.metadata.get("Summary", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+                version = (
+                    dist.metadata.get("Version", "") if dist is not None else ""
+                )  # ty: ignore[unresolved-attribute]
+                description = (
+                    dist.metadata.get("Summary", "") if dist is not None else ""
+                )  # ty: ignore[unresolved-attribute]
             except Exception:
                 version = ""
                 description = ""
