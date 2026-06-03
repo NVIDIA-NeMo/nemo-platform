@@ -115,6 +115,17 @@ class NemoService(_NamedPlugin):
         The default implementation does nothing.
         """
 
+    @classmethod
+    def get_authz_contribution(cls) -> object | None:
+        """Optional authorization policy for routes under ``/apis/<name>/``.
+
+        Override as a **classmethod** on the :class:`NemoService` subclass (``discover_services``
+        loads classes, not instances). Return
+        :class:`~nemo_platform_plugin.authz.AuthzContribution` or register a ``nemo.authz``
+        entry point. Default: no plugin-specific authz.
+        """
+        return None
+
     def get_exception_handlers(self) -> dict[type[Exception], ExceptionHandler]:
         """Return a mapping of exception types to handler functions.
 
