@@ -10631,7 +10631,11 @@ components:
         experiment_context:
           $ref: '#/components/schemas/ExperimentContext'
         evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         schema_version:
           type: string
           enum:
@@ -12230,7 +12234,11 @@ components:
         experiment_context:
           $ref: '#/components/schemas/ExperimentContext'
         evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         request:
           $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
@@ -15275,6 +15283,7 @@ components:
           items:
             type: string
           type: array
+          uniqueItems: true
           title: Model Names
           description: Distinct model names observed across ingested sessions for
             this experiment.
