@@ -5784,6 +5784,67 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="nemo workspaces members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members update
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -8056,6 +8117,67 @@
       
     </span>
   </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="nemo workspaces members">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-create" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members create
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-delete" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members delete
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-list" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members list
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#nemo-workspaces-members-update" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        nemo workspaces members update
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
         
@@ -11562,7 +11684,7 @@ parameter.</p>
 <li><code>--workspace</code></li>
 <li><code>--page &lt;INTEGER&gt;</code>: Page number.</li>
 <li><code>--page-size &lt;INTEGER&gt;</code>: Page size.</li>
-<li><code>--sort &lt;CHOICE&gt;</code>: The field to sort by. To sort in decreasing order, use <code>-</code> in front of the field name. [possible values: created_at, -created_at, name, -name, updated_at, -updated_at]</li>
+<li><code>--sort &lt;CHOICE&gt;</code>: The field to sort by. To sort in decreasing order, use <code>-</code> in front of the field name. [possible values: name, -name, created_at, -created_at, updated_at, -updated_at]</li>
 <li><code>--verbose</code>: Whether to include full spec details</li>
 <li><code>--all-pages</code>: Fetch all pages</li>
 </ul>
@@ -11986,6 +12108,7 @@ be cleaned up automatically.</p>
 <li><code>list</code>: List all workspaces with pagination.</li>
 <li><code>get</code>: Get a specific workspace by ID.</li>
 <li><code>update</code>: Update a workspace's description.</li>
+<li><code>members</code>: Manage members</li>
 </ul>
 <h4 id="nemo-workspaces-create">nemo workspaces create<a class="headerlink" href="#nemo-workspaces-create" title="Permanent link">&para;</a></h4>
 <p>Create a new workspace.</p>
@@ -12141,11 +12264,155 @@ returned. Service principals and platform admins have access to all workspaces.<
 <ul>
 <li><code>--output-format, -f &lt;CHOICE&gt;</code>: Output format for an entity. [possible values: json, yaml, raw, code]</li>
 </ul>
+<h4 id="nemo-workspaces-members">nemo workspaces members<a class="headerlink" href="#nemo-workspaces-members" title="Permanent link">&para;</a></h4>
+<p>Manage members</p>
+<p><strong>Usage:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-210-1"><a id="__codelineno-210-1" name="__codelineno-210-1" href="#__codelineno-210-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
+</span></code></pre></div>
+<p><strong>Help:</strong></p>
+<ul>
+<li><code>--help, -h</code>: Show this message and exit.</li>
+</ul>
+<p><strong>Commands:</strong></p>
+<ul>
+<li><code>create</code>: Add a new member to the workspace with specified roles.</li>
+<li><code>delete</code>: Remove a member from the workspace by revoking all their...</li>
+<li><code>list</code>: List all members of a workspace with their roles.</li>
+<li><code>update</code>: Update the roles for a workspace member.</li>
+</ul>
+<h5 id="nemo-workspaces-members-create">nemo workspaces members create<a class="headerlink" href="#nemo-workspaces-members-create" title="Permanent link">&para;</a></h5>
+<p>Add a new member to the workspace with specified roles.</p>
+<p>This creates role bindings for the specified principal with the given roles. By
+default, this endpoint waits for the roles to propagate before returning. Use
+<code>wait_role_propagation=false</code> to skip waiting (useful for bulk operations).</p>
+<p><strong>Examples:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-211-1"><a id="__codelineno-211-1" name="__codelineno-211-1" href="#__codelineno-211-1"></a>POST /apis/entities/v2/workspaces/ml-team/members
+</span><span id="__span-211-2"><a id="__codelineno-211-2" name="__codelineno-211-2" href="#__codelineno-211-2"></a>`{&quot;principal&quot;: &quot;user@example.com&quot;, &quot;roles&quot;: [&quot;Editor&quot;]}`
+</span></code></pre></div>
+<p><strong>Required fields:</strong> principal</p>
+<p><strong>Examples:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-212-1"><a id="__codelineno-212-1" name="__codelineno-212-1" href="#__codelineno-212-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>create<span class="w"> </span>--input-file<span class="w"> </span>config.json
+</span><span id="__span-212-2"><a id="__codelineno-212-2" name="__codelineno-212-2" href="#__codelineno-212-2"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>create<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;principal&quot;: &quot;value&quot;}&#39;</span>
+</span><span id="__span-212-3"><a id="__codelineno-212-3" name="__codelineno-212-3" href="#__codelineno-212-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>create<span class="w"> </span>--input-file<span class="w"> </span>-
+</span><span id="__span-212-4"><a id="__codelineno-212-4" name="__codelineno-212-4" href="#__codelineno-212-4"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>create<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
+</span></code></pre></div>
+<p><strong>Usage:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-213-1"><a id="__codelineno-213-1" name="__codelineno-213-1" href="#__codelineno-213-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>create<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</span></code></pre></div>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>--workspace</code></li>
+<li><code>--principal</code>: The principal identifier (email, user ID, or group ID)</li>
+<li><code>--wait-role-propagation</code>: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.</li>
+<li><code>--roles</code>: List of roles to grant to the principal (can be repeated)</li>
+</ul>
+<p><strong>Help:</strong></p>
+<ul>
+<li><code>--help, -h</code>: Show this message and exit.</li>
+</ul>
+<p><strong>Input Options:</strong></p>
+<ul>
+<li><code>--input-file</code>: Path to JSON file (use '-' for stdin)</li>
+<li><code>--input-data</code>: Input data for the request (JSON or YAML)</li>
+</ul>
+<p><strong>Output Options:</strong></p>
+<ul>
+<li><code>--output-format, -f &lt;CHOICE&gt;</code>: Output format for an entity. [possible values: json, yaml, raw, code]</li>
+</ul>
+<h5 id="nemo-workspaces-members-delete">nemo workspaces members delete<a class="headerlink" href="#nemo-workspaces-members-delete" title="Permanent link">&para;</a></h5>
+<p>Remove a member from the workspace by revoking all their roles.</p>
+<p>This revokes all active role bindings for the principal in the workspace. By
+default, this endpoint waits for all roles to be revoked before returning. Use
+<code>wait_role_propagation=false</code> to skip waiting (useful for bulk operations).</p>
+<p><strong>Examples:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-214-1"><a id="__codelineno-214-1" name="__codelineno-214-1" href="#__codelineno-214-1"></a>DELETE /apis/entities/v2/workspaces/ml-team/members/user@example.com
+</span></code></pre></div>
+<p><strong>Usage:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-215-1"><a id="__codelineno-215-1" name="__codelineno-215-1" href="#__codelineno-215-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>delete<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>PRINCIPAL_ID
+</span></code></pre></div>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>&lt;PRINCIPAL_ID&gt;</code></li>
+</ul>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>--workspace</code></li>
+<li><code>--wait-role-propagation</code>: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.</li>
+</ul>
+<p><strong>Help:</strong></p>
+<ul>
+<li><code>--help, -h</code>: Show this message and exit.</li>
+</ul>
+<h5 id="nemo-workspaces-members-list">nemo workspaces members list<a class="headerlink" href="#nemo-workspaces-members-list" title="Permanent link">&para;</a></h5>
+<p>List all members of a workspace with their roles.</p>
+<p>Returns a list of all principals with active role bindings in the workspace.</p>
+<p><strong>Examples:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-216-1"><a id="__codelineno-216-1" name="__codelineno-216-1" href="#__codelineno-216-1"></a>GET /apis/entities/v2/workspaces/ml-team/members
+</span></code></pre></div>
+<p><strong>Usage:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-217-1"><a id="__codelineno-217-1" name="__codelineno-217-1" href="#__codelineno-217-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</span></code></pre></div>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>--workspace</code></li>
+</ul>
+<p><strong>Help:</strong></p>
+<ul>
+<li><code>--help, -h</code>: Show this message and exit.</li>
+</ul>
+<p><strong>Output Options:</strong></p>
+<ul>
+<li><code>--output-format, -f &lt;CHOICE&gt;</code>: Output format for the list of results. [possible values: table, json, yaml, markdown, csv, raw, code]</li>
+<li><code>--no-truncate</code>: Don't truncate long values in table/markdown/csv output.</li>
+<li><code>--output-columns, -c</code>: Columns to display: 'default', 'all', or comma-separated names. Only affects table/csv/markdown formats.</li>
+</ul>
+<h5 id="nemo-workspaces-members-update">nemo workspaces members update<a class="headerlink" href="#nemo-workspaces-members-update" title="Permanent link">&para;</a></h5>
+<p>Update the roles for a workspace member.</p>
+<p>This will revoke existing roles not in the new list and add new roles. By
+default, this endpoint waits for the roles to propagate before returning. Use
+<code>wait_role_propagation=false</code> to skip waiting (useful for bulk operations).</p>
+<p><strong>Examples:</strong></p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-218-1"><a id="__codelineno-218-1" name="__codelineno-218-1" href="#__codelineno-218-1"></a>PUT /apis/entities/v2/workspaces/ml-team/members/user@example.com
+</span><span id="__span-218-2"><a id="__codelineno-218-2" name="__codelineno-218-2" href="#__codelineno-218-2"></a>`{&quot;roles&quot;: [&quot;Viewer&quot;, &quot;Editor&quot;]}`
+</span></code></pre></div>
+<p><strong>Required fields:</strong> roles</p>
+<p><strong>Examples:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-219-1"><a id="__codelineno-219-1" name="__codelineno-219-1" href="#__codelineno-219-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>update<span class="w"> </span>&lt;principal_id&gt;<span class="w"> </span>--input-file<span class="w"> </span>config.json
+</span><span id="__span-219-2"><a id="__codelineno-219-2" name="__codelineno-219-2" href="#__codelineno-219-2"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>update<span class="w"> </span>&lt;principal_id&gt;<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;roles&quot;: &quot;value&quot;}&#39;</span>
+</span><span id="__span-219-3"><a id="__codelineno-219-3" name="__codelineno-219-3" href="#__codelineno-219-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>update<span class="w"> </span>&lt;principal_id&gt;<span class="w"> </span>--input-file<span class="w"> </span>-
+</span><span id="__span-219-4"><a id="__codelineno-219-4" name="__codelineno-219-4" href="#__codelineno-219-4"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>update<span class="w"> </span>&lt;principal_id&gt;<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
+</span></code></pre></div>
+<p><strong>Usage:</strong></p>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-220-1"><a id="__codelineno-220-1" name="__codelineno-220-1" href="#__codelineno-220-1"></a>nemo<span class="w"> </span>workspaces<span class="w"> </span>members<span class="w"> </span>update<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>PRINCIPAL_ID
+</span></code></pre></div>
+<p><strong>Arguments:</strong></p>
+<ul>
+<li><code>&lt;PRINCIPAL_ID&gt;</code></li>
+</ul>
+<p><strong>Options:</strong></p>
+<ul>
+<li><code>--workspace</code></li>
+<li><code>--roles</code>: Updated list of roles for the principal (can be repeated)</li>
+<li><code>--wait-role-propagation</code>: If true, wait for roles to propagate before returning (default: true). Set to false for bulk operations.</li>
+</ul>
+<p><strong>Help:</strong></p>
+<ul>
+<li><code>--help, -h</code>: Show this message and exit.</li>
+</ul>
+<p><strong>Input Options:</strong></p>
+<ul>
+<li><code>--input-file</code>: Path to JSON file (use '-' for stdin)</li>
+<li><code>--input-data</code>: Input data for the request (JSON or YAML)</li>
+</ul>
+<p><strong>Output Options:</strong></p>
+<ul>
+<li><code>--output-format, -f &lt;CHOICE&gt;</code>: Output format for an entity. [possible values: json, yaml, raw, code]</li>
+</ul>
 <h2 id="functional-plugins">Functional plugins<a class="headerlink" href="#functional-plugins" title="Permanent link">&para;</a></h2>
 <h3 id="nemo-guardrail">nemo guardrail<a class="headerlink" href="#nemo-guardrail" title="Permanent link">&para;</a></h3>
 <p>Manage guardrails.</p>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-210-1"><a id="__codelineno-210-1" name="__codelineno-210-1" href="#__codelineno-210-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-221-1"><a id="__codelineno-221-1" name="__codelineno-221-1" href="#__codelineno-221-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
 </span></code></pre></div>
 <p><strong>Help:</strong></p>
 <ul>
@@ -12160,13 +12427,13 @@ returned. Service principals and platform admins have access to all workspaces.<
 <p>Chat completion for the provided conversation.</p>
 <p><strong>Required fields:</strong> messages, model</p>
 <p><strong>Examples:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-211-1"><a id="__codelineno-211-1" name="__codelineno-211-1" href="#__codelineno-211-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-file<span class="w"> </span>config.json
-</span><span id="__span-211-2"><a id="__codelineno-211-2" name="__codelineno-211-2" href="#__codelineno-211-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;messages&quot;: {}, &quot;model&quot;: &quot;value&quot;}&#39;</span>
-</span><span id="__span-211-3"><a id="__codelineno-211-3" name="__codelineno-211-3" href="#__codelineno-211-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-file<span class="w"> </span>-
-</span><span id="__span-211-4"><a id="__codelineno-211-4" name="__codelineno-211-4" href="#__codelineno-211-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-222-1"><a id="__codelineno-222-1" name="__codelineno-222-1" href="#__codelineno-222-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-file<span class="w"> </span>config.json
+</span><span id="__span-222-2"><a id="__codelineno-222-2" name="__codelineno-222-2" href="#__codelineno-222-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;messages&quot;: {}, &quot;model&quot;: &quot;value&quot;}&#39;</span>
+</span><span id="__span-222-3"><a id="__codelineno-222-3" name="__codelineno-222-3" href="#__codelineno-222-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--input-file<span class="w"> </span>-
+</span><span id="__span-222-4"><a id="__codelineno-222-4" name="__codelineno-222-4" href="#__codelineno-222-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
 </span></code></pre></div>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-212-1"><a id="__codelineno-212-1" name="__codelineno-212-1" href="#__codelineno-212-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-223-1"><a id="__codelineno-223-1" name="__codelineno-223-1" href="#__codelineno-223-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>check<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </span></code></pre></div>
 <p><strong>Options:</strong></p>
 <ul>
@@ -12213,7 +12480,7 @@ returned. Service principals and platform admins have access to all workspaces.<
 <h4 id="nemo-guardrail-configs">nemo guardrail configs<a class="headerlink" href="#nemo-guardrail-configs" title="Permanent link">&para;</a></h4>
 <p>Manage configs</p>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-213-1"><a id="__codelineno-213-1" name="__codelineno-213-1" href="#__codelineno-213-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-224-1"><a id="__codelineno-224-1" name="__codelineno-224-1" href="#__codelineno-224-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>COMMAND<span class="w"> </span><span class="o">[</span>ARGS<span class="o">]</span>...
 </span></code></pre></div>
 <p><strong>Help:</strong></p>
 <ul>
@@ -12231,13 +12498,13 @@ returned. Service principals and platform admins have access to all workspaces.<
 <p>Create a new guardrail config.</p>
 <p><strong>Required fields:</strong> name</p>
 <p><strong>Examples:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-214-1"><a id="__codelineno-214-1" name="__codelineno-214-1" href="#__codelineno-214-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>config.json
-</span><span id="__span-214-2"><a id="__codelineno-214-2" name="__codelineno-214-2" href="#__codelineno-214-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;name&quot;: &quot;value&quot;}&#39;</span>
-</span><span id="__span-214-3"><a id="__codelineno-214-3" name="__codelineno-214-3" href="#__codelineno-214-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>-
-</span><span id="__span-214-4"><a id="__codelineno-214-4" name="__codelineno-214-4" href="#__codelineno-214-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-225-1"><a id="__codelineno-225-1" name="__codelineno-225-1" href="#__codelineno-225-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>config.json
+</span><span id="__span-225-2"><a id="__codelineno-225-2" name="__codelineno-225-2" href="#__codelineno-225-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;name&quot;: &quot;value&quot;}&#39;</span>
+</span><span id="__span-225-3"><a id="__codelineno-225-3" name="__codelineno-225-3" href="#__codelineno-225-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>-
+</span><span id="__span-225-4"><a id="__codelineno-225-4" name="__codelineno-225-4" href="#__codelineno-225-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
 </span></code></pre></div>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-215-1"><a id="__codelineno-215-1" name="__codelineno-215-1" href="#__codelineno-215-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>NAME<span class="o">]</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-226-1"><a id="__codelineno-226-1" name="__codelineno-226-1" href="#__codelineno-226-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>create<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span><span class="o">[</span>NAME<span class="o">]</span>
 </span></code></pre></div>
 <p><strong>Arguments:</strong></p>
 <ul>
@@ -12266,7 +12533,7 @@ returned. Service principals and platform admins have access to all workspaces.<
 <h5 id="nemo-guardrail-configs-delete">nemo guardrail configs delete<a class="headerlink" href="#nemo-guardrail-configs-delete" title="Permanent link">&para;</a></h5>
 <p>Delete a guardrail config.</p>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-216-1"><a id="__codelineno-216-1" name="__codelineno-216-1" href="#__codelineno-216-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>delete<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-227-1"><a id="__codelineno-227-1" name="__codelineno-227-1" href="#__codelineno-227-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>delete<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
 </span></code></pre></div>
 <p><strong>Arguments:</strong></p>
 <ul>
@@ -12284,7 +12551,7 @@ returned. Service principals and platform admins have access to all workspaces.<
 <p>List available guardrail configs.</p>
 <p>Lists guardrail configs for a specific workspace.</p>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-217-1"><a id="__codelineno-217-1" name="__codelineno-217-1" href="#__codelineno-217-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-228-1"><a id="__codelineno-228-1" name="__codelineno-228-1" href="#__codelineno-228-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>list<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
 </span></code></pre></div>
 <p><strong>Options:</strong></p>
 <ul>
@@ -12318,7 +12585,7 @@ JSON-only fields:
 <h5 id="nemo-guardrail-configs-get">nemo guardrail configs get<a class="headerlink" href="#nemo-guardrail-configs-get" title="Permanent link">&para;</a></h5>
 <p>Get info about a guardrail configuration.</p>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-218-1"><a id="__codelineno-218-1" name="__codelineno-218-1" href="#__codelineno-218-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>get<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-229-1"><a id="__codelineno-229-1" name="__codelineno-229-1" href="#__codelineno-229-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>get<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
 </span></code></pre></div>
 <p><strong>Arguments:</strong></p>
 <ul>
@@ -12341,13 +12608,13 @@ JSON-only fields:
 <p>If the request body has an empty field, keep the old
 value.</p>
 <p><strong>Examples:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-219-1"><a id="__codelineno-219-1" name="__codelineno-219-1" href="#__codelineno-219-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>config.json
-</span><span id="__span-219-2"><a id="__codelineno-219-2" name="__codelineno-219-2" href="#__codelineno-219-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;field&quot;: &quot;value&quot;}&#39;</span>
-</span><span id="__span-219-3"><a id="__codelineno-219-3" name="__codelineno-219-3" href="#__codelineno-219-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>-
-</span><span id="__span-219-4"><a id="__codelineno-219-4" name="__codelineno-219-4" href="#__codelineno-219-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-230-1"><a id="__codelineno-230-1" name="__codelineno-230-1" href="#__codelineno-230-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>config.json
+</span><span id="__span-230-2"><a id="__codelineno-230-2" name="__codelineno-230-2" href="#__codelineno-230-2"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-data<span class="w"> </span><span class="s1">&#39;{&quot;field&quot;: &quot;value&quot;}&#39;</span>
+</span><span id="__span-230-3"><a id="__codelineno-230-3" name="__codelineno-230-3" href="#__codelineno-230-3"></a><span class="nb">echo</span><span class="w"> </span><span class="s1">&#39;{&quot;json&quot;: &quot;data&quot;}&#39;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--input-file<span class="w"> </span>-
+</span><span id="__span-230-4"><a id="__codelineno-230-4" name="__codelineno-230-4" href="#__codelineno-230-4"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span>&lt;name&gt;<span class="w"> </span>--&lt;option&gt;<span class="w"> </span><span class="s2">&quot;value&quot;</span>
 </span></code></pre></div>
 <p><strong>Usage:</strong></p>
-<div class="language-shell highlight"><pre><span></span><code><span id="__span-220-1"><a id="__codelineno-220-1" name="__codelineno-220-1" href="#__codelineno-220-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
+<div class="language-shell highlight"><pre><span></span><code><span id="__span-231-1"><a id="__codelineno-231-1" name="__codelineno-231-1" href="#__codelineno-231-1"></a>nemo<span class="w"> </span>guardrail<span class="w"> </span>configs<span class="w"> </span>update<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span><span class="w"> </span>NAME
 </span></code></pre></div>
 <p><strong>Arguments:</strong></p>
 <ul>
