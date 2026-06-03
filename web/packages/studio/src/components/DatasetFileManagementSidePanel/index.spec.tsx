@@ -1,46 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { FilesetPurpose, type FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { GITKEEP_FILENAME } from '@studio/components/FilesTable/utils';
 import { render } from '@studio/tests/util/render';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-
-const { mockUseDatasetFileContent } = vi.hoisted(() => ({
-  mockUseDatasetFileContent: vi.fn(() => ({
-    data: undefined,
-    isLoading: false,
-    isError: false,
-  })),
-}));
-
-const localFileset: FilesetOutput = {
-  id: 'default/test-dataset',
-  name: 'test-dataset',
-  workspace: 'default',
-  description: '',
-  purpose: FilesetPurpose.dataset,
-  storage: { type: 'local', path: '/tmp/test-dataset' } as FilesetOutput['storage'],
-  metadata: {},
-  custom_fields: {},
-  project: '',
-  created_at: '',
-  updated_at: '',
-};
-
-const externalFileset: FilesetOutput = {
-  ...localFileset,
-  storage: {
-    type: 'huggingface',
-    repo_id: 'nvidia/test-dataset',
-  } as FilesetOutput['storage'],
-};
-
-vi.mock('@studio/api/datasets/useDatasetFileContent', () => ({
-  useDatasetFileContent: mockUseDatasetFileContent,
-}));
 
 vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({
@@ -61,7 +26,6 @@ describe('DatasetFileManagementSidePanel', () => {
     filesList: [],
     isLoading: false,
     isFilesFetching: false,
-    fileset: localFileset,
     onFolderChange: vi.fn(),
     onFileSelect: vi.fn(),
     onClose: vi.fn(),
@@ -70,14 +34,6 @@ describe('DatasetFileManagementSidePanel', () => {
   const renderComponent = (props = {}) => {
     return render(<DatasetFileManagementSidePanel {...defaultProps} {...props} />);
   };
-
-  beforeEach(() => {
-    mockUseDatasetFileContent.mockReturnValue({
-      data: undefined,
-      isLoading: false,
-      isError: false,
-    });
-  });
 
   it('renders the side panel', () => {
     renderComponent();
@@ -89,26 +45,6 @@ describe('DatasetFileManagementSidePanel', () => {
       isLoading: true,
     });
     expect(screen.getByText('Loading files...')).toBeInTheDocument();
-  });
-
-  it('renders the explorer directly when fileset metadata is unavailable', () => {
-    renderComponent({ fileset: undefined });
-    expect(screen.queryByRole('radio', { name: 'Dataset Card' })).not.toBeInTheDocument();
-    expect(screen.getByTestId('dataset-details-search-input')).toBeInTheDocument();
-  });
-
-  it('waits for the file list before showing the external README empty state', () => {
-    renderComponent({
-      fileset: externalFileset,
-      filesList: undefined,
-      isLoading: true,
-    });
-
-    expect(screen.getByRole('radio', { name: 'Dataset Card' })).toBeInTheDocument();
-    expect(screen.getByText('Loading README...')).toBeInTheDocument();
-    expect(
-      screen.queryByText('No README.md found at the root of this fileset.')
-    ).not.toBeInTheDocument();
   });
 
   it('shows clear filters bar when search is active and clears on click', async () => {
