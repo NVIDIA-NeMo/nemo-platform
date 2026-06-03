@@ -40,6 +40,17 @@ interface ClaudeCodeChatSurfaceProps {
   initialSessionId?: string;
 }
 
+const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
+  '[scrollbar-width:thin]',
+  '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
+  '[&::-webkit-scrollbar]:w-2',
+  '[&::-webkit-scrollbar-corner]:bg-transparent',
+  '[&::-webkit-scrollbar-track]:bg-transparent',
+  '[&::-webkit-scrollbar-thumb]:rounded-full',
+  '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
+  '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]',
+].join(' ');
+
 const ClaudeCodeChatLoadingState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
   <ClaudeCodeLayout activeSessionId={selectedSessionId}>
     <Stack className="h-full w-full" padding="density-2xl">
@@ -106,10 +117,13 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full w-full" padding="density-2xl">
-          <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1">
+        <Stack className="h-full w-full py-density-2xl">
+          <Stack className="min-h-0 w-full flex-1">
             <AssistantRuntimeProvider runtime={runtime}>
               <AssistantChatThread
+                contentClassName="mx-auto w-full max-w-180 px-density-2xl"
+                composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
+                viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
                 emptyState={{
