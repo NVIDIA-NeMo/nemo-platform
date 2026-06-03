@@ -507,7 +507,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data") as mock_db_prompt,
-            patch(f"{_PROCESS_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._ensure_port_available_for_start", wraps=_ensure_port_available_for_start) as mock_port,
             patch(f"{SETUP_MOD}._pause"),
         ):
@@ -527,7 +527,7 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._check_platform_reachable", side_effect=reachable_calls),
             patch(f"{SETUP_MOD}._kill_existing_services") as mock_kill,
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
-            patch(f"{_PROCESS_MOD}.check_port_available_for_start", return_value=conflict),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data"),
             patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
@@ -554,7 +554,7 @@ class TestMaybeStartServices:
         """Preflight aborts with port hint on stderr before spawning a subprocess."""
         conflict = PortConflict(kind="foreign", port=8080)
         with (
-            patch(f"{_PROCESS_MOD}.check_port_available_for_start", return_value=conflict),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
             pytest.raises(ClickExit),
         ):
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
@@ -566,7 +566,7 @@ class TestMaybeStartServices:
 
     def test_allows_start_when_port_free(self, maybe_start_preflight_mocks):
         with (
-            patch(f"{_PROCESS_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._pause"),
         ):
