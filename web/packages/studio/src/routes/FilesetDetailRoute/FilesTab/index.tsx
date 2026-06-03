@@ -3,51 +3,49 @@
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import {
-  useFilesListFilesetFiles,
-  useFilesRetrieveFileset,
-} from '@nemo/sdk/generated/platform/api';
-import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
-import { Flex } from '@nvidia/foundations-react-core';
+  FilesetPurpose,
+  type FilesetFileOutput,
+  type FilesetOutput,
+} from '@nemo/sdk/generated/platform/schema';
+import { Flex, Text } from '@nvidia/foundations-react-core';
 import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import {
   FilesetFileExplorer,
   type ExtraColumn,
 } from '@studio/components/filesets/FilesetFileExplorer';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
-import { DatasetSchemaEditor } from '@studio/routes/DatasetDetailRoute/DatasetSchemaEditor';
+import { DatasetSchemaEditor } from '@studio/routes/FilesetDetailRoute/DatasetSchemaEditor';
 import { useCallback, useMemo, type FC } from 'react';
 
 export interface FilesTabProps {
   workspace: string;
-  datasetName: string;
-  datasetId: string;
+  filesetName: string;
+  filesetId: string;
+  fileset: FilesetOutput;
+  files: FilesetFileOutput[] | undefined;
+  isFilesError: boolean;
+  isFilesFetching: boolean;
 }
 
 /**
- * Files tab for a fileset detail page. Two-column layout regardless of fileset
- * purpose:
- *   - Left: shared `FilesetFileExplorer` (browses files).
- *   - Right: purpose-specific panel. Today: `DatasetSchemaEditor` for dataset
- *     filesets only. Slot is reserved (fixed width) for model/generic UI that
- *     will land in follow-up beads.
+ * Files tab for a fileset detail page. The left column is the shared
+ * `FilesetFileExplorer`. The right column is a purpose-specific panel —
+ * today only the `DatasetSchemaEditor` for dataset filesets. For model and
+ * generic filesets the right column is omitted so the explorer spans the
+ * full width.
  */
-export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId }) => {
+export const FilesTab: FC<FilesTabProps> = ({
+  workspace,
+  filesetName,
+  filesetId,
+  fileset,
+  files,
+  isFilesError,
+  isFilesFetching,
+}) => {
   const { getQueryParam, setQueryParam, setQueryParams } = useQueryParams();
   const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder) ?? undefined;
   const selectedFilePath = getQueryParam(QUERY_PARAMETERS.file) || undefined;
-
-  const {
-    data: filesResponse,
-    isPending: isFilesPending,
-    isFetching: isFilesFetching,
-  } = useFilesListFilesetFiles(workspace, datasetName, undefined, {
-    query: { enabled: !!workspace && !!datasetName },
-  });
-  const filesList = filesResponse?.data;
-
-  const { data: fileset } = useFilesRetrieveFileset(workspace, datasetName, {
-    query: { enabled: !!workspace && !!datasetName },
-  });
 
   const handleFileSelect = useCallback(
     (filePath: string) => {
@@ -57,8 +55,8 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
   );
 
   const handleClosePreview = useCallback(() => {
-    // Closing the preview by clicking the dataset breadcrumb means "back to the
-    // top of the dataset." Clear both the file selection and the folder scope
+    // Closing the preview by clicking the fileset breadcrumb means "back to the
+    // top of the fileset." Clear both the file selection and the folder scope
     // so the explorer renders at root and the URL reflects that.
     setQueryParams({
       [QUERY_PARAMETERS.file]: undefined,
@@ -94,12 +92,12 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
     [currentFolder, setQueryParams]
   );
 
-  const showSchemaEditor = fileset?.purpose === FilesetPurpose.dataset;
+  const showSchemaEditor = fileset.purpose === FilesetPurpose.dataset;
 
   // Schema column for dataset filesets only. Resolves each file's mapping
   // from `metadata.dataset` so the user can see, at a glance, which schema
-  // each file uses (or `default` when it falls back to the root schema).
-  const datasetMetadata = fileset?.metadata?.dataset;
+  // each file uses (or the root schema when it falls back).
+  const datasetMetadata = fileset.metadata?.dataset;
   const extraColumns = useMemo<ExtraColumn[] | undefined>(() => {
     if (!showSchemaEditor) return undefined;
     const schemasByPath = datasetMetadata?.schemas_by_path ?? {};
@@ -120,19 +118,32 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
     ];
   }, [showSchemaEditor, datasetMetadata]);
 
+  if (isFilesError) {
+    return (
+      <Flex
+        className="w-full min-h-80"
+        align="center"
+        justify="center"
+        data-testid="fileset-files-tab"
+      >
+        <Text className="text-feedback-danger">Failed to load files.</Text>
+      </Flex>
+    );
+  }
+
   return (
     <Flex
       direction="row"
       gap="density-md"
       className="w-full h-full min-h-0"
-      data-testid="dataset-files-tab"
+      data-testid="fileset-files-tab"
     >
       <Flex direction="col" className="flex-1 min-w-0 min-h-0">
         {selectedFilePath ? (
-          <div className="w-full h-full min-h-0" data-testid="dataset-files-tab-preview">
+          <div className="w-full h-full min-h-0" data-testid="fileset-files-tab-preview">
             <FilesetFilePreviewContent
               workspace={workspace}
-              filesetName={datasetName}
+              filesetName={filesetName}
               filePath={selectedFilePath}
               onFilesetClick={handleClosePreview}
               onFolderClick={handleFolderChange}
@@ -141,34 +152,36 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
             />
           </div>
         ) : (
-          <FilesetFileExplorer
-            workspace={workspace}
-            datasetName={datasetName}
-            datasetId={datasetId}
-            currentFolder={currentFolder}
-            filesList={filesList}
-            isLoading={isFilesPending}
-            isFilesFetching={isFilesFetching}
-            onFileSelect={handleFileSelect}
-            onFolderToggle={handleFolderToggle}
-            extraColumns={extraColumns}
-          />
+          <div className="flex-1 min-h-0 overflow-auto">
+            <FilesetFileExplorer
+              workspace={workspace}
+              datasetName={filesetName}
+              datasetId={filesetId}
+              currentFolder={currentFolder}
+              filesList={files}
+              isLoading={false}
+              isFilesFetching={isFilesFetching}
+              onFileSelect={handleFileSelect}
+              onFolderToggle={handleFolderToggle}
+              extraColumns={extraColumns}
+            />
+          </div>
         )}
       </Flex>
-      <div
-        className="w-[480px] shrink-0 h-full min-h-0 flex flex-col p-density-lg"
-        data-testid="dataset-files-tab-right-panel"
-      >
-        {showSchemaEditor && fileset && (
+      {showSchemaEditor && (
+        <div
+          className="w-[480px] shrink-0 h-full min-h-0 flex flex-col p-density-lg"
+          data-testid="fileset-files-tab-right-panel"
+        >
           <DatasetSchemaEditor
             workspace={workspace}
-            datasetName={datasetName}
+            datasetName={filesetName}
             fileset={fileset}
-            filesList={filesList}
+            filesList={files}
             selectedFilePath={selectedFilePath}
           />
-        )}
-      </div>
+        </div>
+      )}
     </Flex>
   );
 };

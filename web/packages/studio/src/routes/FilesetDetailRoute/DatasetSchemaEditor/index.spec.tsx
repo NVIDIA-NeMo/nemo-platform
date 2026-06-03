@@ -6,7 +6,7 @@ import type {
   FilesetFileOutput,
   FilesetOutput,
 } from '@nemo/sdk/generated/platform/schema';
-import { DatasetSchemaEditor } from '@studio/routes/DatasetDetailRoute/DatasetSchemaEditor';
+import { DatasetSchemaEditor } from '@studio/routes/FilesetDetailRoute/DatasetSchemaEditor';
 import { render, screen } from '@studio/tests/util/render';
 import { fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

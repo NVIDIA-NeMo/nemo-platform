@@ -4,19 +4,27 @@
 import { KVPair } from '@nemo/common/src/components/KVPair';
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Panel, Stack, Text } from '@nvidia/foundations-react-core';
-import { getMetadataSections } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/utils';
+import { getMetadataSections } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel/utils';
 import { type FC } from 'react';
 
-export interface ModelMetadataPanelProps {
+export interface FilesetMetadataPanelProps {
   fileset: FilesetOutput;
   readmeMetadata?: Record<string, unknown>;
 }
 
-export const ModelMetadataPanel: FC<ModelMetadataPanelProps> = ({ fileset, readmeMetadata }) => {
+export const FilesetMetadataPanel: FC<FilesetMetadataPanelProps> = ({
+  fileset,
+  readmeMetadata,
+}) => {
   const sections = getMetadataSections(fileset, readmeMetadata);
 
   return (
-    <Panel elevation="high" density="compact" className="w-full" data-testid="model-metadata-panel">
+    <Panel
+      elevation="high"
+      density="compact"
+      className="w-full"
+      data-testid="fileset-metadata-panel"
+    >
       <Stack gap="density-xl">
         {sections.map((section, index) => (
           <Stack key={section.value} gap="density-lg">
