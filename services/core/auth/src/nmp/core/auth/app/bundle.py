@@ -13,9 +13,9 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
+import yaml
 from nemo_platform_plugin.discovery import discover_entry_points
 from nemo_platform_plugin.interface import PluginManifest
-import yaml
 from nmp.common.auth import ALL_WORKSPACES
 from nmp.common.auth.authz_format import validate_static_authz_data
 from nmp.common.config import get_service_config
@@ -68,8 +68,7 @@ def _build_domain_registry(static_data: dict) -> dict[str, dict[str, str]]:
     if conflicts:
         conflicting_names = ", ".join(sorted(conflicts))
         raise ValueError(
-            "Domain name conflict between core API endpoints and extension manifests: "
-            f"{conflicting_names}"
+            f"Domain name conflict between core API endpoints and extension manifests: {conflicting_names}"
         )
 
     domains: dict[str, dict[str, str]] = {}
