@@ -13,7 +13,8 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
-from nemo_platform_plugin.discovery import discover_manifests
+from nemo_platform_plugin.discovery import discover_entry_points
+from nemo_platform_plugin.interface import PluginManifest
 import yaml
 from nmp.common.auth import ALL_WORKSPACES
 from nmp.common.auth.authz_format import validate_static_authz_data
@@ -37,11 +38,32 @@ def _extract_domain_names_from_endpoints(endpoints: dict[str, object]) -> set[st
     return names
 
 
+def _discover_domain_manifests() -> dict[str, PluginManifest]:
+    """Return manifest metadata for extension API domains only.
+
+    Auth domains map to ``/apis/<domain>/...`` namespaces, so only ``nemo.services``
+    entry points are relevant here. Other plugin surfaces such as skills or
+    inference middleware may legitimately reuse names like ``guardrails`` without
+    contributing a top-level API domain.
+    """
+    manifests: dict[str, PluginManifest] = {}
+    for name, ep in discover_entry_points("nemo.services").items():
+        try:
+            dist = ep.dist
+            version = dist.metadata.get("Version", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+            description = dist.metadata.get("Summary", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+        except Exception:
+            version = ""
+            description = ""
+        manifests[name] = PluginManifest(name=name, version=version, description=description)
+    return manifests
+
+
 def _build_domain_registry(static_data: dict) -> dict[str, dict[str, str]]:
     """Build the unified auth domain registry for core and extension APIs."""
     endpoints = static_data.get("authz", {}).get("endpoints", {})
     domain_names = _extract_domain_names_from_endpoints(endpoints)
-    manifests = discover_manifests()
+    manifests = _discover_domain_manifests()
     conflicts = domain_names & manifests.keys()
     if conflicts:
         conflicting_names = ", ".join(sorted(conflicts))

@@ -100,7 +100,7 @@ async def test_build_authorization_data_includes_core_domain_metadata(monkeypatc
     """Core API namespaces are exposed as auth domains."""
     from nmp.core.auth.app.bundle import build_authorization_data
 
-    monkeypatch.setattr("nmp.core.auth.app.bundle.discover_manifests", lambda: {})
+    monkeypatch.setattr("nmp.core.auth.app.bundle._discover_domain_manifests", lambda: {})
 
     data = await build_authorization_data(None)
 
@@ -118,7 +118,7 @@ async def test_build_authorization_data_merges_extension_manifest_domain_metadat
     from nmp.core.auth.app.bundle import build_authorization_data
 
     monkeypatch.setattr(
-        "nmp.core.auth.app.bundle.discover_manifests",
+        "nmp.core.auth.app.bundle._discover_domain_manifests",
         lambda: {
             "agents": PluginManifest(
                 name="agents",
@@ -144,7 +144,7 @@ async def test_build_authorization_data_rejects_domain_manifest_collisions(monke
     from nmp.core.auth.app.bundle import build_authorization_data
 
     monkeypatch.setattr(
-        "nmp.core.auth.app.bundle.discover_manifests",
+        "nmp.core.auth.app.bundle._discover_domain_manifests",
         lambda: {
             "models": PluginManifest(
                 name="models",
@@ -156,3 +156,19 @@ async def test_build_authorization_data_rejects_domain_manifest_collisions(monke
 
     with pytest.raises(ValueError, match="Domain name conflict"):
         await build_authorization_data(None)
+
+
+@pytest.mark.asyncio
+async def test_build_authorization_data_ignores_non_service_plugin_name_overlap(monkeypatch):
+    """Non-service plugin surfaces must not participate in auth domain discovery."""
+    from nmp.core.auth.app.bundle import build_authorization_data
+
+    monkeypatch.setattr("nmp.core.auth.app.bundle._discover_domain_manifests", lambda: {})
+
+    data = await build_authorization_data(None)
+
+    assert data["authz"]["domains"]["guardrails"] == {
+        "name": "guardrails",
+        "version": "core",
+        "kind": "core",
+    }
