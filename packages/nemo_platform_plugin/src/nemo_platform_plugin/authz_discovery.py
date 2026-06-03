@@ -10,7 +10,7 @@ import logging
 from functools import cache
 from typing import Any, Callable
 
-from nemo_platform_plugin.authz import AuthzContribution
+from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod
 
 logger = logging.getLogger(__name__)
 
@@ -22,12 +22,11 @@ AuthzContributor = Callable[[], AuthzContribution] | type[Any]
 def _load_authz_contribution(loaded: AuthzContributor, source: str) -> AuthzContribution | None:
     try:
         if isinstance(loaded, type):
-            target = loaded
-            if hasattr(target, "get_authz_contribution"):
-                result = target.get_authz_contribution()
+            if hasattr(loaded, "get_authz_contribution"):
+                result = _invoke_get_authz_contribution(loaded)
             else:
-                instance = target()
-                result = instance.get_authz_contribution() if hasattr(instance, "get_authz_contribution") else None
+                instance = loaded()
+                result = _invoke_get_authz_contribution(instance)
         elif callable(loaded):
             result = loaded()
         else:
@@ -55,7 +54,7 @@ def _load_authz_contribution(loaded: AuthzContributor, source: str) -> AuthzCont
     return None
 
 
-def _invoke_get_authz_contribution(item: Any) -> Any:
+def _invoke_get_authz_contribution(item: Any) -> AuthzContribution | dict[str, Any] | None:
     """Call ``get_authz_contribution`` on a service class or contributor instance."""
     getter = getattr(item, "get_authz_contribution", None)
     if not callable(getter):
@@ -66,9 +65,7 @@ def _invoke_get_authz_contribution(item: Any) -> Any:
     return getter()
 
 
-def _method_from_dict(spec: dict[str, Any]) -> Any:
-    from nemo_platform_plugin.authz import AuthzEndpointMethod
-
+def _method_from_dict(spec: dict[str, Any]) -> AuthzEndpointMethod:
     return AuthzEndpointMethod(
         permissions=list(spec.get("permissions") or []),
         scopes=list(spec["scopes"]) if spec.get("scopes") is not None else None,

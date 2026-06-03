@@ -41,6 +41,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_platform_plugin._base import _NamedPlugin
+from nemo_platform_plugin.authz import AuthzContribution
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -116,7 +117,7 @@ class NemoService(_NamedPlugin):
         """
 
     @classmethod
-    def get_authz_contribution(cls) -> object | None:
+    def get_authz_contribution(cls) -> AuthzContribution | None:
         """Optional authorization policy for routes under ``/apis/<name>/``.
 
         Override as a **classmethod** on the :class:`NemoService` subclass (``discover_services``

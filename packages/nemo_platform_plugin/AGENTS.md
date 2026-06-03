@@ -26,6 +26,7 @@ Before writing any plugin code, load the relevant skill. Skills contain exact im
 ## Python Conventions
 
 - **No `__init__.py` files**: The plugin package directory does not require `__init__.py`. Do not add one.
+- **Concrete type hints**: Prefer concrete type hints over string-based ones. Do not import types under `TYPE_CHECKING` when they are runtime-available in the same package — use regular imports instead.
 - **Package path**: `src/nemo_<plugin_name>/` where `plugin_name` matches the CLI entry-point key (e.g., `src/nemo_my_plugin/` for plugin `"my-plugin"`).
 - **Build system**: Always use hatchling with `packages = ["src/nemo_my_plugin"]` — use the exact package directory name.
 - **Run tests**: `uv run pytest`

@@ -101,6 +101,7 @@ _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
     "nemo.authz": "NEMO_PLUGIN_AUTHZ_ALLOWLIST",
 }
 
+
 def _manifest_plugin_name(group: str, entry_point_name: str) -> str:
     if group in _DOT_SCOPED_GROUPS:
         return entry_point_name.split(".", 1)[0]
