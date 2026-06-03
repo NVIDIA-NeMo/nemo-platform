@@ -7,7 +7,7 @@ This benchmark summarizes 3-Tier Evaluation from NVSkills-Eval results for the s
 ## Evaluation Summary
 
 - Skill: `nemo-evaluator-plugin`
-- Evaluation date: 2026-06-03
+- Evaluation date: 2026-05-30
 - NVSkills-Eval profile: `external`
 - Environment: `local`
 - Dataset: 1 evaluation tasks
@@ -55,10 +55,10 @@ Task composition is derived from the evaluation dataset when possible. Entries w
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 84% (-8%) | 94% (+43%) |
-| Discoverability | 2 | 34% (-29%) | 81% (+13%) |
-| Effectiveness | 2 | 96% (-1%) | 95% (+75%) |
-| Efficiency | 2 | 23% (-28%) | 74% (+16%) |
+| Correctness | 2 | 92% (+8%) | 94% (+12%) |
+| Discoverability | 2 | 61% (+27%) | 94% (+5%) |
+| Effectiveness | 2 | 98% (+7%) | 92% (+29%) |
+| Efficiency | 2 | 48% (+25%) | 92% (+7%) |
 
 Score values show skill-assisted performance. Values in parentheses show uplift versus the no-skill baseline when baseline data is available.
 

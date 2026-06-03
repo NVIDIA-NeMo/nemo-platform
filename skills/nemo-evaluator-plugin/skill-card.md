@@ -7,9 +7,9 @@ This skill is ready for commercial/non-commercial use. <br>
 NVIDIA <br>
 
 ### License/Terms of Use: <br>
-Apache 2.0 <br>
+Apache-2.0 <br>
 ## Use Case: <br>
-Developers and engineers building, running, and troubleshooting NeMo Evaluator plugin CLI commands, inline evaluation specs, and LLM-judge configurations for local and cluster execution. <br>
+Developers and engineers use this skill to configure, run, and troubleshoot NeMo Evaluator plugin jobs for inline metric execution and benchmark evaluation of models and agents. <br>
 
 ### Deployment Geography for Use: <br>
 Global <br>
@@ -25,19 +25,19 @@ Mitigation: Review and scan skill before deployment. <br>
 
 
 ## Skill Output: <br>
-**Output Type(s):** [Shell commands, Configuration instructions, API Calls] <br>
-**Output Format:** [Markdown with inline bash code blocks] <br>
+**Output Type(s):** [Shell commands, Code, Configuration instructions] <br>
+**Output Format:** [Markdown with inline bash and Python code blocks] <br>
 **Output Parameters:** [1D] <br>
 **Other Properties Related to Output:** [None] <br>
 
 ## Evaluation Agents Used: <br>
-- `claude-code` <br>
-- `codex` <br>
+- Claude Code (`claude-code`) <br>
+- Codex (`codex`) <br>
 
 
 
 ## Evaluation Tasks: <br>
-Evaluated against 1 evaluation task with 2 attempts per task (NVSkills-Eval profile: external, pass threshold: 50%). <br>
+Evaluated against 1 internal skill evaluation task with 2 attempts per task (pass threshold: 50%). <br>
 
 ## Evaluation Metrics Used: <br>
 Reported benchmark dimensions: <br>
@@ -62,10 +62,10 @@ Underlying evaluation signals used in this run: <br>
 | Dimension | Num | `claude-code` | `codex` |
 |---|---:|---:|---:|
 | Security | 2 | 100% (+0%) | 100% (+0%) |
-| Correctness | 2 | 84% (-8%) | 94% (+43%) |
-| Discoverability | 2 | 34% (-29%) | 81% (+13%) |
-| Effectiveness | 2 | 96% (-1%) | 95% (+75%) |
-| Efficiency | 2 | 23% (-28%) | 74% (+16%) |
+| Correctness | 2 | 92% (+8%) | 94% (+12%) |
+| Discoverability | 2 | 61% (+27%) | 94% (+5%) |
+| Effectiveness | 2 | 98% (+7%) | 92% (+29%) |
+| Efficiency | 2 | 48% (+25%) | 92% (+7%) |
 
 ## Skill Version(s): <br>
 0.1.0 (source: pyproject.toml) <br>

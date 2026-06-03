@@ -78,8 +78,6 @@ For evaluator API key auth, see [Evaluator API Auth](references/api-auth.md).
 
 For local and cluster troubleshooting, see [Evaluation Troubleshooting](references/troubleshooting.md).
 
-<!-- Temporary NVSkills CI signature test. -->
-
 Call the SDK-backed status route through the platform SDK:
 
 ```python
