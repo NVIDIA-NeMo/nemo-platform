@@ -142,8 +142,8 @@ export const DashboardLandingRoute: FC = () => {
   return (
     <ClaudeCodeLayout>
       <AccessibleTitle title="Dashboard">
-        <GradientBackground className="h-full">
-          <main className="relative flex h-full min-h-[calc(100vh-var(--nv-app-bar-height))] items-center justify-center px-4 py-10 text-primary">
+        <GradientBackground className="h-full w-full">
+          <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
             <Flex className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8">
               <Flex className="flex flex-col items-center gap-3 text-center">
                 <Text kind="body/bold/2xl" className="text-center">
