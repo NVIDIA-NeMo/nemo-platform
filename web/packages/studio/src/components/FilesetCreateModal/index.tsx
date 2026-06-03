@@ -12,7 +12,7 @@ import {
   getFilesListFilesetsQueryKey,
   useFilesCreateFileset,
 } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import {

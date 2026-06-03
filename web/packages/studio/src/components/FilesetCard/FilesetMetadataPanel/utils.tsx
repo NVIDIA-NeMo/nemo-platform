@@ -27,7 +27,7 @@ export const getMetadataSections = (
     { value: 'source', title: 'Source', rows: getSourceRows(fileset) },
   ];
 
-  const detailsRows = getReadmeDetailRows(readmeMetadata);
+  const detailsRows = getReadmeDetailRows({ description: fileset.description, ...readmeMetadata });
   if (detailsRows.length > 0) {
     sections.push({ value: 'details', title: 'Details', rows: detailsRows });
   }
@@ -78,6 +78,9 @@ const getReadmeDetailRows = (metadata: Record<string, unknown> | undefined): Met
   if (!metadata) return [];
 
   const rows: MetadataRow[] = [];
+
+  const description = readString(metadata.description);
+  if (description) rows.push({ label: 'Description', value: description });
 
   const license = readString(metadata.license);
   const licenseLink = readString(metadata.license_link);

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
+import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { FilesetMetadataPanel } from '@studio/components/FilesetCard/FilesetMetadataPanel';
 import { ReadmeBody } from '@studio/components/FilesetCard/ReadmeBody';
@@ -14,6 +14,7 @@ export interface FilesetCardProps {
   filesetName: string;
   fileset: FilesetOutput;
   files: FilesetFileOutput[] | undefined;
+  isFilesLoading: boolean;
   isFilesError: boolean;
   testId?: string;
   metadataPanelTestId?: string;
@@ -26,6 +27,7 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   filesetName,
   fileset,
   files,
+  isFilesLoading,
   isFilesError,
   testId,
   metadataPanelTestId,
@@ -51,24 +53,15 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   );
 
   return (
-    <Grid
-      cols={{ base: 1, xl: 12 }}
-      gap="density-xl"
-      className="w-full items-start"
+    <div
+      className="flex h-full min-h-0 w-full flex-col gap-density-xl md:flex-row md:items-stretch"
       data-testid={testId}
     >
-      <GridItem
-        cols={{ lg: 8 }}
-        className="min-w-0 overflow-hidden rounded-lg border border-base bg-surface-raised p-density-xl"
-      >
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto rounded-lg border border-base bg-surface-raised p-density-xl md:flex-2">
         <Stack gap="density-md">
-          {fileset.description && (
-            <Text kind="body/regular/md" data-testid={testId ? `${testId}-description` : undefined}>
-              {fileset.description}
-            </Text>
-          )}
           <ReadmeBody
             isFilesError={isFilesError}
+            isFilesLoading={isFilesLoading}
             readmePath={readmePath}
             isContentLoading={isContentLoading}
             isContentError={isContentError}
@@ -77,14 +70,14 @@ export const FilesetCard: FC<FilesetCardProps> = ({
             filesErrorMessage={filesErrorMessage}
           />
         </Stack>
-      </GridItem>
-      <GridItem cols={{ lg: 4 }} className="min-w-0">
+      </div>
+      <div className="min-h-0 min-w-0 flex-1 overflow-y-auto md:flex-1">
         <FilesetMetadataPanel
           fileset={fileset}
           readmeMetadata={parsed?.metadata}
           testId={metadataPanelTestId}
         />
-      </GridItem>
-    </Grid>
+      </div>
+    </div>
   );
 };

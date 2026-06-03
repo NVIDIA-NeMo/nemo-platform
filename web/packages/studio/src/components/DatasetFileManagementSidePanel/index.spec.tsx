@@ -8,9 +8,14 @@ import { render } from '@studio/tests/util/render';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-// Tabs only render for external filesets; local filesets render the explorer
-// directly. These tests focus on the explorer's behavior, so we hand the
-// panel a local fileset by default.
+const { mockUseDatasetFileContent } = vi.hoisted(() => ({
+  mockUseDatasetFileContent: vi.fn(() => ({
+    data: undefined,
+    isLoading: false,
+    isError: false,
+  })),
+}));
+
 const localFileset: FilesetOutput = {
   id: 'default/test-dataset',
   name: 'test-dataset',
@@ -24,6 +29,18 @@ const localFileset: FilesetOutput = {
   created_at: '',
   updated_at: '',
 };
+
+const externalFileset: FilesetOutput = {
+  ...localFileset,
+  storage: {
+    type: 'huggingface',
+    repo_id: 'nvidia/test-dataset',
+  } as FilesetOutput['storage'],
+};
+
+vi.mock('@studio/api/datasets/useDatasetFileContent', () => ({
+  useDatasetFileContent: mockUseDatasetFileContent,
+}));
 
 vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({
@@ -54,6 +71,14 @@ describe('DatasetFileManagementSidePanel', () => {
     return render(<DatasetFileManagementSidePanel {...defaultProps} {...props} />);
   };
 
+  beforeEach(() => {
+    mockUseDatasetFileContent.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      isError: false,
+    });
+  });
+
   it('renders the side panel', () => {
     renderComponent();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -64,6 +89,26 @@ describe('DatasetFileManagementSidePanel', () => {
       isLoading: true,
     });
     expect(screen.getByText('Loading files...')).toBeInTheDocument();
+  });
+
+  it('renders the explorer directly when fileset metadata is unavailable', () => {
+    renderComponent({ fileset: undefined });
+    expect(screen.queryByRole('radio', { name: 'Dataset Card' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('dataset-details-search-input')).toBeInTheDocument();
+  });
+
+  it('waits for the file list before showing the external README empty state', () => {
+    renderComponent({
+      fileset: externalFileset,
+      filesList: undefined,
+      isLoading: true,
+    });
+
+    expect(screen.getByRole('radio', { name: 'Dataset Card' })).toBeInTheDocument();
+    expect(screen.getByText('Loading README...')).toBeInTheDocument();
+    expect(
+      screen.queryByText('No README.md found at the root of this fileset.')
+    ).not.toBeInTheDocument();
   });
 
   it('shows clear filters bar when search is active and clears on click', async () => {

@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
+import {
+  useFilesListFilesetFiles,
+  useFilesRetrieveFileset,
+} from '@nemo/sdk/generated/platform/api';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { type FC } from 'react';
 
@@ -63,15 +66,25 @@ export const DatasetFileManagementSidePanelContainer: FC<
 > = ({ datasetId, open, currentFolder, onClose, onFolderChange, onFileSelect }) => {
   // Parse dataset ID into workspace and name
   const { workspace, name } = getPartsFromReference(datasetId);
+  const queryEnabled = open && !!workspace && !!name;
 
   const {
     data: filesResponse,
     isPending: isFilesPending,
     isFetching: isFilesFetching,
+    isError: isFilesError,
   } = useFilesListFilesetFiles(workspace ?? '', name ?? '', undefined, {
-    query: { enabled: open && !!workspace && !!name },
+    query: { enabled: queryEnabled },
   });
   const filesList = filesResponse?.data;
+
+  const {
+    data: fileset,
+    isPending: isFilesetPending,
+    isError: isFilesetError,
+  } = useFilesRetrieveFileset(workspace ?? '', name ?? '', {
+    query: { enabled: queryEnabled },
+  });
 
   const isLoading = isFilesPending;
 
@@ -85,6 +98,10 @@ export const DatasetFileManagementSidePanelContainer: FC<
       filesList={filesList}
       isLoading={isLoading}
       isFilesFetching={isFilesFetching}
+      isFilesError={isFilesError}
+      fileset={fileset}
+      isFilesetLoading={isFilesetPending}
+      isFilesetError={isFilesetError}
       onFolderChange={onFolderChange}
       onFileSelect={onFileSelect ?? (() => {})}
       onClose={onClose}

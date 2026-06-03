@@ -7,6 +7,7 @@ import { type FC } from 'react';
 
 export interface ReadmeBodyProps {
   isFilesError: boolean;
+  isFilesLoading: boolean;
   readmePath: string | undefined;
   isContentLoading: boolean;
   isContentError: boolean;
@@ -17,6 +18,7 @@ export interface ReadmeBodyProps {
 
 export const ReadmeBody: FC<ReadmeBodyProps> = ({
   isFilesError,
+  isFilesLoading,
   readmePath,
   isContentLoading,
   isContentError,
@@ -28,6 +30,14 @@ export const ReadmeBody: FC<ReadmeBodyProps> = ({
     return (
       <Flex className="min-h-80" align="center" justify="center">
         <Text className="text-feedback-danger">{filesErrorMessage}</Text>
+      </Flex>
+    );
+  }
+
+  if (isFilesLoading) {
+    return (
+      <Flex className="min-h-80" align="center" justify="center">
+        <Spinner description="Loading README..." />
       </Flex>
     );
   }

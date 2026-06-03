@@ -24,11 +24,11 @@ export const FilesetSidePanelWrapper: FC<FilesetSidePanelWrapperProps> = ({
     onOpenChange={onOpenChange}
     attributes={{
       SidePanelHeading: { className: 'font-normal' },
-      SidePanelMain: { className: 'p-0 overflow-x-hidden' },
+      SidePanelMain: { className: 'flex min-h-0 flex-col overflow-hidden p-0' },
     }}
     bordered
     modal
-    className="w-[960px]"
+    className="w-[960px] [&_.nv-side-panel-main]:overflow-hidden"
   >
     {children}
   </SidePanel>

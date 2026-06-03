@@ -6,15 +6,7 @@ import {
   type FilesetFileOutput,
   type FilesetOutput,
 } from '@nemo/sdk/generated/platform/schema';
-import {
-  Flex,
-  Spinner,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Flex, SegmentedControl, Spinner, Stack, Text } from '@nvidia/foundations-react-core';
 import { DatasetBreadcrumbs } from '@studio/components/DatasetFileManagementSidePanel/DatasetBreadcrumbs';
 import { FilesetCard } from '@studio/components/FilesetCard';
 import { FilesetFileExplorer } from '@studio/components/filesets/FilesetFileExplorer';
@@ -73,17 +65,18 @@ export interface DatasetFileManagementSidePanelProps {
 /**
  * Reusable dataset file management sidepanel.
  *
- * For **external** filesets (HF / NGC / S3) the panel exposes two tabs:
+ * For **external** filesets (HF / NGC / S3) the panel exposes a segmented
+ * control with two views:
  *   - **Card** — renders {@link FilesetCard} (description + README from the
  *     fileset's root, plus a metadata sidebar).
  *   - **Files** — the existing {@link FilesetFileExplorer}.
  *
- * For **local** filesets there's no upstream README to show, so the tabs are
+ * For **local** filesets there's no upstream README to show, so the switcher is
  * hidden entirely and the explorer renders directly inside the panel — the
  * pre-card UX.
  *
- * When the panel opens for an external fileset, **Card** is the default tab;
- * once the user picks a tab it's sticky for the lifetime of the panel.
+ * When the panel opens for an external fileset, **Card** is the default view;
+ * once the user picks a view it's sticky for the lifetime of the panel.
  */
 export const DatasetFileManagementSidePanel: FC<DatasetFileManagementSidePanelProps> = ({
   open,
@@ -124,8 +117,7 @@ export const DatasetFileManagementSidePanel: FC<DatasetFileManagementSidePanelPr
     setLockedDefaultTab(undefined);
   }, [datasetId]);
 
-  const isLocal = fileset !== undefined && fileset.storage.type === 'local';
-  const showTabs = !isLocal;
+  const showTabs = isFilesetLoading || isFilesetError || isExternalFileset(fileset);
   const activeTab = userPickedTab ?? lockedDefaultTab ?? SidePanelTab.Card;
 
   const handleOpenChange = (isOpen: boolean) => {
@@ -138,30 +130,31 @@ export const DatasetFileManagementSidePanel: FC<DatasetFileManagementSidePanelPr
   const renderCardContent = (): ReactNode => {
     if (isFilesetLoading) {
       return (
-        <Flex className="min-h-80 px-density-xl" align="center" justify="center">
+        <Flex className="h-full min-h-0 px-density-xl" align="center" justify="center">
           <Spinner description="Loading card..." />
         </Flex>
       );
     }
     if (isFilesetError || !fileset) {
       return (
-        <Flex className="min-h-80 px-density-xl" align="center" justify="center">
+        <Flex className="h-full min-h-0 px-density-xl" align="center" justify="center">
           <Text className="text-feedback-danger">Failed to load fileset.</Text>
         </Flex>
       );
     }
     return (
-      <div className="px-density-xl pb-density-xl">
+      <Stack className="h-full min-h-0 px-density-xl pb-density-xl">
         <FilesetCard
           workspace={workspace}
           filesetName={datasetName}
           fileset={fileset}
           files={filesList}
+          isFilesLoading={isLoading}
           isFilesError={isFilesError}
           testId="dataset-side-panel-card"
           metadataPanelTestId="dataset-side-panel-metadata"
         />
-      </div>
+      </Stack>
     );
   };
 
@@ -191,34 +184,35 @@ export const DatasetFileManagementSidePanel: FC<DatasetFileManagementSidePanelPr
         />
       }
     >
-      {showTabs ? (
-        <TabsRoot
-          className="flex flex-col h-full w-full min-h-0 min-w-0"
-          value={activeTab}
-          onValueChange={(value) => setUserPickedTab(value as SidePanelTab)}
-        >
-          <TabsList className="shrink-0 px-density-xl">
-            <TabsTrigger value={SidePanelTab.Card}>{getCardTabLabel(fileset?.purpose)}</TabsTrigger>
-            <TabsTrigger value={SidePanelTab.Files}>Files</TabsTrigger>
-          </TabsList>
+      <Stack className="h-full min-h-0 w-full ">
+        {showTabs ? (
+          <>
+            <div className="shrink-0 px-density-xl py-density-md">
+              <SegmentedControl
+                className="w-full"
+                value={activeTab}
+                onValueChange={(value) => setUserPickedTab(value as SidePanelTab)}
+                items={[
+                  { value: SidePanelTab.Card, children: getCardTabLabel(fileset?.purpose) },
+                  { value: SidePanelTab.Files, children: 'Files' },
+                ]}
+              />
+            </div>
 
-          <TabsContent
-            value={SidePanelTab.Card}
-            className="flex-1 w-full min-h-0 min-w-0 overflow-y-auto p-0 pt-density-md"
-          >
-            {renderCardContent()}
-          </TabsContent>
-
-          <TabsContent
-            value={SidePanelTab.Files}
-            className="flex-1 w-full min-h-0 min-w-0 overflow-y-auto p-0"
-          >
-            {renderExplorer()}
-          </TabsContent>
-        </TabsRoot>
-      ) : (
-        renderExplorer()
-      )}
+            <Stack
+              className={
+                activeTab === SidePanelTab.Card
+                  ? 'min-h-0 flex-1 overflow-hidden'
+                  : 'min-h-0 flex-1 overflow-y-auto'
+              }
+            >
+              {activeTab === SidePanelTab.Card ? renderCardContent() : renderExplorer()}
+            </Stack>
+          </>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">{renderExplorer()}</div>
+        )}
+      </Stack>
     </FilesetSidePanelWrapper>
   );
 };
