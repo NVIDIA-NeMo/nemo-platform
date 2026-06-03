@@ -108,7 +108,9 @@ nemo services [OPTIONS] COMMAND [ARGS]...
 * `stop`: Stop running platform services.
 * `restart`: Restart platform services.
 * `status`: Show status of the platform services instance for this...
-* `ls`: List all known service instances on this host.
+* `ls`: List service instances on this host.
+* `rm`: Remove a stopped instance record and its logs.
+* `prune`: Remove all stopped instance records on this host.
 * `logs`: Show or locate the service log file.
 
 #### nemo services run
@@ -262,13 +264,87 @@ nemo services status [OPTIONS]
 
 #### nemo services ls
 
-List all known service instances on this host.
+List service instances on this host.
+
+By default shows running instances only.  Use ``--all`` to include stopped
+records that still have logs on disk.
+
+**Examples:**
+
+```shell
+nemo services ls
+nemo services ls --all
+```
 
 **Usage:**
 
 ```shell
 nemo services ls [OPTIONS]
 ```
+
+**Options:**
+
+* `--all, -a`: Include stopped instance records (like docker ps -a).
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services rm
+
+Remove a stopped instance record and its logs.
+
+The scope must match a row from ``nemo services ls --all``.  Running
+instances are refused; stop them first.
+
+**Examples:**
+
+```shell
+nemo services rm abc12345-8080
+nemo services rm --instance abc12345-8080
+```
+
+**Usage:**
+
+```shell
+nemo services rm [OPTIONS] [SCOPE]
+```
+
+**Arguments:**
+
+* `<SCOPE>`: Instance scope from 'nemo services ls --all'.
+
+**Options:**
+
+* `--instance`: Instance scope (alternative to positional argument).
+
+**Help:**
+
+* `--help, -h`: Show this message and exit.
+
+#### nemo services prune
+
+Remove all stopped instance records on this host.
+
+Stopped records may include service logs from prior runs.  Logs are
+deleted with the instance directory.
+
+**Examples:**
+
+```shell
+nemo services prune
+nemo services prune --force
+```
+
+**Usage:**
+
+```shell
+nemo services prune [OPTIONS]
+```
+
+**Options:**
+
+* `--force`: Remove without confirmation.
 
 **Help:**
 
