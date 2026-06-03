@@ -234,17 +234,31 @@ class BaseRAGASMetric(MetricBase):
         return getattr(self, "ignore_request_failure", False)
 
     def _nan_scores_for_metrics(self, metrics: list) -> dict[str, float]:
-        """Build a NaN score mapping for the active RAGAS metric objects."""
-        metric_names: list[str] = []
-        for metric in metrics:
-            metric_name = getattr(metric, "name", None)
-            if isinstance(metric_name, str) and metric_name:
-                metric_names.append(metric_name)
-
+        """Build a NaN score mapping using declared output_spec names."""
+        metric_names = [output.name for output in self.output_spec()]
         if not metric_names:
-            metric_names = [output.name for output in self.output_spec()]
+            for metric in metrics:
+                metric_name = getattr(metric, "name", None)
+                if isinstance(metric_name, str) and metric_name:
+                    metric_names.append(metric_name)
 
         return {metric_name: float("nan") for metric_name in metric_names}
+
+    def _align_scores_to_output_spec(self, scores: dict[str, float]) -> dict[str, float]:
+        """Map RAGAS internal metric keys (e.g. ``nv_accuracy``) to declared output names."""
+        declared = [output.name for output in self.output_spec()]
+        if not declared or not scores:
+            return scores
+
+        if all(name in scores for name in declared):
+            return {name: scores[name] for name in declared}
+
+        undeclared = {name: value for name, value in scores.items() if name not in declared}
+        if len(declared) == 1 and len(undeclared) == 1:
+            return {declared[0]: next(iter(undeclared.values()))}
+
+        aligned = {name: scores[name] for name in declared if name in scores}
+        return aligned if aligned else scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
         """Get the LLM judge instance based on configuration."""
@@ -327,14 +341,14 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluate failed with parse/output error; returning NaN score",
                 extra={"error": str(error), "metric_type": self.type},
             )
-            return self._nan_scores_for_metrics(metrics)
+            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
         except (httpx.HTTPError, TimeoutError) as error:
             if self._ignore_request_failure():
                 self._log.warning(
                     "RAGAS judge inference failed and is ignored by metric policy; returning NaN score",
                     extra={"error": str(error), "metric_type": self.type},
                 )
-                return self._nan_scores_for_metrics(metrics)
+                return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
             raise
         except Exception:
             raise
@@ -349,7 +363,7 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluation returned no scores; returning NaN score",
                 extra={"metric_type": self.type},
             )
-            return self._nan_scores_for_metrics(metrics)
+            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
 
         invalid_score_names = _invalid_score_names(scores)
         if invalid_score_names:
@@ -360,9 +374,9 @@ class BaseRAGASMetric(MetricBase):
                     "invalid_score_names": sorted(invalid_score_names),
                 },
             )
-            return self._nan_scores_for_metrics(metrics)
+            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
 
-        return scores
+        return self._align_scores_to_output_spec(scores)
 
     def _create_evaluation_dataset(self, item: dict, sample: dict) -> EvaluationDataset:
         """Create an EvaluationDataset from the given item and sample."""
