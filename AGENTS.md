@@ -164,7 +164,7 @@ Regenerate the SDK whenever you modify:
 ### Type Checking
 
 Use the `ty` tool for type checking:
-- Check all files: `uv run --frozen --extra cpu ty check`
+- Check all files: `uv run --frozen ty check`
 
 Type checking runs automatically in CI via the `lint:uv` job.
 

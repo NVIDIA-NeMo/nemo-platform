@@ -33,6 +33,7 @@ export interface CustomAssistantRunResult {
 }
 
 interface UseCustomAssistantChatRuntimeOptions {
+  initialMessages?: readonly ThreadMessageLike[];
   onRun: (context: CustomAssistantRunContext) => Promise<CustomAssistantRunResult | void>;
   onError?: (error: Error) => void;
 }
@@ -41,12 +42,13 @@ const isAbortError = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
 
 export const useCustomAssistantChatRuntime = ({
+  initialMessages = [],
   onRun,
   onError,
 }: UseCustomAssistantChatRuntimeOptions) => {
-  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([]);
+  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const [isRunning, setIsRunning] = useState(false);
-  const messagesRef = useRef<readonly ThreadMessageLike[]>([]);
+  const messagesRef = useRef<readonly ThreadMessageLike[]>(initialMessages);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   const setThreadMessages = useCallback((nextMessages: readonly ThreadMessageLike[]) => {

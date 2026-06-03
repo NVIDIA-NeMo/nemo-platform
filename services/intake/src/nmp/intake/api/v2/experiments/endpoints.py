@@ -3,16 +3,16 @@
 
 """Create, list, get, and delete endpoints for Experiments and ExperimentGroups.
 
-Entity-store (Postgres) operations wired directly onto ``EntityClient``, following
-the inline pattern used by the core services. PUT updates only the mutable fields
-(group membership, summary, description, metadata); an Experiment's identity and the
-dataset/agent it ran against are fixed and changing them is rejected. Rollup fields on
-the read models are hydrated from ClickHouse in a later PR; for now they return defaults.
+Entity-store (Postgres) operations are wired directly onto ``EntityClient``,
+following the inline pattern used by the core services. PUT updates only the
+mutable fields; an Experiment's identity and the dataset/agent it ran against
+are fixed. Rollup fields on read models are hydrated from ClickHouse.
 """
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+import logging
+from typing import Annotated, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from nmp.common.api.common import Page, PaginationData
@@ -21,6 +21,7 @@ from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
 from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.api.v2.experiments.schemas import (
+    EvaluatorAggregate,
     ExperimentFilter,
     ExperimentGroupFilter,
     ExperimentGroupRequest,
@@ -30,22 +31,42 @@ from nmp.intake.api.v2.experiments.schemas import (
 )
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.experiment_rollup_repository import (
+    ExperimentRollup,
+    ExperimentRollupRepository,
+    ScoreRollup,
+)
 
+logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 
 GROUPS_TAG = "Experiment Groups"
 EXPERIMENTS_TAG = "Experiments"
 
 SortField = Literal["-created_at", "created_at", "-updated_at", "updated_at", "-name", "name"]
+EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
 ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
 
 
-# =============================================================================
-# Experiment Groups
-# =============================================================================
+def get_experiment_rollup_repository(request: Request) -> ExperimentRollupRepository | None:
+    # Rollups are enrichment only. Experiment entity reads should continue when
+    # ClickHouse is disabled or temporarily unavailable.
+    service = getattr(request.app.state, "intake_service", None)
+    if service is None:
+        service = getattr(request.app.state, "service", None)
+    if service is None:
+        return None
+
+    service_client = getattr(service, "clickhouse_client", None)
+    if service_client is None:
+        return None
+    return ExperimentRollupRepository(service_client)
+
+
+ExperimentRollupRepositoryDep = Annotated[ExperimentRollupRepository | None, Depends(get_experiment_rollup_repository)]
 
 
 @router.post(
@@ -117,13 +138,13 @@ async def get_experiment_group(
     name: str,
     entity_client: EntityClientDep,
 ) -> ExperimentGroupResponse:
-    try:
-        entity = await entity_client.get(ExperimentGroup, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment group '{workspace}/{name}' not found.",
-        ) from e
+    entity = await _get_or_404(
+        entity_client,
+        ExperimentGroup,
+        workspace=workspace,
+        name=name,
+        label="Experiment group",
+    )
     return ExperimentGroupResponse.from_entity(entity)
 
 
@@ -142,13 +163,13 @@ async def update_experiment_group(
     body: ExperimentGroupRequest,
     entity_client: EntityClientDep,
 ) -> ExperimentGroupResponse:
-    try:
-        existing = await entity_client.get(ExperimentGroup, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment group '{workspace}/{name}' not found.",
-        ) from e
+    existing = await _get_or_404(
+        entity_client,
+        ExperimentGroup,
+        workspace=workspace,
+        name=name,
+        label="Experiment group",
+    )
     if body.name != name:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -170,18 +191,13 @@ async def delete_experiment_group(
     name: str,
     entity_client: EntityClientDep,
 ) -> None:
-    try:
-        await entity_client.delete(ExperimentGroup, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment group '{workspace}/{name}' not found.",
-        ) from e
-
-
-# =============================================================================
-# Experiments
-# =============================================================================
+    await _delete_or_404(
+        entity_client,
+        ExperimentGroup,
+        workspace=workspace,
+        name=name,
+        label="Experiment group",
+    )
 
 
 @router.post(
@@ -232,6 +248,7 @@ async def list_experiments(
     workspace: str,
     request: Request,
     entity_client: EntityClientDep,
+    rollup_repository: ExperimentRollupRepositoryDep,
     parsed: ExperimentFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
@@ -246,8 +263,10 @@ async def list_experiments(
         page=page,
         page_size=page_size,
     )
+    responses = [ExperimentResponse.from_entity(e) for e in result.data]
+    await _hydrate_rollups(workspace=workspace, responses=responses, rollup_repository=rollup_repository)
     return Page(
-        data=[ExperimentResponse.from_entity(e) for e in result.data],
+        data=responses,
         pagination=PaginationData(**result.pagination.model_dump()),
         sort=sort,
         filter=parsed.to_response(),
@@ -264,15 +283,18 @@ async def get_experiment(
     workspace: str,
     name: str,
     entity_client: EntityClientDep,
+    rollup_repository: ExperimentRollupRepositoryDep,
 ) -> ExperimentResponse:
-    try:
-        entity = await entity_client.get(Experiment, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment '{workspace}/{name}' not found.",
-        ) from e
-    return ExperimentResponse.from_entity(entity)
+    entity = await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+    response = ExperimentResponse.from_entity(entity)
+    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
+    return response
 
 
 # Identity and the dataset/agent it was run against are fixed for the life of an
@@ -295,14 +317,15 @@ async def update_experiment(
     name: str,
     body: ExperimentRequest,
     entity_client: EntityClientDep,
+    rollup_repository: ExperimentRollupRepositoryDep,
 ) -> ExperimentResponse:
-    try:
-        existing = await entity_client.get(Experiment, name=name, workspace=workspace)
-    except EntityNotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment '{workspace}/{name}' not found.",
-        ) from e
+    existing = await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
 
     changed = [f for f in _IMMUTABLE_EXPERIMENT_FIELDS if getattr(body, f) != getattr(existing, f)]
     if changed:
@@ -320,7 +343,9 @@ async def update_experiment(
     existing.description = body.description
     existing.summary = body.summary
     updated = await entity_client.update(existing)
-    return ExperimentResponse.from_entity(updated)
+    response = ExperimentResponse.from_entity(updated)
+    await _hydrate_rollups(workspace=workspace, responses=[response], rollup_repository=rollup_repository)
+    return response
 
 
 @router.delete(
@@ -334,10 +359,86 @@ async def delete_experiment(
     name: str,
     entity_client: EntityClientDep,
 ) -> None:
+    await _delete_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+
+
+async def _get_or_404(
+    entity_client: EntityClient,
+    entity_type: type[EntityT],
+    *,
+    workspace: str,
+    name: str,
+    label: str,
+) -> EntityT:
     try:
-        await entity_client.delete(Experiment, name=name, workspace=workspace)
+        return await entity_client.get(entity_type, name=name, workspace=workspace)
     except EntityNotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Experiment '{workspace}/{name}' not found.",
+            detail=f"{label} '{workspace}/{name}' not found.",
         ) from e
+
+
+async def _delete_or_404(
+    entity_client: EntityClient,
+    entity_type: type[EntityT],
+    *,
+    workspace: str,
+    name: str,
+    label: str,
+) -> None:
+    try:
+        await entity_client.delete(entity_type, name=name, workspace=workspace)
+    except EntityNotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{label} '{workspace}/{name}' not found.",
+        ) from e
+
+
+async def _hydrate_rollups(
+    *,
+    workspace: str,
+    responses: list[ExperimentResponse],
+    rollup_repository: ExperimentRollupRepository | None,
+) -> None:
+    if rollup_repository is None or not responses:
+        return
+    try:
+        rollups = await rollup_repository.get_rollups(
+            workspace=workspace, experiment_ids=[response.name for response in responses]
+        )
+    except Exception:
+        logger.exception("Skipping experiment rollup hydration because ClickHouse is unavailable")
+        return
+    for response in responses:
+        rollup = rollups.get(response.name)
+        if rollup is not None:
+            _apply_rollup(response, rollup)
+
+
+def _apply_rollup(response: ExperimentResponse, rollup: ExperimentRollup) -> None:
+    response.evaluator_names = rollup.evaluator_names
+    response.model_names = rollup.model_names
+    response.aggregate_scores = {name: _aggregate(score) for name, score in rollup.evaluator_scores.items()} or None
+    response.run_count = rollup.run_count
+    response.cost_usd = _aggregate(rollup.cost_usd) if rollup.cost_usd is not None else None
+    response.latency_ms = _aggregate(rollup.latency_ms) if rollup.latency_ms is not None else None
+
+
+def _aggregate(rollup: ScoreRollup) -> EvaluatorAggregate:
+    return EvaluatorAggregate(
+        sum=rollup.sum,
+        mean=rollup.mean,
+        median=rollup.median,
+        p90=rollup.p90,
+        p95=rollup.p95,
+        p99=rollup.p99,
+        count=rollup.count,
+    )

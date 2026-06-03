@@ -21,6 +21,7 @@ from typing import Dict
 from typing_extensions import Required, TypedDict
 
 from ..evaluation_context_param import EvaluationContextParam
+from ..experiment_context_param import ExperimentContextParam
 from .captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
 from .captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
@@ -53,6 +54,9 @@ class ChatCompletionCreateParams(TypedDict, total=False):
     """
 
     evaluation_context: EvaluationContextParam
+
+    experiment_context: ExperimentContextParam
+    """Experiment context accepted by ingest endpoints."""
 
     provider: str
 

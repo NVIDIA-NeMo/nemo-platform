@@ -8,7 +8,7 @@ Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the 
 - The Safe Synthesizer plugin installed as a local editable plugin.
 - The separate Safe Synthesizer runtime venv created with the engine/CUDA dependencies.
 - A Safe Synthesizer job spec, such as `nss-job.json`.
-- A running Files API if the job references platform filesets.
+- A running platform only if you use platform filesets, Jobs APIs, or `pretrained_model_job`. Pure `run-local` with `--data-source` does not require it.
 
 ## Steps
 
@@ -26,7 +26,7 @@ Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the 
        uv run nemo safe-synthesizer runtime setup
        ```
 
-    3. Create the model filesets used for offline model cache initialization:
+    3. (Optional, platform jobs only) After `curl -s http://localhost:8080/health/ready`, register model filesets:
 
        ```bash
        uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
@@ -45,6 +45,7 @@ Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the 
        ```bash
        BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
        uv run nemo safe-synthesizer runtime setup
+       # Optional after platform is up — see step 3 in the CLI section
        uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
        ```
 
@@ -64,6 +65,7 @@ The command writes generated data, summaries, and any adapter output under `./ns
 
 ## Related Links
 
+- `docs/safe-synthesizer/about/host-local-development.md` — host-local runs, adapter reuse, and tests
 - `docs/safe-synthesizer/about/reference.md`
 - `plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py`
 

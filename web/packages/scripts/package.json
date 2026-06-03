@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "check": "pnpm concurrently --group -c 'red,blue' -n 'lint:fix,typecheck' \"pnpm lint:fix\" \"pnpm typecheck\"",
-    "check:ci": "pnpm typecheck",
     "format": "prettier --check './**/*.{js,json,jsx,ts,tsx,yaml}'",
     "format:fix": "prettier --write './**/*.{js,json,jsx,ts,tsx,yaml}'",
     "lint": "eslint . --max-warnings 0",

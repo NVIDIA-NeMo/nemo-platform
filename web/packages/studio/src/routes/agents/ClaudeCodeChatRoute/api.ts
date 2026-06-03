@@ -3,7 +3,13 @@
 
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
-import type { ClaudeCodeStreamHandlers } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import type {
+  ClaudeCodeAssistantHistoryPart,
+  ClaudeCodeHistorySession,
+  ClaudeCodeSessionHistory,
+  ClaudeCodeSessionHistoryItem,
+  ClaudeCodeStreamHandlers,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 
 const CLAUDE_CODE_API_BASE_PATH = '/apis/studio/v2/coding-agents';
 
@@ -12,6 +18,15 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const claudeCodeApiUrl = (path: string): string =>
   `${PLATFORM_BASE_URL}${CLAUDE_CODE_API_BASE_PATH}${path}`;
+
+export const CLAUDE_CODE_HISTORY_SESSIONS_QUERY_KEY = [
+  'claude-code',
+  'history',
+  'sessions',
+] as const;
+
+export const getClaudeCodeSessionHistoryQueryKey = (sessionId: string) =>
+  ['claude-code', 'history', 'session', sessionId] as const;
 
 const getResponseErrorMessage = async (response: Response, fallback: string): Promise<string> => {
   const text = await response.text();
@@ -44,6 +59,113 @@ export const createClaudeCodeSession = async (): Promise<string> => {
   }
 
   return body.session_id;
+};
+
+const getString = (value: unknown): string => (typeof value === 'string' ? value : '');
+
+const getNumber = (value: unknown): number =>
+  typeof value === 'number' && Number.isFinite(value) ? value : 0;
+
+const getStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+
+const parseHistorySession = (value: unknown): ClaudeCodeHistorySession | undefined => {
+  if (!isRecord(value)) return undefined;
+  const sessionId = getString(value.session_id);
+  if (!sessionId) return undefined;
+
+  return {
+    session_id: sessionId,
+    mtime: getNumber(value.mtime),
+    first_prompt: getString(value.first_prompt),
+    message_count: getNumber(value.message_count),
+    token_count: getNumber(value.token_count),
+    tool_call_count: getNumber(value.tool_call_count),
+    tool_calls: getStringArray(value.tool_calls),
+  };
+};
+
+const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  if (value.type === 'text') {
+    const text = getString(value.text);
+    return text ? { type: 'text', text } : undefined;
+  }
+
+  if (value.type === 'thinking') {
+    const thinking = getString(value.thinking);
+    return thinking ? { type: 'thinking', thinking } : undefined;
+  }
+
+  if (value.type === 'tool_use') {
+    return {
+      type: 'tool_use',
+      name: getString(value.name) || 'tool',
+      input: isRecord(value.input) ? value.input : {},
+    };
+  }
+
+  return undefined;
+};
+
+const parseSessionHistoryItem = (value: unknown): ClaudeCodeSessionHistoryItem | undefined => {
+  if (!isRecord(value)) return undefined;
+
+  if (value.kind === 'user') {
+    const text = getString(value.text);
+    return text ? { kind: 'user', text } : undefined;
+  }
+
+  if (value.kind === 'assistant' && Array.isArray(value.parts)) {
+    const parts = value.parts
+      .map(parseAssistantPart)
+      .filter((part): part is ClaudeCodeAssistantHistoryPart => part !== undefined);
+    return parts.length ? { kind: 'assistant', parts } : undefined;
+  }
+
+  return undefined;
+};
+
+export const listClaudeCodeHistorySessions = async (): Promise<ClaudeCodeHistorySession[]> => {
+  const response = await fetch(claudeCodeApiUrl('/history/sessions'));
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code history'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!Array.isArray(body)) return [];
+
+  return body
+    .map(parseHistorySession)
+    .filter((session): session is ClaudeCodeHistorySession => session !== undefined);
+};
+
+export const getClaudeCodeSessionHistory = async (
+  sessionId: string
+): Promise<ClaudeCodeSessionHistory> => {
+  const response = await fetch(
+    claudeCodeApiUrl(`/history/sessions/${encodeURIComponent(sessionId)}`)
+  );
+
+  if (!response.ok) {
+    throw new Error(await getResponseErrorMessage(response, 'Failed to load Claude Code session'));
+  }
+
+  const body = (await response.json()) as unknown;
+  if (!isRecord(body)) {
+    throw new Error('Claude Code session history response was not an object');
+  }
+
+  return {
+    session_id: getString(body.session_id) || sessionId,
+    items: Array.isArray(body.items)
+      ? body.items
+          .map(parseSessionHistoryItem)
+          .filter((item): item is ClaudeCodeSessionHistoryItem => item !== undefined)
+      : [],
+  };
 };
 
 const getStreamErrorMessage = (payload: unknown): string => {

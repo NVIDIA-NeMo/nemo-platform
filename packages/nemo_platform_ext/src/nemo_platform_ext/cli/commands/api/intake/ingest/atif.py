@@ -33,6 +33,10 @@ def create_atif(
     ] = None,
     continued_trajectory_ref: Annotated[str | None, typer.Option("--continued-trajectory-ref")] = None,
     evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
+    experiment_context: Annotated[
+        str | None,
+        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+    ] = None,
     extra: Annotated[str | None, typer.Option("--extra", help="JSON string")] = None,
     final_metrics: Annotated[str | None, typer.Option("--final-metrics", help="JSON string")] = None,
     notes: Annotated[str | None, typer.Option("--notes")] = None,
@@ -75,6 +79,8 @@ def create_atif(
         input_payload["continued_trajectory_ref"] = continued_trajectory_ref
     if evaluation_context is not None:
         input_payload["evaluation_context"] = read_payload("evaluation_context", evaluation_context)
+    if experiment_context is not None:
+        input_payload["experiment_context"] = read_payload("experiment_context", experiment_context)
     if extra is not None:
         input_payload["extra"] = read_payload("extra", extra)
     if final_metrics is not None:

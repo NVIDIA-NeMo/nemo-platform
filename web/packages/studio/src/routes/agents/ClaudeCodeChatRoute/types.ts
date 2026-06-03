@@ -10,3 +10,53 @@ export interface ClaudeCodeStreamHandlers {
 export interface ClaudeCodeChatRouteState {
   initialPrompt?: string;
 }
+
+export interface ClaudeCodeHistorySession {
+  session_id: string;
+  mtime: number;
+  first_prompt: string;
+  message_count: number;
+  token_count: number;
+  tool_call_count: number;
+  tool_calls: string[];
+}
+
+export interface ClaudeCodeUserHistoryItem {
+  kind: 'user';
+  text: string;
+}
+
+export interface ClaudeCodeAssistantTextPart {
+  type: 'text';
+  text: string;
+}
+
+export interface ClaudeCodeAssistantThinkingPart {
+  type: 'thinking';
+  thinking: string;
+}
+
+export interface ClaudeCodeAssistantToolUsePart {
+  type: 'tool_use';
+  name: string;
+  input: Record<string, unknown>;
+}
+
+export type ClaudeCodeAssistantHistoryPart =
+  | ClaudeCodeAssistantTextPart
+  | ClaudeCodeAssistantThinkingPart
+  | ClaudeCodeAssistantToolUsePart;
+
+export interface ClaudeCodeAssistantHistoryItem {
+  kind: 'assistant';
+  parts: ClaudeCodeAssistantHistoryPart[];
+}
+
+export type ClaudeCodeSessionHistoryItem =
+  | ClaudeCodeUserHistoryItem
+  | ClaudeCodeAssistantHistoryItem;
+
+export interface ClaudeCodeSessionHistory {
+  session_id: string;
+  items: ClaudeCodeSessionHistoryItem[];
+}

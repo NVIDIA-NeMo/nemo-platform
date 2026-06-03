@@ -41,6 +41,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_platform_plugin._base import _NamedPlugin
+from nemo_platform_plugin.authz import AuthzContribution
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -114,6 +115,17 @@ class NemoService(_NamedPlugin):
         Override for cleanup (e.g. closing connections).
         The default implementation does nothing.
         """
+
+    @classmethod
+    def get_authz_contribution(cls) -> AuthzContribution | None:
+        """Optional authorization policy for routes under ``/apis/<name>/``.
+
+        Override as a **classmethod** on the :class:`NemoService` subclass (``discover_services``
+        loads classes, not instances). Return
+        :class:`~nemo_platform_plugin.authz.AuthzContribution` or register a ``nemo.authz``
+        entry point. Default: no plugin-specific authz.
+        """
+        return None
 
     def get_exception_handlers(self) -> dict[type[Exception], ExceptionHandler]:
         """Return a mapping of exception types to handler functions.
