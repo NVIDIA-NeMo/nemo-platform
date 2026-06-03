@@ -4,6 +4,7 @@
 """Tests for license utility functions."""
 
 import json
+from typing import Any, cast
 
 import pytest
 from nemo_platform_sdk_tools.license.license_utils import (
@@ -120,10 +121,10 @@ class TestResolveLicense:
     def test_invalid_type_raises_error(self):
         """Test that invalid input types raise appropriate errors."""
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(123)  # type: ignore[arg-type]
+            resolve_license(cast(Any, 123))
 
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(None)  # type: ignore[arg-type]
+            resolve_license(cast(Any, None))
 
     def test_single_license_list(self):
         """Test list with single license."""

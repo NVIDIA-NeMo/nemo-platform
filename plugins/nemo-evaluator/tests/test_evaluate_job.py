@@ -634,10 +634,10 @@ async def test_evaluate_job_compile_normalizes_generic_online_model_params() -> 
         {
             **_exact_match_spec(),
             "target": Model(url="http://model.test/v1/chat/completions", name="test-model"),
+            "params": RunConfigOnline(parallelism=3),
             "prompt_template": "Question: {{item.question}}",
         }
     )
-    spec.params = RunConfigOnline(parallelism=3)
 
     compiled = await EvaluateJob.compile(
         workspace="default",
