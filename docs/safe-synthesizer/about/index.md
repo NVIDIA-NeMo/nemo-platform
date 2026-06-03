@@ -106,6 +106,12 @@ Get hands-on experience with Safe Synthesizer through step-by-step tutorials.
 
     Understand the job lifecycle, configuration, and execution for Safe Synthesizer pipelines.
 
+-   **[Host-Local Development](host-local-development.md)**
+
+    ---
+
+    Run on a host GPU with `nemo safe-synthesizer run-local` and `runtime` commands; reuse local adapters and run plugin tests.
+
 -   **[Parameters Reference](reference.md)**
 
     ---

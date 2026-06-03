@@ -24,6 +24,7 @@ from pytest_mock import MockerFixture
 
 
 def _write_jsonl(path: Path, rows: list[dict[str, str]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for row in rows:
             handle.write(json.dumps(row) + "\n")
@@ -94,14 +95,47 @@ class TestExactMatchMetric:
         assert len(result.row_scores) == 2
         assert result.aggregate_scores.scores[0].count == 2
 
-    def test_evaluate_with_directory_and_pattern(self, tmp_path: Path):
+    def test_evaluate_with_file_path_that_contains_glob_metacharacters(self, tmp_path: Path):
+        dataset_path = tmp_path / "eval[1].jsonl"
+        _write_jsonl(dataset_path, [{"expected": "4", "prediction": "4"}])
+
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
+        result = Evaluator().run_sync(metrics=metric, dataset=dataset_path)
+
+        assert len(result.row_scores) == 1
+        assert result.aggregate_scores.scores[0].mean == 1.0
+
+    def test_evaluate_ignores_other_files_in_directory(self, tmp_path: Path):
         _write_jsonl(tmp_path / "train.jsonl", [{"expected": "4", "prediction": "4"}])
         _write_jsonl(tmp_path / "ignored.jsonl", [{"expected": "10", "prediction": "11"}])
 
         metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
-        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path, dataset_glob_pattern="train.jsonl")
+        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "train.jsonl")
 
         assert len(result.row_scores) == 1
+        assert result.aggregate_scores.scores[0].mean == 1.0
+
+    def test_evaluate_with_glob_path(self, tmp_path: Path):
+        _write_jsonl(tmp_path / "train.jsonl", [{"expected": "4", "prediction": "4"}])
+        _write_jsonl(tmp_path / "validation.jsonl", [{"expected": "Paris", "prediction": "Paris"}])
+        _write_jsonl(tmp_path / "ignored.csv", [{"expected": "10", "prediction": "11"}])
+
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
+        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "*.jsonl")
+
+        assert len(result.row_scores) == 2
+        assert result.aggregate_scores.scores[0].mean == 1.0
+
+    def test_evaluate_with_nested_glob_path(self, tmp_path: Path):
+        _write_jsonl(tmp_path / "splits" / "train.jsonl", [{"expected": "4", "prediction": "4"}])
+        _write_jsonl(
+            tmp_path / "splits" / "nested" / "validation.jsonl", [{"expected": "Paris", "prediction": "Paris"}]
+        )
+
+        metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.prediction}}")
+        result = Evaluator().run_sync(metrics=metric, dataset=tmp_path / "splits" / "**" / "*.jsonl")
+
+        assert len(result.row_scores) == 2
         assert result.aggregate_scores.scores[0].mean == 1.0
 
     @pytest.mark.asyncio

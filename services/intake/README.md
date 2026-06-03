@@ -53,6 +53,19 @@ Read it back:
 curl -i "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/spans?filter[session_id]=sample-session"
 ```
 
+Seed an Experiment rollup and read it back:
+
+```bash
+uv run services/intake/scripts/spans/seed_experiment_rollup_data.py
+curl -s "http://127.0.0.1:8080/apis/intake/v2/workspaces/default/experiments/rollup-smoke-exp" | jq
+
+# Optional larger local workload.
+uv run services/intake/scripts/spans/seed_experiment_rollup_data.py \
+  --experiment rollup-perf-exp \
+  --runs 100 \
+  --cases-per-run 10
+```
+
 ## Testing
 
 Focused route-surface test:

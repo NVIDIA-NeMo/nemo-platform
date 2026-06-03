@@ -8,6 +8,16 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
 
+vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/api', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@studio/routes/agents/ClaudeCodeChatRoute/api')>();
+
+  return {
+    ...actual,
+    listClaudeCodeHistorySessions: vi.fn(async () => []),
+  };
+});
+
 const workspace = 'default';
 const CHAT_ROUTE_TEST_ID = 'chat-route';
 

@@ -151,6 +151,7 @@ class NemoJobScheduler:
         options: dict | None = None,
         metadata: dict | None = None,
         http_client: httpx.Client | None = None,
+        headers: dict[str, str] | None = None,
         timeout: float = 30.0,
     ) -> dict:
         """POST the job to the plugin service's per-job submit route.
@@ -173,6 +174,8 @@ class NemoJobScheduler:
             http_client: Optional injected :class:`httpx.Client`. Defaults
                 to a short-lived client per call; tests supply a mock
                 transport.
+            headers: Optional per-request headers (e.g. ``Authorization`` from
+                the CLI). Merged on each POST; not inferred from *http_client*.
             timeout: Request timeout in seconds.
 
         Returns:
@@ -184,7 +187,7 @@ class NemoJobScheduler:
         """
         url = self._build_submit_url(job_cls, base_url=base_url, workspace=workspace)
         body = self._build_submit_body(spec, profile=profile, options=options, metadata=metadata)
-        return self._post_submit(url, body, http_client=http_client, timeout=timeout)
+        return self._post_submit(url, body, http_client=http_client, headers=headers, timeout=timeout)
 
     # ------------------------------------------------------------------ #
     # Schema discovery                                                   #
@@ -373,6 +376,7 @@ class NemoJobScheduler:
         body: dict[str, Any],
         *,
         http_client: httpx.Client | None,
+        headers: dict[str, str] | None,
         timeout: float,
     ) -> dict:
         """POST *body* to *url* and return the decoded JSON response.
@@ -380,12 +384,13 @@ class NemoJobScheduler:
         Uses *http_client* when provided; otherwise opens a short-lived
         client per call.
         """
+        request_headers = dict(headers) if headers else None
         logger.debug("submit_remote POST %s", url)
         if http_client is not None:
-            response = http_client.post(url, json=body, timeout=timeout)
+            response = http_client.post(url, json=body, headers=request_headers, timeout=timeout)
         else:
             with httpx.Client(timeout=timeout) as client:
-                response = client.post(url, json=body)
+                response = client.post(url, json=body, headers=request_headers)
         response.raise_for_status()
         return response.json()
 

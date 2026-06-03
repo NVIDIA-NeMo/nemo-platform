@@ -102,7 +102,14 @@ When the job completes, access:
 - **Synthetic data**: Generated CSV files
 - **Evaluation report**: HTML report with scores and visualizations
 - **Metadata**: Job summary and configuration
+- **Adapter**: LoRA adapter from the training step (when synthesis ran)
 - **Logs**: Complete execution history
+
+### Reusing a Trained Adapter
+
+For **platform jobs**, set `pretrained_model_job` in the job spec to a completed job that has an **`adapter`** result in Files. Reuse is generation-only (no retraining). Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.
+
+For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Host-Local Development and Testing](host-local-development.md).
 
 ## Job Builder API
 
@@ -302,6 +309,7 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 ## Related Topics
 
+- [Host-Local Development and Testing](host-local-development.md): `run-local`, adapter reuse, and plugin tests
 - [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with {{nss_short_name}} jobs
 - [index](../tutorials/index.md): More hands-on tutorials
 - [reference](reference.md): Full parameter reference

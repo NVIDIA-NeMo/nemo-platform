@@ -12,6 +12,19 @@ dependencies = [
     "dataclasses-json>=0.6.7",
 ]
 
+[project.optional-dependencies]
+# Dependencies for the local IGW benchmark harness in
+# `nemo_guardrails_plugin.benchmarks`
+bench = [
+    "httpx>=0.27",
+    "pyyaml>=6.0",
+    # NOTE: aiperf itself is *not* listed here. Its 0.x line pins
+    # aiofiles<24.2 which conflicts with evaluator-service's
+    # aiofiles>=25.1. To avoid downgrading the shared workspace venv, the
+    # harness installs aiperf into a dedicated venv at run time; see
+    # `nemo_guardrails_plugin.benchmarks.bootstrap`.
+]
+
 [project.entry-points."nemo.inference_middleware"]
 nemo-guardrails = "nemo_guardrails_plugin.middleware:GuardrailsMiddleware"
 

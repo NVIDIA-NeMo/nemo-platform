@@ -5,37 +5,36 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, TypeAlias
+from typing import TypeAlias
 
-from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.values import (
     Agent,
-    FieldMapping,
     Model,
     RunConfig,
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nemo_evaluator_sdk.values.datasets import DatasetInput
-from nemo_evaluator_sdk.values.results import AggregateFieldName
 
 _RunConfigT: TypeAlias = RunConfig | RunConfigOnline | RunConfigOnlineModel
 
 
-def normalize_params(
+def resolve_params(
     params: _RunConfigT | None = None,
     target: Model | Agent | None = None,
 ) -> _RunConfigT:
+    """Return params after validating that they match the selected target mode."""
     if isinstance(target, Model):
         if not isinstance(params, RunConfigOnlineModel):
-            params = RunConfigOnlineModel(**params.model_dump()) if params else RunConfigOnlineModel()
-    elif isinstance(target, Agent):
-        if not isinstance(params, RunConfigOnline):
-            params = RunConfigOnline(**params.model_dump()) if params else RunConfigOnline()
-    else:
-        params = params or RunConfig()
+            raise TypeError("model target requires RunConfigOnlineModel")
+        return params
+    if isinstance(target, Agent):
+        if type(params) is not RunConfigOnline:
+            raise TypeError("agent target requires RunConfigOnline")
+        return params
+    if params is None:
+        return RunConfig()
+    if type(params) is not RunConfig:
+        raise TypeError("offline evaluation requires RunConfig")
     return params
 
 
@@ -45,22 +44,3 @@ def fail_fast_from_params(params: _RunConfigT) -> bool:
     When params is not an online params, return fail_fast is True - always fail fast.
     """
     return not (isinstance(params, RunConfigOnline) and params.ignore_request_failure)
-
-
-@dataclass(frozen=True, slots=True)
-class EvaluationRequest:
-    """Normalized evaluator request passed from the public API to backends."""
-
-    dataset: DatasetInput | str | Path
-    params: _RunConfigT = field(default_factory=normalize_params)
-    target: Model | Agent | None = None
-    dataset_glob_pattern: str | None = None
-    field_mapping: FieldMapping | None = None
-    prompt_template: str | dict[str, Any] | None = None
-    aggregate_fields: tuple[AggregateFieldName, ...] | None = None
-    preprocess_hooks: tuple[PreprocessRequest, ...] | None = None
-    postprocess_hooks: tuple[PostprocessResponse, ...] | None = None
-
-    def __post_init__(self) -> None:
-        """Normalize params to a concrete type compatible with the configured target."""
-        object.__setattr__(self, "params", normalize_params(self.params, self.target))
