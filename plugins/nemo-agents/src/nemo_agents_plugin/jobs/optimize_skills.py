@@ -81,7 +81,7 @@ class OptimizeSkillsJob(NemoJob):
                     trace_parser=cfg.trace_parser,
                 )
             )
-            return _serialize(state)  # type: ignore[return-value]
+            return _serialize(state)
 
         # Preflight: fail fast before any slow work
         preflight.check_evals_dir(evals_dir)
@@ -119,4 +119,4 @@ class OptimizeSkillsJob(NemoJob):
                 trace_parser=cfg.trace_parser,
             )
         )
-        return _serialize(state)  # type: ignore[return-value]
+        return _serialize(state)

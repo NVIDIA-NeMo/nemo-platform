@@ -1256,9 +1256,9 @@ joserfc==1.7.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (
     # via
     #   authlib
     #   fastmcp-slim
-json-repair==0.60.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:841661cdd2df507c9a4e189097f38ca6bc372e06d4b4e36d72e590f68176c290 \
-    --hash=sha256:ba6ff974f2a8bef2f7768144a7f03f870a816443f03da27a49cdd0ec31a78049
+json-repair==0.58.7 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:2ea5c841cc1d91dbbe79e9ed4b2b77a5cc04d20892d62a15261b70ce999ec758 \
+    --hash=sha256:af0c7ff6a2ddd80bb1e7e6121c1a86d8bb57a539aa211acbfb25c64087b7116f
     # via data-designer-engine
 jsonpatch==1.33 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade \
@@ -1472,9 +1472,9 @@ langgraph-sdk==0.4.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin'
     --hash=sha256:75fa5096c1177ce39c847096a8fe3745ffd480ddb412995f836e9f5f884c43dd \
     --hash=sha256:b88f0f5f6328ac0680d6790614a905b2bcfa257f2276dba4e38f0e86db0aa738
     # via langgraph
-langsmith==0.8.9 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
-    --hash=sha256:c9519cabc75568d088df045710d1b86eae9780c91054528b2aa7e6cb1fc80c52 \
-    --hash=sha256:f16e37fcd5a8a2d4db30eae0e399a866a65ce5cc86218825c59409ed57a3bf53
+langsmith==0.8.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:4ff80d7dc1b273315401b681aef9b1fc92f4fa8a6d9d49eb65535520f8264fd4 \
+    --hash=sha256:588bc51566476eac987a849a08c71675930b21733545fe3031fbb1eeca78e8df
     # via
     #   langchain-classic
     #   langchain-community
@@ -3566,7 +3566,6 @@ websockets==15.0.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     # via
     #   fastmcp-slim
     #   langgraph-sdk
-    #   langsmith
     #   uvicorn
 wikipedia==1.4.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:db0fad1829fdd441b1852306e9856398204dc0786d2996dd2e0c8bb8e26133b2

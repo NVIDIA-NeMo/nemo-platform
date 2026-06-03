@@ -305,4 +305,4 @@ def _patched_reschedule(self, node):
     _original_reschedule(self, node)
 
 
-LoadScopeScheduling._reschedule = _patched_reschedule  # type: ignore[invalid-assignment]
+LoadScopeScheduling._reschedule = _patched_reschedule

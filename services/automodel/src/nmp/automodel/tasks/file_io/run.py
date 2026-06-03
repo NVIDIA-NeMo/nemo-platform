@@ -219,7 +219,7 @@ class FileIORunner:
             fileset=fileset_name,
             workspace=fileset_workspace,
             local_path=dest_dir,
-            callback=callback,  # type: ignore[arg-type]
+            callback=callback,
         )
 
     def upload_fileset(
@@ -312,7 +312,7 @@ class FileIORunner:
             remote_path=remote_path,
             fileset=fileset_name,
             workspace=fileset_workspace,
-            callback=callback,  # type: ignore[arg-type]
+            callback=callback,
         )
 
     def run_download(self, downloads: list[DownloadItem]) -> None:

@@ -41,7 +41,7 @@ def _make_controller() -> tuple[AgentDeploymentController, Any]:
     ctrl._backend = backend
     ctrl._entities = MagicMock()
     ctrl._controller_config = ControllerConfig(health_check_timeout_seconds=120)
-    ctrl._save = AsyncMock()  # type: ignore[method-assign]
+    ctrl._save = AsyncMock()
     return ctrl, cast(Any, backend)
 
 

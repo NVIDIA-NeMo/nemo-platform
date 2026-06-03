@@ -31,7 +31,7 @@ def _canonical_spec() -> UnslothJobOutput:
         model=ModelLoadSpec(name="default/base"),
         dataset=DatasetSpec(path="default/training"),
         training=TrainingSpec(lora=LoRAParams()),
-        schedule={"max_steps": 1},  # type: ignore[arg-type]
+        schedule={"max_steps": 1},
         output=OutputResponse(
             name="r",
             type="adapter",
@@ -52,7 +52,7 @@ async def test_compile_delegates_to_app_jobs_compiler() -> None:
         result = await platform_job_config_compiler(
             workspace="default",
             spec=spec,
-            sdk=sdk,  # type: ignore[arg-type]
+            sdk=sdk,
             job_name="job-x",
             profile="gpu-large",
         )

@@ -108,7 +108,7 @@ async def transform_input_to_output(
 
     output = OutputResponse(
         name=out_name,
-        type=_infer_output_type(output_request),  # type: ignore[arg-type]
+        type=_infer_output_type(output_request),
         save_method=output_request.save_method,
         fileset=out_name,  # default the fileset to the entity name (mirrors automodel)
         description=output_request.description,

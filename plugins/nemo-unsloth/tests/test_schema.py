@@ -148,14 +148,14 @@ class TestFullFinetuneRules:
 
     def test_full_ft_rejects_lora_block(self) -> None:
         payload = _minimal_payload()
-        payload["model"]["load_in_4bit"] = False  # type: ignore[index]
+        payload["model"]["load_in_4bit"] = False
         payload["training"] = {"finetuning_type": "full", "lora": {"rank": 8}}
         with pytest.raises(ValidationError, match="training.lora must be unset"):
             UnslothJobInput.model_validate(payload)
 
     def test_full_ft_clean(self) -> None:
         payload = _minimal_payload()
-        payload["model"]["load_in_4bit"] = False  # type: ignore[index]
+        payload["model"]["load_in_4bit"] = False
         payload["training"] = {"finetuning_type": "full"}
         spec = UnslothJobInput.model_validate(payload)
         assert spec.training.lora is None
@@ -177,7 +177,7 @@ class TestSaveMethodCompatibility:
 
     def test_merged_save_with_full_rejected(self) -> None:
         payload = _minimal_payload()
-        payload["model"]["load_in_4bit"] = False  # type: ignore[index]
+        payload["model"]["load_in_4bit"] = False
         payload["training"] = {"finetuning_type": "full"}
         payload["output"] = {"save_method": "merged_16bit"}
         with pytest.raises(ValidationError, match="only valid for training.finetuning_type='lora'"):

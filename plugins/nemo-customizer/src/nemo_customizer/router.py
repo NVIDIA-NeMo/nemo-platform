@@ -43,7 +43,7 @@ def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
     # Map (method, full_path) -> contributor key
     seen: dict[tuple[str, str], str] = {}
     for key, contributor in contributors.items():
-        for spec in contributor.get_routers():  # type: ignore[union-attr]
+        for spec in contributor.get_routers():
             prefix = spec.prefix.rstrip("/")
             for route in spec.router.routes:
                 methods = getattr(route, "methods", None) or {"*"}

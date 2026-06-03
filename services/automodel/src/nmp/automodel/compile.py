@@ -27,7 +27,7 @@ async def platform_job_config_compiler(
     return await _compile_canonical(
         workspace,
         job_spec,
-        sdk,  # type: ignore[arg-type]
+        sdk,
     )
 
 

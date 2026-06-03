@@ -420,7 +420,7 @@ class TestCompilerDeploymentConfigPlumbing:
         from nmp.unsloth.app.jobs import compiler as compiler_mod
 
         original_fetch = compiler_mod.fetch_model_entity
-        compiler_mod.fetch_model_entity = AsyncMock(  # type: ignore[assignment]
+        compiler_mod.fetch_model_entity = AsyncMock(
             return_value=types.SimpleNamespace(
                 workspace="default",
                 name="base",
@@ -435,7 +435,7 @@ class TestCompilerDeploymentConfigPlumbing:
                 sdk=MagicMock(),
             )
         finally:
-            compiler_mod.fetch_model_entity = original_fetch  # type: ignore[assignment]
+            compiler_mod.fetch_model_entity = original_fetch
 
         # PlatformJobSpec is a TypedDict, so we index it instead of using attributes.
         me_step = next(s for s in job_spec["steps"] if s["name"] == "model-entity-creation")
@@ -472,7 +472,7 @@ class TestCompilerDeploymentConfigPlumbing:
         from nmp.unsloth.app.jobs import compiler as compiler_mod
 
         original_fetch = compiler_mod.fetch_model_entity
-        compiler_mod.fetch_model_entity = AsyncMock(  # type: ignore[assignment]
+        compiler_mod.fetch_model_entity = AsyncMock(
             return_value=types.SimpleNamespace(
                 workspace="default",
                 name="base",
@@ -487,7 +487,7 @@ class TestCompilerDeploymentConfigPlumbing:
                 sdk=MagicMock(),
             )
         finally:
-            compiler_mod.fetch_model_entity = original_fetch  # type: ignore[assignment]
+            compiler_mod.fetch_model_entity = original_fetch
 
         me_step = next(s for s in job_spec["steps"] if s["name"] == "model-entity-creation")
         assert me_step["config"]["deployment_config"] == "my-config"

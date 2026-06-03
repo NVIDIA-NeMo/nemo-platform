@@ -41,7 +41,7 @@ from nemo_guardrails_plugin.middleware import (
 from nemo_guardrails_plugin.requests import parse_guardrails_request
 from nemo_guardrails_plugin.streaming import close_async_iterator
 from nemo_platform.types.guardrail import GuardrailConfig
-from nemo_platform.types.guardrail import RailsConfig as SDKRailsConfig
+from nemo_platform.types.guardrail import GuardrailRailsConfig as SDKRailsConfig
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,
@@ -712,7 +712,7 @@ class TestProcessRequest:
             )
 
         assert isinstance(result, ImmediateResponse)
-        data: dict[str, Any] = result.data  # type: ignore[assignment]
+        data: dict[str, Any] = result.data
         assert "guardrails_data" not in data
         assert result.response_body_annotations["guardrails_data"]["config_ids"] == ["<inline:my-test>"]
 

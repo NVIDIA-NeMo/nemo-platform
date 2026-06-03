@@ -193,7 +193,7 @@ def test_prepare_fileset_sync_cleans_download_when_upstream_input_rejects_data(
     with pytest.raises(AnonymizerInvalidConfigError, match="bad input"):
         prepare_anonymizer_input(
             AnonymizerInputSpec(source="fs#input.csv"),
-            sdk=object(),  # type: ignore[arg-type]
+            sdk=object(),
             workspace="team-a",
             allow_local_paths=False,
         )
@@ -222,7 +222,7 @@ async def test_prepare_fileset_with_sync_sdk_runs_in_worker_thread(
         captured["sdk"] = sdk
         captured["workspace"] = workspace
         captured["allow_local_paths"] = allow_local_paths
-        return input_module.PreparedAnonymizerInput(input=sentinel)  # type: ignore[arg-type]
+        return input_module.PreparedAnonymizerInput(input=sentinel)
 
     sdk = FakeSyncPlatform()
     monkeypatch.setattr(input_module, "NeMoPlatform", FakeSyncPlatform)
@@ -230,7 +230,7 @@ async def test_prepare_fileset_with_sync_sdk_runs_in_worker_thread(
 
     prepared = await prepare_anonymizer_input_async(
         AnonymizerInputSpec(source="fs#input.csv"),
-        sdk=sdk,  # type: ignore[arg-type]
+        sdk=sdk,
         workspace="team-a",
         allow_local_paths=False,
     )

@@ -62,7 +62,7 @@ from nemo_guardrails_plugin.streaming import (
 )
 from nemo_guardrails_plugin.transforms import GenerationResponseMapper
 from nemo_platform.types.guardrail import GenerationLogOptionsParam
-from nemo_platform.types.guardrail import RailsConfig as PlatformRailsConfig
+from nemo_platform.types.guardrail import GuardrailRailsConfig as PlatformRailsConfig
 from nemo_platform_plugin.inference_middleware import (
     ImmediateResponse,
     InferenceMiddlewareContext,

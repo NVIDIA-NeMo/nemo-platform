@@ -80,7 +80,7 @@ async def transform_input_to_output(
 
     output = OutputResponse(
         name=out_name,
-        type=output_type,  # type: ignore[arg-type]
+        type=output_type,
         fileset=fileset,
         description=input_spec.output.description if input_spec.output else None,
     )

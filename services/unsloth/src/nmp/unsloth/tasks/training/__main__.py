@@ -88,7 +88,7 @@ def main() -> int:
     ctx = JobContext(
         workspace=os.environ.get("NEMO_JOB_WORKSPACE", "default"),
         storage=storage,
-        results=None,  # type: ignore[arg-type]
+        results=None,
         job_id=os.environ.get("NEMO_JOB_ID"),
     )
 

@@ -170,20 +170,10 @@ class AutomodelJobOutput(BaseModel):
         total_gpus = num_gpus_per_node * num_nodes
         model_parallel_size = tp * pp * cp
         if total_gpus % model_parallel_size != 0:
-            raise ValidationError.from_exception_data(
-                "parallelism",
-                [
-                    {
-                        "type": "value_error",
-                        "loc": ("parallelism",),
-                        "msg": (
-                            f"Total GPUs ({total_gpus}) must be divisible by "
-                            f"tensor_parallel_size ({tp}) * pipeline_parallel_size ({pp}) * "
-                            f"context_parallel_size ({cp}) = {model_parallel_size}"
-                        ),
-                        "input": p.model_dump(),
-                    }
-                ],
+            raise ValidationError(
+                f"Total GPUs ({total_gpus}) must be divisible by "
+                f"tensor_parallel_size ({tp}) * pipeline_parallel_size ({pp}) * "
+                f"context_parallel_size ({cp}) = {model_parallel_size}"
             )
 
         derived_dp = total_gpus // model_parallel_size
@@ -191,50 +181,20 @@ class AutomodelJobOutput(BaseModel):
         mb = self.batch.micro_batch_size
         divisor = mb * derived_dp
         if gb % divisor != 0:
-            raise ValidationError.from_exception_data(
-                "batch",
-                [
-                    {
-                        "type": "value_error",
-                        "loc": ("batch", "global_batch_size"),
-                        "msg": (
-                            f"global_batch_size ({gb}) must be divisible by "
-                            f"micro_batch_size ({mb}) * data_parallel_size ({derived_dp}) = {divisor}"
-                        ),
-                        "input": gb,
-                    }
-                ],
+            raise ValidationError(
+                f"global_batch_size ({gb}) must be divisible by "
+                f"micro_batch_size ({mb}) * data_parallel_size ({derived_dp}) = {divisor}"
             )
 
         if ep is not None:
             dp_cp = derived_dp * cp
             if dp_cp % ep != 0:
-                raise ValidationError.from_exception_data(
-                    "parallelism",
-                    [
-                        {
-                            "type": "value_error",
-                            "loc": ("parallelism", "expert_parallel_size"),
-                            "msg": (
-                                f"(data_parallel_size * context_parallel_size) ({dp_cp}) "
-                                f"must be divisible by expert_parallel_size ({ep})"
-                            ),
-                            "input": ep,
-                        }
-                    ],
+                raise ValidationError(
+                    f"(data_parallel_size * context_parallel_size) ({dp_cp}) "
+                    f"must be divisible by expert_parallel_size ({ep})"
                 )
             if ep > 1 and tp > 1 and total_gpus > 1:
-                raise ValidationError.from_exception_data(
-                    "parallelism",
-                    [
-                        {
-                            "type": "value_error",
-                            "loc": ("parallelism", "tensor_parallel_size"),
-                            "msg": (
-                                f"Tensor parallelism (tensor_parallel_size={tp}) is not supported for MoE models "
-                                f"when expert_parallel_size > 1 ({ep}); tensor_parallel_size must be 1."
-                            ),
-                            "input": tp,
-                        }
-                    ],
+                raise ValidationError(
+                    f"Tensor parallelism (tensor_parallel_size={tp}) is not supported for MoE models "
+                    f"when expert_parallel_size > 1 ({ep}); tensor_parallel_size must be 1."
                 )

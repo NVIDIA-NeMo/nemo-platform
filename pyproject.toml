@@ -570,6 +570,11 @@ exclude = [
 
   "./services/customizer/",
 
+  # GPU-container training drivers import torch/peft/nemo_automodel/unsloth at runtime only.
+  "services/automodel/src/nmp/automodel/tasks/training/backends/",
+  "services/automodel/src/nmp/automodel/tasks/training/utils.py",
+  "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
+
   "./services/guardrails/",
 
   "./services/intake/",

@@ -60,7 +60,7 @@ def compile_training_step(
         output_path=DEFAULT_OUTPUT_MODEL_PATH,
     )
 
-    executor_kwargs: dict = {
+    executor: GPUExecutionProviderSpec = {
         "provider": "gpu",
         "container": ContainerSpec(
             image=get_training_image(),
@@ -72,11 +72,11 @@ def compile_training_step(
         "resources": ResourcesSpec(),
     }
     if profile is not None:
-        executor_kwargs["profile"] = profile
+        executor["profile"] = profile
 
     return PlatformJobStep(
         name="training",
-        executor=GPUExecutionProviderSpec(**executor_kwargs),
+        executor=executor,
         environment=base_env,
         config=step_config.model_dump(mode="json"),
     )

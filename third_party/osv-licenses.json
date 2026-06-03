@@ -1256,11 +1256,11 @@
         {
           "package": {
             "name": "json-repair",
-            "version": "0.60.1",
+            "version": "0.58.7",
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "MIT"
           ]
         },
         {
@@ -1556,11 +1556,11 @@
         {
           "package": {
             "name": "langsmith",
-            "version": "0.8.9",
+            "version": "0.8.2",
             "ecosystem": "PyPI"
           },
           "licenses": [
-            "UNKNOWN"
+            "MIT"
           ]
         },
         {
@@ -4112,7 +4112,7 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 129
+      "count": 131
     },
     {
       "name": "Apache-2.0",
@@ -4208,7 +4208,7 @@
     },
     {
       "name": "UNKNOWN",
-      "count": 7
+      "count": 5
     }
   ]
 }
