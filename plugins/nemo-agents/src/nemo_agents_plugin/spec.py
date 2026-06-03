@@ -29,7 +29,7 @@ AGENT_SPEC_SECTION_TITLES: tuple[str, ...] = (
     "Evaluation Setup",
     "Change Scope",
     "Signals",
-    "Unresolved Questions",
+    "Open Questions",
 )
 """Required ``##`` section headings, in canonical order."""
 

@@ -19,7 +19,7 @@ author: <human or agent that created this spec>
 >
 > Section rules:
 >
-> - **Bullet sections** (`Unresolved Questions`): list items only. If the list
+> - **Bullet sections** (`Open Questions`): list items only. If the list
 >   is empty, write `_(none)_` instead of leaving the section blank.
 > - **Labeled-bullet sections** (`Scope`, `Model`, `Framework`, `Harness`, `Change Scope`):
 >   `- Label: value` lines only. No prose, no blank-line-separated paragraphs.
@@ -123,6 +123,6 @@ eval outcomes, and trace patterns. Include high-priority signals, noisy signals
 to ignore, traffic or cohort caveats, and agent identity details if needed. Use
 `defaults` if nothing specific.>
 
-## Unresolved Questions
+## Open Questions
 
 - <optional unresolved fact that affects safe use, evaluation, or modification of the agent; remove once answered>

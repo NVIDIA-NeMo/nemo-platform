@@ -65,7 +65,7 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | 10 | Evaluation Setup | yes | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
 | 11 | Change Scope | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
 | 12 | Signals | optional | How analysts should interpret telemetry, user feedback, eval outcomes, and trace patterns. Include high-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
-| 13 | Unresolved Questions | optional | Unresolved facts that affect safe use, evaluation, or modification of the agent. Remove once answered. |
+| 13 | Open Questions | optional | Open facts that affect safe use, evaluation, or modification of the agent. Remove once answered. |
 
 Known issues / failure patterns are tracked as first-class Insight entities by
 the insights plugin — do not duplicate them into the spec.
@@ -131,7 +131,7 @@ the user the full set of unfilled fields.
      metric definitions, thresholds, and coverage notes.
    - **Change Scope** — not in the code; ask the user.
    - **Signals** — usually not in the code; ask the user.
-   - **Unresolved Questions** — TODOs / FIXMEs in agent-adjacent code that
+   - **Open Questions** — TODOs / FIXMEs in agent-adjacent code that
      affect safe use, evaluation, or modification.
 
 ## Step 2 — One review pass, not a Q&A loop
