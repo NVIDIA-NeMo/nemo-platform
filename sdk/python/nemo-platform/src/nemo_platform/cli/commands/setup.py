@@ -40,6 +40,7 @@ from nemo_platform.cli.commands.services._process import (
     start_background,
     stop_instance,
 )
+from nemo_platform.cli.commands.skills import registry as skills_registry
 from nemo_platform.cli.commands.skills.base import Scope, Skill
 from nemo_platform.cli.commands.skills.registry import get_installer, load_skills
 from nemo_platform.cli.core.context import CLIContext
@@ -824,8 +825,6 @@ def _load_skills_with_warnings() -> tuple[dict[str, Skill], list[str]]:
     underlying loader, which would otherwise replay a cached dict with no
     warnings on repeat calls.
     """
-    from nemo_platform.cli.commands.skills import registry as _registry
-
     captured: list[str] = []
 
     class _Capture(logging.Handler):
@@ -833,16 +832,16 @@ def _load_skills_with_warnings() -> tuple[dict[str, Skill], list[str]]:
             captured.append(record.getMessage())
 
     handler = _Capture(level=logging.WARNING)
-    original_level = _registry.logger.level
-    _registry.logger.addHandler(handler)
+    original_level = skills_registry.logger.level
+    skills_registry.logger.addHandler(handler)
     if original_level > logging.WARNING or original_level == logging.NOTSET:
-        _registry.logger.setLevel(logging.WARNING)
-    _registry.clear_cache()
+        skills_registry.logger.setLevel(logging.WARNING)
+    skills_registry.clear_cache()
     try:
         skills = load_skills()
     finally:
-        _registry.logger.removeHandler(handler)
-        _registry.logger.setLevel(original_level)
+        skills_registry.logger.removeHandler(handler)
+        skills_registry.logger.setLevel(original_level)
     return skills, captured
 
 
@@ -1161,6 +1160,7 @@ def _agents_api_ready(base_url: str, workspace: str) -> bool:
 
 def _deploy_demo_agent(base_url: str, workspace: str, config_path: Traversable, default_model: str) -> bool:
     """Create and deploy the demo calculator agent. Returns True on success."""
+    # Optional plugin: import here so ``nemo setup`` works without nemo-agents installed.
     from nemo_agents_plugin.utils import expand_env_vars
 
     api_base = base_url.rstrip("/")
