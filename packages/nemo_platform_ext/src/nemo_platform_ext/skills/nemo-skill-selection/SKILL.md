@@ -65,8 +65,8 @@ Before handing off, run a host-wide platform scan. Three signals, in order — t
 # 1. Ground truth: is anything listening on the canonical port?
 lsof -iTCP:8080 -sTCP:LISTEN 2>/dev/null
 
-# 2. Functional check: does the API actually answer?
-curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
+# 2. Functional check: does the platform readiness endpoint answer?
+curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
 
 # 3. Conflict check: other platform processes / data dirs / configs on this host?
 ps -eo pid,user,command 2>/dev/null | grep -E "nemo services (run|start)|nemo-platform run" | grep -v grep
@@ -78,8 +78,8 @@ Interpretation:
 
 | What you observe | Hand off to | Why |
 |---|---|---|
-| (1) returns a listener AND (2) returns 2xx/4xx | the requested downstream skill | Platform is up and serving. Skip `setup`. |
-| (1) returns a listener but (2) returns `no-response` or 5xx | `nemo-status` | Something is bound to :8080 but the API is wedged. Do not start a second platform. |
+| (1) returns a listener AND (2) returns `200` | the requested downstream skill | Platform is up and ready. Skip `setup`. |
+| (1) returns a listener but (2) returns `no-response` or non-200 | `nemo-status` | Something is bound to :8080 but the platform is not ready. Do not start a second platform. |
 | (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface the inventory verbatim. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
 | (1), (2), and (3) all empty | `setup` | Clean machine, no platform installed. |
 
