@@ -53,6 +53,21 @@ DEFAULT_JUDGE_MAX_RETRIES = 3
 DEFAULT_JUDGE_MAX_WORKER = 1
 log = logging.getLogger(__name__)
 
+RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
+    "agent_goal_accuracy": MetricType.AGENT_GOAL_ACCURACY.value,
+    "nv_accuracy": MetricType.ANSWER_ACCURACY.value,
+    "context_entity_recall": MetricType.CONTEXT_ENTITY_RECALL.value,
+    "context_precision": MetricType.CONTEXT_PRECISION.value,
+    "context_recall": MetricType.CONTEXT_RECALL.value,
+    "nv_context_relevance": MetricType.CONTEXT_RELEVANCE.value,
+    "faithfulness": MetricType.FAITHFULNESS.value,
+    "noise_sensitivity": MetricType.NOISE_SENSITIVITY.value,
+    "nv_response_groundedness": MetricType.RESPONSE_GROUNDEDNESS.value,
+    "answer_relevancy": MetricType.RESPONSE_RELEVANCY.value,
+    "tool_call_accuracy": MetricType.TOOL_CALL_ACCURACY.value,
+    "topic_adherence": MetricType.TOPIC_ADHERENCE.value,
+}
+
 
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
 @cache
@@ -245,20 +260,20 @@ class BaseRAGASMetric(MetricBase):
         return {metric_name: float("nan") for metric_name in metric_names}
 
     def _align_scores_to_output_spec(self, scores: dict[str, float]) -> dict[str, float]:
-        """Map RAGAS internal metric keys (e.g. ``nv_accuracy``) to declared output names."""
+        """Map known RAGAS metric keys (e.g. ``nv_accuracy``) to declared output names."""
         declared = [output.name for output in self.output_spec()]
         if not declared or not scores:
             return scores
 
-        if all(name in scores for name in declared):
-            return {name: scores[name] for name in declared}
+        translated_scores = {
+            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
+        }
+        for name in declared:
+            if name in scores:
+                translated_scores[name] = scores[name]
 
-        undeclared = {name: value for name, value in scores.items() if name not in declared}
-        if len(declared) == 1 and len(undeclared) == 1:
-            return {declared[0]: next(iter(undeclared.values()))}
-
-        aligned = {name: scores[name] for name in declared if name in scores}
-        return aligned if aligned else scores
+        aligned = {name: translated_scores[name] for name in declared if name in translated_scores}
+        return aligned if aligned else translated_scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
         """Get the LLM judge instance based on configuration."""
