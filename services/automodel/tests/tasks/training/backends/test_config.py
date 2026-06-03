@@ -17,11 +17,15 @@ sys.modules["nemo_automodel._transformers"] = MagicMock()
 sys.modules["nemo_automodel._transformers.registry"] = MagicMock()
 sys.modules.setdefault("transformers", MagicMock())
 
-from nmp.customizer.tasks.training.backends.automodel.config import (  # noqa: E402
+from nmp.automodel.tasks.training.backends.config import (  # noqa: E402
     _configure_chat_dataset,
     _configure_moe_backend,
     _configure_sft_dataset,
 )
+
+CONFIG_MODULE = "nmp.automodel.tasks.training.backends.config"
+AUTOCONFIG_PATCH = "transformers.AutoConfig"
+MODEL_REGISTRY_PATCH = f"{CONFIG_MODULE}.ModelRegistry"
 
 
 @pytest.fixture
@@ -52,23 +56,13 @@ class TestConfigureChatDataset:
         temp_dataset_files: tuple[Path, Path],
         mocker,
     ) -> None:
-        """Test that chat dataset config includes 'split' attribute for sequence packing.
-
-        The 'split' attribute is required by Automodel's pack_dataset() when sequence
-        packing is enabled. Without it, build_dataloader() raises AttributeError.
-        """
         train_file, val_file = temp_dataset_files
         cfg: dict[str, Any] = {}
 
-        # Mock resolve_chat_template to avoid external dependencies
-        mocker.patch(
-            "nmp.customizer.tasks.training.backends.automodel.config.resolve_chat_template",
-            return_value="mock_template",
-        )
+        mocker.patch(f"{CONFIG_MODULE}.resolve_chat_template", return_value="mock_template")
         mock_customizer_config.parallelism.pipeline_parallel_size = 1
         _configure_chat_dataset(cfg, mock_customizer_config, train_file, val_file, seq_length=2048)
 
-        # Verify split is set for both train and validation datasets
         assert "dataset" in cfg
         assert "validation_dataset" in cfg
         assert cfg["dataset"]["split"] == "train"
@@ -80,18 +74,13 @@ class TestConfigureChatDataset:
         temp_dataset_files: tuple[Path, Path],
         mocker,
     ) -> None:
-        """Test that chat dataset config includes all required fields."""
         train_file, val_file = temp_dataset_files
         cfg: dict[str, Any] = {}
 
-        mocker.patch(
-            "nmp.customizer.tasks.training.backends.automodel.config.resolve_chat_template",
-            return_value="mock_template",
-        )
+        mocker.patch(f"{CONFIG_MODULE}.resolve_chat_template", return_value="mock_template")
         mock_customizer_config.parallelism.pipeline_parallel_size = 1
         _configure_chat_dataset(cfg, mock_customizer_config, train_file, val_file, seq_length=2048)
 
-        # Verify required fields are present
         assert cfg["dataset"]["_target_"] == "nemo_automodel.components.datasets.llm.chat_dataset.ChatDataset"
         assert cfg["dataset"]["path_or_dataset_id"] == str(train_file)
         assert cfg["dataset"]["seq_length"] == 2048
@@ -106,11 +95,6 @@ class TestConfigureSftDataset:
         temp_dataset_files: tuple[Path, Path],
         mock_customizer_config: MagicMock,
     ) -> None:
-        """Test that SFT dataset config includes 'split' attribute for sequence packing.
-
-        The 'split' attribute is required by Automodel's pack_dataset() when sequence
-        packing is enabled. Without it, build_dataloader() raises AttributeError.
-        """
         train_file, val_file = temp_dataset_files
         cfg: dict[str, Any] = {}
 
@@ -125,7 +109,6 @@ class TestConfigureSftDataset:
             seq_length=2048,
         )
 
-        # Verify split is set for both train and validation datasets
         assert "dataset" in cfg
         assert "validation_dataset" in cfg
         assert cfg["dataset"]["split"] == "train"
@@ -136,7 +119,6 @@ class TestConfigureSftDataset:
         temp_dataset_files: tuple[Path, Path],
         mock_customizer_config: MagicMock,
     ) -> None:
-        """Test that SFT dataset config includes all required fields."""
         train_file, val_file = temp_dataset_files
         cfg: dict[str, Any] = {}
 
@@ -151,7 +133,6 @@ class TestConfigureSftDataset:
             seq_length=2048,
         )
 
-        # Verify required fields are present
         assert (
             cfg["dataset"]["_target_"]
             == "nemo_automodel.components.datasets.llm.column_mapped_text_instruction_dataset.ColumnMappedTextInstructionDataset"
@@ -165,18 +146,8 @@ class TestConfigureSftDataset:
         assert cfg["dataset"]["truncation"] == "longest_first"
 
 
-AUTOCONFIG_PATCH = "transformers.AutoConfig"
-MODEL_REGISTRY_PATCH = "nmp.customizer.tasks.training.backends.automodel.config.ModelRegistry"
-
-
 class TestConfigureMoeBackend:
-    """Tests for _configure_moe_backend function.
-
-    Validates MoE model detection and parallelism constraints:
-    - MoE models get backend + parallelizer configs
-    - Multi-GPU MoE requires tp == 1 and ep > 1
-    - Dense models and standard HF models are unaffected
-    """
+    """Tests for _configure_moe_backend function."""
 
     def _make_config(
         self,
@@ -200,13 +171,9 @@ class TestConfigureMoeBackend:
         num_local_experts: int | None = None,
         num_experts: int | None = None,
     ) -> MagicMock:
-        """Create a mock HF config with explicit getattr behavior for expert attributes."""
         hf_config = MagicMock()
         hf_config.architectures = architectures
 
-        # Override getattr to match real HF config behavior:
-        # getattr(config, "num_local_experts", None) returns None when not set,
-        # not a MagicMock (which would be truthy and break MoE detection)
         original_getattr = type(hf_config).__getattr__
 
         def _controlled_getattr(self, name):
@@ -222,7 +189,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_model_gets_backend_and_parallelizer(self, mock_autoconfig_cls, mock_registry) -> None:
-        """MoE models with correct parallelism get backend and parallelizer configs."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,
@@ -240,7 +206,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_multi_gpu_tp_gt1_raises(self, mock_autoconfig_cls, mock_registry) -> None:
-        """MoE model on multi-GPU with tp > 1 must raise ValueError."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,
@@ -257,7 +222,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_multi_gpu_ep_not_set_raises(self, mock_autoconfig_cls, mock_registry) -> None:
-        """MoE model on multi-GPU without ep > 1 must raise ValueError."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,
@@ -274,7 +238,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_multi_gpu_ep_eq1_raises(self, mock_autoconfig_cls, mock_registry) -> None:
-        """MoE model on multi-GPU with ep == 1 must raise ValueError."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,
@@ -291,7 +254,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_single_gpu_skips_multi_gpu_validation(self, mock_autoconfig_cls, mock_registry) -> None:
-        """MoE model on single GPU skips multi-GPU parallelism constraints."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,
@@ -299,7 +261,6 @@ class TestConfigureMoeBackend:
         mock_registry.model_arch_name_to_cls = {"NemotronHForCausalLM": MagicMock()}
 
         cfg: dict[str, Any] = {"model": {}}
-        # Single GPU: no multi-GPU constraints apply
         _configure_moe_backend(cfg, self._make_config(num_gpus_per_node=1, expert_parallel_size=None))
 
         assert cfg["model"]["backend"]["_target_"] == "nemo_automodel.components.models.common.utils.BackendConfig"
@@ -307,7 +268,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_dense_custom_model_no_moe_config(self, mock_autoconfig_cls, mock_registry) -> None:
-        """Dense models with custom implementations don't get MoE configs."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["LlamaForCausalLM"],
         )
@@ -322,7 +282,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_standard_hf_model_no_custom_config(self, mock_autoconfig_cls, mock_registry) -> None:
-        """Standard HF models not in ModelRegistry get no custom configs."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["LlamaForCausalLM"],
         )
@@ -337,7 +296,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_autoconfig_exception_handled_gracefully(self, mock_autoconfig_cls, _mock_registry) -> None:
-        """AutoConfig errors don't crash training (logged as warning)."""
         mock_autoconfig_cls.from_pretrained.side_effect = OSError("Model not found")
 
         cfg: dict[str, Any] = {"model": {}}
@@ -349,7 +307,6 @@ class TestConfigureMoeBackend:
     @patch(MODEL_REGISTRY_PATCH)
     @patch(AUTOCONFIG_PATCH)
     def test_moe_validation_error_propagates(self, mock_autoconfig_cls, mock_registry) -> None:
-        """ValueError from MoE validation is NOT swallowed by the generic except."""
         mock_autoconfig_cls.from_pretrained.return_value = self._make_hf_config(
             architectures=["NemotronHForCausalLM"],
             num_local_experts=8,

@@ -20,9 +20,6 @@ test = [
     "pytest-asyncio>=0.23.0",
 ]
 
-[project.scripts]
-customizer-server = "nmp.customizer.main:run_standalone"
-
 [tool.uv.sources]
 nmp-common = { workspace = true }
 nmp-testing = { workspace = true }

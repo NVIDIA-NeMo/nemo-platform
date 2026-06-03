@@ -156,9 +156,9 @@ class TrainingRunner:
     def _load_backend(self, backend_type: TrainingBackendEnum) -> TrainingBackend:
         """Load the backend for the given backend type."""
         if backend_type == TrainingBackendEnum.AUTOMODEL:
-            from .backends.automodel.backend import AutomodelBackend
-
-            return AutomodelBackend(self._job_ctx)
+            raise ValueError(
+                "Automodel training is no longer supported in legacy customizer; use the nmp-automodel plugin."
+            )
 
         if backend_type == TrainingBackendEnum.MEGATRON_BRIDGE:
             # TODO: Implement megatron_bridge backend

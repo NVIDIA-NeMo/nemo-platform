@@ -91,7 +91,6 @@ def mock_auth_client(mocker):
 
 FILE_IO_IMAGE = get_qualified_image(CPU_IMAGE_NAMESPACE)
 GPU_TASKS_IMAGE = get_qualified_image(GPU_IMAGE_NAMESPACE)
-TRAINING_AUTOMODEL_IMAGE = get_qualified_image("customizer-automodel")
 TRAINING_RL_IMAGE = get_qualified_image("customizer-rl")
 
 JobOutputType, transformer_func = _validate_and_resolve_job_output(
@@ -125,6 +124,25 @@ async def _compiler_args_async(
 
 def _compiler_args(original_spec: CustomizationJobInput, workspace: str, entity_client: EntityClient, sdk):
     return asyncio.run(_compiler_args_async(original_spec, workspace, entity_client, sdk))
+
+
+def make_valid_dpo_job_input_dict() -> dict:
+    """Create a valid DPO CustomizationJobInput as a dictionary."""
+    return {
+        "model": "default/test-target",
+        "training": {
+            "type": "dpo",
+            "epochs": 1,
+            "batch_size": 4,
+            "learning_rate": 0.0001,
+        },
+        "dataset": "fileset://default/my-dataset",
+    }
+
+
+def make_valid_dpo_job_input() -> CustomizationJobInput:
+    """Create a validated DPO CustomizationJobInput."""
+    return CustomizationJobInput.model_validate(make_valid_dpo_job_input_dict())
 
 
 def make_valid_job_input_dict() -> dict:
@@ -181,14 +199,6 @@ async def make_valid_job_output_async(
     ),
     [
         (
-            {"type": "sft", "peft": {"type": "lora"}, "epochs": 1, "batch_size": 4, "learning_rate": 0.0001},
-            TRAINING_AUTOMODEL_IMAGE,
-            "automodel",
-            "lora",
-            False,
-            None,
-        ),
-        (
             {"type": "dpo", "epochs": 1, "batch_size": 4, "learning_rate": 0.0001},
             TRAINING_RL_IMAGE,
             "nemo_rl",
@@ -197,26 +207,12 @@ async def make_valid_job_output_async(
             None,
         ),
         (
-            {"type": "sft", "peft": {"type": "lora"}, "epochs": 1, "batch_size": 4, "learning_rate": 0.0001},
-            TRAINING_AUTOMODEL_IMAGE,
-            "automodel",
-            "lora",
-            False,
+            {"type": "dpo", "epochs": 1, "batch_size": 4, "learning_rate": 0.0001},
+            TRAINING_RL_IMAGE,
+            "nemo_rl",
+            "all_weights",
+            True,
             {"wandb": {"project": "my-project", "api_key_secret": "my-wandb-secret"}},
-        ),
-        (
-            {
-                "type": "sft",
-                "peft": {"type": "lora", "merge": True},
-                "epochs": 1,
-                "batch_size": 4,
-                "learning_rate": 0.0001,
-            },
-            TRAINING_AUTOMODEL_IMAGE,
-            "automodel",
-            "lora_merged",
-            False,
-            None,
         ),
     ],
 )
@@ -496,7 +492,7 @@ async def test_platform_job_config_compiler_distributed(mocker, mock_sdk, mock_a
         new_callable=mocker.AsyncMock,
         return_value=_make_mock_model_entity(),
     )
-    job_input_dict = make_valid_job_input_dict()
+    job_input_dict = make_valid_dpo_job_input_dict()
     job_input_dict["training"]["parallelism"] = {
         "num_nodes": 2,
         "num_gpus_per_node": 4,
@@ -549,7 +545,7 @@ async def test_platform_job_config_compiler_distributed(mocker, mock_sdk, mock_a
 
 @pytest.mark.asyncio
 async def test_platform_job_config_compiler_distillation(mocker, mock_sdk, mock_auth_client):
-    """Test that distillation jobs include teacher model download and kd config."""
+    """Distillation jobs are routed to nmp-automodel, not legacy customizer."""
     student_me = _make_mock_model_entity(fileset="fileset://default/base-model")
     teacher_me = _make_mock_model_entity(
         workspace="meta",
@@ -581,47 +577,21 @@ async def test_platform_job_config_compiler_distillation(mocker, mock_sdk, mock_
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
     )
-    result = await platform_job_config_compiler(
-        "workspace",
-        job_input,
-        transformed_spec,
-        entity_client=object(),
-        job_name=job_name,
-        sdk=mock_sdk,
-    )
 
-    # Step 1: download step should include student model, dataset, AND teacher model
-    download_step = result["steps"][0]
-    assert download_step["name"] == "model-and-dataset-download"
-    downloads = download_step["config"]["download"]
-    assert len(downloads) == 3
-    assert downloads[0]["dest"] == DEFAULT_MODEL_PATH
-    assert downloads[1]["dest"] == DEFAULT_DATASET_PATH
-    assert downloads[2] == {
-        "src": {"workspace": "meta", "name": "llama-3.1-70b-instruct"},
-        "dest": DEFAULT_TEACHER_MODEL_PATH,
-    }
-
-    # Step 2: training step should have kd config populated
-    training_step = result["steps"][1]
-    assert training_step["config"]["backend"] == "automodel"
-    training_config = training_step["config"]["training"]
-    assert training_config["training_type"] == "distillation"
-    assert training_config["finetuning_type"] == "all_weights"
-    assert training_config["kd"] is not None
-    assert training_config["kd"]["teacher_model"]["path"] == DEFAULT_TEACHER_MODEL_PATH
-    assert training_config["kd"]["teacher_model"]["name"] == "meta/llama-3.1-70b-instruct"
-    assert training_config["kd"]["teacher_model"]["precision"] == "bf16"
-    assert training_config["kd"]["teacher_model"]["trust_remote_code"] is False
-    assert training_config["kd"]["ratio"] == 0.7
-    assert training_config["kd"]["temperature"] == 2.0
-    assert training_config["kd"]["offload_teacher"] is False
-    assert training_config["dpo"] is None
+    with pytest.raises(PlatformJobCompilationError, match="nmp-automodel"):
+        await platform_job_config_compiler(
+            "workspace",
+            job_input,
+            transformed_spec,
+            entity_client=object(),
+            job_name=job_name,
+            sdk=mock_sdk,
+        )
 
 
 @pytest.mark.asyncio
 async def test_platform_job_config_compiler_distillation_with_lora(mocker, mock_sdk, mock_auth_client):
-    """Test that distillation + LoRA produces correct kd + lora config."""
+    """Distillation + LoRA is not compiled by legacy customizer."""
     student_me = _make_mock_model_entity(fileset="fileset://default/base-model")
     teacher_me = _make_mock_model_entity(
         workspace="meta",
@@ -650,21 +620,40 @@ async def test_platform_job_config_compiler_distillation_with_lora(mocker, mock_
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
     )
-    result = await platform_job_config_compiler(
-        "workspace",
-        job_input,
-        transformed_spec,
-        entity_client=object(),
-        job_name=job_name,
-        sdk=mock_sdk,
+
+    with pytest.raises(PlatformJobCompilationError, match="nmp-automodel"):
+        await platform_job_config_compiler(
+            "workspace",
+            job_input,
+            transformed_spec,
+            entity_client=object(),
+            job_name=job_name,
+            sdk=mock_sdk,
+        )
+
+
+@pytest.mark.asyncio
+async def test_platform_job_config_compiler_rejects_sft(mocker, mock_sdk, mock_auth_client):
+    """SFT jobs are routed to nmp-automodel, not legacy customizer."""
+    mocker.patch(
+        "nmp.customizer.app.jobs.compiler.fetch_model_entity",
+        new_callable=mocker.AsyncMock,
+        return_value=_make_mock_model_entity(),
+    )
+    job_input = make_valid_job_input()
+    transformed_spec, job_name = await _compiler_args_async(
+        job_input, "workspace", entity_client=object(), sdk=mock_sdk
     )
 
-    training_step = result["steps"][1]
-    training_config = training_step["config"]["training"]
-    assert training_config["kd"] is not None
-    assert training_config["lora"] is not None
-    assert training_config["lora"]["rank"] == 16
-    assert training_config["finetuning_type"] == "lora"
+    with pytest.raises(PlatformJobCompilationError, match="nmp-automodel"):
+        await platform_job_config_compiler(
+            "workspace",
+            job_input,
+            transformed_spec,
+            entity_client=object(),
+            job_name=job_name,
+            sdk=mock_sdk,
+        )
 
 
 @pytest.mark.asyncio
@@ -715,7 +704,7 @@ async def test_platform_job_config_compiler_explicit_execution_profile(mocker, m
         new_callable=mocker.AsyncMock,
         return_value=_make_mock_model_entity(),
     )
-    job_input_dict = make_valid_job_input_dict()
+    job_input_dict = make_valid_dpo_job_input_dict()
     job_input_dict["training"]["execution_profile"] = "a100"
     job_input = CustomizationJobInput.model_validate(job_input_dict)
 
@@ -743,7 +732,7 @@ async def test_platform_job_config_compiler_distributed_explicit_execution_profi
         new_callable=mocker.AsyncMock,
         return_value=_make_mock_model_entity(),
     )
-    job_input_dict = make_valid_job_input_dict()
+    job_input_dict = make_valid_dpo_job_input_dict()
     job_input_dict["training"]["parallelism"] = {"num_nodes": 2, "num_gpus_per_node": 4}
     job_input_dict["training"]["batch_size"] = 8
     job_input_dict["training"]["execution_profile"] = "high_priority"
@@ -775,7 +764,7 @@ async def test_platform_job_config_compiler_config_default_execution_profile(moc
         return_value=_make_mock_model_entity(),
     )
     mocker.patch("nmp.customizer.app.jobs.training.compiler.config.default_training_execution_profile", "a100")
-    job_input = make_valid_job_input()
+    job_input = make_valid_dpo_job_input()
 
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
@@ -802,7 +791,7 @@ async def test_platform_job_config_compiler_user_profile_overrides_config_defaul
         return_value=_make_mock_model_entity(),
     )
     mocker.patch("nmp.customizer.app.jobs.training.compiler.config.default_training_execution_profile", "a100")
-    job_input_dict = make_valid_job_input_dict()
+    job_input_dict = make_valid_dpo_job_input_dict()
     job_input_dict["training"]["execution_profile"] = "spot"
     job_input = CustomizationJobInput.model_validate(job_input_dict)
 
@@ -880,8 +869,7 @@ async def test_platform_job_config_compiler_uses_name_fallback_when_spec_flag_is
         return_value=model_entity,
     )
 
-    job_input_dict = make_valid_job_input_dict()
-    del job_input_dict["training"]["peft"]
+    job_input_dict = make_valid_dpo_job_input_dict()
     job_input = CustomizationJobInput.model_validate(job_input_dict)
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
@@ -926,7 +914,7 @@ async def test_platform_job_config_compiler_passes_chat_template_from_model_spec
         return_value=model_entity,
     )
 
-    job_input = make_valid_job_input()
+    job_input = make_valid_dpo_job_input()
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
     )
@@ -970,7 +958,7 @@ async def test_platform_job_config_compiler_chat_template_none_when_spec_missing
         return_value=model_entity,
     )
 
-    job_input = make_valid_job_input()
+    job_input = make_valid_dpo_job_input()
     transformed_spec, job_name = await _compiler_args_async(
         job_input, "workspace", entity_client=object(), sdk=mock_sdk
     )

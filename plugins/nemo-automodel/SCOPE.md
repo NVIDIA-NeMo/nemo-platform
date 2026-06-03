@@ -364,7 +364,7 @@ Production / GPU-only deployments can set `enable_subprocess_executor: false` to
   3. `file_io` upload
   4. `nmp.customizer.tasks.model_entity` — register model in Models service
 - **Automodel backend**: `tasks/training/backends/automodel/` — `compile_automodel_config()`, `AutomodelBackend`, `finetune.py` (wraps `nemo_automodel` recipes + `TrainingProgressCallback`).
-- **Image**: `customizer-automodel` (see `nmp/docker/Dockerfile.nmp-customizer`); contract tests in `Platform/tests/customizer-automodel-contract/`.
+- **Image**: `nmp/automodel-training` (see `services/automodel/docker/`); contract tests in `services/automodel/tests/contract/`.
 - **Progress “callbacks”**: `JobsServiceProgressReporter` + `TrainingProgressCallback` call Jobs internal task API (rank-0 only).
 
 ### Platform plugin patterns (`Platform/plugins/`)
@@ -375,7 +375,7 @@ Production / GPU-only deployments can set `enable_subprocess_executor: false` to
 
 ### Simplified config shape (already validated)
 
-Contract input JSONs under `Platform/tests/customizer-automodel-contract/input_configs/` are a good starting point for the **CLI/API simplified spec** (e.g. `llama_3_2_1b_lora.json`): `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `parallelism`, `output_model`, optional `seed`.
+Contract input JSONs under `services/automodel/tests/contract/input_configs/` are a good starting point for the **CLI/API simplified spec** (e.g. `llama_3_2_1b_lora.json`): `model`, `dataset`, `training`, `schedule`, `batch`, `optimizer`, `parallelism`, `output_model`, optional `seed`.
 
 ---
 

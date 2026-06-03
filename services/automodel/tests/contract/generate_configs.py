@@ -3,11 +3,10 @@
 # SPDX-License-Identifier: Apache-2.0
 
 """
-Generate Automodel YAML configs from Customizer TrainingStepConfig JSONs.
+Generate Automodel YAML configs from TrainingStepConfig JSON fixtures.
 
-Uses the same compile_automodel_config() that Customizer uses at runtime.
-Input configs are grouped by model in subdirectories of input_configs/ so
-each model is downloaded only once.
+Uses compile_automodel_config() from nmp-automodel. Input configs are grouped
+by model in subdirectories of input_configs/ so each model is downloaded only once.
 
 Directory layout:
     input_configs/
@@ -47,14 +46,11 @@ from typing import Any
 import yaml
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-REPO_ROOT = SCRIPT_DIR.parent.parent
+REPO_ROOT = SCRIPT_DIR.parents[3]
 AUTOMODEL_SRC = REPO_ROOT / "services" / "automodel" / "src"
-CUSTOMIZER_SRC = REPO_ROOT / "services" / "customizer" / "src"
 
 if AUTOMODEL_SRC.is_dir():
     sys.path.insert(0, str(AUTOMODEL_SRC))
-elif CUSTOMIZER_SRC.is_dir():
-    sys.path.insert(0, str(CUSTOMIZER_SRC))
 else:
     sys.path.insert(0, "/app/services/automodel/src")
 
