@@ -3,10 +3,7 @@
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import {
-  useFilesListFilesetFiles,
-  useFilesRetrieveFileset,
-} from '@nemo/sdk/generated/platform/api';
+import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
 import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
@@ -89,21 +86,10 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
     data: filesResponse,
     isPending: isFilesPending,
     isFetching: isFilesFetching,
-    isError: isFilesError,
   } = useFilesListFilesetFiles(datasetworkspace || '', datasetName || '', undefined, {
     query: { enabled: showDatasetPanel },
   });
   const filesList = filesResponse?.data;
-
-  // Fetch the fileset record so the Card tab can render its description,
-  // storage source, and README frontmatter.
-  const {
-    data: fileset,
-    isPending: isFilesetPending,
-    isError: isFilesetError,
-  } = useFilesRetrieveFileset(datasetworkspace || '', datasetName || '', {
-    query: { enabled: showDatasetPanel },
-  });
 
   // Dataset panel handlers
   //
@@ -209,10 +195,6 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
           filesList={filesList}
           isLoading={isFilesPending}
           isFilesFetching={isFilesFetching}
-          isFilesError={isFilesError}
-          fileset={fileset}
-          isFilesetLoading={isFilesetPending}
-          isFilesetError={isFilesetError}
           onFolderChange={handleFolderClick}
           onFileSelect={handleFileSelect}
           onClose={handleDatasetPanelClose}
