@@ -4520,7 +4520,7 @@
 <tr>
 <td>3</td>
 <td><code>nemo-spec</code></td>
-<td>Writes the design to <code>agents/&lt;name&gt;-spec/AGENTSpec.md</code></td>
+<td>Writes the design to <code>agents/&lt;name&gt;-spec/AGENT-SPEC.md</code></td>
 </tr>
 <tr>
 <td>4</td>
@@ -4668,7 +4668,7 @@
 </span><span id="__span-0-14"><a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nemo-explore (use for design conversation before a spec exists)</span>
 </span><span id="__span-0-15"><a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nemo-try-agent (use to test an already-deployed agent)</span>
 </span><span id="__span-0-16"><a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nemo-agents-optimize (use to improve a deployed agent&#39;s metrics)</span>
-</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nt">compatibility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nemo-platform &gt;= 0.1.0; macOS or Linux; requires `agents/&lt;name&gt;-spec/AGENTSpec.md`</span>
+</span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="nt">compatibility</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">nemo-platform &gt;= 0.1.0; macOS or Linux; requires `agents/&lt;name&gt;-spec/AGENT-SPEC.md`</span>
 </span><span id="__span-0-18"><a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="nt">maturity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">active</span>
 </span><span id="__span-0-19"><a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="nt">license</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Apache-2.0</span>
 </span><span id="__span-0-20"><a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="nt">user-invocable</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
@@ -4721,7 +4721,7 @@
 <ul>
 <li><strong>Explicit:</strong> user names the skill directly. <code>"Use nemo-build-agent to deploy my agent."</code></li>
 <li><strong>Implicit:</strong> user describes the intent without naming the skill. <code>"Scaffold and deploy my agent."</code></li>
-<li><strong>Contextual:</strong> user describes the intent with surrounding situation. <code>"I have a spec at agents/calculator-spec/AGENTSpec.md and a working dev cluster. Take it from here."</code></li>
+<li><strong>Contextual:</strong> user describes the intent with surrounding situation. <code>"I have a spec at agents/calculator-spec/AGENT-SPEC.md and a working dev cluster. Take it from here."</code></li>
 <li><strong>Negative-control:</strong> unrelated request that should NOT route to this skill. <code>"Set up a new Postgres database with seed data."</code></li>
 </ul>
 <p>At least 3 examples per mode. <code>scripts/skill-test.py</code> runs them and fails if routing diverges.</p>
