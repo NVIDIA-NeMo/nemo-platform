@@ -508,6 +508,17 @@ class NmpGroup(NmpErrorHandlingMixin, TyperGroup):
             raise click.exceptions.Exit(0)
         return super().parse_args(ctx, args)
 
+    def _format_active_context_line(self) -> str | None:
+        """Format the current context/workspace for root help."""
+        from nemo_platform.config.config import get_context
+
+        try:
+            display_context = get_context()
+        except Exception:
+            return None
+
+        return f"Active context: {display_context.context_name} (workspace: {display_context.workspace})"
+
     def command(self, *args: Any, **kwargs: Any) -> Callable[[Callable[..., Any]], Command] | Command:  # pyright: ignore [reportIncompatibleMethodOverride]
         """Override command decorator to use NmpCommand."""
         if "cls" not in kwargs:
@@ -541,6 +552,10 @@ class NmpGroup(NmpErrorHandlingMixin, TyperGroup):
 
     def format_help(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Format complete help output."""
+        if ctx.parent is None:
+            active_context_line = self._format_active_context_line()
+            if active_context_line is not None:
+                formatter.write(f"{active_context_line}\n\n")
         self.format_usage(ctx, formatter)
         self.format_help_text(ctx, formatter)
         self.format_commands(ctx, formatter)
