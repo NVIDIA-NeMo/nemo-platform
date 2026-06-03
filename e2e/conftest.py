@@ -43,6 +43,16 @@ _E2E_ADMIN_EMAIL = "admin@example.com"
 _SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
 
 
+def _e2e_auth_enabled() -> bool:
+    """Return whether the e2e harness should run with authorization enabled.
+
+    Default is disabled so ``make test-e2e`` does not depend on platform-admin
+    seeding, PDP refresh, or role propagation timing. Opt in with
+    ``E2E_AUTH_ENABLED=true`` (see ``make test-e2e-docker-auth``).
+    """
+    return os.environ.get("E2E_AUTH_ENABLED", "false").lower() in ("1", "true", "yes")
+
+
 def _find_free_port() -> int:
     """Bind to port 0 and let the OS assign a free port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -72,10 +82,16 @@ def _admin_headers() -> dict[str, str]:
 
 
 def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool:
-    """Poll until auth seed and workspace list visibility are consistent for the admin principal."""
+    """Poll until platform admin can create entities in a fresh workspace.
+
+    Workspace create/list alone is insufficient: entity CRUD requires
+    PlatformAdmin (or entities.create, which workspace Admin lacks). The first
+    entity e2e test was flaky when only workspace visibility was probed.
+    """
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         probe_name = f"auth-probe-{uuid.uuid4().hex[:8]}"
+        entity_name = f"auth-probe-entity-{uuid.uuid4().hex[:8]}"
         try:
             create_resp = httpx.post(
                 f"{url}/apis/entities/v2/workspaces",
@@ -87,26 +103,32 @@ def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool
                 time.sleep(_HEALTH_POLL_INTERVAL)
                 continue
 
-            list_resp = httpx.get(
-                f"{url}/apis/entities/v2/workspaces",
+            entity_resp = httpx.post(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}/entities/e2e-auth-probe",
+                json={"name": entity_name, "data": {"ready": True}},
                 headers=_admin_headers(),
                 timeout=5.0,
             )
-            if list_resp.status_code == 200:
-                names = [item["name"] for item in list_resp.json().get("data", [])]
-                if probe_name in names:
-                    httpx.delete(
-                        f"{url}/apis/entities/v2/workspaces/{probe_name}",
-                        headers=_admin_headers(),
-                        timeout=5.0,
-                    )
-                    return True
+            if entity_resp.status_code != 201:
+                httpx.delete(
+                    f"{url}/apis/entities/v2/workspaces/{probe_name}",
+                    headers=_admin_headers(),
+                    timeout=5.0,
+                )
+                time.sleep(_HEALTH_POLL_INTERVAL)
+                continue
 
+            httpx.delete(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}/entities/e2e-auth-probe/{entity_name}",
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
             httpx.delete(
                 f"{url}/apis/entities/v2/workspaces/{probe_name}",
                 headers=_admin_headers(),
                 timeout=5.0,
             )
+            return True
         except httpx.RequestError as exc:
             logger.debug("Auth readiness probe failed; will retry: %s", exc)
         time.sleep(_HEALTH_POLL_INTERVAL)
@@ -162,6 +184,11 @@ def _services() -> Iterator[str]:
     args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
     env = os.environ.copy()
     env["NMP_SEED_ON_STARTUP"] = "true"
+    if not _e2e_auth_enabled():
+        # Bundled local.yaml enables auth; disable it for the default e2e harness.
+        env["NMP_AUTH_ENABLED"] = "false"
+    elif "NMP_AUTH_ENABLED" not in env:
+        env["NMP_AUTH_ENABLED"] = "true"
 
     logger.info("Starting nemo services on port %d", port)
 
@@ -171,7 +198,7 @@ def _services() -> Iterator[str]:
             pytest.fail(
                 f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
             )
-        if not _wait_for_auth_ready(url):
+        if _e2e_auth_enabled() and not _wait_for_auth_ready(url):
             pytest.fail(
                 f"Platform auth seed did not become ready within {_AUTH_READY_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
             )
@@ -184,10 +211,11 @@ def _services() -> Iterator[str]:
 @pytest.fixture(scope="session")
 def sdk(_services: str) -> NeMoPlatform:
     """Provide an SDK client connected to the running platform."""
+    headers = _admin_headers() if _e2e_auth_enabled() else {}
     return NeMoPlatform(
         base_url=_services,
         max_retries=2,
-        default_headers=_admin_headers(),
+        default_headers=headers,
     )
 
 
