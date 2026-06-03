@@ -55,8 +55,8 @@ class AgentDeploymentController(NemoController):
         self._backend: RunnerBackend | None = None
         self._entities: NemoEntitiesClient | None = None
         self._controller_config: ControllerConfig | None = None
-        self._starting_since: dict[str, float] = {}
-        self._interval_seconds: float = 2.0  # overwritten in on_startup
+        self._starting_since: dict[tuple[str, str], float] = {}
+        self._interval_seconds: float = 5.0  # default; overwritten in on_startup
 
     # ------------------------------------------------------------------
     # Narrowing properties — raise clearly if accessed before on_startup()
@@ -116,8 +116,12 @@ class AgentDeploymentController(NemoController):
         entities_api = AsyncEntitiesResource(sdk)
         self._entities = _EntityClient(entities_api)
 
+        from nemo_agents_plugin.runner.registry import set_runner_backend
+
         registry = RunnerBackendRegistry(config)
         self._backend = registry.backend
+        # Share the controller's instance with HTTP routes so they don't lazy-init a sibling.
+        set_runner_backend(registry.backend)
 
         logger.info("AgentDeploymentController started.")
 
@@ -169,6 +173,7 @@ class AgentDeploymentController(NemoController):
         port = self.backend.allocate_port()
         try:
             info = await self.backend.create_deployment(
+                workspace=dep.workspace,
                 name=dep.name,
                 config=dep.config,
                 port=port,
@@ -186,7 +191,7 @@ class AgentDeploymentController(NemoController):
         dep.pid = info.pid
         dep.endpoint = info.endpoint
         dep.error = ""
-        self._starting_since[dep.name] = time.monotonic()
+        self._starting_since[(dep.workspace, dep.name)] = time.monotonic()
         await self._save(dep)
         logger.info(
             "Deployment '%s' spawned (pid=%d, port=%d, spawn=%.0fms, log=%s).",
@@ -205,7 +210,8 @@ class AgentDeploymentController(NemoController):
         across cycles so the overall ``health_check_timeout_seconds`` budget
         is enforced across many cycles.
         """
-        since = self._starting_since.get(dep.name, time.monotonic())
+        # setdefault — without it, missing key returns now() forever, never times out.
+        since = self._starting_since.setdefault((dep.workspace, dep.name), time.monotonic())
         timeout = self.controller_config.health_check_timeout_seconds
         elapsed = time.monotonic() - since
         remaining = timeout - elapsed
@@ -213,17 +219,17 @@ class AgentDeploymentController(NemoController):
         if remaining <= 0:
             dep.status = "failed"
             dep.error = f"Health check timed out after {timeout}s."
-            await self.backend.delete_deployment(dep.name)
-            self._starting_since.pop(dep.name, None)
+            await self.backend.delete_deployment(dep.workspace, dep.name)
+            self._starting_since.pop((dep.workspace, dep.name), None)
             await self._save(dep)
             logger.warning("Deployment '%s' health check timed out.", dep.name)
             return
 
-        info = await self.backend.get_deployment_status(dep.name)
+        info = await self.backend.get_deployment_status(dep.workspace, dep.name)
         if info is not None and info.status == "failed":
             dep.status = "failed"
             dep.error = info.error or "Process exited unexpectedly during startup."
-            self._starting_since.pop(dep.name, None)
+            self._starting_since.pop((dep.workspace, dep.name), None)
             await self._save(dep)
             logger.warning(
                 "Deployment '%s' failed during startup: %s (log: %s)",
@@ -237,7 +243,7 @@ class AgentDeploymentController(NemoController):
 
         if healthy:
             dep.status = "running"
-            self._starting_since.pop(dep.name, None)
+            self._starting_since.pop((dep.workspace, dep.name), None)
             await self._save(dep)
             logger.info(
                 "Deployment '%s' is running at %s (took %.1fs).",
@@ -250,7 +256,7 @@ class AgentDeploymentController(NemoController):
 
     async def _verify_running(self, dep: AgentDeployment) -> None:
         """mark failed if the process has exited or pending if process is not found to attempt to restart."""
-        info = await self.backend.get_deployment_status(dep.name)
+        info = await self.backend.get_deployment_status(dep.workspace, dep.name)
         if info is None:
             dep.status = "pending"
             dep.error = "Process not found in backend (attempting to restart)."
@@ -263,8 +269,8 @@ class AgentDeploymentController(NemoController):
 
     async def _delete_deployment(self, dep: AgentDeployment) -> None:
         """deleting → (removed): terminate process and delete entity."""
-        await self.backend.delete_deployment(dep.name)
-        self._starting_since.pop(dep.name, None)
+        await self.backend.delete_deployment(dep.workspace, dep.name)
+        self._starting_since.pop((dep.workspace, dep.name), None)
         try:
             await self.entities.delete(AgentDeployment, name=dep.name, workspace=dep.workspace)
         except Exception:

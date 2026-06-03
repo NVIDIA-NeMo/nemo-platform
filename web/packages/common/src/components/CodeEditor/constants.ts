@@ -7,6 +7,7 @@ export enum ContentType {
   JSON = 'json',
   JSONL = 'jsonl',
   JAVASCRIPT = 'javascript',
+  PYTHON = 'python',
   YAML = 'yaml',
   TEXT = 'text',
 }

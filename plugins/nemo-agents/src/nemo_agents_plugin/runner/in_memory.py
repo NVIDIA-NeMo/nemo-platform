@@ -35,7 +35,7 @@ from typing import Any
 import httpx
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
-from nemo_agents_plugin.runner.backend import DeploymentInfo, RunnerBackend
+from nemo_agents_plugin.runner.backend import DeploymentInfo, LogLocation, RunnerBackend
 
 # Match characters not safe for filesystem paths.  Deployment names are
 # normally URL-safe identifiers, but we sanitise defensively to ensure we
@@ -94,20 +94,16 @@ def system_dir(workspace_dir: Path | None = None) -> Path:
     return workspace_dir.resolve() / "system"
 
 
-def log_path_for_deployment(name: str, workspace_dir: Path | None = None) -> Path:
-    """Return the absolute log-file path for a deployment named *name*.
-
-    Path is deterministic: ``<system_dir>/<sanitized-name>.log``.  Callers
-    outside the runner backend (e.g. the ``nemo agents logs`` CLI) can use
-    this helper to locate a deployment's log without instantiating the
-    backend or consulting in-process state.
-    """
-    return system_dir(workspace_dir) / f"{_sanitize_filename(name)}.log"
+def log_path_for_deployment(workspace: str, name: str, workspace_dir: Path | None = None) -> Path:
+    """``<system_dir>/<workspace>/<name>.log`` — also used by the ``nemo agents logs`` CLI."""
+    base = system_dir(workspace_dir) / _sanitize_filename(workspace)
+    return base / f"{_sanitize_filename(name)}.log"
 
 
-def config_path_for_deployment(name: str, workspace_dir: Path | None = None) -> Path:
+def config_path_for_deployment(workspace: str, name: str, workspace_dir: Path | None = None) -> Path:
     """Return the absolute rendered-config path for a deployment named *name*."""
-    return system_dir(workspace_dir) / f"{_sanitize_filename(name)}.yaml"
+    base = system_dir(workspace_dir) / _sanitize_filename(workspace)
+    return base / f"{_sanitize_filename(name)}.yaml"
 
 
 logger = logging.getLogger(__name__)
@@ -124,10 +120,10 @@ class InMemoryRunnerBackend(RunnerBackend):
     def __init__(self, config: ControllerConfig) -> None:
         self._config = config
         self._workspace_root: Path = config.workspace_dir.resolve()
-        self._processes: dict[str, subprocess.Popen[bytes]] = {}
-        self._deployments: dict[str, DeploymentInfo] = {}
+        self._processes: dict[tuple[str, str], subprocess.Popen[bytes]] = {}
+        self._deployments: dict[tuple[str, str], DeploymentInfo] = {}
         self._next_port: int = config.port_range_start
-        self._temp_files: dict[str, Path] = {}
+        self._temp_files: dict[tuple[str, str], Path] = {}
         self._http_client: httpx.AsyncClient | None = None
 
     @property
@@ -146,13 +142,19 @@ class InMemoryRunnerBackend(RunnerBackend):
         """Directory under ``output_base_dir`` for rendered configs and log files."""
         return system_dir(self._workspace_root)
 
-    def log_path_for(self, name: str) -> Path:
+    def log_path_for(self, workspace: str, name: str) -> Path:
         """Instance-level convenience wrapper around :func:`log_path_for_deployment`."""
-        return log_path_for_deployment(name, self._workspace_root)
+        return log_path_for_deployment(workspace, name, self._workspace_root)
 
-    def config_path_for(self, name: str) -> Path:
+    def get_log_location(self, workspace: str, name: str) -> "LogLocation":
+        from nemo_agents_plugin.runner.backend import LocalLog, NotYetAvailable
+
+        path = log_path_for_deployment(workspace, name, self._workspace_root)
+        return LocalLog(path=path) if path.exists() else NotYetAvailable()
+
+    def config_path_for(self, workspace: str, name: str) -> Path:
         """Instance-level convenience wrapper around :func:`config_path_for_deployment`."""
-        return config_path_for_deployment(name, self._workspace_root)
+        return config_path_for_deployment(workspace, name, self._workspace_root)
 
     def allocate_port(self) -> int:
         """Return the next free port in [port_range_start, port_range_end].
@@ -190,10 +192,11 @@ class InMemoryRunnerBackend(RunnerBackend):
             except OSError:
                 return False
 
-    async def create_deployment(self, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
+    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
         """Write config to a deterministic file and spawn ``nat serve``."""
-        config_path = await asyncio.to_thread(self._write_config, name, config)
-        log_path = self.log_path_for(name)
+        key = (workspace, name)
+        config_path = await asyncio.to_thread(self._write_config, workspace, name, config)
+        log_path = self.log_path_for(workspace, name)
         try:
             proc = await asyncio.to_thread(self._spawn, name, config_path, log_path, port)
         except Exception:
@@ -208,11 +211,12 @@ class InMemoryRunnerBackend(RunnerBackend):
             endpoint=f"http://127.0.0.1:{port}",
             log_path=str(log_path),
         )
-        self._processes[name] = proc
-        self._deployments[name] = info
-        self._temp_files[name] = config_path
+        self._processes[key] = proc
+        self._deployments[key] = info
+        self._temp_files[key] = config_path
         logger.info(
-            "Spawned agent process for '%s' (pid=%d, port=%d, log=%s)",
+            "Spawned agent process for '%s/%s' (pid=%d, port=%d, log=%s)",
+            workspace,
             name,
             proc.pid,
             port,
@@ -220,22 +224,22 @@ class InMemoryRunnerBackend(RunnerBackend):
         )
         return info
 
-    async def get_deployment_status(self, name: str) -> DeploymentInfo | None:
-        info = self._deployments.get(name)
+    async def get_deployment_status(self, workspace: str, name: str) -> DeploymentInfo | None:
+        key = (workspace, name)
+        info = self._deployments.get(key)
         if info is None:
             return None
-        proc = self._processes.get(name)
+        proc = self._processes.get(key)
         if proc is not None and proc.poll() is not None:
             info.status = "failed"
-            # Surface the exit code so operators can correlate with the log.
-            # ``returncode`` is negative when killed by a signal (-N == SIGN).
             info.error = f"Process exited with code {proc.returncode}"
         return info
 
-    async def delete_deployment(self, name: str) -> bool:
-        proc = self._processes.pop(name, None)
-        info = self._deployments.pop(name, None)
-        config_path = self._temp_files.pop(name, None)
+    async def delete_deployment(self, workspace: str, name: str) -> bool:
+        key = (workspace, name)
+        proc = self._processes.pop(key, None)
+        info = self._deployments.pop(key, None)
+        config_path = self._temp_files.pop(key, None)
 
         if proc is None and info is None:
             return False
@@ -246,11 +250,13 @@ class InMemoryRunnerBackend(RunnerBackend):
         if config_path is not None:
             config_path.unlink(missing_ok=True)
 
-        logger.info("Deleted agent deployment '%s'", name)
+        logger.info("Deleted agent deployment '%s/%s'", workspace, name)
         return True
 
-    async def list_deployments(self) -> list[DeploymentInfo]:
-        return list(self._deployments.values())
+    async def list_deployments(self, workspace: str | None = None) -> list[DeploymentInfo]:
+        if workspace is None:
+            return list(self._deployments.values())
+        return [info for (ws, _), info in self._deployments.items() if ws == workspace]
 
     async def health_check(self, endpoint: str) -> bool:
         url = endpoint.rstrip("/") + "/health"
@@ -268,14 +274,15 @@ class InMemoryRunnerBackend(RunnerBackend):
 
     async def shutdown(self) -> None:
         """Terminate all managed processes (best-effort)."""
-        names = list(self._processes.keys())
+        items = list(self._processes.items())
+        labels = [f"{ws}/{nm}" for (ws, nm), _ in items]
         results = await asyncio.gather(
-            *(asyncio.to_thread(self._terminate, name, proc) for name, proc in list(self._processes.items())),
+            *(asyncio.to_thread(self._terminate, f"{ws}/{nm}", proc) for (ws, nm), proc in items),
             return_exceptions=True,
         )
-        for name, result in zip(names, results, strict=False):
+        for label, result in zip(labels, results, strict=False):
             if isinstance(result, Exception):
-                logger.warning("Error terminating '%s' during shutdown", name, exc_info=result)
+                logger.warning("Error terminating '%s' during shutdown", label, exc_info=result)
         self._processes.clear()
         self._deployments.clear()
         for path in self._temp_files.values():
@@ -289,20 +296,9 @@ class InMemoryRunnerBackend(RunnerBackend):
             self._http_client = None
         logger.info("InMemoryRunnerBackend shut down — all processes terminated.")
 
-    def _write_config(self, name: str, config: dict[str, Any]) -> Path:
-        """Write the rendered NAT config to a deterministic per-deployment path.
-
-        Earlier versions used ``tempfile.NamedTemporaryFile`` with a random
-        suffix, which made the matching ``.log`` file impossible to locate
-        without scanning a directory.  We now use ``<system_dir>/<name>.yaml``
-        so the log path is predictable and exposed to the controller as
-        ``DeploymentInfo.log_path``.
-        """
-        system_dir = self.system_dir
-        system_dir.mkdir(parents=True, exist_ok=True)
-        config_path = self.config_path_for(name)
-        # Write atomically: serialise to a sibling temp path then rename in
-        # case a previous run left a stale file behind.
+    def _write_config(self, workspace: str, name: str, config: dict[str, Any]) -> Path:
+        config_path = self.config_path_for(workspace, name)
+        config_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = config_path.with_suffix(config_path.suffix + ".tmp")
         with tmp_path.open("w", encoding="utf-8") as fh:
             yaml.safe_dump(config, fh)

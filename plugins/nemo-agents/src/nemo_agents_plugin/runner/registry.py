@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 
 from nemo_agents_plugin.config import AgentsConfig
 from nemo_agents_plugin.runner.backend import RunnerBackend
@@ -40,3 +41,31 @@ class RunnerBackendRegistry:
     def backend(self) -> RunnerBackend:
         """The active backend instance."""
         return self._backend
+
+
+_BACKEND_SINGLETON: RunnerBackend | None = None
+_BACKEND_LOCK = threading.Lock()
+
+
+def set_runner_backend(backend: RunnerBackend) -> None:
+    """Publish the process-wide RunnerBackend (called by the controller on startup)."""
+    global _BACKEND_SINGLETON  # noqa: PLW0603
+    with _BACKEND_LOCK:
+        _BACKEND_SINGLETON = backend
+
+
+def get_runner_backend() -> RunnerBackend:
+    """Return the process-wide RunnerBackend (lazy-builds for out-of-process callers)."""
+    global _BACKEND_SINGLETON  # noqa: PLW0603
+    if _BACKEND_SINGLETON is None:
+        # Double-checked lock so concurrent first callers don't build duplicate backends.
+        with _BACKEND_LOCK:
+            if _BACKEND_SINGLETON is None:
+                _BACKEND_SINGLETON = RunnerBackendRegistry(AgentsConfig.get()).backend
+    return _BACKEND_SINGLETON
+
+
+def _reset_runner_backend_for_tests() -> None:
+    global _BACKEND_SINGLETON  # noqa: PLW0603
+    with _BACKEND_LOCK:
+        _BACKEND_SINGLETON = None
