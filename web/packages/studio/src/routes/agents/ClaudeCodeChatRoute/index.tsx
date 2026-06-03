@@ -4,14 +4,24 @@
 import { AssistantRuntimeProvider } from '@assistant-ui/react';
 import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Stack } from '@nvidia/foundations-react-core';
+import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  getClaudeCodeSessionHistory,
+  getClaudeCodeSessionHistoryQueryKey,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
+import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import {
+  getClaudeCodeHistoryMessages,
+  getSelectedClaudeCodeSessionId,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/history';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
-import { getWorkspaceDashboardRoute } from '@studio/routes/utils';
-import { type FC, useEffect, useRef } from 'react';
+import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
+import { useQuery } from '@tanstack/react-query';
+import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const getInitialPrompt = (state: unknown): string | undefined => {
@@ -24,16 +34,59 @@ const getInitialPrompt = (state: unknown): string | undefined => {
   return trimmedPrompt || undefined;
 };
 
-export const ClaudeCodeChatRoute: FC = () => {
+interface ClaudeCodeChatSurfaceProps {
+  initialMessages?: ReturnType<typeof getClaudeCodeHistoryMessages>;
+  initialPrompt?: string;
+  initialSessionId?: string;
+}
+
+const ClaudeCodeChatLoadingState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
+  <ClaudeCodeLayout activeSessionId={selectedSessionId}>
+    <Stack className="h-full" padding="density-2xl">
+      <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1" align="center" justify="center">
+        <Text kind="body/regular/md" color="secondary">
+          Loading chat...
+        </Text>
+      </Stack>
+    </Stack>
+  </ClaudeCodeLayout>
+);
+
+const ClaudeCodeChatErrorState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
+  <ClaudeCodeLayout activeSessionId={selectedSessionId}>
+    <Stack className="h-full" padding="density-2xl">
+      <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1" align="center" justify="center">
+        <Banner kind="inline" status="error">
+          Could not load Claude Code session.
+        </Banner>
+      </Stack>
+    </Stack>
+  </ClaudeCodeLayout>
+);
+
+const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
+  initialMessages = [],
+  initialPrompt,
+  initialSessionId,
+}) => {
   const workspace = useWorkspaceFromPath();
   const location = useLocation();
   const navigate = useNavigate();
   const toast = useToast();
   const consumedInitialPromptRef = useRef<string | undefined>(undefined);
-  const { handleReset, runtime, submitPrompt } = useClaudeCodeChatRuntime({
+  const { handleReset, runtime, sessionId, submitPrompt } = useClaudeCodeChatRuntime({
+    initialMessages,
+    initialSessionId,
     onError: (error) => toast.error(error.message),
   });
-  const initialPrompt = getInitialPrompt(location.state);
+  const activeSessionId = initialSessionId ?? sessionId ?? undefined;
+
+  const handleChatReset = useCallback(() => {
+    handleReset();
+    if (initialSessionId) {
+      navigate(getClaudeCodeChatRoute(workspace), { replace: true });
+    }
+  }, [handleReset, initialSessionId, navigate, workspace]);
 
   useBreadcrumbs({
     items: [
@@ -46,26 +99,60 @@ export const ClaudeCodeChatRoute: FC = () => {
     if (!initialPrompt || consumedInitialPromptRef.current === initialPrompt) return;
 
     consumedInitialPromptRef.current = initialPrompt;
-    navigate(location.pathname, { replace: true, state: null });
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
     void submitPrompt(initialPrompt);
-  }, [initialPrompt, location.pathname, navigate, submitPrompt]);
+  }, [initialPrompt, location.pathname, location.search, navigate, submitPrompt]);
 
   return (
-    <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-      <Stack className="h-full" padding="density-2xl">
-        <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1">
-          <AssistantRuntimeProvider runtime={runtime}>
-            <AssistantChatThread
-              placeholder="Ask Claude Code to work in this workspace"
-              onReset={handleReset}
-              emptyState={{
-                slotHeading: 'Start a Claude Code session',
-                slotSubheading: 'Ask Claude Code to work in this workspace.',
-              }}
-            />
-          </AssistantRuntimeProvider>
+    <ClaudeCodeLayout activeSessionId={activeSessionId}>
+      <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
+        <Stack className="h-full" padding="density-2xl">
+          <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1">
+            <AssistantRuntimeProvider runtime={runtime}>
+              <AssistantChatThread
+                placeholder="Ask Claude Code to work in this workspace"
+                onReset={handleChatReset}
+                emptyState={{
+                  slotHeading: 'Start a Claude Code session',
+                  slotSubheading: 'Ask Claude Code to work in this workspace.',
+                }}
+              />
+            </AssistantRuntimeProvider>
+          </Stack>
         </Stack>
-      </Stack>
-    </AccessibleTitle>
+      </AccessibleTitle>
+    </ClaudeCodeLayout>
+  );
+};
+
+export const ClaudeCodeChatRoute: FC = () => {
+  const location = useLocation();
+  const selectedSessionId = getSelectedClaudeCodeSessionId(location.search);
+  const initialPrompt = getInitialPrompt(location.state);
+  const sessionHistoryQuery = useQuery({
+    queryKey: getClaudeCodeSessionHistoryQueryKey(selectedSessionId ?? ''),
+    queryFn: () => getClaudeCodeSessionHistory(selectedSessionId ?? ''),
+    enabled: !!selectedSessionId,
+  });
+  const initialMessages = useMemo(
+    () => getClaudeCodeHistoryMessages(sessionHistoryQuery.data),
+    [sessionHistoryQuery.data]
+  );
+
+  if (selectedSessionId && sessionHistoryQuery.isLoading) {
+    return <ClaudeCodeChatLoadingState selectedSessionId={selectedSessionId} />;
+  }
+
+  if (selectedSessionId && sessionHistoryQuery.isError) {
+    return <ClaudeCodeChatErrorState selectedSessionId={selectedSessionId} />;
+  }
+
+  return (
+    <ClaudeCodeChatSurface
+      key={selectedSessionId ?? 'new'}
+      initialMessages={initialMessages}
+      initialPrompt={selectedSessionId ? undefined : initialPrompt}
+      initialSessionId={selectedSessionId}
+    />
   );
 };
