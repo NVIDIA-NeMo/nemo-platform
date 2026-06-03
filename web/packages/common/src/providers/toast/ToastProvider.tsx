@@ -18,11 +18,6 @@ import { getTransformStyles } from './GetTransformStyles';
 import { AddToastFn, ToastContextValue, ToastDescriptor } from './types';
 import { ToastContext } from './useToast';
 
-// Browser support is decided at load time and does not change. Computing it
-// once keeps the render path branch-free and the className stable.
-const SUPPORTS_POPOVER =
-  typeof HTMLElement !== 'undefined' && 'showPopover' in HTMLElement.prototype;
-
 export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastDescriptor[]>([]);
   const timeoutRefs = useRef<Record<string, NodeJS.Timeout>>({});
@@ -40,9 +35,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   // popover stays open but renders nothing visible (no children inside).
   const promoteToTopLayer = useCallback(() => {
     const el = containerRef.current;
-    // Feature-detect. Older browsers fall back to z-index-only behaviour
-    // (broken under top-layer dialogs, same as before this fix).
-    if (!el || typeof el.showPopover !== 'function') return;
+    if (!el) return;
     if (el.matches(':popover-open')) el.hidePopover();
     el.showPopover();
   }, []);
@@ -158,19 +151,12 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
       {children}
       <div
         ref={containerRef}
-        popover={SUPPORTS_POPOVER ? 'manual' : undefined}
-        // Popover elements default to `display: none`; the arbitrary variant
-        // restores our flex layout when the popover is open. The UA stylesheet
-        // also sets `[popover] { inset: 0; margin: auto; }` (centers the
-        // element); `left-auto bottom-auto m-0` releases those so `top-...` +
-        // `right-4` anchor cleanly to the upper-right corner.
-        //
-        // Fallback: without Popover API support, render `flex` unconditionally
-        // — promoteToTopLayer is a no-op there, and toasts must remain visible
-        // (top-layer ordering vs modals just won't work).
-        className={`fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 left-auto bottom-auto m-0 flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md ${
-          SUPPORTS_POPOVER ? 'hidden [&:popover-open]:flex' : 'flex'
-        }`}
+        popover="manual"
+        // UA stylesheet on `[popover]` sets `display: none` until open and
+        // `inset: 0; margin: auto` (centers the element). `left-auto
+        // bottom-auto m-0` releases those so `top-...` + `right-4` anchor to
+        // the upper-right corner; `[&:popover-open]:flex` restores our layout.
+        className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 left-auto bottom-auto m-0 hidden flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md [&:popover-open]:flex"
       >
         {toasts.map((toast) => (
           <Toast
