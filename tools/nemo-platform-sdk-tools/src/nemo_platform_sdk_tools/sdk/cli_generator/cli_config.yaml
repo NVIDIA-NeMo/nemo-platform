@@ -48,10 +48,6 @@ top_level:
     panel: Core plugins
     help: Manage projects.
     hidden: true
-  safe-synthesizer:
-    panel: Functional plugins
-    help: Safe Synthesizer operations.
-    hidden: true
   secrets:
     panel: Core plugins
     help: Manage secrets.
@@ -261,23 +257,9 @@ config:
       - description
       - status
       - created_at
-- resource: [safe_synthesizer, jobs]
-  methods:
-    create:
-      wait:
-        type: platform_job
-        resource_label: safe-synthesizer job
-    list:
-      columns:
-      - name
-      - description
-      - status
-      - created_at
 
-- resource: [safe_synthesizer, jobs, results, summary]
-  methods:
-    download:
-      operation_type: default
+- resource: [safe_synthesizer]
+  skip: true
 
 - resource: [guardrail]
   methods:
@@ -298,6 +280,14 @@ config:
       skip: true
     live_global:
       skip: true
+
+# Experiments are in the OpenAPI spec and SDK (for the frontend) but not yet exposed
+# as CLI commands; drop the skip once the feature is production-ready.
+- resource: [experiments]
+  skip: true
+
+- resource: [experiment_groups]
+  skip: true
 
 - resource: [secrets]
   methods:

@@ -25,6 +25,7 @@ from nemo_evaluator_sdk.values import (
     Model,
     RangeScore,
     RunConfig,
+    RunConfigOnlineModel,
     SecretRef,
 )
 
@@ -325,7 +326,8 @@ async def run_online_local_exact_match_example() -> None:
         metrics=exact_match,
         target=model,
         dataset=ONLINE_EXACT_MATCH_DATASET,
-        config=RunConfig(parallelism=4),
+        prompt_template=ONLINE_CHAT_PROMPT_TEMPLATE,
+        config=RunConfigOnlineModel(parallelism=4),
     )
     exact_match_result.print_summary()
 
@@ -409,7 +411,7 @@ async def run_online_local_benchmark_example() -> None:
         target=model,
         dataset=ONLINE_BENCHMARK_DATASET,
         prompt_template=ONLINE_CHAT_PROMPT_TEMPLATE,
-        config=RunConfig(parallelism=4),
+        config=RunConfigOnlineModel(parallelism=4),
     )
     benchmark_result.print_summary()
     print(f"Online benchmark metric keys: {list(benchmark_result.per_metric)}")
@@ -517,7 +519,8 @@ async def run_online_local_llm_judge_example() -> None:
         metrics=llm_judge_metric,
         target=model_with_custom_headers,
         dataset=ONLINE_JUDGE_DATASET,
-        config=RunConfig(parallelism=2),
+        prompt_template=ONLINE_CHAT_PROMPT_TEMPLATE,
+        config=RunConfigOnlineModel(parallelism=2),
     )
     llm_judge_result.print_summary()
 
@@ -531,7 +534,7 @@ def run_sync_example() -> None:
 
     evaluator = Evaluator()
     result = evaluator.run_sync(
-        metrics=ExactMatchMetric(reference="{{item.reference}}"),
+        metrics=ExactMatchMetric(reference="{{item.reference}}", candidate="{{item.actual}}"),
         dataset=OFFLINE_EXACT_MATCH_DATASET[:1],  # Only run the first sample
         config=RunConfig(parallelism=1),
     )
@@ -548,12 +551,14 @@ async def run_examples() -> None:
     #### Local backend examples ####
     await run_offline_local_exact_match_example()
     await run_online_local_exact_match_example()
+    await run_offline_local_multi_metric_example()
     await run_offline_local_llm_judge_example()
     await run_online_local_llm_judge_example()
     await run_offline_local_benchmark_example()
     await run_online_local_benchmark_example()
     await run_local_benchmark_with_metric_failure_example()
     await run_local_metric_with_template_failure_example()
+    run_sync_example()
 
 
 if __name__ == "__main__":

@@ -68,6 +68,13 @@ class SafeSynthesizerJobConfig(SafeSynthesizerJobConfigInternal):
     config: SafeSynthesizerParameters = Field(
         description="The Safe Synthesizer parameters configuration.",
     )
+    pretrained_model_job: str | None = Field(
+        default=None,
+        description="Optional previous NSS job whose stored adapter artifact is reused for generation-only "
+        "synthesis. Accepts either '<job>' in the current workspace or '<workspace>/<job>'. "
+        "The plugin resolves the prior job's 'adapter' result from Files.",
+    )
+
     enable_synthesis: SkipJsonSchema[bool] = Field(
         default=True,
         description="Whether to run LLM training and generation phases. "
@@ -113,6 +120,38 @@ class SafeSynthesizerJobConfig(SafeSynthesizerJobConfigInternal):
         deep_update(default, replace_pii)
         config_data["replace_pii"] = default
         return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_pretrained_model_source(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        if not data.get("pretrained_model_job"):
+            return data
+        config_data = data.get("config")
+        training_data = config_data.get("training") if isinstance(config_data, dict) else None
+        if isinstance(training_data, dict) and "pretrained_model" in training_data:
+            raise ValueError("Use either 'pretrained_model_job' or 'config.training.pretrained_model', not both.")
+        return data
+
+
+def parse_pretrained_model_job_ref(job_ref: str, workspace_fallback: str) -> tuple[str, str]:
+    """Parse a previous NSS job reference.
+
+    Accepts either "<job>" in the current workspace or "<workspace>/<job>".
+    """
+    parts = job_ref.split("/", 1)
+    if len(parts) == 1:
+        workspace = workspace_fallback
+        job_name = parts[0]
+    else:
+        workspace, job_name = parts
+
+    if not workspace or not job_name:
+        raise PlatformJobCompilationError(
+            f"Invalid pretrained_model_job format: {job_ref!r}. Expected '<job>' or '<workspace>/<job>'."
+        )
+    return workspace, job_name
 
 
 def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
@@ -223,6 +262,22 @@ async def job_config_compiler(
                 name="HF_TOKEN", from_secret=EnvironmentVariableFromSecret(name=transformed_spec.hf_token_secret)
             )
         )
+
+    if transformed_spec.pretrained_model_job:
+        model_workspace, model_job = parse_pretrained_model_job_ref(
+            transformed_spec.pretrained_model_job, workspace_fallback=workspace
+        )
+        try:
+            await sdk.jobs.results.retrieve(name="adapter", job=model_job, workspace=model_workspace)
+        except NotFoundError as e:
+            raise PlatformJobCompilationError(
+                f"Could not find adapter result for NSS job {model_workspace}/{model_job!r}"
+            ) from e
+        except PermissionDeniedError as e:
+            raise PlatformJobCompilationError(
+                f"Failed to retrieve adapter result for NSS job {model_workspace}/{model_job!r}: "
+                f"access denied to workspace {model_workspace!r}"
+            ) from e
 
     if transformed_spec.config:
         steps.append(_create_job_step(job_config=transformed_spec, environment=environment))

@@ -13,10 +13,12 @@ import {
   Button,
   Flex,
   Skeleton,
+  Stack,
   Text,
   TextArea,
   Tooltip,
 } from '@nvidia/foundations-react-core';
+import cn from 'classnames';
 import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
 
 import { ChatEmptyState } from '../Chat/ChatEmptyState';
@@ -30,6 +32,9 @@ interface AssistantChatThreadProps {
     slotHeading?: string;
     slotSubheading?: string;
   };
+  contentClassName?: string;
+  composerContainerClassName?: string;
+  viewportClassName?: string;
 }
 
 const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
@@ -165,8 +170,25 @@ const UserEditComposer = () => (
   </MessagePrimitive.Root>
 );
 
-const AssistantComposer = ({ disabled, placeholder, onReset }: AssistantChatThreadProps) => (
-  <ComposerPrimitive.Root className="flex items-end gap-1 rounded border border-base bg-surface-base p-1">
+type AssistantComposerProps = Pick<
+  AssistantChatThreadProps,
+  'disabled' | 'placeholder' | 'onReset'
+> & {
+  className?: string;
+};
+
+const AssistantComposer = ({
+  disabled,
+  placeholder,
+  onReset,
+  className,
+}: AssistantComposerProps) => (
+  <ComposerPrimitive.Root
+    className={cn(
+      'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
+      className
+    )}
+  >
     <ComposerPrimitive.Input
       aria-label="Task prompt"
       addAttachmentOnPaste={false}
@@ -209,28 +231,37 @@ export const AssistantChatThread = ({
   placeholder,
   onReset,
   emptyState,
+  contentClassName,
+  composerContainerClassName,
+  viewportClassName,
 }: AssistantChatThreadProps) => (
   <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
-    <ThreadPrimitive.Viewport className="relative flex min-h-0 flex-1 flex-col overflow-y-auto gap-4">
-      <ThreadPrimitive.Empty>
-        <ChatEmptyState
-          className="h-full min-h-[250px] w-full"
-          slotHeading={emptyState?.slotHeading}
-          slotSubheading={emptyState?.slotSubheading}
+    <ThreadPrimitive.Viewport
+      className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
+    >
+      <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
+        <ThreadPrimitive.Empty>
+          <ChatEmptyState
+            className="h-full min-h-[250px] w-full"
+            slotHeading={emptyState?.slotHeading}
+            slotSubheading={emptyState?.slotSubheading}
+          />
+        </ThreadPrimitive.Empty>
+        <ThreadPrimitive.Messages
+          components={{
+            AssistantMessage,
+            UserMessage,
+            UserEditComposer,
+            SystemMessage: AssistantMessage,
+          }}
         />
-      </ThreadPrimitive.Empty>
-      <ThreadPrimitive.Messages
-        components={{
-          AssistantMessage,
-          UserMessage,
-          UserEditComposer,
-          SystemMessage: AssistantMessage,
-        }}
-      />
+      </Stack>
       <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
         Scroll to bottom
       </ThreadPrimitive.ScrollToBottom>
     </ThreadPrimitive.Viewport>
-    <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+    <Flex className={cn('w-full', composerContainerClassName)}>
+      <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+    </Flex>
   </ThreadPrimitive.Root>
 );

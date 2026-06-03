@@ -67,3 +67,7 @@ from nemo_platform.types import (
 # [Adapters](src/nemo_platform/resources/adapters/api.md)
 
 # [Intake](src/nemo_platform/resources/intake/api.md)
+
+# [ExperimentGroups](src/nemo_platform/resources/experiment_groups/api.md)
+
+# [Experiments](src/nemo_platform/resources/experiments/api.md)

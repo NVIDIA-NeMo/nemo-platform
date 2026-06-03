@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
+
+from typing import Dict, List, Optional
+from datetime import datetime
+
+from ..._models import BaseModel
+from .evaluator_aggregate import EvaluatorAggregate
+
+__all__ = ["ExperimentResponse"]
+
+
+class ExperimentResponse(BaseModel):
+    """Experiment as served by the API, including ClickHouse-hydrated rollups."""
+
+    id: str
+
+    agent_name: str
+
+    agent_version: str
+
+    dataset_name: str
+
+    name: str
+
+    workspace: str
+
+    aggregate_scores: Optional[Dict[str, EvaluatorAggregate]] = None
+
+    created_at: Optional[datetime] = None
+
+    dataset_version: Optional[str] = None
+
+    description: Optional[str] = None
+
+    evaluator_names: Optional[List[str]] = None
+
+    experiment_group_id: Optional[str] = None
+    """Entity id of the owning ExperimentGroup; null when ungrouped.
+
+    Soft reference, not validated.
+    """
+
+    metadata: Optional[Dict[str, object]] = None
+
+    model_names: Optional[List[str]] = None
+
+    run_count: Optional[int] = None
+
+    source_link: Optional[str] = None
+
+    summary: Optional[str] = None
+
+    updated_at: Optional[datetime] = None

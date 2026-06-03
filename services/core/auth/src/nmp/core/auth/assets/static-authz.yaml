@@ -161,6 +161,24 @@ authz:
           description: "Read intake annotations"
         delete:
           description: "Delete intake annotations"
+      experiment-groups:
+        create:
+          description: "Create intake experiment groups"
+        delete:
+          description: "Delete intake experiment groups"
+        read:
+          description: "Read intake experiment groups"
+        update:
+          description: "Update intake experiment groups"
+      experiments:
+        create:
+          description: "Create intake experiments"
+        delete:
+          description: "Delete intake experiments"
+        read:
+          description: "Read intake experiments"
+        update:
+          description: "Update intake experiments"
       ingest:
         create:
           description: "Ingest traces into intake"
@@ -309,6 +327,8 @@ authz:
       - intake.annotations.read
       - intake.evaluator-results.list
       - intake.evaluator-results.read
+      - intake.experiment-groups.read
+      - intake.experiments.read
       - intake.spans.list
       - intake.spans.read
       - intake.traces.read
@@ -360,6 +380,12 @@ authz:
       - intake.annotations.create
       - intake.annotations.delete
       - intake.evaluator-results.create
+      - intake.experiment-groups.create
+      - intake.experiment-groups.delete
+      - intake.experiment-groups.update
+      - intake.experiments.create
+      - intake.experiments.delete
+      - intake.experiments.update
       - intake.ingest.create
       - jobs.cancel
       - jobs.create
@@ -1170,6 +1196,70 @@ authz:
         scopes:
         - intake:read
         - platform:read
+    /apis/intake/v2/workspaces/{workspace}/experiment-groups:
+      get:
+        permissions:
+        - intake.experiment-groups.read
+        scopes:
+        - intake:read
+        - platform:read
+      post:
+        permissions:
+        - intake.experiment-groups.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+      delete:
+        permissions:
+        - intake.experiment-groups.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.experiment-groups.read
+        scopes:
+        - intake:read
+        - platform:read
+      put:
+        permissions:
+        - intake.experiment-groups.update
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiments:
+      get:
+        permissions:
+        - intake.experiments.read
+        scopes:
+        - intake:read
+        - platform:read
+      post:
+        permissions:
+        - intake.experiments.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+      delete:
+        permissions:
+        - intake.experiments.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.experiments.read
+        scopes:
+        - intake:read
+        - platform:read
+      put:
+        permissions:
+        - intake.experiments.update
+        scopes:
+        - intake:write
+        - platform:write
     /apis/intake/v2/workspaces/{workspace}/ingest/atif:
       post:
         permissions:

@@ -1,25 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import importlib
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from nemo_platform import NotFoundError, PermissionDeniedError
+from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
+from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
+from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig as PluginJobConfig
+from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerParameters, job_config_compiler
 from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
-
-nss_job = pytest.importorskip("nemo_safe_synthesizer.config.job")
-nss_pii = pytest.importorskip("nemo_safe_synthesizer.config.replace_pii")
-endpoints = importlib.import_module("nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints")
-SafeSynthesizerJobConfig = nss_job.SafeSynthesizerJobConfig
-SafeSynthesizerParameters = nss_job.SafeSynthesizerParameters
-ClassifyConfig = nss_pii.ClassifyConfig
-Globals = nss_pii.Globals
-PiiReplacerConfig = nss_pii.PiiReplacerConfig
-StepDefinition = nss_pii.StepDefinition
-PluginJobConfig = endpoints.SafeSynthesizerJobConfig
-job_config_compiler = endpoints.job_config_compiler
 
 DEFAULT_WORKSPACE = "default"
 DEFAULT_DATA_SOURCE = "default/test-data#file.csv"
@@ -48,7 +39,7 @@ def _make_spec(data_source: str = DEFAULT_DATA_SOURCE, model_provider: str | Non
             globals=Globals(classify=ClassifyConfig(classify_model_provider=model_provider)),
             steps=[StepDefinition()],
         )
-    return SafeSynthesizerJobConfig(
+    return PluginJobConfig(
         data_source=data_source,
         config=SafeSynthesizerParameters(replace_pii=replace_pii),
     )
@@ -104,6 +95,56 @@ async def test_job_config_compiler_with_classify_provider(mock_sdk):
     assert step["executor"]["command"] == ["/runtime/bin/python", "-m", TASK_MODULE]
     env = {e["name"]: e.get("value") for e in step.get("environment", [])}
     assert env["CLASSIFY_LLM_ENDPOINT_PATH"] == "/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
+    mock_sdk.jobs.results.retrieve = AsyncMock(
+        return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
+    )
+    spec = PluginJobConfig.model_validate(
+        {
+            "data_source": DEFAULT_DATA_SOURCE,
+            "pretrained_model_job": "prior-safe-synth-job",
+            "config": {},
+        }
+    )
+
+    await _compile(spec, mock_sdk)
+
+    mock_sdk.jobs.results.retrieve.assert_awaited_once_with(
+        name="adapter",
+        job="prior-safe-synth-job",
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+
+@pytest.mark.asyncio
+async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
+    mock_sdk.jobs.results.retrieve = AsyncMock(
+        side_effect=NotFoundError(message="not found", response=MagicMock(status_code=404), body=None)
+    )
+    spec = PluginJobConfig.model_validate(
+        {
+            "data_source": DEFAULT_DATA_SOURCE,
+            "pretrained_model_job": "other-ws/prior-safe-synth-job",
+            "config": {},
+        }
+    )
+
+    with pytest.raises(PlatformJobCompilationError, match="Could not find adapter result"):
+        await _compile(spec, mock_sdk)
+
+
+def test_plugin_job_config_rejects_conflicting_pretrained_model_sources():
+    with pytest.raises(ValueError, match="Use either 'pretrained_model_job' or 'config.training.pretrained_model'"):
+        PluginJobConfig.model_validate(
+            {
+                "data_source": DEFAULT_DATA_SOURCE,
+                "pretrained_model_job": "prior-safe-synth-job",
+                "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
+            }
+        )
 
 
 @pytest.mark.asyncio

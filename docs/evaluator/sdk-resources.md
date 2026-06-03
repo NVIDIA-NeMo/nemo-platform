@@ -36,18 +36,17 @@ Use `submit` when you want to create a durable remote platform job and manage th
 | `plugin_status()` | Returns Evaluator plugin health information from the service. | `dict[str, object]` |
 | `get_job_resource(job_name: str, workspace: str \| None = None)` | Returns a resource for an existing Evaluator plugin job. | `EvaluatorJobResource` |
 
-The `dataset` argument accepts inline rows, local dataset paths, and fileset references. Use `config` for evaluator runtime settings, `aggregate_fields` on result-returning calls to shape aggregate scores, and `target` plus `prompt_template` when the evaluator should generate model or agent responses before scoring.
+The `dataset` argument accepts inline rows, local dataset paths, local glob paths, and fileset references with optional fragment selectors. Use `config` for evaluator runtime settings, `aggregate_fields` on result-returning calls to shape aggregate scores, and `target` plus `prompt_template` when the evaluator should generate model or agent responses before scoring.
 
 ### `run()` arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `metric` | `Metric` | Yes | Metric configuration used to score each row. |
-| `dataset` | `PluginDatasetInput` | Yes | Inline rows, a local dataset path, or a fileset reference. |
+| `dataset` | `PluginDatasetInput` | Yes | Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors. |
 | `config` | `RunConfig \| RunConfigOnline \| RunConfigOnlineModel \| None` | No | Runtime settings such as sample limits, parallelism, timeouts, and retry behavior. |
 | `aggregate_fields` | `tuple[AggregateFieldName, ...] \| None` | No | Aggregate score fields to include in the returned result. |
 | `target` | `Model \| Agent \| None` | No | Model or agent target used when the evaluator should generate outputs before scoring. |
-| `dataset_glob_pattern` | `str \| None` | No | Pattern used to select files from a dataset path or fileset reference. |
 | `prompt_template` | `str \| dict[str, Any] \| None` | No | Prompt template used with `target` for online model or agent evaluation. |
 
 ### `submit()` arguments
@@ -55,10 +54,9 @@ The `dataset` argument accepts inline rows, local dataset paths, and fileset ref
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `metric` | `Metric` | Yes | Metric configuration serialized into the durable platform job. |
-| `dataset` | `PluginDatasetInput` | Yes | Inline rows, a local dataset path, or a fileset reference. |
+| `dataset` | `PluginDatasetInput` | Yes | Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors. |
 | `config` | `RunConfig \| RunConfigOnline \| RunConfigOnlineModel \| None` | No | Runtime settings applied when the submitted job executes. |
-| `target` | `Model \| Agent \| None` | No | Model or agent target used when the submitted job should generate outputs before scoring. |
-| `dataset_glob_pattern` | `str \| None` | No | Pattern used to select files from a dataset path or fileset reference. |
+| `target` | `Model \| ModelRef \| Agent \| None` | No | Model, model reference, or agent target used when the submitted job should generate outputs before scoring. |
 | `prompt_template` | `str \| dict[str, Any] \| None` | No | Prompt template used with `target` for online model or agent evaluation. |
 
 ### Run locally
