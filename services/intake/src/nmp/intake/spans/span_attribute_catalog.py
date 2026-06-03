@@ -167,8 +167,11 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_ID,
         bag=AttributeBag.STRING,
-        bag_key="evaluation.id",
+        # Renamed from evaluation.id.
+        bag_key="experiment.id",
         source_keys=(
+            "experiment.id",
+            "experiment_id",
             "evaluation.id",
             "evaluation_id",
         ),
@@ -176,8 +179,10 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_SHA,
         bag=AttributeBag.STRING,
-        bag_key="evaluation.sha",
+        bag_key="experiment.sha",
         source_keys=(
+            "experiment.sha",
+            "experiment_sha",
             "evaluation.sha",
             "evaluation_sha",
         ),
@@ -185,8 +190,9 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         field=SpanAttributeField.EVALUATION_RUN_ID,
         bag=AttributeBag.STRING,
-        bag_key="evaluation.run_id",
+        bag_key="experiment.run_id",
         source_keys=(
+            "experiment.run_id",
             "evaluation.run_id",
             "evaluation_run_id",
         ),
@@ -221,10 +227,11 @@ ATTRIBUTE_SPECS = (
     AttributeSpec(
         field=SpanAttributeField.TEST_CASE_ID,
         bag=AttributeBag.STRING,
-        bag_key="dataset.test_case_id",
+        bag_key="test_case.id",
         source_keys=(
-            "dataset.test_case_id",
+            "test_case.id",
             "test_case_id",
+            "dataset.test_case_id",
         ),
     ),
     AttributeSpec(
@@ -330,7 +337,16 @@ ATTRIBUTE_SPECS = (
 SPECS_BY_FIELD = {spec.field: spec for spec in ATTRIBUTE_SPECS}
 SPECS_BY_FIELD_VALUE = {spec.field.value: spec for spec in ATTRIBUTE_SPECS}
 SPECS_BY_BAG_KEY = {spec.bag_key: spec for spec in ATTRIBUTE_SPECS}
-KNOWN_BAG_KEYS = frozenset(SPECS_BY_BAG_KEY)
+LEGACY_BAG_KEY_ALIASES = {
+    SpanAttributeField.EVALUATION_ID: ("evaluation.id",),
+    SpanAttributeField.EVALUATION_SHA: ("evaluation.sha",),
+    SpanAttributeField.EVALUATION_RUN_ID: ("evaluation.run_id",),
+    SpanAttributeField.TEST_CASE_ID: ("dataset.test_case_id",),
+}
+LEGACY_KNOWN_BAG_KEYS = frozenset(key for aliases in LEGACY_BAG_KEY_ALIASES.values() for key in aliases) | frozenset(
+    {"evaluation.metadata"}
+)
+KNOWN_BAG_KEYS = frozenset(SPECS_BY_BAG_KEY) | LEGACY_KNOWN_BAG_KEYS
 QUERYABLE_FIELDS = frozenset(SPECS_BY_FIELD_VALUE)
 
 # Source keys that populate top-level span fields or payloads rather than
@@ -436,11 +452,24 @@ def where_clause(
     if bag_value is None:
         raise ValueError(f"Span attribute filter {field!r} does not support null values")
 
-    sql = (
-        f"has(mapKeys({spec.bag.value}), %({key_param})s) "
-        f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
-    )
-    return sql, {key_param: spec.bag_key, value_param: bag_value}
+    alias_keys = LEGACY_BAG_KEY_ALIASES.get(spec.field, ())
+    if not alias_keys:
+        sql = (
+            f"has(mapKeys({spec.bag.value}), %({key_param})s) "
+            f"AND {spec.bag.value}[%({key_param})s] {sql_operator} %({value_param})s"
+        )
+        return sql, {key_param: spec.bag_key, value_param: bag_value}
+
+    clauses: list[str] = []
+    parameters: dict[str, Any] = {value_param: bag_value}
+    for index, bag_key in enumerate((spec.bag_key, *alias_keys)):
+        aliased_key_param = key_param if index == 0 else f"{key_param}_{index}"
+        clauses.append(
+            f"(has(mapKeys({spec.bag.value}), %({aliased_key_param})s) "
+            f"AND {spec.bag.value}[%({aliased_key_param})s] {sql_operator} %({value_param})s)"
+        )
+        parameters[aliased_key_param] = bag_key
+    return f"({' OR '.join(clauses)})", parameters
 
 
 def to_semantic_value(value: Any, spec: AttributeSpec) -> str | int | float | bool | Decimal | None:

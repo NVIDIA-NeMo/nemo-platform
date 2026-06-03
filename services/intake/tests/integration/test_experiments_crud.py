@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, cast
 
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from nmp.intake.api.v2.experiments.endpoints import get_experiment_rollup_repository
 
 GROUPS = "/apis/intake/v2/workspaces/default/experiment-groups"
 EXPERIMENTS = "/apis/intake/v2/workspaces/default/experiments"
@@ -105,6 +107,26 @@ def test_experiment_crud_and_empty_rollups(client: TestClient) -> None:
     assert exp["model_names"] == []
     assert exp["aggregate_scores"] is None
     assert exp["run_count"] == 0
+
+
+def test_experiment_read_degrades_when_rollup_hydration_fails(client: TestClient) -> None:
+    class FailingRollupRepository:
+        async def get_rollups(self, *, workspace: str, experiment_ids: list[str]) -> dict:
+            raise RuntimeError("clickhouse unavailable")
+
+    app = cast(FastAPI, client.app)
+    app.dependency_overrides[get_experiment_rollup_repository] = lambda: FailingRollupRepository()
+    try:
+        created = client.post(EXPERIMENTS, json=_experiment_body(name="exp-rollup-fails"))
+        assert created.status_code == 201, created.text
+
+        fetched = client.get(f"{EXPERIMENTS}/exp-rollup-fails")
+        assert fetched.status_code == 200, fetched.text
+        assert fetched.json()["name"] == "exp-rollup-fails"
+        assert fetched.json()["run_count"] == 0
+        assert fetched.json()["aggregate_scores"] is None
+    finally:
+        app.dependency_overrides.pop(get_experiment_rollup_repository, None)
 
 
 def test_experiment_group_ref_is_soft(client: TestClient) -> None:

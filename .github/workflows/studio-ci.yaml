@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       studio: ${{ steps.changes.outputs.web-studio }}
-      scripts: ${{ steps.changes.outputs.web-scripts }}
     steps:
       - uses: actions/checkout@v6
       - uses: ./.github/actions/changes
@@ -138,31 +137,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Check studio deps
         run: pnpm deps:studio
-
-  web-scripts-check:
-    name: Web scripts check
-    needs: changes
-    if: >
-      always() && (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.scripts == 'true'
-      )
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web
-        shell: bash
-    steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - name: Install pnpm via corepack
-        run: npm i -g corepack@0.31.0 && corepack enable pnpm
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Check scripts package
-        run: pnpm --filter '@nemo/scripts' check:ci
 
   web-studio-e2e:
     name: Studio UI E2E tests

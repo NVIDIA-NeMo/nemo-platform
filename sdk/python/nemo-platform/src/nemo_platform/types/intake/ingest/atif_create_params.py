@@ -24,6 +24,7 @@ from .atif_step_param import AtifStepParam
 from .atif_agent_param import AtifAgentParam
 from .atif_final_metrics_param import AtifFinalMetricsParam
 from ..evaluation_context_param import EvaluationContextParam
+from ..experiment_context_param import ExperimentContextParam
 
 __all__ = ["AtifCreateParams"]
 
@@ -40,6 +41,9 @@ class AtifCreateParams(TypedDict, total=False):
     continued_trajectory_ref: str
 
     evaluation_context: EvaluationContextParam
+
+    experiment_context: ExperimentContextParam
+    """Experiment context accepted by ingest endpoints."""
 
     extra: Dict[str, object]
 

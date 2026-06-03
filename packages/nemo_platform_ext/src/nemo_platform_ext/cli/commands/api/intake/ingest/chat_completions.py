@@ -51,6 +51,10 @@ def create_chat_completions(
         ),
     ] = None,
     evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
+    experiment_context: Annotated[
+        str | None,
+        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+    ] = None,
     provider: Annotated[str | None, typer.Option("--provider")] = None,
     session_id: Annotated[
         str | None,
@@ -108,6 +112,8 @@ def create_chat_completions(
         input_payload["cost_usd"] = cost_usd
     if evaluation_context is not None:
         input_payload["evaluation_context"] = read_payload("evaluation_context", evaluation_context)
+    if experiment_context is not None:
+        input_payload["experiment_context"] = read_payload("experiment_context", experiment_context)
     if provider is not None:
         input_payload["provider"] = provider
     if session_id is not None:

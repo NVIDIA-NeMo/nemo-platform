@@ -27,6 +27,7 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:local": "MODE='e2e.local' pnpm test:e2e:ui",
+    "test:e2e:record": "RECORD=1 playwright test --grep @record",
     "test:ci": "NODE_OPTIONS=--max-old-space-size=10240 CI=true vitest --run --coverage --reporter=junit --reporter=default",
     "typecheck": "tsc --noEmit --noErrorTruncation",
     "typecheck:go": "tsgo --noEmit --noErrorTruncation",
