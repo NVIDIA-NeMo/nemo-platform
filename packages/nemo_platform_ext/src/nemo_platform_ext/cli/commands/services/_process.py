@@ -16,6 +16,7 @@ The descriptor is metadata used by ``status``, ``ls``, and ``restart``.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import hashlib
@@ -226,13 +227,11 @@ def is_port_bindable(host: str, port: int) -> bool:
     if not infos:
         return False
     for family, socktype, proto, _, sockaddr in infos:
-        try:
+        with contextlib.suppress(OSError):
             with socket.socket(family, socktype, proto) as sock:
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 sock.bind(sockaddr)  # noqa: S104  # nosec B104
             return True
-        except OSError:
-            continue
     return False
 
 
