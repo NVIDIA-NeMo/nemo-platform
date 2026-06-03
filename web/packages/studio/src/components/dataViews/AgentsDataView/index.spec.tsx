@@ -391,5 +391,143 @@ describe('CombinedAgentsTable', () => {
       expect(order).toEqual(['deployment:react-agent-dep', 'agent:react-agent']);
       expect(await screen.findByTestId('mock-toast-success')).toHaveTextContent('Agent deleted.');
     });
+
+    it('paginates deployments so an agent deployment beyond the first page is still deleted', async () => {
+      const order: string[] = [];
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`, () =>
+          HttpResponse.json({
+            data: [{ name: 'react-agent', description: '', config: {} }],
+            pagination: {
+              page: 1,
+              page_size: 50,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        ),
+        http.get(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments`,
+          ({ request }) => {
+            const page = new URL(request.url).searchParams.get('page');
+            // Page 1 has only another agent's deployment; the target's is on page 2.
+            const data =
+              page === '1'
+                ? [
+                    {
+                      name: 'other-dep',
+                      agent: 'other-agent',
+                      status: 'running',
+                      workspace: WORKSPACE,
+                    },
+                  ]
+                : [
+                    {
+                      name: 'react-agent-dep2',
+                      agent: 'react-agent',
+                      status: 'running',
+                      workspace: WORKSPACE,
+                    },
+                  ];
+            return HttpResponse.json({
+              data,
+              pagination: {
+                page: Number(page),
+                page_size: 100,
+                current_page_size: 1,
+                total_pages: 2,
+                total_results: 2,
+              },
+            });
+          }
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments/:name`,
+          ({ params }) => {
+            order.push(`deployment:${params.name}`);
+            return new HttpResponse(null, { status: 204 });
+          }
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+          ({ params }) => {
+            order.push(`agent:${params.name}`);
+            return new HttpResponse(null, { status: 204 });
+          }
+        )
+      );
+
+      const user = userEvent.setup();
+      renderTable();
+      await screen.findByText('react-agent');
+      await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
+      await user.click((await screen.findAllByRole('menuitem', { name: 'Delete' }))[0]);
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      await waitFor(() => expect(order).toContain('agent:react-agent'));
+      // Only the target agent's deployment (from page 2) is deleted, before the agent.
+      expect(order).toEqual(['deployment:react-agent-dep2', 'agent:react-agent']);
+    });
+
+    it('surfaces an error and skips the agent delete when a deployment delete fails', async () => {
+      let agentDeleteCalled = false;
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`, () =>
+          HttpResponse.json({
+            data: [{ name: 'react-agent', description: '', config: {} }],
+            pagination: {
+              page: 1,
+              page_size: 50,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        ),
+        http.get(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments`, () =>
+          HttpResponse.json({
+            data: [
+              {
+                name: 'react-agent-dep',
+                agent: 'react-agent',
+                status: 'running',
+                workspace: WORKSPACE,
+              },
+            ],
+            pagination: {
+              page: 1,
+              page_size: 100,
+              current_page_size: 1,
+              total_pages: 1,
+              total_results: 1,
+            },
+          })
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/deployments/:name`,
+          () => HttpResponse.json({ detail: 'teardown failed' }, { status: 500 })
+        ),
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+          () => {
+            agentDeleteCalled = true;
+            return new HttpResponse(null, { status: 204 });
+          }
+        )
+      );
+
+      const user = userEvent.setup();
+      renderTable();
+      await screen.findByText('react-agent');
+      await user.click(screen.getAllByRole('button', { name: /actions/i })[0]);
+      await user.click((await screen.findAllByRole('menuitem', { name: 'Delete' }))[0]);
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByRole('button', { name: 'Delete' }));
+
+      expect(await screen.findByTestId('mock-toast-error')).toBeInTheDocument();
+      expect(agentDeleteCalled).toBe(false);
+    });
   });
 });

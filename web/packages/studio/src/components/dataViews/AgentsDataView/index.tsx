@@ -14,6 +14,7 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import {
+  agentsListDeployments,
   getAgentsListAgentsQueryKey,
   getAgentsListDeploymentsQueryKey,
   useAgentsDeleteAgent,
@@ -177,17 +178,30 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
 
   const deleteDeploymentMutation = useAgentsDeleteDeployment();
 
+  const fetchAgentDeploymentNames = async (agentName: string): Promise<string[]> => {
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 50;
+    const names: string[] = [];
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const resp = await agentsListDeployments(workspace, { page, page_size: PAGE_SIZE });
+      for (const d of resp.data ?? []) {
+        if (d.agent === agentName && d.name) names.push(d.name);
+      }
+      if (page >= (resp.pagination?.total_pages ?? 1)) break;
+    }
+    return names;
+  };
+
   const handleDelete = async () => {
     try {
       if (deleteState?.kind === 'agent') {
         const agentName = deleteState.item.name;
-        const deployments = (deploymentsData ?? []).filter(
-          (d): d is AgentDeployment & { name: string } => d.agent === agentName && !!d.name
-        );
+        const deploymentNames = await fetchAgentDeploymentNames(agentName);
         await Promise.all(
-          deployments.map((d) =>
-            deleteDeploymentMutation.mutateAsync({ workspace, name: d.name }).catch((err) => {
+          deploymentNames.map((name) =>
+            deleteDeploymentMutation.mutateAsync({ workspace, name }).catch((err) => {
               if ((err as { response?: { status?: number } })?.response?.status === 404) return;
+              toast.error(getErrorMessage(err as Error, `Failed to delete deployment "${name}".`));
               throw err;
             })
           )
