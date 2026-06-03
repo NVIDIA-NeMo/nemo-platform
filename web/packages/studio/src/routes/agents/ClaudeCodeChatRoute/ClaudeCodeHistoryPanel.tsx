@@ -212,11 +212,11 @@ const HistoryPanelContents = ({
             />
           ))}
         </div>
-      ) : (
+      ) : !error ? (
         <Flex className="min-h-0 flex-1" align="center" justify="center">
           <Empty title="No chats yet" description="Claude Code sessions will appear here." />
         </Flex>
-      )}
+      ) : null}
     </>
   );
 };

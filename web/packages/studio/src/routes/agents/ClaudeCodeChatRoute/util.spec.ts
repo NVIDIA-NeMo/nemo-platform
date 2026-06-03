@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import {
   getClaudeCodeChatRouteForSession,
   getClaudeCodeHistoryMessages,
   getSelectedClaudeCodeSessionId,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/history';
-import type { ClaudeCodeSessionHistory } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+} from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 
-describe('Claude Code history utilities', () => {
+describe('Claude Code utilities', () => {
   it('builds and reads selected session URLs', () => {
     const workspace = 'default';
     const sessionId = '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a';

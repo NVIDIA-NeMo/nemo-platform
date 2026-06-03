@@ -4,7 +4,7 @@
 import { Flex } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { ClaudeCodeHistoryPanel } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeHistoryPanel';
-import { getClaudeCodeChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/history';
+import { getClaudeCodeChatRouteForSession } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 import { type FC, type ReactNode, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';

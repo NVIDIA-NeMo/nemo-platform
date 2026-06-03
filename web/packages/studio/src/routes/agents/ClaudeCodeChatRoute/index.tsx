@@ -13,12 +13,12 @@ import {
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import {
   getClaudeCodeHistoryMessages,
   getSelectedClaudeCodeSessionId,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/history';
-import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
+} from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { useQuery } from '@tanstack/react-query';
 import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
