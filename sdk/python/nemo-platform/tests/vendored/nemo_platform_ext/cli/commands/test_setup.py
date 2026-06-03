@@ -79,7 +79,6 @@ from nemo_platform.config.models import (
 )
 
 SETUP_MOD = "nemo_platform.cli.commands.setup"
-_PROCESS_MOD = "nemo_platform.cli.commands.services._process"
 
 # ---------------------------------------------------------------------------
 # KnownProvider catalog tests
@@ -465,9 +464,7 @@ class TestKillExistingServices:
     """``_kill_existing_services`` delegates to ``_process.stop_instance``."""
 
     def test_delegates_to_stop_instance(self):
-        with patch(
-            "nemo_platform.cli.commands.services._process.stop_instance",
-        ) as mock_stop:
+        with patch(f"{SETUP_MOD}.stop_instance") as mock_stop:
             mock_stop.return_value = MagicMock(stopped_pids=[])
             _kill_existing_services("http://localhost:8080")
         mock_stop.assert_called_once()
@@ -593,7 +590,7 @@ class TestLocalDataDirHelpers:
         process lifecycle module unchanged. The actual ``NMP_DATA_DIR``
         environment injection lives in ``services._process`` and is covered
         by its own tests."""
-        with patch("nemo_platform.cli.commands.services._process.start_background") as mock_start:
+        with patch(f"{SETUP_MOD}.start_background") as mock_start:
             mock_start.return_value = MagicMock(pid=42)
             _start_services_background("http://localhost:9090", data_dir="/chosen/data/dir")
         mock_start.assert_called_once()
