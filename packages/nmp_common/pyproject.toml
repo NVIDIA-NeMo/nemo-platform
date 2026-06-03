@@ -68,7 +68,7 @@ dev-dependencies = [
   "pytest>=8.3.3",
 ]
 
-[project.entry-points."nemo.task_sdk_provider"]
+[project.entry-points."nemo.sdk_provider"]
 platform = "nmp.common.sdk_factory:PlatformSDKProvider"
 
 [tool.hatch.build.targets.wheel]

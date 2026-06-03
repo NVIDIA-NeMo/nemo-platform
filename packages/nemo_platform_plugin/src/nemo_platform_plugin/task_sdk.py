@@ -14,7 +14,7 @@ Lookup order for the provider
 -----------------------------
 
 1. **Explicit override** — set via :func:`set_sdk_provider` (for tests).
-2. **Entry-point discovery** — scans the ``nemo.task_sdk_provider`` group.
+2. **Entry-point discovery** — scans the ``nemo.sdk_provider`` group.
    When ``nmp-common`` is installed in the image (platform deployment), its
    provider is picked up automatically.
 3. **Built-in default** — :class:`DefaultSDKProvider`, an env-var-based
@@ -265,23 +265,30 @@ def _resolve_provider() -> SDKProvider:
         assert _provider is not None
         return _provider
 
-    # Scan entry-points.
-    eps = entry_points(group="nemo.task_sdk_provider")
+    # Scan entry-points.  Only the platform (nmp-common) should register a
+    # provider — multiple registrations indicate a packaging/config error.
+    eps = list(entry_points(group="nemo.sdk_provider"))
+    if len(eps) > 1:
+        names = ", ".join(ep.name for ep in eps)
+        raise RuntimeError(
+            f"Multiple SDK providers registered under 'nemo.sdk_provider': {names}. "
+            "Only the platform (nmp-common) should register a provider."
+        )
     for ep in eps:
         try:
             obj = ep.load()
             if isinstance(obj, type):
                 obj = obj()
             if isinstance(obj, SDKProvider):
-                logger.debug("Using task SDK provider from entry-point %r", ep.name)
+                logger.debug("Using SDK provider from entry-point %r", ep.name)
                 _provider = obj
                 _resolved = True
                 return obj
         except Exception:
-            logger.warning("Failed to load task SDK provider %r; skipping", ep.name, exc_info=True)
+            logger.warning("Failed to load SDK provider %r; skipping", ep.name, exc_info=True)
 
     # Fall back to the built-in default.
-    logger.debug("No entry-point task SDK provider found; using DefaultSDKProvider")
+    logger.debug("No entry-point SDK provider found; using DefaultSDKProvider")
     default = DefaultSDKProvider()
     _provider = default
     _resolved = True

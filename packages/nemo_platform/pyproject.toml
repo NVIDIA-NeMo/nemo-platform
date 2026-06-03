@@ -549,6 +549,10 @@ data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resou
 evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.sdk_provider"]
+platform = "nmp.common.sdk_factory:PlatformSDKProvider"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.seed"]
 auditor = "nemo_auditor.seed_job:AuditorSeedJob"
 
@@ -610,7 +614,7 @@ only-include = ["_empty"]
 # and add them as a normal dependency above instead.
 [tool.bundle-package]
 # Library packages
-nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
+nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
 nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk", deps_group = "evaluator" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }

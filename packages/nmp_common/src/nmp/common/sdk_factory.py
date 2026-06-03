@@ -333,7 +333,7 @@ class PlatformSDKProvider:
     platform internals (shared HTTP clients, URL routing, OTEL headers, auth
     context vars).
 
-    Registered as a ``nemo.task_sdk_provider`` entry-point so it is
+    Registered as a ``nemo.sdk_provider`` entry-point so it is
     discovered automatically when ``nmp-common`` is installed.
     """
 
