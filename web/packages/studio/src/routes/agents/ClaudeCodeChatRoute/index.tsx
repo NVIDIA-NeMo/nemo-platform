@@ -42,7 +42,7 @@ interface ClaudeCodeChatSurfaceProps {
 
 const ClaudeCodeChatLoadingState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
   <ClaudeCodeLayout activeSessionId={selectedSessionId}>
-    <Stack className="h-full" padding="density-2xl">
+    <Stack className="h-full w-full" padding="density-2xl">
       <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1" align="center" justify="center">
         <Text kind="body/regular/md" color="secondary">
           Loading chat...
@@ -54,7 +54,7 @@ const ClaudeCodeChatLoadingState = ({ selectedSessionId }: { selectedSessionId?:
 
 const ClaudeCodeChatErrorState = ({ selectedSessionId }: { selectedSessionId?: string }) => (
   <ClaudeCodeLayout activeSessionId={selectedSessionId}>
-    <Stack className="h-full" padding="density-2xl">
+    <Stack className="h-full w-full" padding="density-2xl">
       <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1" align="center" justify="center">
         <Banner kind="inline" status="error">
           Could not load Claude Code session.
@@ -106,7 +106,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full" padding="density-2xl">
+        <Stack className="h-full w-full" padding="density-2xl">
           <Stack className="mx-auto min-h-0 w-full max-w-180 flex-1">
             <AssistantRuntimeProvider runtime={runtime}>
               <AssistantChatThread
