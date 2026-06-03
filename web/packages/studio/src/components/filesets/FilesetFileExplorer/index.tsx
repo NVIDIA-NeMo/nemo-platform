@@ -115,11 +115,18 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
   extraColumns,
   onFolderToggle,
 }) => {
-  // Dataset storage type: local and s3 are read/write; ngc and huggingface are read-only
+  // Only the default `local` backend is treated as mutable here. S3 supports
+  // writes in principle, but only when the linked secret carries write creds,
+  // and the FE has no way to know — defaulting to read-only avoids surfacing
+  // affordances that would 4xx at the API. HF + NGC backends raise
+  // NotImplementedError on upload/delete server-side.
+  //
+  // Follow-up: when a backend write-capability endpoint ships (e.g. nmp-2gk),
+  // swap the source of this signal from `storage.type` to the API response.
   const { data: dataset } = useFilesRetrieveFileset(workspace, datasetName, {
     query: { enabled },
   });
-  const isReadWriteDataset = dataset?.storage?.type === 'local' || dataset?.storage?.type === 's3';
+  const isReadWriteDataset = dataset?.storage?.type === 'local';
 
   // Folder navigation
   const folderContents = useDatasetNavigator(filesList, currentFolder ?? '');
@@ -431,7 +438,11 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
   );
 
   return (
-    <DatasetFileDropzone onUpload={handleUploadIntent} datasetName={datasetName}>
+    <DatasetFileDropzone
+      onUpload={handleUploadIntent}
+      datasetName={datasetName}
+      disabled={!isReadWriteDataset}
+    >
       {(openFileDialog) => (
         <>
           {isLoading ? (
@@ -538,18 +549,20 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                       data-testid="dataset-details-search-input"
                       className="min-w-0 flex-1"
                     />
-                    <Flex gap="density-md" className="ml-auto">
-                      <Button
-                        kind="secondary"
-                        onClick={() => setNewDirectoryOpen(true)}
-                        data-testid="dataset-details-new-directory-button"
-                      >
-                        New Directory
-                      </Button>
-                      <Button kind="secondary" onClick={handleOpenUploadModal}>
-                        Upload File
-                      </Button>
-                    </Flex>
+                    {isReadWriteDataset && (
+                      <Flex gap="density-md" className="ml-auto">
+                        <Button
+                          kind="secondary"
+                          onClick={() => setNewDirectoryOpen(true)}
+                          data-testid="dataset-details-new-directory-button"
+                        >
+                          New Directory
+                        </Button>
+                        <Button kind="secondary" onClick={handleOpenUploadModal}>
+                          Upload File
+                        </Button>
+                      </Flex>
+                    )}
                   </Flex>
                 </TableToolbar>
                 {searchQuery && (
@@ -575,7 +588,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                       emptyMessage={
                         searchQuery ? (
                           'No files match your search.'
-                        ) : (
+                        ) : isReadWriteDataset ? (
                           <>
                             Organize with folders or upload files by drag-and-drop or browsing.{' '}
                             <br /> Visit the docs for setup instructions.{' '}
@@ -587,10 +600,12 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                               Documentation
                             </Anchor>
                           </>
+                        ) : (
+                          'This fileset is read-only.'
                         )
                       }
                       actions={
-                        searchQuery ? null : (
+                        searchQuery || !isReadWriteDataset ? null : (
                           <Flex gap="density-md">
                             <Button kind="secondary" onClick={() => setNewDirectoryOpen(true)}>
                               New Directory

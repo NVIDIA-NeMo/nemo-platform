@@ -3,6 +3,9 @@
 
 """Tests for license utility functions."""
 
+import json
+from typing import Any, cast
+
 import pytest
 from nemo_platform_sdk_tools.license.license_utils import (
     get_override_key_for_package,
@@ -118,10 +121,10 @@ class TestResolveLicense:
     def test_invalid_type_raises_error(self):
         """Test that invalid input types raise appropriate errors."""
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(123)  # type: ignore[arg-type]
+            resolve_license(cast(Any, 123))
 
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(None)  # type: ignore[arg-type]
+            resolve_license(cast(Any, None))
 
     def test_single_license_list(self):
         """Test list with single license."""
@@ -195,3 +198,30 @@ class TestOverrideAppliedForCu129Version:
         assert "torchao" in result
         # Override was applied, so we should not see UNKNOWN for this package
         assert "✘" not in result or "BSD-3-CLAUSE" in result
+
+
+class TestFormatLicenses:
+    """Tests for license report formatting."""
+
+    def test_format_licenses_fills_missing_osv_package_from_overrides(self, tmp_path):
+        """A reviewed override fills an exported requirement omitted by OSV."""
+        from nemo_platform_sdk_tools.license.generator import format_licenses
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(json.dumps({"results": [{"packages": []}]}), encoding="utf-8")
+        (license_dir / "requirements-main.txt").write_text(
+            "cloudpickle==3.1.2 ; python_version >= '3.11' \\\n"
+            "    --hash=sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414\n",
+            encoding="utf-8",
+        )
+        overrides_file = tmp_path / "overrides.yaml"
+        overrides_file.write_text("overrides:\n  cloudpickle: BSD-3-Clause\n", encoding="utf-8")
+        output_file = license_dir / "licenses.jsonl"
+
+        format_licenses(osv_json, output_file, overrides_file, format_type="jsonl")
+
+        assert output_file.read_text(encoding="utf-8") == (
+            '{"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}'
+        )
