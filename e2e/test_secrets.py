@@ -6,7 +6,6 @@ work correctly when running against a fully deployed NMP platform.
 
 import uuid
 
-import pytest
 from nemo_platform import NeMoPlatform
 
 
