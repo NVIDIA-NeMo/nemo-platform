@@ -13,7 +13,7 @@ jobs:
         startsWith(github.event.comment.body, '/nvskills-ci') &&
         contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association)) ||
       (github.event_name == 'push' &&
-        github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'nv-skills-ci[bot]') &&
+        github.actor == (vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing') &&
         startsWith(github.event.head_commit.message, vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures'))
     permissions:
       contents: read
