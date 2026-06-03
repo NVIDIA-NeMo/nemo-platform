@@ -1,10 +1,11 @@
 ---
 name: nemo-customizer
 description: >-
-  Fine-tune models on NeMo Platform via `nemo customization automodel submit`:
-  HF dataset conversion, filesets, model entities, SFT/LoRA job JSON (hyperparameters,
-  batch, schedule, optimizer), and job polling. Use for train, fine-tune, customize,
-  SFT, LoRA, learning rate, epochs, or nemo customization.
+  Fine-tune models on NeMo Platform with `automodel` (`submit` → GPU containers on
+  the platform) or `unsloth` (`run --venv` → local in-process, BYO-venv): HF dataset
+  conversion, filesets, model entities, SFT/LoRA job JSON (hyperparameters, batch,
+  schedule, optimizer), and job polling. Use for train, fine-tune, customize, SFT,
+  LoRA, learning rate, epochs, or nemo customization.
 triggers:
   - nemo-customizer
   - nemo customizer
@@ -37,39 +38,78 @@ allowed-tools: [Bash, Read, Grep]
 
 # NeMo Customizer
 
-End-to-end **SFT + LoRA** on NeMo Platform. Default plugin: **automodel**. Batch shell work; reuse resources with `--exist-ok`; skip CLI `--help` unless a command fails.
+End-to-end **SFT + LoRA** on NeMo Platform. Two backend plugins ship in this repo:
+
+| Backend | Verb | Where it runs | Pick when |
+|---------|------|---------------|-----------|
+| **`automodel`** (default) | `submit` | Platform-managed GPU containers (jobs service) | Platform exposes a GPU execution profile, or the user wants a persisted job they can poll/share |
+| **`unsloth`** | `run --venv <path>` | **Locally**, in a BYO-venv re-exec on the caller's GPU | User asks for Unsloth, the platform has **no GPU execution profile**, or the user wants a quick single-GPU local SFT/LoRA |
+
+Decision rule below in **Plugin pick**. Batch shell work; reuse resources with `--exist-ok`; skip CLI `--help` unless a command fails.
+
+## Plugin pick
+
+1. After `nemo auth login`, run `uv run nemo jobs list-execution-profiles -f json` (see `references/troubleshooting.md` for parsing).
+2. If the user explicitly asked for Unsloth → **`unsloth`**.
+3. Else if any profile has `provider: gpu` or `gpu_distributed` → **`automodel`** (default).
+4. Else if the caller machine has a usable local GPU → **`unsloth`** (after the `--venv` one-time setup below).
+5. Else stop and tell the user remote GPU customization is unavailable.
+
+**Unsloth `--venv` requirement.** The base `nemo` install has no Unsloth/torch. Before the first `unsloth run`, set up a separate venv with the heavy ML extras (one-time):
+
+```bash
+UNSLOTH_VENV=/workspace/.venv-unsloth
+uv venv "$UNSLOTH_VENV" --python 3.11
+uv pip install --python "$UNSLOTH_VENV/bin/python" -e plugins/nemo-unsloth[unsloth]
+```
+
+Then every `unsloth run` passes `--venv "$UNSLOTH_VENV"`. The platform re-execs into that interpreter before importing `unsloth`. Without `--venv`, the run errors with an actionable setup hint.
 
 ## Gotchas
 
 - Run all `uv run` commands from the **nemo-platform** git root (top-level `pyproject.toml`), not a plugin subfolder.
 - Set `NEMO_BASE_URL` (or `NMP_BASE_URL`) only when the user gives a platform URL; default `http://127.0.0.1:8080`.
-- **Never set `max_steps` together with `epochs`.** `max_steps` is a global cap and stops mid-epoch. Test fixtures include `max_steps` for smoke tests — do not copy into production jobs.
-- **Job done = top-level `status`** in `completed` | `error` | `cancelled`. Steps can all be `completed` while the job is still `active` (upload, entity registration). `status_details.phase` may stay `training` with `progress_pct: 100` for a long time — keep polling. `poll_automodel_job.sh` exits **1** on `error` or `cancelled`.
+- **Verb is backend-specific.** Automodel is **`submit` only** (no local `run`). Unsloth is **`run` only** (no `submit`); a stray `nemo customization unsloth submit ...` exits non-zero with a friendly hint. Do not improvise verbs.
+- **Never set `max_steps` together with `epochs`** (both backends). `max_steps` is a global cap and stops mid-epoch. Test fixtures include `max_steps` for smoke tests — do not copy into production jobs. Unsloth's schema enforces this as a hard mutex; automodel allows both but the result is surprising.
+- **Job done (automodel) = top-level `status`** in `completed` | `error` | `cancelled`. Steps can all be `completed` while the job is still `active` (upload, entity registration). `status_details.phase` may stay `training` with `progress_pct: 100` for a long time — keep polling. `poll_automodel_job.sh` exits **1** on `error` or `cancelled`.
+- **Job done (unsloth) = `nemo customization unsloth run` returns.** It is synchronous and in-process — the result dict (`loss`, `output_path`, `output_fileset`, `output_model_entity`) prints to stdout. There is no remote job record to poll.
 - Model spec fills async: **submit without polling** `nemo models get` unless submit fails.
 - HF dataset id from the user → convert locally; do not ask for local paths first.
 - Dataset fileset name = HF dataset **name** only (`tau/commonsense_qa` → `commonsense_qa`), not the model name.
-- Prefer **CHAT** JSONL when the model has a chat template; details in `references/dataset-formats.md`.
-- User asks to tune **batch or parallelism** → **Batch sizing** / **Multi-GPU** below. Other fields (LR, epochs, LoRA rank, distillation) → `references/hyperparameters.md` (`nemo customization automodel explain` for schema).
-- Skill **defaults** (`micro_batch_size` 1, `global_batch_size` 4) are safe on unknown VRAM. When the user has **≥48 GB** on one GPU, use **Batch sizing** instead of defaults.
+- Prefer **CHAT** JSONL when the model has a chat template; details in `references/dataset-formats.md` (automodel auto-detects schema; unsloth needs `dataset.apply_chat_template: true` to consume `messages`).
+- User asks to tune **batch or parallelism** (automodel) → **Batch sizing** / **Multi-GPU** below. Other fields (LR, epochs, LoRA rank, distillation) → `references/hyperparameters.md`. For unsloth, see **Batch sizing — unsloth** and the `Unsloth job JSON` section in `references/hyperparameters.md`. Run `nemo customization <plugin> explain` for the live schema.
+- Skill **defaults** (`micro_batch_size` 1, `global_batch_size` 4) are safe on unknown VRAM. When the user has **≥48 GB** on one GPU, use **Batch sizing** instead of defaults. Unsloth's analogues are `batch.per_device_train_batch_size` and `batch.gradient_accumulation_steps` (effective batch = product).
+- **Unsloth is single-GPU**. `hardware.gpus` is **selection, not reservation** (sets `CUDA_VISIBLE_DEVICES` before `import torch`). No `parallelism`/TP/PP block exists. Multi-GPU sharding → use automodel.
 - **Do not use local `docker info`** to pick automodel vs unsloth. After auth, run `uv run nemo jobs list-execution-profiles -f json` against the user's platform (see `references/troubleshooting.md`). Default output is a table — **`-f json` is required** for scripting; parse **stdout only** (do not pipe `2>&1` into `json.load`).
-- For submit/image/plugin errors, read `references/troubleshooting.md`.
+- For submit/image/plugin errors (both backends) and the unsloth `--venv` install probe, read `references/troubleshooting.md`.
 
 ## Workflow
+
+Common steps then **branch by plugin pick**:
 
 ```
 - [ ] export NEMO_BASE_URL (if user provided endpoint)
 - [ ] cd nemo-platform && uv run nemo auth login --unsigned-token --email <user email or admin@example.com>
-- [ ] uv run nemo jobs list-execution-profiles -f json — GPU profile → automodel; else see troubleshooting (no local docker check)
+- [ ] uv run nemo jobs list-execution-profiles -f json — apply Plugin pick rules above
 - [ ] Convert HF dataset → /tmp/train-data/*.jsonl (see references/hf-conversion.md)
 - [ ] Create dataset fileset (--exist-ok), upload train.jsonl (+ validation.jsonl), nemo files list to verify
 - [ ] Create HF weights fileset + model entity if missing (--exist-ok)
+
+# automodel branch (remote, submit)
 - [ ] Write /tmp/job.json (batch sizing for ≥48 GB GPU; else Defaults table)
 - [ ] uv run nemo customization automodel submit /tmp/job.json --workspace default
 - [ ] Poll until top-level terminal (scripts/poll_automodel_job.sh or 60–120s manual polls)
 - [ ] Report using output template below
+
+# unsloth branch (local, run --venv)
+- [ ] Ensure $UNSLOTH_VENV is set up (see Plugin pick — Unsloth --venv requirement)
+- [ ] Write /tmp/job.json using the UnslothJobInput shape (see Fast path — unsloth)
+- [ ] uv run nemo customization unsloth run /tmp/job.json --venv "$UNSLOTH_VENV" --workspace default
+- [ ] Read result dict from stdout (loss / output_path / output_fileset / output_model_entity)
+- [ ] Report using output template below
 ```
 
-## Fast path
+## Fast path — automodel (remote)
 
 Substitute `<hf-repo>`, `<hf-dataset>`, `<model-entity>`, `<weights-fileset>`, `<dataset-fileset>`, `<output-name>`.
 
@@ -138,20 +178,97 @@ bash plugins/nemo-customizer/src/nemo_customizer/skills/nemo-customizer/scripts/
 
 Or poll manually: `uv run nemo jobs get-status automodel-<job-id>` every 60–120s.
 
+## Fast path — unsloth (local)
+
+Same substitutions as automodel. Steps 1 (dataset) and 2 (model entity) are identical — the differences are the job JSON shape and the run verb.
+
+**0. One-time `--venv` setup** (skip if `$UNSLOTH_VENV` already passes the import probe):
+
+```bash
+export UNSLOTH_VENV=/workspace/.venv-unsloth   # any path you own
+uv venv "$UNSLOTH_VENV" --python 3.11
+uv pip install --python "$UNSLOTH_VENV/bin/python" -e plugins/nemo-unsloth[unsloth]
+# Probe: this must print nothing and exit 0.
+"$UNSLOTH_VENV/bin/python" -c "import nemo_platform, nemo_unsloth_plugin, unsloth"
+```
+
+**1. Dataset** — same as automodel Fast path step 1.
+
+**2. Model** — same as automodel Fast path step 2.
+
+**3. Job JSON** — write `/tmp/job.json` using the **`UnslothJobInput`** shape (see `references/hyperparameters.md` → *Unsloth job JSON*). `model` is an **object** (not a string), `dataset.path` is a single fileset ref, `hardware.gpus` replaces the `parallelism` block (single GPU). `nemo customization unsloth explain` prints the live schema.
+
+```json
+{
+  "name": "<job-name>",
+  "model": {
+    "name": "default/<model-entity>",
+    "max_seq_length": 2048,
+    "load_in_4bit": true,
+    "dtype": "auto"
+  },
+  "dataset": {
+    "path": "default/<dataset-fileset>",
+    "text_field": "text",
+    "apply_chat_template": true
+  },
+  "training": {
+    "training_type": "sft",
+    "finetuning_type": "lora",
+    "lora": { "rank": 16, "alpha": 32 }
+  },
+  "schedule": { "epochs": 1, "warmup_ratio": 0.1 },
+  "batch": { "per_device_train_batch_size": 2, "gradient_accumulation_steps": 4 },
+  "optimizer": { "learning_rate": 5e-5, "optim": "adamw_8bit" },
+  "hardware": { "gpus": "0", "precision": "bf16" },
+  "output": { "name": "<output-name>", "save_method": "lora" }
+}
+```
+
+If the model uses `messages` chat format (preferred when the tokenizer has a chat template), keep `dataset.apply_chat_template: true`. Otherwise emit a single `text` column from your converter and set `apply_chat_template: false`.
+
+**4. Run (no polling — synchronous)**
+
+```bash
+uv run nemo customization unsloth run /tmp/job.json --venv "$UNSLOTH_VENV" --workspace default
+```
+
+The result dict prints to stdout — capture `output_path`, `output_fileset`, and `output_model_entity` from it. If the command exits with the "Backend 'unsloth' is not importable" message, the `--venv` probe failed: re-run the one-time setup above.
+
 ## Defaults
+
+Shared:
 
 | Field | Value |
 |-------|-------|
 | Workspace | `default` |
-| Plugin | `automodel` |
+| Plugin | `automodel` (override per **Plugin pick**) |
 | Training | SFT + LoRA, `max_seq_length` 2048 |
 | Schedule | `epochs` ≥ 1; omit `max_steps` |
+| Auth email | `admin@example.com` unless user specifies |
+
+Automodel-specific:
+
+| Field | Value |
+|-------|-------|
 | Parallelism | 1 node, 1 GPU, TP=1 |
 | Batch | `global_batch_size` 4, `micro_batch_size` 1 (unknown VRAM; see **Batch sizing** for ≥48 GB) |
 | Optimizer | `learning_rate` 5e-5 |
-| Auth email | `admin@example.com` unless user specifies |
 
-## Batch sizing (≥48 GB VRAM)
+Unsloth-specific:
+
+| Field | Value |
+|-------|-------|
+| Hardware | `hardware.gpus` `"0"`, `hardware.precision` `bf16` (selection only, single GPU) |
+| Model load | `load_in_4bit: true`, `dtype: "auto"` |
+| Batch | `batch.per_device_train_batch_size` 2, `batch.gradient_accumulation_steps` 4 (effective batch 8; see **Batch sizing — unsloth** for ≥48 GB ramp) |
+| Optimizer | `learning_rate` 5e-5, `optim` `adamw_8bit` |
+| Output | `save_method: "lora"` (adapter-only) unless user asks for merged checkpoint |
+| Gradient checkpointing | `training.use_gradient_checkpointing: "unsloth"` |
+
+## Batch sizing — automodel (≥48 GB VRAM)
+
+Tables, multi-GPU rules, and the tuning loop below are **automodel-specific** (fields `global_batch_size` / `micro_batch_size` / `tensor_parallel_size` / `num_gpus_per_node`). For unsloth see **Batch sizing — unsloth** further down.
 
 Assume **one GPU with at least 48 GB** (e.g. RTX 5880 / A6000 / L40), `parallelism` = 1 node × 1 GPU, `tensor_parallel_size` 1, bf16, `training_type` `sft`, LoRA **rank 16** unless the user asks otherwise.
 
@@ -255,11 +372,56 @@ Higher rank uses more VRAM. If OOM at rank 16, drop to rank 8 before lowering ba
 
 Field glossary, distillation/KD, and schema pointers: `references/hyperparameters.md` (batch/multi-GPU → **this file**, not hyperparameters).
 
+## Batch sizing — unsloth (single GPU)
+
+Unsloth is single-GPU by design. The effective batch is the **product** of two fields, not a global/micro split:
+
+```
+effective_batch = batch.per_device_train_batch_size × batch.gradient_accumulation_steps
+```
+
+There is no `parallelism` block, no TP / PP / DP, no GBS divisibility math. Multi-GPU sharding → switch to automodel.
+
+**Field mapping from the automodel tables above:**
+
+| Automodel field | Unsloth analogue | Notes |
+|-----------------|------------------|-------|
+| `micro_batch_size` | `batch.per_device_train_batch_size` | Drives peak VRAM. |
+| `global_batch_size` | `batch.per_device_train_batch_size × batch.gradient_accumulation_steps` | Set `gradient_accumulation_steps` so the product matches the GBS you'd pick on automodel. |
+| `parallelism.num_gpus_per_node` | n/a — single GPU | Use `hardware.gpus: "0"` to pin to one GPU. |
+| `tensor_parallel_size` | n/a | If the model doesn't fit on one GPU → use automodel. |
+
+**Starting points (LoRA, `max_seq_length` 2048, one ≥48 GB GPU):**
+
+| Model params | `per_device_train_batch_size` | `gradient_accumulation_steps` | Effective batch | `learning_rate` |
+|--------------|------------------------------:|------------------------------:|----------------:|----------------:|
+| ≤4B | 8 | 16 | 128 | `1e-4` |
+| 4B–8B | 4 | 24 | 96 | `8e-5` |
+| 8B–14B | 2 | 32 | 64 | `8e-5` |
+| >14B | 1 | 32 | 32 | `5e-5` |
+
+`load_in_4bit: true` (default) keeps base weights in 4-bit, which is what makes the "smaller per-device batch on bigger models" rule milder than vanilla HF. If you raise `per_device_train_batch_size` and hit OOM (exit 137) or training crashes (exit 1), halve `per_device_train_batch_size` first and double `gradient_accumulation_steps` to keep the effective batch the same.
+
+**Save method.** Default `output.save_method: "lora"` (adapter only — small, fast, deploy-friendly). Use `"merged_16bit"` if the user wants a full-weight checkpoint to deploy without an adapter loader; `"merged_4bit"` only when storage is tight (lossy). Merged methods require `training.finetuning_type: "lora"`.
+
+**Tuning loop (unsloth):**
+
+| Symptom | Action |
+|---------|--------|
+| CUDA OOM | Halve `per_device_train_batch_size` (keep effective batch via `gradient_accumulation_steps`); then lower `model.max_seq_length`; then drop `lora.rank` to 8 |
+| `torch.cuda.is_available()` is False | Host CUDA / venv mismatch — see `references/troubleshooting.md` |
+| `Backend 'unsloth' is not importable` | `$UNSLOTH_VENV` setup never ran or `--venv` was omitted (see Plugin pick) |
+| Loss not moving | Raise `learning_rate` one step (e.g. `5e-5` → `1e-4`); confirm `apply_chat_template` matches the data shape; check the LoRA `target_modules` covers the right layers (defaults are Unsloth's 7-module set) |
+
 ## Worked example
 
-`Qwen/Qwen3-1.7B` + `tau/commonsense_qa` → CHAT JSONL, fileset `commonsense_qa`, entity `qwen3-1.7b`, output `qwen3-1.7b-commonsense-qa-lora`, `epochs: 1` (no `max_steps`). On ≥48 GB GPU use LoRA ≤4B **default**: `micro` 32, GBS 128, `learning_rate` `1e-4` (high-util: 64 / 256).
+**Automodel:** `Qwen/Qwen3-1.7B` + `tau/commonsense_qa` → CHAT JSONL, fileset `commonsense_qa`, entity `qwen3-1.7b`, output `qwen3-1.7b-commonsense-qa-lora`, `epochs: 1` (no `max_steps`). On ≥48 GB GPU use LoRA ≤4B **default**: `micro` 32, GBS 128, `learning_rate` `1e-4` (high-util: 64 / 256).
+
+**Unsloth:** same model + dataset + entity + fileset, but `nemo customization unsloth run /tmp/job.json --venv "$UNSLOTH_VENV" -w default`. Job JSON ≤4B row: `batch.per_device_train_batch_size` 8, `batch.gradient_accumulation_steps` 16 (effective 128), `learning_rate` `1e-4`, `hardware.gpus` `"0"`, `output.save_method` `"lora"`. Reference fixture: `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs).
 
 ## Report to user
+
+**Automodel (submit):**
 
 ```markdown
 ## Fine-tune result
@@ -271,17 +433,34 @@ Field glossary, distillation/KD, and schema pointers: `references/hyperparameter
 - **Notes:** <error_details or phase if error>
 ```
 
+**Unsloth (run):** the `run` command prints a result dict to stdout — pick fields from it.
+
+```markdown
+## Fine-tune result
+
+- **Backend:** unsloth (local)
+- **Model entity:** default/<model-entity>
+- **Output model entity:** <result.output_model_entity.workspace>/<result.output_model_entity.name>
+- **Output fileset:** <result.output_fileset.workspace>/<result.output_fileset.name>
+- **Local checkpoint:** <result.output_path>
+- **Final loss:** <result.loss>
+- **Status:** completed (or `error: <exception>` if the command exited non-zero)
+```
+
+If the dict contains `upload_error` or `model_entity_error`, surface those — training succeeded but registration failed; the local `output_path` is still usable.
+
 ## Reference files
 
 | When | Read |
 |------|------|
 | HF conversion or MCQA shaping | `references/hf-conversion.md` |
-| CHAT vs SFT vs CUSTOM | `references/dataset-formats.md` |
-| Field glossary, distillation/KD, schema | `references/hyperparameters.md` (not batch sizing) |
-| Batch sizing (≥48 GB), OOM / throughput | **Batch sizing** section above |
-| Multi-GPU same node | **Multi-GPU (same node)** under batch sizing |
-| Backend choice, execution profiles, submit failure, images, CLI | `references/troubleshooting.md` |
-| Live JSON schema | `uv run nemo customization automodel explain` |
-| Job JSON fixture | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
+| CHAT vs SFT vs CUSTOM (automodel); text vs messages (unsloth) | `references/dataset-formats.md` |
+| Field glossary, distillation/KD, schema (both backends) | `references/hyperparameters.md` (not batch sizing) |
+| Batch sizing (≥48 GB), OOM / throughput | **Batch sizing — automodel** / **Batch sizing — unsloth** above |
+| Multi-GPU same node | **Multi-GPU (same node)** under automodel batch sizing (unsloth is single-GPU) |
+| Backend choice, execution profiles, `--venv` setup, submit/run failure, images, CLI | `references/troubleshooting.md` |
+| Live JSON schema | `uv run nemo customization automodel explain` / `uv run nemo customization unsloth explain` |
+| Job JSON fixture (automodel) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
 
-Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**.
+Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**.

@@ -172,6 +172,8 @@ enabled-plugins = [
   "nemo-agents-plugin",
   "nemo-customizer-plugin",
   "nemo-automodel-plugin",
+  "nemo-unsloth-plugin",
+  "nmp-unsloth",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -369,7 +371,9 @@ nemo-agents-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 nemo-customizer-plugin = { workspace = true }
 nemo-automodel-plugin = { workspace = true }
+nemo-unsloth-plugin = { workspace = true }
 nmp-automodel = { workspace = true }
+nmp-unsloth = { workspace = true }
 
 
 [tool.uv.workspace]
@@ -420,7 +424,9 @@ members = [
   "plugins/nemo-agents/examples/calculator-agent",
   "plugins/nemo-customizer",
   "plugins/nemo-automodel",
+  "plugins/nemo-unsloth",
   "services/automodel",
+  "services/unsloth",
 ]
 
 
