@@ -8,7 +8,7 @@ import { getMetadataSections } from '@studio/components/FilesetCard/FilesetMetad
 import { type FC } from 'react';
 
 export interface FilesetMetadataPanelProps {
-  fileset: FilesetOutput;
+  fileset?: FilesetOutput;
   readmeMetadata?: Record<string, unknown>;
   testId?: string;
 }
@@ -19,30 +19,32 @@ export const FilesetMetadataPanel: FC<FilesetMetadataPanelProps> = ({
   testId,
 }) => {
   const sections = getMetadataSections(fileset, readmeMetadata);
+  const hasSections = sections.length > 0;
 
   return (
     <Panel elevation="high" density="compact" className="w-full" data-testid={testId}>
       <Stack gap="density-xl">
-        {sections.map((section, index) => (
-          <Stack key={section.value} gap="density-lg">
-            {index > 0 ? <Divider /> : null}
-            <Text kind="label/bold/sm">{section.title}</Text>
-            <Stack gap="density-md">
-              {section.rows.map((row) => (
-                <KVPair
-                  key={`${section.value}-${row.label}`}
-                  label={row.label}
-                  value={row.value}
-                  orientation="horizontal"
-                  size="narrow"
-                  attributes={{
-                    value: { className: 'min-w-0 break-words text-wrap' },
-                  }}
-                />
-              ))}
+        {hasSections &&
+          sections.map((section, index) => (
+            <Stack key={section.value} gap="density-lg">
+              {index > 0 ? <Divider /> : null}
+              <Text kind="label/bold/sm">{section.title}</Text>
+              <Stack gap="density-md">
+                {section.rows.map((row) => (
+                  <KVPair
+                    key={`${section.value}-${row.label}`}
+                    label={row.label}
+                    value={row.value}
+                    orientation="horizontal"
+                    size="narrow"
+                    attributes={{
+                      value: { className: 'min-w-0 break-words text-wrap' },
+                    }}
+                  />
+                ))}
+              </Stack>
             </Stack>
-          </Stack>
-        ))}
+          ))}
       </Stack>
     </Panel>
   );

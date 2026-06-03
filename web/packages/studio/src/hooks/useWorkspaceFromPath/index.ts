@@ -24,3 +24,12 @@ export const useWorkspaceFromPathIfExists = () => {
 
   return workspace || undefined;
 };
+
+/**
+ * Returns the workspace name from the path or the prop workspace if provided.
+ * use `useWorkspaceFromPath` if you want to guarantee that there is a workspace in the path.
+ */
+export const useWorkspaceFromPathOrProp = (propWorkspace?: string) => {
+  const pathWs = useWorkspaceFromPath();
+  return propWorkspace ?? pathWs;
+};

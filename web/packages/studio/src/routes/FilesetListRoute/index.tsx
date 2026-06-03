@@ -14,6 +14,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ActionMenu } from '@studio/routes/FilesetListRoute/ActionMenu';
 import { PanelManagement } from '@studio/routes/FilesetListRoute/PanelManagement';
 import {
+  getFilesetDetailRoute,
   getFilesetDetailsRoute,
   getNewFilesetRoute,
   getWorkspaceFilesetsRoute,
@@ -30,8 +31,15 @@ export const FilesetListRoute: FC = () => {
   });
 
   const getDatasetRoute = useCallback(
-    (dataset: FilesetOutput) =>
-      getFilesetDetailsRoute(workspace, getEntityReference(dataset, { encode: true })),
+    (dataset: FilesetOutput) => {
+      const ref = getEntityReference(dataset, { encode: true });
+      // External filesets (HF / NGC / S3) open a dedicated full-page detail
+      // route when the feature is enabled; local filesets keep the side panel.
+      if (FILESET_DETAILS_ENABLED && dataset.storage.type !== 'local') {
+        return getFilesetDetailRoute(workspace, ref);
+      }
+      return getFilesetDetailsRoute(workspace, ref);
+    },
     [workspace]
   );
 

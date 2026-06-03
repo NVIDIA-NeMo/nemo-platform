@@ -12,6 +12,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
   INTAKE_ENABLED,
@@ -42,6 +43,9 @@ export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
+
+export const gateFilesetDetailsRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(FILESET_DETAILS_ENABLED, routes);
 
 export const gateJobsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(JOBS_ENABLED, routes);
@@ -354,6 +358,21 @@ export const getFilesetDetailsRoute = (
   }
 
   return searchParams.size ? `${baseUrl}?${searchParams.toString()}` : baseUrl;
+};
+
+/**
+ * Dedicated full-page detail route for external filesets. `filesetId` is the
+ * URL-encoded `workspace/name` entity reference (same param the panel route
+ * uses). Gated by {@link FILESET_DETAILS_ENABLED}; callers decide when to use
+ * this versus the side-panel route ({@link getFilesetDetailsRoute}).
+ */
+export const getFilesetDetailRoute = (
+  workspace: string,
+  filesetId: string,
+  options?: { tab?: string }
+) => {
+  const base = generatePath(ROUTES.workspace.filesetDetail, { workspace, filesetId });
+  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {

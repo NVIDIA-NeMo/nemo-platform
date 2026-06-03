@@ -73,6 +73,8 @@ export const ROUTES = {
     filesets: `/workspaces/:${P.workspace}/filesets`,
     filesetNew: `/workspaces/:${P.workspace}/filesets/new`,
     filesetDetails: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}`,
+    /** Dedicated full-page detail route for external filesets (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
+    filesetDetail: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}/details`,
     filesetFile: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}/file/:${P.filePathEncoded}`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,

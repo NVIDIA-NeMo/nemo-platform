@@ -23,6 +23,7 @@ import {
   gateBaseModelsRoutes,
   gateCustomizationRoutes,
   gateDatasetsRoutes,
+  gateFilesetDetailsRoutes,
   gateDeploymentsRoutes,
   gateDataDesignerRoutes,
   gateEvaluationBenchmarksRoutes,
@@ -95,6 +96,11 @@ const FilesetNewRoute = lazy(() =>
 // Route paths are kept for URL matching only
 const FilesetListRoute = lazy(() =>
   import('@studio/routes/FilesetListRoute').then((module) => ({ default: module.FilesetListRoute }))
+);
+const FilesetDetailRoute = lazy(() =>
+  import('@studio/routes/FilesetDetailRoute').then((module) => ({
+    default: module.FilesetDetailRoute,
+  }))
 );
 const SecretsListRoute = lazy(() =>
   import('@studio/routes/SecretsListRoute').then((module) => ({ default: module.SecretsListRoute }))
@@ -421,6 +427,17 @@ export const routes: RouteObject[] = [
                       element: <></>, // Just for URL matching - panel rendered in FilesetListRoute
                     },
                   ],
+                },
+              ]),
+              ...gateFilesetDetailsRoutes([
+                {
+                  path: ROUTES.workspace.filesetDetail,
+                  element: (
+                    <Suspense fallback={<Loading description="Loading Fileset..." />}>
+                      <FilesetDetailRoute />
+                    </Suspense>
+                  ),
+                  errorElement: <ErrorPanel title="Fileset" />,
                 },
               ]),
               ...gateSecretsRoutes([

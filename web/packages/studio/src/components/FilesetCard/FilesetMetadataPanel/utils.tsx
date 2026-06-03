@@ -20,9 +20,10 @@ interface MetadataSection {
 }
 
 export const getMetadataSections = (
-  fileset: FilesetOutput,
-  readmeMetadata: Record<string, unknown> | undefined
+  fileset?: FilesetOutput,
+  readmeMetadata?: Record<string, unknown>
 ): MetadataSection[] => {
+  if (!fileset) return [];
   const sections: MetadataSection[] = [
     { value: 'source', title: 'Source', rows: getSourceRows(fileset) },
   ];

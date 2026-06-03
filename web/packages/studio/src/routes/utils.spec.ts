@@ -7,6 +7,7 @@ import {
   getEvaluationMetricDetailsRoute,
   getEvaluationMetricRunRoute,
   getEvaluationMetricsRunRoute,
+  getFilesetDetailRoute,
   getPromptTuningFormRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceInferenceProvidersRoute,
@@ -129,6 +130,22 @@ describe('getWorkspaceBaseModelsRoute (deep linking)', () => {
 
     expect(getWorkspaceBaseModelsRoute(workspace, { searchParams })).toBe(
       '/workspaces/my-workspace/base-models?s=llama&sort=-created_at'
+    );
+  });
+});
+
+describe('getFilesetDetailRoute', () => {
+  const workspace = 'my-workspace';
+
+  it('builds the dedicated detail path from the encoded fileset reference', () => {
+    expect(getFilesetDetailRoute(workspace, 'my-workspace%2Fmy-fileset')).toBe(
+      '/workspaces/my-workspace/filesets/my-workspace%2Fmy-fileset/details'
+    );
+  });
+
+  it('appends a ?tab= query param when a tab is provided', () => {
+    expect(getFilesetDetailRoute(workspace, 'my-workspace%2Fmy-fileset', { tab: 'files' })).toBe(
+      '/workspaces/my-workspace/filesets/my-workspace%2Fmy-fileset/details?tab=files'
     );
   });
 });

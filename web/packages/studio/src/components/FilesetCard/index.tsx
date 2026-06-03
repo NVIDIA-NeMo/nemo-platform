@@ -12,8 +12,8 @@ import { useMemo, type FC } from 'react';
 export interface FilesetCardProps {
   workspace: string;
   filesetName: string;
-  fileset: FilesetOutput;
-  files: FilesetFileOutput[] | undefined;
+  fileset?: FilesetOutput;
+  files?: FilesetFileOutput[];
   isFilesLoading: boolean;
   isFilesError: boolean;
   testId?: string;
