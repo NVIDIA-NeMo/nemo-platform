@@ -317,18 +317,20 @@ describe('CombinedAgentsTable', () => {
       await user.click(deleteItems[0]);
 
       expect(await screen.findByText('Delete Agent')).toBeInTheDocument();
+      expect(
+        screen.getByText('Are you sure you want to delete this agent and all its deployments?')
+      ).toBeInTheDocument();
     });
 
-    it('shows a friendly toast when delete is blocked by active deployments (409)', async () => {
+    it('deletes the agent (cascading its deployments) and shows a success toast', async () => {
+      let deleteRequested = false;
       server.use(
-        http.delete(`${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`, () =>
-          HttpResponse.json(
-            {
-              detail:
-                "Agent 'react-agent' has active deployments that must be removed first: rag-agent-prod. Use DELETE /deployments/{name} to remove them.",
-            },
-            { status: 409 }
-          )
+        http.delete(
+          `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents/:name`,
+          () => {
+            deleteRequested = true;
+            return new HttpResponse(null, { status: 204 });
+          }
         )
       );
 
@@ -345,12 +347,8 @@ describe('CombinedAgentsTable', () => {
       const confirmDialog = await screen.findByRole('dialog');
       await user.click(within(confirmDialog).getByRole('button', { name: 'Delete' }));
 
-      const errorToast = await screen.findByTestId('mock-toast-error');
-      expect(errorToast).toHaveTextContent(
-        'Agent has active deployments. Please delete all deployments before deleting agent.'
-      );
-      // The generic fallback toast should not appear.
-      expect(screen.queryByText(/Something went wrong\. Please try again\./i)).toBeNull();
+      await waitFor(() => expect(deleteRequested).toBe(true));
+      expect(await screen.findByTestId('mock-toast-success')).toHaveTextContent('Agent deleted.');
     });
   });
 });

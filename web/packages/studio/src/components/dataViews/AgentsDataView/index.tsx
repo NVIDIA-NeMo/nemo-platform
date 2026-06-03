@@ -169,12 +169,6 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         });
       },
       onError: (error) => {
-        if (error.response?.status === 409) {
-          toast.error(
-            'Agent has active deployments. Please delete all deployments before deleting agent.'
-          );
-          return;
-        }
         toast.error(getErrorMessage(error, 'Failed to delete agent.'));
       },
     },
@@ -286,6 +280,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         <DeleteConfirmationModal
           open
           title="Delete Agent"
+          description="Are you sure you want to delete this agent and all its deployments?"
           onDelete={handleDelete}
           onClose={() => setDeleteState(null)}
           simpleConfirm

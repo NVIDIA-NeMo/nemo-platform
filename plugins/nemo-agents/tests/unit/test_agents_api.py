@@ -329,67 +329,89 @@ class TestDeleteAgent:
 
         assert resp.status_code == 404
 
-    def test_delete_blocks_on_running_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        """DELETE /agents/{name} returns 409 when a running deployment references the agent."""
+    def test_delete_cascades_running_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """A running deployment is marked deleting, then the agent is removed."""
         dep = _make_deployment(agent="calc", status="running")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
-
-        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
-
-        assert resp.status_code == 409
-        assert "calc-dep" in resp.json()["detail"]
-
-    def test_delete_blocks_on_pending_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        dep = _make_deployment(agent="calc", status="pending")
-        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
-
-        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
-
-        assert resp.status_code == 409
-
-    def test_delete_blocks_on_starting_deployment(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
-        dep = _make_deployment(agent="calc", status="starting")
-        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
-
-        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
-
-        assert resp.status_code == 409
-
-    def test_delete_allowed_when_only_failed_deployments(
-        self, client: TestClient, mock_entity_client: AsyncMock
-    ) -> None:
-        """failed deployments do not block deletion — they are terminal."""
-        dep = _make_deployment(agent="calc", status="failed")
-        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.update = AsyncMock(return_value=dep)
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
         assert resp.status_code == 204
+        mock_entity_client.update.assert_called_once()
+        assert dep.status == "deleting"
+        mock_entity_client.delete.assert_called_once_with(Agent, name="calc", workspace="default")
 
-    def test_delete_allowed_when_only_deleting_deployments(
+    def test_delete_cascades_all_non_deleting_deployments(
         self, client: TestClient, mock_entity_client: AsyncMock
     ) -> None:
-        """deleting deployments do not block — they are already being cleaned up."""
+        """Every deployment for the agent (running or failed) is cascaded."""
+        running = _make_deployment(name="d-run", agent="calc", status="running")
+        failed = _make_deployment(name="d-fail", agent="calc", status="failed")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([running, failed]))
+        mock_entity_client.update = AsyncMock()
+        mock_entity_client.delete = AsyncMock(return_value=None)
+
+        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
+
+        assert resp.status_code == 204
+        assert running.status == "deleting"
+        assert failed.status == "deleting"
+        assert mock_entity_client.update.call_count == 2
+
+    def test_delete_skips_deployments_already_deleting(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """A deployment already being cleaned up isn't re-marked."""
         dep = _make_deployment(agent="calc", status="deleting")
         mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.update = AsyncMock()
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
         assert resp.status_code == 204
+        mock_entity_client.update.assert_not_called()
 
-    def test_delete_only_checks_deployments_for_this_agent(
+    def test_delete_does_not_touch_other_agents_deployments(
         self, client: TestClient, mock_entity_client: AsyncMock
     ) -> None:
-        """A running deployment for a *different* agent must not block deletion."""
+        """A deployment for a *different* agent must not be cascaded."""
         other_dep = _make_deployment(name="other-dep", agent="other-agent", status="running")
         mock_entity_client.list = AsyncMock(return_value=_list_response([other_dep]))
+        mock_entity_client.update = AsyncMock()
         mock_entity_client.delete = AsyncMock(return_value=None)
 
         resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
 
         assert resp.status_code == 204
+        mock_entity_client.update.assert_not_called()
+        assert other_dep.status == "running"
+
+    def test_delete_tolerates_deployment_already_gone(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
+        """A deployment removed mid-cascade is logged, not fatal — the agent still deletes."""
+        dep = _make_deployment(agent="calc", status="running")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.update = AsyncMock(side_effect=NemoEntityNotFoundError("gone"))
+        mock_entity_client.delete = AsyncMock(return_value=None)
+
+        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
+
+        assert resp.status_code == 204
+        mock_entity_client.delete.assert_called_once()
+
+    def test_delete_returns_500_when_deployment_update_fails(
+        self, client: TestClient, mock_entity_client: AsyncMock
+    ) -> None:
+        """A non-NotFound failure marking a deployment aborts before the agent is deleted."""
+        dep = _make_deployment(agent="calc", status="running")
+        mock_entity_client.list = AsyncMock(return_value=_list_response([dep]))
+        mock_entity_client.update = AsyncMock(side_effect=RuntimeError("db error"))
+        mock_entity_client.delete = AsyncMock(return_value=None)
+
+        resp = client.delete("/apis/agents/v2/workspaces/default/agents/calc")
+
+        assert resp.status_code == 500
+        mock_entity_client.delete.assert_not_called()
 
     def test_delete_server_error_on_delete_returns_500(self, client: TestClient, mock_entity_client: AsyncMock) -> None:
         mock_entity_client.list = AsyncMock(return_value=_list_response([]))

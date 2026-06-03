@@ -24,11 +24,6 @@ from nemo_platform_plugin.entity_client import NemoEntitiesClient, NemoEntityCon
 from nemo_platform_plugin.schema import PaginationData
 from nmp.common.entities.filters import make_filter_obj_dep
 
-# Deployment statuses that block agent deletion.
-# "failed" and "deleting" are excluded — they are terminal/in-cleanup and
-# do not represent an actively running process the user needs to clean up first.
-_BLOCKING_STATUSES = frozenset({"pending", "starting", "running"})
-
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
@@ -122,29 +117,29 @@ async def delete_agent(
     name: str,
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> None:
-    """Delete an agent by name.
+    """Delete an agent and cascade-delete all of its deployments.
 
-    Returns 409 if any deployments in a live state (pending/starting/running)
-    still reference this agent.  Delete or wait for those deployments to finish
-    before deleting the agent.
+    Each of the agent's deployments is marked ``deleting`` (the controller tears
+    down the subprocess on its next reconcile cycle), then the agent entity is
+    removed.
     """
-    # Check for live deployments that would be orphaned by this deletion.
     try:
         result = await entity_client.list(AgentDeployment, workspace=workspace)
     except Exception as exc:
         logger.exception("Failed to list deployments before deleting agent '%s'", name)
         raise HTTPException(status_code=500, detail="Failed to check deployments.") from exc
 
-    blocking = [d for d in result.data if d.agent == name and d.status in _BLOCKING_STATUSES]
-    if blocking:
-        names = ", ".join(d.name for d in blocking)
-        raise HTTPException(
-            status_code=409,
-            detail=(
-                f"Agent '{name}' has active deployments that must be removed first: {names}. "
-                f"Use DELETE /deployments/{{name}} to remove them."
-            ),
-        )
+    for dep in result.data:
+        if dep.agent != name or dep.status == "deleting":
+            continue
+        dep.status = "deleting"
+        try:
+            await entity_client.update(dep)
+        except NemoEntityNotFoundError:
+            logger.info("Deployment '%s' already removed before agent cascade delete", dep.name)
+        except Exception as exc:
+            logger.exception("Failed to mark deployment '%s' deleting during agent delete", dep.name)
+            raise HTTPException(status_code=500, detail="Failed to delete the agent's deployments.") from exc
 
     try:
         await entity_client.delete(Agent, name=name, workspace=workspace)
