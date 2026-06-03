@@ -13,7 +13,10 @@ Contract:
 
 - ``POST /v1/classify``  body ``{"input": "<prompt>"}``  →
   ``{"jailbreak": <bool>, "score": <float>}``
+- ``GET  /v1/health/live``  → ``{"object": "health-response", "message": "live"}``
+  (200 whenever the process is up)
 - ``GET  /v1/health/ready`` → ``{"object": "health-response", "message": "ready"}``
+  (503 with ``"message": "not ready"`` until the model is loaded)
 
 Runs inside the model container with no dependency on ``nemo_platform``; the
 classifier is imported relative to this directory so the image can copy just
@@ -27,13 +30,13 @@ import os
 
 import typer
 import uvicorn
-from fastapi import FastAPI
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Response
+from pydantic import BaseModel, Field
 
 try:  # package import (tests)
-    from .classifier import JailbreakClassifier
+    from .classifier import JailbreakClassifier, JailbreakClassifierONNX
 except ImportError:  # flat import (container: `python server.py` from /app)
-    from classifier import JailbreakClassifier  # type: ignore[no-redef]
+    from classifier import JailbreakClassifier, JailbreakClassifierONNX  # type: ignore[no-redef]
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +48,21 @@ MODEL_ID = "nvidia/nemoguard-jailbreak-detect"
 
 # Loaded once at startup and reused across requests.
 _classifier: JailbreakClassifier | None = None
+# The onnxruntime comparison variant is loaded lazily on first /v1/classify-onnx
+# request and shares the (already loaded) embedder with the pkl classifier.
+_classifier_onnx: JailbreakClassifierONNX | None = None
 
 
 class ClassifyRequest(BaseModel):
-    """Matches the NIM request shape."""
+    """Matches the NIM request shape.
 
-    input: str
+    Bounds mirror the NIM's ``constr(min_length=1, max_length=16777216)``: reject
+    empty input (the embedder would otherwise burn a forward pass on it) and
+    absurdly large bodies at the API layer (the tokenizer truncates to 2048 tokens
+    anyway). FastAPI returns 422 when these bounds are violated.
+    """
+
+    input: str = Field(min_length=1, max_length=16_777_216)
 
 
 class ClassifyResponse(BaseModel):
@@ -66,8 +78,36 @@ def get_classifier() -> JailbreakClassifier:
     return _classifier
 
 
+def get_classifier_onnx() -> JailbreakClassifierONNX:
+    """Return the onnxruntime comparison variant, loading it on first use.
+
+    Reuses the pkl classifier's embedder so both run on identical embeddings and
+    we don't load the ~1GB Arctic model twice.
+    """
+    global _classifier_onnx
+    if _classifier_onnx is None:
+        _classifier_onnx = JailbreakClassifierONNX(embed=get_classifier().embed)
+    return _classifier_onnx
+
+
+@app.get("/v1/health/live")
+def health_live() -> dict[str, str]:
+    """Liveness: the process is up and serving HTTP, independent of model load."""
+    return {"object": "health-response", "message": "live"}
+
+
 @app.get("/v1/health/ready")
-def health_ready() -> dict[str, str]:
+def health_ready(response: Response) -> dict[str, str]:
+    """Readiness: only ready once the classifier is loaded.
+
+    With ``--preload`` (default) the model loads before uvicorn binds, so this is
+    ready immediately. With ``--no-preload`` it reports 503 until the first request
+    triggers a lazy load, so an orchestrator's readiness probe reflects reality
+    instead of routing traffic into a cold first request.
+    """
+    if _classifier is None:
+        response.status_code = 503
+        return {"object": "health-response", "message": "not ready"}
     return {"object": "health-response", "message": "ready"}
 
 
@@ -80,9 +120,35 @@ def list_models() -> dict:
     }
 
 
+_MALFORMED_INPUT_DETAIL = (
+    "Received malformed input. /v1/classify expects JSON with a single, string-valued field named `input`."
+)
+
+
 @app.post("/v1/classify", response_model=ClassifyResponse)
 def classify(request: ClassifyRequest) -> ClassifyResponse:
-    classification, score = get_classifier()(request.input)
+    try:
+        classification, score = get_classifier()(request.input)
+    except ValueError as exc:
+        # Mirror the NIM: a malformed prompt that breaks tokenization/inference is
+        # a client error (400), not a server fault (500).
+        logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
+        raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
+    return ClassifyResponse(jailbreak=classification, score=score)
+
+
+@app.post("/v1/classify-onnx", response_model=ClassifyResponse)
+def classify_onnx(request: ClassifyRequest) -> ClassifyResponse:
+    """Comparison endpoint: same embeddings, classified via snowflake.onnx.
+
+    Point the eval script's ``--endpoint`` here to benchmark the onnxruntime path
+    against the canonical pkl path served at ``/v1/classify``.
+    """
+    try:
+        classification, score = get_classifier_onnx()(request.input)
+    except ValueError as exc:
+        logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
+        raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
     return ClassifyResponse(jailbreak=classification, score=score)
 
 
@@ -100,10 +166,16 @@ def start(
     preload: bool = typer.Option(default=True, help="Load the model before serving."),
 ) -> None:
     """Start the model server."""
+    # Surface our INFO startup logs (model download/load progress) on the console
+    # before uvicorn configures its own logging.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if preload:
         # Surface model/download failures at boot instead of on first request,
         # so the controller's readiness probe reflects reality.
+        logger.info("Preloading model before serving (this is the slow first-run step)...")
         get_classifier()
+        logger.info("Model preloaded.")
+    logger.info("Starting HTTP server on %s:%s", host, port)
     uvicorn.run(app, host=host, port=port)
 
 
