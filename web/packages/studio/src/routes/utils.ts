@@ -5,6 +5,7 @@ import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/nam
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -26,6 +27,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
+import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -40,7 +42,7 @@ export const gateCustomizationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(CUSTOMIZER_ENABLED, routes);
 
 export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(DASHBOARD_ENABLED, routes);
+  gateRoutes(DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED, routes);
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
@@ -84,6 +86,9 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
 
+export const gateCodingAgentStudioRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(CODING_AGENT_STUDIO_ENABLED, routes);
+
 export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DEPLOYMENTS_ENABLED, routes);
 
@@ -125,7 +130,8 @@ export const getWorkspaceIndexRoute = (workspace: string) => {
 };
 
 export const getWorkspaceDetailsDefaultRoute = (workspace: string) => {
-  if (DASHBOARD_ENABLED) return getWorkspaceDashboardRoute(workspace);
+  if (DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED)
+    return getWorkspaceDashboardRoute(workspace);
   if (AGENTS_ENABLED) return getAgentsListRoute(workspace);
   if (BASE_MODELS_ENABLED) return getWorkspaceBaseModelsRoute(workspace);
   if (JOBS_ENABLED) return getWorkspaceJobsRoute(workspace);
@@ -370,6 +376,15 @@ export const getDatasetDetailRoute = (
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 
+export const getModelDetailRoute = (
+  workspace: string,
+  modelName: string,
+  options?: { tab?: ModelDetailTab }
+) => {
+  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
+  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
+};
+
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {
   return generatePath(ROUTES.workspace.filesetFile, {
     workspace,
@@ -445,6 +460,10 @@ export const getModelChatRoute = (model: NamedEntityRef) => {
 
 export const getAgentsListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentsList, { workspace });
+};
+
+export const getClaudeCodeChatRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.claudeCodeChat, { workspace });
 };
 
 export const getAgentDetailRoute = (workspace: string, agentName: string) => {

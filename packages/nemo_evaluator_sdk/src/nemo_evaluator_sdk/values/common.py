@@ -3,8 +3,6 @@
 
 """Common value types used throughout evaluator SDK runtime."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/values/common.py
-
 from enum import Enum
 
 from pydantic import Field, RootModel

@@ -16,6 +16,7 @@ ai/tmp/
 /env
 venv*
 .venv*
+.nemo/
 .env*
 !**/env.py
 !packages/data_designer/**/environment.py

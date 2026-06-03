@@ -120,7 +120,7 @@ export const DatasetFileSelect: FC<Props> = ({
               status={status}
               aria-label="dataset-file-select"
             />
-            <SelectContent portal={false}>
+            <SelectContent>
               {isError && (
                 <SelectItem value="" disabled>
                   Error loading files

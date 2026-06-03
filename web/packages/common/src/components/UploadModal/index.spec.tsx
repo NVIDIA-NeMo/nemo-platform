@@ -72,7 +72,7 @@ describe('UploadModal', () => {
       { wrapper: createWrapper() }
     );
 
-    expect(screen.queryByText('Select a File')).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Select a File' })).not.toBeInTheDocument();
   });
 
   it('returns null when projectId is not provided', () => {

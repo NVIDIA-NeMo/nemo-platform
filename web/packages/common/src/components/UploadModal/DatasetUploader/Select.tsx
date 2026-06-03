@@ -52,7 +52,7 @@ export const DatasetSelect: FC<Props> = ({ project, disabled, error }) => {
     if (dataset?.type === 'new') {
       return 'new';
     }
-    return dataset?.dataset?.name;
+    return dataset?.dataset?.name ?? '';
   }, [dataset]);
 
   const handleDatasetSelect = async (datasetId: string) => {

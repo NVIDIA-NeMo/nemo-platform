@@ -301,7 +301,6 @@ class RayClusterBootstrap:
         Returns:
             Exit code from driver execution
         """
-        exit_code = 1
         try:
             if not self._start_head_background():
                 raise RuntimeError("Failed to start Ray head node")

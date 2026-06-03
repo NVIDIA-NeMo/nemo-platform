@@ -135,12 +135,11 @@ export const AgentMonitorRoute: FC = () => {
               multiple
               className="w-80 shrink-0"
               items={agentOptions}
-              selectedValue={agentFilter}
-              onSelectedValueChange={setAgentFilter}
+              value={agentFilter}
+              onValueChange={setAgentFilter}
               onScrollToBottom={loadMoreAgents}
-              attributes={{
-                ComboboxInput: { placeholder: 'All agents', 'aria-label': 'Filter by agent' },
-              }}
+              placeholder="All agents"
+              aria-label="Filter by agent"
             />
           }
         />

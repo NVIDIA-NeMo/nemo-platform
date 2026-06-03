@@ -363,7 +363,7 @@ export const WorkspaceBaseModelsRoute: FC = () => {
                   >
                     <Checkbox
                       attributes={{
-                        CheckboxBox: { id: 'base-models-filter-customizable' },
+                        CheckboxInput: { id: 'base-models-filter-customizable' },
                         Label: { htmlFor: 'base-models-filter-customizable' },
                       }}
                       checked={customizableChecked}

@@ -6,9 +6,9 @@ import tempfile
 import data_designer.config as dd
 import pandas as pd
 import pytest
-from data_designer_nemo.errors import NDDInvalidConfigError
 from nemo_data_designer_plugin.functions._types import PreviewSpec
 from nemo_data_designer_plugin.jobs.spec import DataDesignerJobConfig
+from pydantic import ValidationError
 
 
 def test_dataframe_seeds_are_rejected() -> None:
@@ -28,7 +28,12 @@ def test_dataframe_seeds_are_rejected() -> None:
         ),
     )
 
-    with pytest.raises(NDDInvalidConfigError) as exc_info:
+    # The before-validator translates plugin errors into ``ValueError`` so that
+    # Pydantic wraps them in ``ValidationError`` (the v2 contract). Earlier
+    # versions raised the plugin's ``NDDInvalidConfigError`` straight out of
+    # ``model_validate``, which Pydantic does not wrap and which therefore
+    # escaped framework-level ``except ValidationError`` handlers.
+    with pytest.raises(ValidationError) as exc_info:
         DataDesignerJobConfig.model_validate(config.model_dump())
 
     assert "seed data" in str(exc_info.value)
@@ -52,7 +57,7 @@ def test_local_file_seeds_are_rejected() -> None:
             ),
         )
 
-        with pytest.raises(NDDInvalidConfigError) as exc_info:
+        with pytest.raises(ValidationError) as exc_info:
             DataDesignerJobConfig.model_validate(config.model_dump())
 
         assert "seed data" in str(exc_info.value)
@@ -70,9 +75,9 @@ def test_dataframe_seeds_are_rejected_with_clear_local_context_error() -> None:
     )
     payload = config.model_dump(mode="json")
 
-    with pytest.raises(NDDInvalidConfigError) as job_exc_info:
+    with pytest.raises(ValidationError) as job_exc_info:
         DataDesignerJobConfig.model_validate(payload, context={"is_local": True})
-    with pytest.raises(NDDInvalidConfigError) as preview_exc_info:
+    with pytest.raises(ValidationError) as preview_exc_info:
         PreviewSpec.model_validate({"config": payload["config"]}, context={"is_local": True})
 
     assert "Dataframe seed sources" in str(job_exc_info.value)

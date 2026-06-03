@@ -33,6 +33,7 @@ from nmp.testing import (
     ClientContext,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -137,9 +138,9 @@ class TestWorkspaceIamIsolationSDK:
             name=ws_d, description="isolated from A and B", wait_role_propagation=True
         )
 
-        admin.members.create(workspace=ws_a, principal=user_a, roles=["Editor"], wait_role_propagation=True)
-        admin.members.create(workspace=ws_b, principal=user_b, roles=["Editor"], wait_role_propagation=True)
-        admin.members.create(workspace=ws_c, principal=shared_group, roles=["Editor"], wait_role_propagation=True)
+        grant_workspace_role(admin, workspace=ws_a, principal=user_a, roles=["Editor"])
+        grant_workspace_role(admin, workspace=ws_b, principal=user_b, roles=["Editor"])
+        grant_workspace_role(admin, workspace=ws_c, principal=shared_group, roles=["Editor"])
 
         model_a = short_unique_name("mdl-a")
         model_b = short_unique_name("mdl-b")

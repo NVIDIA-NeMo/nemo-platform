@@ -12,10 +12,9 @@ The `nemo` CLI is available at `/app/.venv/bin/nemo`. The CLI connects to the lo
 - `nemo guardrail configs list` - List all guardrail configurations
 - `nemo guardrail configs get <name>` - Retrieve a guardrail configuration
 
-### Guardrail Check/Chat Commands
+### Guardrail Check Commands
 
 - `nemo guardrail check --model <model> --messages '<json_array>' --guardrails '{"config_id": "<workspace>/<config_name>"}'` - Send a message through guardrails for content safety check
-- `nemo guardrail chat completions create --model <model> --messages '<json_array>' --guardrails '{"config_id": "<workspace>/<config_name>"}' --max-tokens 256` - Send a chat completion through guardrails
 
 ### Guardrail Config JSON Structure
 
@@ -60,7 +59,7 @@ No guardrail configuration exists yet -- you need to create one.
 2. Send a harmful or toxic message through the guardrails system (e.g., containing insults or asking about dangerous activities)
 3. Confirm that the guardrails blocked the request
 
-You can use either `nemo guardrail check` or `nemo guardrail chat completions create` to send messages. Both will show a blocked result when content is flagged.
+Use `nemo guardrail check` to send the message. It will show a blocked result when content is flagged.
 
 ## Success Criteria
 

@@ -10,7 +10,7 @@ import shlex
 
 import nmp.evaluator.app.values as app
 import yaml
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     EnvironmentVariable,

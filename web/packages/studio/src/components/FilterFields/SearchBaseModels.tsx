@@ -7,15 +7,13 @@ import {
   Button,
   ComboboxRoot,
   ComboboxTrigger,
-  ComboboxInput,
-  ComboboxSelectedValue,
-  ComboboxSearchProvider,
   ComboboxContent,
+  ComboboxListbox,
   ComboboxItem,
 } from '@nvidia/foundations-react-core';
 import { keepPreviousData } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { useState, type ChangeEvent, type Dispatch, type SetStateAction } from 'react';
+import { useState, type Dispatch, type SetStateAction } from 'react';
 import { useDebounce } from 'use-debounce';
 
 type Props = {
@@ -66,41 +64,36 @@ export const SearchBaseModels = ({ workspace, selectedModels, setSelectedModels 
   return (
     <>
       <ComboboxRoot
-        value={filter}
-        onSelectedValueChange={(value: string) => {
+        inputValue={filter}
+        onInputValueChange={setFilter}
+        onValueChange={(value) => {
           setFilter('');
-          handleChange(value);
+          if (typeof value === 'string') handleChange(value);
         }}
       >
-        <ComboboxTrigger slotEnd={isFetching && <TextInputSpinner />}>
-          <ComboboxSelectedValue></ComboboxSelectedValue>
-          <ComboboxInput
-            placeholder="Search base models..."
-            value={filter}
-            onChange={(e: ChangeEvent<HTMLInputElement>) => setFilter(e.target.value)}
-          />
-        </ComboboxTrigger>
+        <ComboboxTrigger
+          placeholder="Search base models..."
+          slotEnd={isFetching && <TextInputSpinner />}
+        />
         <ComboboxContent>
-          <ComboboxSearchProvider>
-            {foundModels.length ? (
-              foundModels.map((model) => (
-                <ComboboxItem
-                  value={model.base_model as string}
-                  key={`${model.base_model as string}_option`}
-                >
-                  {model.base_model as string}
-                </ComboboxItem>
-              ))
-            ) : (
-              <div className="px-3 py-2 text-sm text-gray-500">
-                {!debouncedBaseModelSearch
-                  ? 'Start typing to search...'
-                  : selectedModels.length > 0 && foundModels.length === 0
-                    ? 'All available models are already selected'
-                    : 'No models found matching your search'}
-              </div>
-            )}
-          </ComboboxSearchProvider>
+          <ComboboxListbox
+            emptyStateMessage={
+              !debouncedBaseModelSearch
+                ? 'Start typing to search...'
+                : selectedModels.length > 0 && foundModels.length === 0
+                  ? 'All available models are already selected'
+                  : 'No models found matching your search'
+            }
+          >
+            {foundModels.map((model) => (
+              <ComboboxItem
+                value={model.base_model as string}
+                key={`${model.base_model as string}_option`}
+              >
+                {model.base_model as string}
+              </ComboboxItem>
+            ))}
+          </ComboboxListbox>
         </ComboboxContent>
       </ComboboxRoot>
 

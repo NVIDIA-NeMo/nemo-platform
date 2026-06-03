@@ -42,7 +42,7 @@ export function SearchBar(props: DataViewSearchBarProps): JSX.Element {
       dismissible
       onValueChange={handleChange}
       placeholder="Search table"
-      slotLeft={MagnifyingGlassIcon}
+      slotStart={MagnifyingGlassIcon}
       value={state.searchBar.state}
       {...props}
     />

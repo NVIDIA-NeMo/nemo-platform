@@ -10,14 +10,11 @@ from typing import Any, cast
 
 import pytest
 from nemo_evaluator_sdk.enums import MetricType
-from nemo_evaluator_sdk.execution.config import (
-    EvaluationRequest,
-    RunConfig,
-    RunConfigOnlineModel,
-)
+from nemo_evaluator_sdk.execution.config import RunConfig, RunConfigOnlineModel
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.values import FieldMapping, Model
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import (
     AggregatedMetricResult,
@@ -40,9 +37,27 @@ class _CustomMetric:
         return [MetricOutputSpec.continuous_score("string-check")]
 
 
+class _CandidateOutputMetric:
+    @property
+    def type(self) -> str:
+        return "candidate-output-check"
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        score = 1.0 if input.candidate.output_text == input.row.data["reference"] else 0.0
+        return MetricResult(outputs=[MetricOutput(name="match", value=score)])
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("match")]
+
+
 _DATASET = [
     {"expected": "blue", "model_output": "Blue"},
     {"expected": "Jupiter", "model_output": "Saturn"},
+]
+
+_MAPPED_DATASET = [
+    {"expected": "blue", "prediction": "blue"},
+    {"expected": "Jupiter", "prediction": "Saturn"},
 ]
 
 
@@ -64,20 +79,20 @@ class _FakeDirectBackend:
     def __init__(self, single_result: EvaluationResult, multi_result: BenchmarkEvaluationResult):
         self.single_result = single_result
         self.multi_result = multi_result
-        self.single_calls: list[tuple[Metric, EvaluationRequest]] = []
-        self.multi_calls: list[tuple[Sequence[Metric], EvaluationRequest]] = []
+        self.single_calls: list[dict[str, Any]] = []
+        self.multi_calls: list[dict[str, Any]] = []
 
-    async def evaluate(self, *, metric: Metric, request: EvaluationRequest) -> EvaluationResult:
-        self.single_calls.append((metric, request))
+    async def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
+        self.single_calls.append({"metric": metric, **kwargs})
         return self.single_result
 
     async def evaluate_benchmark(
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        **kwargs: Any,
     ) -> BenchmarkEvaluationResult:
-        self.multi_calls.append((metrics, request))
+        self.multi_calls.append({"metrics": metrics, **kwargs})
         return self.multi_result
 
 
@@ -87,20 +102,20 @@ class _FakeSyncBackend:
     def __init__(self, single_result: EvaluationResult, multi_result: BenchmarkEvaluationResult):
         self.single_result = single_result
         self.multi_result = multi_result
-        self.single_calls: list[tuple[Metric, EvaluationRequest]] = []
-        self.multi_calls: list[tuple[Sequence[Metric], EvaluationRequest]] = []
+        self.single_calls: list[dict[str, Any]] = []
+        self.multi_calls: list[dict[str, Any]] = []
 
-    def evaluate(self, *, metric: Metric, request: EvaluationRequest) -> EvaluationResult:
-        self.single_calls.append((metric, request))
+    def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
+        self.single_calls.append({"metric": metric, **kwargs})
         return self.single_result
 
     def evaluate_benchmark(
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        **kwargs: Any,
     ) -> BenchmarkEvaluationResult:
-        self.multi_calls.append((metrics, request))
+        self.multi_calls.append({"metrics": metrics, **kwargs})
         return self.multi_result
 
 
@@ -115,18 +130,18 @@ class _LoopSensitiveSyncBackend(_FakeSyncBackend):
             return
         raise RuntimeError("sync backend ran on an active event loop")
 
-    def evaluate(self, *, metric: Metric, request: EvaluationRequest) -> EvaluationResult:
+    def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
         self._raise_if_running_on_active_loop()
-        return super().evaluate(metric=metric, request=request)
+        return super().evaluate(metric=metric, **kwargs)
 
     def evaluate_benchmark(
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        **kwargs: Any,
     ) -> BenchmarkEvaluationResult:
         self._raise_if_running_on_active_loop()
-        return super().evaluate_benchmark(metrics=metrics, request=request)
+        return super().evaluate_benchmark(metrics=metrics, **kwargs)
 
 
 class _MissingEvaluateBackend:
@@ -136,29 +151,29 @@ class _MissingEvaluateBackend:
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        **kwargs: Any,
     ) -> BenchmarkEvaluationResult:
         """Return an empty benchmark result for invalid-backend validation tests."""
-        del metrics, request
+        del metrics, kwargs
         return _empty_benchmark_result()
 
 
 class _MixedBackend:
     """Invalid backend mixing async single-metric and sync benchmark methods."""
 
-    async def evaluate(self, *, metric: Metric, request: EvaluationRequest) -> EvaluationResult:
+    async def evaluate(self, *, metric: Metric, **kwargs: Any) -> EvaluationResult:
         """Return an empty single-metric result asynchronously."""
-        del metric, request
+        del metric, kwargs
         return _empty_evaluation_result()
 
     def evaluate_benchmark(
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        **kwargs: Any,
     ) -> BenchmarkEvaluationResult:
         """Return an empty benchmark result synchronously."""
-        del metrics, request
+        del metrics, kwargs
         return _empty_benchmark_result()
 
 
@@ -175,8 +190,9 @@ class TestEvaluator:
     def test_rejects_legacy_backend_argument(self):
         backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
 
+        legacy_kwargs: dict = {"backend": backend}
         with pytest.raises(TypeError, match="backend"):
-            Evaluator(backend=backend)  # type: ignore[call-arg]
+            Evaluator(**legacy_kwargs)
 
     @pytest.mark.asyncio
     async def test_run_uses_offline_params_without_request_fail_fast(self):
@@ -189,10 +205,10 @@ class TestEvaluator:
             config=RunConfig(parallelism=1),
         )
 
-        request = backend.single_calls[0][1]
-        assert request.params == RunConfig(parallelism=1)
-        assert request.aggregate_fields is None
-        assert not hasattr(request, "fail_fast")
+        call = backend.single_calls[0]
+        assert call["params"] == RunConfig(parallelism=1)
+        assert call["aggregate_fields"] is None
+        assert "fail_fast" not in call
 
     @pytest.mark.asyncio
     async def test_run_preserves_aggregate_fields_on_request(self):
@@ -206,9 +222,24 @@ class TestEvaluator:
             aggregate_fields=("mean",),
         )
 
-        request = backend.single_calls[0][1]
-        assert request.params == RunConfig(parallelism=1)
-        assert request.aggregate_fields == ("mean",)
+        call = backend.single_calls[0]
+        assert call["params"] == RunConfig(parallelism=1)
+        assert call["aggregate_fields"] == ("mean",)
+
+    @pytest.mark.asyncio
+    async def test_run_preserves_field_mapping_on_request(self):
+        backend = _FakeDirectBackend(single_result=_empty_evaluation_result(), multi_result=_empty_benchmark_result())
+        evaluator = Evaluator(client=backend)
+        field_mapping = FieldMapping(output="prediction", reference="expected")
+
+        await evaluator.run(
+            metrics=_CustomMetric(),
+            dataset=_MAPPED_DATASET,
+            field_mapping=field_mapping,
+        )
+
+        call = backend.single_calls[0]
+        assert call["field_mapping"] == field_mapping
 
     @pytest.mark.asyncio
     async def test_run_preserves_ignored_online_request_failure_params(self):
@@ -220,11 +251,12 @@ class TestEvaluator:
             metrics=_CustomMetric(),
             dataset=_DATASET,
             config=params,
+            target=Model(url="http://model.test/v1", name="test-model"),
         )
 
-        request = backend.single_calls[0][1]
-        assert request.params is params
-        assert not hasattr(request, "fail_fast")
+        call = backend.single_calls[0]
+        assert call["params"] is params
+        assert "fail_fast" not in call
 
     @pytest.mark.asyncio
     async def test_run_accepts_sdk_metric_instance(self):
@@ -271,6 +303,20 @@ class TestEvaluator:
         assert list(result.per_metric) == ["exact-match", "string-check"]
         assert result.metric_result("exact-match").aggregate_scores.scores[0].name == "exact-match.exact-match"
         assert result.metric_result("string-check").aggregate_scores.scores[0].name == "string-check.string-check"
+
+    @pytest.mark.asyncio
+    async def test_run_rejects_sequence_with_non_metric_entries(self):
+        expected = _empty_evaluation_result()
+        backend = _FakeDirectBackend(single_result=expected, multi_result=_empty_benchmark_result())
+        evaluator = Evaluator(client=backend)
+        run = object.__getattribute__(evaluator, "run")
+        invalid_metrics: Any = [object()]
+
+        with pytest.raises(TypeError, match="metrics must be a Metric or a sequence of Metric objects"):
+            await run(metrics=invalid_metrics, dataset=_DATASET, config=RunConfig())
+
+        assert backend.single_calls == []
+        assert backend.multi_calls == []
 
     @pytest.mark.asyncio
     async def test_run_filters_benchmark_aggregate_fields(self):
@@ -320,6 +366,32 @@ class TestEvaluator:
         assert result.row_scores[0].metrics["string-check"][0].value == 0.0
         assert result.row_scores[1].metrics["string-check"][0].value == 0.0
 
+    def test_run_sync_field_mapping_populates_offline_candidate_output(self):
+        evaluator = Evaluator()
+
+        result = evaluator.run_sync(
+            metrics=_CandidateOutputMetric(),
+            dataset=_MAPPED_DATASET,
+            field_mapping=FieldMapping(output="prediction", reference="expected"),
+        )
+
+        assert result.aggregate_scores.scores[0].mean == 0.5
+        assert result.row_scores[0].item["output"] == "blue"
+        assert result.row_scores[0].sample["output_text"] == "blue"
+        assert result.row_scores[0].metrics["candidate-output-check"][0].value == 1.0
+
+    def test_run_sync_field_mapping_populates_benchmark_offline_candidate_output(self):
+        evaluator = Evaluator()
+
+        result = evaluator.run_sync(
+            metrics=[ExactMatchMetric(reference="{{reference}}")],
+            dataset=_MAPPED_DATASET,
+            field_mapping=FieldMapping(output="prediction", reference="expected"),
+        )
+
+        assert result.aggregate_scores.scores[0].mean == 0.5
+        assert result.row_scores[0].sample["output_text"] == "blue"
+
     @pytest.mark.asyncio
     async def test_run_uses_sync_backend_adapter_thread_bridge(self, mocker: MockerFixture):
         expected = _empty_evaluation_result()
@@ -344,8 +416,8 @@ class TestEvaluator:
         assert result is expected
         to_thread.assert_awaited_once()
         assert len(backend.single_calls) == 1
-        request = backend.single_calls[0][1]
-        assert request.params == RunConfig(parallelism=1)
+        call = backend.single_calls[0]
+        assert call["params"] == RunConfig(parallelism=1)
 
     def test_run_sync_uses_sync_backend_adapter(self, mocker: MockerFixture):
         expected = _empty_evaluation_result()
@@ -370,8 +442,8 @@ class TestEvaluator:
         assert result is expected
         to_thread.assert_awaited_once()
         assert len(backend.single_calls) == 1
-        request = backend.single_calls[0][1]
-        assert request.params == RunConfig(parallelism=1)
+        call = backend.single_calls[0]
+        assert call["params"] == RunConfig(parallelism=1)
 
     @pytest.mark.asyncio
     async def test_run_sync_uses_thread_bridge_for_sync_backend_when_loop_is_running(self):
@@ -387,8 +459,8 @@ class TestEvaluator:
 
         assert result is expected
         assert len(backend.single_calls) == 1
-        request = backend.single_calls[0][1]
-        assert request.params == RunConfig(parallelism=1)
+        call = backend.single_calls[0]
+        assert call["params"] == RunConfig(parallelism=1)
 
     def test_rejects_client_with_missing_backend_method(self):
         with pytest.raises(TypeError, match="missing: evaluate"):
@@ -409,13 +481,6 @@ class TestEvaluator:
 
     def test_evaluator_module_import_does_not_require_nemo_platform(self, mocker: MockerFixture):
         evaluator_module = sys.modules.pop("nemo_evaluator_sdk.execution.evaluator", None)
-        stale_standalone_adapter_modules = {
-            name: module
-            for name, module in list(sys.modules.items())
-            if name.startswith("nemo_evaluator.sdk.standalone_sdk")
-        }
-        for name in stale_standalone_adapter_modules:
-            sys.modules.pop(name, None)
         real_import = builtins.__import__
 
         def import_without_nemo_platform(name: str, *args: Any, **kwargs: Any) -> object:
@@ -429,11 +494,9 @@ class TestEvaluator:
         try:
             imported = importlib.import_module("nemo_evaluator_sdk.execution.evaluator")
             assert imported.Evaluator is not None
-            assert "nemo_evaluator.sdk.standalone_sdk.backend" not in sys.modules
         finally:
             if evaluator_module is not None:
                 sys.modules["nemo_evaluator_sdk.execution.evaluator"] = evaluator_module
-            sys.modules.update(stale_standalone_adapter_modules)
 
     def test_run_sync_uses_async_backend_through_run_bridge(self):
         expected = _empty_evaluation_result()

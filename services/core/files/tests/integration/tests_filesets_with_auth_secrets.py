@@ -19,6 +19,7 @@ from nmp.testing import (
     TEST_ADMIN_EMAIL,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -97,11 +98,11 @@ class TestFilesetCreateWithSecretAuth:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -133,11 +134,11 @@ class TestFilesetCreateWithSecretAuth:
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
             admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=user_email,
                 roles=["EditorNoSecrets"],
-                wait_role_propagation=True,
             )
 
             user_sdk = as_user(sdk, user_email)
@@ -167,11 +168,11 @@ class TestFilesetCreateWithSecretAuth:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -202,11 +203,11 @@ class TestFilesetCreateWithSecretAuth:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -244,11 +245,11 @@ class TestFilesetCreateWithSecretAuth:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
         admin_sdk.secrets.create(workspace=workspace, name=secret_name, value="hf_dummy_token")
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)

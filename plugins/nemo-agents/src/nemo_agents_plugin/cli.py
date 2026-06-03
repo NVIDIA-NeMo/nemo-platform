@@ -77,6 +77,7 @@ class AgentsCLI(NemoCLI):
                 raise typer.Exit(0)
 
         _register_local_commands(app)
+        _register_package_command(app)
         _register_platform_commands(app)
         register_leaderboard_commands(app)
         register_usage_commands(app)
@@ -195,6 +196,397 @@ def _register_local_commands(app: typer.Typer) -> None:
 # ``EvaluateAgentJob`` and ``OptimizeAgentJob`` registered under the
 # ``nemo.jobs`` entry-point group.  The platform's CLI loader injects them
 # into this group at startup (see ``nemo_platform_ext.cli.app``).
+
+
+# ---------------------------------------------------------------------------
+# Packaging command — no platform required
+# ---------------------------------------------------------------------------
+
+_PACKAGE_PANEL = "Packaging (no platform required)"
+
+
+def _register_package_command(app: typer.Typer) -> None:
+    """Register the unified ``package`` command onto *app*.
+
+    Single command whose flags select how far the render → validate → build
+    → publish pipeline runs:
+
+    * ``--no-build``               stop after render (Dockerfile + .dockerignore only)
+    * default                      render → validate → build
+    * ``--publish --registry ...`` render → validate → build → publish
+    """
+
+    @app.command(rich_help_panel=_PACKAGE_PANEL)
+    def package(
+        agent: Path = typer.Option(
+            ...,
+            "--agent",
+            "-c",
+            help="Path to a NAT workflow YAML config file.",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
+        pyproject: Optional[Path] = typer.Option(
+            None,
+            "--pyproject",
+            help="Path to pyproject.toml (enables project mode).",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
+        no_build: bool = typer.Option(
+            False,
+            "--no-build",
+            help="Stop after render — emit Dockerfile + .dockerignore only (no image built).",
+        ),
+        publish: bool = typer.Option(
+            False,
+            "--publish",
+            help="After building, tag and push to --registry.",
+        ),
+        format: str = typer.Option(
+            "docker",
+            "--format",
+            help="Packaging format: 'docker' (Jinja2 Dockerfile). 'whl' is reserved for future wheel-based builds and is currently rejected.",
+        ),
+        dockerfile: Optional[Path] = typer.Option(
+            None,
+            "--dockerfile",
+            help="Use an existing Dockerfile instead of rendering (skips render stage).",
+            exists=True,
+            file_okay=True,
+            dir_okay=False,
+        ),
+        tag: Optional[str] = typer.Option(
+            None,
+            "--tag",
+            "-t",
+            help="Image tag.  Defaults to '<agent-name>-<agent-id>:<agent-version>'.",
+        ),
+        platform: Optional[list[str]] = typer.Option(
+            None,
+            "--platform",
+            help=(
+                "Target platform (e.g. 'linux/amd64' or 'linux/arm64'). "
+                "When omitted, defaults to the local daemon's native "
+                "platform. Multi-arch builds via buildx are not yet "
+                "implemented; pass at most one value."
+            ),
+        ),
+        registry: Optional[str] = typer.Option(
+            None,
+            "--registry",
+            "-r",
+            help="Remote registry URL (required when --publish is set).",
+        ),
+        push_tag: Optional[str] = typer.Option(
+            None,
+            "--push-tag",
+            help="Fully-qualified remote tag.  Defaults to '<registry>/<tag>'.",
+        ),
+        output: Optional[Path] = typer.Option(
+            None,
+            "--output",
+            "-o",
+            help="Output path for rendered Dockerfile (only used with --no-build). "
+            "Defaults to 'Dockerfile' next to --pyproject when given (project root, "
+            "so COPY statements resolve), otherwise next to the agent config.",
+        ),
+        base_image_url: Optional[str] = typer.Option(None, "--base-image-url", envvar="NAT_BASE_IMAGE_URL"),
+        base_image_tag: Optional[str] = typer.Option(None, "--base-image-tag", envvar="NAT_BASE_IMAGE_TAG"),
+        python_version: Optional[str] = typer.Option(None, "--python-version", envvar="NAT_PYTHON_VERSION"),
+        nat_version: Optional[str] = typer.Option(
+            None,
+            "--nat-version",
+            envvar="NAT_VERSION",
+            help=(
+                "NAT release to install (e.g. '1.7.0').  Strongly recommended: "
+                "pin explicitly so image tags/labels/deps are reproducible.  "
+                "When omitted, a baked-in default is used and a warning is printed."
+            ),
+        ),
+        uv_version: Optional[str] = typer.Option(None, "--uv-version", envvar="NAT_UV_VERSION"),
+        allow_root: bool = typer.Option(
+            False, "--allow-root", help="Disable non-root USER hardening in the rendered Dockerfile."
+        ),
+        generate_ignore: bool = typer.Option(
+            True, "--ignore/--no-ignore", help="Generate a .dockerignore file alongside the Dockerfile."
+        ),
+        skip_validation: bool = typer.Option(
+            False, "--skip-validation", help="Bypass validate_agent_config before build."
+        ),
+        agent_version: Optional[str] = typer.Option(None, "--agent-version", help="Override agent version OCI label."),
+        agent_author: Optional[str] = typer.Option(None, "--agent-author", help="Override agent author OCI label."),
+        template: Optional[str] = typer.Option(
+            None, "--template", help="Path to an external Jinja2 Dockerfile template."
+        ),
+    ) -> None:
+        """Package a NAT agent -- render -> validate -> build -> publish.
+
+        \b
+        Progressive pipeline controlled by flags:
+          --no-build                    emit Dockerfile + .dockerignore (no image)
+          (default)                     render + validate + build
+          --publish --registry ...      render + validate + build + push
+
+        \b
+        Platform behavior:
+          - no --platform     image built for the local daemon's native platform
+          - one --platform    image built for that platform (cross-arch via buildx)
+          - multi --platform  rejected -- multi-arch builds via buildx are not
+                              yet wired up; build per-arch and combine with
+                              ``docker buildx imagetools create`` until then.
+        """
+        _validate_package_flags(
+            no_build=no_build,
+            publish=publish,
+            registry=registry,
+            format=format,
+            template=template,
+            platform=platform,
+        )
+        _warn_if_nat_version_unpinned(nat_version)
+
+        if no_build:
+            _package_render_only(
+                agent_config=agent,
+                pyproject=pyproject,
+                output=output,
+                format=format,
+                template=template,
+                allow_root=allow_root,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                generate_ignore=generate_ignore,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                nat_version=nat_version,
+                uv_version=uv_version,
+            )
+            return
+
+        from nemo_agents_plugin.container.builder import build_agent_image
+
+        try:
+            result_tag = build_agent_image(
+                agent,
+                pyproject=pyproject,
+                dockerfile=dockerfile,
+                tag=tag,
+                nat_version=nat_version,
+                base_image_url=base_image_url,
+                base_image_tag=base_image_tag,
+                python_version=python_version,
+                uv_version=uv_version,
+                allow_root=allow_root,
+                agent_version=agent_version,
+                agent_author=agent_author,
+                template_path=template,
+                skip_validation=skip_validation,
+                generate_ignore=generate_ignore,
+                platforms=platform,
+            )
+        except ValueError as exc:
+            typer.echo(f"Error: {exc}", err=True)
+            raise typer.Exit(code=1)
+
+        typer.echo(f"Image ready: {result_tag}")
+
+        if not publish:
+            return
+
+        from nemo_agents_plugin.container.publisher import docker_push
+
+        assert registry is not None  # guaranteed by _validate_package_flags
+        remote = docker_push(local_tag=result_tag, registry=registry, push_tag=push_tag)
+        typer.echo(f"Published: {remote}")
+
+
+def _validate_package_flags(
+    *,
+    no_build: bool,
+    publish: bool,
+    registry: Optional[str],
+    format: str,
+    template: Optional[str],
+    platform: Optional[list[str]] = None,
+) -> None:
+    """Fail fast on flag combinations that cannot be satisfied."""
+    if no_build and publish:
+        typer.echo(
+            "Error: --no-build and --publish are mutually exclusive.  "
+            "--no-build emits a Dockerfile without building, so there is nothing to publish.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if publish and not registry:
+        typer.echo(
+            "Error: --publish requires --registry (e.g. --registry nvcr.io/my-org).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if format not in {"docker", "whl"}:
+        typer.echo(f"Error: --format must be 'docker' or 'whl' (got '{format}').", err=True)
+        raise typer.Exit(code=1)
+
+    # ``whl`` was scaffolded in the original CLI surface but never wired
+    # into the build path — reject up front so we don't silently ignore
+    # the flag in a build invocation. ``--agent-whl`` was removed entirely;
+    # when wheel packaging actually lands, re-add the flag together with
+    # the validator branch that checks for it.
+    if format == "whl":
+        typer.echo(
+            "Error: --format whl is not yet implemented. "
+            "Use --format docker (the default) until wheel packaging lands.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    if template is not None and not Path(template).is_file():
+        typer.echo(f"Error: --template file not found: {template}", err=True)
+        raise typer.Exit(code=1)
+
+    # Multi-arch builds require a buildx-backed pipeline that this PR does
+    # not implement.  Rejecting the flag prevents the earlier behavior of
+    # printing a fake "Multi-arch manifest pushed via buildx" success while
+    # actually building (and pushing) only a single-arch image.
+    if platform and len(platform) > 1:
+        typer.echo(
+            "Error: multi-arch --platform is not yet implemented. "
+            "Pass at most one --platform; for multi-arch images, build each "
+            "platform separately and combine with `docker buildx imagetools create`.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+def _warn_if_nat_version_unpinned(nat_version: Optional[str]) -> None:
+    """Emit a soft warning when ``--nat-version`` falls through to the default.
+
+    Reproducibility hinges on callers pinning ``nvidia-nat`` explicitly (via
+    ``--nat-version`` or the ``NAT_VERSION`` env var) — otherwise the OCI
+    labels, image tags, and installed plugin set are implicitly tied to
+    whatever default happens to be baked into the plugin.  The warning goes
+    to stderr so it does not corrupt piped Dockerfile output in ``--no-build``
+    renders.
+    """
+    from nemo_agents_plugin.container.template import resolve_value_with_source
+
+    resolved, source = resolve_value_with_source("nat_version", nat_version)
+    if source == "default":
+        typer.echo(
+            f"warning: --nat-version not provided; defaulting to '{resolved}'. "
+            "Pass --nat-version or set NAT_VERSION to pin explicitly.",
+            err=True,
+        )
+
+
+def _package_render_only(
+    *,
+    agent_config: Path,
+    pyproject: Optional[Path],
+    output: Optional[Path],
+    format: str,
+    template: Optional[str],
+    allow_root: bool,
+    agent_version: Optional[str],
+    agent_author: Optional[str],
+    generate_ignore: bool,
+    base_image_url: Optional[str],
+    base_image_tag: Optional[str],
+    python_version: Optional[str],
+    nat_version: Optional[str],
+    uv_version: Optional[str],
+) -> None:
+    """Implements the ``--no-build`` path: render files and exit."""
+    # ``--format whl`` is rejected globally by ``_validate_package_flags``
+    # before we get here; assert for the developer who deletes that guard.
+    assert format == "docker", f"unreachable: format={format!r}"
+
+    from nemo_agents_plugin.container.template import render_dockerfile, render_dockerignore
+
+    try:
+        content = render_dockerfile(
+            agent_config,
+            pyproject,
+            base_image_url=base_image_url,
+            base_image_tag=base_image_tag,
+            python_version=python_version,
+            nat_version=nat_version,
+            uv_version=uv_version,
+            allow_root=allow_root,
+            agent_version=agent_version,
+            agent_author=agent_author,
+            template_path=template,
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    user_chose_output = output is not None
+    if output is None:
+        # In --pyproject (project) mode the Dockerfile MUST live at the project
+        # root so ``COPY pyproject.toml .``, ``COPY uv.lock* .`` and ``COPY . .``
+        # resolve against the correct build context.  In config-only mode there
+        # is no project root, so fall back to the config's directory.
+        if pyproject is not None:
+            output = pyproject.parent / "Dockerfile"
+        else:
+            output = agent_config.parent / "Dockerfile"
+
+    # Refuse to clobber a pre-existing Dockerfile when we picked the path
+    # ourselves — silently overwriting a hand-tuned Dockerfile is the kind
+    # of data loss CI runs are too coarse to catch.  A file we wrote on a
+    # previous run (identified by the plugin's sentinel header) is safe to
+    # regenerate.  When the user passes ``--output`` explicitly we treat
+    # that as informed consent and overwrite unconditionally.
+    from nemo_agents_plugin.container.template import is_plugin_managed
+
+    if not user_chose_output and output.exists() and not is_plugin_managed(output):
+        typer.echo(
+            f"Error: refusing to overwrite existing file {output}. "
+            "Pass --output to choose a different path (or to overwrite "
+            "explicitly).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    # Filesystem writes can fail for reasons completely unrelated to the
+    # render logic (read-only mount, missing parent dir, disk full,
+    # ENOSPC, EACCES).  Convert those into the same ``Error: ...`` +
+    # ``typer.Exit(1)`` shape as the ``ValueError`` branch above so the
+    # operator sees a clean CLI error instead of a Python traceback, and
+    # so success-path stdout is never partially printed before a crash.
+    try:
+        output.write_text(content, encoding="utf-8")
+    except OSError as exc:
+        typer.echo(f"Error: failed to write Dockerfile to {output}: {exc}", err=True)
+        raise typer.Exit(code=1)
+    typer.echo(f"Dockerfile written to {output}")
+
+    if generate_ignore:
+        # ``render_dockerignore`` returns ``None`` when a user-owned
+        # ``.dockerignore`` is preserved (first-line sentinel check).  Be
+        # explicit about which outcome happened so the user knows whether
+        # their file was touched.
+        try:
+            ignore_path = render_dockerignore(output.parent)
+        except OSError as exc:
+            typer.echo(
+                f"Error: failed to write .dockerignore to {output.parent / '.dockerignore'}: {exc}",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+        if ignore_path is None:
+            typer.echo(
+                f"Preserved existing .dockerignore at {output.parent / '.dockerignore'} (not generated by this plugin)."
+            )
+        else:
+            typer.echo(f".dockerignore written to {ignore_path}")
 
 
 # ---------------------------------------------------------------------------

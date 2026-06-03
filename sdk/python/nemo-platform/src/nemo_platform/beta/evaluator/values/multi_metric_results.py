@@ -10,7 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from nemo_platform.beta.evaluator.metrics.protocol import MetricOutput
+from nemo_platform.beta.evaluator.values.protocol import MetricOutput
 from nemo_platform.beta.evaluator.values.results import (
     AggregatedMetricResult,
     AggregateFieldName,

@@ -25,8 +25,8 @@ export const ModelDropdownSearch: FC<ModelDropdownSearchProps> = ({ value, onCha
         value={value}
         onChange={handleChange}
         attributes={{
-          TextInputValue: {
-            'data-testid': 'model-select-v2-filter',
+          Input: {
+            ['data-testid' as never]: 'model-select-v2-filter',
           },
         }}
       />

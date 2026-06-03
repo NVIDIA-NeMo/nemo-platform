@@ -89,7 +89,7 @@ const meta = {
     onOpenChange: () => {},
     workspace: WORKSPACE,
     // Render inline so the panel is visible within the Storybook canvas (not via portal).
-    attributes: { SidePanel: { portal: false } },
+    attributes: { SidePanel: {} },
   },
 } satisfies Meta<typeof MetricRunSidePanel>;
 

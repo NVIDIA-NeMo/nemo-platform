@@ -172,7 +172,6 @@ export const TransformFileModal: FC<Props> = ({ open, onClose, filepath }) => {
               tooltip="Runs inference on EACH ROW of the file. Please ensure your file schema uses 'prompt', 'instruction', or 'question' as your user message key."
               models={models}
               loading={isFetchingModels}
-              portal={false}
               formFieldProps={{
                 slotLabel: <Label className="font-bold">Model for Inference</Label>,
               }}

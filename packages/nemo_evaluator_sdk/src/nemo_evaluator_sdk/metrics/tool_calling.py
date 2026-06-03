@@ -118,7 +118,6 @@ class ToolCallingMetric(ToolCalling):
 
         fn_names_match = set(gt_fn_names) == set(pred_fn_name)
         fn_name_accuracy_score = 1.0 if fn_names_match else 0.0
-        fn_name_and_args_accuracy_score = 0.0
 
         try:
             pred_fn_args_by_name: dict[str, dict] = {}

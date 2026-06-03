@@ -9,9 +9,7 @@ import {
   Stack,
   Text,
   VerticalNav,
-  VerticalNavIcon,
-  VerticalNavLink,
-  VerticalNavText,
+  VerticalNavItem,
 } from '@nvidia/foundations-react-core';
 import { ReportTraceModal } from '@studio/components/ReportTraceModal';
 import { TELEMETRY_ENABLED } from '@studio/constants/environment';
@@ -23,8 +21,8 @@ export const ResourcesSection: FC = () => {
   const [isTraceModalOpen, setIsTraceModalOpen] = useState(false);
 
   const helpItems = [
-    { id: 'report-bug', slotLabel: 'Report a Bug', href: LINK_GITHUB_ISSUES },
-    ...(TELEMETRY_ENABLED ? [{ id: 'report-trace', slotLabel: 'Report a Trace' }] : []),
+    { id: 'report-bug', children: 'Report a Bug', href: LINK_GITHUB_ISSUES },
+    ...(TELEMETRY_ENABLED ? [{ id: 'report-trace', children: 'Report a Trace' }] : []),
   ];
 
   return (
@@ -37,20 +35,22 @@ export const ResourcesSection: FC = () => {
             <VerticalNav
               className="w-full bg-surface-raised border-0"
               items={[
-                { id: 'studio-docs', slotLabel: 'Studio Documentation', href: LINK_DOCS_STUDIO },
-                { id: 'sdk-docs', slotLabel: 'SDK Documentation', href: LINK_DOCS_SDK },
+                { id: 'studio-docs', children: 'Studio Documentation', href: LINK_DOCS_STUDIO },
+                { id: 'sdk-docs', children: 'SDK Documentation', href: LINK_DOCS_SDK },
               ]}
               renderLink={(item) => (
                 <>
-                  <VerticalNavLink href={item.href} target="_blank" rel="noopener noreferrer">
-                    <VerticalNavIcon>
-                      <Book width={16} height={16} />
-                    </VerticalNavIcon>
-                    <VerticalNavText>{item.slotLabel}</VerticalNavText>
+                  <VerticalNavItem
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    slotStart={<Book width={16} height={16} />}
+                  >
+                    {item.children}
                     <Flex align="center" className="ml-auto">
                       <ExternalLink width={14} height={14} />
                     </Flex>
-                  </VerticalNavLink>
+                  </VerticalNavItem>
                   {item.id === 'studio-docs' && <Divider />}
                 </>
               )}
@@ -68,33 +68,33 @@ export const ResourcesSection: FC = () => {
                   if (item.id === 'report-bug') {
                     return (
                       <>
-                        <VerticalNavLink href={item.href} target="_blank" rel="noopener noreferrer">
-                          <VerticalNavIcon>
-                            <Bug width={16} height={16} />
-                          </VerticalNavIcon>
-                          <VerticalNavText>{item.slotLabel}</VerticalNavText>
+                        <VerticalNavItem
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          slotStart={<Bug width={16} height={16} />}
+                        >
+                          {item.children}
                           <Flex align="center" className="ml-auto">
                             <ExternalLink width={14} height={14} />
                           </Flex>
-                        </VerticalNavLink>
+                        </VerticalNavItem>
                         {TELEMETRY_ENABLED && <Divider />}
                       </>
                     );
                   }
                   if (item.id === 'report-trace') {
                     return (
-                      <VerticalNavLink
+                      <VerticalNavItem
                         href="#"
                         onClick={(e) => {
                           e.preventDefault();
                           setIsTraceModalOpen(true);
                         }}
+                        slotStart={<Route width={16} height={16} />}
                       >
-                        <VerticalNavIcon>
-                          <Route width={16} height={16} />
-                        </VerticalNavIcon>
-                        <VerticalNavText>{item.slotLabel}</VerticalNavText>
-                      </VerticalNavLink>
+                        {item.children}
+                      </VerticalNavItem>
                     );
                   }
                   return null;

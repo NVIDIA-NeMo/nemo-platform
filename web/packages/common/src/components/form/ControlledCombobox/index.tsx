@@ -9,9 +9,6 @@ import { useController } from 'react-hook-form';
 
 // Generic type to handle both single and multiple selection
 type ComboboxValue<T extends 'single' | 'multiple'> = T extends 'single' ? string : string[];
-type ComboboxRenderSelectedValue<T extends 'single' | 'multiple'> = T extends 'single'
-  ? (args: { selectedValue: string; setSelectedValue: (value: string) => void }) => ReactNode
-  : (args: { selectedValue: string[]; setSelectedValue: (value: string[]) => void }) => ReactNode;
 
 interface Props<T extends 'single' | 'multiple' = 'single'>
   // Omit ensures type safety and avoids uncontrolled component state
@@ -19,13 +16,14 @@ interface Props<T extends 'single' | 'multiple' = 'single'>
     Omit<
       ComboboxProps,
       | 'onChange'
-      | 'defaultSelectedValue'
+      | 'defaultValue'
       | 'multiple'
       | 'kind'
-      | 'selectedValue'
-      | 'onSelectedValueChange'
-      | 'renderSelectedValue'
-      | 'renderPrefix'
+      | 'value'
+      | 'onValueChange'
+      | 'inputValue'
+      | 'onInputValueChange'
+      | 'renderValue'
       | 'ref'
     >,
     UseControllerComponentProps {
@@ -35,7 +33,12 @@ interface Props<T extends 'single' | 'multiple' = 'single'>
   width?: string;
   hideError?: boolean;
   kind?: T;
-  renderSelectedValue?: ComboboxRenderSelectedValue<T>;
+  renderValue?: (
+    value: string | string[] | undefined,
+    setValue:
+      | ((nextValue: string | string[]) => void)
+      | ((nextValueFunc: (prevValue: string | string[]) => string | string[]) => void)
+  ) => ReactNode;
   /**
    * Allow users to input a value that is not in the list. Also causes the value to not reset on blur.
    * @default false
@@ -53,7 +56,7 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
   useControllerProps,
   formFieldProps,
   kind = 'single' as T,
-  renderSelectedValue,
+  renderValue,
   freeForm = false,
   ...comboboxProps
 }: Props<T>) => {
@@ -92,11 +95,12 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           id: useControllerProps.name,
           name: useControllerProps.name,
           items,
-          value: kind === 'multiple' ? '' : dispValue || '',
-          onValueChange: handleTempValueChange,
+          inputValue: kind === 'multiple' ? '' : dispValue || '',
+          onInputValueChange: handleTempValueChange,
           onBlur,
           slotEnd: loading && <TextInputSpinner />,
           resetValueOnBlur: !freeForm,
+          renderValue,
           ...comboboxProps,
           attributes: {
             ComboboxTrigger: {
@@ -111,34 +115,17 @@ export const ControlledCombobox = <T extends 'single' | 'multiple' = 'single'>({
           return (
             <Combobox
               {...baseProps}
-              kind="multiple"
-              selectedValue={value as string[]}
-              onSelectedValueChange={(newValue: string[]) => handleSelectedValueChange(newValue)}
-              renderSelectedValue={
-                renderSelectedValue as
-                  | ((args: {
-                      selectedValue: string[];
-                      setSelectedValue: (value: string[]) => void;
-                    }) => ReactNode)
-                  | undefined
-              }
+              multiple
+              value={value as string[]}
+              onValueChange={(newValue: string[]) => handleSelectedValueChange(newValue)}
             />
           );
         } else {
           return (
             <Combobox
               {...baseProps}
-              kind="single"
-              selectedValue={value as string}
-              onSelectedValueChange={(newValue: string) => handleSelectedValueChange(newValue)}
-              renderSelectedValue={
-                renderSelectedValue as
-                  | ((args: {
-                      selectedValue: string;
-                      setSelectedValue: (value: string) => void;
-                    }) => ReactNode)
-                  | undefined
-              }
+              value={value as string}
+              onValueChange={(newValue: string) => handleSelectedValueChange(newValue)}
             />
           );
         }

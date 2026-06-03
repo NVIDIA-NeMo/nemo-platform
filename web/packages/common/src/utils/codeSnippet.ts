@@ -29,6 +29,7 @@ const LANGUAGES: Record<CodeSnippetLanguage, string> = {
   go: 'go',
   yaml: 'yaml',
   markdown: 'markdown',
+  text: 'text',
 };
 
 /**

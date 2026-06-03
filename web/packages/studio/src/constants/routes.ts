@@ -77,6 +77,8 @@ export const ROUTES = {
     filesetFile: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}/file/:${P.filePathEncoded}`,
     /** Dataset-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
     datasetDetail: `/workspaces/:${P.workspace}/datasets/:${P.datasetName}`,
+    /** Model-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
+    modelDetail: `/workspaces/:${P.workspace}/models/:${P.modelName}`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,
     deployments: `/workspaces/:${P.workspace}/deployments`,
@@ -100,6 +102,7 @@ export const ROUTES = {
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
     agentsList: `/workspaces/:${P.workspace}/agents`,
+    claudeCodeChat: `/workspaces/:${P.workspace}/dashboard/code-agent`,
     agentDetail: `/workspaces/:${P.workspace}/agents/:${P.agentName}`,
     agentDeploymentsList: `/workspaces/:${P.workspace}/agent-deployments`,
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,

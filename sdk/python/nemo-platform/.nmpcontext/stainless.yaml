@@ -856,61 +856,28 @@ resources:
       retrieve: get /apis/entities/v2/workspaces/{name}
       update: put /apis/entities/v2/workspaces/{name}
       delete: delete /apis/entities/v2/workspaces/{name}
-
+    subresources:
+      members:
+        models:
+          workspace_member: WorkspaceMember
+          workspace_member_list_response: WorkspaceMemberListResponse
+          workspace_member_param: WorkspaceMemberInput
+          workspace_member_update: WorkspaceMemberUpdate
+        methods:
+          list: get /apis/entities/v2/workspaces/{workspace}/members
+          create: post /apis/entities/v2/workspaces/{workspace}/members
+          update: put /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
+          delete: delete /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
   safe_synthesizer:
     standalone_api: true
     subresources:
       jobs:
-        models:
-          classify_config: ClassifyConfig
-          column: Column
-          column_actions: ColumnActions
-          data_parameters: DataParameters
-          differential_privacy_hyperparams: DifferentialPrivacyHyperparams
-          evaluation_parameters: EvaluationParameters
-          generate_parameters: GenerateParameters
-          gliner_config: GlinerConfig
-          globals: Globals
-          ner_config: NERConfig
-          pii_replacer_config: PiiReplacerConfig
-          row: Row
-          row_actions: RowActions
-          safe_synthesizer_job: SafeSynthesizerJob
-          safe_synthesizer_job_config: SafeSynthesizerJobConfig
-          safe_synthesizer_job_request: SafeSynthesizerJobRequest
-          safe_synthesizer_jobs_list_filter: SafeSynthesizerJobsListFilter
-          safe_synthesizer_jobs_page: SafeSynthesizerJobsPage
-          safe_synthesizer_jobs_sort_field: SafeSynthesizerJobsSortField
-          safe_synthesizer_parameters: SafeSynthesizerParameters
-          step_definition: StepDefinition
-          time_series_parameters: TimeSeriesParameters
-          training_hyperparams: TrainingHyperparams
-          validation_parameters: ValidationParameters
-        methods:
-          create: post /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs
-          list: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs
-          retrieve: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}
-          delete: delete /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}
-          cancel: post /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/cancel
-          get_logs:
-            endpoint: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/logs
-            paginated: true
-          get_status: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/status
+        models: {}
+        methods: {}
         subresources:
           results:
-            models:
-              safe_synthesizer_summary: SafeSynthesizerSummary
-              safe_synthesizer_timing: SafeSynthesizerTiming
-            methods:
-              list: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/results
-              retrieve: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}
-              download: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}/download
-              download_evaluation_report: get 
-                /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/evaluation-report/download
-              download_summary: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/summary/download
-              download_synthetic_data: get 
-                /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/synthetic-data/download
-              download_adapter: get /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/adapter/download
+            models: {}
+            methods: {}
   secrets:
     standalone_api: true
     models:
@@ -997,18 +964,6 @@ resources:
       retrieve: get /apis/entities/v2/workspaces/{workspace}/projects/{name}
       update: put /apis/entities/v2/workspaces/{workspace}/projects/{name}
       delete: delete /apis/entities/v2/workspaces/{workspace}/projects/{name}
-  members:
-    standalone_api: true
-    models:
-      workspace_member: WorkspaceMember
-      workspace_member_list_response: WorkspaceMemberListResponse
-      workspace_member_param: WorkspaceMemberInput
-      workspace_member_update: WorkspaceMemberUpdate
-    methods:
-      list: get /apis/entities/v2/workspaces/{workspace}/members
-      create: post /apis/entities/v2/workspaces/{workspace}/members
-      update: put /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
-      delete: delete /apis/entities/v2/workspaces/{workspace}/members/{principal_id}
   adapters:
     standalone_api: true
     models:
@@ -1023,73 +978,6 @@ resources:
   intake:
     standalone_api: true
     subresources:
-      apps:
-        models:
-          app: App
-          app_filter: AppFilter
-          app_param: AppInput
-          app_sort_field: AppSortField
-          app_update: AppUpdate
-          apps_page: AppsPage
-        methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/apps
-          create: post /apis/intake/v2/workspaces/{workspace}/apps
-          retrieve: get /apis/intake/v2/workspaces/{workspace}/apps/{name}
-          patch: patch /apis/intake/v2/workspaces/{workspace}/apps/{name}
-          delete: delete /apis/intake/v2/workspaces/{workspace}/apps/{name}
-        subresources:
-          tasks:
-            models:
-              task: Task
-              task_filter: TaskFilter
-              task_param: TaskInput
-              task_sort_field: TaskSortField
-              task_update: TaskUpdate
-              tasks_page: TasksPage
-            methods:
-              list: get /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks
-              create: post /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks
-              retrieve: get /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-              patch: patch /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-              delete: delete /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}
-      entries:
-        models:
-          entry: Entry
-          entry_context: EntryContext
-          entry_context_filter: EntryContextFilter
-          entry_data: EntryDataOutput
-          entry_data_param: EntryDataInput
-          entry_filter: EntryFilter
-          entry_param: EntryInput
-          entry_sort_field: EntrySortField
-          entry_update: EntryUpdate
-          entry_user_rating_filter: EntryUserRatingFilter
-          entrys_page: EntrysPage
-          evaluator_result_event: EvaluatorResultEvent
-          flexible_entry_request: FlexibleEntryRequestOutput
-          flexible_entry_request_param: FlexibleEntryRequestInput
-          flexible_entry_response: FlexibleEntryResponse
-          flexible_message: FlexibleMessage
-          message_role: MessageRole
-          reviewer_annotation_event: ReviewerAnnotationEvent
-          thumb_direction: ThumbDirection
-          usage: Usage
-          user_action_event: UserActionEvent
-          user_feedback_event: UserFeedbackEvent
-          user_rating: UserRating
-        methods:
-          list: get /apis/intake/v2/workspaces/{workspace}/entries
-          create: post /apis/intake/v2/workspaces/{workspace}/entries
-          retrieve: get /apis/intake/v2/workspaces/{workspace}/entries/{name}
-          patch: patch /apis/intake/v2/workspaces/{workspace}/entries/{name}
-          delete: delete /apis/intake/v2/workspaces/{workspace}/entries/{name}
-        subresources:
-          events:
-            models:
-              events_create_request: EventsCreateRequest
-            methods:
-              create: post /apis/intake/v2/workspaces/{workspace}/entries/{name}/events
-              delete: delete /apis/intake/v2/workspaces/{workspace}/entries/{entry}/events/{name}
       evaluator_results:
         models:
           evaluator_result: EvaluatorResult
@@ -1125,28 +1013,6 @@ resources:
           list: get /apis/intake/v2/workspaces/{workspace}/annotations
           retrieve: get /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
           delete: delete /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}
-      exports:
-        models:
-          export_config_param: ExportConfigInput
-          export_preview_request: ExportPreviewRequest
-          export_preview_response: ExportPreviewResponse
-        methods:
-          preview: post /apis/intake/v2/workspaces/{workspace}/export/preview
-        subresources:
-          jobs:
-            models:
-              export_config: ExportConfig
-              export_job: ExportJob
-              export_job_filter: ExportJobFilter
-              export_job_param: ExportJobInput
-              export_job_sort_field: ExportJobSortField
-              export_jobs_page: ExportJobsPage
-              export_status_details: ExportStatusDetails
-              job_status: JobStatus
-            methods:
-              list: get /apis/intake/v2/workspaces/{workspace}/export/jobs
-              create: post /apis/intake/v2/workspaces/{workspace}/export/jobs
-              retrieve: get /apis/intake/v2/workspaces/{workspace}/export/jobs/{name}
       ingest:
         models:
           evaluation_context: EvaluationContext
@@ -1173,8 +1039,12 @@ resources:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/atif
           chat_completions:
             models:
+              captured_chat_completions_request: CapturedChatCompletionsRequest
+              captured_chat_completions_response: CapturedChatCompletionsResponse
+              captured_chat_message: CapturedChatMessage
               chat_completions_ingest_param: ChatCompletionsIngestRequest
               chat_completions_ingest_response: ChatCompletionsIngestResponse
+              chat_message_role: ChatMessageRole
             methods:
               create: post /apis/intake/v2/workspaces/{workspace}/ingest/chat-completions
           otlp:
@@ -1211,3 +1081,30 @@ resources:
         methods:
           list: get /apis/intake/v2/workspaces/{workspace}/traces
           retrieve: get /apis/intake/v2/workspaces/{workspace}/traces/{id}
+  experiment_groups:
+    standalone_api: true
+    models:
+      experiment_group_filter: ExperimentGroupFilter
+      experiment_group_request: ExperimentGroupRequest
+      experiment_group_response: ExperimentGroupResponse
+      experiment_group_responses_page: ExperimentGroupResponsesPage
+    methods:
+      create: post /apis/intake/v2/workspaces/{workspace}/experiment-groups
+      list: get /apis/intake/v2/workspaces/{workspace}/experiment-groups
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}
+  experiments:
+    standalone_api: true
+    models:
+      evaluator_aggregate: EvaluatorAggregate
+      experiment_filter: ExperimentFilter
+      experiment_request: ExperimentRequest
+      experiment_response: ExperimentResponse
+      experiment_responses_page: ExperimentResponsesPage
+    methods:
+      create: post /apis/intake/v2/workspaces/{workspace}/experiments
+      list: get /apis/intake/v2/workspaces/{workspace}/experiments
+      retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+      update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+      delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}

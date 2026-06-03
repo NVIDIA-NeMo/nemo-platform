@@ -212,7 +212,7 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
 
   const showCustomFields = preset === 'custom';
 
-  return (
+  const panel = (
     <SidePanel
       open={open}
       onOpenChange={handleOpenChange}
@@ -298,11 +298,17 @@ export const CreateInferenceProviderSidePanel: FC<CreateInferenceProviderSidePan
           }}
         />
       </Stack>
+    </SidePanel>
+  );
+
+  return (
+    <>
+      {panel}
       <CreateSecretModal
         workspace={workspace}
         open={createSecretModalOpen}
         onClose={() => setCreateSecretModalOpen(false)}
       />
-    </SidePanel>
+    </>
   );
 };

@@ -11,9 +11,6 @@ from nemo_platform_plugin.jobs.file_manager import AsyncFilesetFileManager as As
 from nemo_platform_plugin.jobs.file_manager import FilesetFileManager as FilesetFileManager
 from nemo_platform_plugin.jobs.file_manager import TmpDirPath as TmpDirPath
 from nemo_platform_plugin.jobs.result_manager import AsyncResultManager as AsyncResultManager
-from nemo_platform_plugin.jobs.result_manager import BaseResultManager as BaseResultManager
-from nemo_platform_plugin.jobs.result_manager import CreateJobResultError as CreateJobResultError
-from nemo_platform_plugin.jobs.result_manager import FileDoesNotExist as FileDoesNotExist
 from nemo_platform_plugin.jobs.result_manager import ResultManager as ResultManager
 from nmp.common.sdk_factory import get_async_platform_sdk, get_platform_sdk
 

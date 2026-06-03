@@ -5,8 +5,7 @@
 
 Producers POST a captured chat-completion request + response. Intake stores
 one IntakeSpan per response (one model invocation), preserving the raw
-request and response payloads verbatim so downstream dataset export does not
-need format conversion.
+request and response payloads verbatim for downstream telemetry consumers.
 """
 
 from __future__ import annotations
@@ -14,17 +13,17 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-from typing import Annotated, Any
+from enum import Enum
+from typing import Annotated, Any, Self
 
 from fastapi import APIRouter, Depends, status
-from nmp.intake.entities.values import FlexibleEntryRequest, FlexibleEntryResponse
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
 from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, stable_id, utc_now
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
@@ -33,11 +32,70 @@ SOURCE_FORMAT = "chat_completions"
 NonNegativeFloat = Annotated[float, Field(ge=0)]
 
 
+class ChatMessageRole(str, Enum):
+    """Valid role values for captured chat-completions messages."""
+
+    user = "user"
+    system = "system"
+    assistant = "assistant"
+    developer = "developer"
+    tool = "tool"
+    function = "function"
+
+
+class CapturedChatMessage(BaseModel):
+    """A flexible message model that requires a valid role field but allows provider-specific fields."""
+
+    model_config = ConfigDict(extra="allow")
+
+    role: ChatMessageRole = Field(
+        description="The role of the message sender.",
+    )
+
+
+class CapturedChatCompletionsRequest(BaseModel):
+    """Flexible captured chat-completions request."""
+
+    model_config = ConfigDict(extra="allow")
+
+    messages: list[CapturedChatMessage] = Field(
+        description="Messages comprising the conversation.",
+    )
+    model: str = Field(
+        description="The model identifier used for this request.",
+    )
+
+
+class CapturedChatCompletionsResponse(BaseModel):
+    """Flexible captured chat-completions response."""
+
+    model_config = ConfigDict(
+        extra="allow",
+        json_schema_extra={
+            "oneOf": [
+                {"required": ["choices"]},
+                {"required": ["error"]},
+            ],
+        },
+    )
+
+    choices: list[dict[str, Any]] | None = Field(default=None)
+    error: dict[str, Any] | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _require_choices_or_error(self) -> Self:
+        if (self.choices is None) == (self.error is None):
+            if self.choices is None:
+                raise ValueError("response must include either `choices` or `error`")
+            raise ValueError("response cannot include both `choices` and `error`")
+        return self
+
+
 class ChatCompletionsIngestRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    request: FlexibleEntryRequest
-    response: FlexibleEntryResponse
+    request: CapturedChatCompletionsRequest
+    response: CapturedChatCompletionsResponse
 
     session_id: str | None = Field(
         default=None,

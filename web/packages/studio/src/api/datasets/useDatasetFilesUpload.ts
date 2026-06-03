@@ -41,7 +41,7 @@ export const useDatasetFilesUpload = (options?: UseDatasetFilesUploadOptions) =>
     ...options,
     mutationFn: uploadFilesToDataset,
     onSuccess: (data, variables, onMutateResult, context) => {
-      invalidateDatasetCaches(variables.workspace, variables.datasetName, ['files']);
+      invalidateDatasetCaches(variables.workspace, variables.datasetName, ['files', 'content']);
       options?.onSuccess?.(data, variables, onMutateResult, context);
     },
   });

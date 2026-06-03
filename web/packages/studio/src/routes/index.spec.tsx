@@ -165,6 +165,13 @@ describe('Routes', () => {
       ).toBe(true);
     });
 
+    it('should include the dashboard route if coding agent studio is enabled', async () => {
+      vi.stubEnv('VITE_FF_CODING_AGENT_STUDIO_ENABLED', 'true');
+      vi.stubEnv('VITE_FF_DASHBOARD_ENABLED', 'false');
+      const { routes } = await import('./index');
+      expect(findIfRouteExists(routes, ROUTES.workspace.dashboard)).toBe(true);
+    });
+
     it('should exclude safe synthesizer routes if safe synthesizer is disabled', async () => {
       vi.stubEnv('VITE_FF_SAFE_SYNTHESIZER_ENABLED', 'false');
       const { routes } = await import('./index');

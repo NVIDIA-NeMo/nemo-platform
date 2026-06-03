@@ -19,9 +19,6 @@ from typing import Any, Dict
 from nmp.common.api.filter import (
     ComparisonOperation,
     LogicalOperation,
-    _normalize_value,
-    _parse_field_operation,
-    _wrap_operations,
 )
 from nmp.common.api.filter import (
     FilterOperation as SearchOperation,
@@ -65,7 +62,4 @@ __all__ = [
     "LogicalOperation",
     "parse_json_search",
     "parse_bracket_search",
-    "_normalize_value",
-    "_parse_field_operation",
-    "_wrap_operations",
 ]

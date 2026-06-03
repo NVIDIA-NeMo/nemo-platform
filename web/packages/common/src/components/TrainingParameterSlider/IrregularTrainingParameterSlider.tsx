@@ -62,15 +62,13 @@ export const IrregularTrainingParameterSlider: FC<TrainingParameterSliderProps> 
         >
           <Slider
             orientation="horizontal"
-            kind="single"
             value={sliderValue}
             onValueChange={(newValue) => handleSliderChange(field, newValue)}
-            defaultValue={sliderValue}
             max={(fieldMetadata.values?.length ?? 0) - 1}
             min={0}
             step={1}
             disabled={disabled}
-            stepPosition="bottom"
+            stepPosition="end"
             stepFormatFn={(value) => fieldMetadata.values?.[value]?.toString() ?? '0'}
             aria-label="Controlled slider"
           />

@@ -36,6 +36,7 @@
     "feature-flags": "tsx scripts/feature-flag-matrix.ts"
   },
   "dependencies": {
+    "@assistant-ui/react": "^0.12.28",
     "@hookform/resolvers": "^4.1.3",
     "@mui/x-charts": "catalog:",
     "@mui/x-data-grid": "catalog:",

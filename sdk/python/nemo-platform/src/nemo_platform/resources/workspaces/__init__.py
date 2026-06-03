@@ -15,6 +15,14 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+from .members import (
+    MembersResource,
+    AsyncMembersResource,
+    MembersResourceWithRawResponse,
+    AsyncMembersResourceWithRawResponse,
+    MembersResourceWithStreamingResponse,
+    AsyncMembersResourceWithStreamingResponse,
+)
 from .workspaces import (
     WorkspacesResource,
     AsyncWorkspacesResource,
@@ -25,6 +33,12 @@ from .workspaces import (
 )
 
 __all__ = [
+    "MembersResource",
+    "AsyncMembersResource",
+    "MembersResourceWithRawResponse",
+    "AsyncMembersResourceWithRawResponse",
+    "MembersResourceWithStreamingResponse",
+    "AsyncMembersResourceWithStreamingResponse",
     "WorkspacesResource",
     "AsyncWorkspacesResource",
     "WorkspacesResourceWithRawResponse",

@@ -14,10 +14,11 @@ describe('QuickActionsMenu', () => {
     const content = screen.queryByTestId('quick-actions-menu-content');
 
     expect(trigger).toBeDefined();
-    expect(content).toBeNull();
+    // KUI v1.0 popover content stays in the DOM but is closed (no popover-open attr)
+    expect(content).not.toHaveAttribute('popover-open');
 
     await user.click(trigger);
-    expect(screen.getByTestId('quick-actions-menu-content')).toBeDefined();
+    expect(screen.getByTestId('quick-actions-menu-content')).toHaveAttribute('popover-open');
   });
   it('should render correct number of menu items', async () => {
     const user = userEvent.setup();

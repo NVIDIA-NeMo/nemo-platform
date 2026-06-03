@@ -3,11 +3,8 @@
 
 from unittest.mock import MagicMock, patch
 
-from nmp.common.jobs.file_manager import (
-    FilesetFileManager,
-    FileStorageType,
-    _filter_files_by_patterns,
-)
+from nemo_platform_plugin.jobs.file_manager import _filter_files_by_patterns
+from nmp.common.jobs.file_manager import FilesetFileManager, FileStorageType
 
 # =============================================================================
 # Pattern Matching Tests

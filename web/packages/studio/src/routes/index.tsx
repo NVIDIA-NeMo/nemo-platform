@@ -7,6 +7,7 @@ import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
   AGENTS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   DATA_DESIGNER_ENABLED,
   DEPLOYMENTS_ENABLED,
   GUARDRAILS_ENABLED,
@@ -21,6 +22,7 @@ import { RootRedirect } from '@studio/routes/RootRedirect';
 import {
   agentsRoutes,
   gateBaseModelsRoutes,
+  gateCodingAgentStudioRoutes,
   gateCustomizationRoutes,
   gateDatasetsRoutes,
   gateDeploymentsRoutes,
@@ -102,6 +104,11 @@ const DatasetDetailRoute = lazy(() =>
     default: module.DatasetDetailRoute,
   }))
 );
+const ModelDetailRoute = lazy(() =>
+  import('@studio/routes/ModelDetailRoute').then((module) => ({
+    default: module.ModelDetailRoute,
+  }))
+);
 const SecretsListRoute = lazy(() =>
   import('@studio/routes/SecretsListRoute').then((module) => ({ default: module.SecretsListRoute }))
 );
@@ -163,6 +170,11 @@ const NoMatchRoute = lazy(() =>
 const PromptTuningFormRoute = lazy(() =>
   import('@studio/routes/PromptTuningFormRoute/index').then((module) => ({
     default: module.PromptTuningFormRoute,
+  }))
+);
+const DashboardLandingRoute = lazy(() =>
+  import('@studio/routes/DashboardLandingRoute').then((module) => ({
+    default: module.DashboardLandingRoute,
   }))
 );
 const ModelCompareRoute =
@@ -299,6 +311,11 @@ const AgentsListRoute =
       default: m.AgentsListRoute,
     }))
   );
+const ClaudeCodeChatRoute = lazy(() =>
+  import('@studio/routes/agents/ClaudeCodeChatRoute').then((m) => ({
+    default: m.ClaudeCodeChatRoute,
+  }))
+);
 const AgentOptimizationsRoute =
   AGENTS_ENABLED &&
   lazy(() =>
@@ -386,9 +403,26 @@ export const routes: RouteObject[] = [
               ...gateDashboardRoutes([
                 {
                   path: ROUTES.workspace.dashboard,
-                  element: <WorkspaceDashboardRoute />,
+                  element: CODING_AGENT_STUDIO_ENABLED ? (
+                    <Suspense fallback={<Loading description="Loading Dashboard..." />}>
+                      <DashboardLandingRoute />
+                    </Suspense>
+                  ) : (
+                    <WorkspaceDashboardRoute />
+                  ),
                   errorElement: <ErrorPanel title="Workspace" />,
                 },
+                ...gateCodingAgentStudioRoutes([
+                  {
+                    path: ROUTES.workspace.claudeCodeChat,
+                    element: (
+                      <Suspense fallback={<Loading description="Loading..." />}>
+                        <ClaudeCodeChatRoute />
+                      </Suspense>
+                    ),
+                    errorElement: <ErrorPanel title="Claude Code" />,
+                  },
+                ]),
               ]),
               ...gateBaseModelsRoutes([
                 {
@@ -437,6 +471,15 @@ export const routes: RouteObject[] = [
                       </Suspense>
                     ),
                     errorElement: <ErrorPanel title="Dataset" />,
+                  },
+                  {
+                    path: ROUTES.workspace.modelDetail,
+                    element: (
+                      <Suspense fallback={<Loading description="Loading Model..." />}>
+                        <ModelDetailRoute />
+                      </Suspense>
+                    ),
+                    errorElement: <ErrorPanel title="Model" />,
                   },
                 ]),
               ]),

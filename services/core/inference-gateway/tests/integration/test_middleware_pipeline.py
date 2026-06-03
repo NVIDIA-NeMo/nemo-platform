@@ -208,6 +208,7 @@ class ModelRouterMiddleware(NemoInferenceMiddleware):
     REQUEST_MUTATION_KEY = "x_original_model"
 
     def __init__(self, target_model_entity_id: str) -> None:
+        super().__init__()
         self._target = target_model_entity_id
 
     async def on_startup(self) -> None:

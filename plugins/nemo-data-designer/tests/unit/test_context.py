@@ -58,17 +58,19 @@ async def test_local_validate_does_not_apply_remote_only_tool_validation() -> No
     config = _simple_config(tool_configs=[tool_config])
     dd_ctx = LocalDataDesignerContext(Mock(), u.WORKSPACE_NAME)
 
-    await dd_ctx.validate(config)
+    errors = await dd_ctx.validate(config)
+    assert errors == []
 
 
 async def test_local_validate_rejects_dataframe_seed_config() -> None:
     config = _simple_config(seed_source=dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
     dd_ctx = LocalDataDesignerContext(Mock(), u.WORKSPACE_NAME)
 
-    with pytest.raises(NDDInvalidConfigError) as exc_info:
-        await dd_ctx.validate(config)
+    errors = await dd_ctx.validate(config)
 
-    assert "Dataframe seed sources" in str(exc_info.value)
+    assert len(errors) == 1
+    assert isinstance(errors[0], NDDInvalidConfigError)
+    assert "Dataframe seed sources" in str(errors[0])
 
 
 async def test_remote_validate_runs_remote_validators(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -103,8 +105,9 @@ async def test_remote_validate_runs_remote_validators(monkeypatch: pytest.Monkey
     monkeypatch.setattr("data_designer_nemo.context.validate_seed", validate_seed)
     monkeypatch.setattr("data_designer_nemo.context.ensure_nemotron_personas_filesets", validate_personas)
 
-    await RemoteDataDesignerContext(sdk, u.WORKSPACE_NAME).validate(config)
+    errors = await RemoteDataDesignerContext(sdk, u.WORKSPACE_NAME).validate(config)
 
+    assert errors == []
     assert calls == ["tools", "seed-type", "seed", "personas"]
 
 
@@ -112,10 +115,31 @@ async def test_remote_validate_rejects_unsupported_seed_config() -> None:
     config = _simple_config(seed_source=dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})))
     dd_ctx = RemoteDataDesignerContext(AsyncMock(spec=AsyncNeMoPlatform), u.WORKSPACE_NAME)
 
-    with pytest.raises(NDDInvalidConfigError) as exc_info:
-        await dd_ctx.validate(config)
+    errors = await dd_ctx.validate(config)
 
-    assert "seed data" in str(exc_info.value)
+    assert len(errors) == 1
+    assert isinstance(errors[0], NDDInvalidConfigError)
+    assert "seed data" in str(errors[0])
+
+
+async def test_remote_validate_aggregates_multiple_failures() -> None:
+    """Tool configs *and* an unsupported seed type both surface from a single pass."""
+    config = _simple_config(
+        tool_configs=[dd.ToolConfig(tool_alias="hello", providers=["provider"])],
+        seed_source=dd.DataFrameSeedSource(df=pd.DataFrame(data={"a": [1, 2, 3]})),
+    )
+    sdk = AsyncMock(spec=AsyncNeMoPlatform)
+    dd_ctx = RemoteDataDesignerContext(sdk, u.WORKSPACE_NAME)
+
+    errors = await dd_ctx.validate(config)
+
+    messages = [str(e) for e in errors]
+    assert all(isinstance(e, NDDInvalidConfigError) for e in errors)
+    # We expect at least the tool-config and seed-type messages; both must surface
+    # in a single pass (no short-circuiting on the first failure).
+    assert any("Tool configs" in m for m in messages)
+    assert any("seed data" in m or "df" in m for m in messages)
+    assert len(errors) >= 2
 
 
 async def test_local_model_providers_all_local(local_providers: dict[str, dd.ModelProvider]):

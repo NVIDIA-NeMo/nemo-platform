@@ -3,8 +3,6 @@
 
 """Template rendering helpers for evaluator SDK runtime."""
 
-# Migrated from: services/evaluator/src/nmp/evaluator/app/templates.py
-
 import json
 from typing import Any
 

@@ -6,7 +6,7 @@ You have access to the `nemo` CLI for NeMo Platform operations. Note: MCP tools 
 
 Complete the following auditor configuration CRUD operations using the `nemo` CLI:
 
-1. List the existing global audit configs to understand the available structure (there should be a "default" config)
+1. List the existing audit configs to understand the available structure
 2. Create an audit config named `harbor-test-config` with description `Test config for harbor eval` that uses the `dan.AutoDANCached` probe
 3. Verify the config was created by retrieving it with a get command
 4. List all configs in the workspace and confirm `harbor-test-config` appears
@@ -21,12 +21,11 @@ The `nemo` CLI is available at `/app/.venv/bin/nemo`. The CLI connects to the lo
 
 ### Audit Config Commands
 
-- `nemo audit configs list-global` - List built-in global audit configs (use to see the expected JSON structure)
-- `nemo audit configs list` - List all audit configs in the workspace
-- `nemo audit configs create <name> --description "<description>" --plugins '<json>' --reporting '<json>' --run '<json>' --system '<json>'` - Create a config
-- `nemo audit configs get <name>` - Retrieve a config by name
-- `nemo audit configs update <name> --description "<description>"` - Update a config (pass only the fields you want to change)
-- `nemo audit configs delete <name>` - Delete a config
+- `nemo auditor configs list` - List all audit configs in the workspace
+- `nemo auditor configs create <name> -d '<json>'` - Create a config
+- `nemo auditor configs get <name>` - Retrieve a config by name
+- `nemo auditor configs update <name> -d '<json>'` - Update a config
+- `nemo auditor configs delete <name>` - Delete a config
 
 ### Config JSON Structure
 
@@ -37,7 +36,11 @@ Audit configs require JSON for `plugins`, `reporting`, `run`, and `system` field
 - **run**: `{}`
 - **system**: `{"lite": true}`
 
-**Tip:** Run `nemo audit configs list-global` and inspect the built-in `default` config to see the full expected structure.
+Example create body:
+
+```json
+{"description": "Test config for harbor eval", "plugins": {"probe_spec": "dan.AutoDANCached"}, "reporting": {}, "run": {}, "system": {"lite": true}}
+```
 
 ## Success Criteria
 

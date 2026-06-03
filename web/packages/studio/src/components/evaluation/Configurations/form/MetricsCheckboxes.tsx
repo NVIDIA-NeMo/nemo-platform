@@ -109,7 +109,7 @@ const MetricConfigFieldComponent: FC<MetricConfigFieldProps> = ({ fieldConfig, d
               value={(field.value as string) || ''}
               onChange={field.onChange}
               onBlur={field.onBlur}
-              attributes={{ TextInputValue: args }}
+              attributes={{ Input: args }}
             />
           )}
         </FormField>
@@ -201,7 +201,7 @@ type MetricOptionProps = {
   value?: MetricNameApi[];
   disabled?: boolean;
   onChange: (value: MetricNameApi[]) => void;
-  ref?: Ref<HTMLButtonElement>;
+  ref?: Ref<HTMLInputElement>;
 };
 
 export const MetricOption = ({
@@ -220,7 +220,7 @@ export const MetricOption = ({
   return (
     <Checkbox
       attributes={{
-        CheckboxBox: { id: `metric-checkbox-${label}`, 'aria-label': METRIC_LABELS[label] },
+        CheckboxInput: { id: `metric-checkbox-${label}`, 'aria-label': METRIC_LABELS[label] },
         Label: { htmlFor: `metric-checkbox-${label}` },
       }}
       ref={ref}

@@ -23,22 +23,25 @@ from nemo_platform.beta.evaluator.agent_inference import (
     new_agent_inference_client,
 )
 from nemo_platform.beta.evaluator.enums import ModelFormat
-from nemo_platform.beta.evaluator.execution.config import fail_fast_from_params, normalize_params
+from nemo_platform.beta.evaluator.execution.config import fail_fast_from_params, resolve_params
 from nemo_platform.beta.evaluator.execution.pipeline import (
     GeneratedSampleEvent,
     GeneratedSampleScoringPipeline,
     PipelineRuntime,
 )
+from nemo_platform.beta.evaluator.execution.samples import build_offline_sample
 from nemo_platform.beta.evaluator.execution.scoring import (
     empty_evaluation_result,
     finalize_evaluation_result,
     nan_metric_result,
     score_row,
 )
-from nemo_platform.beta.evaluator.execution.utils import prepare_metric_for_local_execution
 from nemo_platform.beta.evaluator.execution.values import EvaluationError, EvaluationPhase
 from nemo_platform.beta.evaluator.inference import InferenceMetricBase
-from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricResult
+from nemo_platform.beta.evaluator.metrics.protocol import (
+    Metric,
+    MetricResult,
+)
 from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
 from nemo_platform.beta.evaluator.resilience.api import run_indexed_tasks, use_resilience_session
 from nemo_platform.beta.evaluator.resilience.errors import get_evaluation_error
@@ -452,8 +455,8 @@ class ComputeMetricPipeline:
             workers; in offline mode it still limits scorer fanout.
         metric: Runtime metric implementation used to score each row.
         target: Optional target used to generate per-row samples before scoring.
-            If None, the pipeline runs without inference and starts from an empty
-            sample payload.
+            If None, the pipeline runs without inference and starts from the
+            offline sample built from the row.
         metric_key: Metric identifier used for `RowScore.metrics` and for
             synthesized NaN/error results.
         prompt_template: Request template used to render online inference
@@ -467,8 +470,7 @@ class ComputeMetricPipeline:
         preprocess_hooks: Hooks applied before online inference requests are
             sent.
         postprocess_hooks: Hooks applied after online inference responses are
-            received, and also to the empty offline response payload when no target
-            is configured.
+            received, and also to the offline sample when no target is configured.
     """
 
     rows: list[dict[str, Any]]
@@ -496,7 +498,7 @@ class ComputeMetricPipeline:
         prompt_template: str | dict[str, Any],
         inference_fn: AgentInferenceFn,
         client: httpx.AsyncClient | None = None,
-        params: RunConfigOnline | None = None,
+        params: RunConfigOnline,
         default_headers: dict[str, str] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -514,7 +516,7 @@ class ComputeMetricPipeline:
         prompt_template: str | dict[str, Any],
         inference_fn: inference.InferenceFn,
         client: AsyncOpenAI | None = None,
-        params: RunConfigOnlineModel | None = None,
+        params: RunConfigOnlineModel,
         default_headers: dict[str, str] | None = None,
         preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
         postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
@@ -529,8 +531,8 @@ class ComputeMetricPipeline:
         metric: Metric,
         target: None,
         metric_key: str,
+        params: RunConfig,
         prompt_template: None = None,
-        params: RunConfig | None = None,
         inference_fn: None = None,
         client: None = None,
         default_headers: None = None,
@@ -547,7 +549,7 @@ class ComputeMetricPipeline:
         target: Model | Agent | None,
         metric_key: str,
         prompt_template: str | dict[str, Any] | None = None,
-        params: RunConfig | RunConfigOnline | RunConfigOnlineModel | None = None,
+        params: RunConfig | RunConfigOnline | RunConfigOnlineModel,
         inference_fn: inference.InferenceFn | AgentInferenceFn | None = None,
         client: AsyncOpenAI | httpx.AsyncClient | None = None,
         default_headers: dict[str, str] | None = None,
@@ -560,7 +562,7 @@ class ComputeMetricPipeline:
         self.target = target
         self.metric_key = metric_key
         self.prompt_template = prompt_template
-        self.params = normalize_params(params, target)
+        self.params = params
         self.inference_fn = inference_fn
         self.client = client
         self.default_headers = default_headers
@@ -568,9 +570,9 @@ class ComputeMetricPipeline:
         self.postprocess_hooks = list(postprocess_hooks) if postprocess_hooks is not None else []
 
     async def generate_sample(self, index: int, row: dict[str, Any]) -> dict[str, Any]:
-        """Generate the sample payload for one dataset row, or an empty offline sample."""
+        """Generate the sample payload for one dataset row, including offline row-derived fields."""
         if self.target is None:
-            response = {}
+            response = build_offline_sample(row)
             for hook in self.postprocess_hooks or ():
                 response = hook.postprocess(response, id=f"{index}")
             return response
@@ -792,14 +794,12 @@ async def evaluate_metric(
     preprocess_hooks: Sequence[inference.PreprocessRequest] | None = None,
     postprocess_hooks: Sequence[inference.PostprocessResponse] | None = None,
 ) -> EvaluationResult:
-    """Generate model outputs for prepared rows and evaluate the metric online."""
+    """Generate model outputs for prepared rows and evaluate a prepared metric."""
     if not rows:
         log.warning("No rows found in dataset, returning empty evaluation result")
         return empty_evaluation_result()
 
-    params = normalize_params(params, target)
-
-    metric = await prepare_metric_for_local_execution(metric, params)
+    params = resolve_params(params, target)
 
     client_close_fn = None
 

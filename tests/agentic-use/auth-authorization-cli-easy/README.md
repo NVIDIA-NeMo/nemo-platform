@@ -18,7 +18,7 @@ Tests the complete member management lifecycle within a workspace: adding member
 ## Verification
 
 The verifier checks:
-- **Current state** via `members.list()`: viewer=Editor, admin=Admin, editor removed
+- **Current state** via `workspaces.members.list()`: viewer=Editor, admin=Admin, editor removed
 - **Transition history** via `iam.role_bindings.list()`:
   - viewer@test.com has a **revoked** Viewer binding (proves original role)
   - viewer@test.com has an **active** Editor binding (proves promotion)
@@ -29,10 +29,10 @@ The verifier checks:
 
 ```bash
 nemo workspaces create harbor-auth-test --description "Workspace for authorization testing"
-nemo members list --workspace harbor-auth-test
-nemo members create --principal viewer@test.com --roles Viewer --workspace harbor-auth-test
-nemo members create --principal editor@test.com --roles Editor --workspace harbor-auth-test
-nemo members create --principal admin@test.com --roles Admin --workspace harbor-auth-test
-nemo members update viewer@test.com --roles Editor --workspace harbor-auth-test
-nemo members delete editor@test.com --workspace harbor-auth-test
+nemo workspaces members list --workspace harbor-auth-test
+nemo workspaces members create --principal viewer@test.com --roles Viewer --workspace harbor-auth-test
+nemo workspaces members create --principal editor@test.com --roles Editor --workspace harbor-auth-test
+nemo workspaces members create --principal admin@test.com --roles Admin --workspace harbor-auth-test
+nemo workspaces members update viewer@test.com --roles Editor --workspace harbor-auth-test
+nemo workspaces members delete editor@test.com --workspace harbor-auth-test
 ```
