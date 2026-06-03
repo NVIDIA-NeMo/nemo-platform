@@ -60,7 +60,7 @@ class TestExperiments:
             description="description",
             experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
-            source_link="https://example.com/experiments/source",
+            source_link="https://example.com",
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -190,7 +190,7 @@ class TestExperiments:
             description="description",
             experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
-            source_link="https://example.com/experiments/source",
+            source_link="https://example.com",
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -396,7 +396,7 @@ class TestAsyncExperiments:
             description="description",
             experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
-            source_link="https://example.com/experiments/source",
+            source_link="https://example.com",
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])
@@ -526,7 +526,7 @@ class TestAsyncExperiments:
             description="description",
             experiment_group_id="experiment_group_id",
             metadata={"foo": "bar"},
-            source_link="https://example.com/experiments/source",
+            source_link="https://example.com",
             summary="summary",
         )
         assert_matches_type(ExperimentResponse, experiment, path=["response"])

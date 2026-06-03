@@ -74,6 +74,10 @@ class TestChatCompletions:
                 "metadata": {"foo": "bar"},
                 "test_case_id": "test_case_id",
             },
+            experiment_context={
+                "experiment_id": "experiment_id",
+                "test_case_id": "test_case_id",
+            },
             provider="provider",
             session_id="session_id",
             trace_id="trace_id",
@@ -173,6 +177,10 @@ class TestAsyncChatCompletions:
                 "evaluation_run_id": "evaluation_run_id",
                 "evaluation_sha": "evaluation_sha",
                 "metadata": {"foo": "bar"},
+                "test_case_id": "test_case_id",
+            },
+            experiment_context={
+                "experiment_id": "experiment_id",
                 "test_case_id": "test_case_id",
             },
             provider="provider",

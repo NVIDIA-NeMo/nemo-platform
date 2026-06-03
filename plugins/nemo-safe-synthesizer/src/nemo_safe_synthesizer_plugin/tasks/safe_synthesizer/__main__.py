@@ -30,7 +30,15 @@ from nemo_platform.filesets import parse_fileset_ref
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig
+from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import (
+    SafeSynthesizerJobConfig,
+    parse_pretrained_model_job_ref,
+)
+from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.adapter_resolution import (
+    embed_run_config_in_adapter,
+    is_adapter_reuse_requested,
+    run_generation_from_prior_adapter,
+)
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.jsonl_loader import load_jsonl_file
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.logging_setup import configure_logging
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.model_init import init_models_sync
@@ -173,6 +181,7 @@ def upload_results(result: SafeSynthesizerResults, adapter_path: Path | None = N
             _create_job_result(sdk, workspace, job_id, "evaluation-report", artifact_url)
 
     if adapter_path is not None and adapter_path.exists():
+        embed_run_config_in_adapter(adapter_path)
         artifact_url = file_manager.upload(adapter_path, f"results/{attempt_id}/adapter")
         _create_job_result(sdk, workspace, job_id, "adapter", artifact_url)
 
@@ -188,6 +197,7 @@ def write_results_local(result: SafeSynthesizerResults, output_dir: Path, adapte
     if result.evaluation_report_html:
         (output_dir / "evaluation-report.html").write_text(result.evaluation_report_html, encoding="utf-8")
     if adapter_path is not None and adapter_path.exists():
+        embed_run_config_in_adapter(adapter_path)
         adapter_target = output_dir / "adapter"
         if adapter_path.is_dir():
             import shutil
@@ -209,6 +219,50 @@ def _create_job_result(sdk: NeMoPlatform, workspace: str, job_name: str, result_
     logger.info("Created job result: %s", result_name)
 
 
+def _resolve_pretrained_model(
+    job_config: SafeSynthesizerJobConfig,
+    *,
+    workspace: str,
+    sdk: NeMoPlatform | None = None,
+) -> tuple[object | None, Path | None]:
+    """Download a prior job's adapter artifact from Files when ``pretrained_model_job`` is set."""
+    if not job_config.pretrained_model_job:
+        return None, None
+
+    if sdk is None:
+        sdk = get_platform_sdk()
+
+    model_workspace, model_job = parse_pretrained_model_job_ref(
+        job_config.pretrained_model_job,
+        workspace_fallback=workspace,
+    )
+    try:
+        adapter_result = sdk.jobs.results.retrieve(name="adapter", job=model_job, workspace=model_workspace)
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to resolve adapter result for pretrained_model_job={job_config.pretrained_model_job!r}"
+        ) from e
+
+    fileset_workspace, fileset_name, _ = parse_fileset_ref(
+        adapter_result.artifact_url,
+        workspace_fallback=model_workspace,
+    )
+    file_manager = FilesetFileManager(
+        workspace=fileset_workspace,
+        fileset_name=fileset_name,
+        sdk=sdk,
+        ensure_fileset_exists=False,
+    )
+    tmp_dir_path = file_manager.download_from_url(adapter_result.artifact_url)
+    adapter_path = tmp_dir_path.path
+    logger.info(
+        "Resolved pretrained_model_job %s to adapter artifact at %s",
+        job_config.pretrained_model_job,
+        adapter_path,
+    )
+    return tmp_dir_path, adapter_path
+
+
 def _setup_classify_endpoint():
     """Set up the NIM_ENDPOINT_URL for column classification from platform env vars."""
     endpoint_path = os.environ.get("CLASSIFY_LLM_ENDPOINT_PATH")
@@ -226,7 +280,11 @@ def _setup_classify_endpoint():
 
 
 def run_config(
-    job_config: SafeSynthesizerJobConfig, data_source: pd.DataFrame, save_path: Path
+    job_config: SafeSynthesizerJobConfig,
+    data_source: pd.DataFrame,
+    save_path: Path,
+    *,
+    adapter_location: str | Path | None = None,
 ) -> tuple[SafeSynthesizerResults, Path | None]:
     """Run NSS against a validated config and already-loaded data source."""
     enable_synthesis: bool = job_config.enable_synthesis
@@ -247,6 +305,15 @@ def run_config(
             job_config.config.data.holdout = 0
             job_config.config.data.max_holdout = 0
 
+        if enable_synthesis and is_adapter_reuse_requested(job_config):
+            location = adapter_location or job_config.config.training.pretrained_model
+            return run_generation_from_prior_adapter(
+                job_config,
+                data_source,
+                save_path,
+                adapter_location=str(location) if location is not None else None,
+            )
+
         ss: SafeSynthesizer = SafeSynthesizer(config=job_config.config, save_path=save_path).with_data_source(
             data_source
         )
@@ -266,12 +333,16 @@ def run_config(
             http_backoff.__kwdefaults__["max_retries"] = original_max_retries
 
     adapter_path = ss._workdir.adapter_path if ss._workdir and enable_synthesis else None
+    if adapter_path is not None:
+        embed_run_config_in_adapter(adapter_path)
     return ss.results, adapter_path
 
 
 def run_from_env() -> None:
     """Run in the platform task-container environment."""
     initialize_observability()
+    workspace = os.environ.get(NEMO_JOB_WORKSPACE_ENVVAR, "default")
+    sdk = get_platform_sdk()
     files_url = get_platform_config().get_service_url("files")
     if files_url:
         logger.info("Initializing model weights from Files API...")
@@ -299,8 +370,18 @@ def run_from_env() -> None:
 
     job_config = SafeSynthesizerJobConfig.model_validate(raw_job_config)
     save_path = Path(os.environ.get(EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, DEFAULT_TASK_STORAGE_PATH))
-    result, adapter_path = run_config(job_config, data_source, save_path)
-    upload_results(result=result, adapter_path=adapter_path)
+    pretrained_model_tmp, adapter_path = _resolve_pretrained_model(job_config, workspace=workspace, sdk=sdk)
+    try:
+        result, adapter_path = run_config(
+            job_config,
+            data_source,
+            save_path,
+            adapter_location=adapter_path,
+        )
+        upload_results(result=result, adapter_path=adapter_path)
+    finally:
+        if pretrained_model_tmp is not None:
+            pretrained_model_tmp.cleanup_tmp_dir()
 
 
 def run_local(spec_file: Path, workspace: str, output_dir: Path, data_source: Path | None = None) -> None:
@@ -313,8 +394,18 @@ def run_local(spec_file: Path, workspace: str, output_dir: Path, data_source: Pa
         loaded_data = download_from_fileset(job_config.data_source)
     else:
         loaded_data = _load_file_as_dataframe(data_source)
-    result, adapter_path = run_config(job_config, loaded_data, output_dir / "work")
-    write_results_local(result, output_dir, adapter_path)
+    pretrained_model_tmp, adapter_path = _resolve_pretrained_model(job_config, workspace=workspace)
+    try:
+        result, new_adapter_path = run_config(
+            job_config,
+            loaded_data,
+            output_dir / "work",
+            adapter_location=adapter_path,
+        )
+        write_results_local(result, output_dir, new_adapter_path)
+    finally:
+        if pretrained_model_tmp is not None:
+            pretrained_model_tmp.cleanup_tmp_dir()
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -50,6 +50,7 @@ from .annotation_filter_param import AnnotationFilterParam as AnnotationFilterPa
 from .span_evaluation_context import SpanEvaluationContext as SpanEvaluationContext
 from .annotation_create_params import AnnotationCreateParams as AnnotationCreateParams
 from .evaluation_context_param import EvaluationContextParam as EvaluationContextParam
+from .experiment_context_param import ExperimentContextParam as ExperimentContextParam
 from .feedback_annotation_param import FeedbackAnnotationParam as FeedbackAnnotationParam
 from .metadata_annotation_param import MetadataAnnotationParam as MetadataAnnotationParam
 from .evaluator_result_data_type import EvaluatorResultDataType as EvaluatorResultDataType

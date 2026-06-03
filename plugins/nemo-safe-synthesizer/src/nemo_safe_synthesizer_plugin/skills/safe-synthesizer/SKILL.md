@@ -29,7 +29,7 @@ Task router for agents helping a person use the NeMo Safe Synthesizer NMP plugin
 - Prefer the plugin CLI surface over upstream-only commands.
 - Use `nemo safe-synthesizer run-local` for host-local CUDA/GPU development.
 - Use `nemo safe-synthesizer runtime setup` to install engine/CUDA dependencies into the separate runtime venv.
-- Use `nemo safe-synthesizer jobs create` for platform jobs.
+- Use the Jobs API or SDK for platform jobs. The `nemo safe-synthesizer` CLI exposes `run-local` and `runtime` only.
 - Treat `data_source` as a fileset URL for platform jobs, usually `<workspace>/<fileset>#<path>`.
 - For local runs, prefer `--data-source <local-file-or-dir>` when the input is already on disk.
 - If the job uses PII classification, `config.replace_pii.globals.classify.classify_model_provider` must be `<workspace>/<provider_name>`.

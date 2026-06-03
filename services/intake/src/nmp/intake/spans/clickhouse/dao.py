@@ -19,7 +19,7 @@ from nmp.intake.spans.clickhouse.query import (
     select_from_table,
     subquery_from,
 )
-from nmp.intake.spans.clickhouse.sql import BuiltQuery
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, merge_parameters
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.storage import result_rows
 
@@ -46,6 +46,13 @@ class ClickHouseDao:
         for column_name in column_names:
             validate_clickhouse_identifier(column_name)
         await self._client.insert(table_name, rows, column_names=column_names)
+
+    async def fetch_rows(self, query: BuiltQuery) -> list[dict[str, Any]]:
+        """Execute a trusted built query and return all rows."""
+
+        if not isinstance(query, BuiltQuery):
+            raise TypeError("fetch_rows requires a built query")
+        return await self._execute_raw(query)
 
     async def _execute_raw(self, query: SelectQuery | BuiltQuery) -> list[dict[str, Any]]:
         if isinstance(query, SelectQuery):
@@ -165,6 +172,8 @@ class ClickHouseDao:
                 order_by=order_by_clause(sort, sort_spec),
                 limit_param="limit",
                 offset_param="offset",
-            ).with_parameters({**subquery.parameters, "limit": page_size, "offset": offset})
+            ).with_parameters(
+                merge_parameters(subquery.parameters, {"limit": page_size, "offset": offset})
+            )
         )
         return rows, total_results

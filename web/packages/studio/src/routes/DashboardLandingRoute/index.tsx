@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import { Button, Card, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
@@ -138,28 +140,32 @@ export const DashboardLandingRoute: FC = () => {
   );
 
   return (
-    <AccessibleTitle title="Dashboard">
-      <main className="flex h-full min-h-[calc(100vh-var(--nv-app-bar-height))] items-center justify-center bg-surface-sunken px-4 py-10 text-primary">
-        <Flex className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8">
-          <Flex className="flex flex-col items-center gap-3 text-center">
-            <Text kind="body/bold/2xl" className="text-center">
-              What would you like to do?
-            </Text>
-          </Flex>
+    <ClaudeCodeLayout>
+      <AccessibleTitle title="Dashboard">
+        <GradientBackground className="h-full w-full">
+          <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
+            <Flex className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8">
+              <Flex className="flex flex-col items-center gap-3 text-center">
+                <Text kind="body/bold/2xl" className="text-center">
+                  What would you like to do?
+                </Text>
+              </Flex>
 
-          <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
+              <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
 
-          <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
-            {PROMPT_SUGGESTIONS.map((suggestion) => (
-              <PromptCard
-                key={suggestion.title}
-                suggestion={suggestion}
-                onSelect={() => handlePromptSelect(suggestion.prompt)}
-              />
-            ))}
-          </Flex>
-        </Flex>
-      </main>
-    </AccessibleTitle>
+              <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
+                {PROMPT_SUGGESTIONS.map((suggestion) => (
+                  <PromptCard
+                    key={suggestion.title}
+                    suggestion={suggestion}
+                    onSelect={() => handlePromptSelect(suggestion.prompt)}
+                  />
+                ))}
+              </Flex>
+            </Flex>
+          </main>
+        </GradientBackground>
+      </AccessibleTitle>
+    </ClaudeCodeLayout>
   );
 };

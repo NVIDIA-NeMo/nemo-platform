@@ -10,7 +10,7 @@ from typing import Any
 from nmp.intake.spans.clickhouse._where import _as_clause, _new_where
 from nmp.intake.spans.clickhouse.identifiers import column
 from nmp.intake.spans.clickhouse.query import TableRef
-from nmp.intake.spans.clickhouse.sql import BuiltQuery, _trusted_query, merge_parameters
+from nmp.intake.spans.clickhouse.sql import BuiltQuery, TrustedSql, _trusted_query, merge_parameters
 from nmp.intake.spans.domain import TraceListFilter, TraceMode
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
 
@@ -162,7 +162,7 @@ def trace_aggregates_sql(table: TableRef, filters: TraceListFilter) -> BuiltQuer
     return _trusted_query(sql, parameters)
 
 
-def current_spans_sql(table: TableRef) -> BuiltQuery:
+def current_spans_sql(table: TableRef, *, extra_where: TrustedSql | None = None) -> BuiltQuery:
     _require_table_ref(table)
     source_alias = "span_versions"
     columns = [
@@ -174,12 +174,15 @@ def current_spans_sql(table: TableRef) -> BuiltQuery:
     ]
     columns_sql = ",\n                ".join(columns)
     group_by_sql = ", ".join(f"{source_alias}.{column_name}" for column_name in _CURRENT_SPAN_IDENTITY_COLUMNS)
+    where_sql = f"{source_alias}.workspace = %(workspace)s"
+    if extra_where is not None:
+        where_sql = f"{where_sql}\n                AND {extra_where.sql}"
     return _trusted_query(f"""
         (
             SELECT
                 {columns_sql}
             FROM {table.qualified_name} AS {source_alias}
-            WHERE {source_alias}.workspace = %(workspace)s
+            WHERE {where_sql}
             GROUP BY {group_by_sql}
         )
     """)
