@@ -15,7 +15,9 @@ import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import {
   getAgentsListAgentsQueryKey,
+  getAgentsListDeploymentsQueryKey,
   useAgentsDeleteAgent,
+  useAgentsDeleteDeployment,
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
@@ -167,26 +169,37 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         void queryClient.refetchQueries({
           queryKey: getAgentsListAgentsQueryKey(workspace),
         });
+        void queryClient.invalidateQueries({
+          queryKey: getAgentsListDeploymentsQueryKey(workspace),
+        });
       },
       onError: (error) => {
-        if (error.response?.status === 409) {
-          toast.error(
-            'Agent has active deployments. Please delete all deployments before deleting agent.'
-          );
-          return;
-        }
         toast.error(getErrorMessage(error, 'Failed to delete agent.'));
       },
     },
   });
 
+  const deleteDeploymentMutation = useAgentsDeleteDeployment();
+
   const handleDelete = async () => {
     try {
       if (deleteState?.kind === 'agent') {
-        await deleteAgentMutation.mutateAsync({
-          workspace,
-          name: deleteState.item.name,
-        });
+        const agentName = deleteState.item.name;
+        // The agent API rejects deletion while live deployments reference it, so
+        // delete the deployments first (marks them deleting), then the agent.
+        const deployments = (deploymentsData ?? []).filter(
+          (d): d is AgentDeployment & { name: string } => d.agent === agentName && !!d.name
+        );
+        await Promise.all(
+          deployments.map((d) =>
+            deleteDeploymentMutation.mutateAsync({ workspace, name: d.name }).catch((err) => {
+              // A deployment already gone (404) is fine; rethrow anything else.
+              if ((err as { response?: { status?: number } })?.response?.status === 404) return;
+              throw err;
+            })
+          )
+        );
+        await deleteAgentMutation.mutateAsync({ workspace, name: agentName });
       }
       return true;
     } catch {
@@ -286,6 +299,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         <DeleteConfirmationModal
           open
           title="Delete Agent"
+          description="Are you sure you want to delete this agent and all its deployments?"
           onDelete={handleDelete}
           onClose={() => setDeleteState(null)}
           simpleConfirm
