@@ -14,7 +14,7 @@ Full references (default tag `local`):
 - `nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-tasks:local`
 - `nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-training:local`
 
-Bake file: **`docker-bake.automodel.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
+Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
 
 ## `docker buildx bake --print`
 
@@ -39,10 +39,10 @@ export WHEELS_TAG="$(git rev-parse --short HEAD)"
 #   export WHEELS_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
 #   export IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
 
-docker buildx bake --print -f docker-bake.automodel.hcl nmp-automodel-gpu-wheels
+docker buildx bake --print -f docker-bake.hcl nmp-automodel-gpu-wheels
 
 docker buildx bake \
-  -f docker-bake.automodel.hcl \
+  -f docker-bake.hcl \
   nmp-automodel-gpu-wheels \
   --push \
   --set "*.platform=linux/amd64"
@@ -59,13 +59,13 @@ export WHEELS_TAG="${WHEELS_TAG:-3fd6986ff173b598446ffac06d9be3f84b482495}"
 export BAKE_TAG="${WHEELS_TAG}"
 
 docker buildx bake \
-  -f docker-bake.automodel.hcl \
+  -f docker-bake.hcl \
   nmp-automodel-base-builder \
   --push \
   --set "*.platform=linux/amd64"
 
 docker buildx bake \
-  -f docker-bake.automodel.hcl \
+  -f docker-bake.hcl \
   nmp-automodel \
   --push \
   --set "*.platform=linux/amd64"
