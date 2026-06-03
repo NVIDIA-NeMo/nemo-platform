@@ -31,17 +31,32 @@ def merge_router_dependencies(contributors: dict[str, object]) -> list[str]:
     return sorted(deps)
 
 
-def _assert_no_prefix_collisions(contributors: dict[str, object]) -> None:
-    prefixes: dict[str, str] = {}
+def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
+    """Catch contributors that would handle the same ``(METHOD, PATH)`` pair.
+
+    Contributors are free to share a parent mount prefix — e.g. every backend's
+    jobs router is mounted under ``/v2/workspaces/{workspace}`` and adds its
+    own ``/{backend}/jobs/...`` paths via ``job_collection_path_for``. We only
+    error when two contributors would respond to the same HTTP method on the
+    same fully-qualified path.
+    """
+    # Map (method, full_path) -> contributor key
+    seen: dict[tuple[str, str], str] = {}
     for key, contributor in contributors.items():
         for spec in contributor.get_routers():  # type: ignore[union-attr]
-            prefix = spec.prefix.strip("/")
-            if prefix in prefixes:
-                raise CustomizationRouterError(
-                    f"Route prefix collision: contributors {prefixes[prefix]!r} and {key!r} "
-                    f"both use prefix {spec.prefix!r}",
-                )
-            prefixes[prefix] = key
+            prefix = spec.prefix.rstrip("/")
+            for route in spec.router.routes:
+                methods = getattr(route, "methods", None) or {"*"}
+                path = getattr(route, "path", "")
+                full_path = f"{prefix}{path}"
+                for method in methods:
+                    op = (method, full_path)
+                    if op in seen:
+                        raise CustomizationRouterError(
+                            f"Route collision: contributors {seen[op]!r} and {key!r} "
+                            f"both handle {method} {full_path}",
+                        )
+                    seen[op] = key
 
 
 class CustomizationRouterService(NemoService):
@@ -58,7 +73,7 @@ class CustomizationRouterService(NemoService):
                 "Install a backend plugin (e.g. nemo-automodel) and ensure "
                 f"'{CUSTOMIZATION_CONTRIBUTORS_GROUP}' entry points are registered.",
             )
-        _assert_no_prefix_collisions(self._contributors)
+        _assert_no_route_collisions(self._contributors)
         type(self).dependencies = merge_router_dependencies(self._contributors)
 
     def get_routers(self) -> list[RouterSpec]:

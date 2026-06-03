@@ -1,18 +1,29 @@
-# Hyperparameters (automodel job JSON)
+# Hyperparameters
+
+Two backend job schemas live in this skill. Pick by plugin:
+
+| Plugin | Schema class | Schema dump | Section below |
+|--------|--------------|-------------|---------------|
+| `automodel` | `AutomodelJobInput` (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`) | `uv run nemo customization automodel explain` | **Automodel job JSON** (below) |
+| `unsloth` | `UnslothJobInput` (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`) | `uv run nemo customization unsloth explain` | **Unsloth job JSON** (further down) |
+
+Both schemas use `extra="forbid"` — unknown keys raise validation errors. Field names are **not** interchangeable across backends (e.g. automodel uses `micro_batch_size` / `global_batch_size` / `parallelism`; unsloth uses `per_device_train_batch_size` / `gradient_accumulation_steps` / `hardware`). Use the right schema for the chosen plugin.
+
+**Batch sizing, 48 GB VRAM tables, multi-GPU (data parallel vs tensor parallel), and throughput tuning** live in **`SKILL.md`** (§ Batch sizing — automodel, § Batch sizing — unsloth, § Multi-GPU). This file is the **field glossary**, full JSON template per backend, distillation/KD, and schema pointers — not the place to pick batch sizes for production runs.
+
+---
+
+# Automodel job JSON
 
 Job JSON for `nemo customization automodel submit` uses **`AutomodelJobInput`** (`plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py`). Only fields in that schema are accepted (`extra="forbid"`).
 
-**Schema dump:** from nemo-platform root:
+**Schema dump:**
 
 ```bash
 uv run nemo customization automodel explain
 ```
 
 **Contract examples:** `tests/customizer-automodel-contract/input_configs/` (legacy shape; map `batch_size` → `global_batch_size` in submit JSON).
-
-**Batch sizing, 48 GB VRAM tables, multi-GPU (data parallel vs tensor parallel), and throughput tuning** live in **`SKILL.md`** (§ Batch sizing, § Multi-GPU). This file is the **field glossary**, full JSON template, distillation/KD, and schema pointers — not the place to pick `micro_batch_size` / `global_batch_size` for production runs.
-
----
 
 ## Job JSON layout
 
@@ -301,13 +312,286 @@ Verify: `nemo models get <teacher-entity> --workspace default`. Reuse an existin
 
 ---
 
-## Source of truth
+# Unsloth job JSON
+
+Job JSON for `nemo customization unsloth run` uses **`UnslothJobInput`** (`plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py`). Only fields in that schema are accepted (`extra="forbid"`). The canonical post-transform shape lives in `services/unsloth/src/nmp/unsloth/schemas.py` (`UnslothJobOutput`) and is what the training driver consumes.
+
+**Schema dump:**
+
+```bash
+uv run nemo customization unsloth explain
+```
+
+Unsloth is **single-GPU, local, in-process** (BYO-venv). There is no `parallelism` block, no `tensor_parallel_size`, and no platform `execution_profile` — `hardware.gpus` selects which CUDA device the local interpreter uses. Multi-GPU sharding → use automodel.
+
+## Job JSON layout (unsloth)
+
+| Section | Purpose |
+|---------|---------|
+| `name` | Optional job name (auto-generated if omitted, mostly cosmetic for local run) |
+| `model` | **Object** — base model entity ref + how to load it (4-bit, dtype, max_seq_length) |
+| `dataset` | Single fileset ref (`path`) + optional `validation_path`; row shape selector (`text_field`, `apply_chat_template`, `packing`) |
+| `training` | Method (`sft`), adapter shape (`lora`/`full`), LoRA hyperparams, gradient checkpointing |
+| `schedule` | `epochs` xor `max_steps`; `warmup_steps` xor `warmup_ratio`; logging / save / eval cadence; LR scheduler |
+| `batch` | `per_device_train_batch_size` × `gradient_accumulation_steps` = effective batch |
+| `optimizer` | LR, weight decay, optimizer choice (`adamw_8bit` default) |
+| `hardware` | GPU selection (`CUDA_VISIBLE_DEVICES`) + mixed precision (`bf16` / `fp16`) |
+| `integrations` | Optional W&B + `report_to` |
+| `output` | Output entity name, optional description, **`save_method`** (controls what's persisted) |
+
+Full template (every section, defaults inline):
+
+```json
+{
+  "name": "<job-name>",
+  "model": {
+    "name": "default/<model-entity>",
+    "max_seq_length": 2048,
+    "load_in_4bit": true,
+    "load_in_8bit": false,
+    "dtype": "auto",
+    "trust_remote_code": false
+  },
+  "dataset": {
+    "path": "default/<dataset-fileset>",
+    "validation_path": null,
+    "text_field": "text",
+    "apply_chat_template": true,
+    "packing": false
+  },
+  "training": {
+    "training_type": "sft",
+    "finetuning_type": "lora",
+    "lora": {
+      "rank": 16,
+      "alpha": 16,
+      "dropout": 0.0,
+      "target_modules": ["q_proj","k_proj","v_proj","o_proj","gate_proj","up_proj","down_proj"],
+      "bias": "none",
+      "use_rslora": false,
+      "random_state": 3407
+    },
+    "use_gradient_checkpointing": "unsloth"
+  },
+  "schedule": {
+    "epochs": 1,
+    "max_steps": null,
+    "warmup_steps": 0,
+    "warmup_ratio": null,
+    "lr_scheduler_type": "linear",
+    "logging_steps": 1,
+    "save_steps": null,
+    "eval_steps": null,
+    "seed": 3407
+  },
+  "batch": {
+    "per_device_train_batch_size": 2,
+    "gradient_accumulation_steps": 4
+  },
+  "optimizer": {
+    "learning_rate": 5e-5,
+    "weight_decay": 0.0,
+    "optim": "adamw_8bit"
+  },
+  "hardware": {
+    "gpus": "0",
+    "precision": "bf16"
+  },
+  "integrations": null,
+  "output": {
+    "name": "<output-name>",
+    "description": null,
+    "save_method": "lora"
+  }
+}
+```
+
+## Field reference (unsloth)
+
+### `model`
+
+`model` is an **object** (not a string). `name` is the platform model entity ref.
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `name` | — | Model entity ref: `"name"` (uses job workspace) or `"workspace/name"`. Plugin resolves to a local path before training. |
+| `max_seq_length` | `2048` | Truncate / pack to this length; lower if VRAM tight. |
+| `load_in_4bit` | `true` | bitsandbytes 4-bit. Mutex with `load_in_8bit`. Default for Unsloth's headline path; required to fit larger models on small GPUs. |
+| `load_in_8bit` | `false` | bitsandbytes 8-bit. Mutex with `load_in_4bit`. |
+| `dtype` | `"auto"` | One of `"auto"`, `"bfloat16"`, `"float16"`, `"float32"`. |
+| `trust_remote_code` | `false` | HF `trust_remote_code` flag for custom model code. |
+
+**Mutex:** `load_in_4bit` xor `load_in_8bit`. Both quantization flags are also **incompatible with `training.finetuning_type: "full"`** — full SFT must use a non-quantized base.
+
+### `dataset`
+
+See `references/dataset-formats.md` § Unsloth for row-shape rules.
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `path` | — | Training fileset ref (`"name"` or `"workspace/name"`). |
+| `validation_path` | `null` | Optional validation fileset ref. |
+| `text_field` | `"text"` | Column SFTTrainer reads. In `apply_chat_template: true` mode, the rendered template string is written into this column. |
+| `apply_chat_template` | `false` | Set `true` for rows with a `messages` array (preferred when the tokenizer has a chat template). |
+| `packing` | `false` | trl.SFTTrainer packing for throughput on short rows. |
+
+### `training`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `training_type` | `"sft"` | Only `"sft"` is implemented today. |
+| `finetuning_type` | `"lora"` | `"lora"` (adapter; default) or `"full"` (full SFT — heavy, no quantization). |
+| `lora` | auto-filled when `finetuning_type` is `lora` | See LoRA subsection below. |
+| `use_gradient_checkpointing` | `"unsloth"` | `"unsloth"` (recommended), `"true"`, or `"false"`. Unsloth's variant is faster than HF's. |
+
+**LoRA block (`training.lora`):**
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `rank` | `16` | Higher → more capacity, more VRAM. Cap at 32 if the adapter will deploy via default NIM / vLLM. |
+| `alpha` | `16` | LoRA scaling; common rule of thumb `alpha ≈ rank` or `2× rank`. |
+| `dropout` | `0.0` | LoRA dropout (0.0–<1.0). |
+| `target_modules` | Unsloth 7-module set: `q_proj`, `k_proj`, `v_proj`, `o_proj`, `gate_proj`, `up_proj`, `down_proj` | Full attention + MLP. Override with a subset like `["q_proj","v_proj"]` for a lighter touch. |
+| `bias` | `"none"` | `"none"` / `"all"` / `"lora_only"`. |
+| `use_rslora` | `false` | Rank-stabilized LoRA. |
+| `random_state` | `3407` | Reproducibility seed for the LoRA init. |
+
+`lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "full"`.
+
+### `schedule`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `epochs` | `null` | Full passes. **`epochs` xor `max_steps`** — exactly one is required. |
+| `max_steps` | `null` | Global step cap. Use alone for smoke tests; do not combine with `epochs`. |
+| `warmup_steps` | `0` | Linear warmup. Mutex with `warmup_ratio`. |
+| `warmup_ratio` | `null` | Fractional warmup over total steps. Mutex with `warmup_steps`. |
+| `lr_scheduler_type` | `"linear"` | `"linear"`, `"cosine"`, `"constant"`, `"constant_with_warmup"`, `"cosine_with_restarts"`. |
+| `logging_steps` | `1` | Loss-log cadence. |
+| `save_steps` | `null` | If set, save checkpoint every N steps. |
+| `eval_steps` | `null` | If set with `validation_path`, eval every N steps. |
+| `seed` | `3407` | Trainer seed (`TrainingArguments.seed`). |
+
+**Hard mutex enforced by the schema:** `epochs` xor `max_steps`; `warmup_steps` xor `warmup_ratio`. Validation errors surface at submit time.
+
+### `batch`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `per_device_train_batch_size` | `1` | Forwarded verbatim to `TrainingArguments`. Drives peak VRAM. |
+| `gradient_accumulation_steps` | `1` | Multiplies effective batch without raising VRAM. |
+
+`effective_batch = per_device_train_batch_size × gradient_accumulation_steps`. No GBS divisibility math (single GPU). Starting points by model size are in `SKILL.md` § Batch sizing — unsloth.
+
+### `optimizer`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `learning_rate` | `2e-4` (schema default; skill uses `5e-5` for LoRA SFT) | See LR table below. |
+| `weight_decay` | `0.0` | L2-style regularization. |
+| `optim` | `"adamw_8bit"` | `"adamw_torch"`, `"adamw_torch_fused"` (Hopper+), `"adamw_8bit"`, `"paged_adamw_8bit"`, `"sgd"`. `adamw_8bit` has the smallest optimizer state and is Unsloth's notebook default. |
+
+`warmup_steps` is on `schedule`, not on `optimizer` (different from the automodel schema).
+
+### `hardware`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `gpus` | `null` | Comma-separated CUDA indices: `"0"` or `"0,1"` (Unsloth only uses one). Sets `CUDA_VISIBLE_DEVICES` **before** `import torch`. **Selection, not reservation.** Leave unset to inherit the caller's env. |
+| `precision` | `"bf16"` | `"bf16"` (Ampere+) or `"fp16"`. |
+
+### `integrations`
+
+```json
+"integrations": {
+  "wandb": { "enabled": true, "project": "my-project", "run_name": "qwen3-1.7b-lora" },
+  "report_to": ["wandb"]
+}
+```
+
+| Field | Notes |
+|-------|-------|
+| `wandb.enabled` | Toggle. |
+| `wandb.project` | Sets `WANDB_PROJECT` env var. |
+| `wandb.run_name` | Becomes `TrainingArguments.run_name`. |
+| `report_to` | List of `"wandb"`, `"tensorboard"`, `"mlflow"`, `"none"`. Empty default = `["none"]`. |
+
+The user sets `WANDB_API_KEY` themselves in `$UNSLOTH_VENV` (or shell) — the plugin does **not** manage that secret. No `api_key_secret` field today.
+
+### `output`
+
+| Field | Default | Notes |
+|-------|---------|-------|
+| `name` | auto-derived from `<model-entity>-<dataset>-<hex12>` | The output model entity / fileset name. |
+| `description` | `null` | Free-form description carried onto the entity and fileset. |
+| `save_method` | `"lora"` | `"lora"` (adapter — small, deploy via NIM/vLLM with adapter loader), `"merged_16bit"` (merged checkpoint, deploy without adapter), `"merged_4bit"` (lossy, storage-tight). `merged_*` requires `training.finetuning_type: "lora"`. |
+
+After `to_spec`, the canonical `OutputResponse` also carries `type` (`"adapter"` for `save_method: "lora"`, `"model"` otherwise) and `fileset` (defaults to `name`); both are derived — submitter doesn't set them.
+
+## Tuning guide (unsloth)
+
+VRAM / batch tuning is in **`SKILL.md` § Batch sizing — unsloth**. Below covers non-batch fields.
+
+### Learning rate (LoRA SFT, starting points)
+
+Same scale as automodel (the underlying optimizer math is the same):
+
+| Model scale | Suggested `learning_rate` |
+|-------------|---------------------------|
+| ≤ 3B | `5e-5` – `1e-4` |
+| 3B – 8B | `2e-5` – `5e-5` |
+| > 8B | `1e-5` – `2e-5` |
+
+Schema default is `2e-4` (Unsloth notebook default — works for small adapters with `adamw_8bit`). Skill defaults are conservative `5e-5`.
+
+### LoRA rank / alpha
+
+| Use case | `rank` | `alpha` |
+|----------|--------|---------|
+| Default / balanced | 16 | 16 |
+| Lighter touch | 8 | 16 |
+| More capacity (inference-safe max on default NIM/vLLM) | 32 | 32 or 64 |
+
+Drop `rank` before lowering batch when OOM. Higher `alpha/rank` ratios amplify adapter influence; Unsloth's defaults keep `alpha == rank`.
+
+### Save-method picker
+
+| User wants | `save_method` |
+|------------|---------------|
+| Smallest artefact, deploy via adapter loader (default NIM / vLLM) | `lora` |
+| Full-weight checkpoint to deploy without an adapter | `merged_16bit` |
+| Disk-tight merged checkpoint (lossy) | `merged_4bit` |
+| Full SFT (no LoRA) | `lora` is invalid here; output is always a full model — leave `save_method` at default and ignore the merged options |
+
+`merged_*` require `training.finetuning_type: "lora"`. The schema validator surfaces a clear error if violated.
+
+### Smoke test (unsloth)
+
+```json
+"schedule": { "max_steps": 50 }
+```
+
+(omit `epochs`).
+
+### Distillation
+
+Not supported by unsloth today (`training_type` is `Literal["sft"]`). Use automodel for distillation.
+
+---
+
+# Source of truth
 
 | Resource | Path | Use for |
 |----------|------|---------|
-| **Batch / multi-GPU / 48 GB LoRA** | `SKILL.md` (§ Batch sizing, § Multi-GPU) | Choosing `micro`, GBS, LR, TP vs data parallel |
-| Submit schema | `plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py` | Allowed JSON fields |
-| Schema → compiler mapping | `services/automodel/src/nmp/automodel/adapter.py` | `dataset.training` → compiler `dataset` string |
-| API field descriptions | `services/automodel/src/nmp/automodel/api/v2/jobs/schemas.py` | Compiler-internal shape (not submit JSON) |
-| JSON examples | `plugins/nemo-automodel/tests/fixtures/*.json` | Copy-paste templates (ignore fixture `max_steps` in prod) |
-| Full spec doc | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |
+| **Batch / multi-GPU / 48 GB LoRA (automodel)** | `SKILL.md` § Batch sizing — automodel, § Multi-GPU | Choosing `micro`, GBS, LR, TP vs data parallel |
+| **Batch (unsloth, single GPU)** | `SKILL.md` § Batch sizing — unsloth | `per_device_train_batch_size` × `gradient_accumulation_steps` starting points |
+| Submit schema (automodel) | `plugins/nemo-automodel/src/nemo_automodel_plugin/schema.py` | Allowed JSON fields |
+| Schema → compiler mapping (automodel) | `services/automodel/src/nmp/automodel/adapter.py` | `dataset.training` → compiler `dataset` string |
+| API field descriptions (automodel) | `services/automodel/src/nmp/automodel/api/v2/jobs/schemas.py` | Compiler-internal shape (not submit JSON) |
+| Submit schema (unsloth) | `plugins/nemo-unsloth/src/nemo_unsloth_plugin/schema.py` | Allowed JSON fields (`UnslothJobInput`) |
+| Canonical schema (unsloth) | `services/unsloth/src/nmp/unsloth/schemas.py` | Post-`to_spec` shape; what `train_sft` consumes |
+| Training driver (unsloth) | `services/unsloth/src/nmp/unsloth/tasks/training/backends/unsloth_sft.py` | Field → call-site mapping (FastLanguageModel.from_pretrained, SFTTrainer, save_pretrained{,_merged}) |
+| JSON examples (automodel) | `plugins/nemo-automodel/tests/fixtures/*.json` | Copy-paste templates (ignore fixture `max_steps` in prod) |
+| JSON example (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` | Smoke-test template (ignore `max_steps` for real runs) |
+| Full spec doc (automodel) | `plugins/nemo-automodel/SCOPE.md` (simplified JSON section) | Design notes |
+| Plugin README (unsloth) | `plugins/nemo-unsloth/README.md` | `--venv` setup, CUDA caveat, container-submit roadmap |
