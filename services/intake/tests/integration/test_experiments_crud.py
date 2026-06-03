@@ -126,7 +126,7 @@ def test_experiment_read_degrades_when_rollup_hydration_fails(client: TestClient
         assert fetched.json()["run_count"] == 0
         assert fetched.json()["aggregate_scores"] is None
     finally:
-        app.dependency_overrides[get_experiment_rollup_repository] = lambda: None
+        app.dependency_overrides.pop(get_experiment_rollup_repository, None)
 
 
 def test_experiment_group_ref_is_soft(client: TestClient) -> None:

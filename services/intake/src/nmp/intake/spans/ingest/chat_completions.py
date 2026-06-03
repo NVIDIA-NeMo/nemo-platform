@@ -155,7 +155,7 @@ async def ingest_chat_completion(
 ) -> ChatCompletionsIngestResponse:
     await validate_experiment_context(
         workspace=workspace,
-        context=body.experiment_context,
+        context=body.resolved_evaluation_context(),
         entity_client=entity_client,
     )
     ingested_at = utc_now()

@@ -81,12 +81,12 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
 
 
 def test_chat_completions_ingest_happy_path(client: TestClient):
-    _create_experiment(client, EXPERIMENT_CONTEXT["experiment_id"])
+    experiment_id = _create_experiment(client, EXPERIMENT_CONTEXT["experiment_id"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(),
         "session_id": "session-happy",
-        "experiment_context": EXPERIMENT_CONTEXT,
+        "experiment_context": {**EXPERIMENT_CONTEXT, "experiment_id": experiment_id},
         "provider": "openai",
     }
     response = client.post(INGEST_URL, json=body)
@@ -244,6 +244,7 @@ def test_chat_completions_ingest_handles_missing_usage(client: TestClient):
 
 
 def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: TestClient):
+    _create_experiment(client, EVALUATION_CONTEXT["evaluation_id"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(id="chatcmpl-run-id-only"),
@@ -268,12 +269,29 @@ def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: T
     }
 
 
-def test_chat_completions_ingest_accepts_unknown_deprecated_evaluation_context(client: TestClient):
+def test_chat_completions_ingest_rejects_unknown_deprecated_evaluation_context(client: TestClient):
     body = {
         "request": _openai_request(),
         "response": _openai_response(id="chatcmpl-missing-deprecated-exp"),
         "session_id": "session-missing-deprecated-exp",
-        "evaluation_context": {"evaluation_id": "missing-exp", "test_case_id": "case-1"},
+        "evaluation_context": {
+            "evaluation_id": "missing-exp",
+            "evaluation_run_id": "missing-run",
+            "test_case_id": "case-1",
+        },
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 400, response.text
+
+
+def test_chat_completions_ingest_accepts_partial_deprecated_evaluation_context(client: TestClient):
+    _create_experiment(client, "chat-eval")
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-partial-deprecated-context"),
+        "session_id": "session-partial-deprecated-context",
+        "evaluation_context": {"evaluation_id": "chat-eval", "test_case_id": "case-1"},
     }
     response = client.post(INGEST_URL, json=body)
 
@@ -409,19 +427,26 @@ def test_chat_completions_ingest_rejects_legacy_context_fields(client: TestClien
         assert response.status_code == 422, response.text
 
 
-def test_chat_completions_ingest_rejects_both_context_shapes(client: TestClient):
+def test_chat_completions_ingest_accepts_both_context_shapes_with_experiment_context_precedence(client: TestClient):
+    _create_experiment(client, "chat-eval")
     body = {
         "request": _openai_request(),
-        "response": _openai_response(id="chatcmpl-invalid-eval-context"),
-        "session_id": "session-invalid-eval-context",
+        "response": _openai_response(id="chatcmpl-both-contexts"),
+        "session_id": "session-both-contexts",
         "experiment_context": {"experiment_id": "chat-eval", "test_case_id": "case-1"},
-        "evaluation_context": {"evaluation_id": "chat-eval"},
+        "evaluation_context": {"evaluation_id": "legacy-eval", "test_case_id": "legacy-case"},
     }
     response = client.post(INGEST_URL, json=body)
-    assert response.status_code == 422, response.text
+    assert response.status_code == 201, response.text
+
+    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-both-contexts"})
+    assert listed.status_code == 200, listed.text
+    span = listed.json()["data"][0]
+    assert span["evaluation_context"]["evaluation_id"] == "chat-eval"
+    assert span["evaluation_context"]["test_case_id"] == "case-1"
 
 
-def _create_experiment(client: TestClient, name: str) -> None:
+def _create_experiment(client: TestClient, name: str) -> str:
     response = client.post(
         "/apis/intake/v2/workspaces/default/experiments",
         json={
@@ -433,3 +458,9 @@ def _create_experiment(client: TestClient, name: str) -> None:
         },
     )
     assert response.status_code in {201, 409}, response.text
+    if response.status_code == 201:
+        return response.json()["name"]
+
+    existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
+    assert existing.status_code == 200, existing.text
+    return existing.json()["name"]

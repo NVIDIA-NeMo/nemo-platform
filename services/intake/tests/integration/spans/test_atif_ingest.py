@@ -173,6 +173,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "test_case_id": "sample-test-case-a",
         "metadata": {"trial": "sample-test-case-a__trial-a"},
     }
+    _create_experiment(client, evaluation_context["evaluation_id"])
     tool_call = {
         "tool_call_id": "tooluse_tuIapjh62ZTI1pildiC9sg",
         "function_name": "Bash",
@@ -649,7 +650,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     assert trace["cost_usd"] == pytest.approx(0.45)
 
 
-def _create_experiment(client: TestClient, name: str) -> None:
+def _create_experiment(client: TestClient, name: str) -> str:
     response = client.post(
         "/apis/intake/v2/workspaces/default/experiments",
         json={
@@ -661,3 +662,9 @@ def _create_experiment(client: TestClient, name: str) -> None:
         },
     )
     assert response.status_code in {201, 409}, response.text
+    if response.status_code == 201:
+        return response.json()["name"]
+
+    existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
+    assert existing.status_code == 200, existing.text
+    return existing.json()["name"]

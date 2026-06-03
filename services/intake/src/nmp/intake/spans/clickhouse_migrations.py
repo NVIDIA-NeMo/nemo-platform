@@ -278,11 +278,7 @@ def _create_experiment_sessions_schema(client, settings: ClickHouseMigrationSett
             ttl_only_drop_parts = 1
         """
     )
-    client.command(
-        f"""
-        CREATE MATERIALIZED VIEW {view}
-        TO {table}
-        AS
+    experiment_sessions_select_sql = f"""
         SELECT
             workspace,
             attributes_string['experiment.id'] AS experiment_id,
@@ -304,6 +300,19 @@ def _create_experiment_sessions_schema(client, settings: ClickHouseMigrationSett
         WHERE external_parent_span_id = ''
             AND has(mapKeys(attributes_string), 'experiment.id')
             AND attributes_string['experiment.id'] != ''
+        """
+    client.command(
+        f"""
+        CREATE MATERIALIZED VIEW {view}
+        TO {table}
+        AS
+        {experiment_sessions_select_sql}
+        """
+    )
+    client.command(
+        f"""
+        INSERT INTO {table}
+        {experiment_sessions_select_sql}
         """
     )
 

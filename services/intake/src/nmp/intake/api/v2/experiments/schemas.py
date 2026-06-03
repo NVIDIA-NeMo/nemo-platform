@@ -105,6 +105,7 @@ class ExperimentResponse(BaseModel):
     model_names: list[str] = Field(
         default_factory=list,
         description="Distinct model names observed across ingested sessions for this experiment.",
+        json_schema_extra={"uniqueItems": True},
     )
     aggregate_scores: dict[str, EvaluatorAggregate] | None = None
     run_count: int = Field(

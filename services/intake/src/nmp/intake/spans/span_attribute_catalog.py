@@ -463,13 +463,13 @@ def where_clause(
     clauses: list[str] = []
     parameters: dict[str, Any] = {value_param: bag_value}
     for index, bag_key in enumerate((spec.bag_key, *alias_keys)):
-        aliased_key_param = f"{key_param}_{index}"
+        aliased_key_param = key_param if index == 0 else f"{key_param}_{index}"
         clauses.append(
             f"(has(mapKeys({spec.bag.value}), %({aliased_key_param})s) "
             f"AND {spec.bag.value}[%({aliased_key_param})s] {sql_operator} %({value_param})s)"
         )
         parameters[aliased_key_param] = bag_key
-    return " OR ".join(clauses), parameters
+    return f"({' OR '.join(clauses)})", parameters
 
 
 def to_semantic_value(value: Any, spec: AttributeSpec) -> str | int | float | bool | Decimal | None:

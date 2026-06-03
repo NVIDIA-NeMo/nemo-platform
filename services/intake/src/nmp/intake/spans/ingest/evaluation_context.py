@@ -5,11 +5,9 @@
 
 from __future__ import annotations
 
-from typing import Any, Self
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
-
-CONTEXT_SHAPE_ERROR = "Use experiment_context; evaluation_context is deprecated and cannot be combined with it"
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ExperimentContext(BaseModel):
@@ -46,26 +44,14 @@ class ExperimentContextIngestModel(BaseModel):
 
     experiment_context: ExperimentContext | None = None
     # Deprecated pre-release field. Use experiment_context.
-    evaluation_context: EvaluationContext | None = None
-
-    @model_validator(mode="after")
-    def validate_experiment_context_shape(self) -> Self:
-        validate_context_fields(
-            experiment_context=self.experiment_context,
-            evaluation_context=self.evaluation_context,
-        )
-        return self
+    evaluation_context: EvaluationContext | None = Field(
+        default=None,
+        deprecated=True,
+        description="Deprecated. Use experiment_context; when both are sent, experiment_context takes precedence.",
+    )
 
     def resolved_evaluation_context(self) -> EvaluationContext | None:
         if self.experiment_context is not None:
             return self.experiment_context.to_evaluation_context()
-        return self.evaluation_context
-
-
-def validate_context_fields(
-    *,
-    experiment_context: ExperimentContext | None,
-    evaluation_context: EvaluationContext | None,
-) -> None:
-    if experiment_context is not None and evaluation_context is not None:
-        raise ValueError(CONTEXT_SHAPE_ERROR)
+        evaluation_context: EvaluationContext | None = self.__dict__.get("evaluation_context")
+        return evaluation_context
