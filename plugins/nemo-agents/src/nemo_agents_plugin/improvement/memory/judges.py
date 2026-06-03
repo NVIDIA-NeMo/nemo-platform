@@ -102,9 +102,17 @@ NECESSITY (0.0 to 1.0): would agent behavior change if this entry were removed?
 - 0.0 = no behavior change; the entry restates content already in the system prompt or covered by other entries.
 
 VERDICT (exactly one of these five values):
-- "keep": entry is good as-is.
+- "keep": entry is good as-is. If the only "improvement" you can think of is rephrasing the same content with different sentence structure, this is the correct verdict, not refine.
 - "promote_to_prompt": high quality and applies broadly enough to belong in the always-on system prompt rather than being retrieved.
-- "refine": keep the signal but rewrite for clarity or specificity. Provide refined_text.
+- "refine": ONLY when the original has a concrete defect that the refined version fixes. Provide refined_text. A defect is one of:
+  - The entry combines multiple distinct topics that should be separated into their own entries.
+  - The entry contains genuinely vague language where specific terms exist (e.g., "a thing" where a named entity could be used).
+  - The entry is more than twice as long as needed to convey the same signal.
+  Your justification MUST name which defect is being fixed. DO NOT use refine if:
+  - Your refined_text conveys the same content with merely different sentence structure, word order, or voice.
+  - Your refined_text drops a direct quote, specific example, or named entity that was present in the original.
+  - The diff between original and refined_text is purely stylistic (synonym swaps, paraphrase, sentence reordering).
+  If the original has no nameable defect and the only available "improvement" is paraphrase, return "keep".
 - "merge": same signal as some other entry. Only set this if a duplicate is obvious from the entry content alone. Rare in a single-entry judge.
 - "drop": not worth keeping.
 
