@@ -35,6 +35,13 @@ mock_authz_data := {
         "editor@test.com": {
             "workspaces": {"test-ns": ["Editor"]}
         }
+    },
+    "domains": {
+        "models": {"name": "models", "version": "core", "kind": "core"},
+        "agents": {"name": "agents", "version": "1.2.3", "kind": "extension"}
+    },
+    "domain_policies": {
+        "agents": {"enabled": true}
     }
 }
 
@@ -175,4 +182,14 @@ test_allow_public_workspace if {
     with data.authz.principals as mock_authz_data.principals
 
     result.allowed == true
+}
+
+test_domain_policy_not_required_when_config_missing if {
+    not authz.has_domain_policy("models")
+        with data.authz.domain_policies as mock_authz_data.domain_policies
+}
+
+test_domain_policy_detected_when_config_present if {
+    authz.has_domain_policy("agents")
+        with data.authz.domain_policies as mock_authz_data.domain_policies
 }

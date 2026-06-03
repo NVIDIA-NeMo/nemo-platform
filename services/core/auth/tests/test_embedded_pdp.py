@@ -58,6 +58,10 @@ def minimal_authz_data():
                     "post": {"permissions": ["models.create"]},
                 },
             },
+            "domains": {
+                "models": {"name": "models", "version": "core", "kind": "core"},
+            },
+            "domain_policies": {},
             "workspaces": {
                 "public-workspace": {},
             },
@@ -184,6 +188,18 @@ class TestAllowEntrypoint:
                 "principal_id": "test@example.com",  # Has PlatformAdmin in system workspace
                 "path": "/apis/models/v2/workspaces/any-workspace/anything",
                 "method": "DELETE",
+            },
+        )
+        assert result["allowed"] is True
+
+    def test_allow_keeps_working_when_domain_metadata_is_present_without_policy(self, minimal_authz_data):
+        set_policy_data(minimal_authz_data)
+        result = evaluate(
+            "allow",
+            {
+                "principal_id": "test@example.com",
+                "path": "/apis/models/v2/workspaces/test-workspace/models",
+                "method": "GET",
             },
         )
         assert result["allowed"] is True

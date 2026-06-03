@@ -89,6 +89,7 @@ allow_request if {
 	# Check if any principal has the required permissions
 	some principal in applicable_principals
 	has_permissions(principal, workspace, required_permissions)
+	domain_policy_checks_pass
 }
 
 # Wildcard workspace "-" with mutating methods: permission-based authorization.
@@ -113,6 +114,7 @@ allow_request if {
 	some principal in applicable_principals
 	startswith(principal, "service:")
 	has_permissions(principal, workspace, required_permissions)
+	domain_policy_checks_pass
 }
 
 # IAM APIs under /apis/auth/v2/iam/ — patterns have no {workspace} placeholder, so
@@ -131,6 +133,7 @@ allow_request if {
 	not extract_workspace_from_path(path)
 	some principal in applicable_principals
 	has_permissions(principal, "system", required_permissions)
+	domain_policy_checks_pass
 }
 
 # Allow cross-workspace LIST operations (GET/HEAD without workspace in path)
@@ -153,6 +156,7 @@ allow_request if {
 
 	# Match if no workspace can be extracted from path (undefined = no workspace placeholder)
 	not extract_workspace_from_path(path)
+	domain_policy_checks_pass
 }
 
 # Allow cross-workspace LIST operations with "-" wildcard workspace
@@ -170,6 +174,7 @@ allow_request if {
 	# Match if workspace is "-" wildcard
 	workspace := extract_workspace_from_path(path)
 	workspace == "-"
+	domain_policy_checks_pass
 }
 
 # Allow if endpoint explicitly has no required permissions (e.g., workspace creation)
@@ -192,6 +197,7 @@ allow_request if {
 	endpoint := normalize_endpoint(path)
 	method_lower := lower(method)
 	data.authz.endpoints[endpoint][method_lower].permissions == []
+	domain_policy_checks_pass
 }
 
 # DENY REQUEST RULES

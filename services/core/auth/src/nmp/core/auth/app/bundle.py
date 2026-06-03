@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional, Tuple
 
+from nemo_platform_plugin.discovery import discover_manifests
 import yaml
 from nmp.common.auth import ALL_WORKSPACES
 from nmp.common.auth.authz_format import validate_static_authz_data
@@ -24,6 +25,32 @@ from nmp.core.auth.entities import RoleBindingEntity
 # Bundle cache configuration
 _bundle_cache: Optional[Tuple[bytes, str, float]] = None  # (bundle_bytes, etag, timestamp)
 _bundle_lock = asyncio.Lock()
+
+
+def _extract_domain_names_from_endpoints(endpoints: dict[str, object]) -> set[str]:
+    """Return API domain names derived from ``/apis/<domain>/...`` endpoint paths."""
+    names: set[str] = set()
+    for path in endpoints:
+        parts = path.split("/")
+        if len(parts) >= 3 and parts[1] == "apis" and parts[2]:
+            names.add(parts[2])
+    return names
+
+
+def _build_domain_registry(static_data: dict) -> dict[str, dict[str, str]]:
+    """Build the unified auth domain registry for core and extension APIs."""
+    endpoints = static_data.get("authz", {}).get("endpoints", {})
+    domain_names = _extract_domain_names_from_endpoints(endpoints)
+    manifests = discover_manifests()
+
+    domains: dict[str, dict[str, str]] = {}
+    for name in sorted(domain_names | manifests.keys()):
+        manifest = manifests.get(name)
+        if manifest is not None:
+            domains[name] = {"name": name, "version": manifest.version or "", "kind": "extension"}
+        else:
+            domains[name] = {"name": name, "version": "core", "kind": "core"}
+    return domains
 
 
 def get_bundle_cache_seconds() -> int:
@@ -109,6 +136,8 @@ async def _build_authorization_data_internal(entities_client: Optional[EntityCli
         static_data["authz"]["workspaces"] = {}
     if "principals" not in static_data["authz"]:
         static_data["authz"]["principals"] = {}
+    static_data["authz"]["domains"] = _build_domain_registry(static_data)
+    static_data["authz"].setdefault("domain_policies", {})
 
     # Fetch dynamic data from EntityClient if available
     if entities_client:

@@ -93,3 +93,45 @@ async def test_bundle_etag_stability():
 
     # E-Tag should be the same for same data
     assert etag1 == etag2
+
+
+@pytest.mark.asyncio
+async def test_build_authorization_data_includes_core_domain_metadata(monkeypatch):
+    """Core API namespaces are exposed as auth domains."""
+    from nmp.core.auth.app.bundle import build_authorization_data
+
+    monkeypatch.setattr("nmp.core.auth.app.bundle.discover_manifests", lambda: {})
+
+    data = await build_authorization_data(None)
+
+    assert data["authz"]["domains"]["models"] == {
+        "name": "models",
+        "version": "core",
+        "kind": "core",
+    }
+
+
+@pytest.mark.asyncio
+async def test_build_authorization_data_merges_extension_manifest_domain_metadata(monkeypatch):
+    """Discovered extension manifests are merged into auth domains."""
+    from nemo_platform_plugin.interface import PluginManifest
+    from nmp.core.auth.app.bundle import build_authorization_data
+
+    monkeypatch.setattr(
+        "nmp.core.auth.app.bundle.discover_manifests",
+        lambda: {
+            "agents": PluginManifest(
+                name="agents",
+                version="1.2.3",
+                description="Agents API",
+            )
+        },
+    )
+
+    data = await build_authorization_data(None)
+
+    assert data["authz"]["domains"]["agents"] == {
+        "name": "agents",
+        "version": "1.2.3",
+        "kind": "extension",
+    }

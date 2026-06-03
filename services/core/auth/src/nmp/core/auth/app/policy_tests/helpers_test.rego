@@ -57,3 +57,37 @@ test_normalize_endpoint if {
     common.normalize_endpoint("/apis/evaluation/v2/workspaces/test-ns/benchmarks/my-config") == "/apis/evaluation/v2/workspaces/{workspace}/benchmarks/{name}"
         with data.authz.endpoints as mock_endpoints
 }
+
+test_extract_domain_name_from_core_path if {
+    authz.extract_domain_name("/apis/models/v2/workspaces/default/models") == "models"
+}
+
+test_extract_domain_name_from_extension_path if {
+    authz.extract_domain_name("/apis/agents/v2/workspaces/default/agents") == "agents"
+}
+
+test_get_domain_metadata_returns_core_domain if {
+    mock_domains := {
+        "models": {"name": "models", "version": "core", "kind": "core"},
+        "agents": {"name": "agents", "version": "1.2.3", "kind": "extension"}
+    }
+
+    domain := common.get_domain_metadata("/apis/models/v2/workspaces/default/models")
+        with data.authz.domains as mock_domains
+    domain.name == "models"
+    domain.version == "core"
+    domain.kind == "core"
+}
+
+test_get_domain_metadata_returns_extension_domain if {
+    mock_domains := {
+        "models": {"name": "models", "version": "core", "kind": "core"},
+        "agents": {"name": "agents", "version": "1.2.3", "kind": "extension"}
+    }
+
+    domain := common.get_domain_metadata("/apis/agents/v2/workspaces/default/agents")
+        with data.authz.domains as mock_domains
+    domain.name == "agents"
+    domain.version == "1.2.3"
+    domain.kind == "extension"
+}

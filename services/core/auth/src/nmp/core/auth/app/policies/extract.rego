@@ -57,6 +57,16 @@ extract_path := path if {
 	path := input.attributes.request.http.path
 }
 
+# Extract domain name from /apis/<domain>/... request paths.
+extract_domain_name(path) := domain if {
+	base_path := split(path, "?")[0]
+	parts := split(base_path, "/")
+	count(parts) >= 3
+	parts[1] == "apis"
+	domain := parts[2]
+	domain != ""
+}
+
 # Extract scopes from either format
 extract_scopes := scopes if {
 	# Direct format

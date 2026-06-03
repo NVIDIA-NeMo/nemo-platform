@@ -3,6 +3,7 @@ package common
 import future.keywords.if
 
 import data.authz.extract_method
+import data.authz.extract_domain_name
 import data.authz.extract_path
 import data.authz.extract_principal_email
 import data.authz.extract_principal_groups
@@ -51,6 +52,16 @@ get_required_permissions(path, method) := perms if {
 	endpoint := normalize_endpoint(path)
 	method_lower := lower(method)
 	perms := data.authz.endpoints[endpoint][method_lower].permissions
+}
+
+get_domain_metadata(path) := domain if {
+	domain_name := extract_domain_name(path)
+	meta := data.authz.domains[domain_name]
+	domain := {
+		"name": meta.name,
+		"version": meta.version,
+		"kind": meta.kind,
+	}
 }
 
 # Check specific permission (for middleware to check special permissions)
