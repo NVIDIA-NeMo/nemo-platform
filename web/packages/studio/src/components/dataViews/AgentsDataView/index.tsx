@@ -36,9 +36,6 @@ import { ComponentProps, FC, useMemo, useState } from 'react';
 
 export type { Agent, AgentDeployment };
 
-// Structured shape used by the Agent Optimizer when inspecting NAT workflow
-// configs. The platform stores ``Agent.config`` as an arbitrary dict; only the
-// optimizer interprets these specific fields.
 export interface AgentConfig {
   functions?: Record<string, { _type: string }>;
   llms?: Record<
@@ -60,7 +57,6 @@ export interface AgentConfig {
   };
 }
 
-// Kept for backward compatibility with consumers (e.g. AgentDeploymentsListRoute)
 export type AgentItem = Agent & { id: string };
 export type AgentEntity = AgentDeployment & { id: string };
 
@@ -185,15 +181,12 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
     try {
       if (deleteState?.kind === 'agent') {
         const agentName = deleteState.item.name;
-        // The agent API rejects deletion while live deployments reference it, so
-        // delete the deployments first (marks them deleting), then the agent.
         const deployments = (deploymentsData ?? []).filter(
           (d): d is AgentDeployment & { name: string } => d.agent === agentName && !!d.name
         );
         await Promise.all(
           deployments.map((d) =>
             deleteDeploymentMutation.mutateAsync({ workspace, name: d.name }).catch((err) => {
-              // A deployment already gone (404) is fine; rethrow anything else.
               if ((err as { response?: { status?: number } })?.response?.status === 404) return;
               throw err;
             })
@@ -203,7 +196,6 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
       }
       return true;
     } catch {
-      // Error already surfaced via onError toast
       return false;
     }
   };
