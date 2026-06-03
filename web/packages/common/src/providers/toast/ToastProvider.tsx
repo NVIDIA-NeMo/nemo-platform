@@ -21,6 +21,24 @@ import { ToastContext } from './useToast';
 export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastDescriptor[]>([]);
   const timeoutRefs = useRef<Record<string, NodeJS.Timeout>>({});
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // KUI v1 modals use the native <dialog> element via showModal(), which puts
+  // them in the browser's top layer. The top layer ignores z-index from the
+  // normal stacking context, so toasts rendered as ordinary fixed-position
+  // children disappear behind any open modal's backdrop.
+  //
+  // Fix: render the toast container as a manual Popover and call .showPopover()
+  // imperatively at addToast time. Popovers also enter the top layer, and
+  // "last opened wins" — re-issuing showPopover() promotes the container above
+  // any dialog that opened after the previous call. With no toasts, the
+  // popover stays open but renders nothing visible (no children inside).
+  const promoteToTopLayer = useCallback(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    if (el.matches(':popover-open')) el.hidePopover();
+    el.showPopover();
+  }, []);
 
   // Cleanup all timeouts when component unmounts to prevent state updates after unmount
   useEffect(() => {
@@ -66,6 +84,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
       const durationMs = rawDurationMs === false ? undefined : rawDurationMs;
       const newToastId = `toast-${crypto.randomUUID()}`;
 
+      promoteToTopLayer();
       setToasts((prevToasts) => [
         ...prevToasts,
         {
@@ -93,7 +112,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
 
       return newToastId;
     },
-    [removeToast]
+    [promoteToTopLayer, removeToast]
   );
 
   const contextValue: ToastContextValue = useMemo(
@@ -130,7 +149,15 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
   return (
     <ToastContext.Provider value={contextValue}>
       {children}
-      <div className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 flex flex-col items-end gap-4 z-1100 max-w-md">
+      <div
+        ref={containerRef}
+        popover="manual"
+        // UA stylesheet on `[popover]` sets `display: none` until open and
+        // `inset: 0; margin: auto` (centers the element). `left-auto
+        // bottom-auto m-0` releases those so `top-...` + `right-4` anchor to
+        // the upper-right corner; `[&:popover-open]:flex` restores our layout.
+        className="fixed top-[calc(var(--nv-app-bar-height)+1rem)] right-4 left-auto bottom-auto m-0 hidden flex-col items-end gap-4 bg-transparent p-0 z-1100 max-w-md [&:popover-open]:flex"
+      >
         {toasts.map((toast) => (
           <Toast
             key={toast.id}
