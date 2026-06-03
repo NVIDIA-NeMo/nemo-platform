@@ -5594,7 +5594,7 @@
         {
           "package": {
             "name": "transformers",
-            "version": "5.10.2",
+            "version": "5.5.0",
             "ecosystem": "PyPI"
           },
           "licenses": [

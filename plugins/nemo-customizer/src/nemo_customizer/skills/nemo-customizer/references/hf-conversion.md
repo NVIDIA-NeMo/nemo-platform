@@ -52,3 +52,25 @@ for split in ("train", "validation"):
 ```
 
 Then upload (see main skill). Validate with `nemo files list <DATASET_NAME> --workspace default`.
+
+## Mapping to job JSON
+
+The same converted JSONL works for both backends, but the **dataset block in job JSON is shaped per backend**.
+
+| Backend | Row format used | Dataset block in job JSON |
+|---------|----------------|---------------------------|
+| automodel (CHAT) | `to_chat` output (`messages`) | `{ "training": "default/<DATASET_NAME>", "validation": "default/<DATASET_NAME>" }` — schema auto-detected from row 1 |
+| automodel (SFT)  | `to_sft` output (`prompt` / `completion`) | same as above (no `prompt_template`) |
+| **unsloth (preferred)** | `to_chat` output (`messages`) | `{ "path": "default/<DATASET_NAME>", "apply_chat_template": true }` (+ `validation_path` if present) |
+| unsloth (no chat template) | **Custom `to_text` rendering**: emit `{"text": "<prompt>\n<completion>"}` rows (not the `to_sft` output directly) | `{ "path": "default/<DATASET_NAME>", "text_field": "text" }` |
+
+**Note:** Unsloth does **not** read the automodel SFT shape `{"prompt": ..., "completion": ...}`. If `has_chat` is False *and* the user picked unsloth, swap `to_sft` for a `to_text` that renders one `text` column. Sketch:
+
+```python
+def to_text(ex):
+    row = to_chat(ex)
+    user, assistant = row["messages"][0]["content"], row["messages"][1]["content"]
+    return {"text": f"{user}\n{assistant}"}
+```
+
+For the chat path (`has_chat` True), the `to_chat` JSONL works unchanged across both backends — only the job-JSON dataset block differs.

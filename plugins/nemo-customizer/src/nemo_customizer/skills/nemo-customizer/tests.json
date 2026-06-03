@@ -32,6 +32,26 @@
       "expected_skill": "nemo-customizer"
     },
     {
+      "type": "explicit",
+      "prompt": "Use nemo customization unsloth run to do a LoRA SFT on my workstation GPU.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "explicit",
+      "prompt": "Help me set up the unsloth --venv and run a local fine-tune via nemo customization.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "My platform has no GPU profile but my laptop has an RTX 5880 — fine-tune Qwen3-1.7B with LoRA locally.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
+      "type": "implicit",
+      "prompt": "I want a quick LoRA adapter on Qwen with bitsandbytes 4-bit loading, single GPU, in-process.",
+      "expected_skill": "nemo-customizer"
+    },
+    {
       "type": "contextual",
       "prompt": "NeMo Platform is running. Before any customization training, help me explore what my support agent should do.",
       "expected_skill_not": "nemo-customizer"

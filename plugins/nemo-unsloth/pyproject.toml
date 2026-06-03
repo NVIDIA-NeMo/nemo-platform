@@ -1,0 +1,56 @@
+[project]
+name = "nemo-unsloth-plugin"
+version = "0.1.0"
+description = "Unsloth GPU fine-tuning customization contributor for NeMo Platform (container submit)."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+    "nemo-platform-plugin",
+    "nemo-platform",
+    "nmp-unsloth",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.6.1",
+    "typer>=0.12.5",
+]
+
+# Heavy ML deps no longer live in any plugin extra — they are baked
+# into the nmp-unsloth-training container image. The plugin (and the
+# nmp-unsloth task package) only need the lightweight compile-side
+# imports in this process. Users do not install unsloth/torch locally.
+
+[project.entry-points."nemo.customization.contributors"]
+unsloth = "nemo_unsloth_plugin.contributor:UnslothContributor"
+
+[project.entry-points."nemo.jobs"]
+"customization.unsloth.jobs" = "nemo_unsloth_plugin.jobs.jobs:UnslothJob"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_unsloth_plugin"]
+
+[tool.uv.sources]
+nemo-platform-plugin = { workspace = true }
+nemo-platform = { workspace = true }
+nemo-customizer-plugin = { workspace = true }
+nmp-unsloth = { workspace = true }
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.25.3",
+    "ruff>=0.11.8",
+    "fastapi>=0.115.0",
+    "httpx>=0.27.0",
+    "nemo-customizer-plugin",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.pyright]
+extraPaths = ["src"]
