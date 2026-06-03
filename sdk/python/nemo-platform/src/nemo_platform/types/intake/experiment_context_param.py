@@ -15,26 +15,18 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from __future__ import annotations
 
-from ..._models import BaseModel
+from typing_extensions import Required, TypedDict
 
-__all__ = ["EvaluatorAggregate"]
+__all__ = ["ExperimentContextParam"]
 
 
-class EvaluatorAggregate(BaseModel):
-    """Aggregate statistics over evaluator scores or session-level metric values."""
+class ExperimentContextParam(TypedDict, total=False):
+    """Experiment context accepted by ingest endpoints."""
 
-    count: Optional[int] = None
+    experiment_id: Required[str]
+    """Name of an existing Experiment entity."""
 
-    mean: Optional[float] = None
-
-    median: Optional[float] = None
-
-    p90: Optional[float] = None
-
-    p95: Optional[float] = None
-
-    p99: Optional[float] = None
-
-    sum: Optional[float] = None
+    test_case_id: str
+    """Optional producer-supplied test case id."""

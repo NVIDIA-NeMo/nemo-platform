@@ -13,6 +13,7 @@ from typing import Any, Mapping, Self
 from nmp.intake.spans.span_attribute_catalog import (
     COST_SCALE,
     KNOWN_BAG_KEYS,
+    LEGACY_BAG_KEY_ALIASES,
     SOURCE_ONLY_KEYS,
     SOURCE_ONLY_PREFIXES,
     AttributeBag,
@@ -48,7 +49,14 @@ class SpanAttributeBags:
     def get_field(self, field: SpanAttributeField | str) -> str | int | float | bool | Decimal | None:
         spec = spec_for_field(field)
         bag = self._bag_for_spec(spec)
-        return from_bag(bag.get(spec.bag_key), spec)
+        value = from_bag(bag.get(spec.bag_key), spec)
+        if value is not None:
+            return value
+        for alias in LEGACY_BAG_KEY_ALIASES.get(spec.field, ()):
+            value = from_bag(bag.get(alias), spec)
+            if value is not None:
+                return value
+        return None
 
     def put_field(self, field: SpanAttributeField | str, value: Any) -> None:
         self.put_spec(spec_for_field(field), value)
@@ -106,11 +114,11 @@ class SpanAttributeBags:
             parsed_atif_raw = json.loads(atif_raw)
             if not isinstance(parsed_atif_raw, dict):
                 raise TypeError("Expected atif.raw to contain a JSON object")
-            parsed_atif_raw.pop("evaluation.metadata", None)
+            parsed_atif_raw.pop("experiment.metadata", None)
             raw.update(parsed_atif_raw)
 
         for key, value in self.string.items():
-            if key not in {"atif.raw", "evaluation.metadata"} and key not in KNOWN_BAG_KEYS:
+            if key not in {"atif.raw", "experiment.metadata"} and key not in KNOWN_BAG_KEYS:
                 raw[key] = value
         for key, value in self.number.items():
             if key not in KNOWN_BAG_KEYS:
@@ -123,12 +131,12 @@ class SpanAttributeBags:
         return json.dumps(raw, separators=(",", ":"), ensure_ascii=False)
 
     def evaluation_metadata(self) -> dict[str, Any] | None:
-        value = self.string.get("evaluation.metadata")
+        value = self.string.get("experiment.metadata") or self.string.get("evaluation.metadata")
         if value is None:
             return None
         parsed = json.loads(value)
         if not isinstance(parsed, dict):
-            raise TypeError("Expected evaluation.metadata to contain a JSON object")
+            raise TypeError("Expected experiment/evaluation metadata to contain a JSON object")
         return parsed
 
     def _bag_for_spec(self, spec: AttributeSpec) -> dict[str, str] | dict[str, float] | dict[str, bool]:
