@@ -13,6 +13,8 @@ import {
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import { ClaudeCodeReasoningPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeReasoningPart';
+import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import {
@@ -124,6 +126,8 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                 contentClassName="mx-auto w-full max-w-180 px-density-2xl"
                 composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
                 viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
+                reasoningPartComponent={ClaudeCodeReasoningPart}
+                toolCallPartComponent={ClaudeCodeToolCallPart}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
                 emptyState={{

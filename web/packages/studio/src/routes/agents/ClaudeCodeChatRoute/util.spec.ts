@@ -46,7 +46,17 @@ describe('Claude Code utilities', () => {
       {
         id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1',
         role: 'assistant',
-        content: [{ type: 'text', text: 'I found the route.\n\nUsing Bash...' }],
+        content: [
+          { type: 'reasoning', text: 'checking' },
+          { type: 'text', text: 'I found the route.' },
+          {
+            type: 'tool-call',
+            toolCallId: 'claude-history-tool-Bash-2',
+            toolName: 'Bash',
+            args: { command: 'pwd' },
+            argsText: '{"command":"pwd"}',
+          },
+        ],
         status: { type: 'complete', reason: 'stop' },
       },
     ]);

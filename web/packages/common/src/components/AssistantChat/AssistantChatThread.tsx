@@ -5,7 +5,9 @@ import {
   ActionBarPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  type ReasoningMessagePartComponent,
   type TextMessagePartComponent,
+  type ToolCallMessagePartComponent,
   ThreadPrimitive,
 } from '@assistant-ui/react';
 import {
@@ -34,6 +36,8 @@ interface AssistantChatThreadProps {
   };
   contentClassName?: string;
   composerContainerClassName?: string;
+  reasoningPartComponent?: ReasoningMessagePartComponent;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
 }
 
@@ -41,9 +45,21 @@ const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
   <MessageContent content={text} />
 );
 
-const AssistantChatMessageContent = () => (
+const AssistantChatMessageContent = ({
+  reasoningPartComponent,
+  toolCallPartComponent,
+}: {
+  reasoningPartComponent?: ReasoningMessagePartComponent;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <>
-    <MessagePrimitive.Parts components={{ Text: AssistantChatTextPart }} />
+    <MessagePrimitive.Parts
+      components={{
+        Reasoning: reasoningPartComponent,
+        Text: AssistantChatTextPart,
+        tools: { Fallback: toolCallPartComponent },
+      }}
+    />
     <MessagePrimitive.Error>
       <Banner kind="inline" status="error" className="mt-density-sm">
         There was an error generating a response.
@@ -68,13 +84,22 @@ const CopyAction = () => (
   </Tooltip>
 );
 
-const AssistantMessage = () => (
+const AssistantMessage = ({
+  reasoningPartComponent,
+  toolCallPartComponent,
+}: {
+  reasoningPartComponent?: ReasoningMessagePartComponent;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="assistant"
     className="group/message self-stretch whitespace-pre-wrap"
   >
-    <AssistantChatMessageContent />
+    <AssistantChatMessageContent
+      reasoningPartComponent={reasoningPartComponent}
+      toolCallPartComponent={toolCallPartComponent}
+    />
     <div className="mt-density-sm flex h-8 items-center">
       <MessagePrimitive.If last>
         <ThreadPrimitive.If running>
@@ -99,14 +124,23 @@ const AssistantMessage = () => (
   </MessagePrimitive.Root>
 );
 
-const UserMessage = () => (
+const UserMessage = ({
+  reasoningPartComponent,
+  toolCallPartComponent,
+}: {
+  reasoningPartComponent?: ReasoningMessagePartComponent;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="user"
     className="group/message flex w-full flex-col items-end gap-density-xs whitespace-pre-wrap"
   >
     <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
-      <AssistantChatMessageContent />
+      <AssistantChatMessageContent
+        reasoningPartComponent={reasoningPartComponent}
+        toolCallPartComponent={toolCallPartComponent}
+      />
     </div>
     <div className="flex h-8 shrink-0 items-center">
       <ActionBarPrimitive.Root
@@ -233,35 +267,52 @@ export const AssistantChatThread = ({
   emptyState,
   contentClassName,
   composerContainerClassName,
+  reasoningPartComponent,
+  toolCallPartComponent,
   viewportClassName,
-}: AssistantChatThreadProps) => (
-  <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
-    <ThreadPrimitive.Viewport
-      className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
-    >
-      <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
-        <ThreadPrimitive.Empty>
-          <ChatEmptyState
-            className="h-full min-h-[250px] w-full"
-            slotHeading={emptyState?.slotHeading}
-            slotSubheading={emptyState?.slotSubheading}
+}: AssistantChatThreadProps) => {
+  const AssistantMessageWithReasoningPart = () => (
+    <AssistantMessage
+      reasoningPartComponent={reasoningPartComponent}
+      toolCallPartComponent={toolCallPartComponent}
+    />
+  );
+  const UserMessageWithReasoningPart = () => (
+    <UserMessage
+      reasoningPartComponent={reasoningPartComponent}
+      toolCallPartComponent={toolCallPartComponent}
+    />
+  );
+
+  return (
+    <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
+      <ThreadPrimitive.Viewport
+        className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
+      >
+        <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
+          <ThreadPrimitive.Empty>
+            <ChatEmptyState
+              className="h-full min-h-[250px] w-full"
+              slotHeading={emptyState?.slotHeading}
+              slotSubheading={emptyState?.slotSubheading}
+            />
+          </ThreadPrimitive.Empty>
+          <ThreadPrimitive.Messages
+            components={{
+              AssistantMessage: AssistantMessageWithReasoningPart,
+              UserMessage: UserMessageWithReasoningPart,
+              UserEditComposer,
+              SystemMessage: AssistantMessageWithReasoningPart,
+            }}
           />
-        </ThreadPrimitive.Empty>
-        <ThreadPrimitive.Messages
-          components={{
-            AssistantMessage,
-            UserMessage,
-            UserEditComposer,
-            SystemMessage: AssistantMessage,
-          }}
-        />
-      </Stack>
-      <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
-        Scroll to bottom
-      </ThreadPrimitive.ScrollToBottom>
-    </ThreadPrimitive.Viewport>
-    <Flex className={cn('w-full', composerContainerClassName)}>
-      <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
-    </Flex>
-  </ThreadPrimitive.Root>
-);
+        </Stack>
+        <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
+          Scroll to bottom
+        </ThreadPrimitive.ScrollToBottom>
+      </ThreadPrimitive.Viewport>
+      <Flex className={cn('w-full', composerContainerClassName)}>
+        <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+      </Flex>
+    </ThreadPrimitive.Root>
+  );
+};

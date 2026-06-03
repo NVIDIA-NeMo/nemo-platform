@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  getAssistantPartsFromClaudeEvent,
   getAssistantTextFromClaudeEvent,
   parseJsonObject,
   parseSseChunk,
@@ -28,18 +29,32 @@ describe('Claude Code stream utilities', () => {
     expect(parsed.rest).toBe('event: don');
   });
 
-  it('extracts assistant text and tool summaries from Claude Code events', () => {
-    expect(
-      getAssistantTextFromClaudeEvent({
-        type: 'assistant',
-        message: {
-          content: [
-            { type: 'text', text: 'I can check that.' },
-            { type: 'tool_use', name: 'Bash' },
-          ],
-        },
-      })
-    ).toBe('I can check that.\n\nUsing Bash...');
+  it('extracts assistant reasoning, text, and tool-call parts from Claude Code events', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'thinking', thinking: 'checking the repo\nthen reading the route' },
+          { type: 'text', text: 'I can check that.' },
+          { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'pwd' } },
+        ],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([
+      { type: 'reasoning', text: 'checking the repo\nthen reading the route' },
+      { type: 'text', text: 'I can check that.' },
+      {
+        type: 'tool-call',
+        toolCallId: 'toolu_1',
+        toolName: 'Bash',
+        args: { command: 'pwd' },
+        argsText: '{"command":"pwd"}',
+      },
+    ]);
+    expect(getAssistantTextFromClaudeEvent(event)).toBe(
+      'checking the repo\nthen reading the routeI can check that.'
+    );
   });
 
   it('returns undefined and logs when JSON parsing fails', () => {

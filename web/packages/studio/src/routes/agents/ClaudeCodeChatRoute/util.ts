@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ThreadMessageLike } from '@assistant-ui/react';
+import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { COMPLETE_STATUS } from '@nemo/common/src/components/AssistantChat/constants';
+import { createClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeSessionHistory,
@@ -23,10 +24,21 @@ export const getSelectedClaudeCodeSessionId = (search: string): string | undefin
   return sessionId || undefined;
 };
 
-const getAssistantPartText = (part: ClaudeCodeAssistantHistoryPart): string => {
-  if (part.type === 'text') return part.text;
-  if (part.type === 'tool_use') return `\n\nUsing ${part.name || 'tool'}...`;
-  return '';
+const getAssistantMessagePart = (
+  part: ClaudeCodeAssistantHistoryPart,
+  index: number
+): ThreadAssistantMessagePart | undefined => {
+  if (part.type === 'thinking') return { type: 'reasoning', text: part.thinking };
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  if (part.type === 'tool_use') {
+    const toolName = part.name || 'tool';
+    return createClaudeCodeToolCallPart({
+      input: part.input,
+      toolCallId: `claude-history-tool-${toolName}-${index}`,
+      toolName,
+    });
+  }
+  return undefined;
 };
 
 export const getClaudeCodeHistoryMessages = (
@@ -44,13 +56,15 @@ export const getClaudeCodeHistoryMessages = (
         };
       }
 
-      const text = item.parts.map(getAssistantPartText).join('').trim();
-      if (!text) return undefined;
+      const content = item.parts
+        .map(getAssistantMessagePart)
+        .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
+      if (!content.length) return undefined;
 
       return {
         id: `${history.session_id}-${index}`,
         role: 'assistant',
-        content: [{ type: 'text', text }],
+        content,
         status: COMPLETE_STATUS,
       };
     })
