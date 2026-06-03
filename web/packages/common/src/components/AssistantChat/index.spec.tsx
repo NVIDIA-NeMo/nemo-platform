@@ -148,6 +148,19 @@ describe('AssistantChat', () => {
     interactionTimeoutMs
   );
 
+  it('renders composer override content in place of the prompt input', () => {
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        workspace="default"
+        composerOverride={<div>Approval required</div>}
+      />
+    );
+
+    expect(screen.getByText('Approval required')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Task prompt/i })).not.toBeInTheDocument();
+  });
+
   it(
     'edits a user message and re-runs inference with the edited prompt',
     async () => {
@@ -215,6 +228,27 @@ describe('AssistantChat', () => {
       );
       expect(screen.getByRole('button', { name: /Submit/i })).toBeInTheDocument();
       expect(screen.getByText('0 this is an example response')).toBeInTheDocument();
+    },
+    interactionTimeoutMs
+  );
+
+  it(
+    'can hide the running indicator while a stream is pending',
+    async () => {
+      const stream = createHangingStream('Waiting for user input.');
+      mocks.createChatCompletion.mockResolvedValueOnce(stream);
+
+      renderAssistantChat(
+        <AssistantChat model="test-model" workspace="default" showRunningIndicator={false} />
+      );
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Need input');
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+      expect(await screen.findByText('Waiting for user input.')).toBeInTheDocument();
+      expect(screen.queryByTestId('assistant-chat-skeleton')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
     },
     interactionTimeoutMs
   );

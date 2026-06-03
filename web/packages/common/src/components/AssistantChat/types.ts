@@ -4,6 +4,9 @@
 import type { ThreadMessageLike } from '@assistant-ui/react';
 import type { PromptData } from '@nemo/sdk/generated/platform/schema';
 import type { ChatCompletionTool } from 'openai/resources/index.mjs';
+import type { ReactNode } from 'react';
+
+import type { AssistantChatThreadAttributes } from './AssistantChatThread';
 
 export interface AssistantChatProps {
   /**
@@ -33,6 +36,8 @@ export interface AssistantChatProps {
   assistantName?: string;
   placeholder?: string;
   disabled?: boolean;
+  showRunningIndicator?: boolean;
+  attributes?: AssistantChatThreadAttributes;
   className?: string;
   initialMessages?: readonly ThreadMessageLike[];
   onError?: (error: Error) => void;
@@ -40,4 +45,5 @@ export interface AssistantChatProps {
     slotHeading?: string;
     slotSubheading?: string;
   };
+  composerOverride?: ReactNode;
 }

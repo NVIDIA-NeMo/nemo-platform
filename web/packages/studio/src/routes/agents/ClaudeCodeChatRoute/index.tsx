@@ -6,6 +6,7 @@ import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/A
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { AgentDecisionInput } from '@studio/components/agents/AgentDecisionInput';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
@@ -85,7 +86,17 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const consumedInitialPromptRef = useRef<string | undefined>(undefined);
-  const { handleReset, runtime, sessionId, submitPrompt } = useClaudeCodeChatRuntime({
+  const {
+    decisionChoices,
+    decisionRequest,
+    decisionStatus,
+    handleReset,
+    resolveDecisionRequest,
+    runtime,
+    sessionId,
+    skipDecisionRequest,
+    submitPrompt,
+  } = useClaudeCodeChatRuntime({
     initialMessages,
     initialSessionId,
     onError: (error) => toast.error(error.message),
@@ -126,10 +137,23 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                 viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
+                showRunningIndicator={!decisionRequest}
                 emptyState={{
                   slotHeading: 'Start a Claude Code session',
                   slotSubheading: 'Ask Claude Code to work in this workspace.',
                 }}
+                composerOverride={
+                  decisionRequest ? (
+                    <AgentDecisionInput
+                      request={decisionRequest}
+                      choices={decisionChoices}
+                      defaultChoiceId={decisionChoices[0]?.id}
+                      status={decisionStatus}
+                      onSubmit={resolveDecisionRequest}
+                      onSkip={skipDecisionRequest}
+                    />
+                  ) : undefined
+                }
               />
             </AssistantRuntimeProvider>
           </Stack>

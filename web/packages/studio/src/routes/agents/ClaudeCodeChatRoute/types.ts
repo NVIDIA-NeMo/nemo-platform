@@ -3,8 +3,22 @@
 
 export interface ClaudeCodeStreamHandlers {
   onClaudeEvent: (event: unknown) => void;
+  onPermissionRequest: (request: ClaudeCodePermissionRequest) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+}
+
+export interface ClaudeCodePermissionRequest {
+  requestId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  toolUseId?: string;
+}
+
+export interface ClaudeCodePermissionDecision {
+  approved: boolean;
+  reason?: string;
+  updatedInput?: Record<string, unknown>;
 }
 
 export interface ClaudeCodeChatRouteState {
