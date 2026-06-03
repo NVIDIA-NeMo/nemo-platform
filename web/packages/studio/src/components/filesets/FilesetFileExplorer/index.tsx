@@ -440,12 +440,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
             </Flex>
           ) : (
             <>
-              <Stack
-                gap="density-md"
-                className={
-                  rowContents.length ? 'min-h-0 flex flex-col' : 'h-full min-h-0 flex flex-col'
-                }
-              >
+              <Stack gap="density-md" className="h-full min-h-0 flex flex-col">
                 <TableToolbar
                   aria-label="Dataset files toolbar"
                   className="min-w-0 shrink-0"
@@ -604,7 +599,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                     />
                   </Flex>
                 ) : (
-                  <Flex className="w-full overflow-hidden border-base border-1 rounded-lg">
+                  <Flex className="w-full min-h-0 flex-1 overflow-auto border-base border-1 rounded-lg">
                     <Table className="w-full" columns={columns} rows={rows} />
                   </Flex>
                 )}
