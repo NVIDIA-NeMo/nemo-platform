@@ -101,3 +101,44 @@ def test_prefix_collision_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     with pytest.raises(CustomizationRouterError, match="collision"):
         CustomizationRouterService()
+
+
+def test_shared_parent_prefix_with_disjoint_routes_is_ok(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two contributors mounting at the same parent prefix is fine as long as their
+    actual routes underneath don't collide. This is the automodel + unsloth case:
+    both register their jobs router at ``/v2/workspaces/{workspace}`` and add a
+    backend-scoped collection path via ``job_collection_path_for``.
+    """
+
+    def _make_contributor(backend_name: str) -> object:
+        class _Contributor:
+            name: ClassVar[str] = backend_name
+            dependencies: ClassVar[list[str]] = []
+
+            def get_routers(self) -> list[RouterSpec]:
+                router = APIRouter()
+
+                @router.post(f"/{backend_name}/jobs")
+                async def submit() -> dict[str, str]:
+                    return {"backend": backend_name}
+
+                return [
+                    RouterSpec(
+                        router=router,
+                        prefix="/v2/workspaces/{workspace}",
+                        tag=backend_name.title(),
+                    ),
+                ]
+
+            def get_cli(self) -> typer.Typer:
+                return typer.Typer()
+
+        return _Contributor()
+
+    monkeypatch.setattr(
+        "nemo_customizer.router.discover_customization_contributors",
+        lambda: {"automodel": _make_contributor("automodel"), "unsloth": _make_contributor("unsloth")},
+    )
+    # Should not raise.
+    service = CustomizationRouterService()
+    assert sorted(service._contributors.keys()) == ["automodel", "unsloth"]

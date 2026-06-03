@@ -22,6 +22,11 @@ _CONTRIBUTOR_SDK: dict[str, tuple[str, str, str]] = {
         "AutomodelCustomization",
         "AsyncAutomodelCustomization",
     ),
+    "unsloth": (
+        "nemo_unsloth_plugin.sdk.resources",
+        "UnslothCustomization",
+        "AsyncUnslothCustomization",
+    ),
 }
 
 
