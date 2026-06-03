@@ -268,11 +268,11 @@ class BaseRAGASMetric(MetricBase):
         translated_scores = {
             RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
         }
-        for name in declared:
-            if name in scores:
-                translated_scores[name] = scores[name]
-
-        aligned = {name: translated_scores[name] for name in declared if name in translated_scores}
+        aligned = {
+            name: scores[name] if name in scores else translated_scores[name]
+            for name in declared
+            if name in scores or name in translated_scores
+        }
         return aligned if aligned else translated_scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
@@ -356,14 +356,14 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluate failed with parse/output error; returning NaN score",
                 extra={"error": str(error), "metric_type": self.type},
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
         except (httpx.HTTPError, TimeoutError) as error:
             if self._ignore_request_failure():
                 self._log.warning(
                     "RAGAS judge inference failed and is ignored by metric policy; returning NaN score",
                     extra={"error": str(error), "metric_type": self.type},
                 )
-                return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+                return self._nan_scores_for_metrics(metrics)
             raise
         except Exception:
             raise
@@ -378,7 +378,7 @@ class BaseRAGASMetric(MetricBase):
                 "RAGAS evaluation returned no scores; returning NaN score",
                 extra={"metric_type": self.type},
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
 
         invalid_score_names = _invalid_score_names(scores)
         if invalid_score_names:
@@ -389,7 +389,7 @@ class BaseRAGASMetric(MetricBase):
                     "invalid_score_names": sorted(invalid_score_names),
                 },
             )
-            return self._align_scores_to_output_spec(self._nan_scores_for_metrics(metrics))
+            return self._nan_scores_for_metrics(metrics)
 
         return self._align_scores_to_output_spec(scores)
 
