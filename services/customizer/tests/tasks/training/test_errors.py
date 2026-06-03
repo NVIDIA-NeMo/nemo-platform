@@ -14,7 +14,6 @@ Tests the error mapping framework integration with Customizer (NeMo-RL / DPO):
 Automodel error conversion tests live in services/automodel/tests/tasks/training/test_errors.py.
 """
 
-import subprocess
 from collections import deque
 
 from nmp.customizer.tasks.training.errors.converter import (

@@ -109,7 +109,9 @@ def main() -> int:
     hf_home = storage.ephemeral / "hf"
     hf_home.mkdir(parents=True, exist_ok=True)
     os.environ.setdefault("HF_HOME", str(hf_home))
-    logger.info(f"Container: UNSLOTH_COMPILE_LOCATION={os.environ['UNSLOTH_COMPILE_LOCATION']} HF_HOME={os.environ['HF_HOME']}")
+    logger.info(
+        f"Container: UNSLOTH_COMPILE_LOCATION={os.environ['UNSLOTH_COMPILE_LOCATION']} HF_HOME={os.environ['HF_HOME']}"
+    )
 
     try:
         result = train_sft(

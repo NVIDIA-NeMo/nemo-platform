@@ -22,6 +22,7 @@ from .mamba_config import MambaConfig as MambaConfig
 from .backend_format import BackendFormat as BackendFormat
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .finetuning_type import FinetuningType as FinetuningType
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .api_endpoint_data import APIEndpointData as APIEndpointData
 from .file_storage_type import FileStorageType as FileStorageType

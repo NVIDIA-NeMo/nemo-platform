@@ -56,6 +56,7 @@ class TestAuthz:
 
 class TestRouters:
     def test_returns_two_router_specs(self, contributor: object) -> None:
+        specs = ()
         try:
             specs = contributor.get_routers()  # type: ignore[attr-defined]
         except ImportError as exc:

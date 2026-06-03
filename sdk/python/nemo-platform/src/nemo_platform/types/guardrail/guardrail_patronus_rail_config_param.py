@@ -19,13 +19,16 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .patronus_evaluate_api_params_param import PatronusEvaluateAPIParamsParam
+from .guardrail_patronus_evaluate_config_param import GuardrailPatronusEvaluateConfigParam
 
-__all__ = ["PatronusEvaluateConfigParam"]
+__all__ = ["GuardrailPatronusRailConfigParam"]
 
 
-class PatronusEvaluateConfigParam(TypedDict, total=False):
+class GuardrailPatronusRailConfigParam(TypedDict, total=False):
+    """Configuration data for the Patronus Evaluate API"""
+
+    input: GuardrailPatronusEvaluateConfigParam
     """Config for the Patronus Evaluate API call"""
 
-    evaluate_config: PatronusEvaluateAPIParamsParam
-    """Config to parameterize the Patronus Evaluate API call"""
+    output: GuardrailPatronusEvaluateConfigParam
+    """Config for the Patronus Evaluate API call"""

@@ -7,6 +7,16 @@ import logging
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.jobs.api_factory import (
+    ContainerSpec,
+    CPUExecutionProviderSpec,
+    EnvironmentVariable,
+    PlatformJobSpec,
+    PlatformJobStep,
+    ResourcesLimitsSpec,
+    ResourcesRequestsSpec,
+    ResourcesSpec,
+)
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DeploymentParams,
@@ -46,16 +56,6 @@ from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
 from nmp.automodel.platform_client import fetch_model_entity
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
-from nmp.common.jobs.api_factory import (
-    ContainerSpec,
-    CPUExecutionProviderSpec,
-    EnvironmentVariable,
-    PlatformJobSpec,
-    PlatformJobStep,
-    ResourcesLimitsSpec,
-    ResourcesRequestsSpec,
-    ResourcesSpec,
-)
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 

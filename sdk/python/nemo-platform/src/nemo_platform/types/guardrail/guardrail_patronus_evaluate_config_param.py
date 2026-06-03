@@ -15,16 +15,17 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from __future__ import annotations
 
-from ..._models import BaseModel
-from .patronus_evaluate_api_params import PatronusEvaluateAPIParams
+from typing_extensions import TypedDict
 
-__all__ = ["PatronusEvaluateConfig"]
+from .patronus_evaluate_api_params_param import PatronusEvaluateAPIParamsParam
+
+__all__ = ["GuardrailPatronusEvaluateConfigParam"]
 
 
-class PatronusEvaluateConfig(BaseModel):
+class GuardrailPatronusEvaluateConfigParam(TypedDict, total=False):
     """Config for the Patronus Evaluate API call"""
 
-    evaluate_config: Optional[PatronusEvaluateAPIParams] = None
+    evaluate_config: PatronusEvaluateAPIParamsParam
     """Config to parameterize the Patronus Evaluate API call"""

@@ -11,24 +11,20 @@ Mirror of :mod:`nmp.automodel.compile`. Invoked by the plugin's
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
+from nemo_platform import AsyncNeMoPlatform
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.unsloth.app.jobs.compiler import platform_job_config_compiler as _compile_canonical
-
-if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
-    from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
-    from nmp.unsloth.schemas import UnslothJobOutput
+from nmp.unsloth.schemas import UnslothJobOutput
 
 
 async def platform_job_config_compiler(
     *,
     workspace: str,
-    spec: "UnslothJobOutput",
-    sdk: "AsyncNeMoPlatform",
+    spec: UnslothJobOutput,
+    sdk: AsyncNeMoPlatform,
     job_name: str | None = None,
     profile: str | None = None,
-) -> "PlatformJobSpec":
+) -> PlatformJobSpec:
     """Compile a canonical unsloth job spec to a ``PlatformJobSpec``.
 
     Used by :meth:`UnslothJob.compile`. Container submit only — Unsloth

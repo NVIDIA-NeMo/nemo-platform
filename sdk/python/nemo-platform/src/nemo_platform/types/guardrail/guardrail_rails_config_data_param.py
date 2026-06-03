@@ -25,7 +25,6 @@ from .g_li_ner_detection_param import GLiNERDetectionParam
 from .pangea_rail_config_param import PangeaRailConfigParam
 from .clavata_rail_config_param import ClavataRailConfigParam
 from .injection_detection_param import InjectionDetectionParam
-from .patronus_rail_config_param import PatronusRailConfigParam
 from .private_ai_detection_param import PrivateAIDetectionParam
 from .content_safety_config_param import ContentSafetyConfigParam
 from .ai_defense_rail_config_param import AIDefenseRailConfigParam
@@ -36,11 +35,12 @@ from .fact_checking_rail_config_param import FactCheckingRailConfigParam
 from .guardrails_ai_rail_config_param import GuardrailsAIRailConfigParam
 from .jailbreak_detection_config_param import JailbreakDetectionConfigParam
 from .crowd_strike_aidr_rail_config_param import CrowdStrikeAidrRailConfigParam
+from .guardrail_patronus_rail_config_param import GuardrailPatronusRailConfigParam
 
-__all__ = ["RailsConfigDataParam"]
+__all__ = ["GuardrailRailsConfigDataParam"]
 
 
-class RailsConfigDataParam(TypedDict, total=False):
+class GuardrailRailsConfigDataParam(TypedDict, total=False):
     """Configuration data for specific rails that are supported out-of-the-box."""
 
     ai_defense: AIDefenseRailConfigParam
@@ -79,7 +79,7 @@ class RailsConfigDataParam(TypedDict, total=False):
     pangea: PangeaRailConfigParam
     """Configuration data for the Pangea AI Guard API"""
 
-    patronus: PatronusRailConfigParam
+    patronus: GuardrailPatronusRailConfigParam
     """Configuration data for the Patronus Evaluate API"""
 
     privateai: PrivateAIDetectionParam

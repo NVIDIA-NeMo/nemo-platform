@@ -19,7 +19,7 @@ from typing import Optional
 from datetime import datetime
 
 from ..._models import BaseModel
-from .rails_config import RailsConfig
+from .guardrail_rails_config import GuardrailRailsConfig
 
 __all__ = ["GuardrailConfig"]
 
@@ -46,7 +46,7 @@ class GuardrailConfig(BaseModel):
     workspace: str
     """Workspace identifier"""
 
-    data: Optional[RailsConfig] = None
+    data: Optional[GuardrailRailsConfig] = None
     """Configuration object for the models and the rails."""
 
     description: Optional[str] = None

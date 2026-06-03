@@ -21,12 +21,12 @@ from typing import Dict, Union
 from typing_extensions import TypeAlias, TypedDict
 
 from ..._types import SequenceNotStr
-from .rails_config_param import RailsConfigParam
 from .generation_options_param import GenerationOptionsParam
+from .guardrail_rails_config_param import GuardrailRailsConfigParam
 
 __all__ = ["GuardrailsDataParam", "Config"]
 
-Config: TypeAlias = Union[str, RailsConfigParam]
+Config: TypeAlias = Union[str, GuardrailRailsConfigParam]
 
 
 class GuardrailsDataParam(TypedDict, total=False):

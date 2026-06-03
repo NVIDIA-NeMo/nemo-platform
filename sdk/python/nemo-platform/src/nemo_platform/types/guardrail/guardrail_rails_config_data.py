@@ -24,7 +24,6 @@ from .g_li_ner_detection import GLiNERDetection
 from .pangea_rail_config import PangeaRailConfig
 from .clavata_rail_config import ClavataRailConfig
 from .injection_detection import InjectionDetection
-from .patronus_rail_config import PatronusRailConfig
 from .private_ai_detection import PrivateAIDetection
 from .content_safety_config import ContentSafetyConfig
 from .ai_defense_rail_config import AIDefenseRailConfig
@@ -35,11 +34,12 @@ from .fact_checking_rail_config import FactCheckingRailConfig
 from .guardrails_ai_rail_config import GuardrailsAIRailConfig
 from .jailbreak_detection_config import JailbreakDetectionConfig
 from .crowd_strike_aidr_rail_config import CrowdStrikeAidrRailConfig
+from .guardrail_patronus_rail_config import GuardrailPatronusRailConfig
 
-__all__ = ["RailsConfigData"]
+__all__ = ["GuardrailRailsConfigData"]
 
 
-class RailsConfigData(BaseModel):
+class GuardrailRailsConfigData(BaseModel):
     """Configuration data for specific rails that are supported out-of-the-box."""
 
     ai_defense: Optional[AIDefenseRailConfig] = None
@@ -78,7 +78,7 @@ class RailsConfigData(BaseModel):
     pangea: Optional[PangeaRailConfig] = None
     """Configuration data for the Pangea AI Guard API"""
 
-    patronus: Optional[PatronusRailConfig] = None
+    patronus: Optional[GuardrailPatronusRailConfig] = None
     """Configuration data for the Patronus Evaluate API"""
 
     privateai: Optional[PrivateAIDetection] = None

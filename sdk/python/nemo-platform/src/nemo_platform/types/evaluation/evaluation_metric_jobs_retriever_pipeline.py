@@ -15,20 +15,20 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Union
+from typing_extensions import TypeAlias
 
-from typing_extensions import TypedDict
+from .model import Model
+from ..._models import BaseModel
+from .model_ref import ModelRef
 
-from .patronus_evaluate_config_param import PatronusEvaluateConfigParam
+__all__ = ["EvaluationMetricJobsRetrieverPipeline", "EmbeddingsModel"]
 
-__all__ = ["PatronusRailConfigParam"]
+EmbeddingsModel: TypeAlias = Union[Model, ModelRef]
 
 
-class PatronusRailConfigParam(TypedDict, total=False):
-    """Configuration data for the Patronus Evaluate API"""
+class EvaluationMetricJobsRetrieverPipeline(BaseModel):
+    """Pipeline configuration for retriever-based evaluations."""
 
-    input: PatronusEvaluateConfigParam
-    """Config for the Patronus Evaluate API call"""
-
-    output: PatronusEvaluateConfigParam
-    """Config for the Patronus Evaluate API call"""
+    embeddings_model: EmbeddingsModel
+    """The embeddings model configuration."""

@@ -32,7 +32,9 @@ def create_atif(
         typer.Option("--schema-version", help="(required)"),
     ] = None,
     continued_trajectory_ref: Annotated[str | None, typer.Option("--continued-trajectory-ref")] = None,
-    evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
+    evaluation_context: Annotated[
+        str | None, typer.Option("--evaluation-context", help="Deprecated. (JSON string)")
+    ] = None,
     experiment_context: Annotated[
         str | None,
         typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),

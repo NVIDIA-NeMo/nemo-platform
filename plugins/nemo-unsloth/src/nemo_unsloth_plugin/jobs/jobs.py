@@ -24,8 +24,9 @@ Two responsibilities:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, cast
+from typing import ClassVar, cast
 
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
@@ -38,9 +39,6 @@ from pydantic import BaseModel
 
 from nemo_unsloth_plugin.schema import UnslothJobInput
 from nemo_unsloth_plugin.transform import transform_input_to_output
-
-if TYPE_CHECKING:
-    from nemo_platform import AsyncNeMoPlatform
 
 
 def _require_docker_runtime() -> None:
@@ -98,7 +96,7 @@ class UnslothJob(NemoJob):
         return await transform_input_to_output(
             job_input,
             workspace,
-            cast("AsyncNeMoPlatform", async_sdk),
+            cast(AsyncNeMoPlatform, async_sdk),
         )
 
     @classmethod
@@ -143,7 +141,7 @@ class UnslothJob(NemoJob):
         platform_spec = await platform_job_config_compiler(
             workspace=workspace,
             spec=canonical,
-            sdk=cast("AsyncNeMoPlatform", async_sdk),
+            sdk=cast(AsyncNeMoPlatform, async_sdk),
             job_name=job_name,
             profile=execution_profile,
         )

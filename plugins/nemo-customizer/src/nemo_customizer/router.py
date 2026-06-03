@@ -53,8 +53,7 @@ def _assert_no_route_collisions(contributors: dict[str, object]) -> None:
                     op = (method, full_path)
                     if op in seen:
                         raise CustomizationRouterError(
-                            f"Route collision: contributors {seen[op]!r} and {key!r} "
-                            f"both handle {method} {full_path}",
+                            f"Route collision: contributors {seen[op]!r} and {key!r} both handle {method} {full_path}",
                         )
                     seen[op] = key
 

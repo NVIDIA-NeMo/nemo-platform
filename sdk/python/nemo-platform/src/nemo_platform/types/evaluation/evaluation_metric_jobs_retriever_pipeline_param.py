@@ -15,20 +15,21 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
+from __future__ import annotations
+
 from typing import Union
-from typing_extensions import TypeAlias
+from typing_extensions import Required, TypeAlias, TypedDict
 
-from .model import Model
-from ..._models import BaseModel
 from .model_ref import ModelRef
+from .model_param import ModelParam
 
-__all__ = ["RetrieverPipeline", "EmbeddingsModel"]
+__all__ = ["EvaluationMetricJobsRetrieverPipelineParam", "EmbeddingsModel"]
 
-EmbeddingsModel: TypeAlias = Union[Model, ModelRef]
+EmbeddingsModel: TypeAlias = Union[ModelParam, ModelRef]
 
 
-class RetrieverPipeline(BaseModel):
+class EvaluationMetricJobsRetrieverPipelineParam(TypedDict, total=False):
     """Pipeline configuration for retriever-based evaluations."""
 
-    embeddings_model: EmbeddingsModel
+    embeddings_model: Required[EmbeddingsModel]
     """The embeddings model configuration."""

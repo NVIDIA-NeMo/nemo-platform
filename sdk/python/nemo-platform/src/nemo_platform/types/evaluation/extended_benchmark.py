@@ -29,8 +29,8 @@ from .rouge_metric import RougeMetric
 from .field_mapping import FieldMapping
 from .remote_metric import RemoteMetric
 from .system_metric import SystemMetric
-from ..files.fileset import Fileset
 from .llm_judge_metric import LLMJudgeMetric
+from .evaluation_fileset import EvaluationFileset
 from .exact_match_metric import ExactMatchMetric
 from .faithfulness_metric import FaithfulnessMetric
 from .number_check_metric import NumberCheckMetric
@@ -51,7 +51,7 @@ from .nemo_agent_toolkit_remote_metric import NeMoAgentToolkitRemoteMetric
 
 __all__ = ["ExtendedBenchmark", "Dataset", "Metric"]
 
-Dataset: TypeAlias = Union[DatasetRows, Fileset, FilesetRef]
+Dataset: TypeAlias = Union[DatasetRows, EvaluationFileset, FilesetRef]
 
 Metric: TypeAlias = Annotated[
     Union[

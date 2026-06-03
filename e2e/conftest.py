@@ -38,6 +38,8 @@ logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL_INTERVAL = 1.0
+_AUTH_READY_TIMEOUT = 60
+_E2E_ADMIN_EMAIL = "admin@example.com"
 _SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
 
 
@@ -62,15 +64,44 @@ def _wait_for_healthy(url: str, timeout: float = _HEALTH_TIMEOUT) -> bool:
     return False
 
 
+def _admin_headers() -> dict[str, str]:
+    return {
+        "X-NMP-Principal-Id": _E2E_ADMIN_EMAIL,
+        "X-NMP-Principal-Email": _E2E_ADMIN_EMAIL,
+    }
+
+
+def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool:
+    """Poll until platform seed has created admin role bindings."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            resp = httpx.get(
+                f"{url}/apis/entities/v2/workspaces",
+                headers=_admin_headers(),
+                timeout=2.0,
+            )
+            if resp.status_code == 200:
+                return True
+        except httpx.RequestError:
+            pass
+        time.sleep(_HEALTH_POLL_INTERVAL)
+    return False
+
+
 @contextlib.contextmanager
-def background_process(args: list[str], stdout: IO[Any] | None = None) -> Iterator[subprocess.Popen]:
+def background_process(
+    args: list[str],
+    stdout: IO[Any] | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[subprocess.Popen]:
     """Run a subprocess, yield the ``Popen``, and terminate on exit.
 
     Unlike ``Popen``'s built-in context manager (which only waits for the
     process), this sends SIGTERM/SIGKILL so long-running servers are
     cleaned up.
     """
-    proc = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT, env=env)
     try:
         yield proc
     finally:
@@ -105,14 +136,20 @@ def _services() -> Iterator[str]:
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
     args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
+    env = os.environ.copy()
+    env["NMP_SEED_ON_STARTUP"] = "true"
 
     logger.info("Starting nemo services on port %d", port)
 
     log_path = _SERVICES_LOG
-    with open(log_path, "w") as log_file, background_process(args, stdout=log_file) as proc:
+    with open(log_path, "w") as log_file, background_process(args, stdout=log_file, env=env) as proc:
         if not _wait_for_healthy(url):
             pytest.fail(
                 f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
+            )
+        if not _wait_for_auth_ready(url):
+            pytest.fail(
+                f"Platform auth seed did not become ready within {_AUTH_READY_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
             )
 
         logger.info("Platform services ready on port %d (pid %d)", port, proc.pid)
@@ -123,7 +160,11 @@ def _services() -> Iterator[str]:
 @pytest.fixture(scope="session")
 def sdk(_services: str) -> NeMoPlatform:
     """Provide an SDK client connected to the running platform."""
-    return NeMoPlatform(base_url=_services, max_retries=2)
+    return NeMoPlatform(
+        base_url=_services,
+        max_retries=2,
+        default_headers=_admin_headers(),
+    )
 
 
 @pytest.fixture(scope="function")

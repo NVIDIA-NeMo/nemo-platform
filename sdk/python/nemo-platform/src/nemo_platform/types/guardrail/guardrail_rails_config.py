@@ -18,16 +18,16 @@
 from typing import Dict, List, Optional
 
 from .model import Model
-from .rails import Rails
 from ..._models import BaseModel
 from .instruction import Instruction
 from .task_prompt import TaskPrompt
 from .tracing_config import TracingConfig
+from .guardrail_rails import GuardrailRails
 
-__all__ = ["RailsConfig"]
+__all__ = ["GuardrailRailsConfig"]
 
 
-class RailsConfig(BaseModel):
+class GuardrailRailsConfig(BaseModel):
     """Configuration object for the models and the rails."""
 
     actions_server_url: Optional[str] = None
@@ -69,7 +69,7 @@ class RailsConfig(BaseModel):
     prompts: Optional[List[TaskPrompt]] = None
     """The prompts that should be used for the various LLM tasks."""
 
-    rails: Optional[Rails] = None
+    rails: Optional[GuardrailRails] = None
     """Configuration of specific rails."""
 
     sample_conversation: Optional[str] = None

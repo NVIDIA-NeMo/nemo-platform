@@ -19,16 +19,16 @@ from typing import Dict, Union, Optional
 from typing_extensions import TypeAlias
 
 from ..._models import BaseModel
+from ..shared.fileset_metadata import FilesetMetadata
 from ..files.ngc_storage_config import NGCStorageConfig
-from ..files.fileset_metadata_param import FilesetMetadataParam
 from ..files.huggingface_storage_config import HuggingfaceStorageConfig
 
-__all__ = ["Fileset", "Storage"]
+__all__ = ["EvaluationFileset", "Storage"]
 
 Storage: TypeAlias = Union[NGCStorageConfig, HuggingfaceStorageConfig]
 
 
-class Fileset(BaseModel):
+class EvaluationFileset(BaseModel):
     """Fileset definition for use without persisting to the Files API."""
 
     storage: Storage
@@ -37,7 +37,7 @@ class Fileset(BaseModel):
     custom_fields: Optional[Dict[str, object]] = None
     """Custom fields for the fileset."""
 
-    metadata: Optional[FilesetMetadataParam] = None
+    metadata: Optional[FilesetMetadata] = None
     """Tagged metadata container - the key indicates the type.
 
     Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(

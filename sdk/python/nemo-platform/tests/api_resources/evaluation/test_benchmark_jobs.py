@@ -47,7 +47,7 @@ class TestBenchmarkJobs:
     def test_method_create(self, client: NeMoPlatform) -> None:
         benchmark_job = client.evaluation.benchmark_jobs.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         )
         assert_matches_type(BenchmarkEvaluationJob, benchmark_job, path=["response"])
 
@@ -57,7 +57,7 @@ class TestBenchmarkJobs:
         benchmark_job = client.evaluation.benchmark_jobs.create(
             workspace="workspace",
             spec={
-                "benchmark": "26f1kl_-n-71/4m_-__-35-",
+                "benchmark": "workspace/benchmark-name",
                 "params": {
                     "limit_samples": 1,
                     "parallelism": 1,
@@ -76,7 +76,7 @@ class TestBenchmarkJobs:
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.evaluation.benchmark_jobs.with_raw_response.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         )
 
         assert response.is_closed is True
@@ -89,7 +89,7 @@ class TestBenchmarkJobs:
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
         with client.evaluation.benchmark_jobs.with_streaming_response.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -105,7 +105,7 @@ class TestBenchmarkJobs:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             client.evaluation.benchmark_jobs.with_raw_response.create(
                 workspace="",
-                spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+                spec={"benchmark": "workspace/benchmark-name"},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -457,7 +457,7 @@ class TestAsyncBenchmarkJobs:
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
         benchmark_job = await async_client.evaluation.benchmark_jobs.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         )
         assert_matches_type(BenchmarkEvaluationJob, benchmark_job, path=["response"])
 
@@ -467,7 +467,7 @@ class TestAsyncBenchmarkJobs:
         benchmark_job = await async_client.evaluation.benchmark_jobs.create(
             workspace="workspace",
             spec={
-                "benchmark": "26f1kl_-n-71/4m_-__-35-",
+                "benchmark": "workspace/benchmark-name",
                 "params": {
                     "limit_samples": 1,
                     "parallelism": 1,
@@ -486,7 +486,7 @@ class TestAsyncBenchmarkJobs:
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.evaluation.benchmark_jobs.with_raw_response.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         )
 
         assert response.is_closed is True
@@ -499,7 +499,7 @@ class TestAsyncBenchmarkJobs:
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.evaluation.benchmark_jobs.with_streaming_response.create(
             workspace="workspace",
-            spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+            spec={"benchmark": "workspace/benchmark-name"},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -515,7 +515,7 @@ class TestAsyncBenchmarkJobs:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             await async_client.evaluation.benchmark_jobs.with_raw_response.create(
                 workspace="",
-                spec={"benchmark": "26f1kl_-n-71/4m_-__-35-"},
+                spec={"benchmark": "workspace/benchmark-name"},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")

@@ -83,7 +83,9 @@ class TestCompile:
     def test_compile_delegates_to_service_compiler(self) -> None:
         """When the runtime check passes, ``compile`` returns whatever the service builds."""
         canonical = _make_canonical()
-        fake_spec = SimpleNamespace(steps=["model-and-dataset-download", "training", "model-upload", "model-entity-creation"])
+        fake_spec = SimpleNamespace(
+            steps=["model-and-dataset-download", "training", "model-upload", "model-entity-creation"]
+        )
 
         with (
             patch("nemo_unsloth_plugin.jobs.jobs._require_docker_runtime"),

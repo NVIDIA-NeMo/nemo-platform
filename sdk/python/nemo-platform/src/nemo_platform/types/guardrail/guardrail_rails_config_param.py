@@ -21,15 +21,15 @@ from typing import Dict, Iterable
 from typing_extensions import TypedDict
 
 from .model_param import ModelParam
-from .rails_param import RailsParam
 from .instruction_param import InstructionParam
 from .task_prompt_param import TaskPromptParam
 from .tracing_config_param import TracingConfigParam
+from .guardrail_rails_param import GuardrailRailsParam
 
-__all__ = ["RailsConfigParam"]
+__all__ = ["GuardrailRailsConfigParam"]
 
 
-class RailsConfigParam(TypedDict, total=False):
+class GuardrailRailsConfigParam(TypedDict, total=False):
     """Configuration object for the models and the rails."""
 
     actions_server_url: str
@@ -71,7 +71,7 @@ class RailsConfigParam(TypedDict, total=False):
     prompts: Iterable[TaskPromptParam]
     """The prompts that should be used for the various LLM tasks."""
 
-    rails: RailsParam
+    rails: GuardrailRailsParam
     """Configuration of specific rails."""
 
     sample_conversation: str

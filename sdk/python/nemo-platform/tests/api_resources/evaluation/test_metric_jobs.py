@@ -49,7 +49,7 @@ class TestMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         )
         assert_matches_type(MetricEvaluationJob, metric_job, path=["response"])
@@ -61,7 +61,7 @@ class TestMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
                 "field_mapping": {
                     "context": "context",
                     "custom": {"foo": "J!"},
@@ -94,7 +94,7 @@ class TestMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         )
 
@@ -110,7 +110,7 @@ class TestMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         ) as response:
             assert not response.is_closed
@@ -129,7 +129,7 @@ class TestMetricJobs:
                 workspace="",
                 spec={
                     "dataset": {"rows": [{"foo": "bar"}]},
-                    "metric": "26f1kl_-n-71/4m_-__-35-",
+                    "metric": "workspace/metric-name",
                 },
             )
 
@@ -484,7 +484,7 @@ class TestAsyncMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         )
         assert_matches_type(MetricEvaluationJob, metric_job, path=["response"])
@@ -496,7 +496,7 @@ class TestAsyncMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
                 "field_mapping": {
                     "context": "context",
                     "custom": {"foo": "J!"},
@@ -529,7 +529,7 @@ class TestAsyncMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         )
 
@@ -545,7 +545,7 @@ class TestAsyncMetricJobs:
             workspace="workspace",
             spec={
                 "dataset": {"rows": [{"foo": "bar"}]},
-                "metric": "26f1kl_-n-71/4m_-__-35-",
+                "metric": "workspace/metric-name",
             },
         ) as response:
             assert not response.is_closed
@@ -564,7 +564,7 @@ class TestAsyncMetricJobs:
                 workspace="",
                 spec={
                     "dataset": {"rows": [{"foo": "bar"}]},
-                    "metric": "26f1kl_-n-71/4m_-__-35-",
+                    "metric": "workspace/metric-name",
                 },
             )
 

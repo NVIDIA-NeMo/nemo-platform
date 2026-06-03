@@ -51,7 +51,8 @@ def test_help_includes_getting_started():
     assert "Getting started:" in result.stdout
     assert "nemo docs --list" in result.stdout
     assert "nemo services run --help" in result.stdout
-    assert "Set up NeMo Platform: start services, configure a provider, install skills." in result.stdout
+    # Help panel truncates long command descriptions; match the visible prefix.
+    assert "Set up NeMo Platform: start services" in result.stdout
     assert "--help, -h" in result.stdout
     assert "nemo auth login --base-url" not in result.stdout
     assert "nemo quickstart configure" not in result.stdout

@@ -18,24 +18,22 @@
 from __future__ import annotations
 
 from .model import Model as Model
-from .rails import Rails as Rails
 from .input_rails import InputRails as InputRails
 from .instruction import Instruction as Instruction
 from .model_param import ModelParam as ModelParam
 from .rail_status import RailStatus as RailStatus
-from .rails_param import RailsParam as RailsParam
 from .status_enum import StatusEnum as StatusEnum
 from .task_prompt import TaskPrompt as TaskPrompt
 from .action_rails import ActionRails as ActionRails
 from .dialog_rails import DialogRails as DialogRails
 from .output_rails import OutputRails as OutputRails
-from .rails_config import RailsConfig as RailsConfig
 from .llm_call_info import LLMCallInfo as LLMCallInfo
 from .activated_rail import ActivatedRail as ActivatedRail
 from .function_param import FunctionParam as FunctionParam
 from .generation_log import GenerationLog as GenerationLog
 from .tracing_config import TracingConfig as TracingConfig
 from .executed_action import ExecutedAction as ExecutedAction
+from .guardrail_rails import GuardrailRails as GuardrailRails
 from .guardrails_data import GuardrailsData as GuardrailsData
 from .regex_detection import RegexDetection as RegexDetection
 from .retrieval_rails import RetrievalRails as RetrievalRails
@@ -48,7 +46,6 @@ from .reasoning_config import ReasoningConfig as ReasoningConfig
 from .tool_input_rails import ToolInputRails as ToolInputRails
 from .input_rails_param import InputRailsParam as InputRailsParam
 from .instruction_param import InstructionParam as InstructionParam
-from .rails_config_data import RailsConfigData as RailsConfigData
 from .task_prompt_param import TaskPromptParam as TaskPromptParam
 from .tool_output_rails import ToolOutputRails as ToolOutputRails
 from .action_rails_param import ActionRailsParam as ActionRailsParam
@@ -62,7 +59,6 @@ from .log_adapter_config import LogAdapterConfig as LogAdapterConfig
 from .model_cache_config import ModelCacheConfig as ModelCacheConfig
 from .output_rails_param import OutputRailsParam as OutputRailsParam
 from .pangea_rail_config import PangeaRailConfig as PangeaRailConfig
-from .rails_config_param import RailsConfigParam as RailsConfigParam
 from .single_call_config import SingleCallConfig as SingleCallConfig
 from .clavata_rail_config import ClavataRailConfig as ClavataRailConfig
 from .function_call_param import FunctionCallParam as FunctionCallParam
@@ -72,11 +68,11 @@ from .pangea_rail_options import PangeaRailOptions as PangeaRailOptions
 from .clavata_rail_options import ClavataRailOptions as ClavataRailOptions
 from .config_create_params import ConfigCreateParams as ConfigCreateParams
 from .config_update_params import ConfigUpdateParams as ConfigUpdateParams
-from .patronus_rail_config import PatronusRailConfig as PatronusRailConfig
 from .private_ai_detection import PrivateAIDetection as PrivateAIDetection
 from .tracing_config_param import TracingConfigParam as TracingConfigParam
 from .user_messages_config import UserMessagesConfig as UserMessagesConfig
 from .content_safety_config import ContentSafetyConfig as ContentSafetyConfig
+from .guardrail_rails_param import GuardrailRailsParam as GuardrailRailsParam
 from .guardrails_data_param import GuardrailsDataParam as GuardrailsDataParam
 from .regex_detection_param import RegexDetectionParam as RegexDetectionParam
 from .retrieval_rails_param import RetrievalRailsParam as RetrievalRailsParam
@@ -84,11 +80,11 @@ from .ai_defense_rail_config import AIDefenseRailConfig as AIDefenseRailConfig
 from .auto_align_rail_config import AutoAlignRailConfig as AutoAlignRailConfig
 from .guardrail_check_params import GuardrailCheckParams as GuardrailCheckParams
 from .guardrail_configs_page import GuardrailConfigsPage as GuardrailConfigsPage
+from .guardrail_rails_config import GuardrailRailsConfig as GuardrailRailsConfig
 from .message_template_param import MessageTemplateParam as MessageTemplateParam
 from .model_parameters_param import ModelParametersParam as ModelParametersParam
 from .reasoning_config_param import ReasoningConfigParam as ReasoningConfigParam
 from .tool_input_rails_param import ToolInputRailsParam as ToolInputRailsParam
-from .rails_config_data_param import RailsConfigDataParam as RailsConfigDataParam
 from .regex_detection_options import RegexDetectionOptions as RegexDetectionOptions
 from .tool_output_rails_param import ToolOutputRailsParam as ToolOutputRailsParam
 from .trend_micro_rail_config import TrendMicroRailConfig as TrendMicroRailConfig
@@ -101,7 +97,6 @@ from .guardrail_check_response import GuardrailCheckResponse as GuardrailCheckRe
 from .log_adapter_config_param import LogAdapterConfigParam as LogAdapterConfigParam
 from .model_cache_config_param import ModelCacheConfigParam as ModelCacheConfigParam
 from .pangea_rail_config_param import PangeaRailConfigParam as PangeaRailConfigParam
-from .patronus_evaluate_config import PatronusEvaluateConfig as PatronusEvaluateConfig
 from .sensitive_data_detection import SensitiveDataDetection as SensitiveDataDetection
 from .single_call_config_param import SingleCallConfigParam as SingleCallConfigParam
 from .clavata_rail_config_param import ClavataRailConfigParam as ClavataRailConfigParam
@@ -113,13 +108,14 @@ from .pangea_rail_options_param import PangeaRailOptionsParam as PangeaRailOptio
 from .clavata_rail_options_param import ClavataRailOptionsParam as ClavataRailOptionsParam
 from .g_li_ner_detection_options import GLiNERDetectionOptions as GLiNERDetectionOptions
 from .jailbreak_detection_config import JailbreakDetectionConfig as JailbreakDetectionConfig
-from .patronus_rail_config_param import PatronusRailConfigParam as PatronusRailConfigParam
 from .private_ai_detection_param import PrivateAIDetectionParam as PrivateAIDetectionParam
 from .user_messages_config_param import UserMessagesConfigParam as UserMessagesConfigParam
 from .content_safety_config_param import ContentSafetyConfigParam as ContentSafetyConfigParam
+from .guardrail_rails_config_data import GuardrailRailsConfigData as GuardrailRailsConfigData
 from .ai_defense_rail_config_param import AIDefenseRailConfigParam as AIDefenseRailConfigParam
 from .auto_align_rail_config_param import AutoAlignRailConfigParam as AutoAlignRailConfigParam
 from .generation_log_options_param import GenerationLogOptionsParam as GenerationLogOptionsParam
+from .guardrail_rails_config_param import GuardrailRailsConfigParam as GuardrailRailsConfigParam
 from .patronus_evaluate_api_params import PatronusEvaluateAPIParams as PatronusEvaluateAPIParams
 from .private_ai_detection_options import PrivateAIDetectionOptions as PrivateAIDetectionOptions
 from .crowd_strike_aidr_rail_config import CrowdStrikeAidrRailConfig as CrowdStrikeAidrRailConfig
@@ -128,21 +124,24 @@ from .output_rails_streaming_config import OutputRailsStreamingConfig as OutputR
 from .regex_detection_options_param import RegexDetectionOptionsParam as RegexDetectionOptionsParam
 from .trend_micro_rail_config_param import TrendMicroRailConfigParam as TrendMicroRailConfigParam
 from .generation_rails_options_param import GenerationRailsOptionsParam as GenerationRailsOptionsParam
+from .guardrail_patronus_rail_config import GuardrailPatronusRailConfig as GuardrailPatronusRailConfig
 from .guardrails_ai_validator_config import GuardrailsAIValidatorConfig as GuardrailsAIValidatorConfig
-from .patronus_evaluate_config_param import PatronusEvaluateConfigParam as PatronusEvaluateConfigParam
 from .sensitive_data_detection_param import SensitiveDataDetectionParam as SensitiveDataDetectionParam
 from .fact_checking_rail_config_param import FactCheckingRailConfigParam as FactCheckingRailConfigParam
 from .guardrails_ai_rail_config_param import GuardrailsAIRailConfigParam as GuardrailsAIRailConfigParam
 from .g_li_ner_detection_options_param import GLiNERDetectionOptionsParam as GLiNERDetectionOptionsParam
 from .jailbreak_detection_config_param import JailbreakDetectionConfigParam as JailbreakDetectionConfigParam
 from .sensitive_data_detection_options import SensitiveDataDetectionOptions as SensitiveDataDetectionOptions
+from .guardrail_rails_config_data_param import GuardrailRailsConfigDataParam as GuardrailRailsConfigDataParam
 from .chat_completion_tool_message_param import ChatCompletionToolMessageParam as ChatCompletionToolMessageParam
 from .chat_completion_user_message_param import ChatCompletionUserMessageParam as ChatCompletionUserMessageParam
+from .guardrail_patronus_evaluate_config import GuardrailPatronusEvaluateConfig as GuardrailPatronusEvaluateConfig
 from .patronus_evaluate_api_params_param import PatronusEvaluateAPIParamsParam as PatronusEvaluateAPIParamsParam
 from .private_ai_detection_options_param import PrivateAIDetectionOptionsParam as PrivateAIDetectionOptionsParam
 from .crowd_strike_aidr_rail_config_param import CrowdStrikeAidrRailConfigParam as CrowdStrikeAidrRailConfigParam
 from .output_rails_streaming_config_param import OutputRailsStreamingConfigParam as OutputRailsStreamingConfigParam
 from .chat_completion_system_message_param import ChatCompletionSystemMessageParam as ChatCompletionSystemMessageParam
+from .guardrail_patronus_rail_config_param import GuardrailPatronusRailConfigParam as GuardrailPatronusRailConfigParam
 from .guardrails_ai_validator_config_param import GuardrailsAIValidatorConfigParam as GuardrailsAIValidatorConfigParam
 from .patronus_evaluation_success_strategy import PatronusEvaluationSuccessStrategy as PatronusEvaluationSuccessStrategy
 from .chat_completion_function_message_param import (
@@ -162,4 +161,7 @@ from .chat_completion_message_tool_call_param import (
 )
 from .chat_completion_content_part_image_param import (
     ChatCompletionContentPartImageParam as ChatCompletionContentPartImageParam,
+)
+from .guardrail_patronus_evaluate_config_param import (
+    GuardrailPatronusEvaluateConfigParam as GuardrailPatronusEvaluateConfigParam,
 )

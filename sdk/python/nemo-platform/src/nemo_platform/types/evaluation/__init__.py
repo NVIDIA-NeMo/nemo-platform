@@ -21,7 +21,6 @@ from .agent import Agent as Agent
 from .model import Model as Model
 from .metric import Metric as Metric
 from .rubric import Rubric as Rubric
-from .fileset import Fileset as Fileset
 from .benchmark import Benchmark as Benchmark
 from .f1_metric import F1Metric as F1Metric
 from .histogram import Histogram as Histogram
@@ -44,7 +43,6 @@ from .rubric_param import RubricParam as RubricParam
 from .rubric_score import RubricScore as RubricScore
 from .benchmark_ref import BenchmarkRef as BenchmarkRef
 from .field_mapping import FieldMapping as FieldMapping
-from .fileset_param import FilesetParam as FilesetParam
 from .histogram_bin import HistogramBin as HistogramBin
 from .remote_metric import RemoteMetric as RemoteMetric
 from .system_metric import SystemMetric as SystemMetric
@@ -64,6 +62,7 @@ from .range_score_param import RangeScoreParam as RangeScoreParam
 from .rubric_score_stat import RubricScoreStat as RubricScoreStat
 from .run_config_online import RunConfigOnline as RunConfigOnline
 from .dataset_rows_param import DatasetRowsParam as DatasetRowsParam
+from .evaluation_fileset import EvaluationFileset as EvaluationFileset
 from .exact_match_metric import ExactMatchMetric as ExactMatchMetric
 from .extended_benchmark import ExtendedBenchmark as ExtendedBenchmark
 from .f1_metric_response import F1MetricResponse as F1MetricResponse
@@ -71,7 +70,6 @@ from .metric_list_params import MetricListParams as MetricListParams
 from .metric_offline_job import MetricOfflineJob as MetricOfflineJob
 from .regex_score_parser import RegexScoreParser as RegexScoreParser
 from .remote_score_param import RemoteScoreParam as RemoteScoreParam
-from .retriever_pipeline import RetrieverPipeline as RetrieverPipeline
 from .rouge_metric_param import RougeMetricParam as RougeMetricParam
 from .rubric_score_param import RubricScoreParam as RubricScoreParam
 from .faithfulness_metric import FaithfulnessMetric as FaithfulnessMetric
@@ -117,13 +115,13 @@ from .benchmark_evaluation_job import BenchmarkEvaluationJob as BenchmarkEvaluat
 from .benchmarks_list_response import BenchmarksListResponse as BenchmarksListResponse
 from .context_precision_metric import ContextPrecisionMetric as ContextPrecisionMetric
 from .context_relevance_metric import ContextRelevanceMetric as ContextRelevanceMetric
+from .evaluation_fileset_param import EvaluationFilesetParam as EvaluationFilesetParam
 from .exact_match_metric_param import ExactMatchMetricParam as ExactMatchMetricParam
 from .metric_job_create_params import MetricJobCreateParams as MetricJobCreateParams
 from .metric_offline_job_param import MetricOfflineJobParam as MetricOfflineJobParam
 from .metric_retrieve_response import MetricRetrieveResponse as MetricRetrieveResponse
 from .noise_sensitivity_metric import NoiseSensitivityMetric as NoiseSensitivityMetric
 from .regex_score_parser_param import RegexScoreParserParam as RegexScoreParserParam
-from .retriever_pipeline_param import RetrieverPipelineParam as RetrieverPipelineParam
 from .rouge_metric_param_param import RougeMetricParamParam as RougeMetricParamParam
 from .benchmark_create_response import BenchmarkCreateResponse as BenchmarkCreateResponse
 from .benchmark_job_list_params import BenchmarkJobListParams as BenchmarkJobListParams
@@ -231,6 +229,9 @@ from .metric_evaluation_jobs_list_filter_param import (
 from .response_groundedness_metric_param_param import (
     ResponseGroundednessMetricParamParam as ResponseGroundednessMetricParamParam,
 )
+from .evaluation_metric_jobs_retriever_pipeline import (
+    EvaluationMetricJobsRetrieverPipeline as EvaluationMetricJobsRetrieverPipeline,
+)
 from .nemo_agent_toolkit_remote_metric_response import (
     NeMoAgentToolkitRemoteMetricResponse as NeMoAgentToolkitRemoteMetricResponse,
 )
@@ -239,4 +240,7 @@ from .benchmark_evaluation_jobs_list_filter_param import (
 )
 from .nemo_agent_toolkit_remote_metric_param_param import (
     NeMoAgentToolkitRemoteMetricParamParam as NeMoAgentToolkitRemoteMetricParamParam,
+)
+from .evaluation_metric_jobs_retriever_pipeline_param import (
+    EvaluationMetricJobsRetrieverPipelineParam as EvaluationMetricJobsRetrieverPipelineParam,
 )

@@ -19,7 +19,6 @@ from typing import Dict, List, Union, Optional
 from typing_extensions import TypeAlias
 
 from .agent import Agent
-from .fileset import Fileset
 from ..._models import BaseModel
 from .metric_ref import MetricRef
 from .fileset_ref import FilesetRef
@@ -28,6 +27,7 @@ from .field_mapping import FieldMapping
 from .f1_metric_param import F1MetricParam
 from .bleu_metric_param import BleuMetricParam
 from .run_config_online import RunConfigOnline
+from .evaluation_fileset import EvaluationFileset
 from .rouge_metric_param import RougeMetricParam
 from .remote_metric_param import RemoteMetricParam
 from .system_metric_param import SystemMetricParam
@@ -52,7 +52,7 @@ from .nemo_agent_toolkit_remote_metric_param import NeMoAgentToolkitRemoteMetric
 
 __all__ = ["MetricOnlineAgentJob", "Dataset", "Metric"]
 
-Dataset: TypeAlias = Union[DatasetRows, FilesetRef, Fileset]
+Dataset: TypeAlias = Union[DatasetRows, FilesetRef, EvaluationFileset]
 
 Metric: TypeAlias = Union[
     MetricRef,

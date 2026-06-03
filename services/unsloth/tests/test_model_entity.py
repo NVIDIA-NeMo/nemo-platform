@@ -150,7 +150,7 @@ class TestCreateFullEntity:
             peft=None,
         )
 
-        _result, _deploy = runner.create_model_entity(config)
+        _, _ = runner.create_model_entity(config)
 
         sdk.models.update.assert_called_once()
         update_call = sdk.models.update.call_args

@@ -25,13 +25,13 @@ from .dialog_rails_param import DialogRailsParam
 from .output_rails_param import OutputRailsParam
 from .retrieval_rails_param import RetrievalRailsParam
 from .tool_input_rails_param import ToolInputRailsParam
-from .rails_config_data_param import RailsConfigDataParam
 from .tool_output_rails_param import ToolOutputRailsParam
+from .guardrail_rails_config_data_param import GuardrailRailsConfigDataParam
 
-__all__ = ["RailsParam"]
+__all__ = ["GuardrailRailsParam"]
 
 
-class RailsParam(TypedDict, total=False):
+class GuardrailRailsParam(TypedDict, total=False):
     """Configuration of specific rails."""
 
     actions: ActionRailsParam
@@ -44,7 +44,7 @@ class RailsParam(TypedDict, total=False):
     be performed per action, output validation, throttling, disabling, etc.
     """
 
-    config: RailsConfigDataParam
+    config: GuardrailRailsConfigDataParam
     """Configuration data for specific rails that are supported out-of-the-box."""
 
     dialog: DialogRailsParam

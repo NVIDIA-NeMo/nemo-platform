@@ -24,12 +24,12 @@ from ..._types import SequenceNotStr
 from .metric_ref import MetricRef
 from .agent_param import AgentParam
 from .fileset_ref import FilesetRef
-from .fileset_param import FilesetParam
 from .dataset_rows_param import DatasetRowsParam
 from .field_mapping_param import FieldMappingParam
 from .f1_metric_param_param import F1MetricParamParam
 from .bleu_metric_param_param import BleuMetricParamParam
 from .run_config_online_param import RunConfigOnlineParam
+from .evaluation_fileset_param import EvaluationFilesetParam
 from .rouge_metric_param_param import RougeMetricParamParam
 from .remote_metric_param_param import RemoteMetricParamParam
 from .system_metric_param_param import SystemMetricParamParam
@@ -54,7 +54,7 @@ from .nemo_agent_toolkit_remote_metric_param_param import NeMoAgentToolkitRemote
 
 __all__ = ["MetricOnlineAgentJobParam", "Dataset", "Metric"]
 
-Dataset: TypeAlias = Union[DatasetRowsParam, FilesetRef, FilesetParam]
+Dataset: TypeAlias = Union[DatasetRowsParam, FilesetRef, EvaluationFilesetParam]
 
 Metric: TypeAlias = Union[
     MetricRef,

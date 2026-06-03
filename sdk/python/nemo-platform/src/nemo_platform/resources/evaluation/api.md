@@ -21,6 +21,7 @@ from nemo_platform.types.evaluation import (
     ContextRelevanceMetric,
     ContextRelevanceMetricParam,
     DatasetRows,
+    EvaluationFileset,
     ExactMatchMetric,
     ExactMatchMetricParam,
     F1Metric,
@@ -237,7 +238,7 @@ Types:
 ```python
 from nemo_platform.types.evaluation import (
     BuiltInDataset,
-    Fileset,
+    EvaluationMetricJobsRetrieverPipeline,
     MetricEvaluationJob,
     MetricEvaluationJobRequest,
     MetricEvaluationJobsListFilter,
@@ -247,7 +248,6 @@ from nemo_platform.types.evaluation import (
     MetricOnlineAgentJob,
     MetricOnlineJob,
     MetricRetrieverJob,
-    RetrieverPipeline,
     SystemMetricParam,
 )
 ```

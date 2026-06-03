@@ -18,7 +18,6 @@
 from typing import Dict, Union, Optional
 from typing_extensions import TypeAlias
 
-from .fileset import Fileset
 from ..._models import BaseModel
 from .metric_ref import MetricRef
 from .fileset_ref import FilesetRef
@@ -26,12 +25,13 @@ from .dataset_rows import DatasetRows
 from .field_mapping import FieldMapping
 from .built_in_dataset import BuiltInDataset
 from .run_config_online import RunConfigOnline
-from .retriever_pipeline import RetrieverPipeline
+from .evaluation_fileset import EvaluationFileset
 from .system_metric_param import SystemMetricParam
+from .evaluation_metric_jobs_retriever_pipeline import EvaluationMetricJobsRetrieverPipeline
 
 __all__ = ["MetricRetrieverJob", "Dataset", "Metric"]
 
-Dataset: TypeAlias = Union[BuiltInDataset, DatasetRows, FilesetRef, Fileset]
+Dataset: TypeAlias = Union[BuiltInDataset, DatasetRows, FilesetRef, EvaluationFileset]
 
 Metric: TypeAlias = Union[MetricRef, SystemMetricParam]
 
@@ -45,7 +45,7 @@ class MetricRetrieverJob(BaseModel):
     metric: Metric
     """The metric for evaluation."""
 
-    retriever_pipeline: RetrieverPipeline
+    retriever_pipeline: EvaluationMetricJobsRetrieverPipeline
     """Pipeline configuration for retriever-based evaluations."""
 
     field_mapping: Optional[FieldMapping] = None

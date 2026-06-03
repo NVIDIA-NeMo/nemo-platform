@@ -24,13 +24,13 @@ from .dialog_rails import DialogRails
 from .output_rails import OutputRails
 from .retrieval_rails import RetrievalRails
 from .tool_input_rails import ToolInputRails
-from .rails_config_data import RailsConfigData
 from .tool_output_rails import ToolOutputRails
+from .guardrail_rails_config_data import GuardrailRailsConfigData
 
-__all__ = ["Rails"]
+__all__ = ["GuardrailRails"]
 
 
-class Rails(BaseModel):
+class GuardrailRails(BaseModel):
     """Configuration of specific rails."""
 
     actions: Optional[ActionRails] = None
@@ -43,7 +43,7 @@ class Rails(BaseModel):
     be performed per action, output validation, throttling, disabling, etc.
     """
 
-    config: Optional[RailsConfigData] = None
+    config: Optional[GuardrailRailsConfigData] = None
     """Configuration data for specific rails that are supported out-of-the-box."""
 
     dialog: Optional[DialogRails] = None

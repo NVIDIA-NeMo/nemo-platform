@@ -34,7 +34,7 @@ Methods:
 Types:
 
 ```python
-from nemo_platform.types.files import FilesetFilter, FilesetMetadataParam
+from nemo_platform.types.files import FilesetFilter
 ```
 
 Methods:

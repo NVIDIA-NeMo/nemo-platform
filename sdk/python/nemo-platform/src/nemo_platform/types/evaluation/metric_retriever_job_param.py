@@ -22,17 +22,17 @@ from typing_extensions import Required, TypeAlias, TypedDict
 
 from .metric_ref import MetricRef
 from .fileset_ref import FilesetRef
-from .fileset_param import FilesetParam
 from .built_in_dataset import BuiltInDataset
 from .dataset_rows_param import DatasetRowsParam
 from .field_mapping_param import FieldMappingParam
 from .run_config_online_param import RunConfigOnlineParam
-from .retriever_pipeline_param import RetrieverPipelineParam
+from .evaluation_fileset_param import EvaluationFilesetParam
 from .system_metric_param_param import SystemMetricParamParam
+from .evaluation_metric_jobs_retriever_pipeline_param import EvaluationMetricJobsRetrieverPipelineParam
 
 __all__ = ["MetricRetrieverJobParam", "Dataset", "Metric"]
 
-Dataset: TypeAlias = Union[BuiltInDataset, DatasetRowsParam, FilesetRef, FilesetParam]
+Dataset: TypeAlias = Union[BuiltInDataset, DatasetRowsParam, FilesetRef, EvaluationFilesetParam]
 
 Metric: TypeAlias = Union[MetricRef, SystemMetricParamParam]
 
@@ -46,7 +46,7 @@ class MetricRetrieverJobParam(TypedDict, total=False):
     metric: Required[Metric]
     """The metric for evaluation."""
 
-    retriever_pipeline: Required[RetrieverPipelineParam]
+    retriever_pipeline: Required[EvaluationMetricJobsRetrieverPipelineParam]
     """Pipeline configuration for retriever-based evaluations."""
 
     field_mapping: FieldMappingParam

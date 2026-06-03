@@ -15,21 +15,19 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
 
-from typing import Union
-from typing_extensions import Required, TypeAlias, TypedDict
+from ..._models import BaseModel
+from .guardrail_patronus_evaluate_config import GuardrailPatronusEvaluateConfig
 
-from .model_ref import ModelRef
-from .model_param import ModelParam
-
-__all__ = ["RetrieverPipelineParam", "EmbeddingsModel"]
-
-EmbeddingsModel: TypeAlias = Union[ModelParam, ModelRef]
+__all__ = ["GuardrailPatronusRailConfig"]
 
 
-class RetrieverPipelineParam(TypedDict, total=False):
-    """Pipeline configuration for retriever-based evaluations."""
+class GuardrailPatronusRailConfig(BaseModel):
+    """Configuration data for the Patronus Evaluate API"""
 
-    embeddings_model: Required[EmbeddingsModel]
-    """The embeddings model configuration."""
+    input: Optional[GuardrailPatronusEvaluateConfig] = None
+    """Config for the Patronus Evaluate API call"""
+
+    output: Optional[GuardrailPatronusEvaluateConfig] = None
+    """Config for the Patronus Evaluate API call"""

@@ -279,6 +279,7 @@ jobs:
         env:
           PYTHON_VERSION: ${{ matrix.python-version }}
           NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
+          NMP_AUTH_ENABLED: "false"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
         run: |
           set -euo pipefail

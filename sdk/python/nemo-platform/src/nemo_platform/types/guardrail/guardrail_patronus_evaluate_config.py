@@ -18,16 +18,13 @@
 from typing import Optional
 
 from ..._models import BaseModel
-from .patronus_evaluate_config import PatronusEvaluateConfig
+from .patronus_evaluate_api_params import PatronusEvaluateAPIParams
 
-__all__ = ["PatronusRailConfig"]
+__all__ = ["GuardrailPatronusEvaluateConfig"]
 
 
-class PatronusRailConfig(BaseModel):
-    """Configuration data for the Patronus Evaluate API"""
-
-    input: Optional[PatronusEvaluateConfig] = None
+class GuardrailPatronusEvaluateConfig(BaseModel):
     """Config for the Patronus Evaluate API call"""
 
-    output: Optional[PatronusEvaluateConfig] = None
-    """Config for the Patronus Evaluate API call"""
+    evaluate_config: Optional[PatronusEvaluateAPIParams] = None
+    """Config to parameterize the Patronus Evaluate API call"""
