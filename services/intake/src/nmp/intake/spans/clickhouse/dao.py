@@ -172,8 +172,6 @@ class ClickHouseDao:
                 order_by=order_by_clause(sort, sort_spec),
                 limit_param="limit",
                 offset_param="offset",
-            ).with_parameters(
-                merge_parameters(subquery.parameters, {"limit": page_size, "offset": offset})
-            )
+            ).with_parameters(merge_parameters(subquery.parameters, {"limit": page_size, "offset": offset}))
         )
         return rows, total_results
