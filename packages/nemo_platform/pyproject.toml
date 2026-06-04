@@ -434,6 +434,14 @@ nmp-common = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
+platform-seed-service = [
+  "nmp-common",
+  "nmp-auth",
+  "nmp-guardrails",
+  "nmp-evaluator",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
 plugins = [
     "nemo-platform[nemo-agents-example-calculator]",
     "nemo-platform[nemo-agents-plugin]",
@@ -461,6 +469,7 @@ services = [
   "nmp-common",
   "pyleak>=0.1.0",
   "rich>=14.1.0",
+  "nemo-platform[platform-seed-service]",
   "nemo-platform[core-service]",
   "nemo-platform[studio-service]",
   "nemo-platform[intake-service]",
@@ -641,6 +650,7 @@ nmp-inference-gateway = { source = "../../services/core/inference-gateway/src/nm
 nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
 nmp-customizer = { source = "../../services/customizer/src/nmp/customizer", module = "nmp/customizer", deps_group = "customizer-service" }
 nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
+nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
 nmp-intake = { source = "../../services/intake/src/nmp/intake", module = "nmp/intake", deps_group = "intake-service" }
 
