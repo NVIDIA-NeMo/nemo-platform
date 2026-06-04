@@ -14,9 +14,8 @@
 
 :root {
   --font-sans:
-    'Mona Sans Variable', 'Noto Sans', 'Liberation Sans', 'DejaVu Sans', Arial, ui-sans-serif,
-    system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-    'Noto Color Emoji';
+    Arial, 'Liberation Sans', 'DejaVu Sans', 'Noto Sans', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
   --font-weight-medium: 450;
   --font-weight-semibold: 500;
   --font-weight-bold: 600;
