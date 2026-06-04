@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "nemo_platform",
+  "project_id": "102bf606-6bba-435f-99e8-412171afa5b2"
+}

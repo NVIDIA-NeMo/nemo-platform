@@ -1,0 +1,45 @@
+[project]
+name = "nemo-memory-plugin"
+version = "0.1.0"
+description = "NeMo Memory plugin — triage, eval, and fine-tune-corpus extraction for durable agent memories."
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
+dependencies = [
+    "nemo-platform",
+    "nemo-platform-plugin",
+    # Anthropic SDK powers the AnthropicJudge slot (direct-to-provider for
+    # the Sonnet reference judge). Stays a dep because lazy-import of an
+    # uninstalled package would fail at first use rather than at install.
+    "anthropic>=0.88.0",
+    # OpenAI SDK is the IGW client; all platform-IGW-routed judges go
+    # through this surface.
+    "openai>=2.26.0",
+    "pydantic>=2.0.0",
+    "rich>=13.7.1",
+]
+
+[project.entry-points."nemo.cli"]
+memory = "nemo_memory_plugin.cli:MemoryCLI"
+
+[project.entry-points."nemo.jobs"]
+"memory.triage" = "nemo_memory_plugin.jobs.triage:TriageJob"
+"memory.eval" = "nemo_memory_plugin.jobs.eval:EvalJob"
+"memory.export" = "nemo_memory_plugin.jobs.export:ExportJob"
+
+[project.optional-dependencies]
+test = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.23",
+]
+
+[tool.uv.sources]
+nemo-platform = { workspace = true }
+nemo-platform-plugin = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nemo_memory_plugin"]

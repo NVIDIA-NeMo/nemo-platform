@@ -1,0 +1,34 @@
+# Spec for `nemo memory eval`.
+#
+# Intra-judge stability check: compares the locked Sonnet 4.6 laptop
+# baseline against a fresh Sonnet 4.6 run on omnistation over the same
+# corpus. Same judge, same corpus, different machines. The result
+# establishes the noise floor any tuned-model candidate has to beat.
+#
+# Prerequisite: both artifacts must be in their respective filesets.
+# - 'memory-triage-laptop-baseline' fileset on omnistation contains the
+#    committed laptop baseline (upload once from your laptop). The CLI
+#    takes positional args (LOCAL_PATH [FILESET]) and auto-creates the
+#    fileset if it doesn't already exist:
+#
+#      nemo --context omnistation files upload \
+#          plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/baseline-sonnet-4-6-user.json \
+#          memory-triage-laptop-baseline
+#
+# - 'memory-triage-artifacts' fileset already contains the omnistation
+#    triage run output (produced by the triage job).
+#
+# Run on omnistation:
+#
+#   nemo memory eval run \
+#       --spec-file plugins/nemo-memory/examples/triage/sonnet-vs-self-omnistation.eval.yml
+
+baseline: memory-triage-laptop-baseline
+candidate: memory-triage-artifacts
+workspace: default
+
+# The agreement report lands in its own fileset so it doesn't mix with
+# the triage artifacts. Auto-creates on first run.
+output: memory-triage-eval-reports
+
+basename: sonnet-vs-self-omnistation

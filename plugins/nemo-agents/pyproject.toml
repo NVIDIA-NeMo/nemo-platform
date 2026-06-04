@@ -17,11 +17,9 @@ dependencies = [
     "botocore>=1.40.46,<1.40.62",
     "httpx>=0.27",
     "pyyaml>=6.0",
-    # improvement/ subpackage (agent-improvement workflow POC).
+    # improvement/ subpackage (agent-improvement workflow POC) uses
+    # both anthropic + openai SDKs for LLM-analysis helpers.
     "anthropic>=0.88.0",
-    # improvement/memory/ subpackage uses openai SDK against the OpenAI-
-    # compatible inference-api.nvidia.com endpoint for the Nemotron-Nano
-    # and Kimi judge slots.
     "openai>=2.26.0",
     "rich>=13.7.1",
 ]
@@ -45,9 +43,9 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 "agents.evaluate-suite" = "nemo_agents_plugin.jobs.evaluate_suite:EvaluateSuiteJob"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
-"agents.triage-memory" = "nemo_agents_plugin.jobs.triage_memory:TriageMemoryJob"
-"agents.eval-triage" = "nemo_agents_plugin.jobs.eval_triage:EvalTriageJob"
-"agents.export-finetune-corpus" = "nemo_agents_plugin.jobs.export_finetune_corpus:ExportFinetuneCorpusJob"
+# Memory-triage jobs (memory.triage / memory.eval / memory.export) moved
+# to the standalone nemo-memory plugin (bd mdubrinsky-eha). Users who care
+# about tuning agent memory stores install nemo-memory separately.
 
 [project.entry-points."nemo.controllers"]
 "agents-deployment" = "nemo_agents_plugin.runner.controller:AgentDeploymentController"
