@@ -9,27 +9,12 @@ hosted NIM on build.nvidia.com:
 
 Stage 1 — ``SnowflakeEmbed``: the ``Snowflake/snowflake-arctic-embed-m-long``
 transformer encoder, used as a frozen feature extractor; CLS token of the last
-hidden state, no L2 normalization, ``max_length=2048`` — matching the NIM's
-``model/model.py``.
+hidden state, no L2 normalization, ``max_length=2048``.
 
 Stage 2 — ``JailbreakClassifier``: a scikit-learn **random forest** via
-``predict_proba``. Verdict is ``argmax(proba)``; the ``score`` is the NIM's signed max-probability
-(``-p0`` when benign, ``+p1`` when jailbreak).
-
-We deliberately use the **open-weights** ``nvidia/NemoGuard-JailbreakDetect`` HF
-repo (``snowflake.pkl``), not the NIM's closed, NGC-only ``snowflake_classifier.pkl``.
-
-Input is embedded as **raw text — no Arctic query prefix**. The prefix is an
-asymmetric *retrieval* device, but this is a classifier head trained on unprefixed
-embeddings, so prefixing pushes inputs off-distribution. This matches the NIM's
-internal pipeline (its ``model/model.py`` embeds raw text) and, empirically, beats
-the prefixed variant on a balanced 400-prompt JailbreakHub sample across every
-metric including threshold-free ROC-AUC (0.916 vs 0.893). See the runbook eval.
-
-Note: the two artifacts still differ. The NIM ships a different random forest
-(``snowflake_classifier.pkl``, NGC), so its exact probabilities won't match ours —
-but that classifier is closed and requires NGC auth, so we stay on the open HF
-weights here.
+``predict_proba``. Verdict is ``argmax(proba)``; the ``score`` is the signed max-probability
+(``-p0`` when benign, ``+p1`` when jailbreak). The classifier is the **open-weights** ``snowflake.pkl``
+from the ``nvidia/NemoGuard-JailbreakDetect`` HF repo.
 """
 
 from __future__ import annotations
@@ -116,7 +101,7 @@ class JailbreakClassifier:
     """Embedding + random-forest jailbreak classifier.
 
     Calling the instance with a prompt returns ``(is_jailbreak, score)``.
-    ``score`` is the NIM's signed max-probability (``-p0`` when benign, ``+p1``
+    ``score`` is the signed max-probability (``-p0`` when benign, ``+p1``
     when jailbreak); ``is_jailbreak`` is ``argmax(proba) == 1`` (i.e. ``p1 > 0.5``).
     """
 
@@ -159,10 +144,6 @@ class JailbreakClassifierONNX:
     class taken from ``output_probability`` — which for this export is a *decision
     function*, not a calibrated probability (see the sklearn-onnx
     convert_decision_function docs the upstream code references).
-
-    The embedding is identical to :class:`JailbreakClassifier` (raw text, CLS, no
-    prefix), so the two can be compared head-to-head on the same inputs — isolating
-    the classifier file/runtime (``onnxruntime`` vs sklearn ``predict_proba``).
     """
 
     def __init__(self, device: str | None = None, embed: SnowflakeEmbed | None = None) -> None:

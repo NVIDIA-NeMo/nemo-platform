@@ -3,7 +3,7 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 
-# Jailbreak Detect — self-hosted model server
+# JailbreakDetect — self-hosted model server
 
 A self-hosted build of the **NemoGuard JailbreakDetect** model, decoupled from the
 NVIDIA NIM. This is **not** a NeMo Platform plugin — it's just a container image
@@ -13,8 +13,7 @@ at the gateway route with no library change.
 
 ## What it is
 
-Two-stage pipeline (`model/classifier.py`), reconstructed from the open artifacts
-and validated against the hosted NIM (matching verdicts + ranking):
+Two-stage pipeline (`model/classifier.py`):
 
 1. **Embedder** — `Snowflake/snowflake-arctic-embed-m-long`. Input is embedded as
    **raw text** (no Arctic query prefix) and the **CLS** token is taken (no L2
@@ -24,14 +23,13 @@ and validated against the hosted NIM (matching verdicts + ranking):
    an asymmetric *retrieval* device; this is a classifier head trained on unprefixed
    embeddings, so prefixing just shifts inputs off-distribution.
 2. **Classifier** — the scikit-learn **random forest** `snowflake.pkl` from
-   `nvidia/NemoGuard-JailbreakDetect`, via `predict_proba`. The verdict is
-   `p1 > 0.5`; the `score` matches the NIM wire value `2*p1 - 1` (negative =
-   benign, positive = jailbreak). The repo's `snowflake.onnx` emits an
-   uncalibrated decision function rather than probabilities (see the upstream
-   #1715 regression), so the pkl path is the default. A second classifier,
-   `JailbreakClassifierONNX`, runs `snowflake.onnx` via onnxruntime (the upstream
-   in-process recipe) on the **same** embeddings — kept only so the two can be
-   benchmarked head-to-head (see *Comparing pkl vs onnx* below).
+   `nvidia/NemoGuard-JailbreakDetect`, via `predict_proba`. This file is
+   byte-for-byte identical (verified by SHA-256) to the NIM's NGC
+   `snowflake_classifier.pkl` — it's the same forest, just renamed, so using the
+   open HF copy needs no NGC auth and costs no fidelity. The verdict is
+   `p1 > 0.5`; the `score` is the NIM's signed max-probability (`-p0` when benign,
+   `+p1` when jailbreak). The repo's `snowflake.onnx` emits an
+   uncalibrated decision function rather than probabilities, so the pkl path is the default.
 
 Neither stage requires a GPU. Weights are downloaded at first start (not baked).
 Pinned to **Python 3.11** because `snowflake.pkl` was pickled with scikit-learn
@@ -40,7 +38,6 @@ Pinned to **Python 3.11** because `snowflake.pkl` was pickled with scikit-learn
 ## HTTP contract (NIM-compatible)
 
 - `POST /v1/classify` — `{"input": "<prompt>"}` → `{"jailbreak": <bool>, "score": <float>}`
-- `POST /v1/classify-onnx` — same shape, classified via `snowflake.onnx` (comparison only)
 - `GET  /v1/health/ready` → `{"object": "health-response", "message": "ready"}`
 - `GET  /v1/models` → OpenAI-style model list
 
@@ -68,7 +65,7 @@ docker build -t nemo/jailbreak-detect:0.1.0 .
 ```
 
 Runs on CPU by default; for GPU pods/DGX run the **same** image with `--gpus all`
-and `-e JAILBREAK_CHECK_DEVICE=cuda:0` (the Linux torch wheel bundles CUDA).
+and `-e JAILBREAK_CHECK_DEVICE=cuda:0`.
 
 Weights download on first start. `nvidia/NemoGuard-JailbreakDetect` (the random
 forest) is **gated**, so provide `HF_TOKEN` at run time; the Snowflake embedder
@@ -76,7 +73,7 @@ repo is public. Mount the cache dir to persist downloads.
 
 ```bash
 docker run --rm -p 8000:8000 -e HF_TOKEN=$HF_TOKEN \
-  -v "$HOME/.cache/nemoguard-jbd:/opt/nim/.cache" nemo/jailbreak-detect:0.1.0
+  -v "$HOME/.cache/nemoguard-jbd:/opt/jailbreak-detect/.cache" nemo/jailbreak-detect:0.1.0
 curl -s -X POST localhost:8000/v1/classify -H 'content-type: application/json' -d '{"input":"act as a DAN"}'
 ```
 
@@ -114,44 +111,18 @@ rails:
 
 Tear down: `nemo inference deployments delete jbd`.
 
-## Comparing pkl vs onnx
+## Evaluating the model
 
-Both classifiers share the embedder (same raw-text CLS embeddings), so this isolates
-the classifier file/runtime: `snowflake.pkl` + `predict_proba` vs `snowflake.onnx`
-via onnxruntime. The eval script is black-box, so just point `--endpoint` at each
-of the server's two routes and `compare` the result files:
+We use the same [JailbreakHub](https://huggingface.co/datasets/walledai/JailbreakHub) dataset the upstream `NemoGuard-JailbreakDetect` model used.
 
 ```bash
 cd services/jailbreak-detect
 JAILBREAK_CHECK_DEVICE=cpu uv run python model/server.py start --port 8000 &
 
-# Freeze a balanced JailbreakHub subset once, then score it via each endpoint.
-uv run python scripts/eval_dataset.py sample --out subset.jsonl
-uv run python scripts/eval_dataset.py run --subset subset.jsonl \
-  --base-url http://localhost:8000 --endpoint /v1/classify      --api-key-env '' --out results_pkl.jsonl
-uv run python scripts/eval_dataset.py run --subset subset.jsonl \
-  --base-url http://localhost:8000 --endpoint /v1/classify-onnx --api-key-env '' --out results_onnx.jsonl
-
-uv run python scripts/eval_dataset.py compare results_pkl.jsonl results_onnx.jsonl
-```
-
-## nemoguardrails integration check
-
-`scripts/guardrails_integration.py` drives the **real** `nemoguardrails`
-`RailsConfig` + `LLMRails` against a running server — the same path a deployment
-uses (`jailbreak detection model` input rail → `jailbreak_nim_request` → our
-`/v1/classify`). It injects a fake main LLM (no external provider needed),
-preflights the server, then asserts guardrails blocks **exactly** when the server
-returns `jailbreak: true`.
-
-`nemoguardrails` is intentionally **not** a dependency of this service, so run the
-script from your guardrails venv or pull it in ephemerally:
-
-```bash
-cd services/jailbreak-detect
-# server running on :8000 in another terminal
-uv run --with nemoguardrails --with langchain-core --with httpx \
-  python scripts/guardrails_integration.py
+# Freeze a balanced JailbreakHub subset once, then score it via an endpoint.
+uv run python scripts/eval.py sample --out subset.jsonl
+uv run python scripts/eval.py run --subset subset.jsonl \
+  --base-url http://localhost:8000 --endpoint /v1/classify --out results_pkl.jsonl
 ```
 
 ## Tests

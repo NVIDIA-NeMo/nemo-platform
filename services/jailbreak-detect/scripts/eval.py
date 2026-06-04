@@ -3,10 +3,10 @@
 
 """Black-box evaluation of a jailbreak `/v1/classify` endpoint on JailbreakHub.
 
-Treats the model server as an opaque HTTP endpoint (NIM-compatible contract:
+Treats the model server as an opaque HTTP endpoint (contract:
 ``POST {"input": prompt}`` -> ``{"jailbreak": bool, "score": float}``), so the
-SAME script and SAME frozen subset can score both the hosted NIM and your local
-server, then compare.
+SAME script and SAME frozen subset can score your local server or a hosted
+reference service, then compare.
 
 Two steps:
 
@@ -26,18 +26,20 @@ Examples
     cd services/jailbreak-detect
 
     # 1) Freeze a balanced 200+200 subset (deterministic, seeded):
-    uv run --with datasets python scripts/eval_dataset.py sample \\
+    uv run --with datasets python scripts/eval.py sample \\
         --out scripts/eval_subset.jsonl --n-pos 200 --n-neg 200 --seed 0
 
-    # 2a) Score the hosted NIM (ground truth):
-    NVIDIA_API_KEY=nvapi-... uv run python scripts/eval_dataset.py run \\
-        --subset scripts/eval_subset.jsonl --out results_nim.jsonl
+    # 2a) Score your local server (the default target; start it first:
+    #     `uv run python model/server.py start`):
+    uv run python scripts/eval.py run \\
+        --subset scripts/eval_subset.jsonl --out results_local.jsonl
 
-    # 2b) Score your local server (start it first: `uv run python model/server.py start`):
-    uv run python scripts/eval_dataset.py run \\
+    # 2b) Score a hosted reference service (needs an API key):
+    NVIDIA_API_KEY=nvapi-... uv run python scripts/eval.py run \\
         --subset scripts/eval_subset.jsonl \\
-        --base-url http://localhost:8000 --endpoint /v1/classify --api-key-env '' \\
-        --out results_local.jsonl
+        --base-url https://ai.api.nvidia.com \\
+        --endpoint /v1/security/nvidia/nemoguard-jailbreak-detect \\
+        --api-key-env NVIDIA_API_KEY --out results_hosted.jsonl
 
 Note on sampling: a *balanced* subset gives tight estimates of both FPR and FNR
 (the prevalence-independent rates the model card reports: FPR 0.0042, FNR 0.0435).
@@ -58,10 +60,13 @@ from pathlib import Path
 import httpx
 
 DATASET = "walledai/JailbreakHub"
-DEFAULT_NIM_BASE = "https://ai.api.nvidia.com"
-DEFAULT_NIM_PATH = "/v1/security/nvidia/nemoguard-jailbreak-detect"
 
-# Model-card baseline (the NIM's own numbers on JailbreakHub), for reference.
+# Default target is the local server; override --base-url/--endpoint (and supply an
+# API key via --api-key-env) to score a hosted service instead.
+DEFAULT_BASE_URL = "http://localhost:8000"
+DEFAULT_ENDPOINT = "/v1/classify"
+
+# Published NemoGuard-JailbreakDetect model-card numbers on JailbreakHub, for reference.
 CARD_F1, CARD_FPR, CARD_FNR = 0.9601, 0.0042, 0.0435
 
 
@@ -184,9 +189,9 @@ def _report(results: list[dict], errors: int, url: str) -> None:
     print(f"confusion: TP={m['tp']} FP={m['fp']} TN={m['tn']} FN={m['fn']}")
     print(f"precision = {m['precision']:.4f}")
     print(f"recall    = {m['recall']:.4f}")
-    print(f"F1        = {m['f1']:.4f}   (model card NIM: {CARD_F1})")
-    print(f"FPR       = {m['fpr']:.4f}   (model card NIM: {CARD_FPR})")
-    print(f"FNR       = {m['fnr']:.4f}   (model card NIM: {CARD_FNR})")
+    print(f"F1        = {m['f1']:.4f}   (model card: {CARD_F1})")
+    print(f"FPR       = {m['fpr']:.4f}   (model card: {CARD_FPR})")
+    print(f"FNR       = {m['fnr']:.4f}   (model card: {CARD_FNR})")
     print(f"ROC-AUC   = {auc:.4f}   (threshold-free; from returned scores)")
     print("\nNote: precision/F1 depend on the subset's prevalence; FPR/FNR/ROC-AUC do not.")
 
@@ -302,9 +307,14 @@ def main() -> int:
 
     r = sub.add_parser("run", help="Score a frozen subset against a /v1/classify endpoint.")
     r.add_argument("--subset", required=True, help="Frozen subset JSONL from `sample`.")
-    r.add_argument("--base-url", default=DEFAULT_NIM_BASE)
-    r.add_argument("--endpoint", default=DEFAULT_NIM_PATH, help="Classification path.")
-    r.add_argument("--api-key-env", default="NVIDIA_API_KEY", help="Env var with the bearer token ('' for none).")
+    r.add_argument("--base-url", default=DEFAULT_BASE_URL, help="Server base URL. Default: %(default)s")
+    r.add_argument("--endpoint", default=DEFAULT_ENDPOINT, help="Classification path. Default: %(default)s")
+    r.add_argument(
+        "--api-key-env",
+        default="",
+        help="Optional env var holding a bearer token. Default: none (the local server needs no auth); "
+        "set e.g. NVIDIA_API_KEY to score a hosted service.",
+    )
     r.add_argument("--timeout", type=float, default=60.0)
     r.add_argument("--out", default=None, help="Optional results JSONL path.")
     r.set_defaults(func=cmd_run)
@@ -318,7 +328,7 @@ def main() -> int:
     c.add_argument(
         "results",
         nargs="+",
-        help="Two or more results JSONL files (e.g. results_nim.jsonl results_pkl.jsonl results_onnx.jsonl).",
+        help="Two or more results JSONL files (e.g. results_local.jsonl results_pkl.jsonl results_onnx.jsonl).",
     )
     c.set_defaults(func=cmd_compare)
 

@@ -15,7 +15,7 @@ FROM python:3.11-slim
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
 
 ENV JAILBREAK_CHECK_DEVICE=cpu \
-    HF_HOME=/opt/nim/.cache/huggingface \
+    HF_HOME=/opt/jailbreak-detect/.cache/huggingface \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
