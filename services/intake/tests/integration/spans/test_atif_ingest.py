@@ -9,6 +9,8 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
+_HISTORICAL_GTE = "2024-01-01T00:00:00Z"
+
 
 def test_atif_ingest_rejects_loose_steps_payload(client: TestClient):
     body = {
@@ -313,6 +315,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
             "sort": "started_at",
         },
@@ -374,7 +377,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     evaluation_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_id]": evaluation_context["evaluation_id"], "page_size": 10},
+        params={
+            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert evaluation_response.status_code == 200, evaluation_response.text
     evaluation_spans = evaluation_response.json()["data"]
@@ -387,7 +394,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     }.items():
         filtered = client.get(
             "/apis/intake/v2/workspaces/default/spans",
-            params={f"filter[{field}]": value, "page_size": 10},
+            params={
+                f"filter[{field}]": value,
+                "filter[started_at][gte]": _HISTORICAL_GTE,
+                "page_size": 10,
+            },
         )
         assert filtered.status_code == 200, filtered.text
         filtered_spans = filtered.json()["data"]
@@ -490,7 +501,12 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     evaluation_roots_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_id]": evaluation_context["evaluation_id"], "page_size": 20, "sort": "started_at"},
+        params={
+            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 20,
+            "sort": "started_at",
+        },
     )
     assert evaluation_roots_response.status_code == 200, evaluation_roots_response.text
     evaluation_roots = evaluation_roots_response.json()["data"]
@@ -518,7 +534,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     other_evaluation_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_run_id]": other_evaluation_run_id, "page_size": 10},
+        params={
+            "filter[evaluation_run_id]": other_evaluation_run_id,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert other_evaluation_response.status_code == 200, other_evaluation_response.text
     other_evaluation_spans = other_evaluation_response.json()["data"]
@@ -528,7 +548,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     same_session_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[session_id]": body["session_id"], "page_size": 10},
+        params={
+            "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert same_session_response.status_code == 200, same_session_response.text
     same_session_spans_by_name = {span["name"]: span for span in same_session_response.json()["data"]}
@@ -603,6 +627,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 20,
             "sort": "started_at",
         },
@@ -636,7 +661,11 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     # Trace-level rollup equals the sum of per-step metrics, NOT 2x.
     traces_response = client.get(
         "/apis/intake/v2/workspaces/default/traces",
-        params={"filter[session_id]": body["session_id"], "page_size": 10},
+        params={
+            "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert traces_response.status_code == 200, traces_response.text
     traces = traces_response.json()["data"]
