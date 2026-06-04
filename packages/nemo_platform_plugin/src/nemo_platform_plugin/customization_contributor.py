@@ -5,13 +5,11 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, ClassVar, Protocol, runtime_checkable
+from typing import ClassVar, Protocol, runtime_checkable
 
 import typer
-
-if TYPE_CHECKING:
-    from nemo_platform_plugin.authz import AuthzContribution
-    from nemo_platform_plugin.service import RouterSpec
+from nemo_platform_plugin.authz import AuthzContribution
+from nemo_platform_plugin.service import RouterSpec
 
 
 @runtime_checkable

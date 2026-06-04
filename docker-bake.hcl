@@ -76,7 +76,7 @@ variable "CAUSAL_CONV1D_VERSION" {
 
 # For local builds: --set "*.platform=linux/amd64"
 variable "BUILD_PLATFORMS" {
-  default = ["linux/arm64"]
+  default = ["linux/amd64", "linux/arm64"]
 }
 
 # ---------------------------------------------------------------------------

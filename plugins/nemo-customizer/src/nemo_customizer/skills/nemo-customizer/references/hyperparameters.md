@@ -106,7 +106,7 @@ Full template:
 
 ## Field reference
 
-### `training`
+### Automodel `training`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -125,7 +125,7 @@ Full template:
 
 LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
-### `schedule`
+### Automodel `schedule`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -136,7 +136,7 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 **Gotcha:** Do **not** set `max_steps` with `epochs` for normal training. `max_steps` stops early (e.g. `epochs: 1` + `max_steps: 100` ends at step 100). Use `max_steps` **alone** only for smoke tests.
 
-### `batch`
+### Automodel `batch`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -150,7 +150,7 @@ LoRA block is auto-created when `finetuning_type` is `lora` or `lora_merged`.
 
 Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro_batch_size`. See **`SKILL.md` § Multi-GPU** for data parallel vs tensor parallel.
 
-### `optimizer`
+### Automodel `optimizer`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -173,7 +173,7 @@ Example: 1 node, 2 GPUs, TP=1 → DP=2 → GBS must be a multiple of `2 × micro
 
 **MoE:** If `expert_parallel_size > 1` and multiple GPUs, `tensor_parallel_size` must be **1**.
 
-### `integrations` (optional)
+### Automodel `integrations` (optional)
 
 ```json
 "integrations": {
@@ -197,7 +197,7 @@ Apply user overrides to `/tmp/job.json` before submit. For **batch / GPU count /
 | Quick smoke test | `max_steps` only (e.g. 10–50), **omit or ignore epoch goal**; or `epochs: 1` on tiny slice |
 | Reproducibility | Set `schedule.seed` |
 
-### Learning rate (LoRA SFT, starting points)
+### Automodel learning rate (LoRA SFT, starting points)
 
 | Model scale | Suggested `learning_rate` |
 |-------------|---------------------------|
@@ -207,7 +207,7 @@ Apply user overrides to `/tmp/job.json` before submit. For **batch / GPU count /
 
 Schema default is `5e-6` (conservative). Fixtures: `qwen3_0.6b_sft_lora.json` uses `5e-5`; `minimal_sft_lora.json` uses `5e-6`.
 
-### LoRA rank / alpha
+### Automodel LoRA rank / alpha
 
 **Deployment cap:** Default **NIM** and **vLLM** LoRA serving paths support rank **≤ 32**. Use `rank` 32 (not higher) when the fine-tuned adapter will be deployed for inference on those stacks unless the user confirms a higher rank is supported.
 
@@ -435,7 +435,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `apply_chat_template` | `false` | Set `true` for rows with a `messages` array (preferred when the tokenizer has a chat template). |
 | `packing` | `false` | trl.SFTTrainer packing for throughput on short rows. |
 
-### `training`
+### Unsloth `training`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -458,7 +458,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 `lora` is auto-filled with these defaults when `finetuning_type: "lora"` and the user omits the block. Must be `null` / omitted when `finetuning_type: "full"`.
 
-### `schedule`
+### Unsloth `schedule`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -474,7 +474,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 **Hard mutex enforced by the schema:** `epochs` xor `max_steps`; `warmup_steps` xor `warmup_ratio`. Validation errors surface at submit time.
 
-### `batch`
+### Unsloth `batch`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -483,7 +483,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 
 `effective_batch = per_device_train_batch_size × gradient_accumulation_steps`. No GBS divisibility math (single GPU). Starting points by model size are in `SKILL.md` § Batch sizing — unsloth.
 
-### `optimizer`
+### Unsloth `optimizer`
 
 | Field | Default | Notes |
 |-------|---------|-------|
@@ -500,7 +500,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `gpus` | `null` | Comma-separated CUDA indices: `"0"` or `"0,1"` (Unsloth only uses one). Sets `CUDA_VISIBLE_DEVICES` **before** `import torch`. **Selection, not reservation.** Leave unset to inherit the caller's env. |
 | `precision` | `"bf16"` | `"bf16"` (Ampere+) or `"fp16"`. |
 
-### `integrations`
+### Unsloth `integrations`
 
 ```json
 "integrations": {
@@ -532,7 +532,7 @@ After `to_spec`, the canonical `OutputResponse` also carries `type` (`"adapter"`
 
 VRAM / batch tuning is in **`SKILL.md` § Batch sizing — unsloth**. Below covers non-batch fields.
 
-### Learning rate (LoRA SFT, starting points)
+### Unsloth learning rate (LoRA SFT, starting points)
 
 Same scale as automodel (the underlying optimizer math is the same):
 
@@ -544,7 +544,7 @@ Same scale as automodel (the underlying optimizer math is the same):
 
 Schema default is `2e-4` (Unsloth notebook default — works for small adapters with `adamw_8bit`). Skill defaults are conservative `5e-5`.
 
-### LoRA rank / alpha
+### Unsloth LoRA rank / alpha
 
 | Use case | `rank` | `alpha` |
 |----------|--------|---------|
