@@ -1,116 +1,131 @@
 # Memory triage example
 
-Drive the council orchestration from
+Drive the memory-triage council from
 [`improvement/memory/`](../../src/nemo_agents_plugin/improvement/memory/)
-against a real `pi-hermes`-style Markdown corpus. Talks to whatever
-models the local NeMo Platform IGW exposes via its OpenAI-compatible
-endpoint, so no direct provider credentials are needed.
+against a `pi-hermes`-style Markdown corpus. Talks to whatever models
+the local NeMo Platform IGW exposes via its OpenAI-compatible endpoint.
+No direct provider credentials are needed; IGW handles upstream auth.
 
-This is the **Phase 1 / 1.5 driver**. Phase 2
-(bd `mdubrinsky-7au.6`) turns this into a proper
-`nemo agents triage-memory` NemoJob; the CLI surface and config schema
-will replace this script.
+## Canonical entry point
 
-## Quickstart
-
-Local laptop, platform up (`nemo services run`):
+This subdirectory is the home of the **`nemo agents triage-memory`**
+NemoJob (registered under `nemo.jobs` as `agents.triage-memory` by the
+plugin's `pyproject.toml`).
 
 ```bash
-# Sonnet 4.6-only baseline (the gold reference for tuned-model comparison)
-uv run --frozen python plugins/nemo-agents/examples/memory-triage/run_triage.py \
-    --judge azure-anthropic-claude-sonnet-4-6 \
-    --basename baseline-sonnet-4-6-user \
-    --output-dir plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/
+# Lock the Sonnet 4.6 baseline (the gold reference for tuned-model comparison).
+nemo agents triage-memory run \
+    --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6.triage-memory.yml
 
-# 3-judge research smoke (first --judge is the reference for aggregation)
-uv run --frozen python plugins/nemo-agents/examples/memory-triage/run_triage.py \
-    --judge azure-anthropic-claude-sonnet-4-6 \
-    --judge nvidia-nemotron-3-nano-30b-a3b \
-    --judge nvidia-llama-3-3-nemotron-super-49b-v1-5 \
-    --basename research-smoke-v5
+# Inspect the spec schema.
+nemo agents triage-memory explain
+
+# Submit to a cluster instead of running locally.
+nemo agents triage-memory submit \
+    --spec-file <spec>.yml --cluster <cluster-url>
 ```
 
-## Running on omnistation
+## Two corpus input shapes
 
-Prerequisite checks (run on the omnistation, not your laptop):
+The job's `corpus` field accepts either a local path or a NeMo Platform
+fileset reference. The dispatch is automatic:
+
+- Values starting with `.`, `/`, `..`, or `~` are treated as paths.
+- Bare names that exist on the local filesystem are treated as paths.
+- Anything else is resolved as a fileset reference. The fileset must
+  contain exactly one `.md` file; the job refuses ambiguity rather
+  than guessing.
+
+**Use a local path** when the corpus already lives on the machine the
+job runs on. See
+[`baseline-sonnet-4-6.triage-memory.yml`](baseline-sonnet-4-6.triage-memory.yml).
+
+**Use a fileset reference** when the job runs somewhere you can't
+easily scp to (omnistation, remote scheduler, etc.). Upload once with
+`nemo files upload`, then reference the fileset by name. See
+[`baseline-sonnet-4-6-fileset.triage-memory.yml`](baseline-sonnet-4-6-fileset.triage-memory.yml).
+
+## Quickstart: laptop, local corpus
+
+Platform running (`nemo services run`), corpus on disk:
 
 ```bash
-# 1. Platform is up.
-nemo services run     # if not already running
-nemo inference get-url
+nemo agents triage-memory run \
+    --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6.triage-memory.yml
+```
 
-# 2. The PoC USER corpus is reachable. Either scp from your laptop:
-#    scp ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md \
-#        omnistation:~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
-#    Or pass --corpus to point at wherever you put it.
+## Quickstart: omnistation, fileset corpus
 
-# 3. The memory-triage branch is checked out and the plugin is reinstalled.
+Avoids needing to know the omnistation's filesystem layout. Done once
+from your laptop:
+
+```bash
+# From your laptop, after platform is reachable:
+nemo files filesets create user-memory-corpus
+nemo files upload --fileset user-memory-corpus \
+    ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+```
+
+Then on the omnistation (inside your tssh session):
+
+```bash
 cd ~/projects/nvidia/nemo-platform
-git fetch origin
-git checkout memory-triage/md
-git pull
-uv sync --reinstall-package nemo-agents-plugin
+git fetch origin && git checkout memory-triage/md && git pull && uv sync
 
-# 4. Baseline run.
+nemo agents triage-memory run \
+    --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6-fileset.triage-memory.yml
+```
+
+## Raw driver (debugging mode)
+
+[`run_triage.py`](run_triage.py) is the pre-NemoJob driver. It does the
+same thing as `nemo agents triage-memory run` but takes CLI flags
+instead of a YAML spec, and prints per-judge calibration to stdout.
+Useful when iterating on judge models or prompts; the NemoJob is the
+canonical entry point for everything else.
+
+```bash
 uv run --frozen python plugins/nemo-agents/examples/memory-triage/run_triage.py \
     --judge azure-anthropic-claude-sonnet-4-6 \
-    --basename baseline-sonnet-4-6-user \
-    --output-dir plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/
+    --max-entries 3 --basename pilot
 ```
 
-## CLI reference
+The raw driver does **not** support fileset references. Use a local
+path or `nemo files download` to stage one first.
 
-```
---judge MODEL              Judge model id from `nemo models list`. Repeat for council.
-                           First --judge is the reference model for aggregation.
---corpus PATH              Path to the consolidated USER.md / MEMORY.md / failures.md.
-                           Default: ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
---store-name NAME          Store name recorded on every proposal.
-                           Default: pi-hermes:CONSOLIDATED:user
---output-dir DIR           Where to write {basename}.json + {basename}.md.
-                           Default: ./output/
---basename NAME            Filename pair basename. Default: triage
---max-tokens N             Per-call max_tokens. Default: 4096 (reasoning models need >=2048)
---max-entries N            Cap entries processed (for pilot runs).
---api-key KEY              IGW API key. Default: "not-needed" (IGW handles upstream auth).
---timeout SECS             Per-request timeout. Default: 180
-```
+## Spec field reference
+
+| field | type | default | notes |
+| --- | --- | --- | --- |
+| `corpus` | str | required | Local path OR fileset reference (auto-dispatch). |
+| `workspace` | str | `"default"` | Fileset workspace. Ignored for local paths. |
+| `judges` | list[str] | required | Judge model ids from `nemo models list`. First is reference. |
+| `store_name` | str | `"pi-hermes:memory"` | Recorded on every emitted proposal. |
+| `output_dir` | str | `"./triage-output"` | JSON + Markdown artifact destination. |
+| `basename` | str | `"triage"` | Filename pair basename. |
+| `max_tokens` | int | `4096` | Per-judge budget. Floor: 512. Bump to 6144 for heavy reasoners. |
+| `max_entries` | int? | `None` | Cap entries processed (for pilot runs). |
+| `timeout_sec` | float | `180` | Per-request timeout. |
+| `igw_base_url` | str? | auto | Override IGW URL. Default: resolved via `nemo inference get-url`. |
+| `igw_api_key` | str | `"not-needed"` | IGW auth. Default works because IGW handles upstream auth. |
 
 ## Operational notes
 
 - Reasoning models (Nemotron-Nano, Kimi, Super v1-5) can burn 500-1500
-  completion tokens on internal reasoning before emitting JSON output.
-  `--max-tokens 4096` is the safe default; bump to 6144 if Kimi or
-  Super start surfacing empty-content errors.
-- The first --judge is the reference model. The aggregator picks
-  refined_text / merge_with / justification from this judge when it
-  agrees with the council majority.
-- Output JSON is structured (machine-readable) and is the input for
-  the eventual baseline-vs-candidate eval primitive (Phase 2 /
-  `mdubrinsky-7au.6`). The Markdown is human-reviewable, organized
-  by verdict bucket.
-
-## Cost / wallclock guide (USER.md, 71 entries)
-
-Wallclock is dominated by the slowest judge per entry (per-entry
-parallel). Approximate numbers from local laptop + IGW routing:
-
-| council | wallclock | notes |
-| --- | ---: | --- |
-| Sonnet 4.6 alone | ~15 min | the baseline; fastest single judge |
-| Sonnet 4.6 + 1 Nemotron | ~25-30 min | depends on Nemotron tier |
-| 3-judge with Super v1-5 | ~45-50 min | Super is the long pole |
-| Sonnet 4.6 + Nano-3 | ~20-25 min | dense Nano is moderate latency |
-
-Token costs are trivial at single-corpus scale (<$5 per full run on
-Sonnet, near-free on Nemotron via inference-api). Cost matters when
-this becomes a per-iteration eval loop running daily; the whole
-point of getting a tuned Nemotron is to make that loop free.
+  completion tokens on internal reasoning before emitting JSON. The
+  default `max_tokens=4096` is safe; bump to 6144 if you see empty-content
+  errors from Kimi or Super.
+- Per-entry wallclock is dominated by the slowest judge. With Sonnet
+  alone, a 71-entry USER.md run is ~12 minutes; adding a heavy
+  Nemotron judge can push it to 30-50 minutes.
+- Output JSON is structured and is the input for the eventual
+  baseline-vs-candidate eval primitive (Phase 2 / bd `mdubrinsky-7au.6`).
+  Markdown is human-reviewable, organized by verdict bucket.
 
 ## See also
 
-- [`DESIGN.md`](../../src/nemo_agents_plugin/improvement/memory/DESIGN.md) — Phase 0 contract, council slots, phasing
-- [`RESULTS.md`](../../src/nemo_agents_plugin/improvement/memory/RESULTS.md) — Phase 1 smoke results, calibration findings, v1-v4 evolution
-- bd `mdubrinsky-7au` — parent issue
-- bd `mdubrinsky-7au.6` — eval-loop work (this script's successor)
-- bd `mdubrinsky-7au.3` — judge fine-tune corpus from the v1 disagreement set
+- [`DESIGN.md`](../../src/nemo_agents_plugin/improvement/memory/DESIGN.md) — Phase 0 contract, council slots, phasing.
+- [`RESULTS.md`](../../src/nemo_agents_plugin/improvement/memory/RESULTS.md) — Phase 1 smoke results, calibration findings, v1-v4 evolution.
+- bd `mdubrinsky-7au` — parent issue.
+- bd `mdubrinsky-7au.6` — eval-loop work (baseline-vs-candidate diff primitive).
+- bd `mdubrinsky-7au.3` — judge fine-tune corpus from the v1 disagreement set.

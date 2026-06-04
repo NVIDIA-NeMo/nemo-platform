@@ -1,0 +1,21 @@
+# Spec for `nemo agents triage-memory`.
+#
+# Runs a candidate cheap-tier judge (Nemotron-3 Nano) over the same USER.md
+# corpus the Sonnet 4.6 baseline used. Output is a comparable artifact the
+# Phase 2 eval primitive (bd mdubrinsky-7au.6) diffs against the baseline.
+#
+#   nemo agents triage-memory run \
+#       --spec-file plugins/nemo-agents/examples/memory-triage/candidate-nemotron-nano.triage-memory.yml
+
+corpus: ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+store_name: pi-hermes:CONSOLIDATED:user
+
+judges:
+  - nvidia-nemotron-3-nano-30b-a3b
+
+basename: candidate-nemotron-3-nano-user
+output_dir: plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/candidates
+
+# Reasoning models need headroom; 4096 is the default and is sufficient for
+# the base Nano. If you swap in Kimi or Super v1-5, bump to 6144.
+max_tokens: 4096

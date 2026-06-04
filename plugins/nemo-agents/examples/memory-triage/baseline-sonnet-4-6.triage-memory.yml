@@ -1,0 +1,38 @@
+# Spec for `nemo agents triage-memory`.
+#
+# Locks the Sonnet 4.6 baseline against the consolidated PoC USER.md corpus.
+# Future tuned-model runs diff against this baseline's artifact.
+#
+#   nemo agents triage-memory run \
+#       --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6.triage-memory.yml
+#
+# Two corpus shapes are supported.
+#
+# (a) Local path: when the corpus already lives on the machine the job runs
+#     on (laptop, omnistation with files scp'd over, etc.). Anything starting
+#     with /, ./, ../, or ~ is treated as a path, as is any bare name that
+#     happens to exist as a local file.
+#
+#     corpus: ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+#
+# (b) Fileset reference: when the corpus lives in the platform files service.
+#     Upload once with `nemo files upload`, then reference by name. Useful
+#     when the job runs somewhere you can't easily scp to. The fileset must
+#     contain exactly one .md file (the corpus); the job refuses ambiguity
+#     rather than guessing.
+#
+#     corpus: my-corpus-fileset                # uses `workspace` field
+#     corpus: my-workspace/my-corpus-fileset   # workspace-qualified
+#     workspace: default                       # ignored when corpus is a local path
+
+corpus: ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+store_name: pi-hermes:CONSOLIDATED:user
+
+judges:
+  - azure-anthropic-claude-sonnet-4-6
+
+basename: baseline-sonnet-4-6-user
+output_dir: plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines
+
+# Defaults are fine for everything else (max_tokens=4096, timeout=180s,
+# igw_base_url resolved automatically via `nemo inference get-url`).

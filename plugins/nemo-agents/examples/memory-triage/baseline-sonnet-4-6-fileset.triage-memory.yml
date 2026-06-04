@@ -1,0 +1,29 @@
+# Spec for `nemo agents triage-memory` using a NeMo Platform fileset.
+#
+# Use this shape when the corpus lives in the platform's files service
+# rather than on the job-runner's local filesystem. Typical workflow:
+#
+#   # 1. Create the fileset once.
+#   nemo files filesets create user-memory-corpus
+#
+#   # 2. Upload the corpus to it from wherever has the file (laptop, etc.).
+#   nemo files upload --fileset user-memory-corpus \
+#       ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+#
+#   # 3. Run the triage job. The job downloads the fileset to a tempdir,
+#   #    finds the single .md file inside, and triages it.
+#   nemo agents triage-memory run \
+#       --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6-fileset.triage-memory.yml
+
+# Fileset reference. Use 'fileset-name' to resolve against the workspace
+# field below, or 'workspace/fileset-name' to inline the workspace.
+corpus: user-memory-corpus
+workspace: default
+
+store_name: pi-hermes:CONSOLIDATED:user
+
+judges:
+  - azure-anthropic-claude-sonnet-4-6
+
+basename: baseline-sonnet-4-6-user
+output_dir: plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines
