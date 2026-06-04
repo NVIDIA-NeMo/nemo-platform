@@ -11,7 +11,6 @@ import anyio.from_thread
 import anyio.to_thread
 import data_designer.config as dd
 from anyio.lowlevel import current_token
-from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
 from data_designer_nemo.context import create_data_designer_context
 from data_designer_nemo.errors import NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
@@ -43,12 +42,11 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         *,
         ctx: FunctionContext,
         async_sdk: AsyncNeMoPlatform,
-        is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         # Fail fast on request shape (``num_records``) before doing any config-validation work.
-        num_records = _validate_and_get_num_records(spec.num_records, is_local)
+        num_records = _validate_and_get_num_records(spec.num_records)
 
-        dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
+        dd_ctx = create_data_designer_context(False, async_sdk, ctx.workspace)
         errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, spec.config)
         raise_if_errors(errors)
 
@@ -100,15 +98,12 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
                 yield Done()
 
 
-def _validate_and_get_num_records(requested_num_records: int | None, is_local: bool) -> int:
+def _validate_and_get_num_records(requested_num_records: int | None) -> int:
     """Resolve the effective ``num_records``, raising if the user asked for too many.
 
-    Local execution is unconstrained. Remote execution caps at the
-    ``preview_num_records.max`` configured by the operator.
+    Service-backed preview caps at the ``preview_num_records.max`` configured
+    by the operator.
     """
-    if is_local:
-        return requested_num_records or DEFAULT_NUM_RECORDS
-
     config = get_config()
     num_records = config.preview_num_records.default
     if requested_num_records:

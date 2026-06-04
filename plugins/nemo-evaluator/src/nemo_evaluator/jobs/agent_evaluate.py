@@ -214,10 +214,9 @@ class AgentEvalJob(NemoJob):
         External providers authenticate via their own api key and don't need it anyway. Isolated so
         tests can inject a fake inference seam.
 
-        ``platform`` is the SDK handle injected into ``run`` — a real ``NeMoPlatform`` in a submitted
-        job (built by ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It is ``None``
-        only for a platformless local run (e.g. offline ``run_local``), which has no identity to
-        forward.
+        ``platform`` is the SDK handle injected into ``run`` in a submitted job (built by
+        ``get_task_sdk``, threading ``NMP_PRINCIPAL`` as on-behalf-of). It may be ``None`` in direct
+        unit-test invocation, which has no identity to forward.
 
         NOTE: bearer-token auth for platform routes in an auth-enabled deployment is not yet
         forwarded (the local/internal path relies on the ``X-NMP-*`` identity headers); see
@@ -280,7 +279,7 @@ class AgentEvalJob(NemoJob):
         sdk: NeMoPlatform | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Run the agent evaluation locally and persist its result bundle as artifacts."""
+        """Run the agent evaluation and persist its result bundle as artifacts."""
         spec = AgentEvalSpec.model_validate(config)
         tasks = [_to_runtime_task(task) for task in spec.tasks]
         target, prompt_template, params = self._resolve_target(spec.target, ctx)

@@ -3,12 +3,12 @@
 
 """Task entrypoint dispatcher for :class:`~nemo_platform_plugin.job.NemoJob` subclasses.
 
-Mirrors :meth:`~nemo_platform_plugin.scheduler.NemoJobScheduler.run_local` for any
-process the platform spawns with the ``NEMO_JOB_*`` environment populated —
-both Docker-backed task containers and host subprocess executors land here.
+Runs in any process the platform spawns with the ``NEMO_JOB_*`` environment
+populated — both Docker-backed task containers and host subprocess executors
+land here.
 Reads the step config from the platform-injected file path, builds a
 :class:`~nemo_platform_plugin.job_context.JobContext` from the environment, and
-invokes ``job.run(...)`` with the same signature-based DI used locally
+invokes ``job.run(...)`` with signature-based DI
 (see :func:`~nemo_platform_plugin.run_dependencies.resolve_run_kwargs`).
 
 Because ``run_task`` only runs inside a platform-spawned process, the
@@ -56,7 +56,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError, resolve_run_kwargs
+from nemo_platform_plugin.run_dependencies import RunDependencyError, resolve_run_kwargs
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +74,7 @@ def run_task(
     builds a :class:`JobContext` from the platform-injected env when *ctx* is
     omitted, and invokes ``job.run(config, **kwargs)`` with signature DI of
     ``ctx`` / ``sdk`` / ``async_sdk``. Exit codes follow :func:`_exit_code_for`;
-    :class:`~nemo_platform_plugin.run_dependencies.LocalRunError` propagates verbatim.
+    :class:`~nemo_platform_plugin.run_dependencies.RunDependencyError` propagates verbatim.
 
     The auto-built ``ctx`` wires
     :class:`~nemo_platform_plugin.job_results.PlatformJobResults` as ``ctx.results``,
@@ -121,7 +121,7 @@ def run_task(
 
     try:
         kwargs = resolve_run_kwargs(job_cls, job.run, sdk=sdk, async_sdk=async_sdk, ctx=ctx, is_local=False)
-    except LocalRunError:
+    except RunDependencyError:
         # Plugin-author bug (e.g. required sdk param without a handle); propagate
         # rather than collapse into the same exit-2 bucket as a missing env var.
         raise
@@ -131,7 +131,7 @@ def run_task(
 
     try:
         result = job.run(config, **kwargs)
-    except LocalRunError:
+    except RunDependencyError:
         # Propagate verbatim per run_task's contract.
         raise
     except Exception:

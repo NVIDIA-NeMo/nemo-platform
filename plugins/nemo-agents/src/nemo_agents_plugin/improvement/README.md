@@ -11,7 +11,7 @@ plugin commands; the canonical NeMo self-improvement config lives at
 `.agent-improver.yml` in the repo root and is invoked as:
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 **New here?** Read [`GETTING_STARTED.md`](./GETTING_STARTED.md) for the
@@ -27,16 +27,13 @@ asks to "improve the agent" / "run agent evals" / etc.
 ## CLI surface
 
 Three subcommands extend `nemo agents`, each registered as a standard
-NemoJob with `run` / `submit` / `explain` verbs:
+NemoJob with `submit` / `explain` verbs:
 
 ```bash
-# Run locally, in-process — daily use
-nemo agents evaluate-suite run --spec-file ./.agent-improver.yml
-nemo agents analyze         run --spec-file ./.agent-improver.yml
-nemo agents optimize-skills run --spec-file ./.agent-improver.yml
-
-# Submit to a cluster
-nemo agents optimize-skills submit --spec-file ./.agent-improver.yml --cluster <url>
+# Submit improvement workflow jobs
+nemo agents evaluate-suite submit --spec-file ./.agent-improver.yml
+nemo agents analyze         submit --spec-file ./.agent-improver.yml
+nemo agents optimize-skills submit --spec-file ./.agent-improver.yml
 
 # Inspect the spec schema for a job
 nemo agents optimize-skills explain
@@ -45,7 +42,7 @@ nemo agents optimize-skills explain
 You can pass the spec inline as JSON instead of a file:
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-2026-04-28", "format": "md"}'
+nemo agents analyze submit --spec '{"batch": "./runs/batch-2026-04-28", "format": "md"}'
 ```
 
 For one-off overrides, edit the YAML in place (or copy it and pass the

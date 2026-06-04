@@ -3,7 +3,7 @@
 
 """Client-side validation core for Data Designer configs.
 
-This module owns the "is this config fit to run locally / submit remotely?"
+This module owns the "is this config fit for service-backed execution?"
 question. It is consumed by both the SDK (``DataDesignerResource.validate``)
 and the CLI (``nemo data-designer validate``); the surface layer just decides
 how to render the report and which exit code to use.
@@ -11,8 +11,8 @@ how to render the report and which exit code to use.
 The validation passes here mirror what ``CreateJob.to_spec`` and
 ``PreviewFunction.run`` execute at submit/preview time, so a green
 ``ValidationReport`` is a strong (but not absolute) indicator that downstream
-calls will succeed. The remote pass is a client-side simulation — it does not
-hit the data-designer service.
+calls will succeed. The pass is a client-side simulation — it does not hit the
+data-designer service.
 """
 
 from __future__ import annotations
@@ -31,9 +31,9 @@ from nemo_data_designer_plugin._data_designer import create_data_designer
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from pydantic import BaseModel, Field, computed_field
 
-ExecutionContext = Literal["local", "remote"]
+ExecutionContext = Literal["remote"]
 
-_ALL_CONTEXTS: tuple[ExecutionContext, ...] = ("local", "remote")
+_ALL_CONTEXTS: tuple[ExecutionContext, ...] = ("remote",)
 
 
 class ValidationError(BaseModel):
@@ -43,7 +43,7 @@ class ValidationError(BaseModel):
 
 
 class ValidationContextResult(BaseModel):
-    """Aggregate result for a single execution context (local or remote)."""
+    """Aggregate result for one validation context."""
 
     context: ExecutionContext
     errors: list[ValidationError] = Field(default_factory=list)
@@ -87,8 +87,7 @@ async def _validate_one_context(
     sub-check that *can* be run is run, so a single pass surfaces every
     problem.
     """
-    is_local = context == "local"
-    dd_ctx = create_data_designer_context(is_local, async_sdk, workspace)
+    dd_ctx = create_data_designer_context(False, async_sdk, workspace)
 
     # First run the same resolution that the job and function execute.
     runnable_errors, _model_configs, model_providers = await resolve_runnable_config(dd_ctx, config)
@@ -133,7 +132,7 @@ async def validate_config(
     execution_context: ExecutionContext | None = None,
     config_source: str | None = None,
 ) -> ValidationReport:
-    """Validate ``config_builder`` against one or every execution context.
+    """Validate ``config_builder`` against service-backed execution constraints.
 
     Args:
         config_builder: The Data Designer config to validate.
@@ -142,17 +141,16 @@ async def validate_config(
         async_sdk: Async NeMoPlatform SDK. If omitted but ``sdk`` is supplied,
             an async wrapper is built via ``sync_to_async_sdk``.
         workspace: Workspace used to resolve provider references and seed
-            sources for the remote context. Pass ``"default"`` if you have
-            no better value.
-        execution_context: ``"local"``, ``"remote"``, or ``None``.
-            ``None`` (the default) runs every applicable context.
+            sources. Pass ``"default"`` if you have no better value.
+        execution_context: ``"remote"`` or ``None``. ``None`` validates the
+            service-backed context.
         config_source: Informational identifier for the config source — echoed
             back through the report. Not used for any logic.
 
     Returns:
-        A ``ValidationReport`` aggregating the results of every requested
-        context. The report's ``ok`` property is true iff every requested
-        context validated cleanly.
+        A ``ValidationReport`` aggregating the results of the requested
+        context. The report's ``ok`` property is true iff the requested context
+        validated cleanly.
 
     Raises:
         ValueError: If neither ``sdk`` nor ``async_sdk`` is provided.

@@ -57,7 +57,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents evaluate-suite run --spec-file .agent-improver.yml
+nemo agents evaluate-suite submit --spec-file .agent-improver.yml
 ```
 
 Output lands in `./runs/batch-<timestamp>/` with `report.md` / `report.csv`
@@ -67,7 +67,7 @@ data is also written to `<batch_dir>/<eval-name>__trials.json`.
 ### 3. Inspect the results
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "format": "md"}'
+nemo agents analyze submit --spec '{"batch": "./runs/batch-<timestamp>", "format": "md"}'
 ```
 
 You'll get a markdown report with:
@@ -79,7 +79,7 @@ You'll get a markdown report with:
 For just the mechanical pass (no LLM, no API key needed):
 
 ```bash
-nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "mechanical_only": true}'
+nemo agents analyze submit --spec '{"batch": "./runs/batch-<timestamp>", "mechanical_only": true}'
 ```
 
 ### 4. Run the optimize-skills loop
@@ -89,7 +89,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 The loop strips `CLAUDE_CODE_*` env markers when spawning `claude --print`,
@@ -127,7 +127,7 @@ NeMo Platform ships a working `.agent-improver.yml` at the repo root. Run from t
 repo root:
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 This is also the cheapest way to validate the workflow end-to-end on a
@@ -242,15 +242,12 @@ implementation, gated on plumbing ``workspace`` / ``agent_name`` /
 
 ## Command verbs
 
-Each improvement command is a NemoJob group with the standard `run` /
-`submit` / `explain` verbs:
+Each improvement command is a NemoJob group with the standard `submit` /
+`explain` verbs:
 
 ```bash
-# Run locally, in-process
-nemo agents optimize-skills run --spec-file .agent-improver.yml
-
-# Submit to a cluster
-nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
+# Submit the optimize-skills job
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 
 # Print the spec schema
 nemo agents optimize-skills explain

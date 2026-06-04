@@ -46,7 +46,7 @@ async def resolve_metric_ref(
     if entity_client is None or async_sdk is None:
         raise ValueError(
             "MetricRef metrics require a platform connection (entity store and async SDK) to resolve; "
-            "they cannot be used in local execution. Pass an inline metric instead."
+            "pass an inline metric when no platform connection is available."
         )
     ref_workspace, name = parse_metric_ref(ref.root, workspace)
     try:

@@ -8,7 +8,7 @@
 #
 # Usage:
 #
-#   nemo agents optimize run \
+#   nemo agents optimize submit \
 #       --optimize-config examples/calculator-agent/calculator-optimize.yml \
 #       --agent calculator-agent
 #
@@ -16,7 +16,7 @@
 # the parameter sweep is local-only in that mode and won't reach the remote
 # agent — prefer the named-agent form whenever the agent is platform-managed:
 #
-#   nemo agents optimize run \
+#   nemo agents optimize submit \
 #       --optimize-config examples/calculator-agent/calculator-optimize.yml \
 #       --agent http://localhost:8080
 #

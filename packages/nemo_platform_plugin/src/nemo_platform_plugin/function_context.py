@@ -21,8 +21,8 @@ The context is intentionally narrower than :class:`JobContext`:
   cross-cutting fix does.
 
 Plugin authors opt in by declaring a keyword-only parameter named
-``ctx`` on :meth:`NemoFunction.run`; the route adapter and the local
-CLI both honour signature-based DI.
+``ctx`` on :meth:`NemoFunction.run`; the route adapter honours
+signature-based DI.
 
 Example::
 
@@ -45,13 +45,10 @@ class FunctionContext:
 
     Attributes:
         workspace: Workspace scope the request was made against.
-            For local CLI runs this comes from ``--workspace`` and
-            defaults to ``"default"``; for HTTP runs it's the path
-            parameter the route adapter pulls from
+            This is the path parameter the route adapter pulls from
             ``/v2/workspaces/{workspace}/...``.
         request_id: Optional correlation id for tracing. Set from the
-            inbound ``X-Request-ID`` header by the route adapter; left
-            ``None`` for local CLI runs unless the caller passes one.
+            inbound ``X-Request-ID`` header by the route adapter.
     """
 
     workspace: str

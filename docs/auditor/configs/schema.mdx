@@ -77,5 +77,5 @@ Controls where reports land and how they are summarized.
 |-------|------|---------|-------------|
 | `report_prefix` | `str` | `"run1"` | Filename prefix for the produced reports. `report_prefix="quick-scan"` yields `quick-scan.report.jsonl`, `quick-scan.report.html`, and `quick-scan.hitlog.jsonl`. |
 | `taxonomy` | `str \\| None` | `None` | Optional taxonomy label included in the report. |
-| `report_dir` | `str` | `"garak_runs"` | Sub-directory of `$XDG_DATA_HOME/garak/` where garak writes its raw output. The plugin then copies the produced files into the local results sink. |
+| `report_dir` | `str` | `"garak_runs"` | Sub-directory of `$XDG_DATA_HOME/garak/` where garak writes its raw output. The plugin then copies the produced files into job artifact storage. |
 | `show_100_pass_modules` | `bool` | `True` | Include 100%-pass modules in the report summary. Set to `False` to hide them for a tighter "failures only" view. |

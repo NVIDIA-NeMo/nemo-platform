@@ -3,20 +3,14 @@
 
 """EvaluateSuiteJob — run a directory of containerized eval tasks against an agent.
 
-Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. Invoke as
-
-Two invocation paths share the same ``run(config)`` body:
-
-* ``nemo agents evaluate-suite run --spec '{...}'`` — local, in-process, no
-  platform job row (good for offline iteration / no platform required).
-* ``nemo agents evaluate-suite submit --spec '{...}'`` — POSTs to the
-  platform; the jobs controller dispatches a subprocess on the same host that
-  runs the platform (today: the user's laptop) and the result lands in
-  ``nemo jobs list`` / Studio's Jobs view.
+Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. Invoke with
+``nemo agents evaluate-suite submit --spec '{...}'``. The generated CLI posts
+to the platform; the jobs controller dispatches the workload and the result
+lands in ``nemo jobs list`` / Studio's Jobs view.
 
 or, preferred for repeatable runs, with a YAML spec file:
 
-    nemo agents evaluate-suite run --spec-file .agent-improver.yml
+    nemo agents evaluate-suite submit --spec-file .agent-improver.yml
 """
 
 from __future__ import annotations

@@ -3,17 +3,17 @@
 
 """Integration tests for the agent-evaluation job (AALGO-297).
 
-These exercise the job against *real* execution seams, across the dimensions that
-matter for this work:
+These exercise the job against *real* service-backed execution seams, across the
+dimensions that matter for this work:
 
 * target type — a Codex *runner*, plus Model and Agent endpoint targets pointed at an
   IGW mock provider (canned response, so no real model or key);
 * metric form — an inline metric bundle, plus a stored ``MetricRef`` resolved against
   the live entity store;
-* execution mode — in-process ``run_local`` and service-side ``submit`` on both the
-  subprocess and docker backends, against the session ``subprocess_platform`` /
-  ``docker_platform`` fixtures in ``conftest.py``. (Docker submit is xfail today — the
-  cpu-tasks image predates this work; tracked in AALGO-301.)
+* backend — service-side ``submit`` on the subprocess and docker backends, against the
+  session ``subprocess_platform`` / ``docker_platform`` fixtures in ``conftest.py``.
+  (Docker submit is xfail today — the cpu-tasks image predates this work; tracked in
+  AALGO-301.)
 
 Marked ``integration`` (auto-applied to ``/integration/`` paths). Codex-dependent tests
 gate on ``@requires_codex`` (skip when the ``codex`` CLI is absent, needs a logged-in
@@ -26,12 +26,10 @@ Run directly::
 
 from __future__ import annotations
 
-import json
 import os
 import shutil
 import sys
 import uuid
-from pathlib import Path
 
 import cloudpickle
 import httpx
@@ -41,7 +39,6 @@ from nemo_evaluator.jobs.agent_evaluate import AgentEvalJob
 from nemo_evaluator.jobs.agent_spec import (
     AgentEvalInputSpec,
     AgentEvalTaskInput,
-    AgentTarget,
     CodexRunnerTarget,
     ModelTarget,
 )
@@ -49,9 +46,9 @@ from nemo_evaluator.metric_refs import MetricRef
 from nemo_evaluator.shared.metric_bundles.bundles import bundle_metric
 from nemo_evaluator.shared.metric_bundles.cloudpickle import CloudpickleMetricBundlePackager
 from nemo_evaluator_sdk.agent_eval.trials import AgentEvalTrial, AgentEvalTrialStatus, AgentOutput
-from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
+from nemo_evaluator_sdk.enums import ModelFormat
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import GenericAgent, Model, RunConfigOnline, RunConfigOnlineModel
+from nemo_evaluator_sdk.values import Model, RunConfigOnlineModel
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 from nmp.testing import add_mock_provider
@@ -120,15 +117,6 @@ def _output_contains_metric(expected: str) -> MetricInline:
     return MetricInline.model_validate(bundle.model_dump(mode="json"))
 
 
-def _bundle_dir(run_result: dict) -> Path:
-    """The persisted run bundle directory (trials/scores/summary) from a run_local result."""
-    return Path(run_result["artifact"]["artifact_url"].removeprefix("file://"))
-
-
-def _read_jsonl(path: Path) -> list[dict]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
-
-
 def _chat_completion(content: str) -> dict:
     """An OpenAI ``chat.completion`` response body whose assistant message is ``content``."""
     return {
@@ -147,118 +135,6 @@ def _igw_chat_url(base_url: str, model_entity: str) -> str:
 def _unique(prefix: str) -> str:
     """A unique entity name, so a rerun (e.g. pytest-rerunfailures) doesn't 409 on an existing one."""
     return f"{prefix}-{uuid.uuid4().hex[:8]}"
-
-
-@pytest.mark.timeout(300)
-def test_run_local_model_target_scores_a_real_trial(subprocess_platform: str) -> None:
-    # dim 1 (Model endpoint target): generate a trial against an IGW mock provider that returns
-    # "DONE" (no real model/key), then score the trial output with the inline metric.
-    sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
-    model_name = _unique("model-judge")
-    add_mock_provider(sdk, workspace=WORKSPACE, name=model_name, mock_response_body=_chat_completion("DONE"))
-
-    input_spec = AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="ask",
-                intent="Obtain a one-word reply from the model.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[_output_contains_metric("DONE")],
-            )
-        ],
-        target=ModelTarget(
-            model=Model(
-                url=_igw_chat_url(subprocess_platform, model_name), name=model_name, format=ModelFormat.OPEN_AI
-            ),
-            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
-            params=RunConfigOnlineModel(),
-        ),
-    )
-
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
-
-    assert result["status"] == "completed"
-    bundle = _bundle_dir(result)
-    trials = _read_jsonl(bundle / "trials.jsonl")
-    assert trials[0]["output"]["output_text"] == "DONE"
-    scores = _read_jsonl(bundle / "scores.jsonl")
-    assert scores[0]["outputs"][0]["value"] in (True, 1.0)
-
-
-@pytest.mark.timeout(300)
-def test_run_local_agent_target_scores_a_real_trial(subprocess_platform: str) -> None:
-    # dim 1 (Agent endpoint target): a generic-HTTP agent posts to an IGW mock provider returning
-    # "DONE"; response_path extracts the assistant content, then the inline metric scores it.
-    sdk = NeMoPlatform(base_url=subprocess_platform, max_retries=2)
-    sdk.workspaces.create(name=WORKSPACE, exist_ok=True)
-    agent_name = _unique("agent-judge")
-    add_mock_provider(sdk, workspace=WORKSPACE, name=agent_name, mock_response_body=_chat_completion("DONE"))
-
-    agent = GenericAgent(
-        url=_igw_chat_url(subprocess_platform, agent_name),
-        name=agent_name,
-        format=AgentFormat.GENERIC,
-        body={"model": agent_name, "messages": [{"role": "user", "content": "Reply with DONE."}]},
-        response_path="$.choices[0].message.content",
-    )
-    input_spec = AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="ask",
-                intent="Obtain a one-word reply from the agent.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[_output_contains_metric("DONE")],
-            )
-        ],
-        target=AgentTarget(agent=agent, params=RunConfigOnline()),
-    )
-
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
-
-    assert result["status"] == "completed"
-    bundle = _bundle_dir(result)
-    trials = _read_jsonl(bundle / "trials.jsonl")
-    assert trials[0]["output"]["output_text"] == "DONE"
-    scores = _read_jsonl(bundle / "scores.jsonl")
-    assert scores[0]["outputs"][0]["value"] in (True, 1.0)
-
-
-@requires_codex
-@pytest.mark.timeout(300)
-def test_run_local_codex_runner_scores_a_real_trial() -> None:
-    # One real Codex run covering dim 1 (runner) x dim 2 (inline metric) x dim 3 (run): the CLI
-    # produces a trial and a user-defined inline metric scores its output. (Every task must declare
-    # >=1 metric — the SDK evaluator rejects a metric-less task — so this is the minimal real run.)
-    input_spec = AgentEvalInputSpec(
-        tasks=[
-            AgentEvalTaskInput(
-                id="say-done",
-                intent="Agent follows a trivial instruction and exits cleanly.",
-                inputs={"instruction": "Reply with the single word DONE and nothing else."},
-                metrics=[_output_contains_metric("DONE")],
-            )
-        ],
-        target=CodexRunnerTarget(model=CODEX_MODEL),
-    )
-
-    result = NemoJobScheduler().run_local(AgentEvalJob, input_spec.model_dump(mode="json"))
-
-    assert result["status"] == "completed"
-    bundle = _bundle_dir(result)
-
-    trials = _read_jsonl(bundle / "trials.jsonl")
-    assert len(trials) == 1
-    assert trials[0]["task_id"] == "say-done"
-    assert trials[0]["status"] == "completed"
-
-    scores = _read_jsonl(bundle / "scores.jsonl")
-    assert [score["metric_type"] for score in scores] == ["output-contains"]
-    assert scores[0]["trial_id"] == trials[0]["id"]
-    # The custom metric actually validated the agent's output (it replied "DONE").
-    output = scores[0]["outputs"][0]
-    assert output["name"] == "contains"
-    assert output["value"] in (True, 1.0)
 
 
 # --- submit: service-side execution -----------------------------------------

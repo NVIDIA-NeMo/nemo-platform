@@ -216,7 +216,7 @@ specific VirtualModel registered in your workspace, then run:
 
 ```bash
 export NEMO_DEFAULT_MODEL=nvidia-nemotron-3-super-120b-a12b   # or any registered VirtualModel
-nemo agents evaluate run \
+nemo agents evaluate submit \
     --eval-config plugins/nemo-agents/examples/calculator-agent/src/calculator_agent/calculator-eval.yml \
     --agent calculator-agent
 ```

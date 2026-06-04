@@ -264,7 +264,7 @@ async def model_with_valid_secret(
     workspace: str,
     client: AsyncNeMoPlatform,
 ) -> Model:
-    """Return a model configured for run or submit NeMo Platform example execution."""
+    """Return a model configured for the selected NeMo Platform example execution mode."""
     if execution_mode == "submit":
         secret_name = await ensure_submit_evaluator_api_key_secret(workspace, client)
         return model.model_copy(update={"api_key_secret": SecretRef(root=secret_name)})
@@ -490,7 +490,7 @@ async def run_nmp_online_metric_example(
     execution_mode: ExampleExecutionMode = "run",
     limit_samples: int = 2,
 ) -> None:
-    """Evaluate one metric through the plugin SDK using run or submit."""
+    """Evaluate one metric through the plugin SDK using the selected execution mode."""
     _print_example_separator(
         run_nmp_online_metric_example.__name__,
         is_online=is_online,
@@ -609,7 +609,7 @@ async def run_nmp_llm_judge_example(
     limit_samples: int = 2,
     execution_mode: ExampleExecutionMode = "run",
 ) -> None:
-    """Evaluate a helpfulness judge through the plugin SDK using run or submit."""
+    """Evaluate a helpfulness judge through the plugin SDK using the selected execution mode."""
     _print_example_separator(
         run_nmp_llm_judge_example.__name__,
         is_online=is_online,

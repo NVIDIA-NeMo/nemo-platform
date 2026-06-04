@@ -5,14 +5,9 @@
 
 Registered under ``nemo.jobs`` as ``agents.optimize-skills``.
 
-Two invocation paths share the same ``run(config)`` body:
-
-* ``nemo agents optimize-skills run --spec '{...}'`` — local, in-process, no
-  platform job row (good for offline iteration / no platform required).
-* ``nemo agents optimize-skills submit --spec '{...}'`` — POSTs to the
-  platform; the jobs controller dispatches a subprocess on the same host that
-  runs the platform and the result lands in ``nemo jobs list`` / Studio's
-  Jobs view.
+Invoke with ``nemo agents optimize-skills submit --spec '{...}'``. The
+generated CLI posts to the platform; the jobs controller dispatches the
+workload and the result lands in ``nemo jobs list`` / Studio's Jobs view.
 """
 
 from __future__ import annotations

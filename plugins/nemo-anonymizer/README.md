@@ -23,9 +23,8 @@ The plugin provides functional parity with the
 [NVIDIA NeMo Anonymizer library](https://github.com/NVIDIA-NeMo/Anonymizer):
 
 - All four replacement strategies + `Rewrite` mode.
-- Input sources: local file path, `http(s)://` URL, or NeMo Platform fileset reference.
-  Local paths are only supported by local execution (`run` verbs).
-- Remote execution requires `model_configs` so requests route through NeMo Platform
+- Input sources: `http(s)://` URL or NeMo Platform fileset reference.
+- Execution requires `model_configs` so requests route through NeMo Platform
   Inference Gateway instead of the library's NVIDIA Build defaults.
 
 ## Installation (developer)
@@ -39,16 +38,12 @@ uv sync
 ## CLI quickstart
 
 ```bash
-nemo anonymizer preview run --spec-file ./preview_spec.yaml
 nemo anonymizer preview submit --spec-file ./preview_spec.yaml --workspace my-workspace
 
-nemo anonymizer run run --spec-file ./run_spec.yaml
 nemo anonymizer run submit --spec-file ./run_spec.yaml --workspace my-workspace
 ```
 
-Local execution can use local files, `http(s)` URLs, filesets, and locally
-defined Data Designer model providers. Remote execution supports `http(s)` URLs
-and filesets, and requires explicit `model_configs`.
+Execution supports `http(s)` URLs and filesets, and requires explicit `model_configs`.
 
 Fileset input references point at one CSV or Parquet file:
 

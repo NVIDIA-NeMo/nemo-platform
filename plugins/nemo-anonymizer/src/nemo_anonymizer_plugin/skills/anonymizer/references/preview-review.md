@@ -6,7 +6,7 @@ Reference docs: `docs/anonymizer/tutorials/preview.md` (frame schema, surfaces, 
 
 ## What you get back
 
-`nemo anonymizer preview run` and `nemo anonymizer preview submit` stream newline-delimited JSON frames with the same logical data:
+`nemo anonymizer preview submit` streams newline-delimited JSON frames:
 
 - `preview_dataset` — public anonymized records.
 - `trace_dataset` — trace records with detection details.
@@ -16,11 +16,9 @@ Reference docs: `docs/anonymizer/tutorials/preview.md` (frame schema, surfaces, 
 ## Plugin Review Checklist
 
 1. Surface any `failed_records` and the associated reasons.
-2. Confirm the preview used the intended execution surface:
-   - Local paths require `preview run`.
-   - `preview submit` requires HTTP(S) or fileset input and explicit `model_configs`.
+2. Confirm the preview used HTTP(S) or fileset input and explicit `model_configs`.
 3. Confirm `model_configs` aliases line up with any `selected_models` overrides. For detection overrides, use Anonymizer library role names such as `entity_detector` and `entity_validator`.
 4. Ask the user to share CLI NDJSON frames for a specific record when you need to inspect exact spans and labels.
 5. If quality needs tuning, refer to the Anonymizer library docs/skills for label selection, thresholds, replacement strategy parameters, and rewrite settings.
 
-When the preview is acceptable, derive the run spec by dropping `num_records`. Run writes artifacts. Use `nemo anonymizer run run` for local execution or `nemo anonymizer run submit` for platform execution.
+When the preview is acceptable, derive the run spec by dropping `num_records`. Run writes artifacts. Use `nemo anonymizer run submit` for platform execution.

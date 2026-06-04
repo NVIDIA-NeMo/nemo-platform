@@ -5,7 +5,7 @@ Use this reference only for plugin execution concerns. The [Anonymizer library d
 For plugin-service / Jobs execution (`preview submit`, `run submit`):
 
 - Include `model_configs` so rewrite model calls route through NeMo Platform Inference Gateway providers.
-- Use HTTP(S) URLs or fileset references for `data.source`; local paths only work with `preview run` / `run run`.
+- Use HTTP(S) URLs or fileset references for `data.source`; local paths are rejected.
 - Only include `selected_models.rewrite` when you need to override library defaults, and use Anonymizer library role names exactly.
 
 Example role override shape:

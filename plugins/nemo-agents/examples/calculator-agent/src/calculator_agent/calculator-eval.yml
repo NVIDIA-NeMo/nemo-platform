@@ -6,13 +6,13 @@
 # The agent runs remotely (already deployed), and its endpoint is passed via
 # the CLI:
 #
-#   nemo agents evaluate run \
+#   nemo agents evaluate submit \
 #       --eval-config examples/calculator-agent/calculator-eval.yml \
 #       --endpoint http://localhost:8080/generate
 #
 # Or, if the agent is platform-managed:
 #
-#   nemo agents evaluate run \
+#   nemo agents evaluate submit \
 #       --eval-config examples/calculator-agent/calculator-eval.yml \
 #       --agent calculator-agent
 #

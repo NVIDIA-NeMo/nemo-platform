@@ -10,7 +10,7 @@ For more detail about column behavior, see the [open-source library's version](h
 
 ## Prerequisites
 
-Ensure you have completed the [tutorials prerequisites](/documentation/design-synthetic-data/tutorials#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
+Ensure you have completed the [tutorials prerequisites](/documentation/design-synthetic-data/tutorials#prerequisites). This tutorial uses an Inference Gateway provider, so NeMo Services must be running and configured.
 
 ## Part 1: Build the Configuration
 
@@ -18,7 +18,7 @@ Use the `data_designer.config` package to define your dataset schema. This confi
 
 <Tip>
 
-Build the configuration once, then choose whether to execute with CLI `run`, CLI `submit`, or the SDK.
+Build the configuration once, then execute with CLI `submit` or the SDK.
 
 </Tip>
 ### Define Models
@@ -191,9 +191,9 @@ config_builder.add_column(
 
 ## Part 2: Execute
 
-Now execute your configuration. You can run locally through the CLI, submit to NeMo Services, or call the Data Designer API from the SDK.
+Now execute your configuration. You can submit it to NeMo Services through the CLI or call the Data Designer API from the SDK.
 
-### Local CLI Execution
+### CLI Submit
 
 Save the configuration in a Python file such as `product_reviews.py` and expose a `load_config_builder()` function that returns the `config_builder`.
 
@@ -202,27 +202,16 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Preview locally:
-
-```bash
-nemo data-designer preview run product_reviews.py --num-records 5
-```
-
-Generate a larger dataset locally:
-
-```bash
-nemo data-designer create run product_reviews.py --num-records 30
-```
-
-This workload runs in the local CLI process, but because the configuration references `default/nvidia-build`, it still communicates with the Inference Gateway API.
-
-### NeMo Services CLI Execution
-
-Submit the same configuration to NeMo Services when you want service-managed execution:
+Submit a preview:
 
 ```bash
 nemo data-designer preview submit product_reviews.py --workspace default --num-records 5
-nemo data-designer create submit product_reviews.py --workspace default --profile default --num-records 30
+```
+
+Generate a larger dataset:
+
+```bash
+nemo data-designer create submit product_reviews.py --workspace default --num-records 30
 ```
 
 ### SDK Data Designer API Execution
@@ -287,16 +276,10 @@ analysis.to_report()
 <Markdown src="/snippets/data-designer/_snippets/job-results.mdx" />
 ## What Happens Under the Hood
 
-When you use CLI `run`:
-
-1. **Local Execution:** The Data Designer workload runs in the CLI process.
-2. **Resource Resolution:** The workload can use local resources, NeMo resources, or both.
-3. **Generation:** Data Designer resolves dependencies and generates records in the local environment.
-
-When you use CLI `submit` or the SDK today:
+When you use CLI `submit` or the SDK:
 
 1. **Configuration Validation:** The service validates your configuration and resolves column dependencies
-2. **NeMo Services Execution:** Preview runs through the Data Designer API; create runs as a service-managed job
+2. **NeMo Services Execution:** Preview executes through the Data Designer API; create executes as a service-managed job
 3. **Inference Routing:** LLM calls are routed through Inference Gateway to your configured model providers
 4. **Artifact Storage:** Job datasets and analysis reports are stored in job artifact storage
 5. **Job Completion:** You can monitor job status and load results when complete
@@ -304,6 +287,6 @@ When you use CLI `submit` or the SDK today:
 ## Next Steps
 
 - **Seed data:** Learn how to use external datasets in the [seeding tutorial](/documentation/design-synthetic-data/tutorials/seeding-with-external-datasets)
-- **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](/documentation/design-synthetic-data/execution-modes)
+- **Execution modes:** Learn more about service-backed execution in [Execution Modes](/documentation/design-synthetic-data/execution-modes)
 - **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/columns)
 - **Advanced features:** Learn about [processors](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/processors) and [validation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/validators)

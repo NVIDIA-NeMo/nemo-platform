@@ -93,7 +93,7 @@ def _evaluator() -> Evaluator:
 
 
 def test_packager_param_is_submit_only() -> None:
-    """``submit`` takes ``metric_bundle_packager``; ``run`` (local, in-process) does not."""
+    """``submit`` takes ``metric_bundle_packager``; ``run`` chooses its default packager."""
     from nemo_evaluator.sdk import Evaluator
 
     submit_params = inspect.signature(Evaluator.submit).parameters
@@ -134,11 +134,10 @@ def test_custom_submit_requires_an_explicit_packager() -> None:
 
 
 def test_run_does_not_require_metric_bundle_packager() -> None:
-    """``run()`` must not impose the submit-only packager requirement.
+    """``run()`` must not impose the submit-only explicit-packager requirement.
 
-    ``run`` executes in-process; reaching the executor (which then needs a live
-    service) proves the packager guard did not fire. We only assert the failure
-    is NOT the packager ValueError.
+    Reaching the executor (which then needs a live service) proves the packager
+    guard did not fire. We only assert the failure is NOT the packager ValueError.
     """
     from nemo_evaluator_sdk import ExactMatchMetric
 
@@ -151,7 +150,7 @@ def test_run_does_not_require_metric_bundle_packager() -> None:
     except ValueError as error:  # pragma: no cover - defensive
         assert "metric_bundle_packager is required" not in str(error)
     except Exception:
-        # Any non-ValueError (e.g. connection error to the local runtime) is fine;
+        # Any non-ValueError (e.g. connection error to the platform service) is fine;
         # it means we got past argument validation.
         pass
 

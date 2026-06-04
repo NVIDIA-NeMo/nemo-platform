@@ -20,7 +20,7 @@ evaluation result before promotion.
 |-----------------|--------|--------|
 | Model optimization | An agent uses a single frontier model where a smaller model or route split may preserve quality at lower cost | Suggests a model swap or Switchyard random-routing virtual model |
 | Skill optimization | The agent uses skills and has an evaluation suite | Suggests running `nemo agents optimize-skills` to improve skill files and keep changes that pass evaluation |
-| Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize run` for NAT prompt or parameter tuning |
+| Prompt optimization | The agent has an optimization config and baseline dataset | Suggests `nemo agents optimize submit` for NAT prompt or parameter tuning |
 | New model scan | Difference between the current model list and the previous optimizer snapshot | Suggests evaluating or auditing newly available models |
 
 Optimizer state is stored in the `nemo-agent-optimizer` fileset:
@@ -190,7 +190,7 @@ and keeps the change only when the evaluation result improves.
 <Tab title="CLI">
 
 ```bash
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 Set `open_pr: true` in the YAML when you want the loop to prepare a
@@ -217,7 +217,7 @@ What it does under the hood:
 
 - Confirms the agent uses skills (a `--skills-path`, a `.agent-improver.yml`,
   or skill files referenced from the config).
-- Runs `nemo agents optimize-skills` against the configured skills directory.
+- Runs `nemo agents optimize-skills submit` against the configured skills directory.
 - Re-runs evaluation and keeps the change only when scores improve.
 - Persists outcomes to the `nemo-agent-optimizer` fileset.
 
@@ -225,6 +225,7 @@ What it does under the hood:
 <Tab title="Python SDK">
 
 ```python
+import os
 import yaml
 from pathlib import Path
 
@@ -232,11 +233,14 @@ from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 spec = yaml.safe_load(Path(".agent-improver.yml").read_text())
-NemoJobScheduler().run_local(
+response = NemoJobScheduler().submit_remote(
     OptimizeSkillsJob,
     spec,
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace="default",
+    profile="default",
 )
+print(response["name"])
 ```
 
 </Tab>
@@ -268,7 +272,7 @@ nemo files list nemo-agent-telemetry
 
 ## Run Prompt and Parameter Tuning
 
-The `nemo agents optimize run` command runs the NAT optimizer path for
+The `nemo agents optimize submit` command runs the NAT optimizer path for
 parameter or prompt tuning. Use it when you already have a NAT optimization
 YAML and want to run `nat optimize` through the Agents plugin.
 
@@ -279,7 +283,7 @@ For the ReAct example:
 <Tab title="CLI">
 
 ```bash
-nemo agents optimize run \
+nemo agents optimize submit \
   --optimize-config plugins/nemo-agents/examples/react-agent/react-optimize.yml \
   --agent react-agent
 ```
@@ -291,7 +295,7 @@ Ask your coding agent:
 
 > Run prompt tuning on my deployed agent against this optimization config.
 
-The `agents-optimize` skill suggests `nemo agents optimize run` when the
+The `agents-optimize` skill suggests `nemo agents optimize submit` when the
 agent has an optimization config and a baseline dataset. Verify it is
 installed:
 
@@ -302,7 +306,7 @@ nemo skills show agents-optimize
 What it does under the hood:
 
 - Confirms the agent has a NAT optimization YAML.
-- Runs `nemo agents optimize run` (or `submit` for platform jobs).
+- Runs `nemo agents optimize submit`.
 - Compares results against the evaluation baseline and surfaces deltas
   for review.
 
@@ -314,28 +318,23 @@ import os
 from pathlib import Path
 
 from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
-from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 WORKSPACE = "default"
 optimize_config = Path("plugins/nemo-agents/examples/react-agent/react-optimize.yml")
 
-client = NeMoPlatform(
-    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-    workspace=WORKSPACE,
-)
-
-result = NemoJobScheduler().run_local(
+response = NemoJobScheduler().submit_remote(
     OptimizeAgentJob,
     {
         "optimize_config": str(optimize_config),
         "agent": "react-agent",
         "workspace": WORKSPACE,
     },
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace=WORKSPACE,
-    sdk=client,
+    profile="default",
 )
-print(result)
+print(response["name"])
 ```
 
 </Tab>
@@ -343,7 +342,7 @@ print(result)
 </Tabs>
 When `--agent` is a platform-managed agent name, the job fetches the stored
 agent config, merges it with the optimization config, injects the Inference
-Gateway URL, and runs trials locally. When `--agent` is a raw HTTP endpoint,
+Gateway URL, and runs trials in the job worker. When `--agent` is a raw HTTP endpoint,
 the endpoint is treated as an opaque remote service, so local parameter sweeps
 do not change the remote agent behavior.
 

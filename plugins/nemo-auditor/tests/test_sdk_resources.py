@@ -8,16 +8,15 @@ Each CRUD test stubs ``platform._client`` with a ``MagicMock(spec=httpx.Client)`
 JSON body the SDK actually sends — same pattern the evaluator plugin uses in
 ``plugins/nemo-evaluator/tests/test_sdk.py``.
 
-``test_run_*`` patches ``nemo_auditor.sdk.NemoJobScheduler`` so the test never
-actually shells out to garak; we just verify the SDK builds the right
-``AuditInputSpec`` payload and forwards it to ``scheduler.run_local``.
+``test_run_*`` verifies the SDK builds the right ``AuditInputSpec`` payload
+and submits it to the auditor plugin service.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any, cast
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -83,7 +82,7 @@ def _target_payload(name: str = "tgt-1", workspace: str = "default", **overrides
     return base
 
 
-def _ok_response(payload: dict, *, status_code: int = 200) -> MagicMock:
+def _ok_response(payload: object, *, status_code: int = 200) -> MagicMock:
     response = MagicMock(spec=httpx.Response)
     response.status_code = status_code
     response.json.return_value = payload
@@ -292,48 +291,24 @@ def test_configs_and_targets_properties_are_cached() -> None:
 # ---------------------------------------------------------------------------
 
 
-@patch("nemo_auditor.sdk.NemoJobScheduler")
 class TestSyncRun:
-    def test_resolves_name_strings_via_get_then_calls_scheduler(self, scheduler_cls: MagicMock) -> None:
+    def test_posts_name_refs_to_job_submission_route(self) -> None:
         platform = _SyncPlatform()
-        platform._client.get.side_effect = [
-            _ok_response(_config_payload(name="my-cfg", workspace="default")),
-            _ok_response(_target_payload(name="my-tgt", workspace="default")),
-        ]
-        scheduler = MagicMock()
-        scheduler.run_local.return_value = {"status": "completed", "returncode": 0, "results": {}}
-        scheduler_cls.return_value = scheduler
+        platform._client.post.return_value = _ok_response({"name": "audit-job", "status": "created"}, status_code=201)
 
         resource = AuditorPluginResource(cast(NeMoPlatform, platform))
         result = resource.run(config="my-cfg", target="my-tgt", workspace="default")
 
-        assert result["status"] == "completed"
-        # Resolved both entities via two sync GETs.
-        assert platform._client.get.call_count == 2
-        platform._client.get.assert_any_call(
-            "http://test:8000/apis/auditor/v2/workspaces/default/configs/my-cfg",
-        )
-        platform._client.get.assert_any_call(
-            "http://test:8000/apis/auditor/v2/workspaces/default/targets/my-tgt",
+        assert result == {"name": "audit-job", "status": "created"}
+        platform._client.get.assert_not_called()
+        platform._client.post.assert_called_once_with(
+            "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit",
+            json={"spec": {"config": "my-cfg", "target": "my-tgt"}},
         )
 
-        # Spec handed to the scheduler must carry inline entities (not strings).
-        scheduler.run_local.assert_called_once()
-        args, kwargs = scheduler.run_local.call_args
-        job_cls, spec_dict = args
-        assert job_cls.__name__ == "AuditJob"
-        assert isinstance(spec_dict["config"], dict)
-        assert spec_dict["config"]["name"] == "my-cfg"
-        assert isinstance(spec_dict["target"], dict)
-        assert spec_dict["target"]["name"] == "my-tgt"
-        assert kwargs["workspace"] == "default"
-        assert kwargs["sdk"] is platform
-
-    def test_inline_entities_skip_http_resolution(self, scheduler_cls: MagicMock) -> None:
+    def test_inline_entities_are_serialized_in_job_spec(self) -> None:
         platform = _SyncPlatform()
-        scheduler = MagicMock()
-        scheduler.run_local.return_value = {"status": "completed", "returncode": 0, "results": {}}
-        scheduler_cls.return_value = scheduler
+        platform._client.post.return_value = _ok_response({"name": "audit-job", "status": "created"}, status_code=201)
 
         inline_config = AuditConfig(name="inline-cfg", workspace="default")
         inline_target = AuditTarget(name="inline-tgt", workspace="default", type="nim", model="m")
@@ -341,36 +316,28 @@ class TestSyncRun:
         resource = AuditorPluginResource(cast(NeMoPlatform, platform))
         resource.run(config=inline_config, target=inline_target)
 
-        # No HTTP roundtrip — inline entities go straight to the scheduler.
-        platform._client.get.assert_not_called()
-        spec_dict = scheduler.run_local.call_args.args[1]
+        spec_dict = platform._client.post.call_args.kwargs["json"]["spec"]
         assert spec_dict["config"]["name"] == "inline-cfg"
         assert spec_dict["target"]["name"] == "inline-tgt"
-        # Defaults to "default" workspace when caller omits it.
-        assert scheduler.run_local.call_args.kwargs["workspace"] == "default"
 
-    def test_workspace_qualified_name_parses_workspace_from_string(self, scheduler_cls: MagicMock) -> None:
+    def test_omitted_workspace_defaults_to_default(self) -> None:
         platform = _SyncPlatform()
-        platform._client.get.side_effect = [
-            _ok_response(_config_payload(name="cfg-1", workspace="prod")),
-            _ok_response(_target_payload(name="tgt-1", workspace="staging")),
-        ]
-        scheduler = MagicMock()
-        scheduler.run_local.return_value = {"status": "completed", "returncode": 0, "results": {}}
-        scheduler_cls.return_value = scheduler
+        platform._client.post.return_value = _ok_response({"name": "audit-job", "status": "created"}, status_code=201)
 
         resource = AuditorPluginResource(cast(NeMoPlatform, platform))
-        resource.run(config="prod/cfg-1", target="staging/tgt-1", workspace="default")
+        resource.run(config="cfg-1", target="tgt-1")
 
-        # GETs must use the workspace from the qualified name, not the default.
-        platform._client.get.assert_any_call(
-            "http://test:8000/apis/auditor/v2/workspaces/prod/configs/cfg-1",
+        assert (
+            platform._client.post.call_args.args[0] == "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit"
         )
-        platform._client.get.assert_any_call(
-            "http://test:8000/apis/auditor/v2/workspaces/staging/targets/tgt-1",
-        )
-        # The run workspace (used by JobContext) still comes from the kwarg.
-        assert scheduler.run_local.call_args.kwargs["workspace"] == "default"
+
+    def test_rejects_non_object_submission_response(self) -> None:
+        platform = _SyncPlatform()
+        platform._client.post.return_value = _ok_response(["bad"], status_code=201)
+        resource = AuditorPluginResource(cast(NeMoPlatform, platform))
+
+        with pytest.raises(TypeError, match="JSON object"):
+            resource.run(config="cfg-1", target="tgt-1")
 
 
 # ---------------------------------------------------------------------------
@@ -394,35 +361,15 @@ async def test_async_configs_create_posts_to_workspace_route() -> None:
 
 
 @pytest.mark.asyncio
-async def test_async_run_resolves_names_and_calls_scheduler_in_thread() -> None:
+async def test_async_run_posts_job_submission() -> None:
     platform = _AsyncPlatform()
-    platform._client.get.side_effect = [
-        _ok_response(_config_payload(name="my-cfg")),
-        _ok_response(_target_payload(name="my-tgt")),
-    ]
-    scheduler = MagicMock()
-    scheduler.run_local.return_value = {"status": "completed", "returncode": 0, "results": {}}
+    platform._client.post.return_value = _ok_response({"name": "audit-job", "status": "created"}, status_code=201)
 
-    with (
-        patch("nemo_auditor.sdk.NemoJobScheduler", return_value=scheduler) as scheduler_cls,
-        patch(
-            "nemo_auditor.sdk.asyncio.to_thread", new=AsyncMock(return_value=scheduler.run_local.return_value)
-        ) as to_thread,
-    ):
-        resource = AsyncAuditorPluginResource(cast(AsyncNeMoPlatform, platform))
-        result = await resource.run(config="my-cfg", target="my-tgt", workspace="default")
+    resource = AsyncAuditorPluginResource(cast(AsyncNeMoPlatform, platform))
+    result = await resource.run(config="my-cfg", target="my-tgt", workspace="default")
 
-    assert result["status"] == "completed"
-    scheduler_cls.assert_called_once_with()
-    # Scheduler call is dispatched via asyncio.to_thread so the caller's loop stays free.
-    to_thread.assert_awaited_once()
-    call = to_thread.await_args
-    assert call is not None
-    assert call.args[0] is scheduler.run_local
-    # job_cls is the second positional arg to to_thread (the first arg to run_local).
-    assert call.args[1].__name__ == "AuditJob"
-    spec_dict = call.args[2]
-    assert spec_dict["config"]["name"] == "my-cfg"
-    assert spec_dict["target"]["name"] == "my-tgt"
-    assert call.kwargs["workspace"] == "default"
-    assert call.kwargs["async_sdk"] is platform
+    assert result == {"name": "audit-job", "status": "created"}
+    platform._client.post.assert_awaited_once_with(
+        "http://test:8000/apis/auditor/v2/workspaces/default/jobs/audit",
+        json={"spec": {"config": "my-cfg", "target": "my-tgt"}},
+    )

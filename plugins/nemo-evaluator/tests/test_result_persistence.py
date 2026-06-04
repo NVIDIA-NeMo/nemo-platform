@@ -185,7 +185,7 @@ def test_persist_skips_when_no_job_id(tmp_path: Path, mocker: MockerFixture) -> 
     client = _FakeClient()
     mocker.patch.object(result_persistence, "_entity_client", return_value=client)
 
-    # A platformless local run has no job id — there's no run to key the result on, so skip.
+    # Direct job invocation can lack a job id, leaving no stable key for the result entity.
     persist_agent_eval_result(
         _agent_result(),
         target=None,

@@ -5,9 +5,9 @@
 
 Encapsulates the policy for choosing a packager when the caller does not provide
 one explicitly. Built-in metric types use the inline packager (config-serialized,
-no code execution). Custom metrics fall back to cloudpickle for local execution,
-or require an explicit cloudpickle opt-in for operations that ship the metric to
-the service.
+no code execution). Custom metrics can fall back to cloudpickle for synchronous
+``run`` calls, while durable ``submit``/``create`` calls require an explicit
+cloudpickle opt-in.
 """
 
 from __future__ import annotations
@@ -33,11 +33,10 @@ def resolve_default_metric_bundle_packager(
     """Resolve the packager to use for one or more metrics.
 
     An explicit packager is always honored. Otherwise the inline packager is used
-    when every metric is a built-in type. When a custom metric is present, local
-    execution (``allow_cloudpickle_fallback=True``) uses the hybrid packager so
-    built-in metrics still bundle inline and only the custom metric is
-    cloudpickled; operations that ship the metric to the service require an
-    explicit opt-in instead.
+    when every metric is a built-in type. When a custom metric is present and
+    ``allow_cloudpickle_fallback=True``, the hybrid packager keeps built-in
+    metrics inline and cloudpickles only the custom metric; callers that disable
+    the fallback require an explicit opt-in instead.
 
     Args:
         metric: A runtime metric, or a sequence of them (one packager applies to all).

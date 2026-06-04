@@ -44,10 +44,7 @@ def _llm_builder(model_config: dd.ModelConfig) -> dd.DataDesignerConfigBuilder:
     return builder
 
 
-async def test_validate_local_only_succeeds_with_igw_provider() -> None:
-    """The regression we are explicitly fixing: an IGW-only provider reference
-    must validate cleanly under the local execution context.
-    """
+async def test_validate_remote_only_succeeds_with_igw_provider() -> None:
     builder = _llm_builder(u.make_model_config(provider=u.OPEN_PROVIDER_NAME))
 
     with (
@@ -55,16 +52,16 @@ async def test_validate_local_only_succeeds_with_igw_provider() -> None:
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
+        report = await dd_client.validate(builder, execution_context="remote")
 
     assert isinstance(report, ValidationReport)
     assert report.ok
     assert len(report.results) == 1
-    assert report.results[0].context == "local"
+    assert report.results[0].context == "remote"
     assert report.results[0].errors == []
 
 
-async def test_validate_local_only_rejects_unrecognized_alias() -> None:
+async def test_validate_remote_only_rejects_unrecognized_alias() -> None:
     builder = dd.DataDesignerConfigBuilder(model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)])
     builder.add_column(
         column_config=dd.SamplerColumnConfig(
@@ -86,11 +83,11 @@ async def test_validate_local_only_rejects_unrecognized_alias() -> None:
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
+        report = await dd_client.validate(builder, execution_context="remote")
 
     assert not report.ok
     [result] = report.results
-    assert result.context == "local"
+    assert result.context == "remote"
     assert any("unknown-alias" in err.message for err in result.errors)
 
 
@@ -174,13 +171,7 @@ async def test_sdk_validate_method_aggregates_df_seed_with_other_remote_errors()
     assert any("seed_type=hf" in m and "seed_type=nmp" in m for m in messages)
 
 
-async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
-    """A ``df``-seed config is invalid for local execution too — preview
-    serializes the config across the worker-thread boundary, which a
-    pandas DataFrame can't survive — but the diagnostic must come from
-    the validate pass (with a helpful message), not from an eager
-    pre-flight rejection.
-    """
+async def test_sdk_validate_method_rejects_df_seed() -> None:
     builder = dd.DataDesignerConfigBuilder(
         model_configs=[u.make_model_config(provider=u.OPEN_PROVIDER_NAME)],
     )
@@ -198,12 +189,12 @@ async def test_sdk_validate_method_rejects_df_seed_for_local() -> None:
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
+        report = await dd_client.validate(builder, execution_context="remote")
 
     assert not report.ok
     [result] = report.results
-    assert result.context == "local"
-    assert any("Dataframe seed sources" in err.message for err in result.errors)
+    assert result.context == "remote"
+    assert any(("seed_type=hf" in err.message and "seed_type=nmp" in err.message) for err in result.errors)
 
 
 async def test_validate_remote_only_rejects_unknown_provider() -> None:
@@ -219,7 +210,7 @@ async def test_validate_remote_only_rejects_unknown_provider() -> None:
 
 
 async def test_validate_default_runs_every_context() -> None:
-    """Omitting ``execution_context`` runs both local and remote, reports each independently."""
+    """Omitting ``execution_context`` validates the service-backed context."""
     builder = _llm_builder(u.make_model_config(provider=u.OPEN_PROVIDER_NAME))
 
     with (
@@ -231,7 +222,7 @@ async def test_validate_default_runs_every_context() -> None:
 
     assert report.ok
     contexts = [r.context for r in report.results]
-    assert contexts == ["local", "remote"]
+    assert contexts == ["remote"]
 
 
 async def test_validate_report_round_trips_through_pydantic() -> None:
@@ -242,10 +233,10 @@ async def test_validate_report_round_trips_through_pydantic() -> None:
         u.setup_mock_providers(client_context),
     ):
         dd_client = AsyncDataDesignerResource(client_context.async_sdk)
-        report = await dd_client.validate(builder, execution_context="local")
+        report = await dd_client.validate(builder, execution_context="remote")
 
     payload = report.model_dump_json()
     rehydrated = ValidationReport.model_validate_json(payload)
-    assert rehydrated.results[0].context == "local"
+    assert rehydrated.results[0].context == "remote"
     # Successful pass has no errors; the model itself is round-trippable either way.
     assert rehydrated.results[0].errors == []

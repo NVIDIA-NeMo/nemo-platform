@@ -75,15 +75,7 @@ The async variant (`AsyncAnonymizerJobResource`) exposes the same surface with `
 
 ## AnonymizerJobResults
 
-`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. The same class also works for the local `run run` flow — point it at the artifact directory the local job results manager logs:
-
-```python
-from pathlib import Path
-from nemo_anonymizer_plugin.sdk.job_results import AnonymizerJobResults
-
-results = AnonymizerJobResults(Path("/path/to/persistent/results/artifacts"))
-dataset = results.load_dataset()
-```
+`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory.
 
 | Method                  | Description                                                                                                   |
 |-------------------------|---------------------------------------------------------------------------------------------------------------|

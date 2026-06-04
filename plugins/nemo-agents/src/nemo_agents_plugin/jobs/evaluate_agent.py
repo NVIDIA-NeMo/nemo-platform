@@ -47,7 +47,7 @@ from nemo_platform_plugin.refs import (
     OutputTarget,
     classify_output_target,
 )
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -77,17 +77,14 @@ class EvaluateAgentSpec(BaseModel):
             ``workspace/name``) that pre-stages the eval YAML and any
             sibling files (e.g. dataset).  Used by platform-managed
             submissions where the ``agents.evaluate-agent`` function
-            uploads everything before submitting; local CLI runs leave
-            this ``None`` and let ``eval_config`` be a real local path.
+            uploads everything before submitting.
         output: Where to put the eval outputs.  Accepts either a local
             directory path (``./out``, ``/abs/out``, ``~/out``) or an
             NeMo Platform fileset reference (``"name"`` or ``"workspace/name"``).
             Path-shaped values write directly to disk; bare names upload
             results to the named fileset, creating it on demand.  When
             ``None`` the job writes to ``ctx.storage.persistent /
-            "results"`` — the platform-injected persistent volume in
-            container runs, a tempdir under ``$TMPDIR`` for local CLI
-            runs.
+            "results"``.
         workspace: NeMo Platform workspace used to scope gateway URL injection,
             ``--agent`` resolution, and ``--output`` fileset creation
             when those values are given as bare names.
@@ -113,7 +110,7 @@ class EvaluateAgentSpec(BaseModel):
         description=(
             "Optional fileset reference (``name`` or ``workspace/name``).  When set, "
             "the runner downloads the fileset's contents into a tempdir and resolves "
-            "``eval_config`` relative to that dir.  Local CLI runs leave this ``None``."
+            "``eval_config`` relative to that dir."
         ),
     )
     output: OutputTarget | None = Field(
@@ -209,8 +206,8 @@ class EvaluateAgentJob(NemoJob):
     ) -> dict:
         """Run the evaluation by delegating to the ``nat eval`` CLI.
 
-        Same entry point on both local CLI and the platform container; the
-        difference is whether ``cfg.eval_config_fileset`` is set.  When it is,
+        The runner either receives a pre-staged fileset-backed config or a
+        path inside the task environment. When ``cfg.eval_config_fileset`` is set,
         :meth:`_resolve_eval_config` downloads the fileset's contents into a
         tempdir before running ``nat eval``; when it isn't, ``cfg.eval_config``
         is used as a real local path.
@@ -228,18 +225,15 @@ class EvaluateAgentJob(NemoJob):
 
         Args:
             config: Dict matching :class:`EvaluateAgentSpec`.
-            sdk: Platform SDK handle, injected by the
-                :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` (locally) or
+            sdk: Platform SDK handle injected by
                 :func:`~nemo_platform_plugin.tasks.dispatcher.run_task`
-                (in-container) from the ambient SDK handle.  Required when
+                from the ambient SDK handle.  Required when
                 ``cfg.eval_config_fileset`` or a fileset-shaped ``cfg.output``
-                is set (download / upload respectively); a local-directory
+                is set (download / upload respectively); a directory
                 output runs without it, so the parameter is declared optional
                 and validated at the point of use.
-            ctx: Runtime context bound by signature DI.  Both
-                :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`
-                and :func:`~nemo_platform_plugin.tasks.dispatcher.run_task`
-                always supply one; the no-output fallback writes to
+            ctx: Runtime context bound by signature DI.  The task dispatcher
+                supplies one; direct tests can also pass one. The no-output fallback writes to
                 ``ctx.storage.persistent / "results"`` and tempdirs land
                 under ``ctx.storage.ephemeral`` so they sit on the
                 platform-injected scratch volume.
@@ -338,9 +332,9 @@ class EvaluateAgentJob(NemoJob):
         When ``cfg.eval_config_fileset`` is set, download the fileset into a
         tempdir under ``ctx.storage.ephemeral`` and resolve
         ``cfg.eval_config`` relative to it.  Otherwise pass through verbatim.
-        ``sdk`` is required on the fileset branch — when the scheduler can't
+        ``sdk`` is required on the fileset branch — when the task runner can't
         supply one and the spec asks for a fileset, raise
-        :class:`LocalRunError` early so the caller sees an actionable error
+        :class:`RunDependencyError` early so the caller sees an actionable error
         instead of failing later inside the subprocess.
         """
         if not cfg.eval_config_fileset:
@@ -348,10 +342,10 @@ class EvaluateAgentJob(NemoJob):
             return
 
         if sdk is None:
-            raise LocalRunError(
+            raise RunDependencyError(
                 "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to download "
                 "eval_config_fileset contents, but no platform SDK was available. "
-                "Set NMP_BASE_URL or pass sdk via NemoJobScheduler.run_local(sdk=...)."
+                "Submit the job through NeMo Platform or pass sdk explicitly when invoking the task runner."
             )
 
         ref = FilesetRef(cfg.eval_config_fileset)
@@ -408,8 +402,8 @@ class EvaluateAgentJob(NemoJob):
         we don't pollute the fileset with broken / partial runs.
 
         *sdk* is required only on the fileset branch.  When the
-        scheduler can't supply one (no SDK handle in scope) and the
-        output points at a fileset, we raise :class:`LocalRunError`
+        task runner can't supply one (no SDK handle in scope) and the
+        output points at a fileset, we raise :class:`RunDependencyError`
         early — before the subprocess runs — so the user gets an
         actionable message instead of losing the eval artifacts.
         """
@@ -434,12 +428,11 @@ class EvaluateAgentJob(NemoJob):
             return
 
         if sdk is None:
-            raise LocalRunError(
+            raise RunDependencyError(
                 "EvaluateAgentJob.run requires a 'sdk: NeMoPlatform' to upload "
                 "results to a fileset, but no platform SDK was available. "
-                "Set NMP_BASE_URL (so the local CLI can build a default SDK), "
-                "pass an explicit sdk via NemoJobScheduler.run_local(sdk=...), "
-                "or use --output <path> to write results to a local directory instead."
+                "Submit the job through NeMo Platform, pass sdk explicitly when invoking the task runner, "
+                "or use --output <path> to write results to a directory instead."
             )
 
         ref = FilesetRef(output)
@@ -484,8 +477,7 @@ class EvaluateAgentJob(NemoJob):
         exist — same semantics as ``nemo files upload <dir> <fileset>``.
 
         *sdk* is the platform SDK handle injected into :meth:`run` by
-        the :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` (signature-based
-        DI). The upload goes through :meth:`sdk.files.upload`.
+        the task dispatcher. The upload goes through :meth:`sdk.files.upload`.
         """
         # Trailing slash uploads contents, not the dir itself.
         result = sdk.files.upload(

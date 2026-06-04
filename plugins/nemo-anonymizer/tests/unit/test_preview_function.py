@@ -12,9 +12,10 @@ import pytest
 from anonymizer.config.anonymizer_config import AnonymizerConfig
 from anonymizer.config.replace_strategies import Redact
 from nemo_anonymizer_plugin.app.errors import AnonymizerInvalidConfigError
-from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec
+from nemo_anonymizer_plugin.app.input import AnonymizerInputSpec, PreparedAnonymizerInput
 from nemo_anonymizer_plugin.app.model_configs import SelectedModelsOverrides
 from nemo_anonymizer_plugin.functions import _preview_worker as worker_module
+from nemo_anonymizer_plugin.functions import preview as preview_module
 from nemo_anonymizer_plugin.functions._preview_logs import request_callback_cvar
 from nemo_anonymizer_plugin.functions.preview import LogFrame, PreviewFunction, PreviewSpec, TraceDatasetFrame
 from nemo_platform import AsyncNeMoPlatform
@@ -77,7 +78,25 @@ async def test_preview_function_resets_request_log_callback(
     ) -> None:
         send_frame(LogFrame(level="info", message="generated"))
 
+    class FakeAnonymizerContext:
+        async def make_model_providers(
+            self,
+            model_configs: object,
+            *,
+            require_model_configs: bool,
+        ) -> None:
+            del model_configs, require_model_configs
+            return None
+
+        async def prepare_input(self, data: AnonymizerInputSpec) -> PreparedAnonymizerInput:
+            del data
+            return PreparedAnonymizerInput(input=object())  # type: ignore[arg-type]
+
+        def validate_input_reference(self, data: AnonymizerInputSpec) -> None:
+            del data
+
     monkeypatch.setattr(worker_module, "_make_preview", fake_worker)
+    monkeypatch.setattr(preview_module, "create_anonymizer_context", lambda *args, **kwargs: FakeAnonymizerContext())
 
     frames = [
         frame
@@ -85,7 +104,6 @@ async def test_preview_function_resets_request_log_callback(
             _preview_spec(tmp_path),
             ctx=FunctionContext(workspace="team-a"),
             async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=True,
         )
     ]
 
@@ -106,13 +124,12 @@ async def test_preview_function_rejects_selected_models_without_model_configs(tm
                 spec,
                 ctx=FunctionContext(workspace="team-a"),
                 async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-                is_local=True,
             )
         ]
 
 
 @pytest.mark.asyncio
-async def test_preview_submit_requires_model_configs(tmp_path: Path) -> None:
+async def test_preview_requires_model_configs(tmp_path: Path) -> None:
     with pytest.raises(AnonymizerInvalidConfigError, match="model_configs are required"):
         [
             frame
@@ -122,6 +139,5 @@ async def test_preview_submit_requires_model_configs(tmp_path: Path) -> None:
                 ),
                 ctx=FunctionContext(workspace="team-a"),
                 async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-                is_local=False,
             )
         ]

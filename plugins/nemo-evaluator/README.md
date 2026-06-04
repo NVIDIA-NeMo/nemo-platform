@@ -4,16 +4,15 @@ A NeMo Platform plugin that brings Evaluator SDK metric execution into the
 platform.
 
 The plugin exposes an `evaluator` service, CLI commands under `nemo evaluator`,
-an SDK accessor on `NeMoPlatform.evaluator`, and an `evaluator.run/evaluator.submit` for
-local plugin runs and durable platform submissions.
+an SDK accessor on `NeMoPlatform.evaluator`, and `evaluator.run` / `evaluator.submit`
+methods backed by platform job submission.
 
 ## What it provides
 
-- **CLI** commands for plugin status, job schema inspection, local runs, and
-  job submissions.
+- **CLI** commands for plugin status, job schema inspection, and job submissions.
 - **Service** routes for evaluator job management.
-- **SDK accessor** at `client.evaluator` for status checks, local runs, job
-  submission, status polling, result retrieval, and artifact download.
+- **SDK accessor** at `client.evaluator` for status checks, job submission,
+  status polling, result retrieval, and artifact download.
 - **Evaluator job** support for inline SDK metric specs, inline rows, and
   Fileset-backed datasets.
 - **Docs and skills** that are published through the plugin entry points for
@@ -56,14 +55,7 @@ Inspect the registered job contract:
 nemo evaluator evaluate explain
 ```
 
-Run a minimal exact-match metric from the bundled example spec:
-
-```bash
-nemo evaluator evaluate run \
-  --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/exact_match_metric.json
-```
-
-Submit the same spec as a platform durable job:
+Submit a minimal exact-match metric from the bundled example spec:
 
 ```bash
 nemo evaluator evaluate submit \
@@ -100,7 +92,7 @@ dataset = [
     {"expected": "Jupiter", "model_output": "Saturn"},
 ]
 
-local_result = client.evaluator.run(
+result = client.evaluator.run(
     metric=metric,
     dataset=dataset,
     config=RunConfig(parallelism=2),
@@ -116,22 +108,17 @@ submitted_result = job.get_result()
 artifact_dir = job.download_artifacts(path="evaluation-artifacts")
 ```
 
-## Local and remote inputs
+`run()` submits a platform job, waits for completion, and returns the `EvaluationResult`. Use `submit()` when you want the job handle and lifecycle control.
+
+## Inputs
 
 ### Dataset support
 
-- Local runs support local dataset paths, inline rows, and Fileset references.
-- Jobs support inline rows and Fileset references.
+- Submitted jobs support inline rows and Fileset references.
 
 ### Model/Agent Auth
 
-For online evaluation or LLM-as-judge evaluations, authentication depends on the
-execution mode:
-
-- Local `nemo evaluator evaluate run` resolves `api_key_secret` as a local
-  environment variable name, such as `NVIDIA_API_KEY`.
-- Remote `nemo evaluator evaluate submit` resolves `api_key_secret` as a NeMo
-  Platform secret in the target workspace.
+For online evaluation or LLM-as-judge evaluations, `api_key_secret` resolves as a NeMo Platform secret in the target workspace.
 
 ## Next steps
 

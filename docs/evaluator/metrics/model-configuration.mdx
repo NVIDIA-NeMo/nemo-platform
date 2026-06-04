@@ -53,9 +53,7 @@ model = Model(
 
 `api_key_secret` is an optional property on the `Model` object. Omit it when the endpoint does not require API-key authentication.
 
-For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For example, `api_key_secret="NVIDIA_API_KEY"` reads `os.environ["NVIDIA_API_KEY"]`.
-
-For remote `evaluator.submit(...)` jobs, `api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
+`api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
 
 ```python
 client.secrets.create(
@@ -183,11 +181,11 @@ Use plain `RunConfig` for offline evaluations where the dataset already contains
 
 ## Model References
 
-You can supply the evaluation target two ways. Which one is valid depends on whether you run the evaluation locally or submit it as a durable platform job.
+You can supply the evaluation target two ways. Which one is valid depends on whether the client builds the job spec directly or asks the Evaluator service to resolve a platform model reference.
 
 ### Inline `Model` (required for `evaluator.run(...)`)
 
-`evaluator.run(...)` executes in your local Python process, so it needs the resolved endpoint details inline. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
+`evaluator.run(...)` builds the evaluation spec client-side before submitting and waiting for the service-backed job, so it needs the resolved endpoint details inline. Always pass an inline `Model` as the `target` (or as a judge/embeddings field on the metric). If your deployment stores platform model entities, resolve the entity into endpoint details before constructing the `Model`:
 
 ```python
 from nemo_evaluator_sdk import Model
@@ -204,7 +202,7 @@ result = evaluator.run(metric=metric, dataset=dataset, target=model)
 
 ### `ModelRef` (supported by `evaluator.submit(...)`)
 
-Durable remote `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
+Durable `evaluator.submit(...)` jobs additionally accept a `ModelRef` target. A `ModelRef` names a platform model entity (`workspace/model-name`) and is resolved by the evaluator backend when the job runs, so you do not have to resolve the endpoint yourself. Use this for platform-managed model routing. A `ModelRef` target generates outputs online, so it requires an online run config (`RunConfigOnlineModel`):
 
 ```python
 from nemo_evaluator_sdk import ModelRef, RunConfigOnlineModel
@@ -217,7 +215,7 @@ job = evaluator.submit(
 )
 ```
 
-`ModelRef` is **not** valid for `evaluator.run(...)`; the local runtime cannot resolve a platform entity. Pass an inline `Model` for local runs and either a `Model` or a `ModelRef` for remote submits. See the [Define and Run Custom Python Metrics](/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics) tutorial for an end-to-end `ModelRef` + `FilesetRef` submit example.
+`ModelRef` is currently supported by `evaluator.submit(...)`. Pass an inline `Model` to `evaluator.run(...)`; use either an inline `Model` or a `ModelRef` with `evaluator.submit(...)`. See the [Define and Run Custom Python Metrics](/documentation/evaluate-models/tutorials/define-and-run-custom-python-metrics) tutorial for an end-to-end `ModelRef` + `FilesetRef` submit example.
 
 <Note>
 

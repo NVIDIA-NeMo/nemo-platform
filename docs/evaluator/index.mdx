@@ -65,8 +65,8 @@ from nemo_platform import NeMoPlatform
 sdk = NeMoPlatform(base_url="...", workspace="default")
 evaluator: Evaluator = sdk.evaluator
 
-# Fast local iteration through the plugin runtime
-local_result = evaluator.run(metric=metric, dataset=dataset, config=config)
+# Synchronous service-backed execution
+result = evaluator.run(metric=metric, dataset=dataset, config=config)
 
 # Production evaluation as a durable platform job
 job = evaluator.submit(
@@ -86,11 +86,11 @@ When using Evaluator as a NeMo Platform plugin :
 
 | Feature | Standalone Library | NeMo Platform Plugin |
 |---------|-------------------|-------------|
-| **Execution** | Local Python process | Local plugin runs for local experimentation and durable platform jobs for production |
+| **Execution** | Local Python process | Platform jobs; `run()` waits for completion and `submit()` returns a job handle |
 | **Inference** | Direct model or agent endpoint calls | The same as standalone and can also route through NeMo Platform Inference Gateway and platform-managed endpoints |
-| **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
+| **Datasets** | Inline rows and local files | Inline rows and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
 | **Results Artifacts** | Results stored in memory  | NeMo Platform artifact storage with typed result download |
-| **Authentication** | Local environment variables | Local environment variables for local runs and NeMo Platform Secrets service for remote jobs |
+| **Authentication** | Local environment variables | NeMo Platform Secrets service |
 
 ---
 

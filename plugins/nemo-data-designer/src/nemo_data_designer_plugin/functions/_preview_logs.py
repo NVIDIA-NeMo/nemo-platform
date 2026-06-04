@@ -41,11 +41,10 @@ def _ensure_handler_attached() -> None:
     """Attach the singleton :class:`PreviewHandler` once per process.
 
     Idempotent. Called lazily from :func:`forward_data_designer_logs` so the
-    handler shows up regardless of whether the entry point is the FastAPI
-    service (``submit``) or a local CLI invocation (``run``) — neither has
-    to remember to wire up logging at startup. The handler is never detached
-    because doing so would race with concurrent requests; the per-task cvar
-    callback is what makes the handler safe to keep around.
+    handler shows up for FastAPI service requests without each route needing
+    to wire logging at startup. The handler is never detached because doing
+    so would race with concurrent requests; the per-task cvar callback is what
+    makes the handler safe to keep around.
     """
     global _handler_attached
     if _handler_attached:

@@ -1,21 +1,20 @@
 ---
 name: plugin-job
-description: Creates schedulable NemoJob surfaces for NeMo Platform plugins. Use when adding a job, declaring spec_schema / input_spec_schema / to_spec / compile, mounting job routes with add_job_routes, understanding the three CLI verbs (run / submit / explain), or running jobs in containers. Trigger keywords - job, NemoJob, spec_schema, input_spec_schema, to_spec, compile, add_job_routes, nemo_platform_plugin.jobs, three verbs, run, submit, explain, NemoJobScheduler.
+description: Creates schedulable NemoJob surfaces for NeMo Platform plugins. Use when adding a job, declaring spec_schema / input_spec_schema / to_spec / compile, mounting job routes with add_job_routes, understanding the generated CLI (submit / explain), or running jobs in containers. Trigger keywords - job, NemoJob, spec_schema, input_spec_schema, to_spec, compile, add_job_routes, nemo_platform_plugin.jobs, submit, explain, NemoJobScheduler.
 ---
 
 # Plugin Jobs (NemoJob)
 
-A `NemoJob` drives three CLI verbs that the platform auto-generates from the class:
+A `NemoJob` drives two CLI verbs that the platform auto-generates from the class:
 
 ```
-nemo <plugin> <job> run      [--spec '{...}' | --spec-file FILE]
 nemo <plugin> <job> submit   [--profile <p>] [--cluster <c>] \
                              [--spec '{...}' | --spec-file FILE] \
                              [-o <backend>.<key>=<value> ...] [--options-file FILE]
 nemo <plugin> <job> explain  [--profile <p>]
 ```
 
-`run` is in-process (no platform); `submit` POSTs to the plugin service, which compiles the spec and hands it off to the Jobs service for cluster execution; `explain` prints the schemas locally.
+`submit` POSTs to the plugin service, which compiles the spec and hands it off to the Jobs service for execution; `explain` prints the schemas locally.
 
 ## Class Signature
 
@@ -46,7 +45,7 @@ class GenerateJob(NemoJob):
         ...
 ```
 
-Required: `name`, `spec_schema`, `run()`. Required if the job is remote-capable: `compile()`. Optional: `description`, `container`, `input_spec_schema`, `to_spec()`, `job_collection_path`.
+Required: `name`, `spec_schema`, `run()`, and `compile()`. Optional: `description`, `container`, `input_spec_schema`, `to_spec()`, `job_collection_path`.
 
 ### Method colours
 
@@ -57,7 +56,7 @@ Required: `name`, `spec_schema`, `run()`. Required if the job is remote-capable:
 | `to_spec`, `compile` | `async classmethod` | API process (plugin service) |
 | `run`, `report_progress` | `def` (sync) | Task container |
 
-`name` is a `ClassVar[str]`; empty value raises `TypeError` at class-definition time. Container keys: `"cpu-tasks"` (default), `"gpu-tasks"`. The container is used for remote execution; ignored for local `run`.
+`name` is a `ClassVar[str]`; empty value raises `TypeError` at class-definition time. Container keys: `"cpu-tasks"` (default), `"gpu-tasks"`.
 
 ## Entry-Point Key Format
 
@@ -186,23 +185,6 @@ Wrap async work with `asyncio.run()`:
 def run(self, config: dict) -> dict:
     return asyncio.run(self._async_run(config))
 ```
-
-## Programmatic invocation
-
-```python
-from nemo_platform_plugin.discovery import discover_jobs
-from nemo_platform_plugin.scheduler import NemoJobScheduler
-
-job_cls = discover_jobs()["data-designer.generate"]
-result = NemoJobScheduler().run_local(
-    job_cls,
-    {"num_records": 10, "model": "gpt-oss-120b"},
-)
-```
-
-`run_local` is synchronous. It drives `NemoJob.to_spec` once via
-`asyncio.run` to produce the canonical spec, then calls `run` directly.
-`KeyError` if no job is registered under the key.
 
 ## In Job Containers
 

@@ -73,8 +73,8 @@ Agents are managed end-to-end through the `nemo agents` command group:
 | Deploy | `nemo agents deploy --agent <name>` | Start a running service from the stored config. |
 | Wait | `nemo agents deployments wait --agent <name>` | Block until the deployment is `running` or `failed`. |
 | Invoke | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
-| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
-| Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
+| Evaluate | `nemo agents evaluate submit --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
+| Optimize | `nemo agents optimize submit --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
 | Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>` | Stop the running service and remove the agent entity. |
 
 To run a workflow YAML directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.

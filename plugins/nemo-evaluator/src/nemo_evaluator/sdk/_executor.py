@@ -5,24 +5,22 @@
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
-from typing import Any, TypeAlias, cast
+from typing import Any
 
 import httpx
 from nemo_evaluator.api.schemas import MetricInline
 from nemo_evaluator.filesets import FilesetRef
-from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, EvaluateJob, EvaluateSpec, TargetSpec
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec, TargetSpec
 from nemo_evaluator.resolvers import PlatformModelResolver
 from nemo_evaluator.sdk import http_utils
-from nemo_evaluator.sdk.fs_utils import EvaluatorLocalRunResult, local_result_path
 from nemo_evaluator.sdk.job_resources import (
     AsyncEvaluatorJobResource,
     EvaluatorJob,
     EvaluatorJobResource,
 )
 from nemo_evaluator.sdk.types import PluginDatasetInput
-from nemo_evaluator.sdk.utils import filter_benchmark_result, filter_evaluation_result
+from nemo_evaluator.sdk.utils import filter_benchmark_result
 from nemo_evaluator.shared.metric_bundles.bundles import (
     MetricBundle,
     MetricBundlePackager,
@@ -47,13 +45,11 @@ from nemo_evaluator_sdk.values import (
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 _DEFAULT_POLL_INTERVAL_SECONDS = 10.0
 _DEFAULT_JOB_TIMEOUT_SECONDS = 3600.0
 _DEFAULT_PENDING_TIMEOUT_SECONDS = 600.0
 
-EvaluateRequestSpec: TypeAlias = EvaluateInputSpec | EvaluateSpec
 SubmitTargetSpec = TargetSpec | ModelRef
 
 
@@ -119,7 +115,7 @@ def _build_evaluate_spec(
     prompt_template: str | dict[str, Any] | None = None,
     metric_bundle_packager: MetricBundlePackager | None = None,
 ) -> EvaluateInputSpec:
-    """Build the evaluator plugin input spec shared by local and remote execution."""
+    """Build the evaluator plugin input spec shared by SDK execution paths."""
     effective_packager = _require_metric_bundle_packager(metric_bundle_packager)
     runtime_bundles = bundle_metrics_for_spec(metrics, metric_bundle_packager=effective_packager)
     spec = {
@@ -135,50 +131,6 @@ def _build_evaluate_spec(
     if prompt_template is not None:
         spec["prompt_template"] = prompt_template
     return EvaluateInputSpec.model_validate(spec)
-
-
-def _resolve_sync_local_spec(
-    spec: EvaluateRequestSpec,
-    *,
-    platform: NeMoPlatform,
-    workspace: str,
-) -> EvaluateSpec:
-    """Return a canonical local spec, resolving input-only model references with the sync SDK."""
-    if isinstance(spec, EvaluateSpec):
-        return spec
-    return cast(
-        EvaluateSpec,
-        run_sync(
-            lambda: EvaluateJob.to_spec(
-                spec,
-                workspace=workspace,
-                entity_client=None,
-                async_sdk=platform,
-                is_local=True,
-            )
-        ),
-    )
-
-
-async def _resolve_async_local_spec(
-    spec: EvaluateRequestSpec,
-    *,
-    platform: AsyncNeMoPlatform,
-    workspace: str,
-) -> EvaluateSpec:
-    """Return a canonical local spec, resolving input-only model references with the async SDK."""
-    if isinstance(spec, EvaluateSpec):
-        return spec
-    return cast(
-        EvaluateSpec,
-        await EvaluateJob.to_spec(
-            spec,
-            workspace=workspace,
-            entity_client=None,
-            async_sdk=platform,
-            is_local=True,
-        ),
-    )
 
 
 class _SyncEvaluatorPluginExecutor:
@@ -236,23 +188,6 @@ class _SyncEvaluatorPluginExecutor:
             )
         return job_resource
 
-    def run_local(self, *, spec: EvaluateRequestSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
-        """Run an evaluator plugin job locally with a sync platform client."""
-        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
-        canonical_spec = _resolve_sync_local_spec(
-            spec,
-            platform=self._platform,
-            workspace=resolved_workspace,
-        )
-        payload = NemoJobScheduler().run_local(
-            EvaluateJob,
-            canonical_spec.model_dump(mode="json"),
-            workspace=resolved_workspace,
-            sdk=self._platform,
-        )
-
-        return EvaluatorLocalRunResult.model_validate(payload)
-
     def evaluate_remote(
         self,
         *,
@@ -299,26 +234,20 @@ class _SyncEvaluatorPluginExecutor:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Evaluate one metric through local plugin job execution."""
+        """Submit, wait for, and download one metric evaluation."""
         normalized_params = resolve_params(params, target)
-        spec = _build_evaluate_spec(
-            metrics=metric,
+        return self.evaluate_remote(
+            metric=metric,
             dataset=dataset,
             params=normalized_params,
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
+            aggregate_fields=aggregate_fields,
             metric_bundle_packager=resolve_default_metric_bundle_packager(
                 metric, None, allow_cloudpickle_fallback=True, action="Running"
             ),
         )
-        payload = self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-        result_path = local_result_path(payload)
-        result = EvaluationResult.model_validate_json(result_path.read_text(encoding="utf-8"))
-        return filter_evaluation_result(result, aggregate_fields)
 
     def submit(
         self,
@@ -361,7 +290,7 @@ class _SyncEvaluatorPluginExecutor:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> BenchmarkEvaluationResult:
-        """Evaluate multiple metrics through local plugin job execution."""
+        """Submit, wait for, and download a benchmark evaluation."""
         normalized_params = resolve_params(params, target)
         spec = _build_evaluate_spec(
             metrics=metrics,
@@ -374,12 +303,17 @@ class _SyncEvaluatorPluginExecutor:
                 metrics, None, allow_cloudpickle_fallback=True, action="Running"
             ),
         )
-        payload = self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
+        job = self.create(
+            spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
         )
-        result_path = local_result_path(payload)
-        result = BenchmarkEvaluationResult.model_validate_json(result_path.read_text(encoding="utf-8"))
+        job.wait_until_done(
+            poll_interval_seconds=self._poll_interval_seconds,
+            job_timeout_seconds=self._job_timeout_seconds,
+            pending_timeout_seconds=self._pending_timeout_seconds,
+        )
+        result = job.get_result()
+        if not isinstance(result, BenchmarkEvaluationResult):
+            result = BenchmarkEvaluationResult.model_validate(result.model_dump(mode="json"))
         return filter_benchmark_result(result, aggregate_fields)
 
 
@@ -437,26 +371,6 @@ class _AsyncEvaluatorPluginExecutor:
                 pending_timeout_seconds=self._pending_timeout_seconds,
             )
         return job_resource
-
-    async def run_local(self, *, spec: EvaluateRequestSpec, workspace: str | None = None) -> EvaluatorLocalRunResult:
-        """Run an evaluator plugin job locally without blocking the event loop."""
-        resolved_workspace = http_utils.resolve_workspace(self._platform, workspace)
-        canonical_spec = await _resolve_async_local_spec(
-            spec,
-            platform=self._platform,
-            workspace=resolved_workspace,
-        )
-        scheduler = NemoJobScheduler()
-        # Leverages programmatic dispatch as described in
-        # packages/nemo_platform_plugin/src/nemo_platform_plugin/docs/ARCHITECTURE.md#job-entry-point-keys
-        payload = await asyncio.to_thread(
-            scheduler.run_local,
-            EvaluateJob,
-            canonical_spec.model_dump(mode="json"),
-            workspace=resolved_workspace,
-            async_sdk=self._platform,
-        )
-        return EvaluatorLocalRunResult.model_validate(payload)
 
     async def submit(
         self,
@@ -534,27 +448,20 @@ class _AsyncEvaluatorPluginExecutor:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Evaluate one metric through local plugin job execution."""
+        """Submit, wait for, and download one metric evaluation."""
         normalized_params = resolve_params(params, target)
-        spec = _build_evaluate_spec(
-            metrics=metric,
+        return await self.evaluate_remote(
+            metric=metric,
             dataset=dataset,
             params=normalized_params,
             target=target,
             field_mapping=field_mapping,
             prompt_template=prompt_template,
+            aggregate_fields=aggregate_fields,
             metric_bundle_packager=resolve_default_metric_bundle_packager(
                 metric, None, allow_cloudpickle_fallback=True, action="Running"
             ),
         )
-        payload = await self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
-        )
-        result_path = local_result_path(payload)
-        result_text = await asyncio.to_thread(result_path.read_text, encoding="utf-8")
-        result = EvaluationResult.model_validate_json(result_text)
-        return filter_evaluation_result(result, aggregate_fields)
 
     async def evaluate_benchmark(
         self,
@@ -567,7 +474,7 @@ class _AsyncEvaluatorPluginExecutor:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> BenchmarkEvaluationResult:
-        """Evaluate multiple metrics through local plugin job execution."""
+        """Submit, wait for, and download a benchmark evaluation."""
         normalized_params = resolve_params(params, target)
         spec = _build_evaluate_spec(
             metrics=metrics,
@@ -580,13 +487,17 @@ class _AsyncEvaluatorPluginExecutor:
                 metrics, None, allow_cloudpickle_fallback=True, action="Running"
             ),
         )
-        payload = await self.run_local(
-            spec=spec,
-            workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True),
+        job = await self.create(
+            spec=spec, workspace=http_utils.resolve_workspace(self._platform, self._workspace, strict=True)
         )
-        result_path = local_result_path(payload)
-        result_text = await asyncio.to_thread(result_path.read_text, encoding="utf-8")
-        result = BenchmarkEvaluationResult.model_validate_json(result_text)
+        await job.wait_until_done(
+            poll_interval_seconds=self._poll_interval_seconds,
+            job_timeout_seconds=self._job_timeout_seconds,
+            pending_timeout_seconds=self._pending_timeout_seconds,
+        )
+        result = await job.get_result()
+        if not isinstance(result, BenchmarkEvaluationResult):
+            result = BenchmarkEvaluationResult.model_validate(result.model_dump(mode="json"))
         return filter_benchmark_result(result, aggregate_fields)
 
 

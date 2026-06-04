@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock
 
 import data_designer.config as dd
 import pytest
-from data_designer_nemo.context import DataDesignerContext, LocalDataDesignerContext
+from data_designer_nemo.context import DataDesignerContext, RemoteDataDesignerContext
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_data_designer_plugin.functions import preview as preview_module
@@ -55,7 +55,7 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
         send_frame: Callable[[BaseModel], None],
         *args: object,
     ) -> None:
-        assert isinstance(dd_ctx, LocalDataDesignerContext)
+        assert isinstance(dd_ctx, RemoteDataDesignerContext)
         send_frame(LogFrame(level="info", message="generated"))
 
     # Patch the symbol on ``preview_module`` (not ``_preview_worker``) because
@@ -70,7 +70,6 @@ async def test_preview_function_streams_worker_frames_and_done(monkeypatch: pyte
             PreviewSpec(config=_config(), num_records=2),
             ctx=FunctionContext(workspace="team-a"),
             async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-            is_local=True,
         )
     ]
 

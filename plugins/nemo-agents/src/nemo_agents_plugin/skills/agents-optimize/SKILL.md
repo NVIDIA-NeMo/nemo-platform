@@ -69,7 +69,7 @@ model is in use, suggest creating a `random_routing` virtual model with an
   probabilities, wrong entity IDs in middleware config, and other middleware-
   silently-bypassed failure modes.
 - Set `model` on the suggestion to the current source model. Suggested
-  follow-up actions: `nemo agents evaluate run --agent <agent> --eval-config <yaml>`
+  follow-up actions: `nemo agents evaluate submit --agent <agent> --eval-config <yaml>`
   against the routed VM before promoting.
 
 This is pure config inspection — no telemetry download required.
@@ -83,7 +83,7 @@ snapshot, suggest running it.
 
 Suggested actions:
 
-- `nemo agents optimize-skills run --spec-file .agent-improver.yml`
+- `nemo agents optimize-skills submit --spec-file .agent-improver.yml`
   (or pass an inline JSON spec via `--spec '{...}'` if no config file exists)
 - After it returns, apply the resulting skill diff to the agent and redeploy.
 
@@ -98,10 +98,10 @@ snapshot, suggest running it. The job sweeps prompts and hyperparameters via
 
 Suggested actions:
 
-- `nemo agents optimize run --agent <name> --optimize-config <yaml>`
+- `nemo agents optimize submit --agent <name> --optimize-config <yaml>`
   (or submit as a platform job with `nemo agents optimize submit …`)
 - After it completes, apply the new prompt + hyperparameters to a sibling
-  agent, deploy it, and run `nemo agents evaluate run` to compare.
+  agent, deploy it, and run `nemo agents evaluate submit` to compare.
 
 ### 4. New model scan
 
@@ -113,12 +113,12 @@ profile (skip guardrails / safety / GLiNER models).
 Each suggestion sets `model` to the new model name and includes:
 
 - Create a sibling agent pointing at `<new-model>`, then run
-  `nemo agents evaluate run --agent <sibling> --eval-config <yaml>` to
+  `nemo agents evaluate submit --agent <sibling> --eval-config <yaml>` to
   compare against the current model on the baseline dataset. There is no
   `--model` override flag on `evaluate`; the model swap goes through the
   sibling agent, or by editing the eval-config YAML.
 - `nemo auditor targets create <target> -d '{"model": "<new-model>", "type": "<type>"}'` then
-  `nemo auditor audit run --spec '{"config": "default/<config>", "target": "default/<target>"}'`
+  `nemo auditor audit submit --spec '{"config": "default/<config>", "target": "default/<target>"}'`
   to verify the new model is robust against jailbreaks before promotion.
 
 Pure set subtraction — no downloads required.
@@ -312,10 +312,10 @@ nemo models list --all-pages              # always --all-pages; default paginate
 nemo models list --filter.name nemotron   # find Nemotron candidates
 
 # Optimization commands (see also: nemo-agent-skills-optimization skill)
-nemo agents evaluate run --agent <name> --eval-config <yaml>
-nemo agents optimize run --agent <name> --optimize-config <yaml>
-nemo agents optimize-skills run --spec-file .agent-improver.yml
-nemo agents evaluate-suite run --spec '{"evals": "<dir>", "agent": "<name>"}'
+nemo agents evaluate submit --agent <name> --eval-config <yaml>
+nemo agents optimize submit --agent <name> --optimize-config <yaml>
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
+nemo agents evaluate-suite submit --spec '{"evals": "<dir>", "agent": "<name>"}'
 
 # Files service
 nemo files list <fileset>
@@ -326,7 +326,7 @@ nemo files filesets list
 
 # Auditor (jailbreak robustness check on a candidate model)
 nemo auditor targets create <target> -d '{"model": "<new-model>", "type": "<type>"}'
-nemo auditor audit run --spec '{"config": "default/<config>", "target": "default/<target>"}'
+nemo auditor audit submit --spec '{"config": "default/<config>", "target": "default/<target>"}'
 ```
 
 ## What requires execution vs. what can be reasoned
@@ -357,7 +357,7 @@ nemo auditor audit run --spec '{"config": "default/<config>", "target": "default
   `new_model_scan` suggestions. Other agents' entries in the file are
   preserved on save.
 - Look up the latest evaluation result for the selected agent. Run
-  `nemo agents evaluate run` if no baseline exists and a dataset+config is
+  `nemo agents evaluate submit` if no baseline exists and a dataset+config is
   available; otherwise suggest the user create one.
 - Fetch agents and models in parallel
   (`nemo agents list`, `nemo models list --all-pages`).

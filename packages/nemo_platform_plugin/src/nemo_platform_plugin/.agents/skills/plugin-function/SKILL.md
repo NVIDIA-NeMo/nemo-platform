@@ -1,27 +1,26 @@
 ---
 name: plugin-function
-description: Creates in-process NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the two CLI verbs (run / submit), or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, two verbs, run, submit, streaming, NDJSON, FunctionContext.
+description: Creates service-backed NemoFunction surfaces for NeMo Platform plugins. Use when adding a function, declaring spec_schema, mounting function routes with add_function_routes, understanding the generated submit CLI verb, or streaming NDJSON frames. Trigger keywords - function, NemoFunction, spec_schema, add_function_routes, nemo_platform_plugin.functions, submit, streaming, NDJSON, FunctionContext.
 ---
 
 # Plugin Functions (NemoFunction)
 
-A `NemoFunction` is the third primitive on a plugin, alongside `NemoResource` and `NemoJob`. It's an in-process request handler — no scheduler, no backend dispatch — that the platform exposes as both a CLI subcommand and an HTTP route automatically.
+A `NemoFunction` is the third primitive on a plugin, alongside `NemoResource` and `NemoJob`. It's a plugin-service request handler — no scheduler, no backend dispatch — that the platform exposes as both a CLI subcommand and an HTTP route automatically.
 
 ```text
-nemo <plugin> <fn> run    [--spec '{...}' | --spec-file FILE] [--workspace W] [<spec-flag>...]
 nemo <plugin> <fn> submit [--spec '{...}' | --spec-file FILE] \
                           [--base-url URL | --cluster URL] \
                           [--workspace W] [--request-id ID] [<spec-flag>...]
 ```
 
-`run` is local (in-process); `submit` POSTs to the plugin service's auto-derived route. Two verbs only — no `explain`. A function's only schema is `spec_schema`, and `--help` is the introspection surface.
+`submit` POSTs to the plugin service's auto-derived route. There is no `explain` verb. A function's only schema is `spec_schema`, and `--help` is the introspection surface.
 
 ## CLI introspection — auto-generated per-field flags
 
 Every scalar leaf in `spec_schema` becomes a Typer flag automatically. Nested submodels recurse with dotted paths (`--target.url`, `--target.timeout-seconds`). For a function with `spec_schema = GreetSpec(name: str)`:
 
 ```text
-$ nemo my-plugin greet run --help
+$ nemo my-plugin greet submit --help
 ...
 Function Spec:
   --name <NAME>  Name to greet.

@@ -24,7 +24,7 @@ A typical audit looks like the following:
 
 1. Create an [audit target](/documentation/vulnerability-scanning/targets) for the model you want to test.
 1. Create an [audit configuration](/documentation/vulnerability-scanning/configurations) that selects which garak probes and detectors to run, along with reporting settings.
-1. [Run the audit](/documentation/vulnerability-scanning/tutorials/run-an-audit-locally) and inspect the resulting JSONL, HTML, and hitlog reports.
+1. [Submit the audit job](/documentation/vulnerability-scanning/tutorials/run-an-audit-locally) and inspect the resulting JSONL, HTML, and hitlog reports.
 
 The plugin exposes both [synchronous and asynchronous](/documentation/vulnerability-scanning/sdk-resources) Python entry points for each step.
 
@@ -32,10 +32,9 @@ The plugin exposes both [synchronous and asynchronous](/documentation/vulnerabil
 
 ## Setup
 
-Before you can run audits, you need a working NeMo Platform install with the auditor plugin enabled and a garak interpreter on disk.
+Before you can run audits, you need a working NeMo Platform install with the auditor plugin enabled and the Jobs backend running.
 
 - Follow [Setup](/documentation/get-started) to install the platform and start local services.
-- Install garak in a Python virtual environment. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`; override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if you installed it elsewhere.
 - Configure at least one [Inference Gateway provider](/documentation/models-and-inference) so audits can route requests to the model under test.
 
 ---
@@ -54,9 +53,9 @@ Define the model under test — generator type, model identifier, and inference 
 Choose probes, detectors, and reporting settings for the audit.
 
 </Card>
-<Card title="Run an Audit Locally" href="/documentation/vulnerability-scanning/tutorials/run-an-audit-locally">
+<Card title="Submit an Audit Job" href="/documentation/vulnerability-scanning/tutorials/run-an-audit-locally">
 
-End-to-end walkthrough: create entities, run the audit in-process, read the report artifacts.
+End-to-end walkthrough: create entities, submit the audit job, and read the report artifacts.
 
 </Card>
 <Card title="SDK Resources" href="/documentation/vulnerability-scanning/sdk-resources">

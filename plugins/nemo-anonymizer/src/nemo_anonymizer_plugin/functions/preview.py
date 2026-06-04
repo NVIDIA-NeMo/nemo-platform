@@ -46,7 +46,7 @@ class LogFrame(BaseModel):
 
 
 class PreviewDatasetFrame(BaseModel):
-    """Final user-visible dataframe produced by the preview run."""
+    """Final user-visible dataframe produced by preview execution."""
 
     kind: Literal["preview_dataset"] = "preview_dataset"
     records: list[dict[str, Any]]
@@ -84,7 +84,6 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         *,
         ctx: FunctionContext,
         async_sdk: AsyncNeMoPlatform,
-        is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
         num_records = _validate_and_get_num_records(spec.num_records)
         validate_selected_models_have_model_configs(
@@ -92,10 +91,10 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
             selected_models=spec.selected_models,
         )
 
-        anon_ctx = create_anonymizer_context(is_local, async_sdk, ctx.workspace)
+        anon_ctx = create_anonymizer_context(async_sdk, ctx.workspace)
         dd_providers = await anon_ctx.make_model_providers(
             spec.model_configs,
-            require_model_configs=not is_local,
+            require_model_configs=True,
         )
         if spec.model_configs:
             model_configs_yaml = build_model_configs_yaml(

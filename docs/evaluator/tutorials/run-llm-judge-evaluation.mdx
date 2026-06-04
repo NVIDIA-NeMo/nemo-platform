@@ -55,12 +55,12 @@ For PyPI installs, use the `nemo-platform` wrapper package. If you are working f
 
 Before you begin, here is a quick overview of the resources you will use:
 
-- **Evaluator resource**: The plugin SDK resource mounted at `client.evaluator`. Use it to run metrics locally or submit durable platform jobs.
+- **Evaluator resource**: The plugin SDK resource mounted at `client.evaluator`. Use `run()` to submit, wait, and return results, or `submit()` for durable platform job lifecycle control.
 - **Metric**: An inline Python object that defines how to score model outputs. In this tutorial, we create LLM judge metrics that prompt a model to rate responses.
 - **Fileset**: A dataset registered with NeMo Platform. The evaluator plugin SDK accepts fileset references directly, so this tutorial passes the registered HelpSteer2 split to evaluations as a `FilesetRef`.
 - **Workspace**: A workspace that isolates your resources. Secrets, filesets, and jobs belong to a workspace.
-- **Job**: A durable remote platform task created with `evaluator.submit(...)`.
-- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` for local in-process execution, `evaluator.submit(...)` for durable jobs
+- **Job**: A durable platform task created with `evaluator.submit(...)`.
+- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` to submit and wait, or `evaluator.submit(...)` for durable jobs.
 
 ---
 
@@ -100,7 +100,7 @@ print(evaluator.plugin_status())
 
 ## 2. Create Secrets
 
-Create a platform secret for remote jobs and keep the same API key available in your local environment for local runs.
+Create a platform secret for evaluator jobs.
 
 Get your `NVIDIA_API_KEY` to access the models on NVIDIA Build:
 
@@ -109,7 +109,6 @@ Get your `NVIDIA_API_KEY` to access the models on NVIDIA Build:
 
 ```python
 # Export NVIDIA_API_KEY before running this tutorial.
-# For quick local testing only:
 # os.environ["NVIDIA_API_KEY"] = "<your-nvidia-api-key>"
 NVIDIA_BUILD_API_KEY_ENV = "NVIDIA_API_KEY"
 
@@ -137,16 +136,11 @@ print(
 )
 ```
 
-<Note>
-
-Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
-
-</Note>
 ---
 
 ## 3. Configure the Judge Models
 
-Import the evaluator SDK types and configure judge models for local and remote execution. The judge is the LLM that evaluates responses.
+Import the evaluator SDK types and configure judge models. The judge is the LLM that evaluates responses.
 
 This tutorial uses `nvidia/nemotron-3-nano-30b-a3b` from NVIDIA Build.
 
@@ -163,15 +157,7 @@ from nemo_evaluator.sdk import FilesetRef
 JUDGE_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 JUDGE_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
 
-# Local evaluator.run() resolves this value from os.environ["NVIDIA_API_KEY"].
-LOCAL_JUDGE_MODEL = Model(
-    url=JUDGE_MODEL_URL,
-    name=JUDGE_MODEL_NAME,
-    api_key_secret=NVIDIA_BUILD_API_KEY_ENV,
-)
-
-# Remote evaluator.submit() resolves this value from the platform secret.
-REMOTE_JUDGE_MODEL = Model(
+JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
     api_key_secret=nvidia_api_key_secret.name,
@@ -293,8 +279,7 @@ def create_helpfulness_metric(prompt_template: str, judge_model: Model) -> LLMJu
 PROMPT_V1 = """You are an evaluator. Rate the response's helpfulness from 0-4.
 Respond with JSON only: {"helpfulness": <0-4>}"""
 
-metric_v1_local = create_helpfulness_metric(PROMPT_V1, LOCAL_JUDGE_MODEL)
-metric_v1_remote = create_helpfulness_metric(PROMPT_V1, REMOTE_JUDGE_MODEL)
+metric_v1 = create_helpfulness_metric(PROMPT_V1, JUDGE_MODEL)
 
 ```
 
@@ -305,14 +290,14 @@ Use low temperature for evaluation tasks. Low or zero temperature produces outpu
 </Tip>
 ---
 
-## 6. Test with Local Evaluation
+## 6. Test with a Small Evaluation
 
-Before running a durable job, test your metric with a few examples using `evaluator.run(...)`. This runs locally in-process and returns results immediately, which is useful for prompt iteration.
+Before running a larger job, test your metric with a few examples using `evaluator.run(...)`. This submits the evaluation, waits for completion, and returns results in one call.
 
 ```python
 
 quick_test_result = evaluator.run(
-    metric=metric_v1_local,
+    metric=metric_v1,
     dataset=[
         {
             "prompt": "What is the capital of France?",
@@ -371,7 +356,7 @@ sample_config = RunConfig(
 
 
 def wait_for_job(label: str, job):
-    """Wait for a remote evaluator job and download its result."""
+    """Wait for an evaluator job and download its result."""
     try:
         status = job.get_job_status()
         print(f"{label} initial status: {status.status}")
@@ -391,7 +376,7 @@ def wait_for_job(label: str, job):
 
 
 job_v1 = evaluator.submit(
-    metric=metric_v1_remote,
+    metric=metric_v1,
     dataset=dataset_ref,
     config=sample_config,
 )
@@ -496,15 +481,14 @@ A shorter response that directly solves the problem can score higher than a long
 
 Respond with JSON only: {"helpfulness": <0-4>}"""
 
-metric_v2_local = create_helpfulness_metric(PROMPT_V2, LOCAL_JUDGE_MODEL)
-metric_v2_remote = create_helpfulness_metric(PROMPT_V2, REMOTE_JUDGE_MODEL)
+metric_v2 = create_helpfulness_metric(PROMPT_V2, JUDGE_MODEL)
 ```
 
 Run evaluation with the improved prompt:
 
 ```python
 job_v2 = evaluator.submit(
-    metric=metric_v2_remote,
+    metric=metric_v2,
     dataset=dataset_ref,
     config=sample_config,
 )
@@ -656,8 +640,6 @@ To delete the workspace, you must first delete all resources within it. Delete j
 ```python
 from nemo_platform import NotFoundError
 
-# Delete remote evaluation jobs. Local evaluator.run() results are in-memory
-# objects and do not create platform jobs.
 for job_name in [job_v1.name, job_v2.name]:
     try:
         client.jobs.delete(name=job_name, workspace=WORKSPACE)
@@ -711,30 +693,12 @@ If you're re-running the tutorial, delete the existing workspace first:
 client.workspaces.delete(name=WORKSPACE)
 ```
 
-### Local NVIDIA Build authentication fails
+### NVIDIA Build authentication fails
 
-Local evaluator runs resolve `api_key_secret` from environment variables. For NVIDIA Build, make sure `NVIDIA_API_KEY` is exported in the environment where the notebook or Python process is running:
-
-```python
-import os
-
-assert os.environ["NVIDIA_API_KEY"]
-```
-
-The local model should use the environment variable name:
+Evaluator jobs resolve `api_key_secret` from platform secrets. Use the platform secret name created in Step 2:
 
 ```python
-LOCAL_JUDGE_MODEL = Model(
-    url=JUDGE_MODEL_URL,
-    name=JUDGE_MODEL_NAME,
-    api_key_secret="NVIDIA_API_KEY",
-)
-```
-
-Remote jobs should use the platform secret name instead:
-
-```python
-REMOTE_JUDGE_MODEL = Model(
+JUDGE_MODEL = Model(
     url=JUDGE_MODEL_URL,
     name=JUDGE_MODEL_NAME,
     api_key_secret=nvidia_api_key_secret.name,
@@ -751,12 +715,12 @@ print(f"Status: {status.status}")
 print(f"Details: {status.status_details}")
 ```
 
-Remote jobs can report `progress: 100.0` and all samples processed before the platform job status changes to `completed`. Wait for `job.wait_until_done()` to return before downloading results or treating the job as terminal.
+Jobs can report `progress: 100.0` and all samples processed before the platform job status changes to `completed`. Wait for `job.wait_until_done()` to return before downloading results or treating the job as terminal.
 
 Common causes:
 
 - Judge model not deployed or unreachable
-- Remote job is using a missing platform secret
+- Job is using a missing platform secret
 - Rate limiting from external APIs
 
 ### Low correlation with human annotations
@@ -807,7 +771,7 @@ In this tutorial, you learned how to:
 
 1. **Create LLM judge metrics** that prompt a model to score responses
 2. **Use registered fileset references** for plugin SDK execution
-3. **Test quickly with local evaluation** before running durable jobs
+3. **Test quickly with `evaluator.run(...)`** before managing durable jobs with `submit(...)`
 4. **Validate against ground truth** by comparing with human annotations
 5. **Iterate on prompts** to improve correlation
 6. **Visualize distributions** to understand scoring patterns

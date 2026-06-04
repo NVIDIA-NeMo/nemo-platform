@@ -16,20 +16,20 @@ already has an eval suite (Harbor `task.toml` or NAT `workflow.yml` tasks):
 | `nemo agents analyze` | Cluster failures, surface regressions, generate hypotheses |
 | `nemo agents optimize-skills` | Full loop: run evals → analyze → have Claude edit skills → verify → keep or discard |
 
-All three are NemoJob groups with `run` / `submit` / `explain` verbs. The
+All three are NemoJob groups with `submit` / `explain` verbs. The
 spec is supplied via `--spec-file <path.yml>` (YAML or JSON file) or
 `--spec '{...}'` (JSON inline). When both are given, `--spec-file` wins.
 
 ## When to recommend each command
 
-- "How are my agent's evals doing?" → `evaluate-suite run` (collect data) then `analyze run` (interpret it).
-- "Why did these evals fail?" / "What's slow?" → `analyze run` on an existing batch directory.
-- "Improve / optimize / fix my agent" → `optimize-skills run` (only after confirming a `.agent-improver.yml` exists or asking the user for the `evals` / `agent` / `skills_path` values).
+- "How are my agent's evals doing?" → `evaluate-suite submit` (collect data) then `analyze submit` (interpret it).
+- "Why did these evals fail?" / "What's slow?" → `analyze submit` on an existing batch directory.
+- "Improve / optimize / fix my agent" → `optimize-skills submit` (only after confirming a `.agent-improver.yml` exists or asking the user for the `evals` / `agent` / `skills_path` values).
 
 ## Self-referential example: improve NeMo itself
 
 The Platform repo ships a canonical `.agent-improver.yml` at its root. Running
-`nemo agents optimize-skills run --spec-file .agent-improver.yml` from the
+`nemo agents optimize-skills submit --spec-file .agent-improver.yml` from the
 repo root improves the skills under `.agents/skills/` based on the
 `tests/agentic-use/` Harbor evals. This supplants the older standalone
 tools/self_improve/ package.
@@ -37,7 +37,7 @@ tools/self_improve/ package.
 ```bash
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 When the user wants to improve **another** agent, they copy
@@ -55,7 +55,7 @@ repo, retarget the paths, and run the same command.
 
   ```bash
   tmux new -s improve
-  nemo agents optimize-skills run --spec-file .agent-improver.yml
+  nemo agents optimize-skills submit --spec-file .agent-improver.yml
   # detach: Ctrl-B D
   # reattach: tmux attach -t improve
   ```
@@ -104,7 +104,7 @@ reading the first error in any failure is usually enough.
   improvement; discarded on regress/neutral)
 - `iterations[].mr_url`: set when `open_pr=True` and PR/MR creation succeeded
 
-`evaluate-suite run` writes `report.md`, `report.csv`, `report.json`, and
+`evaluate-suite submit` writes `report.md`, `report.csv`, `report.json`, and
 `baselines.json` to the batch directory. Per-eval trial data lands at
 `<batch_dir>/<eval-name>__trials.json` when `repeats > 1`.
 
@@ -112,7 +112,7 @@ reading the first error in any failure is usually enough.
 
 ```bash
 # Run a single eval to debug
-nemo agents evaluate-suite run --spec '{
+nemo agents evaluate-suite submit --spec '{
   "evals": "tests/agentic-use",
   "agent": ".",
   "filter_glob": "auth-authorization-cli",
@@ -121,20 +121,20 @@ nemo agents evaluate-suite run --spec '{
 
 # Run the full suite with variance reduction — set `repeats: 3` in
 # .agent-improver.yml, then:
-nemo agents evaluate-suite run --spec-file .agent-improver.yml
+nemo agents evaluate-suite submit --spec-file .agent-improver.yml
 
 # Analyze a previous batch
-nemo agents analyze run --spec '{
+nemo agents analyze submit --spec '{
   "batch": "./runs/batch-2026-04-30__09-10-42",
   "format": "md"
 }'
 
 # Scope to one eval — edit `filter_glob` / `iterations` in the YAML
 # (or copy and edit a copy), then:
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 
 # Full loop with auto-PR — set `open_pr: true` in the YAML, then:
-nemo agents optimize-skills run --spec-file .agent-improver.yml
+nemo agents optimize-skills submit --spec-file .agent-improver.yml
 ```
 
 ## Don't do

@@ -62,7 +62,6 @@ from nemo_platform_plugin.commands import add_job_commands
 from nemo_platform_plugin.job_context import JobContext, StoragePaths
 from nemo_platform_plugin.job_results import LocalJobResults
 from nemo_platform_plugin.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
-from nemo_platform_plugin.scheduler import NemoJobScheduler
 from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
@@ -247,11 +246,6 @@ def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
     container = cast(Any, step.executor).container
     assert container.entrypoint == ["python", "-m"]
     assert container.command == ["nemo_evaluator.tasks.evaluate"]
-
-
-def _load_cli_run_payload(output: str) -> dict[str, Any]:
-    """Return the evaluator run JSON payload from CLI stdout."""
-    return cast(dict[str, Any], json.loads(output[output.index('{\n  "status"') :]))
 
 
 def _make_job_context(tmp_path: Path) -> JobContext:
@@ -442,8 +436,8 @@ def test_generated_example_spec_compiles_with_runtime_cloudpickle(spec_path: Pat
     assert PlatformJobSpec.model_validate(compiled).steps[0].config is not None
 
 
-def test_evaluate_job_runs_inline_exact_match_metric() -> None:
-    result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
+def test_evaluate_job_runs_inline_exact_match_metric(tmp_path: Path) -> None:
+    result = EvaluateJob().run(_exact_match_spec(), ctx=_make_job_context(tmp_path))
 
     assert result["status"] == "completed"
     assert "result" not in result
@@ -452,7 +446,7 @@ def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     assert aggregate_scores[0]["mean"] == 0.5
 
 
-def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture) -> None:
+def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture, tmp_path: Path) -> None:
     # Mirror of the agent-eval job: the queryable result record is a best-effort convenience index;
     # a persistence failure must not fail an otherwise-successful eval (its artifacts are already saved).
     persist = mocker.patch(
@@ -460,7 +454,7 @@ def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture)
         side_effect=RuntimeError("entity store unavailable"),
     )
 
-    result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
+    result = EvaluateJob().run(_exact_match_spec(), ctx=_make_job_context(tmp_path))
 
     persist.assert_called_once()
     assert result["status"] == "completed"
@@ -468,14 +462,14 @@ def test_evaluate_job_survives_result_persistence_failure(mocker: MockerFixture)
     assert aggregate_scores[0]["name"] == "exact-match.exact-match"
 
 
-def test_evaluate_job_applies_metric_job_params_once() -> None:
+def test_evaluate_job_applies_metric_job_params_once(tmp_path: Path) -> None:
     spec = {
         "metrics": [_bundle_payload(_CountingJobParamsMetric())],
         "dataset": [{"value": "ignored"}],
         "params": {"parallelism": 2},
     }
 
-    result = NemoJobScheduler().run_local(EvaluateJob, spec)
+    result = EvaluateJob().run(spec, ctx=_make_job_context(tmp_path))
 
     assert result["status"] == "completed"
     aggregate_scores = _load_artifact_payload(result)["aggregate_scores"]["scores"]
@@ -589,17 +583,30 @@ def test_cli_metric_types_rejects_unknown_metric_types_name() -> None:
     assert "nemo evaluator metric-types" in result.output
 
 
-def test_cli_run_executes_evaluator_job() -> None:
+def test_cli_submit_posts_evaluator_job(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, object] = {}
+
+    def _capture(_self, job_cls, spec, **kwargs):
+        captured["job_cls"] = job_cls
+        captured["spec"] = spec
+        captured["kwargs"] = kwargs
+        return {"name": "job-123", "status": "created"}
+
+    monkeypatch.setattr("nemo_platform_plugin.scheduler.NemoJobScheduler.submit_remote", _capture)
+
     app = EvaluatorPluginCLI().get_cli()
     add_job_commands(app, {"evaluator.evaluate": EvaluateJob})
 
-    result = CliRunner().invoke(app, ["evaluate", "run", "--spec", json.dumps(_exact_match_spec())])
+    result = CliRunner().invoke(
+        app,
+        ["evaluate", "submit", "--spec", json.dumps(_exact_match_spec()), "--base-url", "http://test"],
+    )
 
     assert result.exit_code == 0
-    payload = _load_cli_run_payload(result.output)
-    assert payload["status"] == "completed"
-    assert "result" not in payload
-    assert _load_artifact_payload(payload)["aggregate_scores"]["scores"][0]["mean"] == 0.5
+    assert json.loads(result.output) == {"name": "job-123", "status": "created"}
+    assert captured["job_cls"] is EvaluateJob
+    assert captured["spec"] == _exact_match_spec()
+    assert captured["kwargs"]["base_url"] == "http://test"
 
 
 async def test_platform_model_resolver_resolves_model_ref_through_sdk() -> None:
@@ -670,7 +677,7 @@ async def test_evaluate_job_resolves_metric_model_refs_before_sdk_run(
         workspace="default",
         entity_client=object(),
         async_sdk=cast(Any, _FakeSDK()),
-        is_local=True,
+        is_local=False,
     )
     run_result = EvaluateJob().run(
         spec.model_dump(mode="json"),

@@ -2716,7 +2716,7 @@ components:
           title: Eval Config Fileset
           description: Optional fileset reference (``name`` or ``workspace/name``).  When
             set, the runner downloads the fileset's contents into a tempdir and resolves
-            ``eval_config`` relative to that dir.  Local CLI runs leave this ``None``.
+            ``eval_config`` relative to that dir.
           type: string
         output:
           title: Output
@@ -2754,17 +2754,14 @@ components:
         \ Optional fileset reference (``name`` or\n        ``workspace/name``) that\
         \ pre-stages the eval YAML and any\n        sibling files (e.g. dataset).\
         \  Used by platform-managed\n        submissions where the ``agents.evaluate-agent``\
-        \ function\n        uploads everything before submitting; local CLI runs leave\n\
-        \        this ``None`` and let ``eval_config`` be a real local path.\n   \
-        \ output: Where to put the eval outputs.  Accepts either a local\n       \
-        \ directory path (``./out``, ``/abs/out``, ``~/out``) or an\n        NeMo\
-        \ Platform fileset reference (``\"name\"`` or ``\"workspace/name\"``).\n \
-        \       Path-shaped values write directly to disk; bare names upload\n   \
-        \     results to the named fileset, creating it on demand.  When\n       \
-        \ ``None`` the job writes to ``ctx.storage.persistent /\n        \"results\"\
-        `` \u2014 the platform-injected persistent volume in\n        container runs,\
-        \ a tempdir under ``$TMPDIR`` for local CLI\n        runs.\n    workspace:\
-        \ NeMo Platform workspace used to scope gateway URL injection,\n        ``--agent``\
+        \ function\n        uploads everything before submitting.\n    output: Where\
+        \ to put the eval outputs.  Accepts either a local\n        directory path\
+        \ (``./out``, ``/abs/out``, ``~/out``) or an\n        NeMo Platform fileset\
+        \ reference (``\"name\"`` or ``\"workspace/name\"``).\n        Path-shaped\
+        \ values write directly to disk; bare names upload\n        results to the\
+        \ named fileset, creating it on demand.  When\n        ``None`` the job writes\
+        \ to ``ctx.storage.persistent /\n        \"results\"``.\n    workspace: NeMo\
+        \ Platform workspace used to scope gateway URL injection,\n        ``--agent``\
         \ resolution, and ``--output`` fileset creation\n        when those values\
         \ are given as bare names."
     EvaluateJob:

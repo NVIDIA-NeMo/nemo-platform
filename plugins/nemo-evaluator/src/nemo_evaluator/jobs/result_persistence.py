@@ -9,8 +9,8 @@ Both evaluator jobs persist the *full* result bundle (rows/trials) to the job's 
 fileset bundle. The entity is the evaluator's source of truth.
 
 ``run`` is synchronous but the entity-store client is async, so the job is injected an async task SDK
-(``get_async_task_sdk``) alongside the sync one; we drive the entity write with ``run_sync``. A
-platformless local run (no async SDK) simply skips persistence.
+(``get_async_task_sdk``) alongside the sync one; we drive the entity write with ``run_sync``. Direct
+unit-test invocation without an async SDK simply skips persistence.
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 def _entity_client(async_sdk: AsyncNeMoPlatform | None) -> EntityClient | None:
     """The standard async ``EntityClient`` for the job's async task SDK, or ``None`` if absent.
 
-    ``None`` means a platformless local run (no async SDK injected) — persistence is skipped.
+    ``None`` means no async SDK was injected, so persistence is skipped.
     """
     if async_sdk is None:
         return None
@@ -97,7 +97,7 @@ def _row_target_fields(target: Model | Agent | None) -> tuple[str | None, str | 
 def _persist(entity: EntityBase, *, async_sdk: AsyncNeMoPlatform | None) -> None:
     client = _entity_client(async_sdk)
     if client is None:
-        logger.info("No async task SDK injected; skipping result-entity persistence (platformless local run).")
+        logger.info("No async task SDK injected; skipping result-entity persistence.")
         return
     # Best-effort: the eval has already succeeded and the full bundle is saved, so a transient
     # entity-store error must not fail the job — the record is re-derivable from the bundle. Log
@@ -122,7 +122,7 @@ def persist_agent_eval_result(
 ) -> None:
     """Persist an ``AgentEvalJob`` run as an :class:`AgentEvalResultEntity` (aggregate scores rollup)."""
     if ctx.job_id is None:
-        logger.info("No job id (platformless local run); skipping result-entity persistence.")
+        logger.info("No job id; skipping result-entity persistence.")
         return
     target_kind, target_name, target_url = _agent_target_fields(target)
     entity = AgentEvalResultEntity(
@@ -150,7 +150,7 @@ def persist_evaluate_result(
 ) -> None:
     """Persist an ``EvaluateJob`` (row-eval) run as an :class:`EvaluateResultEntity` (aggregates)."""
     if ctx.job_id is None:
-        logger.info("No job id (platformless local run); skipping result-entity persistence.")
+        logger.info("No job id; skipping result-entity persistence.")
         return
     target_kind, target_name, target_url = _row_target_fields(target)
     entity = EvaluateResultEntity(

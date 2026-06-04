@@ -3,7 +3,7 @@
 # Copy this file into your own agent's repo as ``.agent-improver.yml``,
 # retarget the paths, and run:
 #
-#   nemo agents optimize-skills run --spec-file .agent-improver.yml
+#   nemo agents optimize-skills submit --spec-file .agent-improver.yml
 #
 # To submit to a cluster instead of running locally:
 #

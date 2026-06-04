@@ -7,21 +7,21 @@ description: ""
 
 Custom Python metrics let you score model outputs with deterministic, domain-specific logic that is easier to express in code than in a generic metric or an LLM-as-a-judge prompt.
 
-This tutorial shows how to evaluate a model that solves arithmetic word problems by returning a Python expression. This response format is useful for calculator-style systems because it makes the model output executable and easy to verify. You will define a metric that checks whether each expression is safe to evaluate and whether it produces the expected answer, test the metric locally, then submit the same metric as a durable Evaluator service job with a `FilesetRef` dataset and a `ModelRef` target.
+This tutorial shows how to evaluate a model that solves arithmetic word problems by returning a Python expression. This response format is useful for calculator-style systems because it makes the model output executable and easy to verify. You will define a metric that checks whether each expression is safe to evaluate and whether it produces the expected answer, test the metric with the standalone Evaluator SDK, then submit the same metric as a durable Evaluator service job with a `FilesetRef` dataset and a `ModelRef` target.
 
 **What you will learn:**
 
 - Define a Python metric with the Evaluator SDK metric protocol
 - Score model outputs with standard-library Python logic
-- Run the same metric through the local Evaluator SDK
+- Run the same metric through the standalone Evaluator SDK
 - Map dataset prediction columns into the evaluator's candidate output field
-- Package the metric with the Cloudpickle metric bundle packager for remote execution
+- Package the metric with the Cloudpickle metric bundle packager for platform job execution
 - Submit a durable Evaluator service job with `FilesetRef` and `ModelRef`
 - Inspect aggregate and row-level metric results
 
 <Tip>
 
-Keep custom metric code dependency-light. Local execution runs your metric in the current Python environment, and remote execution hydrates the serialized metric in the evaluator job runtime. This tutorial uses only the Python standard library.
+Keep custom metric code dependency-light. Standalone SDK execution runs your metric in the current Python environment, and platform job execution hydrates the serialized metric in the evaluator job runtime. This tutorial uses only the Python standard library.
 
 </Tip>
 
@@ -42,7 +42,7 @@ import nemo_evaluator_sdk
 print(nemo_evaluator_sdk.version)
 ```
 
-You do not need a running NeMo Platform instance to define the metric or run it locally. Start NeMo Platform and configure platform resources before submitting the durable remote job.
+You do not need a running NeMo Platform instance to define the metric or run the standalone SDK smoke test. Start NeMo Platform and configure platform resources before submitting the durable job.
 
 ## 1. Understand the Metric Contract
 
@@ -457,11 +457,11 @@ for row in remote_result.row_scores:
     print()
 ```
 
-Use the local `result` object from Step 5 the same way if you want to inspect the local run instead.
+Use the standalone SDK `result` object from Step 5 the same way if you want to inspect the smoke-test rows instead.
 
 ## Best Practices
 
-- Run custom metrics locally with representative rows before submitting service-side jobs.
+- Test custom metrics with representative rows in the standalone SDK before submitting service-side jobs.
 - Keep metric code deterministic and side-effect free.
 - Prefer Python standard-library logic unless you know the dependency is available in the service runtime.
 - Emit separate outputs for format validity and task correctness so failures are easier to diagnose.

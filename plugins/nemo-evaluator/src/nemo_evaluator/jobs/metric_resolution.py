@@ -67,9 +67,9 @@ async def resolve_metrics_to_inline(
     model references are resolved through the platform. Raises if a model
     reference is present without a usable ``async_sdk`` connection.
 
-    ``async_sdk`` accepts either client because the call sites differ: submit forwards a real
-    ``AsyncNeMoPlatform``, while local execution forwards the *sync* ``NeMoPlatform``. The two
-    resolution concerns then have *different* client requirements:
+    ``async_sdk`` accepts either client because call sites can forward either a real
+    ``AsyncNeMoPlatform`` or a sync ``NeMoPlatform``. The two resolution concerns then have
+    *different* client requirements:
 
     * **Stored-ref loading** awaits real platform file I/O (``resolve_metric_ref`` → ``load_bundle``
       → ``await sdk.files._download_file``), so it needs a genuine ``AsyncNeMoPlatform``. Anything

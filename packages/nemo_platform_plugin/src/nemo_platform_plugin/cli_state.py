@@ -5,20 +5,18 @@
 
 The top-level ``nemo`` CLI populates ``typer.Context.obj`` with a state object
 that exposes per-invocation handles to the platform SDK clients (sync and
-async). The auto-generated ``run`` / ``submit`` verbs in
-:mod:`nemo_platform_plugin.commands` consume that state through these helpers,
-and **plugin-authored** Typer commands (i.e. anything a plugin registers via
+async). Plugin-authored Typer commands (i.e. anything a plugin registers via
 :meth:`~nemo_platform_plugin.cli.NemoCLI.get_cli` rather than the
-auto-generated verbs) should use the same surface so they participate in the
-same protocol.
+auto-generated verbs) can use this surface so they participate in the same
+protocol.
 
 Example::
 
     import typer
-    from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
+    from nemo_platform_plugin.cli_state import resolve_cli_sdks
 
     def my_command(typer_ctx: typer.Context) -> None:
-        sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
+        sdk, async_sdk = resolve_cli_sdks(typer_ctx)
         if sdk is None and async_sdk is None:
             typer.echo("No NeMo Platform SDK is available.", err=True)
             raise typer.Exit(code=1)
@@ -28,7 +26,7 @@ Example::
 import typer
 
 
-def resolve_local_cli_sdks(
+def resolve_cli_sdks(
     typer_ctx: typer.Context,
 ) -> tuple[object | None, object | None]:
     """Pull ``(sdk, async_sdk)`` out of the CLI state object on ``typer_ctx.obj``.

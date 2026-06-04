@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="anonymizer-tutorials-run"></a>
 
-This tutorial walks through the `anonymizer.run` job: defining a run spec, executing it locally or on the NeMo Platform Jobs worker, and loading the parquet artifacts it produces.
+This tutorial walks through the `anonymizer.run` job: defining a run spec, submitting it to the {{platform_name}} Jobs worker, and loading the parquet artifacts it produces.
 
 For detection, rewrite, and replacement strategy details, see the [open-source library documentation](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).
 
@@ -20,12 +20,11 @@ Complete the [tutorials prerequisites](/documentation/anonymize-data/tutorials#p
 
 `anonymizer.run` executes the full Anonymizer pipeline on every record of an input file and writes the output as job artifacts.
 
-There are three run commands:
+There are two run commands:
 
 | Command                       | Where it runs                                | Local paths | `model_configs` required | Artifacts                                              |
 |-------------------------------|----------------------------------------------|-------------|--------------------------|--------------------------------------------------------|
-| `nemo anonymizer run run`     | Local CLI process via generated `is_local` path | Allowed     | Optional                 | Written under `persistent/results/artifacts` locally   |
-| `nemo anonymizer run submit`  | NeMo Platform Jobs worker                | Rejected    | Required                 | Stored in NeMo Platform job artifact storage; pull with `download_artifacts()` |
+| `nemo anonymizer run submit`  | {{platform_name}} Jobs worker                | Rejected    | Required                 | Stored in {{platform_name}} job artifact storage; pull with `download_artifacts()` |
 | `nemo anonymizer run explain` | Local schema introspection                   | n/a         | n/a                      | Prints job key, submit endpoint, and input/spec schemas |
 
 Job artifacts (under the `artifacts/` directory):
@@ -85,35 +84,9 @@ spec_path = Path("/tmp/anonymizer-run.yaml")
 spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none=True)))
 ```
 
-## Step 3: Run the Job
+## Step 3: Submit the Job
 
-Choose one execution path. Option A runs in the local CLI process. Option B submits the same request to the NeMo Platform Jobs worker.
-
-### Option A: Run Locally
-
-```bash
-nemo anonymizer run run --spec-file /tmp/anonymizer-run.yaml
-```
-
-The local job context runs the Anonymizer library `Anonymizer.run(...)` in-process, then writes artifacts through the generated local job results manager.
-
-Expected output:
-
-```json
-{"exit_code": 0}
-```
-
-`run run` does not echo the artifact path on stdout. The local job results manager logs the path to stderr in the form:
-
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-Use that path in the next step.
-
-### Option B: Submit to the Jobs Worker
-
-To execute the same spec on the NeMo Platform Jobs worker instead of in the CLI process, use `run submit`:
+Submit the spec to the {{platform_name}} Jobs worker:
 
 ```bash
 nemo anonymizer run submit \
@@ -137,53 +110,11 @@ sdk = NeMoPlatform(
 job = sdk.anonymizer.run(request)
 ```
 
-Compared to `run run`, the submit path:
-
-- Rejects local file paths in `data.source` — use a fileset reference (`<fileset>#<path>`) or `http(s)` URL.
-- Requires explicit `model_configs` referencing Inference Gateway providers, because the job runs outside the CLI process and cannot inherit Data Designer's locally-defined providers.
+The submit path rejects local file paths in `data.source` — use a fileset reference (`<fileset>#<path>`) or `http(s)` URL. It also requires explicit `model_configs` referencing Inference Gateway providers.
 
 ## Step 4: Get Results
 
-### Option A Results: Local Run
-
-For `run run`, the result already exists on the local filesystem. Use the artifact directory printed in stderr:
-
-```bash
-ARTIFACTS_DIR=/path/to/persistent/results/artifacts
-ls "$ARTIFACTS_DIR"
-```
-
-Then load the parquet artifacts from that directory:
-
-```python
-import json
-from pathlib import Path
-
-import pandas as pd
-
-artifacts_dir = Path("/path/to/persistent/results/artifacts")  # from the stderr log
-
-metadata = json.loads((artifacts_dir / "metadata.json").read_text())
-dataset = pd.read_parquet(artifacts_dir / "dataset.parquet", dtype_backend="pyarrow")
-trace = pd.read_parquet(artifacts_dir / "trace.parquet", dtype_backend="pyarrow")
-
-failed_path = artifacts_dir / "failed_records.json"
-failed_records = json.loads(failed_path.read_text()) if failed_path.exists() else []
-
-print(dataset.head())
-print(f"records={len(dataset)} failures={len(failed_records)}")
-```
-
-The trace dataset (and the dataset itself for `annotate` / `substitute` strategies) contains pyarrow-backed `struct<entities: list<...>>` columns. If you need plain Python `dict`/`list` values for JSON output, use `pyarrow.parquet`:
-
-```python
-import pyarrow.parquet as pq
-
-table = pq.read_table(artifacts_dir / "dataset.parquet")
-records = table.slice(0, 5).to_pylist()
-```
-
-### Option B Results: Remote Run
+### Submitted Job Results
 
 For `run submit`, track the platform job first. The job is ready for artifact download when its status is `completed`:
 
@@ -254,11 +185,11 @@ This is useful when authoring a spec programmatically or wiring the job into ano
 For each request, the plugin:
 
 1. Validates the Anonymizer library `AnonymizerConfig`.
-2. Validates the input source (rejects local paths on remote execution; checks fileset refs).
+2. Validates the input source (rejects local paths; checks fileset refs).
 3. Validates that `selected_models` overrides also have `model_configs`.
-4. Resolves `model_configs` providers — locally-defined Data Designer providers first, then Inference Gateway providers. Remote execution (`run submit`) resolves only through the Inference Gateway.
+4. Resolves `model_configs` providers through the Inference Gateway.
 5. Renders a unified `model_configs` YAML body for the library.
-6. Stores the resolved providers and YAML in the internal `AnonymizerStepConfig` consumed by the worker (in-process for `run run`, or on the Jobs worker for `run submit`).
+6. Stores the resolved providers and YAML in the internal `AnonymizerStepConfig` consumed by the Jobs worker.
 
 For `run submit`, provider endpoints are re-resolved at runtime so the job uses the in-cluster Inference Gateway address rather than the address captured at submission time.
 
