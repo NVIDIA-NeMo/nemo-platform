@@ -1256,7 +1256,18 @@ def write_cache(cache: Cache, path: Path, dry_run: bool) -> None:
         print(payload)
         return
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(payload, encoding="utf-8")
+    tmp: Path | None = None
+    try:
+        import tempfile
+
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", dir=path.parent, delete=False, suffix=".tmp") as f:
+            f.write(payload)
+            tmp = Path(f.name)
+        tmp.replace(path)
+        tmp = None
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
     print(f"\n  Cache written to {path}")
 
 
