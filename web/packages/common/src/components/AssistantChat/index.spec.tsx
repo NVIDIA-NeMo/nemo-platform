@@ -220,6 +220,8 @@ describe('AssistantChat', () => {
 
     expect(screen.getByText('Existing prompt')).toBeInTheDocument();
     expect(screen.getByText('Existing response')).toBeInTheDocument();
+    expect(assistantMessage).toHaveClass('whitespace-normal');
+    expect(assistantMessage).not.toHaveClass('whitespace-pre-wrap');
     expect(
       within(assistantMessage).getByRole('button', { name: /Copy message/i })
     ).toBeInTheDocument();
@@ -245,6 +247,12 @@ describe('AssistantChat', () => {
     expect(
       within(assistantMessage).queryByRole('button', { name: /Regenerate response/i })
     ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-message-actions')
+    ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-running-indicator')
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
   });
 
@@ -258,7 +266,36 @@ describe('AssistantChat', () => {
     );
 
     expect(screen.getByText('Approval required')).toBeInTheDocument();
+    expect(screen.getByTestId('assistant-chat-composer-container')).toHaveClass('pt-density-xl');
     expect(screen.queryByRole('textbox', { name: /Task prompt/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the composer with a rounded input shell and circular submit action', () => {
+    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+
+    expect(screen.getByTestId('assistant-chat-viewport')).toHaveClass(
+      '[scrollbar-width:thin]',
+      '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
+      '[&::-webkit-scrollbar]:w-2',
+      '[&::-webkit-scrollbar-track]:bg-transparent',
+      '[&::-webkit-scrollbar-thumb]:rounded-full',
+      '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
+      '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]'
+    );
+    expect(screen.getByTestId('assistant-chat-composer')).toHaveClass(
+      'gap-density-xs',
+      'rounded-2xl'
+    );
+    expect(screen.getByRole('textbox', { name: /Task prompt/i })).toHaveClass(
+      'min-h-20',
+      'px-density-md',
+      'py-density-md'
+    );
+    expect(screen.getByRole('button', { name: /Submit/i })).toHaveClass(
+      'size-8',
+      'rounded-full',
+      'p-0'
+    );
   });
 
   it(
@@ -318,9 +355,11 @@ describe('AssistantChat', () => {
       await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
       expect(await screen.findByText('0 this is an example response')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Stop/i })).toBeEnabled();
+      const stopButton = screen.getByRole('button', { name: /Stop/i });
+      expect(stopButton).toBeEnabled();
+      expect(stopButton).toHaveClass('size-8', 'rounded-full', 'p-0');
 
-      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+      await userEvent.click(stopButton);
 
       await waitFor(() => expect(abortSpy).toHaveBeenCalledTimes(1));
       await waitFor(() =>

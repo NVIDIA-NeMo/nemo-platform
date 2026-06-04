@@ -9,11 +9,13 @@ import {
   toClaudeCodeToolArgs,
   type ClaudeCodeToolArgs,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import cn from 'classnames';
 import {
   CheckSquare,
   ChevronRight,
   CircleHelp,
   ClipboardList,
+  Command,
   FilePenLine,
   FilePlus2,
   FileText,
@@ -56,10 +58,11 @@ const CODE_BLOCK_SURFACE_CLASS = 'bg-gray-050 dark:bg-gray-900';
 const FILE_CHANGE_ADDITION_CLASS = 'text-feedback-success';
 const FILE_CHANGE_DELETION_CLASS = 'text-feedback-danger';
 const SUBTLE_MESSAGE_MAX_LENGTH = 160;
+const RUNNING_TOOL_CALL_CLASS = 'claude-code-tool-call-running';
 
 const SUBTLE_TOOL_ICONS: Record<string, LucideIcon> = {
   AskUserQuestion: CircleHelp,
-  Bash: Terminal,
+  Bash: Command,
   FindFiles: Search,
   Grep: Search,
   Read: FileText,
@@ -69,9 +72,13 @@ const SUBTLE_TOOL_ICONS: Record<string, LucideIcon> = {
 };
 
 interface SubtleToolAction {
+  readonly detail: string;
+  readonly details?: readonly string[];
   readonly Icon: LucideIcon;
   readonly message: string;
+  readonly title?: string;
   readonly toolCallId: string;
+  readonly toolName: string;
 }
 
 const getStringArg = (args: ClaudeCodeToolArgs, keys: string[]): string | undefined => {
@@ -140,6 +147,41 @@ const formatSubtleToolMessage = (
 const getSubtleToolIcon = (toolName: string): LucideIcon =>
   SUBTLE_TOOL_ICONS[toolName] ?? TOOL_ICONS[toolName] ?? Terminal;
 
+const getRepeatedSubtleToolMessage = (toolName: string, count: number): string => {
+  switch (toolName) {
+    case 'AskUserQuestion':
+      return `Asked ${count} questions`;
+    case 'Bash':
+      return `Ran ${count} commands`;
+    case 'FindFiles':
+      return `Searched files ${count} times`;
+    case 'Glob':
+      return `Found files ${count} times`;
+    case 'Grep':
+      return `Searched text ${count} times`;
+    case 'LS':
+      return `Listed ${count} directories`;
+    case 'Read':
+      return `Read ${count} files`;
+    case 'TaskCreate':
+      return `Created ${count} tasks`;
+    case 'TaskUpdate':
+      return `Updated ${count} tasks`;
+    case 'TodoWrite':
+      return `Updated todos ${count} times`;
+    case 'ToolSearch':
+      return `Searched tools ${count} times`;
+    case 'WebFetch':
+      return `Fetched ${count} URLs`;
+    case 'WebSearch':
+      return `Searched web ${count} times`;
+    default: {
+      const label = TOOL_LABELS[toolName] ?? toolName;
+      return `Used ${label} ${count} times`;
+    }
+  }
+};
+
 const getFileName = (path: string): string => {
   const segments = path.split(/[\\/]/).filter(Boolean);
   return segments.at(-1) ?? path;
@@ -161,6 +203,17 @@ const getEditStats = (args: Record<string, unknown>): { additions: number; delet
 
 const isToolArgsRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const getAskUserQuestionSummary = (args: ClaudeCodeToolArgs): string | undefined => {
+  const questions = args.questions;
+  const firstQuestion = Array.isArray(questions) ? questions.find(isToolArgsRecord) : undefined;
+  return (
+    getStringArg(args, ['question', 'prompt']) ??
+    (firstQuestion
+      ? getRawStringArg(firstQuestion, ['question', 'prompt', 'header'])?.trim()
+      : undefined)
+  );
+};
 
 interface FileChangeSummary {
   readonly action: 'Edited' | 'Wrote';
@@ -236,14 +289,7 @@ const getSubtleToolMessage = (toolName: string, args: ClaudeCodeToolArgs): strin
   if (!isClaudeCodeSubtleToolCallName(toolName)) return undefined;
 
   if (toolName === 'AskUserQuestion') {
-    const questions = args.questions;
-    const firstQuestion = Array.isArray(questions) ? questions.find(isToolArgsRecord) : undefined;
-    const question =
-      getStringArg(args, ['question', 'prompt']) ??
-      (firstQuestion
-        ? getRawStringArg(firstQuestion, ['question', 'prompt', 'header'])?.trim()
-        : undefined);
-    return formatSubtleToolMessage('Asked', question, 'Asked user question');
+    return formatSubtleToolMessage('Asked', getAskUserQuestionSummary(args), 'Asked user question');
   }
 
   if (toolName === 'Bash') {
@@ -331,6 +377,45 @@ const getSubtleToolMessage = (toolName: string, args: ClaudeCodeToolArgs): strin
   return formatSubtleToolMessage(`Used ${label}`, getToolSummary(toolName, args), `Used ${label}`);
 };
 
+const getSubtleToolDetail = (
+  toolName: string,
+  args: ClaudeCodeToolArgs,
+  message: string
+): string => {
+  if (toolName === 'AskUserQuestion') {
+    return compactSubtleDetail(getAskUserQuestionSummary(args)) ?? message;
+  }
+
+  if (toolName === 'Bash') {
+    return compactSubtleDetail(getStringArg(args, ['description', 'command'])) ?? message;
+  }
+
+  if (toolName === 'FindFiles') {
+    return compactSubtleDetail(getStringArg(args, ['query', 'pattern', 'path'])) ?? message;
+  }
+
+  if (toolName === 'Read') {
+    const path = getStringArg(args, ['file_path', 'path']);
+    return path ? getFileName(path) : message;
+  }
+
+  if (toolName === 'TaskCreate') {
+    return (
+      compactSubtleDetail(getStringArg(args, ['description', 'task', 'prompt', 'query'])) ?? message
+    );
+  }
+
+  if (toolName === 'TaskUpdate') {
+    return compactSubtleDetail(getStringArg(args, ['description', 'task', 'status'])) ?? message;
+  }
+
+  if (toolName === 'ToolSearch') {
+    return compactSubtleDetail(getStringArg(args, ['query', 'pattern', 'name'])) ?? message;
+  }
+
+  return compactSubtleDetail(getToolSummary(toolName, args)) ?? message;
+};
+
 const getSubtleToolGroupActions = (args: ClaudeCodeToolArgs): readonly SubtleToolAction[] => {
   const actions = args.actions;
   if (!Array.isArray(actions)) return [];
@@ -346,31 +431,108 @@ const getSubtleToolGroupActions = (args: ClaudeCodeToolArgs): readonly SubtleToo
       if (!message) return undefined;
 
       return {
+        detail: getSubtleToolDetail(toolName, actionArgs, message),
         Icon: getSubtleToolIcon(toolName),
         message,
         toolCallId: getRawStringArg(action, ['toolCallId'])?.trim() ?? `${toolName}-${index}`,
+        toolName,
       };
     })
     .filter((action): action is SubtleToolAction => action !== undefined);
 };
 
+const summarizeRepeatedSubtleToolActions = (
+  actions: readonly SubtleToolAction[]
+): readonly SubtleToolAction[] => {
+  const groupedActions = new Map<string, SubtleToolAction[]>();
+
+  for (const action of actions) {
+    const existingActions = groupedActions.get(action.toolName);
+    if (existingActions) {
+      existingActions.push(action);
+    } else {
+      groupedActions.set(action.toolName, [action]);
+    }
+  }
+
+  return Array.from(groupedActions.values()).map((group) => {
+    if (group.length === 1) return group[0]!;
+
+    const firstAction = group[0]!;
+    return {
+      ...firstAction,
+      details: group.map((action) => action.detail),
+      message: getRepeatedSubtleToolMessage(firstAction.toolName, group.length),
+      title: group.map((action) => action.message).join(' | '),
+      toolCallId: `${firstAction.toolCallId}-${group.length}`,
+    };
+  });
+};
+
 interface SubtleToolCallRowProps {
   readonly actions: readonly SubtleToolAction[];
+  readonly isRunning?: boolean;
 }
 
-const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
+const SubtleToolCallRow = ({ actions, isRunning = false }: SubtleToolCallRowProps) => (
   <Text asChild kind="body/regular/sm">
     <div
-      className="my-0.5 flex max-w-full flex-wrap items-center gap-x-density-sm gap-y-0.5 text-gray-400 dark:text-gray-600"
+      className={cn(
+        'my-0.5 flex max-w-full flex-wrap items-center gap-x-density-sm gap-y-0 text-gray-400 dark:text-gray-400',
+        isRunning && RUNNING_TOOL_CALL_CLASS
+      )}
       data-testid="claude-code-tool-call-subtle"
-      title={actions.map((action) => action.message).join(' | ')}
+      title={actions.map((action) => action.title ?? action.message).join(' | ')}
     >
-      {actions.map((action, index) => {
+      {summarizeRepeatedSubtleToolActions(actions).map((action, index) => {
         const Icon = action.Icon;
+        const key = `${action.toolCallId}-${index}`;
+
+        if (action.details?.length) {
+          return (
+            <details
+              key={key}
+              className="group/subtle max-w-full basis-full"
+              data-testid="claude-code-tool-call-subtle-details"
+            >
+              <summary
+                className="inline-flex cursor-pointer list-none items-center gap-density-xs marker:hidden"
+                data-testid="claude-code-tool-call-subtle-action"
+              >
+                <ChevronRight
+                  aria-hidden
+                  className="size-3 shrink-0 transition-transform group-open/subtle:rotate-90"
+                />
+                <Icon
+                  aria-hidden
+                  className="size-3.5 shrink-0"
+                  data-testid="claude-code-tool-call-subtle-icon"
+                />
+                <span className="min-w-0 truncate">{action.message}</span>
+              </summary>
+              <ul
+                className="mt-0.5 max-w-full space-y-0.5 pl-7"
+                data-testid="claude-code-tool-call-subtle-detail-list"
+              >
+                {action.details.map((detail, detailIndex) => (
+                  <li
+                    key={`${action.toolCallId}-${detailIndex}`}
+                    className="min-w-0 truncate"
+                    data-testid="claude-code-tool-call-subtle-detail-item"
+                    title={detail}
+                  >
+                    {detail}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          );
+        }
+
         return (
           <span
-            key={`${action.toolCallId}-${index}`}
-            className="inline-flex min-w-0 max-w-full items-center gap-density-xs"
+            key={key}
+            className="inline-flex min-w-0 max-w-full basis-full items-center gap-density-xs"
             data-testid="claude-code-tool-call-subtle-action"
           >
             <Icon
@@ -387,6 +549,7 @@ const SubtleToolCallRow = ({ actions }: SubtleToolCallRowProps) => (
 );
 
 interface FileChangeToolCallCardProps {
+  readonly isRunning?: boolean;
   readonly summary: {
     readonly action: 'Edited' | 'Wrote';
     readonly additions: number;
@@ -396,21 +559,24 @@ interface FileChangeToolCallCardProps {
   };
 }
 
-const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
+const FileChangeToolCallCard = ({ isRunning = false, summary }: FileChangeToolCallCardProps) => {
   const Icon = summary.action === 'Wrote' ? FilePlus2 : FilePenLine;
 
   return (
     <div
-      className="my-density-sm overflow-hidden rounded border border-base bg-surface-raised"
+      className="my-density-xs overflow-hidden rounded border border-base bg-surface-raised"
       data-testid="claude-code-tool-call-file-change"
     >
       <details className="group/write" data-testid="claude-code-tool-call-file-change-details">
-        <summary className="flex cursor-pointer list-none items-center gap-density-sm px-density-md py-density-sm marker:hidden">
-          <div className="flex size-9 shrink-0 items-center justify-center rounded bg-surface-sunken text-secondary">
-            <Icon size={18} />
+        <summary className="flex cursor-pointer list-none items-center gap-density-sm px-density-sm py-density-xs marker:hidden">
+          <div className="flex size-8 shrink-0 items-center justify-center rounded bg-surface-sunken text-secondary">
+            <Icon size={16} />
           </div>
           <div className="min-w-0 flex-1">
-            <Text kind="label/bold/md" className="block">
+            <Text
+              kind="label/bold/md"
+              className={cn('block', isRunning && RUNNING_TOOL_CALL_CLASS)}
+            >
               {summary.action} 1 file
             </Text>
             <Text kind="body/regular/sm" className="block tabular-nums">
@@ -423,7 +589,7 @@ const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
             <ChevronRight size={14} className="transition-transform group-open/write:rotate-90" />
           </span>
         </summary>
-        <div className="border-t border-base px-density-md py-density-sm">
+        <div className="border-t border-base px-density-sm py-density-xs">
           <pre
             className={`max-h-72 overflow-auto rounded ${CODE_BLOCK_SURFACE_CLASS} p-density-sm text-xs leading-relaxed text-secondary`}
             data-testid="claude-code-tool-call-file-change-review-surface"
@@ -434,7 +600,7 @@ const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
           </pre>
         </div>
       </details>
-      <div className="border-t border-base px-density-md py-density-sm">
+      <div className="border-t border-base px-density-sm py-density-xs">
         <div className="flex min-w-0 items-center justify-between gap-density-md">
           <Text kind="body/regular/sm" className="min-w-0 truncate">
             {summary.path}
@@ -452,22 +618,30 @@ const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
 export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeToolArgs, unknown> = ({
   args,
   argsText,
+  status,
   toolName,
 }) => {
+  const isRunning = status.type === 'running';
+
   if (toolName === CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME) {
     const subtleActions = getSubtleToolGroupActions(args);
-    return subtleActions.length ? <SubtleToolCallRow actions={subtleActions} /> : null;
+    return subtleActions.length ? (
+      <SubtleToolCallRow actions={subtleActions} isRunning={isRunning} />
+    ) : null;
   }
 
   const subtleMessage = getSubtleToolMessage(toolName, args);
   if (subtleMessage) {
     return (
       <SubtleToolCallRow
+        isRunning={isRunning}
         actions={[
           {
+            detail: getSubtleToolDetail(toolName, args, subtleMessage),
             Icon: getSubtleToolIcon(toolName),
             message: subtleMessage,
             toolCallId: toolName,
+            toolName,
           },
         ]}
       />
@@ -476,7 +650,9 @@ export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeTool
 
   if (toolName === 'Write' || toolName === 'Edit' || toolName === 'MultiEdit') {
     const fileChangeSummary = getFileChangeSummary(toolName, args, argsText);
-    if (fileChangeSummary) return <FileChangeToolCallCard summary={fileChangeSummary} />;
+    if (fileChangeSummary) {
+      return <FileChangeToolCallCard isRunning={isRunning} summary={fileChangeSummary} />;
+    }
   }
 
   const label = TOOL_LABELS[toolName] ?? toolName;
@@ -487,11 +663,14 @@ export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeTool
   );
   return (
     <SubtleToolCallRow
+      isRunning={isRunning}
       actions={[
         {
+          detail: getSubtleToolDetail(toolName, args, fallbackMessage),
           Icon: getSubtleToolIcon(toolName),
           message: fallbackMessage,
           toolCallId: toolName,
+          toolName,
         },
       ]}
     />

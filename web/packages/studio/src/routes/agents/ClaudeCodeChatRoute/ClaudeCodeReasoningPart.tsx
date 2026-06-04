@@ -21,7 +21,7 @@ export const ClaudeCodeReasoningPart: ReasoningMessagePartComponent = ({ status,
 
   return (
     <details
-      className="group/think my-density-sm rounded border border-base bg-surface-raised"
+      className="group/think my-density-xs rounded border border-base bg-surface-raised"
       data-testid="claude-code-thinking-block"
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
@@ -33,7 +33,7 @@ export const ClaudeCodeReasoningPart: ReasoningMessagePartComponent = ({ status,
         />
         <Text kind="label/bold/sm">Thinking</Text>
       </summary>
-      <div className="border-t border-base px-density-md py-density-sm text-secondary">
+      <div className="border-t border-base px-density-sm py-density-xs text-secondary">
         <MessageContent content={text} />
       </div>
     </details>

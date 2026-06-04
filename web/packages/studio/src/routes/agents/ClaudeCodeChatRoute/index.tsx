@@ -144,7 +144,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full w-full py-density-2xl">
+        <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">
             <AssistantRuntimeProvider runtime={runtime}>
               <AssistantChatThread
