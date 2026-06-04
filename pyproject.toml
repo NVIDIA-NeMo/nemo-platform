@@ -553,6 +553,8 @@ exclude = [
 
   "./services/core/",
 
+  "./services/jailbreak-detect/",
+
   "./tests/",
 
   # Installed in the normal workspace graph now, but still has standalone `ty`
