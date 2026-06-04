@@ -5,6 +5,7 @@
 
 from typing import TYPE_CHECKING
 
+from nemo_evaluator.filesets import FilesetRef
 from nemo_evaluator.sdk.types import (
     ExecutionMode,
     PluginDatasetInput,
@@ -12,7 +13,6 @@ from nemo_evaluator.sdk.types import (
     RunConfigOnline,
     RunConfigOnlineModel,
 )
-from nemo_evaluator.sdk.values.filesets import FilesetRef
 
 if TYPE_CHECKING:
     from nemo_evaluator.sdk.job_resources import AsyncEvaluatorJobResource, EvaluatorJobResource

@@ -208,7 +208,7 @@ async def test_root_and_any_span_filters_select_candidate_trace_ids():
     assert "(trace_spans.workspace, trace_spans.source_format, trace_spans.trace_id) IN" in client.queries[0]
     assert "FINAL" not in client.queries[0]
     assert "external_parent_span_id = ''" in client.queries[0]
-    assert client.parameters[0]["root_candidate_0_key"] == "evaluation.run_id"
+    assert client.parameters[0]["root_candidate_0_key"] == "experiment.run_id"
     assert client.parameters[0]["root_candidate_0_value"] == "run-a"
     assert client.parameters[0]["span_candidate_0_key"] == "gen_ai.request.model"
     assert client.parameters[0]["span_candidate_0_value"] == "model-a"
@@ -246,7 +246,7 @@ def _trace_row(
         "error_count": 1 if detailed else None,
         "root_attributes_string": {
             "project.name": "project-a",
-            "evaluation.run_id": "run-a",
+            "experiment.run_id": "run-a",
         },
         "ingested_at": ingested_at,
     }

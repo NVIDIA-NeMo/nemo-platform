@@ -381,6 +381,50 @@ jobs:
               ;;
           esac
 
+  benchmark-guardrails:
+    name: Guardrails plugin benchmark
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout nemo-platform
+        uses: actions/checkout@v6
+        with:
+          path: nemo-platform
+      - name: Checkout NeMo-Guardrails
+        uses: actions/checkout@v6
+        with:
+          repository: NVIDIA/NeMo-Guardrails
+          path: NeMo-Guardrails
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # Point setup-uv at the nemo-platform checkout so it picks up the
+          # repo's `required-version` constraint from pyproject.toml. Other
+          # jobs check out into the workspace root and get this implicitly.
+          working-directory: nemo-platform
+          python-version: "3.11"
+          enable-cache: true
+      - name: Bootstrap Python environment
+        working-directory: nemo-platform
+        run: make bootstrap-python
+        env:
+          PYTORCH_DEPS: cpu
+      - name: Run benchmark sweep
+        working-directory: nemo-platform
+        run: make benchmark-guardrails
+        env:
+          NEMO_GUARDRAILS_REPO_ROOT: ${{ github.workspace }}/NeMo-Guardrails
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-guardrails-results
+          retention-days: 30
+          path: |
+            nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
+
   coverage-comment:
     name: Post coverage comment
     needs: [python-unit-test, python-integration-test]

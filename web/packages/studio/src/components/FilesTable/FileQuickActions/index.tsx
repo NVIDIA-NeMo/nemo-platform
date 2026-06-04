@@ -125,8 +125,7 @@ export const FileQuickActions: FC<Props> = ({
     : [
         ...(onViewFile ? [{ label: 'View File', onSelect: handleViewFile }] : []),
         { label: 'Download', onSelect: downloadFile, disabled: isDownloading },
-        { label: 'Copy Path', onSelect: handleCopyPath, divider: { width: 'large' } },
-        { label: 'Delete', onSelect: openModalWithFile('delete'), danger: true },
+        { label: 'Copy Path', onSelect: handleCopyPath },
       ];
 
   return (

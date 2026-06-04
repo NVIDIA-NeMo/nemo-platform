@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 from urllib.parse import quote, urljoin
 
-from nemo_evaluator.jobs.evaluate import EvaluateSpec
+from nemo_evaluator.jobs.evaluate import EvaluateInputSpec
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 
 PlatformClient = NeMoPlatform | AsyncNeMoPlatform
@@ -47,7 +47,7 @@ def platform_default_headers(platform: PlatformClient) -> dict[str, str]:
     return {str(key): value for key, value in platform.default_headers.items() if isinstance(value, str)}
 
 
-def create_job_payload(spec: EvaluateSpec) -> dict[str, dict[str, Any]]:
+def create_job_payload(spec: EvaluateInputSpec) -> dict[str, dict[str, Any]]:
     """Serialize an evaluator job creation request body."""
     return {"spec": spec.model_dump(mode="json")}
 

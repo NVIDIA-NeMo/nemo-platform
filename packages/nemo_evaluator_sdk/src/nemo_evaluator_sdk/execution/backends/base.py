@@ -6,12 +6,24 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Protocol
+from pathlib import Path
+from typing import Any, Protocol
 
-from nemo_evaluator_sdk.execution.config import EvaluationRequest
+from nemo_evaluator_sdk.inference import PostprocessResponse, PreprocessRequest
 from nemo_evaluator_sdk.metrics.protocol import Metric
+from nemo_evaluator_sdk.values import (
+    Agent,
+    DatasetInput,
+    FieldMapping,
+    Model,
+    RunConfig,
+    RunConfigOnline,
+    RunConfigOnlineModel,
+)
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
-from nemo_evaluator_sdk.values.results import EvaluationResult
+from nemo_evaluator_sdk.values.results import AggregateFieldName, EvaluationResult
+
+BackendParams = RunConfig | RunConfigOnline | RunConfigOnlineModel
 
 
 class EvaluationBackend(Protocol):
@@ -19,13 +31,27 @@ class EvaluationBackend(Protocol):
         self,
         *,
         metric: Metric,
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[PostprocessResponse, ...] | None = None,
     ) -> EvaluationResult:
         """Evaluate one metric directly and return the completed result.
 
         Args:
-            metric: Metric to execute.
-            request: Normalized evaluator request shared across backends.
+            metric: Metric to prepare and execute.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            params: Validated run configuration for the selected target mode.
+            target: Optional model or agent used to generate candidate responses before scoring.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
+            prompt_template: Optional prompt template for online target generation.
+            aggregate_fields: Optional aggregate score fields to keep in the returned result.
+            preprocess_hooks: Optional request preprocess hooks for online execution.
+            postprocess_hooks: Optional response postprocess hooks for online execution.
 
         Returns:
             The completed single-metric evaluation result.
@@ -36,13 +62,27 @@ class EvaluationBackend(Protocol):
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[PostprocessResponse, ...] | None = None,
     ) -> BenchmarkEvaluationResult:
         """Evaluate multiple metrics directly and return the completed result.
 
         Args:
-            metrics: Metrics to execute together.
-            request: Normalized evaluator request shared across backends.
+            metrics: Metrics to prepare and execute together.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            params: Validated run configuration for the selected target mode.
+            target: Optional model or agent used to generate candidate responses before scoring.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
+            prompt_template: Optional prompt template for online target generation.
+            aggregate_fields: Optional aggregate score fields to keep in the returned result.
+            preprocess_hooks: Optional request preprocess hooks for online execution.
+            postprocess_hooks: Optional response postprocess hooks for online execution.
 
         Returns:
             The completed multi-metric evaluation result.
@@ -55,13 +95,27 @@ class SyncEvaluationBackend(Protocol):
         self,
         *,
         metric: Metric,
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[PostprocessResponse, ...] | None = None,
     ) -> EvaluationResult:
         """Evaluate one metric directly and return the completed result.
 
         Args:
-            metric: Metric to execute.
-            request: Normalized evaluator request shared across backends.
+            metric: Metric to prepare and execute.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            params: Validated run configuration for the selected target mode.
+            target: Optional model or agent used to generate candidate responses before scoring.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
+            prompt_template: Optional prompt template for online target generation.
+            aggregate_fields: Optional aggregate score fields to keep in the returned result.
+            preprocess_hooks: Optional request preprocess hooks for online execution.
+            postprocess_hooks: Optional response postprocess hooks for online execution.
 
         Returns:
             The completed single-metric evaluation result.
@@ -72,13 +126,27 @@ class SyncEvaluationBackend(Protocol):
         self,
         *,
         metrics: Sequence[Metric],
-        request: EvaluationRequest,
+        dataset: DatasetInput | str | Path,
+        params: BackendParams,
+        target: Model | Agent | None = None,
+        field_mapping: FieldMapping | None = None,
+        prompt_template: str | dict[str, Any] | None = None,
+        aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
+        preprocess_hooks: tuple[PreprocessRequest, ...] | None = None,
+        postprocess_hooks: tuple[PostprocessResponse, ...] | None = None,
     ) -> BenchmarkEvaluationResult:
         """Evaluate multiple metrics directly and return the completed result.
 
         Args:
-            metrics: Metrics to execute together.
-            request: Normalized evaluator request shared across backends.
+            metrics: Metrics to prepare and execute together.
+            dataset: Inline dataset rows, a dataset file, or a dataset directory/glob path.
+            params: Validated run configuration for the selected target mode.
+            target: Optional model or agent used to generate candidate responses before scoring.
+            field_mapping: Optional mapping from canonical evaluator fields to dataset columns.
+            prompt_template: Optional prompt template for online target generation.
+            aggregate_fields: Optional aggregate score fields to keep in the returned result.
+            preprocess_hooks: Optional request preprocess hooks for online execution.
+            postprocess_hooks: Optional response postprocess hooks for online execution.
 
         Returns:
             The completed multi-metric result.

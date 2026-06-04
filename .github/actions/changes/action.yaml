@@ -25,9 +25,6 @@ outputs:
   web-studio:
     description: "'true' if any Studio, common, or SDK package files changed"
     value: ${{ steps.filter.outputs.web-studio }}
-  web-scripts:
-    description: "'true' if any scripts, common, or SDK package files changed"
-    value: ${{ steps.filter.outputs.web-scripts }}
 
 runs:
   using: "composite"
@@ -58,9 +55,5 @@ runs:
             - 'tools/**'
           web-studio:
             - 'web/packages/studio/**'
-            - 'web/packages/common/**'
-            - 'web/packages/sdk/**'
-          web-scripts:
-            - 'web/packages/scripts/**'
             - 'web/packages/common/**'
             - 'web/packages/sdk/**'

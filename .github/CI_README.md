@@ -45,6 +45,25 @@ reusable actions, and supporting docs.
 - `semantic-pull-requests.yaml`
   Pull request title validation.
 
+- `request-nvskills-ci.yml`
+  Dispatches the internal NVSkills validation workflow when a maintainer or
+  admin comments `/nvskills-ci` on a pull request with changes under `skills/`.
+  It also handles the trusted signature push from the NVSkills signing bot.
+
+- `require-nvskills-ci.yml`
+  Merge-blocking PR check for `skills/` changes. It passes immediately when a
+  PR does not touch `skills/`. When `skills/` files changed, it requires the PR
+  head commit to be the trusted NVSkills signature commit from
+  `NVSKILLS_SIGNATURE_PUSH_ACTOR` (default `svc-nvskills-signing`) with commit
+  title prefix `NVSKILLS_SIGNATURE_COMMIT_TITLE` (default
+  `Attach NVSkills validation signatures`). If new `skills/` content is pushed
+  after signing, a maintainer or admin must rerun `/nvskills-ci`. Repository
+  admins must make `Require NVSkills CI for skill changes / require-nvskills-ci`
+  a required check in branch protection or rulesets for this workflow to block
+  merges. Internal pipeline/log lookup is documented in the NVIDIA onboarding
+  doc section:
+  <https://nvidia.atlassian.net/wiki/spaces/GAIT/pages/3483240468/Github+First+-+Outbound+Repos+Onboarding+doc+-+NVCARPS#Review-Internal-Pipeline-Logs>.
+
 - `dco-war.yaml`
   Merge queue compatibility shim for the DCO check. Normal DCO validation comes
   from the installed DCO app.

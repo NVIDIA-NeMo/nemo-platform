@@ -23,6 +23,7 @@ Entry-point groups and their wrappers
 ``nemo.executors``             → :func:`discover_executors`             — ``Executor`` class
 ``nemo.inference_middleware``  → :func:`discover_inference_middleware`  — :class:`~nemo_platform_plugin.inference_middleware.NemoInferenceMiddleware` subclass  (typed, IGW instantiates)
 ``nemo.seed``                  → :func:`discover_seed_jobs`             — :class:`~nemo_platform_plugin.seed.NemoSeedJob` subclass  (typed, platform instantiates)
+``nemo.authz``                 → :func:`~nemo_platform_plugin.authz_discovery.discover_authz_contributions` — policy endpoints/permissions (merged at runtime and via ``auth-tools sync-plugins``)
 
 Wrappers for surfaces whose types are not yet defined in this package return
 ``dict[str, Any]`` — callers cast as needed.
@@ -74,6 +75,7 @@ _ALL_SURFACE_GROUPS = (
     "nemo.executors",
     "nemo.inference_middleware",
     "nemo.seed",
+    "nemo.authz",
 )
 
 # Surface groups whose entry-point keys are dot-separated as
@@ -96,6 +98,7 @@ _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
     "nemo.executors": "NEMO_PLUGIN_EXECUTORS_ALLOWLIST",
     "nemo.inference_middleware": "NEMO_PLUGIN_INFERENCE_MIDDLEWARE_ALLOWLIST",
     "nemo.seed": "NEMO_PLUGIN_SEED_ALLOWLIST",
+    "nemo.authz": "NEMO_PLUGIN_AUTHZ_ALLOWLIST",
 }
 
 

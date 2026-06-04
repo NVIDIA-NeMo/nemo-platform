@@ -561,6 +561,9 @@ importers:
 
   packages/studio:
     dependencies:
+      '@assistant-ui/react':
+        specifier: ^0.12.28
+        version: 0.12.28(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)(use-sync-external-store@1.6.0(react@19.2.5))
       '@fontsource-variable/mona-sans':
         specifier: ^5.2.8
         version: 5.2.8

@@ -585,6 +585,7 @@ def _add_submit_command(
                 workspace=workspace,
                 profile=profile,
                 options=merged_options or None,
+                headers=_resolve_submit_auth_headers(typer_ctx) or None,
             )
 
         renderer: CLIRenderer | None = None
@@ -1077,6 +1078,22 @@ async def _invoke_function_locally(
     typer.echo(_format_value_for_stdout(awaited))
 
 
+def _resolve_submit_auth_headers(typer_ctx: typer.Context) -> dict[str, str]:
+    """Bearer (and other) default headers from the active CLI context."""
+    state = typer_ctx.obj
+    if state is None or not hasattr(state, "get_sdk_context"):
+        return {}
+    try:
+        ctx = state.get_sdk_context()
+        client_config = ctx.user.get_client_config()
+        headers = client_config.get("default_headers")
+        if isinstance(headers, dict):
+            return {str(k): str(v) for k, v in headers.items()}
+    except Exception:
+        return {}
+    return {}
+
+
 # ---- submit ------------------------------------------------------ #
 
 
@@ -1119,7 +1136,7 @@ def _add_function_submit_command(
             cluster=cluster,
             workspace=workspace,
         )
-        headers: dict[str, str] = {}
+        headers = _resolve_submit_auth_headers(typer_ctx)
         if request_id is not None:
             headers["X-Request-ID"] = request_id
 
