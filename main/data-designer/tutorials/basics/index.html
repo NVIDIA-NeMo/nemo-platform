@@ -4668,7 +4668,7 @@
 <p><a id="data-designer-tutorials-basics"></a></p>
 <h1 id="the-basics">The Basics<a class="headerlink" href="#the-basics" title="Permanent link">&para;</a></h1>
 <p>This tutorial demonstrates the fundamentals of Data Designer by generating a product review dataset.</p>
-<p>For more detail about column behavior, see the <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/the-basics">open-source library's version</a> of this tutorial.</p>
+<p>For more detail about column behavior, see the <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.1/tutorials/the-basics">open-source library's version</a> of this tutorial.</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
 <p>Ensure you have completed the <a href="../#prerequisites">tutorials prerequisites</a>. This tutorial uses an Inference Gateway provider, so local CLI <code>run</code> and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.</p>
 <h2 id="part-1-build-the-configuration">Part 1: Build the Configuration<a class="headerlink" href="#part-1-build-the-configuration" title="Permanent link">&para;</a></h2>
@@ -4698,7 +4698,7 @@
 </span><span id="__span-0-17"><a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="n">config_builder</span> <span class="o">=</span> <span class="n">dd</span><span class="o">.</span><span class="n">DataDesignerConfigBuilder</span><span class="p">(</span><span class="n">model_configs</span><span class="p">)</span>
 </span></code></pre></div>
 <h3 id="add-columns">Add Columns<a class="headerlink" href="#add-columns" title="Permanent link">&para;</a></h3>
-<p>Define the columns for your dataset. The <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/the-basics">library documentation</a> explains these column types in detail.</p>
+<p>Define the columns for your dataset. The <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.1/tutorials/the-basics">library documentation</a> explains these column types in detail.</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="c1"># Product category sampler</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">config_builder</span><span class="o">.</span><span class="n">add_column</span><span class="p">(</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">dd</span><span class="o">.</span><span class="n">SamplerColumnConfig</span><span class="p">(</span>
@@ -4932,8 +4932,8 @@ An alternative path can be passed to <code>download_artifacts</code>.</p>
 <ul>
 <li><strong>Seed data:</strong> Learn how to use external datasets in the <a href="../seeding/">seeding tutorial</a></li>
 <li><strong>Execution modes:</strong> Learn more about local and NeMo Services execution in <a href="../../execution-modes/">Execution Modes</a></li>
-<li><strong>Column types:</strong> Explore all available column types in the <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/columns">library documentation</a></li>
-<li><strong>Advanced features:</strong> Learn about <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/processors">processors</a> and <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/validators">validation</a></li>
+<li><strong>Column types:</strong> Explore all available column types in the <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/columns">library documentation</a></li>
+<li><strong>Advanced features:</strong> Learn about <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/processors">processors</a> and <a href="https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/validators">validation</a></li>
 </ul>
 
 
