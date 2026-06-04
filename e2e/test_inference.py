@@ -215,15 +215,11 @@ def test_streaming_chat_completion(sdk: NeMoPlatform, workspace: str):
         chunks = []
         for line in response.iter_lines():
             if line.startswith("data: ") and line != "data: [DONE]":
-                chunks.append(json.loads(line[len("data: "):]))
+                chunks.append(json.loads(line[len("data: ") :]))
 
     assert len(chunks) > 0
     # Reassemble streamed content
-    content = "".join(
-        chunk["choices"][0]["delta"].get("content", "")
-        for chunk in chunks
-        if chunk.get("choices")
-    )
+    content = "".join(chunk["choices"][0]["delta"].get("content", "") for chunk in chunks if chunk.get("choices"))
     assert "streamed" in content or "response" in content
 
 

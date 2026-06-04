@@ -457,7 +457,8 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                         "container": {
                             "image": PLACEHOLDER_IMAGE,
                             "command": [
-                                "sh", "-c",
+                                "sh",
+                                "-c",
                                 "echo 'Hello, World!' > /mnt/additional_storage/shared_data.txt; "
                                 "echo 'Successfully wrote data to persistent storage';",
                             ],
@@ -471,7 +472,8 @@ def test_job_using_additional_volume(sdk: NeMoPlatform, workspace: str):
                         "container": {
                             "image": PLACEHOLDER_IMAGE,
                             "command": [
-                                "sh", "-c",
+                                "sh",
+                                "-c",
                                 "cat /mnt/additional_storage/shared_data.txt; "
                                 "echo 'Successfully read data from persistent storage';",
                             ],
