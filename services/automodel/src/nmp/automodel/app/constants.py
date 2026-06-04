@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH
+from nmp.customizer.shared.app.constants import NMP_FILES_URL_ENVVAR, NMP_JOBS_URL_ENVVAR
 
 SERVICE_NAME = "customizer"
 
@@ -22,9 +23,6 @@ DEFAULT_DATASET_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_DATASET_OUTPUT_DIR_
 DEFAULT_TEACHER_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_TEACHER_MODEL_DIR_NAME}"
 DEFAULT_TRAINING_OUTPUT_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_TRAINING_OUTPUT_DIR_NAME}"
 DEFAULT_OUTPUT_MODEL_PATH = f"{DEFAULT_JOB_STORAGE_PATH}/{DEFAULT_OUTPUT_MODEL_DIR_NAME}"
-
-NMP_JOBS_URL_ENVVAR = "NMP_JOBS_URL"
-NMP_FILES_URL_ENVVAR = "NMP_FILES_URL"
 
 # Models whose checkpoints require transformers-v4-compatible config.json output.
 # When v4_compatible is enabled, the original pretrained config.json is preserved

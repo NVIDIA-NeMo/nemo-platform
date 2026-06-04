@@ -7,16 +7,7 @@ import logging
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
-from nemo_platform_plugin.jobs.api_factory import (
-    ContainerSpec,
-    CPUExecutionProviderSpec,
-    EnvironmentVariable,
-    PlatformJobSpec,
-    PlatformJobStep,
-    ResourcesLimitsSpec,
-    ResourcesRequestsSpec,
-    ResourcesSpec,
-)
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nmp.automodel.api.v2.jobs.schemas import (
     CustomizationJobOutput,
     DeploymentParams,
@@ -34,7 +25,6 @@ from nmp.automodel.app.jobs.file_io.schemas import (
     DownloadItem,
     FileIOTaskConfig,
     FileSetRef,
-    UploadItem,
 )
 from nmp.automodel.app.jobs.model_entity.schemas import (
     DeploymentParameters as ModelEntityDeploymentParameters,
@@ -56,56 +46,51 @@ from nmp.automodel.images import AUTOMODEL_PYTHON_ENTRYPOINT, get_tasks_image
 from nmp.automodel.platform_client import fetch_model_entity
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
-from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
+from nmp.customizer.shared.app.jobs.compile_steps import (
+    StoragePaths,
+    TaskStepContainer,
+    append_download_if_present,
+    build_file_download_config,
+    build_file_upload_config,
+    build_output_fileset_metadata,
+    compile_file_io_step,
+    compile_model_entity_step,
+    extract_model_fileset,
+    get_base_environment,
+    get_cpu_resources,
+    require_fileset_for_download,
+    resolve_deployment_config,
+)
 
 logger = logging.getLogger(__name__)
 
+_STORAGE_PATHS = StoragePaths(
+    model_path=DEFAULT_MODEL_PATH,
+    dataset_path=DEFAULT_DATASET_PATH,
+    output_model_path=DEFAULT_OUTPUT_MODEL_PATH,
+    teacher_model_path=DEFAULT_TEACHER_MODEL_PATH,
+)
 
-def _get_cpu_resources() -> ResourcesSpec:
-    """Get default CPU resources for download/upload tasks."""
-    return ResourcesSpec(
-        limits=ResourcesLimitsSpec(
-            cpu=config.default_job_resource_cpu_limit,
-            memory=config.default_job_resource_memory_limit,
-        ),
-        requests=ResourcesRequestsSpec(
-            cpu=config.default_job_resource_cpu_request,
-            memory=config.default_job_resource_memory_request,
-        ),
-    )
+_FILE_IO_CONTAINER = TaskStepContainer(
+    image=get_tasks_image(),
+    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
+    command=["-m", "nmp.automodel.tasks.file_io"],
+)
 
-
-def _get_base_environment() -> list[EnvironmentVariable]:
-    """Get base environment variables for all tasks."""
-    return [
-        EnvironmentVariable(
-            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-            value=DEFAULT_JOB_STORAGE_PATH,
-        ),
-    ]
+_MODEL_ENTITY_CONTAINER = TaskStepContainer(
+    image=get_tasks_image(),
+    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
+    command=["-m", "nmp.automodel.tasks.model_entity"],
+)
 
 
 def _extract_model_uri(me: ModelEntity) -> str | None:
-    """Extract model_uri from the model entity.
-
-    Args:
-        me: The model entity.
-
-    Returns:
-        The fileset string if available, None otherwise.
-    """
-    return me.fileset if me.fileset else None
+    return extract_model_fileset(me)
 
 
 def _require_fileset_for_download(fileset_name: str | None, entity_label: str) -> str:
-    """Require a platform fileset reference for checkpoint download."""
-    if not fileset_name or not str(fileset_name).strip():
-        raise PlatformJobCompilationError(
-            f"{entity_label} has no fileset. "
-            "Attach a platform FileSet (workspace/name) with model weights before running training.",
-        )
-    return str(fileset_name)
+    return require_fileset_for_download(fileset_name, entity_label)
 
 
 def _append_download_if_present(
@@ -114,12 +99,7 @@ def _append_download_if_present(
     dest: str,
     field_name: str,
 ) -> None:
-    """Append a download item if a FileSet ref is present."""
-    if not fileset_name:
-        return
-    fileset = FileSetRef.model_validate(fileset_name)
-    downloads.append(DownloadItem(src=fileset, dest=dest))
-    logger.info(f"Detected {field_name} FileSet reference: {fileset}")
+    append_download_if_present(downloads, fileset_name, dest, field_name)
 
 
 def _build_file_download_config(
@@ -127,126 +107,44 @@ def _build_file_download_config(
     me: ModelEntity,
     teacher_me: ModelEntity | None = None,
 ) -> FileIOTaskConfig:
-    """Build the configuration for the file_io task.
-
-    Extracts FileSet references from model_uri and dataset fields.
-    Fileset refs use workspace/name or name (optional legacy fileset:// prefix is stripped).
-
-    Args:
-        job_spec: The customization job output specification.
-        me: The model entity being trained.
-        teacher_me: Optional teacher model entity for knowledge distillation jobs.
-
-    Returns:
-        FileIOTaskConfig with download items for any fileset refs found.
-
-    """
-    downloads: list[DownloadItem] = []
-
-    model_fileset = _require_fileset_for_download(
-        _extract_model_uri(me),
-        entity_label=f"Model '{me.workspace}/{me.name}'",
-    )
-    _append_download_if_present(
-        downloads,
-        fileset_name=model_fileset,
-        dest=DEFAULT_MODEL_PATH,
-        field_name="model",
-    )
-    _append_download_if_present(
-        downloads,
-        fileset_name=job_spec.dataset,
-        dest=DEFAULT_DATASET_PATH,
-        field_name="dataset",
-    )
-
+    teacher_fileset = None
+    teacher_label = "Teacher model"
+    require_teacher = False
     if teacher_me is not None:
-        teacher_fileset = _require_fileset_for_download(
-            _extract_model_uri(teacher_me),
-            entity_label=f"Teacher model '{teacher_me.workspace}/{teacher_me.name}'",
-        )
-        _append_download_if_present(
-            downloads,
-            fileset_name=teacher_fileset,
-            dest=DEFAULT_TEACHER_MODEL_PATH,
-            field_name="teacher_model",
-        )
+        teacher_fileset = extract_model_fileset(teacher_me)
+        require_teacher = True
+        teacher_label = f"Teacher model '{teacher_me.workspace}/{teacher_me.name}'"
 
-    return FileIOTaskConfig(download=downloads)
+    return build_file_download_config(
+        model_fileset=extract_model_fileset(me),
+        dataset_path=job_spec.dataset,
+        paths=_STORAGE_PATHS,
+        teacher_fileset=teacher_fileset,
+        require_model_fileset=True,
+        model_entity_label=f"Model '{me.workspace}/{me.name}'",
+        require_teacher_fileset=require_teacher,
+        teacher_entity_label=teacher_label,
+    )
 
 
 def _build_output_fileset_metadata(me: ModelEntity) -> dict | None:
-    """Build tool_calling metadata to propagate to the output fileset.
-
-    Extracts chat_template and tool_call_config from the source model entity's spec
-    so the model-spec-runner will apply them to the output model entity.
-
-    Returns:
-        A dict like {"tool_calling": {...}} suitable for fileset metadata, or None
-        if there is nothing to propagate.
-    """
-    if me.spec is None:
-        return None
-
-    tool_calling: dict = {}
-
-    if me.spec.chat_template:
-        tool_calling["chat_template"] = me.spec.chat_template
-
-    if me.spec.tool_call_config:
-        tcc = me.spec.tool_call_config
-        if tcc.tool_call_parser:
-            tool_calling["tool_call_parser"] = tcc.tool_call_parser
-        if tcc.tool_call_plugin:
-            tool_calling["tool_call_plugin"] = tcc.tool_call_plugin
-        if tcc.auto_tool_choice is not None:
-            tool_calling["auto_tool_choice"] = tcc.auto_tool_choice
-
-    return {"tool_calling": tool_calling} if tool_calling else None
+    return build_output_fileset_metadata(me)
 
 
 def _build_file_upload_config(
     output_fileset_name: str,
     fileset_metadata: dict | None = None,
 ) -> FileIOTaskConfig:
-    """Build the configuration for the file_io upload task with a generated fileset name.
-
-    The fileset name is generated at compile time and will be combined with
-    the job's workspace at runtime to form the full FileSet reference.
-
-    Args:
-        output_fileset_name: The generated name for the output FileSet.
-        fileset_metadata: Optional metadata to set on the output fileset (e.g., tool_calling
-            config propagated from the source model entity).
-
-    Returns:
-        FileIOTaskConfig with upload items configured to use the generated name.
-    """
-    return FileIOTaskConfig(
-        upload=[
-            UploadItem(
-                src=DEFAULT_OUTPUT_MODEL_PATH,
-                # workspace is None because at this layer, we don't know the job's workspace.
-                dest=FileSetRef(workspace=None, name=output_fileset_name),
-                metadata=fileset_metadata,
-            )
-        ],
+    return build_file_upload_config(
+        output_fileset_name=output_fileset_name,
+        output_model_path=DEFAULT_OUTPUT_MODEL_PATH,
+        fileset_metadata=fileset_metadata,
     )
 
 
 def _build_model_entity_config(
     workspace: str, job_spec: CustomizationJobOutput, trust_remote_code: bool = False
 ) -> ModelEntityTaskConfig:
-    """Build the configuration for the model_entity task.
-
-    Args:
-        workspace: The workspace for this job.
-        job_spec: The customization job input specification.
-        trust_remote_code: Whether to trust remote code for the checkpoint.
-
-    Returns:
-        ModelEntityTaskConfig with model entity creation settings.
-    """
     base_model = _extract_model_name(job_spec)
 
     assert job_spec.output is not None, "output must be set by input-to-output transformer"
@@ -260,15 +158,10 @@ def _build_model_entity_config(
             rank=training.peft.rank,
         )
 
-    # Only forward the user-supplied deployment_config from the job spec.
-    # tool_call_config from the *source* model entity's spec is propagated
-    # separately via fileset metadata (see _build_output_fileset_metadata),
-    # so we intentionally do not merge it here.
-    deployment_config: str | ModelEntityDeploymentParameters | None = None
-    if isinstance(job_spec.deployment_config, str):
-        deployment_config = job_spec.deployment_config
-    elif job_spec.deployment_config is not None:
-        deployment_config = ModelEntityDeploymentParameters.model_validate(job_spec.deployment_config.model_dump())
+    deployment_config = resolve_deployment_config(
+        job_spec.deployment_config,
+        ModelEntityDeploymentParameters,
+    )
 
     return ModelEntityTaskConfig(
         name=job_spec.output.name,
@@ -309,16 +202,11 @@ async def _validate_deployment_config(
     sdk: AsyncNeMoPlatform,
     auth_client: AuthClient,
 ) -> None:
-    """Validate deployment_config consistency before training starts.
-
-    Catches contradictory or impossible configurations early so the user
-    gets a clear error instead of a silent failure after expensive training.
-    """
+    """Validate deployment_config consistency before training starts."""
     dc = transformed_spec.deployment_config
     if dc is None:
         return
 
-    # Inline deployment params: check permission-gated fields.
     if isinstance(dc, DeploymentParams):
         tcc = dc.tool_call_config
         if tcc and tcc.tool_call_plugin:
@@ -329,7 +217,6 @@ async def _validate_deployment_config(
                 )
         return
 
-    # String reference to an existing deployment config: validate consistency.
     if not isinstance(dc, str):
         return
 
@@ -338,7 +225,6 @@ async def _validate_deployment_config(
     produces_new_model = ft_type in (FinetuningType.ALL_WEIGHTS, FinetuningType.LORA_MERGED)
     resolved_config = await _resolve_deployment_config_ref(dc, workspace, sdk)
 
-    # LoRA job referencing a config that has lora_enabled=False
     if is_lora and resolved_config.nim_deployment and resolved_config.nim_deployment.lora_enabled is False:
         raise PlatformJobCompilationError(
             f"deployment_config references '{dc}' which has lora_enabled=false, "
@@ -346,22 +232,17 @@ async def _validate_deployment_config(
             "Use a deployment config with lora_enabled=true, or provide inline deployment parameters."
         )
 
-    # SFT or lora_merged referencing a string config
     if produces_new_model:
         output_name = transformed_spec.output.name
         try:
             existing_me = await sdk.models.retrieve(name=output_name, workspace=workspace)
         except NotFoundError:
-            # Output model entity doesn't exist yet, so a string
-            # ref is inherently invalid -- it was created for a different model.
             raise PlatformJobCompilationError(
                 f"deployment_config cannot be a string reference ('{dc}') for {ft_type.value} training "
                 "that creates a new model entity. The referenced config was created for a different model. "
                 "Use inline deployment parameters (e.g., DeploymentParams(gpu=1, lora_enabled=True)) instead."
             )
 
-        # Output model entity already exists (retraining to create a new FileSet).
-        # Verify the config actually targets this model entity.
         nim = resolved_config.nim_deployment
         config_targets_model = (resolved_config.model_entity_id == f"{existing_me.workspace}/{existing_me.name}") or (
             nim and nim.model_name == existing_me.name and nim.model_namespace == existing_me.workspace
@@ -389,14 +270,11 @@ async def platform_job_config_compiler(
     except ValidationError as e:
         raise PlatformJobCompilationError(str(e)) from e
 
-    # output is a required field in CustomizationJobOutput
-    cpu_resources = _get_cpu_resources()
-    base_env = _get_base_environment()
+    cpu_resources = get_cpu_resources(config)
+    base_env = get_base_environment()
 
-    # Fetch the primary model entity
     me = await fetch_model_entity(transformed_spec.model, workspace, sdk)
 
-    # For distillation jobs, also fetch the teacher model entity
     teacher_me: ModelEntity | None = None
     if isinstance(transformed_spec.training, DistillationTraining):
         try:
@@ -422,8 +300,6 @@ async def platform_job_config_compiler(
     file_io_download_config = _build_file_download_config(transformed_spec, me, teacher_me)
     is_embedding_model_flag = _resolve_is_embedding_model(me)
 
-    # The embedding NIM requires ONNX format, which cannot represent standalone LoRA adapters.
-    # LoRA with merge=True (lora_merged) is allowed because it produces a full-weight model after training.
     if is_embedding_model_flag and transformed_spec.training.finetuning_type == FinetuningType.LORA:
         raise PlatformJobCompilationError(
             "NeMo Platform does not support unmerged LoRA for embedding models because the embedding NIM requires ONNX format, "
@@ -431,70 +307,38 @@ async def platform_job_config_compiler(
             "Use peft with merge=True (lora_merged) or omit peft for all_weights training."
         )
 
-    # Extract chat_template and tool_call_config from the source model entity's spec
-    # (populated from fileset metadata by the model-spec-runner background task).
-    # These are propagated to:
-    #   1. The training step config (chat_template takes highest priority in template resolution)
-    #   2. The output fileset metadata (so the model-spec-runner sets them on the output model)
     fileset_metadata = _build_output_fileset_metadata(me)
     file_io_upload_config = _build_file_upload_config(transformed_spec.output.fileset, fileset_metadata)
 
-    # Build model_entity config for creating the model entity
     trust_remote_code = me.trust_remote_code or False
     model_entity_config = _build_model_entity_config(workspace, transformed_spec, trust_remote_code)
 
     steps = [
-        # Step 1: Download model and dataset files from Files service
-        PlatformJobStep(
-            name="model-and-dataset-download",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=file_io_download_config.model_dump(mode="json"),
+        compile_file_io_step(
+            "model-and-dataset-download",
+            _FILE_IO_CONTAINER,
+            cpu_resources,
+            base_env,
+            file_io_download_config,
         ),
-        # Step 2: Training job
         compile_training_step(
             transformed_spec,
             base_env,
             me,
             teacher_me=teacher_me,
         ),
-        # Step 3: Upload customized model
-        PlatformJobStep(
-            name="model-upload",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.file_io"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=file_io_upload_config.model_dump(mode="json"),
+        compile_file_io_step(
+            "model-upload",
+            _FILE_IO_CONTAINER,
+            cpu_resources,
+            base_env,
+            file_io_upload_config,
         ),
-        # Step 4: Create model entity
-        PlatformJobStep(
-            name="model-entity-creation",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=AUTOMODEL_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.automodel.tasks.model_entity"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=model_entity_config.model_dump(mode="json"),
+        compile_model_entity_step(
+            _MODEL_ENTITY_CONTAINER,
+            cpu_resources,
+            base_env,
+            model_entity_config,
         ),
     ]
 

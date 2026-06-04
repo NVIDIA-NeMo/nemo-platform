@@ -3,7 +3,17 @@
 
 """Value types for the Customizer service."""
 
-from enum import Enum, StrEnum
+from enum import Enum
+
+from nmp.customizer.shared.entities.values import FinetuningType, OutputNameType
+
+__all__ = [
+    "CheckpointFormat",
+    "FinetuningType",
+    "OutputNameType",
+    "Precision",
+    "TrainingType",
+]
 
 
 class CheckpointFormat(str, Enum):
@@ -80,17 +90,3 @@ class TrainingType(str, Enum):
     DPO = "dpo"
     GRPO = "grpo"
 
-
-class FinetuningType(str, Enum):
-    """Finetuning strategy (full weights vs PEFT)."""
-
-    ALL_WEIGHTS = "all_weights"
-    LORA = "lora"
-    LORA_MERGED = "lora_merged"
-
-
-class OutputNameType(StrEnum):
-    """Output artifact type."""
-
-    ADAPTER = "adapter"
-    MODEL = "model"

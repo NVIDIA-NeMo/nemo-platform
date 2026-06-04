@@ -10,7 +10,7 @@ import pytest
 from fsspec.callbacks import Callback
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.customizer.app.jobs.file_io.schemas import DownloadStats, TaskPhase, UploadStats
-from nmp.customizer.tasks.file_io.callbacks import (
+from nmp.customizer.shared.tasks.file_io.callbacks import (
     BaseProgressCallback,
     CompositeCallback,
     FileDownloadProgressCallback,
@@ -80,7 +80,7 @@ def mock_callback(mocker: MockerFixture) -> Callback:
 @pytest.fixture
 def mock_tqdm_callback(mocker: MockerFixture):
     """Mock TqdmCallback to avoid actual tqdm instances during tests."""
-    return mocker.patch("nmp.customizer.tasks.file_io.callbacks.TqdmCallback", autospec=True)
+    return mocker.patch("nmp.customizer.shared.tasks.file_io.callbacks.TqdmCallback", autospec=True)
 
 
 # ============================================================================

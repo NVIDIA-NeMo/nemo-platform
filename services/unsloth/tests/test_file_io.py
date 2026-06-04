@@ -28,7 +28,7 @@ import pytest
 def _make_runner(sdk, workspace: str = "default", storage_path: Path | None = None):
     from nmp.unsloth.app.jobs.context import NMPJobContext
     from nmp.unsloth.tasks.file_io.progress_reporter import NoOpProgressReporter
-    from nmp.unsloth.tasks.file_io.run import FileIORunner
+    from nmp.unsloth.tasks.file_io.run import FileIORunner, SERVICE_SOURCE
 
     job_ctx = NMPJobContext(
         workspace=workspace,
@@ -41,7 +41,12 @@ def _make_runner(sdk, workspace: str = "default", storage_path: Path | None = No
         storage_path=storage_path or Path("/tmp"),
         config_path=Path("/tmp/cfg.json"),
     )
-    return FileIORunner(sdk=sdk, progress_reporter=NoOpProgressReporter(), job_ctx=job_ctx)
+    return FileIORunner(
+        sdk=sdk,
+        progress_reporter=NoOpProgressReporter(),
+        job_ctx=job_ctx,
+        service_source=SERVICE_SOURCE,
+    )
 
 
 def _make_sdk(*, conflict_on_create: bool = False) -> MagicMock:

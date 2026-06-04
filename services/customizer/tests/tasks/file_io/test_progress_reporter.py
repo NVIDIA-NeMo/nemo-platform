@@ -10,7 +10,7 @@ from nemo_platform import omit
 from nemo_platform._exceptions import APIError
 from nmp.common.jobs.schemas import PlatformJobStatus
 from nmp.customizer.app.jobs.context import NMPJobContext
-from nmp.customizer.tasks.file_io.progress_reporter import (
+from nmp.customizer.shared.tasks.file_io.progress_reporter import (
     JobsServiceProgressReporter,
     NoOpProgressReporter,
 )
@@ -225,7 +225,7 @@ class TestJobsServiceProgressReporter:
     def test_update_progress_catches_exception_and_logs_warning(self, reporter, mock_sdk, mocker: MockerFixture):
         """Should catch exceptions and log warning instead of crashing."""
         mock_sdk.jobs.tasks.create_or_update.side_effect = Exception("Network error")
-        mock_logger = mocker.patch("nmp.customizer.tasks.file_io.progress_reporter.logger")
+        mock_logger = mocker.patch("nmp.customizer.shared.tasks.file_io.progress_reporter.logger")
 
         # Should not raise
         reporter.update_progress(status=PlatformJobStatus.ACTIVE)
@@ -245,7 +245,7 @@ class TestJobsServiceProgressReporter:
         mock_response.status_code = 500
         api_error = APIError(message="Server error", request=mock_request, body=None)
         mock_sdk.jobs.tasks.create_or_update.side_effect = api_error
-        mock_logger = mocker.patch("nmp.customizer.tasks.file_io.progress_reporter.logger")
+        mock_logger = mocker.patch("nmp.customizer.shared.tasks.file_io.progress_reporter.logger")
 
         # Should not raise
         reporter.update_progress(status=PlatformJobStatus.ACTIVE)
@@ -380,7 +380,7 @@ class TestCreateProgressReporter:
         self, mock_sdk, job_ctx_with_jobs_url: NMPJobContext, mocker: MockerFixture
     ):
         """Should log info message when progress reporting is enabled."""
-        mock_logger = mocker.patch("nmp.customizer.tasks.file_io.progress_reporter.logger")
+        mock_logger = mocker.patch("nmp.customizer.shared.tasks.file_io.progress_reporter.logger")
 
         JobsServiceProgressReporter.create_progress_reporter(
             sdk=mock_sdk,
@@ -396,7 +396,7 @@ class TestCreateProgressReporter:
         self, mock_sdk, job_ctx_without_jobs_url: NMPJobContext, mocker: MockerFixture
     ):
         """Should log info message when progress reporting is disabled."""
-        mock_logger = mocker.patch("nmp.customizer.tasks.file_io.progress_reporter.logger")
+        mock_logger = mocker.patch("nmp.customizer.shared.tasks.file_io.progress_reporter.logger")
 
         JobsServiceProgressReporter.create_progress_reporter(
             sdk=mock_sdk,

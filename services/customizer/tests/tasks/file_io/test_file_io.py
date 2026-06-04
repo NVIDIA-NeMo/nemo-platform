@@ -135,9 +135,9 @@ def mock_download_callbacks(mocker: MockerFixture) -> DownloadCallbackMocks:
 
     """
     return DownloadCallbackMocks(
-        tqdm=mocker.patch("nmp.customizer.tasks.file_io.run.TqdmPerFileDownloadCallback"),
-        jobs=mocker.patch("nmp.customizer.tasks.file_io.run.FileDownloadProgressCallback"),
-        composite=mocker.patch("nmp.customizer.tasks.file_io.run.CompositeCallback"),
+        tqdm=mocker.patch("nmp.customizer.shared.tasks.file_io.runner.TqdmPerFileDownloadCallback"),
+        jobs=mocker.patch("nmp.customizer.shared.tasks.file_io.runner.FileDownloadProgressCallback"),
+        composite=mocker.patch("nmp.customizer.shared.tasks.file_io.runner.CompositeCallback"),
     )
 
 
@@ -793,19 +793,19 @@ class TestDownloadFileset:
         # Mock callback classes to verify they're instantiated correctly
         mock_tqdm_callback = mocker.MagicMock()
         mock_tqdm_class = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.TqdmPerFileDownloadCallback",
+            "nmp.customizer.shared.tasks.file_io.runner.TqdmPerFileDownloadCallback",
             return_value=mock_tqdm_callback,
         )
 
         mock_jobs_callback = mocker.MagicMock()
         mock_jobs_class = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.FileDownloadProgressCallback",
+            "nmp.customizer.shared.tasks.file_io.runner.FileDownloadProgressCallback",
             return_value=mock_jobs_callback,
         )
 
         mock_composite_callback = mocker.MagicMock()
         mock_composite_class = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.CompositeCallback",
+            "nmp.customizer.shared.tasks.file_io.runner.CompositeCallback",
             return_value=mock_composite_callback,
         )
 
@@ -1062,7 +1062,7 @@ class TestRunDownload:
         mocks.sdk.with_options.return_value.files.list.side_effect = list_files_side_effect
 
         # Capture logger calls to verify stats logging
-        mock_logger = mocker.patch("nmp.customizer.tasks.file_io.run.logger")
+        mock_logger = mocker.patch("nmp.customizer.shared.tasks.file_io.runner.logger")
 
         runner = FileIORunner(sdk=mocks.sdk, progress_reporter=mocks.progress_reporter, job_ctx=mocks.job_ctx)
         downloads = [
@@ -1471,7 +1471,7 @@ class TestRunUpload:
         mock_path.is_file.return_value = False
 
         mocker.patch(
-            "nmp.customizer.tasks.file_io.run.validate_safe_path",
+            "nmp.customizer.shared.tasks.file_io.runner.validate_safe_path",
             return_value=mock_path,
         )
 
@@ -1544,11 +1544,11 @@ class TestRun:
         mock_sdk = mocker.MagicMock()
         mock_sdk.base_url = "http://files:8000"
         mocker.patch(
-            "nmp.customizer.tasks.file_io.run.get_task_sdk",
+            "nmp.customizer.shared.tasks.file_io.runner.get_task_sdk",
             return_value=mock_sdk,
         )
         mock_create_reporter = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.JobsServiceProgressReporter.create_progress_reporter",
+            "nmp.customizer.shared.tasks.file_io.runner.JobsServiceProgressReporter.create_progress_reporter",
         )
         mock_reporter = mocker.MagicMock()
         mock_create_reporter.return_value = mock_reporter
@@ -1580,17 +1580,17 @@ class TestRun:
         # Mock SDK and FileIORunner to avoid actual HTTP calls
         mock_sdk = mocker.MagicMock()
         mocker.patch(
-            "nmp.customizer.tasks.file_io.run.get_task_sdk",
+            "nmp.customizer.shared.tasks.file_io.runner.get_task_sdk",
             return_value=mock_sdk,
         )
         mock_create_reporter = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.JobsServiceProgressReporter.create_progress_reporter",
+            "nmp.customizer.shared.tasks.file_io.runner.JobsServiceProgressReporter.create_progress_reporter",
         )
         mock_reporter = mocker.MagicMock()
         mock_create_reporter.return_value = mock_reporter
 
         # Mock FileIORunner.run_download method
-        mock_runner_class = mocker.patch("nmp.customizer.tasks.file_io.run.FileIORunner")
+        mock_runner_class = mocker.patch("nmp.customizer.shared.tasks.file_io.runner.FileIORunner")
         mock_runner = mocker.MagicMock()
         mock_runner_class.return_value = mock_runner
 
@@ -1631,17 +1631,17 @@ class TestRun:
 
         mock_sdk = mocker.MagicMock()
         mocker.patch(
-            "nmp.customizer.tasks.file_io.run.get_task_sdk",
+            "nmp.customizer.shared.tasks.file_io.runner.get_task_sdk",
             return_value=mock_sdk,
         )
         mock_create_reporter = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.JobsServiceProgressReporter.create_progress_reporter",
+            "nmp.customizer.shared.tasks.file_io.runner.JobsServiceProgressReporter.create_progress_reporter",
         )
         mock_reporter = mocker.MagicMock()
         mock_create_reporter.return_value = mock_reporter
 
         # Mock FileIORunner to raise error on download
-        mock_runner_class = mocker.patch("nmp.customizer.tasks.file_io.run.FileIORunner")
+        mock_runner_class = mocker.patch("nmp.customizer.shared.tasks.file_io.runner.FileIORunner")
         mock_runner = mocker.MagicMock()
         mock_runner.run_download.side_effect = FileDownloadError("Download failed")
         mock_runner_class.return_value = mock_runner
@@ -1677,11 +1677,11 @@ class TestRun:
 
         mock_sdk = mocker.MagicMock()
         mocker.patch(
-            "nmp.customizer.tasks.file_io.run.get_task_sdk",
+            "nmp.customizer.shared.tasks.file_io.runner.get_task_sdk",
             return_value=mock_sdk,
         )
         mock_create_reporter = mocker.patch(
-            "nmp.customizer.tasks.file_io.run.JobsServiceProgressReporter.create_progress_reporter",
+            "nmp.customizer.shared.tasks.file_io.runner.JobsServiceProgressReporter.create_progress_reporter",
         )
         mock_reporter = mocker.MagicMock()
         mock_create_reporter.return_value = mock_reporter

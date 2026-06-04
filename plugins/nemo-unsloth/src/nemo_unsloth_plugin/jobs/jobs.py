@@ -27,11 +27,10 @@ from __future__ import annotations
 from typing import ClassVar, cast
 
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.config import NemoPlatformConfig, Runtime
+from nemo_customizer.shared.jobs.docker import require_docker_runtime
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.docker import validate_gpu_available_for_docker
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nmp.unsloth.compile import platform_job_config_compiler
 from nmp.unsloth.config import config as unsloth_config
 from nmp.unsloth.schemas import UnslothJobOutput
@@ -39,26 +38,6 @@ from pydantic import BaseModel
 
 from nemo_unsloth_plugin.schema import UnslothJobInput
 from nemo_unsloth_plugin.transform import transform_input_to_output
-
-
-def _require_docker_runtime() -> None:
-    """Refuse to compile when the platform isn't configured for Docker.
-
-    Mirrors :func:`nemo_automodel_plugin.jobs.jobs._require_docker_runtime`.
-    The compile step builds Docker container specs; surface the
-    misconfiguration before the Jobs API rejects the spec.
-    """
-    platform_config = NemoPlatformConfig.get()
-    if platform_config.runtime != Runtime.DOCKER:
-        raise PlatformJobCompilationError(
-            "Unsloth training requires platform.runtime: docker with GPU-backed container execution.",
-        )
-    from nemo_platform_plugin.config import validate_docker_available
-
-    if not validate_docker_available():
-        raise PlatformJobCompilationError(
-            "Unsloth training requires a reachable Docker daemon (platform.runtime: docker).",
-        )
 
 
 class UnslothJob(NemoJob):
@@ -133,7 +112,7 @@ class UnslothJob(NemoJob):
                 options the platform may forward later.
         """
         del entity_client, options
-        _require_docker_runtime()
+        require_docker_runtime("Unsloth")
         canonical = spec if isinstance(spec, UnslothJobOutput) else UnslothJobOutput.model_validate(spec.model_dump())
 
         execution_profile = profile or unsloth_config.default_training_execution_profile

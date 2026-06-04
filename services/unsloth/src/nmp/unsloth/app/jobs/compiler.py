@@ -18,29 +18,24 @@ import logging
 
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.types.models.model_entity import ModelEntity
-from nemo_platform_plugin.jobs.api_factory import (
-    ContainerSpec,
-    CPUExecutionProviderSpec,
-    EnvironmentVariable,
-    PlatformJobSpec,
-    PlatformJobStep,
-    ResourcesLimitsSpec,
-    ResourcesRequestsSpec,
-    ResourcesSpec,
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec, PlatformJobStep
+from nmp.customizer.shared.app.jobs.compile_steps import (
+    StoragePaths,
+    TaskStepContainer,
+    build_file_download_config,
+    build_file_upload_config,
+    compile_file_io_step,
+    compile_model_entity_step,
+    get_base_environment,
+    get_cpu_resources,
+    resolve_deployment_config,
 )
-from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.unsloth.app.constants import (
     DEFAULT_DATASET_PATH,
     DEFAULT_MODEL_PATH,
     DEFAULT_OUTPUT_MODEL_PATH,
 )
-from nmp.unsloth.app.jobs.file_io.schemas import (
-    DownloadItem,
-    FileIOTaskConfig,
-    FileSetRef,
-    UploadItem,
-)
+from nmp.unsloth.app.jobs.file_io.schemas import FileSetRef
 from nmp.unsloth.app.jobs.model_entity.schemas import (
     DeploymentParameters as ModelEntityDeploymentParameters,
 )
@@ -54,27 +49,23 @@ from nmp.unsloth.schemas import UnslothJobOutput
 
 logger = logging.getLogger(__name__)
 
+_STORAGE_PATHS = StoragePaths(
+    model_path=DEFAULT_MODEL_PATH,
+    dataset_path=DEFAULT_DATASET_PATH,
+    output_model_path=DEFAULT_OUTPUT_MODEL_PATH,
+)
 
-def _get_cpu_resources() -> ResourcesSpec:
-    return ResourcesSpec(
-        limits=ResourcesLimitsSpec(
-            cpu=config.default_job_resource_cpu_limit,
-            memory=config.default_job_resource_memory_limit,
-        ),
-        requests=ResourcesRequestsSpec(
-            cpu=config.default_job_resource_cpu_request,
-            memory=config.default_job_resource_memory_request,
-        ),
-    )
+_FILE_IO_CONTAINER = TaskStepContainer(
+    image=get_tasks_image(),
+    entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
+    command=["-m", "nmp.unsloth.tasks.file_io"],
+)
 
-
-def _get_base_environment() -> list[EnvironmentVariable]:
-    return [
-        EnvironmentVariable(
-            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
-            value=DEFAULT_JOB_STORAGE_PATH,
-        ),
-    ]
+_MODEL_ENTITY_CONTAINER = TaskStepContainer(
+    image=get_tasks_image(),
+    entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
+    command=["-m", "nmp.unsloth.tasks.model_entity"],
+)
 
 
 def _resolve_finetuning_type(spec: UnslothJobOutput) -> FinetuningType:
@@ -97,69 +88,37 @@ def _build_peft_config(spec: UnslothJobOutput) -> PEFTConfig | None:
     )
 
 
-def _require_fileset(name: str | None, *, label: str) -> str:
-    if not name or not str(name).strip():
-        raise PlatformJobCompilationError(
-            f"{label} has no fileset attached. Attach a platform FileSet "
-            "(workspace/name) with model weights before running training.",
-        )
-    return str(name)
-
-
 def _build_file_download_config(
     job_spec: UnslothJobOutput,
     me: ModelEntity,
-) -> FileIOTaskConfig:
+):
     """Compile the download step: model fileset + dataset fileset."""
-    model_fileset = _require_fileset(
-        me.fileset,
-        label=f"Model '{me.workspace}/{me.name}'",
-    )
-    return FileIOTaskConfig(
-        download=[
-            DownloadItem(
-                src=FileSetRef.model_validate(model_fileset),
-                dest=DEFAULT_MODEL_PATH,
-            ),
-            DownloadItem(
-                src=FileSetRef.model_validate(job_spec.dataset.path),
-                dest=DEFAULT_DATASET_PATH,
-            ),
-        ],
+    return build_file_download_config(
+        model_fileset=me.fileset,
+        dataset_path=job_spec.dataset.path,
+        paths=_STORAGE_PATHS,
+        require_model_fileset=True,
+        model_entity_label=f"Model '{me.workspace}/{me.name}'",
     )
 
 
-def _build_file_upload_config(output_fileset_name: str) -> FileIOTaskConfig:
-    """Compile the upload step.
-
-    ``workspace=None`` tells the file_io task to use the job's workspace
-    from its :class:`NMPJobContext`.
-    """
-    return FileIOTaskConfig(
-        upload=[
-            UploadItem(
-                src=DEFAULT_OUTPUT_MODEL_PATH,
-                dest=FileSetRef(workspace=None, name=output_fileset_name),
-            ),
-        ],
+def _build_file_upload_config(output_fileset_name: str):
+    """Compile the upload step."""
+    return build_file_upload_config(
+        output_fileset_name=output_fileset_name,
+        output_model_path=DEFAULT_OUTPUT_MODEL_PATH,
     )
 
 
 def _build_model_entity_config(
     workspace: str,
     job_spec: UnslothJobOutput,
-    *,
     trust_remote_code: bool,
 ) -> ModelEntityTaskConfig:
-    # Forward the user-supplied deployment_config from the job spec.
-    # String refs are passed through as-is; inline DeploymentParams are
-    # converted from the user-facing shape to the task-side shape via
-    # model_validate(model_dump()).
-    deployment_config: str | ModelEntityDeploymentParameters | None = None
-    if isinstance(job_spec.deployment_config, str):
-        deployment_config = job_spec.deployment_config
-    elif job_spec.deployment_config is not None:
-        deployment_config = ModelEntityDeploymentParameters.model_validate(job_spec.deployment_config.model_dump())
+    deployment_config = resolve_deployment_config(
+        job_spec.deployment_config,
+        ModelEntityDeploymentParameters,
+    )
 
     return ModelEntityTaskConfig(
         name=job_spec.output.name,
@@ -178,7 +137,6 @@ async def platform_job_config_compiler(
     workspace: str,
     job_spec: UnslothJobOutput,
     sdk: AsyncNeMoPlatform,
-    *,
     job_name: str | None = None,
     profile: str | None = None,
 ) -> PlatformJobSpec:
@@ -189,8 +147,8 @@ async def platform_job_config_compiler(
 
     me = await fetch_model_entity(job_spec.model.name, workspace, sdk)
 
-    cpu_resources = _get_cpu_resources()
-    base_env = _get_base_environment()
+    cpu_resources = get_cpu_resources(config)
+    base_env = get_base_environment()
 
     download_config = _build_file_download_config(job_spec, me)
     upload_config = _build_file_upload_config(job_spec.output.fileset)
@@ -201,48 +159,26 @@ async def platform_job_config_compiler(
     )
 
     steps: list[PlatformJobStep] = [
-        PlatformJobStep(
-            name="model-and-dataset-download",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=download_config.model_dump(mode="json"),
+        compile_file_io_step(
+            "model-and-dataset-download",
+            _FILE_IO_CONTAINER,
+            cpu_resources,
+            base_env,
+            download_config,
         ),
         compile_training_step(job_spec, base_env, profile=profile),
-        PlatformJobStep(
-            name="model-upload",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.file_io"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=upload_config.model_dump(mode="json"),
+        compile_file_io_step(
+            "model-upload",
+            _FILE_IO_CONTAINER,
+            cpu_resources,
+            base_env,
+            upload_config,
         ),
-        PlatformJobStep(
-            name="model-entity-creation",
-            executor=CPUExecutionProviderSpec(
-                provider="cpu",
-                container=ContainerSpec(
-                    image=get_tasks_image(),
-                    entrypoint=UNSLOTH_PYTHON_ENTRYPOINT,
-                    command=["-m", "nmp.unsloth.tasks.model_entity"],
-                ),
-                resources=cpu_resources,
-            ),
-            environment=base_env,
-            config=model_entity_config.model_dump(mode="json"),
+        compile_model_entity_step(
+            _MODEL_ENTITY_CONTAINER,
+            cpu_resources,
+            base_env,
+            model_entity_config,
         ),
     ]
 
