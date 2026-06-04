@@ -85,6 +85,16 @@ The REST API reference is generated natively by Fern from the OpenAPI spec — n
 
 Fern groups endpoints by their OpenAPI tag in the sidebar (Customizer, Evaluator, Guardrails, …), which replaces the old per-service filter chips. Link to it from other pages with the nav URL `/documentation/reference/api-reference`.
 
+## Gated (unready) features
+
+Some features are not shipped yet and must be **fully excluded from the build** — not just hidden from the sidebar. Fern's `hidden: true` still builds and serves the page (reachable by direct URL and indexable), so it is **not** used for this. Instead, the gated pages are simply **left out of `versions/latest.yml`**: Fern only builds pages referenced in the navigation, so an omitted page is never built (it 404s and is not indexed). This matches the old MkDocs `hide_unready_docs` hook, which dropped the same files from the build.
+
+The gated `.mdx` files stay in the repo so they remain maintained. The gated trees today are: `auth/`, `customizer/`, `safe-synthesizer/`, `set-up/` + `helm/`, `evaluator/benchmarks/`, plus individual pages (`evaluator/metrics/{job-management,results}`, `run-inference/tutorials/deploy-models`, `example-applications/`, `troubleshooting/{cluster-setup,customizer}`, `get-started/quickstart`).
+
+Inbound links from visible pages into gated pages are **delinked to plain text** (not rewritten URLs), since the target is not built — otherwise they would be broken links.
+
+`gated-nav.yml` holds the ready-to-paste navigation blocks for the gated features (it is a reference only; Fern does not read it). **To publish a feature when it ships:** move its block from `gated-nav.yml` into `versions/latest.yml`, re-link the inbound references that were delinked (search the docs for the feature name), then run `npm run check` and `npx fern-api docs broken-links`.
+
 ## CI and Publishing
 
 | Workflow | Trigger | Purpose |
