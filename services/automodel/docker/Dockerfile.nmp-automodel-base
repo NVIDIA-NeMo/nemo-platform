@@ -33,7 +33,7 @@ ENV PATH="/opt/venv/bin:/root/.local/bin:$PATH"
 RUN uv venv ${UV_PROJECT_ENVIRONMENT} --system-site-packages
 
 COPY --from=automodel-clone /opt/Automodel /opt/Automodel
-COPY services/customizer/src/cherry-picks /opt/cherry-picks
+COPY services/automodel/docker/cherry-picks /opt/cherry-picks
 RUN cd /opt/Automodel && patch -p1 < /opt/cherry-picks/e6d2930a.diff
 
 RUN cd /opt/Automodel && \
