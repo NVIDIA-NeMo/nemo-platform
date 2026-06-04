@@ -47,13 +47,14 @@ describe('MarkdownContent', () => {
       );
     });
 
-    it('uses light and dark grey backgrounds for inline code', () => {
+    it('uses light and dark grey backgrounds with prose font for inline code', () => {
       render(<MarkdownContent content="Use `const value = 1` inline." />);
 
       expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
         '[&&]:bg-gray-050',
         'dark:[&&]:bg-gray-900',
-        '[&&]:rounded'
+        '[&&]:rounded',
+        '[&&]:font-sans'
       );
     });
   });

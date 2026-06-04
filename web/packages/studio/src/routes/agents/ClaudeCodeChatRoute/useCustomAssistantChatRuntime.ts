@@ -18,6 +18,7 @@ import {
   createTextMessage,
   getMessageText,
 } from '@nemo/common/src/components/AssistantChat/messageUtils';
+import { groupConsecutiveClaudeCodeSubtleToolCalls } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { useCallback, useRef, useState } from 'react';
 
 export interface CustomAssistantRunContext {
@@ -69,7 +70,7 @@ const mergeAssistantParts = (
     merged.push(part);
   }
 
-  return merged;
+  return groupConsecutiveClaudeCodeSubtleToolCalls(merged);
 };
 
 const getAssistantPartsText = (parts: readonly ThreadAssistantMessagePart[]): string =>

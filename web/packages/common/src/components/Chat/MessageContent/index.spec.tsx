@@ -5,13 +5,14 @@ import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent'
 import { render, screen } from '@testing-library/react';
 
 describe('MessageContent', () => {
-  it('renders inline code with light and dark grey backgrounds', () => {
+  it('renders inline code with grey backgrounds and prose font', () => {
     render(<MessageContent content="Run `pnpm test` after editing." />);
 
     expect(screen.getByText('pnpm test')).toHaveClass(
       'bg-gray-050',
       'dark:bg-gray-900',
-      'font-mono'
+      'font-sans'
     );
+    expect(screen.getByText('pnpm test')).not.toHaveClass('font-mono');
   });
 });

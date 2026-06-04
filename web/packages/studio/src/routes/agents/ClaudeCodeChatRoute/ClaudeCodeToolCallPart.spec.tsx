@@ -2,96 +2,80 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
+import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
+interface SubtleToolCase {
+  readonly args: Record<string, string>;
+  readonly expectedText: string;
+  readonly toolName: string;
+}
+
+const subtleToolCases: SubtleToolCase[] = [
+  {
+    args: { command: 'pwd', description: 'check the working directory' },
+    expectedText: 'Ran check the working directory',
+    toolName: 'Bash',
+  },
+  {
+    args: { question: 'Do you want to continue?' },
+    expectedText: 'Asked Do you want to continue?',
+    toolName: 'AskUserQuestion',
+  },
+  {
+    args: { query: 'ClaudeCodeToolCallPart' },
+    expectedText: 'Searched files ClaudeCodeToolCallPart',
+    toolName: 'FindFiles',
+  },
+  {
+    args: { pattern: 'ClaudeCodeToolCallPart' },
+    expectedText: 'Searched text ClaudeCodeToolCallPart',
+    toolName: 'Grep',
+  },
+  {
+    args: { task: 'check the route' },
+    expectedText: 'Created task check the route',
+    toolName: 'TaskCreate',
+  },
+  {
+    args: { status: 'in_progress' },
+    expectedText: 'Updated task in_progress',
+    toolName: 'TaskUpdate',
+  },
+  {
+    args: { query: 'read files' },
+    expectedText: 'Searched tools read files',
+    toolName: 'ToolSearch',
+  },
+];
+
+const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
+  expect(subtleBlock).toHaveClass(
+    'my-0.5',
+    'flex',
+    'max-w-full',
+    'flex-wrap',
+    'items-center',
+    'gap-x-density-sm',
+    'gap-y-0.5',
+    'text-gray-400',
+    'dark:text-gray-600'
+  );
+  expect(subtleBlock).not.toHaveClass('bg-gray-050', 'dark:bg-gray-900');
+  expect(screen.getByTestId('claude-code-tool-call-subtle-action')).toBeInTheDocument();
+  expect(screen.getByTestId('claude-code-tool-call-subtle-icon')).toBeInTheDocument();
+};
+
 describe('ClaudeCodeToolCallPart', () => {
-  it('omits Bash tool calls from the chat thread', () => {
-    const { container } = render(
-      <ClaudeCodeToolCallPart
-        addResult={vi.fn()}
-        args={{ command: 'pwd', description: 'check the working directory' }}
-        argsText='{"command":"pwd","description":"check the working directory"}'
-        resume={vi.fn()}
-        status={{ type: 'complete' }}
-        toolCallId="toolu_1"
-        toolName="Bash"
-        type="tool-call"
-      />
-    );
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
-  });
-
-  it('omits TaskUpdate tool calls from the chat thread', () => {
-    const { container } = render(
-      <ClaudeCodeToolCallPart
-        addResult={vi.fn()}
-        args={{ status: 'in_progress' }}
-        argsText='{"status":"in_progress"}'
-        resume={vi.fn()}
-        status={{ type: 'complete' }}
-        toolCallId="toolu_task"
-        toolName="TaskUpdate"
-        type="tool-call"
-      />
-    );
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
-  });
-
-  it('omits Grep tool calls from the chat thread', () => {
-    const { container } = render(
-      <ClaudeCodeToolCallPart
-        addResult={vi.fn()}
-        args={{ pattern: 'ClaudeCodeToolCallPart' }}
-        argsText='{"pattern":"ClaudeCodeToolCallPart"}'
-        resume={vi.fn()}
-        status={{ type: 'complete' }}
-        toolCallId="toolu_grep"
-        toolName="Grep"
-        type="tool-call"
-      />
-    );
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText('Search text')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
-  });
-
-  it('omits AskUserQuestion tool calls from the chat thread', () => {
-    const { container } = render(
-      <ClaudeCodeToolCallPart
-        addResult={vi.fn()}
-        args={{ question: 'Do you want to continue?' }}
-        argsText='{"question":"Do you want to continue?"}'
-        resume={vi.fn()}
-        status={{ type: 'complete' }}
-        toolCallId="toolu_question"
-        toolName="AskUserQuestion"
-        type="tool-call"
-      />
-    );
-
-    expect(container).toBeEmptyDOMElement();
-    expect(screen.queryByText('AskUserQuestion')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
-  });
-
-  it.each(['FindFiles', 'TaskCreate', 'ToolSearch'])(
-    'omits %s tool calls from the chat thread',
-    (toolName) => {
-      const { container } = render(
+  it.each(subtleToolCases)(
+    'renders $toolName as subtle text',
+    ({ args, expectedText, toolName }) => {
+      render(
         <ClaudeCodeToolCallPart
           addResult={vi.fn()}
-          args={{ query: 'ClaudeCodeToolCallPart' }}
-          argsText='{"query":"ClaudeCodeToolCallPart"}'
+          args={args}
+          argsText={JSON.stringify(args)}
           resume={vi.fn()}
           status={{ type: 'complete' }}
           toolCallId={`toolu_${toolName}`}
@@ -100,12 +84,48 @@ describe('ClaudeCodeToolCallPart', () => {
         />
       );
 
-      expect(container).toBeEmptyDOMElement();
-      expect(screen.queryByText(toolName)).not.toBeInTheDocument();
-      expect(screen.queryByTestId('claude-code-tool-call-subtle')).not.toBeInTheDocument();
+      const subtleBlock = screen.getByTestId('claude-code-tool-call-subtle');
+      expect(subtleBlock).toHaveTextContent(expectedText);
+      expect(subtleBlock).toHaveAttribute('title', expectedText);
+      expectSubtleToolBlock(subtleBlock);
       expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
     }
   );
+
+  it('renders grouped subtle tool calls in a single row', () => {
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{
+          actions: [
+            { args: { command: 'pwd' }, toolCallId: 'toolu_bash', toolName: 'Bash' },
+            {
+              args: { file_path: 'web/packages/studio/src/App.tsx' },
+              toolCallId: 'toolu_read',
+              toolName: 'Read',
+            },
+            { args: { pattern: 'TODO' }, toolCallId: 'toolu_grep', toolName: 'Grep' },
+          ],
+        }}
+        argsText=""
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="toolu_group"
+        toolName={CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME}
+        type="tool-call"
+      />
+    );
+
+    const subtleBlock = screen.getByTestId('claude-code-tool-call-subtle');
+    expect(subtleBlock).toHaveTextContent('Ran pwd');
+    expect(subtleBlock).toHaveTextContent('Read App.tsx');
+    expect(subtleBlock).toHaveTextContent('Searched text TODO');
+    expect(subtleBlock).toHaveAttribute('title', 'Ran pwd | Read App.tsx | Searched text TODO');
+    expect(screen.getAllByTestId('claude-code-tool-call-subtle-action')).toHaveLength(3);
+    expect(screen.getAllByTestId('claude-code-tool-call-subtle-icon')).toHaveLength(3);
+    expect(screen.queryAllByTestId('claude-code-tool-call-subtle')).toHaveLength(1);
+    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
+  });
 
   it('renders Read as subtle text with only the file name', () => {
     render(
@@ -124,7 +144,7 @@ describe('ClaudeCodeToolCallPart', () => {
     const readBlock = screen.getByTestId('claude-code-tool-call-subtle');
     expect(readBlock).toHaveTextContent('Read App.tsx');
     expect(readBlock.tagName).toBe('DIV');
-    expect(readBlock).toHaveClass('my-0.5', 'block', 'w-full', 'text-secondary');
+    expectSubtleToolBlock(readBlock);
     expect(screen.queryByText('web/packages/studio/src/App.tsx')).not.toBeInTheDocument();
   });
 
@@ -197,9 +217,7 @@ describe('ClaudeCodeToolCallPart', () => {
     expect(screen.getAllByText('-1')).toHaveLength(2);
   });
 
-  it('renders other tool-use rows with expandable input', async () => {
-    const user = userEvent.setup();
-
+  it('renders known non-file-change tool calls as subtle text by default', () => {
     render(
       <ClaudeCodeToolCallPart
         addResult={vi.fn()}
@@ -213,19 +231,29 @@ describe('ClaudeCodeToolCallPart', () => {
       />
     );
 
-    const toolCall = screen.getByTestId('claude-code-tool-call');
-    expect(toolCall).not.toHaveAttribute('open');
-    expect(screen.getByText('Find files')).toBeInTheDocument();
-    expect(screen.getByText('**/*.tsx')).toBeInTheDocument();
+    const subtleBlock = screen.getByTestId('claude-code-tool-call-subtle');
+    expect(subtleBlock).toHaveTextContent('Found files **/*.tsx');
+    expectSubtleToolBlock(subtleBlock);
+    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
+  });
 
-    await user.click(screen.getByText('Find files'));
-
-    expect(toolCall).toHaveAttribute('open');
-    expect(screen.getByText('Input')).toBeInTheDocument();
-    expect(screen.getByTestId('claude-code-tool-call-input-surface')).toHaveClass(
-      'bg-gray-050',
-      'dark:bg-gray-900'
+  it('renders unknown tool calls as subtle text by default', () => {
+    render(
+      <ClaudeCodeToolCallPart
+        addResult={vi.fn()}
+        args={{ query: 'symbols' }}
+        argsText='{"query":"symbols"}'
+        resume={vi.fn()}
+        status={{ type: 'complete' }}
+        toolCallId="toolu_unknown"
+        toolName="InspectWorkspace"
+        type="tool-call"
+      />
     );
-    expect(screen.getByText('{"pattern":"**/*.tsx"}')).toBeInTheDocument();
+
+    const subtleBlock = screen.getByTestId('claude-code-tool-call-subtle');
+    expect(subtleBlock).toHaveTextContent('Used InspectWorkspace symbols');
+    expectSubtleToolBlock(subtleBlock);
+    expect(screen.queryByTestId('claude-code-tool-call')).not.toBeInTheDocument();
   });
 });

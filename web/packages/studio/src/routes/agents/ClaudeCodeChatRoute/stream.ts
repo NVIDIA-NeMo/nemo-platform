@@ -4,7 +4,7 @@
 import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
 import {
   createClaudeCodeToolCallPart,
-  isClaudeCodeToolCallOmitted,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { websiteLogger } from '@studio/util/logger';
 
@@ -73,14 +73,16 @@ const getContentParts = (event: ClaudeCodeStreamEvent): ClaudeCodeContentPart[] 
   return content.filter(isRecord);
 };
 
-export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistantMessagePart[] => {
+export const getAssistantPartsFromClaudeEvent = (
+  event: unknown
+): readonly ThreadAssistantMessagePart[] => {
   if (!isRecord(event) || event.type !== 'assistant') return [];
 
   const parts = getContentParts(event);
   const message = event.message;
   const messageId =
     isRecord(message) && typeof message.id === 'string' && message.id ? message.id : 'message';
-  return parts
+  const assistantParts = parts
     .map((part, index): ThreadAssistantMessagePart | undefined => {
       if (part.type === 'thinking' && typeof part.thinking === 'string') {
         const text = part.thinking.trim();
@@ -91,7 +93,6 @@ export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistan
       }
       if (part.type === 'tool_use') {
         const toolName = typeof part.name === 'string' ? part.name : 'tool';
-        if (isClaudeCodeToolCallOmitted(toolName)) return undefined;
 
         const toolCallId =
           typeof part.id === 'string' && part.id
@@ -106,6 +107,8 @@ export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistan
       return undefined;
     })
     .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
+
+  return groupConsecutiveClaudeCodeSubtleToolCalls(assistantParts);
 };
 
 export const getAssistantTextFromClaudeEvent = (event: unknown): string => {

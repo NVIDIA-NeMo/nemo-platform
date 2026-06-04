@@ -11,7 +11,7 @@ type CodeBlockProps = ComponentProps<'code'> & ExtraProps;
 
 const CODE_BLOCK_SURFACE_CLASS = '[&&]:bg-gray-050 dark:[&&]:bg-gray-900';
 const INLINE_CODE_SURFACE_CLASS =
-  '[&&]:rounded [&&]:bg-gray-050 [&&]:px-1 [&&]:py-0.5 dark:[&&]:bg-gray-900';
+  '[&&]:rounded [&&]:bg-gray-050 [&&]:px-1 [&&]:py-0.5 [&&]:font-sans dark:[&&]:bg-gray-900';
 
 export const CodeBlock: FC<CodeBlockProps> = ({ className, children }) => {
   const isFenced = className?.includes('language-') ?? false;

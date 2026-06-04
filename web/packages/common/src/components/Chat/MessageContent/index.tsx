@@ -16,7 +16,7 @@ export interface MessageContentProps {
 }
 
 const INLINE_CODE_CLASS =
-  'rounded bg-gray-050 px-1 py-0.5 font-mono text-[0.95em] dark:bg-gray-900';
+  'rounded bg-gray-050 px-1 py-0.5 font-sans text-[0.95em] dark:bg-gray-900';
 
 /**
  * This component takes a content string from a chat response and converts into a user readable

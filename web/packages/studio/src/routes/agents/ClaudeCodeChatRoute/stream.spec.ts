@@ -7,6 +7,7 @@ import {
   parseJsonObject,
   parseSseChunk,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
+import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { websiteLogger } from '@studio/util/logger';
 
 describe('Claude Code stream utilities', () => {
@@ -55,10 +56,23 @@ describe('Claude Code stream utilities', () => {
       { type: 'text', text: 'I can check that.' },
       {
         type: 'tool-call',
-        toolCallId: 'toolu_2',
-        toolName: 'Read',
-        args: { file_path: 'README.md' },
-        argsText: '{"file_path":"README.md"}',
+        toolCallId: 'claude-code-subtle-tools-toolu_question-toolu_2',
+        toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+        args: {
+          actions: [
+            {
+              args: { question: 'Continue?' },
+              toolCallId: 'toolu_question',
+              toolName: 'AskUserQuestion',
+            },
+            { args: { status: 'done' }, toolCallId: 'toolu_hidden', toolName: 'TaskUpdate' },
+            { args: { command: 'pwd' }, toolCallId: 'toolu_1', toolName: 'Bash' },
+            { args: { pattern: 'TODO' }, toolCallId: 'toolu_grep', toolName: 'Grep' },
+            { args: { file_path: 'README.md' }, toolCallId: 'toolu_2', toolName: 'Read' },
+          ],
+        },
+        argsText:
+          '{"actions":[{"args":{"question":"Continue?"},"toolCallId":"toolu_question","toolName":"AskUserQuestion"},{"args":{"status":"done"},"toolCallId":"toolu_hidden","toolName":"TaskUpdate"},{"args":{"command":"pwd"},"toolCallId":"toolu_1","toolName":"Bash"},{"args":{"pattern":"TODO"},"toolCallId":"toolu_grep","toolName":"Grep"},{"args":{"file_path":"README.md"},"toolCallId":"toolu_2","toolName":"Read"}]}',
       },
     ]);
     expect(getAssistantTextFromClaudeEvent(event)).toBe(
@@ -66,7 +80,7 @@ describe('Claude Code stream utilities', () => {
     );
   });
 
-  it('omits hidden Claude Code tool calls from streamed parts', () => {
+  it('preserves subtle Claude Code tool calls from streamed parts', () => {
     const event = {
       type: 'assistant',
       message: {
@@ -87,7 +101,86 @@ describe('Claude Code stream utilities', () => {
       },
     };
 
-    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([]);
+    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([
+      {
+        type: 'tool-call',
+        toolCallId: 'claude-code-subtle-tools-toolu_1-toolu_4',
+        toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+        args: {
+          actions: [
+            { args: { command: 'pwd' }, toolCallId: 'toolu_1', toolName: 'Bash' },
+            { args: { status: 'done' }, toolCallId: 'toolu_2', toolName: 'TaskUpdate' },
+            { args: { pattern: 'TODO' }, toolCallId: 'toolu_3', toolName: 'Grep' },
+            { args: { query: 'TODO' }, toolCallId: 'toolu_find', toolName: 'FindFiles' },
+            { args: { task: 'check' }, toolCallId: 'toolu_task', toolName: 'TaskCreate' },
+            { args: { query: 'read' }, toolCallId: 'toolu_search', toolName: 'ToolSearch' },
+            { args: { question: 'Continue?' }, toolCallId: 'toolu_4', toolName: 'AskUserQuestion' },
+          ],
+        },
+        argsText:
+          '{"actions":[{"args":{"command":"pwd"},"toolCallId":"toolu_1","toolName":"Bash"},{"args":{"status":"done"},"toolCallId":"toolu_2","toolName":"TaskUpdate"},{"args":{"pattern":"TODO"},"toolCallId":"toolu_3","toolName":"Grep"},{"args":{"query":"TODO"},"toolCallId":"toolu_find","toolName":"FindFiles"},{"args":{"task":"check"},"toolCallId":"toolu_task","toolName":"TaskCreate"},{"args":{"query":"read"},"toolCallId":"toolu_search","toolName":"ToolSearch"},{"args":{"question":"Continue?"},"toolCallId":"toolu_4","toolName":"AskUserQuestion"}]}',
+      },
+    ]);
+  });
+
+  it('groups unknown non-file-change tool calls with other subtle streamed parts', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_inspect',
+            name: 'InspectWorkspace',
+            input: { query: 'symbols' },
+          },
+          { type: 'tool_use', id: 'toolu_read', name: 'Read', input: { file_path: 'README.md' } },
+        ],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+        args: {
+          actions: [
+            {
+              args: { query: 'symbols' },
+              toolCallId: 'toolu_inspect',
+              toolName: 'InspectWorkspace',
+            },
+            { args: { file_path: 'README.md' }, toolCallId: 'toolu_read', toolName: 'Read' },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it('combines subtle streamed tool calls across whitespace-only text parts', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu_bash', name: 'Bash', input: { command: 'pwd' } },
+          { type: 'text', text: '\n\n' },
+          { type: 'tool_use', id: 'toolu_glob', name: 'Glob', input: { pattern: '*' } },
+        ],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toMatchObject([
+      {
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+        args: {
+          actions: [
+            { args: { command: 'pwd' }, toolCallId: 'toolu_bash', toolName: 'Bash' },
+            { args: { pattern: '*' }, toolCallId: 'toolu_glob', toolName: 'Glob' },
+          ],
+        },
+      },
+    ]);
   });
 
   it('scopes fallback streamed tool-call ids to the Claude message id', () => {

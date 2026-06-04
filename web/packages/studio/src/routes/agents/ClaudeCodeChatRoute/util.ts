@@ -5,7 +5,8 @@ import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-u
 import { COMPLETE_STATUS } from '@nemo/common/src/components/AssistantChat/constants';
 import {
   createClaudeCodeToolCallPart,
-  isClaudeCodeToolCallOmitted,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
+  mergeConsecutiveClaudeCodeSubtleToolMessages,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type {
   ClaudeCodeAssistantHistoryPart,
@@ -36,7 +37,6 @@ const getAssistantMessagePart = (
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'tool_use') {
     const toolName = part.name || 'tool';
-    if (isClaudeCodeToolCallOmitted(toolName)) return undefined;
 
     return createClaudeCodeToolCallPart({
       input: part.input,
@@ -52,7 +52,7 @@ export const getClaudeCodeHistoryMessages = (
 ): readonly ThreadMessageLike[] => {
   if (!history) return [];
 
-  return history.items
+  const messages = history.items
     .map((item, index): ThreadMessageLike | undefined => {
       if (item.kind === 'user') {
         return {
@@ -66,14 +66,17 @@ export const getClaudeCodeHistoryMessages = (
       const content = item.parts
         .map((part, partIndex) => getAssistantMessagePart(part, partIndex, messageId))
         .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
-      if (!content.length) return undefined;
+      const groupedContent = groupConsecutiveClaudeCodeSubtleToolCalls(content);
+      if (!groupedContent.length) return undefined;
 
       return {
         id: messageId,
         role: 'assistant',
-        content,
+        content: groupedContent,
         status: COMPLETE_STATUS,
       };
     })
     .filter((message): message is ThreadMessageLike => message !== undefined);
+
+  return mergeConsecutiveClaudeCodeSubtleToolMessages(messages);
 };
