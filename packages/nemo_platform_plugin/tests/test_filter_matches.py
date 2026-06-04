@@ -277,3 +277,54 @@ class TestUnsupported:
     def test_unknown_field_raises_value_error(self):
         with pytest.raises(ValueError, match="does not exist"):
             cmp(FilterOperator.EQ, "nonexistent", "x").matches(Entity())
+
+
+class TestSqliteEdgeCases:
+    """Coverage for the subtle SQLite-mirroring branches (cross-checked in the
+    parity test); these pin the behavior deterministically."""
+
+    def test_like_on_json_bool_renders_sqlite_form(self):
+        # A JSON boolean renders as "1"/"0" (SQLite), so $like sees that text —
+        # exercises the bool branch of _json_text via a non-$eq operator.
+        assert cmp(FilterOperator.LIKE, "data.flag", "1").matches(Entity(data={"flag": True})) is True
+        assert cmp(FilterOperator.LIKE, "data.flag", "1").matches(Entity(data={"flag": False})) is False
+        assert cmp(FilterOperator.LIKE, "data.flag", "0").matches(Entity(data={"flag": False})) is True
+
+    def test_in_on_json_bool_renders_sqlite_form(self):
+        assert cmp(FilterOperator.IN, "data.flag", ["1"]).matches(Entity(data={"flag": True})) is True
+        assert cmp(FilterOperator.IN, "data.flag", ["1"]).matches(Entity(data={"flag": False})) is False
+
+    def test_ordered_numeric_against_leading_numeric_text(self):
+        # Numeric comparison vs non-numeric JSON text uses SQLite's lenient
+        # leading-numeric cast: "5abc" -> 5.0 (exercises _sqlite_cast_float regex).
+        e = Entity(data={"n": "5abc"})
+        assert cmp(FilterOperator.GT, "data.n", 4).matches(e) is True
+        assert cmp(FilterOperator.LT, "data.n", 6).matches(e) is True
+        assert cmp(FilterOperator.GT, "data.n", 5).matches(e) is False
+
+    def test_ordered_fully_nonnumeric_text_casts_zero(self):
+        # Text with no leading number casts to 0.0.
+        e = Entity(data={"n": "abc"})
+        assert cmp(FilterOperator.GT, "data.n", -1).matches(e) is True
+        assert cmp(FilterOperator.GT, "data.n", 1).matches(e) is False
+
+    def test_ordered_incomparable_types_returns_false(self):
+        # Comparing a str column to an int is incomparable in Python; matches()
+        # treats a TypeError as "no match" (mirrors SQL's NULL/three-valued result).
+        assert cmp(FilterOperator.GT, "name", 5).matches(Entity(name="llama")) is False
+        assert cmp(FilterOperator.LT, "name", 5).matches(Entity(name="llama")) is False
+
+    def test_comparison_op_with_logical_operator_raises(self):
+        # A ComparisonOperation carrying a logical operator is malformed; matches()
+        # rejects it rather than silently mis-evaluating.
+        op = ComparisonOperation(operator=FilterOperator.AND, field="name", value="x")
+        with pytest.raises(ValueError, match="Unknown comparison operator"):
+            op.matches(Entity(name="x"))
+
+    def test_logical_op_with_comparison_operator_raises(self):
+        op = LogicalOperation(
+            operator=FilterOperator.EQ,
+            operations=[cmp(FilterOperator.EQ, "name", "x")],
+        )
+        with pytest.raises(ValueError, match="Unknown logical operator"):
+            op.matches(Entity(name="x"))

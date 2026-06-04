@@ -36,6 +36,8 @@ SEED = [
     dict(id=3, name="zephyr", data={"score": 10, "tier": "pro", "flag": True, "k": "v"}),
     dict(id=4, name="mistral", data={"score": 100, "tier": "enterprise"}),
     dict(id=5, name=None, data={}),
+    # Leading-numeric text exercises SQLite's lenient CAST(... AS FLOAT).
+    dict(id=6, name="mix5", data={"num_text": "5abc", "flag": True}),
 ]
 
 
@@ -101,6 +103,13 @@ CASES = [
             NOT(C(FilterOperator.LT, "data.score", 9)),
         ),
     ),
+    # JSON boolean via non-$eq operators: bool renders as SQLite "1"/"0" text.
+    ("like_data_flag_sqlite", C(FilterOperator.LIKE, "data.flag", "1")),
+    ("in_data_flag_sqlite", C(FilterOperator.IN, "data.flag", ["1"])),
+    ("nin_data_flag_sqlite", C(FilterOperator.NIN, "data.flag", ["1"])),
+    # Numeric comparison vs non-numeric / leading-numeric JSON text (lenient CAST).
+    ("gt_data_num_text_cast", C(FilterOperator.GT, "data.num_text", 4)),
+    ("lt_data_num_text_cast", C(FilterOperator.LT, "data.num_text", 6)),
 ]
 
 
