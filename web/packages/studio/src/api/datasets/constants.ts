@@ -3,57 +3,33 @@
 
 export const ALLOWED_CONTENT_FILE_TYPES = new Set(['csv', 'json', 'jsonl', 'parquet']); // File types that the platform parses as structured data.
 
-// Extensions that are known binary formats. We skip the download and show a
-// "preview not available" message instead — downloading and rendering binary
-// content as text is both slow and meaningless.
-// Everything NOT in this set is treated as text and rendered in the plain-text
-// editor (the old allowlist was too restrictive; .gitattributes, .py, YAML,
-// shell scripts, etc. are all valid text previews).
+// Fast-path blocklist for extensions that are unambiguously binary. Files
+// matching these are rejected immediately without a HEAD request. Unknown
+// extensions fall through to Content-Type detection (see useIsBinaryFile).
+// Keep this list short — it's a hint, not an authoritative registry.
 export const BINARY_FILE_EXTENSIONS = new Set([
   // Images
   'png',
   'jpg',
   'jpeg',
   'gif',
-  'bmp',
   'webp',
   'ico',
-  'svg',
-  'tiff',
-  'tif',
   // Archives
   'zip',
   'tar',
   'gz',
-  'bz2',
-  'xz',
-  'zst',
-  '7z',
-  'rar',
-  // ML model / weight formats
-  'bin',
+  // ML weights / binary data
   'pt',
   'pth',
-  'ckpt',
   'safetensors',
   'pkl',
-  'pickle',
-  'onnx',
-  'pb',
-  // Other binary
-  'pdf',
-  'arrow',
+  'bin',
   'npy',
   'npz',
   'h5',
-  'hdf5',
-  'db',
-  'sqlite',
-  'wasm',
-  'dll',
-  'so',
-  'dylib',
-  'exe',
+  // Documents
+  'pdf',
 ]);
 
 export const COMPLETION_PROMPT_KEY_ORDER = ['prompt', 'instruction', 'question']; // Searches for a prompt in the following keys
