@@ -74,8 +74,8 @@ try:
     print(f"Found {len(jobs.data)} existing jobs")
 except Exception as e:
     raise RuntimeError(
-        "Cannot connect to the Safe Synthesizer service. Restart the platform after installing "
-        "the safe-synthesizer plugin, then verify that /apis/safe-synthesizer/v2/workspaces/default/jobs "
+        "Cannot connect to the {{nss_short_name}} service. Restart the platform after installing "
+        "the {{nss_plugin_slug}} plugin, then verify that /apis/{{nss_plugin_slug}}/v2/workspaces/default/jobs "
         "appears in the platform OpenAPI schema."
     ) from e
 ```
@@ -120,8 +120,12 @@ Before running jobs, set up column classification for accurate PII detection.
 # Use the pre-configured NVIDIA Build model provider
 # This provider is set up automatically during platform deployment
 provider_name = os.environ.get("NSS_CLASSIFY_MODEL_PROVIDER", "default/nvidia-build")
-provider_workspace, provider_id = provider_name.split("/", 1)
-client.inference.providers.retrieve(provider_id, workspace=provider_workspace)
+if "/" in provider_name:
+    provider_workspace, provider_id = provider_name.split("/", 1)
+    client.inference.providers.retrieve(provider_id, workspace=provider_workspace)
+else:
+    provider_id = provider_name
+    client.inference.providers.retrieve(provider_id)
 print(f"✅ Using model provider: {provider_name}")
 ```
 

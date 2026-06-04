@@ -1,6 +1,7 @@
 <!-- @nemo-nb: process -->
 <!-- @nemo-nb: skip-test -->
 <a id="host-local-development"></a>
+
 # Local and Subprocess Execution
 
 Run {{nss_short_name}} on your machine's GPU with `nemo safe-synthesizer run-local`. The public command is a local subprocess wrapper: the main NeMo CLI starts a separate Safe Synthesizer runtime Python, and that runtime executes the synthesis task module.

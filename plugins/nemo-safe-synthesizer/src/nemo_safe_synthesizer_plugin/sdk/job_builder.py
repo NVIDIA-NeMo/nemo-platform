@@ -10,7 +10,7 @@ import random
 import string
 import tempfile
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pandas as pd
 from nemo_platform import NeMoPlatform
@@ -156,10 +156,20 @@ class SafeSynthesizerJobBuilder:
     def _resolve_datasource(self, **kwargs: Any) -> None:
         if self._data_source_path is not None:
             return
+        df: pd.DataFrame
         if isinstance(self._data_source, pd.DataFrame):
             df = self._data_source
         elif isinstance(self._data_source, str | Path):
-            df = pd.read_csv(self._data_source, **kwargs)
+            data_source_path = Path(self._data_source)
+            match data_source_path.suffix.lower():
+                case ".parquet":
+                    df = cast(pd.DataFrame, pd.read_parquet(data_source_path, **kwargs))
+                case ".jsonl":
+                    df = cast(pd.DataFrame, pd.read_json(data_source_path, lines=True, **kwargs))
+                case ".json":
+                    df = cast(pd.DataFrame, pd.read_json(data_source_path, **kwargs))
+                case _:
+                    df = cast(pd.DataFrame, pd.read_csv(data_source_path, **kwargs))
         else:
             raise ValueError("Data source must be a pandas DataFrame or local data file path")
 

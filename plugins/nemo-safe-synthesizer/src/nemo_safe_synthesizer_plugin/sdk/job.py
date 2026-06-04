@@ -96,11 +96,12 @@ class SafeSynthesizerJob:
                         logging.getLogger("httpx").setLevel(logging_level)
             current_status_info = self.fetch_status_info()
             if current_status_info != previous_status_info:
-                print(
-                    f"Job status changed to status: '{current_status_info.status}',",
-                    f"status_details: {current_status_info.status_details},",
-                    f"error_details: {current_status_info.error_details}",
-                )
+                if verbose:
+                    print(
+                        f"Job status changed to status: '{current_status_info.status}',",
+                        f"status_details: {current_status_info.status_details},",
+                        f"error_details: {current_status_info.error_details}",
+                    )
                 previous_status_info = current_status_info
             time.sleep(poll_interval)
         if current_status_info.status in ["error", "cancelled"]:
