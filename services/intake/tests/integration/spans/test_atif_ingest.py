@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
-HISTORICAL_ATIF_STARTED_AT_GTE = "2026-05-01T00:00:00Z"
+_HISTORICAL_GTE = "2024-01-01T00:00:00Z"
 
 
 def test_atif_ingest_rejects_loose_steps_payload(client: TestClient):
@@ -315,7 +315,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
             "sort": "started_at",
         },
@@ -379,7 +379,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[evaluation_id]": evaluation_context["evaluation_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
         },
     )
@@ -396,7 +396,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
             "/apis/intake/v2/workspaces/default/spans",
             params={
                 f"filter[{field}]": value,
-                "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+                "filter[started_at][gte]": _HISTORICAL_GTE,
                 "page_size": 10,
             },
         )
@@ -503,7 +503,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[evaluation_id]": evaluation_context["evaluation_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 20,
             "sort": "started_at",
         },
@@ -536,7 +536,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[evaluation_run_id]": other_evaluation_run_id,
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
         },
     )
@@ -550,7 +550,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
         },
     )
@@ -627,7 +627,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 20,
             "sort": "started_at",
         },
@@ -663,7 +663,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": body["session_id"],
-            "filter[started_at][gte]": HISTORICAL_ATIF_STARTED_AT_GTE,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
         },
     )
