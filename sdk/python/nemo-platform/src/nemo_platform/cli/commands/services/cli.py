@@ -17,8 +17,11 @@ from nemo_platform.cli.commands.services._process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
+    PortConflict,
     acquire_lock,
+    check_port_available_for_start,
     compute_scope,
+    format_port_conflict,
     get_create_time,
     is_instance_alive,
     list_instances,
@@ -141,6 +144,21 @@ def _fail_already_running(scope: str, base_dir: Path | None) -> NoReturn:
     raise typer.Exit(1)
 
 
+def _fail_port_conflict(conflict: PortConflict) -> NoReturn:
+    """Print port conflict error on stderr and raise ``typer.Exit(1)``."""
+    lines = format_port_conflict(conflict)
+    typer.echo(lines[0], err=True)
+    for line in lines[1:]:
+        typer.echo(f"  {line}", err=True)
+    raise typer.Exit(1)
+
+
+def _ensure_port_available(host: str, port: int, scope: str, *, base_dir: Path | None) -> None:
+    conflict = check_port_available_for_start(host, port, scope, base_dir=base_dir)
+    if conflict is not None:
+        _fail_port_conflict(conflict)
+
+
 # ---------------------------------------------------------------------------
 # run (foreground)
 # ---------------------------------------------------------------------------
@@ -203,6 +221,8 @@ def run_services(
     scope = compute_scope(port=port, instance_name=instance)
     base_dir_str = _effective_base_dir()
     base_dir = Path(base_dir_str) if base_dir_str else None
+
+    _ensure_port_available(host, port, scope, base_dir=base_dir)
 
     try:
         lock_fd = acquire_lock(scope, base_dir=base_dir)
@@ -329,6 +349,8 @@ def start_services(
 
     if is_instance_alive(scope, base_dir=base_dir):
         _fail_already_running(scope, base_dir)
+
+    _ensure_port_available(host, port, scope, base_dir=base_dir)
 
     typer.echo("Starting platform services...")
     proc = start_background(
@@ -530,6 +552,8 @@ def restart_services(
     effective_port = port if port is not None else (prev.port if prev else _DEFAULT_PORT)
 
     _warn_bind_all(effective_host)
+
+    _ensure_port_available(effective_host, effective_port, scope, base_dir=base_dir)
 
     typer.echo("Starting platform services...")
     proc = start_background(

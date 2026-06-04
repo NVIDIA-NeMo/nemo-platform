@@ -12,6 +12,15 @@
   important: ':root body';
 }
 
+:root {
+  --font-sans:
+    Arial, 'Liberation Sans', 'DejaVu Sans', 'Noto Sans', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-weight-medium: 450;
+  --font-weight-semibold: 500;
+  --font-weight-bold: 600;
+}
+
 .nv-dark,
 .nv-dark body {
   color-scheme: dark;
