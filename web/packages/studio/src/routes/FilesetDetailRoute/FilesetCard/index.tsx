@@ -1,9 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  FilesetPurpose,
+  type FilesetFileOutput,
+  type FilesetOutput,
+} from '@nemo/sdk/generated/platform/schema';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
+import { ResizeablePanel } from '@studio/components/common/ResizeablePanel';
+import { DatasetSamplePanel } from '@studio/routes/FilesetDetailRoute/FilesetCard/DatasetSamplePanel';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
 import { FilesetMetadataPanel } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel';
 import { isRootReadme, parseReadme } from '@studio/routes/FilesetDetailRoute/utils';
@@ -48,35 +54,40 @@ export const FilesetCard: FC<FilesetCardProps> = ({
     [rawContent]
   );
 
+  const isDataset = fileset.purpose === FilesetPurpose.dataset;
+
   return (
-    <Grid
-      cols={{ base: 1, xl: 12 }}
-      gap="density-xl"
-      className="w-full items-start"
-      data-testid="fileset-card"
-    >
-      <GridItem
-        cols={{ lg: 8 }}
-        className="min-w-0 overflow-hidden rounded-lg border border-base bg-surface-raised p-density-xl"
-      >
-        <Stack gap="density-md">
-          {fileset.description && (
-            <Text kind="body/regular/md" data-testid="fileset-card-description">
-              {fileset.description}
-            </Text>
-          )}
-          <ReadmeBody
-            isFilesError={isFilesError}
-            readmePath={readmePath}
-            isContentLoading={isContentLoading}
-            isContentError={isContentError}
-            content={parsed?.content}
-          />
-        </Stack>
-      </GridItem>
-      <GridItem cols={{ lg: 4 }} className="min-w-0">
-        <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
-      </GridItem>
-    </Grid>
+    <div className="h-[calc(100vh-12rem)] min-h-96 w-full" data-testid="fileset-card">
+      <ResizeablePanel
+        defaultLeftWidth={700}
+        minLeftWidth={280}
+        leftClassName="p-density-xl overflow-y-auto"
+        rightClassName="overflow-y-auto"
+        slotLeft={
+          <Stack gap="density-md">
+            {fileset.description && (
+              <Text kind="body/regular/md" data-testid="fileset-card-description">
+                {fileset.description}
+              </Text>
+            )}
+            <ReadmeBody
+              isFilesError={isFilesError}
+              readmePath={readmePath}
+              isContentLoading={isContentLoading}
+              isContentError={isContentError}
+              content={parsed?.content}
+            />
+          </Stack>
+        }
+        slotRight={
+          <Stack gap="density-xl" className="h-full p-density-xl">
+            <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+            {isDataset && (
+              <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
+            )}
+          </Stack>
+        }
+      />
+    </div>
   );
 };
