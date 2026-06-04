@@ -29,6 +29,7 @@ import {
   gateDataDesignerRoutes,
   gateEvaluationBenchmarksRoutes,
   gateEvaluationRoutes,
+  gateExperimentRoutes,
   gateFilesetDetailsRoutes,
   gateGuardrailsRoutes,
   gateInferenceProviderRoutes,
@@ -162,6 +163,11 @@ const NewEvaluationMetricRoute = lazy(() =>
 const EvaluationResultDetailsRoute = lazy(() =>
   import('@studio/routes/evaluation/EvaluationResultDetailsRoute').then((module) => ({
     default: module.EvaluationResultDetailsRoute,
+  }))
+);
+const ExperimentRoute = lazy(() =>
+  import('@studio/routes/ExperimentRoute').then((module) => ({
+    default: module.ExperimentRoute,
   }))
 );
 const NoMatchRoute = lazy(() =>
@@ -604,6 +610,13 @@ export const routes: RouteObject[] = [
                       element: <EvaluationResultsRoute />,
                     },
                   ],
+                },
+              ]),
+              ...gateExperimentRoutes([
+                {
+                  path: ROUTES.workspace.experiment,
+                  element: <ExperimentRoute />,
+                  errorElement: <ErrorPanel title="Experiment" />,
                 },
               ]),
               ...gateCustomizationRoutes([

@@ -13,6 +13,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  EXPERIMENT_ENABLED,
   FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
@@ -70,6 +71,9 @@ export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateEvaluationBenchmarksRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(EVALUATOR_ENABLED && EVALUATOR_BENCHMARKS_ENABLED, routes);
+
+export const gateExperimentRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(EXPERIMENT_ENABLED, routes);
 
 export const gateSecretsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(SECRETS_ENABLED, routes);
@@ -305,6 +309,10 @@ export const getEvaluationResultDetailsRoute = (workspace: string, jobName: stri
     workspace,
     id: jobName,
   });
+};
+
+export const getExperimentRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.experiment, { workspace });
 };
 
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {

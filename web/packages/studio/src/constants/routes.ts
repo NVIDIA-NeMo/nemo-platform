@@ -68,6 +68,8 @@ export const ROUTES = {
     evaluationBenchmarkDetails: `/workspaces/:${P.workspace}/evaluation/benchmarks/:${P.benchmarkName}`,
     evaluationResults: `/workspaces/:${P.workspace}/evaluation/results`,
     evaluationResultDetails: `/workspaces/:${P.workspace}/evaluation/results/:${P.evaluationJobId}`,
+    /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
+    experiment: `/workspaces/:${P.workspace}/experiment`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
