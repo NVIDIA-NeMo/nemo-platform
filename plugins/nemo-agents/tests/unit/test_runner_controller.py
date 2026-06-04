@@ -27,6 +27,10 @@ from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
 
 
+def test_agent_deployment_controller_declares_entities_dependency() -> None:
+    assert AgentDeploymentController.dependencies == ["entities"]
+
+
 def _make_controller() -> tuple[AgentDeploymentController, Any]:
     """Build a controller with stubbed backend / entities / save.
 
