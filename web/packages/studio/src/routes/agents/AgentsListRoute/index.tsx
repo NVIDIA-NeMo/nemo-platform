@@ -21,7 +21,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { getAgentDetailRoute, getAgentsListRoute } from '@studio/routes/utils';
 import { pickDefaultModelName } from '@studio/util/buildSuggestedModelOptions';
-import { type FC, useState } from 'react';
+import { type FC, useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 
 const TAB_SEARCH_PARAM = 'tab';
@@ -102,7 +102,9 @@ export const AgentsListRoute: FC = () => {
     },
   });
 
-  const handleCreateExample = () => {
+  const [pendingCreate, setPendingCreate] = useState(false);
+
+  const doCreate = useCallback(() => {
     const modelName = pickDefaultModelName(modelsPage?.data ?? []);
     if (!modelName) {
       toast.error('No usable chat model in this workspace. Add a model before creating an agent.');
@@ -116,6 +118,21 @@ export const AgentsListRoute: FC = () => {
         config: buildExampleAgentConfig(modelName),
       },
     }).catch(() => {});
+  }, [modelsPage, workspace, createAgent, toast]);
+
+  // If models finished loading while a create was queued, execute it now.
+  useEffect(() => {
+    if (!pendingCreate || isLoadingModels) return;
+    setPendingCreate(false);
+    doCreate();
+  }, [pendingCreate, isLoadingModels, doCreate]);
+
+  const handleCreateExample = () => {
+    if (isLoadingModels) {
+      setPendingCreate(true);
+      return;
+    }
+    doCreate();
   };
 
   const handleOpenPanel = (agent: AgentTableRow) => {
@@ -138,7 +155,7 @@ export const AgentsListRoute: FC = () => {
           slotActions={
             <LoadingButton
               color="brand"
-              loading={isPending || isLoadingModels}
+              loading={isPending || (pendingCreate && isLoadingModels)}
               onClick={handleCreateExample}
             >
               Create Example Agent

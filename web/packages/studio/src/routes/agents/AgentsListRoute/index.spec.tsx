@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getAgentsListAgentsQueryKey } from '@nemo/sdk/generated/agents/api';
+import { getModelsListModelsQueryKey } from '@nemo/sdk/generated/platform/api';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { workspace1 } from '@studio/mocks/entity-store/projects';
@@ -12,8 +14,8 @@ import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
 const workspace = workspace1.workspace;
-const MODELS_URL = `${PLATFORM_BASE_URL}/apis/models/v2/workspaces/:workspace/models`;
-const CREATE_AGENT_URL = `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/:workspace/agents`;
+const MODELS_URL = `${PLATFORM_BASE_URL}${getModelsListModelsQueryKey(':workspace')[0]}`;
+const CREATE_AGENT_URL = `${PLATFORM_BASE_URL}${getAgentsListAgentsQueryKey(':workspace')[0]}`;
 
 const mockModels = (names: string[]) => {
   server.use(
@@ -43,11 +45,10 @@ const renderList = () =>
     ],
   });
 
-// The button stays in a loading/disabled state until the models query settles,
-// so "enabled" is the real signal that selection can proceed.
+// Click the button as soon as it's in the DOM; the handler queues the create if models
+// are still loading and executes once they settle.
 const clickCreateOnceReady = async (user: ReturnType<typeof userEvent.setup>) => {
   const button = await screen.findByRole('button', { name: 'Create Example Agent' });
-  await waitFor(() => expect(button).toBeEnabled());
   await user.click(button);
 };
 
@@ -142,7 +143,7 @@ describe('AgentsListRoute', () => {
     await clickCreateOnceReady(user);
 
     expect(await screen.findByText(/No usable chat model in this workspace/i)).toBeInTheDocument();
-    await waitFor(() => expect(createCalled).toBe(false));
+    expect(createCalled).toBe(false);
   });
 
   it('does not create an agent and surfaces an error when the workspace has no models', async () => {
@@ -161,6 +162,6 @@ describe('AgentsListRoute', () => {
     await clickCreateOnceReady(user);
 
     expect(await screen.findByText(/No usable chat model in this workspace/i)).toBeInTheDocument();
-    await waitFor(() => expect(createCalled).toBe(false));
+    expect(createCalled).toBe(false);
   });
 });

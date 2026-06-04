@@ -221,7 +221,7 @@ async def _collect(gen: AsyncIterator[str], n: int, timeout: float = 2.0) -> lis
         for _ in range(n):
             out.append(await asyncio.wait_for(gen.__anext__(), timeout))
     except (TimeoutError, StopAsyncIteration):
-        pass
+        pass  # expected exit: collected what we could within the limit
     finally:
         aclose = getattr(gen, "aclose", None)
         if aclose is not None:

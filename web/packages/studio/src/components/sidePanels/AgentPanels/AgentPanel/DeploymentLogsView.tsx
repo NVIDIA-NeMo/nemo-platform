@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { LogViewer } from '@nemo/common/src/components/LogViewer';
-import { useAgentsGetDeploymentLogs } from '@nemo/sdk/generated/agents/api';
+import {
+  getAgentsStreamDeploymentLogsQueryKey,
+  useAgentsGetDeploymentLogs,
+} from '@nemo/sdk/generated/agents/api';
 import type { AgentDeployment } from '@nemo/sdk/generated/agents/schema';
 import type { PlatformJobLog } from '@nemo/sdk/generated/platform/schema';
 import { Block, Select, Stack, Text } from '@nvidia/foundations-react-core';
@@ -112,7 +115,7 @@ const LogsForDeployment: FC<LogsForDeploymentProps> = ({ workspace, deploymentNa
   useEffect(() => {
     // Wait for the tail query to settle so the stream can resume from tailOffset.
     if (!deploymentName || isLoading) return;
-    const url = `${PLATFORM_BASE_URL}/apis/agents/v2/workspaces/${workspace}/deployments/${deploymentName}/logs/stream`;
+    const url = `${PLATFORM_BASE_URL}${getAgentsStreamDeploymentLogsQueryKey(workspace, deploymentName)[0]}`;
     const controller = new AbortController();
     void streamSse(url, {
       signal: controller.signal,
