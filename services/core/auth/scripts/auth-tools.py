@@ -1278,7 +1278,7 @@ def generate_docs(
         auth_path = project_root / auth_path
 
     if output_path is None:
-        output_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.md"
+        output_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.mdx"
     else:
         output_path = project_root / output_path
 
