@@ -168,7 +168,7 @@ target "automodel-platform-workspace" {
 }
 
 target "nmp-automodel-base-builder" {
-  target          = "nmp-automodel-base-builder"
+  target          = "nmp-automodel-base"
   context         = "."
   dockerfile      = "services/automodel/docker/Dockerfile.nmp-automodel-base"
   no-cache-filter = ["automodel-clone"]

@@ -87,7 +87,7 @@ Then every `unsloth run` passes `--venv "$UNSLOTH_VENV"`. The platform re-execs 
 
 Common steps then **branch by plugin pick**:
 
-```
+```text
 - [ ] export NEMO_BASE_URL (if user provided endpoint)
 - [ ] cd nemo-platform && uv run nemo auth login --unsigned-token --email <user email or admin@example.com>
 - [ ] uv run nemo jobs list-execution-profiles -f json — apply Plugin pick rules above
@@ -376,7 +376,7 @@ Field glossary, distillation/KD, and schema pointers: `references/hyperparameter
 
 Unsloth is single-GPU by design. The effective batch is the **product** of two fields, not a global/micro split:
 
-```
+```text
 effective_batch = batch.per_device_train_batch_size × batch.gradient_accumulation_steps
 ```
 

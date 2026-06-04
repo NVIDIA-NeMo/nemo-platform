@@ -47,3 +47,6 @@ USER 0
 COPY tests/smoke_gpu/ /smoke_test/
 RUN uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache --reinstall pytest && \
     ${VIRTUAL_ENV}/bin/pytest /smoke_test/ -m ${SMOKE_MARKER} -v
+
+# Default stage for untargeted builds (bake uses --target runtime; smoke-test is opt-in).
+FROM runtime

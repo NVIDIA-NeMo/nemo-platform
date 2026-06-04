@@ -2,7 +2,7 @@
 # nmp-automodel base - PyTorch NGC image + Automodel + CUDA extension wheels.
 #
 # Mirrors nmp/docker/Dockerfile.nmp-customizer customizer-automodel-base-builder.
-# Publish target: nmp-automodel-base-builder (tags as nmp-automodel-base).
+# Publish target: nmp-automodel-base (slim image; builder is build-only).
 
 ARG CAUSAL_CONV1D_WHEEL_IMAGE=local
 ARG MAMBA_SSM_WHEEL_IMAGE=local
@@ -90,3 +90,8 @@ ENV VIRTUAL_ENV=/opt/venv \
     HF_HUB_ENABLE_HF_TRANSFER=1
 ENV PATH="/bin:/opt/venv/bin:/root/.local/bin:$PATH"
 WORKDIR /opt
+
+# duplicated to preserve torchrun in published image
+RUN if [ -f /usr/local/bin/torchrun ]; then \
+    sed -i '1c\#!/opt/venv/bin/python' /usr/local/bin/torchrun; \
+    fi
