@@ -348,7 +348,7 @@ const messageMarkdownComponents: Components = {
     <ul className={cn('my-density-lg list-disc pl-density-lg', className)}>{children}</ul>
   ),
   ol: ({ children, className, start }) => (
-    <ol className={cn('my-density-lg list-decimal pl-density-lg', className)} start={start}>
+    <ol className={cn('my-density-lg list-decimal pl-density-2xl', className)} start={start}>
       {children}
     </ol>
   ),

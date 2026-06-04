@@ -73,6 +73,8 @@ describe('MessageContent', () => {
     expect(screen.getByTestId('chat-message-content-text')).toHaveClass('whitespace-normal');
     expect(orderedList.tagName).toBe('OL');
     expect(orderedList).toHaveAttribute('start', '2');
+    expect(orderedList).toHaveClass('list-decimal', 'pl-density-2xl');
+    expect(orderedList).not.toHaveClass('pl-density-lg');
 
     const listItems = within(orderedList).getAllByRole('listitem');
     expect(listItems).toHaveLength(2);
