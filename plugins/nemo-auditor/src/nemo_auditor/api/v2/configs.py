@@ -12,7 +12,8 @@ treats the ``data`` payload as opaque.
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from nemo_auditor.api.v2.schemas import CreateAuditConfigRequest, UpdateAuditConfigRequest
+from nemo_auditor.api.v2._filters import make_filter_dep
+from nemo_auditor.api.v2.schemas import ConfigFilter, CreateAuditConfigRequest, UpdateAuditConfigRequest
 from nemo_auditor.entities import AuditConfig
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
@@ -20,10 +21,13 @@ from nemo_platform_plugin.entity_client import (
     NemoEntityNotFoundError,
     get_entity_client,
 )
+from nemo_platform_plugin.jobs.openapi_utils import generate_openapi_extra_params
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+_config_filter_dep = make_filter_dep(ConfigFilter)
 
 
 @router.post("/configs", response_model=AuditConfig, status_code=201, tags=["Auditor Configs"])
@@ -54,15 +58,21 @@ async def create_config(
         raise HTTPException(status_code=500, detail="Failed to create audit config.") from exc
 
 
-@router.get("/configs", tags=["Auditor Configs"])
+@router.get(
+    "/configs",
+    tags=["Auditor Configs"],
+    openapi_extra=generate_openapi_extra_params(filter_schema=ConfigFilter),
+)
 async def list_configs(
     workspace: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort: str = Query(default="-created_at"),
+    filter: ConfigFilter = Depends(_config_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> dict:
-    """List audit configs in the workspace."""
+    """List audit configs in the workspace with pagination and filter support."""
+    filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
     try:
         result = await entity_client.list(
             AuditConfig,
@@ -70,6 +80,7 @@ async def list_configs(
             page=page,
             page_size=page_size,
             sort=sort,
+            filter_obj=filter_dict or None,
         )
     except Exception as exc:
         logger.exception("Failed to list audit configs in workspace '%s'", workspace)
@@ -78,6 +89,7 @@ async def list_configs(
         "data": [c.model_dump(mode="json") for c in result.data],
         "pagination": result.pagination.model_dump() if result.pagination else None,
         "sort": sort,
+        "filter": filter or None,
     }
 
 
