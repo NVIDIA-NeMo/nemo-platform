@@ -300,9 +300,6 @@ def main(
         except Exception as e:
             typer.echo(f"Warning: Failed to check/refresh token: {e}", err=True)
 
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
-
 
 attach_lazy_entries(main, _build_top_level_lazy_entries())
 

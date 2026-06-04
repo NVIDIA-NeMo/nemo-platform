@@ -121,6 +121,105 @@ def test_score_names_defaults_to_metric_type_value():
     assert output_names(metric) == [metric.type.value]
 
 
+@pytest.mark.parametrize(
+    "metric_class,params,ragas_score_name,sdk_score_name",
+    [
+        (
+            AgentGoalAccuracyMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "agent_goal_accuracy",
+            MetricType.AGENT_GOAL_ACCURACY.value,
+        ),
+        (AnswerAccuracyMetric, {"judge_model": MOCK_JUDGE_MODEL}, "nv_accuracy", MetricType.ANSWER_ACCURACY.value),
+        (
+            ContextEntityRecallMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "context_entity_recall",
+            MetricType.CONTEXT_ENTITY_RECALL.value,
+        ),
+        (
+            ContextPrecisionMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "context_precision",
+            MetricType.CONTEXT_PRECISION.value,
+        ),
+        (ContextRecallMetric, {"judge_model": MOCK_JUDGE_MODEL}, "context_recall", MetricType.CONTEXT_RECALL.value),
+        (
+            ContextRelevanceMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "nv_context_relevance",
+            MetricType.CONTEXT_RELEVANCE.value,
+        ),
+        (FaithfulnessMetric, {"judge_model": MOCK_JUDGE_MODEL}, "faithfulness", MetricType.FAITHFULNESS.value),
+        (
+            NoiseSensitivityMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "noise_sensitivity",
+            MetricType.NOISE_SENSITIVITY.value,
+        ),
+        (
+            ResponseGroundednessMetric,
+            {"judge_model": MOCK_JUDGE_MODEL},
+            "nv_response_groundedness",
+            MetricType.RESPONSE_GROUNDEDNESS.value,
+        ),
+        (
+            ResponseRelevancyMetric,
+            {"judge_model": MOCK_JUDGE_MODEL, "embeddings_model": MOCK_EMBEDDINGS_MODEL},
+            "answer_relevancy",
+            MetricType.RESPONSE_RELEVANCY.value,
+        ),
+        (ToolCallAccuracyMetric, {}, "tool_call_accuracy", MetricType.TOOL_CALL_ACCURACY.value),
+        (
+            TopicAdherenceMetric,
+            {"metric_mode": "f1", "judge_model": MOCK_JUDGE_MODEL},
+            "topic_adherence",
+            MetricType.TOPIC_ADHERENCE.value,
+        ),
+    ],
+)
+def test_align_scores_maps_all_wrapped_ragas_metric_names_to_output_spec(
+    metric_class,
+    params,
+    ragas_score_name,
+    sdk_score_name,
+):
+    metric = metric_class(**params)
+    aligned = metric._align_scores_to_output_spec({ragas_score_name: 0.75})
+    assert aligned == {sdk_score_name: 0.75}
+
+
+def test_align_scores_does_not_guess_unknown_ragas_metric_name():
+    metric = AnswerAccuracyMetric(judge_model=MOCK_JUDGE_MODEL)
+    aligned = metric._align_scores_to_output_spec({"unexpected_ragas_name": 0.75})
+    assert aligned == {"unexpected_ragas_name": 0.75}
+
+
+def test_nan_scores_use_declared_output_spec_names():
+    metric = ContextRelevanceMetric(judge_model=MOCK_JUDGE_MODEL)
+    nan_scores = metric._nan_scores_for_metrics([])
+    assert list(nan_scores) == ["context_relevance"]
+    assert math.isnan(nan_scores["context_relevance"])
+
+
+@pytest.mark.asyncio
+async def test_compute_scores_accepts_ragas_nv_metric_names():
+    metric = AnswerAccuracyMetric(judge_model=MOCK_JUDGE_MODEL)
+    mock_evaluate = MagicMock()
+    mock_evaluate.return_value.scores = [{"nv_accuracy": 0.75}]
+    with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
+        result = await compute_scores(
+            metric,
+            {
+                "user_input": "What is Python?",
+                "response": "A programming language.",
+                "reference": "Python is a high-level programming language.",
+            },
+            {},
+        )
+    assert _get_score_value(result, "answer_accuracy") == 0.75
+
+
 def test_llm_backed_ragas_metric_exposes_ignore_request_failure():
     schema_props = TopicAdherenceMetric.model_json_schema().get("properties", {})
     assert "ignore_request_failure" in schema_props
@@ -140,11 +239,11 @@ async def test_topic_adherence_metric():
     )
 
     mock_evaluate = MagicMock()
-    mock_evaluate.return_value.scores = [{"topic_relevance": 0.85}]
+    mock_evaluate.return_value.scores = [{"topic_adherence": 0.85}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
         assert isinstance(result, MetricResult)
-        assert _get_score_value(result, "topic_relevance") == 0.85
+        assert _get_score_value(result, "topic_adherence") == 0.85
 
 
 @pytest.mark.asyncio
@@ -377,7 +476,7 @@ def test_run_evaluate_returns_nan_on_empty_scores():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
     result = MagicMock()
     result.scores = []
     mock_evaluate = MagicMock(return_value=result)
@@ -385,7 +484,7 @@ def test_run_evaluate_returns_nan_on_empty_scores():
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
     assert mock_evaluate.call_count == 1
     assert all(call.kwargs["raise_exceptions"] is True for call in mock_evaluate.call_args_list)
 
@@ -394,13 +493,13 @@ def test_run_evaluate_strict_mode_returns_nan_on_json_parse_error():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
 
     mock_evaluate = MagicMock(side_effect=JSONDecodeError("invalid json", "", 0))
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
     assert mock_evaluate.call_count == 1
     assert all(call.kwargs["raise_exceptions"] is True for call in mock_evaluate.call_args_list)
 
@@ -409,15 +508,15 @@ def test_run_evaluate_returns_nan_on_invalid_scores():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
     result = MagicMock()
-    result.scores = [{"topic_relevance": float("nan")}]
+    result.scores = [{"topic_adherence": float("nan")}]
     mock_evaluate = MagicMock(return_value=result)
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
     assert mock_evaluate.call_count == 1
     assert all(call.kwargs["raise_exceptions"] is True for call in mock_evaluate.call_args_list)
 
@@ -426,34 +525,34 @@ def test_run_evaluate_handles_mixed_invalid_score_types_without_typeerror():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     result = MagicMock()
-    result.scores = [{"topic_relevance": True, "aux_score": 1, "aux_float": 0.25, "aux_string": "invalid"}]
+    result.scores = [{"topic_adherence": True, "aux_score": 1, "aux_float": 0.25, "aux_string": "invalid"}]
     mock_evaluate = MagicMock(return_value=result)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
     # Regression check: numeric-type validation should not raise and should produce NaN fallback.
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
 
 
 def test_run_evaluate_succeeds_on_valid_scores():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     success = MagicMock()
-    success.scores = [{"topic_relevance": 0.82}]
+    success.scores = [{"topic_adherence": 0.82}]
     mock_evaluate = MagicMock(return_value=success)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert scores["topic_relevance"] == pytest.approx(0.82)
-    assert math.isfinite(scores["topic_relevance"])
+    assert scores["topic_adherence"] == pytest.approx(0.82)
+    assert math.isfinite(scores["topic_adherence"])
     assert mock_evaluate.call_count == 1
     assert all(call.kwargs["raise_exceptions"] is True for call in mock_evaluate.call_args_list)
 
@@ -462,14 +561,14 @@ def test_run_evaluate_tolerant_mode_returns_nan_on_jsondecodeerror():
     metric = TopicAdherenceMetric(metric_mode="f1", judge_model=MOCK_JUDGE_MODEL)
 
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
     parse_error = JSONDecodeError("malformed JSON payload", "", 0)
     mock_evaluate = MagicMock(side_effect=parse_error)
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
     assert mock_evaluate.call_count == 1
 
 
@@ -483,7 +582,7 @@ def test_run_evaluate_inference_error_raises_when_ignore_flag_disabled():
     inference_error = httpx.ConnectError("connection failed", request=httpx.Request("POST", "https://example.com"))
     mock_evaluate = MagicMock(side_effect=inference_error)
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         with pytest.raises(httpx.ConnectError, match="connection failed"):
@@ -500,12 +599,12 @@ def test_run_evaluate_inference_error_returns_nan_when_ignore_flag_enabled():
     inference_error = httpx.ConnectError("connection failed", request=httpx.Request("POST", "https://example.com"))
     mock_evaluate = MagicMock(side_effect=inference_error)
     ragas_metric = MagicMock()
-    ragas_metric.name = "topic_relevance"
+    ragas_metric.name = "topic_adherence"
 
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         scores = metric._run_evaluate(dataset=MagicMock(), metrics=[ragas_metric])
 
-    assert math.isnan(scores["topic_relevance"])
+    assert math.isnan(scores["topic_adherence"])
 
 
 @pytest.mark.asyncio
@@ -612,19 +711,18 @@ async def test_metric_result_format():
     )
 
     mock_evaluate = MagicMock()
-    mock_evaluate.return_value.scores = [{"topic_relevance": 0.85, "another_score": 0.9}]
+    mock_evaluate.return_value.scores = [{"topic_adherence": 0.85, "another_score": 0.9}]
     with patch("nemo_evaluator_sdk.metrics.ragas.base.get_evaluate_function", return_value=mock_evaluate):
         result = await compute_scores(metric, MOCK_ITEM, MOCK_SAMPLE)
 
         # MetricResult.outputs is a list of MetricOutput.
         assert isinstance(result, MetricResult)
         assert isinstance(result.outputs, list)
-        assert len(result.outputs) == 2
+        assert len(result.outputs) == 1
 
         # Check that outputs have name and value.
         score_dict = {s.name: s.value for s in result.outputs}
-        assert score_dict["topic_relevance"] == 0.85
-        assert score_dict["another_score"] == 0.9
+        assert score_dict["topic_adherence"] == 0.85
 
 
 @pytest.mark.asyncio

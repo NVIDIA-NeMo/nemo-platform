@@ -20,10 +20,13 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   assistantName,
   placeholder,
   disabled = false,
+  showRunningIndicator,
+  attributes,
   className,
   initialMessages = [],
   onError,
   emptyState,
+  composerOverride,
 }) => {
   const { handleReset, runtime } = useAssistantChatRuntime({
     model,
@@ -48,7 +51,10 @@ export const AssistantChat: FC<AssistantChatProps> = ({
           disabled={disabled}
           placeholder={composerPlaceholder}
           onReset={handleReset}
+          showRunningIndicator={showRunningIndicator}
+          attributes={attributes}
           emptyState={emptyState}
+          composerOverride={composerOverride}
         />
       </div>
     </AssistantRuntimeProvider>

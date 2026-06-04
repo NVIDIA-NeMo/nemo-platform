@@ -23,6 +23,7 @@ export interface CustomAssistantRunContext {
   prompt: string;
   signal: AbortSignal;
   appendAssistantText: (text: string) => void;
+  prepareForUserInput: () => void;
   setAssistantText: (text: string) => void;
   isCurrentRun: () => boolean;
 }
@@ -84,19 +85,51 @@ export const useCustomAssistantChatRuntime = ({
       abortControllerRef.current = runController;
       const isCurrentRun = () => abortControllerRef.current === runController;
 
-      const assistantMessage = createTextMessage('assistant', '', RUNNING_STATUS);
-      setThreadMessages([...conversationMessages, assistantMessage]);
-      setIsRunning(true);
+      let assistantMessageId: string | null = null;
       let responseText = '';
 
+      const createAssistantMessage = () => {
+        const assistantMessage = createTextMessage('assistant', '', RUNNING_STATUS);
+        assistantMessageId = assistantMessage.id!;
+        responseText = '';
+        setThreadMessages([...messagesRef.current, assistantMessage]);
+      };
+
+      const ensureAssistantMessage = () => {
+        if (assistantMessageId) return;
+        createAssistantMessage();
+      };
+
+      createAssistantMessage();
+      setIsRunning(true);
+
       const setAssistantText = (text: string) => {
+        ensureAssistantMessage();
         responseText = text;
-        updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+        updateAssistantMessage(assistantMessageId!, responseText, RUNNING_STATUS);
       };
 
       const appendAssistantText = (text: string) => {
+        ensureAssistantMessage();
         responseText += text;
-        updateAssistantMessage(assistantMessage.id!, responseText, RUNNING_STATUS);
+        updateAssistantMessage(assistantMessageId!, responseText, RUNNING_STATUS);
+      };
+
+      const prepareForUserInput = () => {
+        if (!assistantMessageId) return;
+
+        const currentAssistantMessageId = assistantMessageId;
+        assistantMessageId = null;
+
+        if (!responseText) {
+          setThreadMessages(
+            messagesRef.current.filter((message) => message.id !== currentAssistantMessageId)
+          );
+          return;
+        }
+
+        updateAssistantMessage(currentAssistantMessageId, responseText, COMPLETE_STATUS);
+        responseText = '';
       };
 
       try {
@@ -104,28 +137,36 @@ export const useCustomAssistantChatRuntime = ({
           prompt,
           signal: runController.signal,
           appendAssistantText,
+          prepareForUserInput,
           setAssistantText,
           isCurrentRun,
         });
 
         if (runController.signal.aborted || !isCurrentRun()) {
-          updateAssistantMessage(assistantMessage.id!, responseText, CANCELLED_STATUS);
+          if (assistantMessageId) {
+            updateAssistantMessage(assistantMessageId, responseText, CANCELLED_STATUS);
+          }
           return;
         }
 
-        updateAssistantMessage(
-          assistantMessage.id!,
-          result?.text ?? responseText,
-          result?.status ?? COMPLETE_STATUS
-        );
+        if (assistantMessageId) {
+          updateAssistantMessage(
+            assistantMessageId,
+            result?.text ?? responseText,
+            result?.status ?? COMPLETE_STATUS
+          );
+        }
       } catch (error: unknown) {
         if (runController.signal.aborted || isAbortError(error)) {
-          updateAssistantMessage(assistantMessage.id!, responseText, CANCELLED_STATUS);
+          if (assistantMessageId) {
+            updateAssistantMessage(assistantMessageId, responseText, CANCELLED_STATUS);
+          }
           return;
         }
 
         const errorMessage = error instanceof Error ? error.message : 'Unknown Error';
-        updateAssistantMessage(assistantMessage.id!, errorMessage, {
+        ensureAssistantMessage();
+        updateAssistantMessage(assistantMessageId!, errorMessage, {
           type: 'incomplete',
           reason: 'error',
           error: errorMessage,
@@ -155,6 +196,17 @@ export const useCustomAssistantChatRuntime = ({
       await runCompletion(nextMessages);
     },
     [runCompletion, setThreadMessages]
+  );
+
+  const appendUserMessage = useCallback(
+    (message: string) => {
+      const text = message.trim();
+      if (!text) return;
+
+      const userMessage = createTextMessage('user', text);
+      setThreadMessages([...messagesRef.current, userMessage]);
+    },
+    [setThreadMessages]
   );
 
   const submitPrompt = useCallback(
@@ -201,6 +253,7 @@ export const useCustomAssistantChatRuntime = ({
   });
 
   return {
+    appendUserMessage,
     handleReset,
     isRunning,
     runtime,
