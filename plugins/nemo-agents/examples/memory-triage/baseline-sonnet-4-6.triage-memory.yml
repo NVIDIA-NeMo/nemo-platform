@@ -32,7 +32,15 @@ judges:
   - azure-anthropic-claude-sonnet-4-6
 
 basename: baseline-sonnet-4-6-user
-output_dir: plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines
+output: ./plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines
+# 'output' accepts the same path-or-fileset dispatch as 'corpus':
+#   ./relative/dir            local directory
+#   /absolute/dir             local directory
+#   ~/home/dir                local directory
+#   my-fileset                fileset (workspace from 'workspace' field)
+#   my-workspace/my-fileset   fileset (workspace inlined)
+# When omitted entirely, output falls back to the platform's persistent
+# volume at ctx.storage.persistent / 'triage-output'.
 
 # Defaults are fine for everything else (max_tokens=4096, timeout=180s,
 # igw_base_url resolved automatically via `nemo inference get-url`).

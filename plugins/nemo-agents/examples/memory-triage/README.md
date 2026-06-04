@@ -25,24 +25,33 @@ nemo agents triage-memory submit \
     --spec-file <spec>.yml --cluster <cluster-url>
 ```
 
-## Two corpus input shapes
+## Path or fileset on both input AND output
 
-The job's `corpus` field accepts either a local path or a NeMo Platform
-fileset reference. The dispatch is automatic:
+Both the `corpus` (input) and `output` (artifacts) fields accept either
+a local path or a NeMo Platform fileset reference. The dispatch is
+automatic and matches the platform's RFC LJ-3 convention:
 
-- Values starting with `.`, `/`, `..`, or `~` are treated as paths.
-- Bare names that exist on the local filesystem are treated as paths.
-- Anything else is resolved as a fileset reference. The fileset must
-  contain exactly one `.md` file; the job refuses ambiguity rather
-  than guessing.
+- Values starting with `.`, `/`, `..`, or `~` are local paths.
+- Bare names are fileset references (`fileset-name` resolves under the
+  `workspace` field; `workspace/fileset-name` inlines the workspace).
+- For `corpus`, the fileset must contain exactly one `.md` file; the
+  job refuses ambiguity rather than guessing.
+- For `output`, the fileset is auto-created on first use. On a
+  successful run both artifacts (`{basename}.json` and `{basename}.md`)
+  are uploaded; a failed run skips the upload so the fileset never
+  holds a half-finished pair.
+- When `output` is omitted entirely, artifacts land in
+  `ctx.storage.persistent / 'triage-output'` (the platform-injected
+  persistent volume), matching the EvaluateAgent convention.
 
-**Use a local path** when the corpus already lives on the machine the
-job runs on. See
+**Use local paths** when the corpus and output destination live on
+the machine the job runs on. See
 [`baseline-sonnet-4-6.triage-memory.yml`](baseline-sonnet-4-6.triage-memory.yml).
 
-**Use a fileset reference** when the job runs somewhere you can't
-easily scp to (omnistation, remote scheduler, etc.). Upload once with
-`nemo files upload`, then reference the fileset by name. See
+**Use filesets on both ends** when the job runs somewhere you can't
+easily scp to (omnistation, remote scheduler, etc.). The corpus is
+pulled from one fileset; the artifacts are pushed to another. No
+host-local directory is required at any point. See
 [`baseline-sonnet-4-6-fileset.triage-memory.yml`](baseline-sonnet-4-6-fileset.triage-memory.yml).
 
 ## Quickstart: laptop, local corpus
@@ -54,14 +63,13 @@ nemo agents triage-memory run \
     --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6.triage-memory.yml
 ```
 
-## Quickstart: omnistation, fileset corpus
+## Quickstart: omnistation, filesets on both ends
 
-Avoids needing to know the omnistation's filesystem layout. Done once
-from your laptop:
+Avoids needing to know the omnistation's filesystem layout entirely.
+From your laptop, upload the corpus to a fileset (auto-creates the
+fileset on first upload):
 
 ```bash
-# From your laptop, after platform is reachable:
-nemo files filesets create user-memory-corpus
 nemo files upload --fileset user-memory-corpus \
     ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
 ```
@@ -74,6 +82,14 @@ git fetch origin && git checkout memory-triage/md && git pull && uv sync
 
 nemo agents triage-memory run \
     --spec-file plugins/nemo-agents/examples/memory-triage/baseline-sonnet-4-6-fileset.triage-memory.yml
+```
+
+The spec points `output` at the `memory-triage-artifacts` fileset; the
+job auto-creates it and uploads `baseline-sonnet-4-6-user.{json,md}` on
+success. Back on the laptop, pull the artifacts when ready:
+
+```bash
+nemo files download --fileset memory-triage-artifacts --local-path ./artifacts
 ```
 
 ## Raw driver (debugging mode)
@@ -90,18 +106,19 @@ uv run --frozen python plugins/nemo-agents/examples/memory-triage/run_triage.py 
     --max-entries 3 --basename pilot
 ```
 
-The raw driver does **not** support fileset references. Use a local
-path or `nemo files download` to stage one first.
+The raw driver does **not** support fileset references on either end.
+Use local paths or `nemo files download` to stage inputs first, and
+`nemo files upload` to ship the artifacts afterward.
 
 ## Spec field reference
 
 | field | type | default | notes |
 | --- | --- | --- | --- |
 | `corpus` | str | required | Local path OR fileset reference (auto-dispatch). |
-| `workspace` | str | `"default"` | Fileset workspace. Ignored for local paths. |
+| `workspace` | str | `"default"` | Default workspace for unqualified fileset refs (both corpus and output). |
 | `judges` | list[str] | required | Judge model ids from `nemo models list`. First is reference. |
 | `store_name` | str | `"pi-hermes:memory"` | Recorded on every emitted proposal. |
-| `output_dir` | str | `"./triage-output"` | JSON + Markdown artifact destination. |
+| `output` | str? | `None` | Local path OR fileset reference for artifacts. None falls back to `ctx.storage.persistent / 'triage-output'`. |
 | `basename` | str | `"triage"` | Filename pair basename. |
 | `max_tokens` | int | `4096` | Per-judge budget. Floor: 512. Bump to 6144 for heavy reasoners. |
 | `max_entries` | int? | `None` | Cap entries processed (for pilot runs). |
