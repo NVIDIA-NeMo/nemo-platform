@@ -463,6 +463,39 @@ components:
       required:
       - format
       title: AgentRolloutSeedSource
+    AudioContext:
+      properties:
+        modality:
+          type: string
+          const: audio
+          title: Modality
+          default: audio
+        column_name:
+          type: string
+          title: Column Name
+        data_type:
+          $ref: '#/components/schemas/ModalityDataType'
+        audio_format:
+          $ref: '#/components/schemas/AudioFormat'
+      type: object
+      required:
+      - column_name
+      title: AudioContext
+      description: 'Configuration for providing audio context to multimodal models.
+
+
+        Audio context values are URL or base64 media values. Local paths may be
+
+        passed through only in explicit URL mode so colocated model endpoints can
+
+        read them directly. ``audio_format`` is consulted only for base64 sources.'
+    AudioFormat:
+      type: string
+      enum:
+      - mp3
+      - wav
+      title: AudioFormat
+      description: Supported audio formats for audio context.
     BaseModel:
       properties: {}
       type: object
@@ -956,7 +989,6 @@ components:
                 seed-dataset: '#/components/schemas/SeedDatasetColumnConfig'
                 validation: '#/components/schemas/ValidationColumnConfig'
           type: array
-          minItems: 1
           title: Columns
         model_configs:
           title: Model Configs
@@ -1003,15 +1035,16 @@ components:
         \ main configuration structure for NeMo Data Designer,\nwhich the engine consumes\
         \ when generating synthetic data.\n\nAttributes:\n    columns: Required list\
         \ of column configurations defining how each column\n        should be generated.\
-        \ Must contain at least one column.\n    model_configs: Optional list of model\
-        \ configurations for LLM-based generation.\n        Each model config defines\
-        \ the model, provider, and inference parameters.\n    tool_configs: Optional\
-        \ list of tool configurations for MCP tool calling.\n        Each tool config\
-        \ defines the provider, allowed tools, and execution limits.\n    seed_config:\
-        \ Optional seed dataset settings to use for generation.\n    constraints:\
-        \ Optional list of column constraints.\n    profilers: Optional list of column\
-        \ profilers for analyzing generated data characteristics.\n    processors:\
-        \ Optional list of processor configurations for post-generation transformations."
+        \ May be empty for seeded processor-only configs.\n    model_configs: Optional\
+        \ list of model configurations for LLM-based generation.\n        Each model\
+        \ config defines the model, provider, and inference parameters.\n    tool_configs:\
+        \ Optional list of tool configurations for MCP tool calling.\n        Each\
+        \ tool config defines the provider, allowed tools, and execution limits.\n\
+        \    seed_config: Optional seed dataset settings to use for generation.\n\
+        \    constraints: Optional list of column constraints.\n    profilers: Optional\
+        \ list of column profilers for analyzing generated data characteristics.\n\
+        \    processors: Optional list of processor configurations for post-generation\
+        \ transformations."
     DataDesignerJobConfig:
       properties:
         num_records:
@@ -1501,10 +1534,18 @@ components:
           description: Alias of the model to use for image generation
         multi_modal_context:
           title: Multi Modal Context
-          description: Optional list of ImageContext for multi-modal image-to-image
-            generation
+          description: Optional list of multimodal context inputs for image generation
           items:
-            $ref: '#/components/schemas/ImageContext'
+            oneOf:
+            - $ref: '#/components/schemas/ImageContext'
+            - $ref: '#/components/schemas/AudioContext'
+            - $ref: '#/components/schemas/VideoContext'
+            discriminator:
+              propertyName: modality
+              mapping:
+                audio: '#/components/schemas/AudioContext'
+                image: '#/components/schemas/ImageContext'
+                video: '#/components/schemas/VideoContext'
           type: array
       additionalProperties: false
       type: object
@@ -1520,17 +1561,18 @@ components:
         \ to\n        reference other columns (e.g., \"Generate an image of a {{ character_name\
         \ }}\").\n        Must be a valid Jinja2 template.\n    model_alias (required):\
         \ The model to use for image generation.\n    multi_modal_context: Optional\
-        \ list of image contexts for multi-modal generation.\n        Enables autoregressive\
-        \ multi-modal models to generate images based on image inputs.\n        Only\
-        \ works with autoregressive models that support image-to-image generation.\n\
-        \nInherited Attributes:\n    name (required): Unique name of the column to\
-        \ be generated.\n    drop: If True, generate this column but remove it from\
-        \ the final dataset."
+        \ list of multimodal contexts for generation.\n        Enables autoregressive\
+        \ multimodal models to generate images based on image, audio, or video inputs.\n\
+        \        Ignored by diffusion image-generation routes, which do not consume\
+        \ multimodal context.\n\nInherited Attributes:\n    name (required): Unique\
+        \ name of the column to be generated.\n    drop: If True, generate this column\
+        \ but remove it from the final dataset."
     ImageContext:
       properties:
         modality:
-          allOf:
-          - $ref: '#/components/schemas/Modality'
+          type: string
+          const: image
+          title: Modality
           default: image
         column_name:
           type: string
@@ -1687,9 +1729,18 @@ components:
           type: string
         multi_modal_context:
           title: Multi Modal Context
-          description: Optional list of ImageContext for vision model inputs
+          description: Optional list of multimodal context inputs
           items:
-            $ref: '#/components/schemas/ImageContext'
+            oneOf:
+            - $ref: '#/components/schemas/ImageContext'
+            - $ref: '#/components/schemas/AudioContext'
+            - $ref: '#/components/schemas/VideoContext'
+            discriminator:
+              propertyName: modality
+              mapping:
+                audio: '#/components/schemas/AudioContext'
+                image: '#/components/schemas/ImageContext'
+                video: '#/components/schemas/VideoContext'
           type: array
         tool_alias:
           title: Tool Alias
@@ -1734,12 +1785,12 @@ components:
         \ generated.\n    prompt (required): Prompt template for code generation (supports\
         \ Jinja2).\n    model_alias (required): Alias of the model configuration to\
         \ use.\n    system_prompt: Optional system prompt (supports Jinja2).\n   \
-        \ multi_modal_context: Optional image contexts for multi-modal generation.\n\
-        \    tool_alias: Optional tool configuration alias for MCP tool calls.\n \
-        \   with_trace: Specifies what trace information to capture in a `{column_name}__trace`\n\
-        \        column. Options are `TraceType.NONE` (default), `TraceType.LAST_MESSAGE`,\
-        \ or\n        `TraceType.ALL_MESSAGES`.\n    extract_reasoning_content: If\
-        \ True, creates a `{column_name}__reasoning_content`\n        column containing\
+        \ multi_modal_context: Optional multimodal contexts for generation.\n    tool_alias:\
+        \ Optional tool configuration alias for MCP tool calls.\n    with_trace: Specifies\
+        \ what trace information to capture in a `{column_name}__trace`\n        column.\
+        \ Options are `TraceType.NONE` (default), `TraceType.LAST_MESSAGE`, or\n \
+        \       `TraceType.ALL_MESSAGES`.\n    extract_reasoning_content: If True,\
+        \ creates a `{column_name}__reasoning_content`\n        column containing\
         \ the reasoning content from the final assistant response.\n    drop: If True,\
         \ generate this column but remove it from the final dataset."
     LLMJudgeColumnConfig:
@@ -1785,9 +1836,18 @@ components:
           type: string
         multi_modal_context:
           title: Multi Modal Context
-          description: Optional list of ImageContext for vision model inputs
+          description: Optional list of multimodal context inputs
           items:
-            $ref: '#/components/schemas/ImageContext'
+            oneOf:
+            - $ref: '#/components/schemas/ImageContext'
+            - $ref: '#/components/schemas/AudioContext'
+            - $ref: '#/components/schemas/VideoContext'
+            discriminator:
+              propertyName: modality
+              mapping:
+                audio: '#/components/schemas/AudioContext'
+                image: '#/components/schemas/ImageContext'
+                video: '#/components/schemas/VideoContext'
           type: array
         tool_alias:
           title: Tool Alias
@@ -1833,10 +1893,10 @@ components:
         \ column to be generated.\n    prompt (required): Prompt template for the\
         \ judge evaluation (supports Jinja2).\n    model_alias (required): Alias of\
         \ the model configuration to use.\n    system_prompt: Optional system prompt\
-        \ (supports Jinja2).\n    multi_modal_context: Optional image contexts for\
-        \ multi-modal generation.\n    tool_alias: Optional tool configuration alias\
-        \ for MCP tool calls.\n    with_trace: Specifies what trace information to\
-        \ capture in a `{column_name}__trace`\n        column. Options are `TraceType.NONE`\
+        \ (supports Jinja2).\n    multi_modal_context: Optional multimodal contexts\
+        \ for generation.\n    tool_alias: Optional tool configuration alias for MCP\
+        \ tool calls.\n    with_trace: Specifies what trace information to capture\
+        \ in a `{column_name}__trace`\n        column. Options are `TraceType.NONE`\
         \ (default), `TraceType.LAST_MESSAGE`, or\n        `TraceType.ALL_MESSAGES`.\n\
         \    extract_reasoning_content: If True, creates a `{column_name}__reasoning_content`\n\
         \        column containing the reasoning content from the final assistant\
@@ -1885,9 +1945,18 @@ components:
           type: string
         multi_modal_context:
           title: Multi Modal Context
-          description: Optional list of ImageContext for vision model inputs
+          description: Optional list of multimodal context inputs
           items:
-            $ref: '#/components/schemas/ImageContext'
+            oneOf:
+            - $ref: '#/components/schemas/ImageContext'
+            - $ref: '#/components/schemas/AudioContext'
+            - $ref: '#/components/schemas/VideoContext'
+            discriminator:
+              propertyName: modality
+              mapping:
+                audio: '#/components/schemas/AudioContext'
+                image: '#/components/schemas/ImageContext'
+                video: '#/components/schemas/VideoContext'
           type: array
         tool_alias:
           title: Tool Alias
@@ -1933,9 +2002,9 @@ components:
         \ be generated.\n    prompt (required): Prompt template for structured generation\
         \ (supports Jinja2).\n    model_alias (required): Alias of the model configuration\
         \ to use.\n    system_prompt: Optional system prompt (supports Jinja2).\n\
-        \    multi_modal_context: Optional image contexts for multi-modal generation.\n\
-        \    tool_alias: Optional tool configuration alias for MCP tool calls.\n \
-        \   with_trace: Specifies what trace information to capture in a `{column_name}__trace`\n\
+        \    multi_modal_context: Optional multimodal contexts for generation.\n \
+        \   tool_alias: Optional tool configuration alias for MCP tool calls.\n  \
+        \  with_trace: Specifies what trace information to capture in a `{column_name}__trace`\n\
         \        column. Options are `TraceType.NONE` (default), `TraceType.LAST_MESSAGE`,\
         \ or\n        `TraceType.ALL_MESSAGES`.\n    extract_reasoning_content: If\
         \ True, creates a `{column_name}__reasoning_content`\n        column containing\
@@ -1984,9 +2053,18 @@ components:
           type: string
         multi_modal_context:
           title: Multi Modal Context
-          description: Optional list of ImageContext for vision model inputs
+          description: Optional list of multimodal context inputs
           items:
-            $ref: '#/components/schemas/ImageContext'
+            oneOf:
+            - $ref: '#/components/schemas/ImageContext'
+            - $ref: '#/components/schemas/AudioContext'
+            - $ref: '#/components/schemas/VideoContext'
+            discriminator:
+              propertyName: modality
+              mapping:
+                audio: '#/components/schemas/AudioContext'
+                image: '#/components/schemas/ImageContext'
+                video: '#/components/schemas/VideoContext'
           type: array
         tool_alias:
           title: Tool Alias
@@ -2027,10 +2105,10 @@ components:
         \ prompt. Instead,\n        use the appropriate column type for the output\
         \ you want to generate - e.g.,\n        `LLMStructuredColumnConfig` for structured\
         \ output, `LLMCodeColumnConfig` for code.\n    multi_modal_context: Optional\
-        \ list of image contexts for multi-modal generation.\n        Enables vision-capable\
-        \ models to generate text based on image inputs.\n    tool_alias: Optional\
-        \ alias of the tool configuration to use for MCP tool calls.\n        Must\
-        \ match a tool alias defined when initializing the DataDesignerConfigBuilder.\n\
+        \ list of multimodal contexts for generation.\n        Enables capable models\
+        \ to generate text based on image, audio, or video inputs.\n    tool_alias:\
+        \ Optional alias of the tool configuration to use for MCP tool calls.\n  \
+        \      Must match a tool alias defined when initializing the DataDesignerConfigBuilder.\n\
         \        When provided, the model may call permitted tools during generation.\n\
         \    with_trace: Specifies what trace information to capture in a `{column_name}__trace`\n\
         \        column. Options are:\n        - `TraceType.NONE` (default): No trace\
@@ -2128,12 +2206,6 @@ components:
       description: "Parameters for manual distribution sampling.\n\nAttributes:\n\
         \    values: List of possible values to sample from.\n    weights: Optional\
         \ list of weights for each value. If not provided, all values have equal probability."
-    Modality:
-      type: string
-      enum:
-      - image
-      title: Modality
-      description: Supported modality types for multimodal model data.
     ModalityDataType:
       type: string
       enum:
@@ -3609,3 +3681,37 @@ components:
       - local_callable
       - remote
       title: ValidatorType
+    VideoContext:
+      properties:
+        modality:
+          type: string
+          const: video
+          title: Modality
+          default: video
+        column_name:
+          type: string
+          title: Column Name
+        data_type:
+          $ref: '#/components/schemas/ModalityDataType'
+        video_format:
+          $ref: '#/components/schemas/VideoFormat'
+      type: object
+      required:
+      - column_name
+      title: VideoContext
+      description: 'Configuration for providing video context to multimodal models.
+
+
+        Video context values are URL or base64 media values. Local paths may be
+
+        passed through only in explicit URL mode so colocated model endpoints can
+
+        read them directly. ``video_format`` is consulted only for base64 sources.'
+    VideoFormat:
+      type: string
+      enum:
+      - mp4
+      - mov
+      - webm
+      title: VideoFormat
+      description: Supported video formats for video context.
