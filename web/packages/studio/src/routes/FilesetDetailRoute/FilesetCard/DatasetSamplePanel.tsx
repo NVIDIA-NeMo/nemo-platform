@@ -112,16 +112,18 @@ export const DatasetSamplePanel: FC<DatasetSamplePanelProps> = ({
         </Flex>
       </Flex>
 
-      <div className="min-h-0 flex-1 overflow-auto">
-        <FileSamplingSnippet
-          workspace={workspace}
-          filesetName={filesetName}
-          filePath={activeFilePath}
-          maxSampleRows={maxRows}
-          sampleMethod={sampleMethod}
-          onSampledContentChange={NOOP_ON_SAMPLED_CONTENT_CHANGE}
-          displayMode={displayMode}
-        />
+      <div className="min-h-0 flex-1">
+        <Flex className="h-full">
+          <FileSamplingSnippet
+            workspace={workspace}
+            filesetName={filesetName}
+            filePath={activeFilePath}
+            maxSampleRows={maxRows}
+            sampleMethod={sampleMethod}
+            onSampledContentChange={NOOP_ON_SAMPLED_CONTENT_CHANGE}
+            displayMode={displayMode}
+          />
+        </Flex>
       </div>
     </Stack>
   );
