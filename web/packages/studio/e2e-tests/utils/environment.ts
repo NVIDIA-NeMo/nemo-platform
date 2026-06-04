@@ -17,7 +17,7 @@ export const {
  * - In CI with ephemeral deployments: Uses VSERVICE_URL_STUDIO_UI from the deployment job
  * - Local development: Falls back to local development server
  */
-export const STUDIO_URL = process.env.VSERVICE_URL_STUDIO_UI || 'http://localhost:8080/studio/';
+export const STUDIO_URL = process.env.VSERVICE_URL_STUDIO_UI || 'https://localhost:5173';
 
 /**
  * User ID. This can be set when running tests locally; if populated, the namespace for test resources

@@ -1016,6 +1016,7 @@ resources:
       ingest:
         models:
           evaluation_context: EvaluationContext
+          experiment_context: ExperimentContext
         subresources:
           atif:
             models:

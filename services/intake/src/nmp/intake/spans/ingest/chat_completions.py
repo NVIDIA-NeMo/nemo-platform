@@ -17,9 +17,14 @@ from enum import Enum
 from typing import Annotated, Any, Self
 
 from fastapi import APIRouter, Depends, status
+from nmp.common.entities.client import EntityClient
+from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus, TraceBatch
-from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
+from nmp.intake.spans.ingest.evaluation_context import (
+    ExperimentContextIngestModel,
+)
+from nmp.intake.spans.ingest.experiment_context_validation import validate_experiment_context
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from nmp.intake.spans.storage import json_dumps_preserve, stable_id, utc_now
@@ -27,6 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
+EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 
 SOURCE_FORMAT = "chat_completions"
 NonNegativeFloat = Annotated[float, Field(ge=0)]
@@ -91,7 +97,7 @@ class CapturedChatCompletionsResponse(BaseModel):
         return self
 
 
-class ChatCompletionsIngestRequest(BaseModel):
+class ChatCompletionsIngestRequest(ExperimentContextIngestModel):
     model_config = ConfigDict(extra="forbid")
 
     request: CapturedChatCompletionsRequest
@@ -108,7 +114,6 @@ class ChatCompletionsIngestRequest(BaseModel):
             "chat-completions calls; use session_id to group related calls."
         ),
     )
-    evaluation_context: EvaluationContext | None = None
     provider: str | None = None
     cost_usd: NonNegativeFloat | None = Field(
         default=None,
@@ -146,7 +151,13 @@ async def ingest_chat_completion(
     workspace: str,
     body: ChatCompletionsIngestRequest,
     service: SpansServiceDep,
+    entity_client: EntityClientDep,
 ) -> ChatCompletionsIngestResponse:
+    await validate_experiment_context(
+        workspace=workspace,
+        context=body.resolved_evaluation_context(),
+        entity_client=entity_client,
+    )
     ingested_at = utc_now()
     span = _chat_completion_to_span(workspace=workspace, body=body, ingested_at=ingested_at)
     await service.ingest_batch(TraceBatch(spans=[span]))
@@ -217,7 +228,7 @@ def _build_attribute_bags(
         error_type = _as_str(error.get("type")) or _as_str(error.get("code"))
         error_message = _as_str(error.get("message"))
 
-    evaluation_context = body.evaluation_context
+    evaluation_context = body.resolved_evaluation_context()
     semantic = SpanSemanticAttributes(
         model=_as_str(response.get("model")) or _as_str(request.get("model")),
         provider=body.provider or _infer_provider(response),
@@ -242,13 +253,13 @@ def _build_attribute_bags(
         cost_output_usd=_decimal_or_none(body.cost_output_usd),
     )
     attribute_bags = semantic.to_bags()
+    if evaluation_context is not None and evaluation_context.metadata:
+        attribute_bags.put_json("experiment.metadata", evaluation_context.metadata)
     for key, value in body.cost_details.items():
         bag_key = f"cost.{key}"
         if bag_key in attribute_bags.number:
             continue
         attribute_bags.put_unhandled_source_attribute(f"llm.cost.{key}", value)
-    if evaluation_context is not None:
-        attribute_bags.put_json("evaluation.metadata", evaluation_context.metadata)
     return attribute_bags
 
 

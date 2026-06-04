@@ -18,6 +18,7 @@
 from typing import Dict, List, Optional
 from datetime import datetime
 
+from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
 from .evaluator_aggregate import EvaluatorAggregate
 
@@ -41,6 +42,9 @@ class ExperimentResponse(BaseModel):
 
     aggregate_scores: Optional[Dict[str, EvaluatorAggregate]] = None
 
+    cost_usd: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
+
     created_at: Optional[datetime] = None
 
     dataset_version: Optional[str] = None
@@ -55,14 +59,26 @@ class ExperimentResponse(BaseModel):
     Soft reference, not validated.
     """
 
+    latency_ms: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
+
     metadata: Optional[Dict[str, object]] = None
 
     model_names: Optional[List[str]] = None
+    """Distinct model names observed across ingested sessions for this experiment."""
 
     run_count: Optional[int] = None
+    """
+    Number of distinct ingested experiment sessions; one session is treated as one
+    run.
+    """
 
     source_link: Optional[str] = None
 
     summary: Optional[str] = None
 
     updated_at: Optional[datetime] = None
+
+    if not PYDANTIC_V1:
+        # allow fields with a `model_` prefix
+        model_config = ConfigDict(protected_namespaces=tuple())

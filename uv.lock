@@ -3912,6 +3912,12 @@ dependencies = [
     { name = "nemoguardrails", extra = ["tracing"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 
+[package.optional-dependencies]
+bench = [
+    { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'darwin' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128')" },
+    { name = "pyyaml", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform != 'darwin' and sys_platform != 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'darwin' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'darwin' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-12-nemoplatform-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128') or (sys_platform == 'linux' and extra == 'extra-12-nemoplatform-cu128' and extra == 'extra-20-nmp-safe-synthesizer-cpu') or (sys_platform == 'linux' and extra == 'extra-20-nmp-safe-synthesizer-cpu' and extra == 'extra-20-nmp-safe-synthesizer-cu128')" },
+]
+
 [package.dev-dependencies]
 dev = [
     { name = "pytest", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -3923,10 +3929,13 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "dataclasses-json", specifier = ">=0.6.7" },
+    { name = "httpx", marker = "extra == 'bench'", specifier = ">=0.27" },
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nemoguardrails", extras = ["tracing"], specifier = "==0.21.0" },
+    { name = "pyyaml", marker = "extra == 'bench'", specifier = ">=6.0" },
 ]
+provides-extras = ["bench"]
 
 [package.metadata.requires-dev]
 dev = [

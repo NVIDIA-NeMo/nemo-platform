@@ -1,9 +1,0 @@
-# Studio Common Package Rules and Jobs
-
-# Rules for common changes
-.rules:common-changes: &rules_common_changes
-  rules:
-    - changes:
-        paths:
-          - web/packages/common/**/*
-          - web/packages/sdk/**/*
