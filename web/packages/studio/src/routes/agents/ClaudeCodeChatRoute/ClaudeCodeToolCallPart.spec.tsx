@@ -67,6 +67,21 @@ const expectSubtleToolBlock = (subtleBlock: HTMLElement) => {
   expect(screen.getByTestId('claude-code-tool-call-subtle-icon')).toBeInTheDocument();
 };
 
+const expectLineChangeColors = ({
+  additions,
+  deletions,
+}: {
+  additions: string;
+  deletions: string;
+}) => {
+  for (const addition of screen.getAllByText(additions)) {
+    expect(addition).toHaveClass('text-feedback-success');
+  }
+  for (const deletion of screen.getAllByText(deletions)) {
+    expect(deletion).toHaveClass('text-feedback-danger');
+  }
+};
+
 describe('ClaudeCodeToolCallPart', () => {
   it.each(subtleToolCases)(
     'renders $toolName as subtle text',
@@ -176,6 +191,7 @@ describe('ClaudeCodeToolCallPart', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText('+2')).toHaveLength(2);
     expect(screen.getAllByText('-0')).toHaveLength(2);
+    expectLineChangeColors({ additions: '+2', deletions: '-0' });
     expect(details).not.toHaveAttribute('open');
 
     await user.click(screen.getByText('Review'));
@@ -215,6 +231,7 @@ describe('ClaudeCodeToolCallPart', () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText('+1')).toHaveLength(2);
     expect(screen.getAllByText('-1')).toHaveLength(2);
+    expectLineChangeColors({ additions: '+1', deletions: '-1' });
   });
 
   it('renders known non-file-change tool calls as subtle text by default', () => {

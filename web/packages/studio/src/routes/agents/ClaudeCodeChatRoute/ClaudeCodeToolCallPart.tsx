@@ -53,6 +53,8 @@ const TOOL_ICONS: Record<string, LucideIcon> = {
 };
 
 const CODE_BLOCK_SURFACE_CLASS = 'bg-gray-050 dark:bg-gray-900';
+const FILE_CHANGE_ADDITION_CLASS = 'text-feedback-success';
+const FILE_CHANGE_DELETION_CLASS = 'text-feedback-danger';
 const SUBTLE_MESSAGE_MAX_LENGTH = 160;
 
 const SUBTLE_TOOL_ICONS: Record<string, LucideIcon> = {
@@ -412,8 +414,8 @@ const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
               {summary.action} 1 file
             </Text>
             <Text kind="body/regular/sm" className="block tabular-nums">
-              <span className="text-success">+{summary.additions}</span>{' '}
-              <span className="text-danger">-{summary.deletions}</span>
+              <span className={FILE_CHANGE_ADDITION_CLASS}>+{summary.additions}</span>{' '}
+              <span className={FILE_CHANGE_DELETION_CLASS}>-{summary.deletions}</span>
             </Text>
           </div>
           <span className="flex shrink-0 items-center gap-density-xs rounded border border-base px-density-sm py-density-xs text-secondary group-open/write:bg-surface-sunken">
@@ -438,8 +440,8 @@ const FileChangeToolCallCard = ({ summary }: FileChangeToolCallCardProps) => {
             {summary.path}
           </Text>
           <Text kind="body/regular/sm" className="shrink-0 tabular-nums">
-            <span className="text-success">+{summary.additions}</span>{' '}
-            <span className="text-danger">-{summary.deletions}</span>
+            <span className={FILE_CHANGE_ADDITION_CLASS}>+{summary.additions}</span>{' '}
+            <span className={FILE_CHANGE_DELETION_CLASS}>-{summary.deletions}</span>
           </Text>
         </div>
       </div>
