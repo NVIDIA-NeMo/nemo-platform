@@ -5,11 +5,13 @@ import {
   ActionBarPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
+  ThreadPrimitive,
   type ReasoningMessagePartComponent,
   type TextMessagePartComponent,
   type ToolCallMessagePartComponent,
-  ThreadPrimitive,
 } from '@assistant-ui/react';
+import { ChatEmptyState } from '@nemo/common/src/components/Chat/ChatEmptyState';
+import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import {
   Banner,
   Button,
@@ -22,9 +24,7 @@ import {
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
 import { Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
-
-import { ChatEmptyState } from '../Chat/ChatEmptyState';
-import { MessageContent } from '../Chat/MessageContent';
+import { useCallback, useMemo } from 'react';
 
 interface AssistantChatThreadProps {
   disabled?: boolean;
@@ -267,18 +267,33 @@ export const AssistantChatThread = ({
   toolCallPartComponent,
   viewportClassName,
 }: AssistantChatThreadProps) => {
-  const AssistantMessageWithReasoningPart = () => (
-    <AssistantMessage
-      hideAssistantMessageActions={hideAssistantMessageActions}
-      reasoningPartComponent={reasoningPartComponent}
-      toolCallPartComponent={toolCallPartComponent}
-    />
+  const AssistantMessageWithReasoningPart = useCallback(
+    () => (
+      <AssistantMessage
+        hideAssistantMessageActions={hideAssistantMessageActions}
+        reasoningPartComponent={reasoningPartComponent}
+        toolCallPartComponent={toolCallPartComponent}
+      />
+    ),
+    [hideAssistantMessageActions, reasoningPartComponent, toolCallPartComponent]
   );
-  const UserMessageWithReasoningPart = () => (
-    <UserMessage
-      reasoningPartComponent={reasoningPartComponent}
-      toolCallPartComponent={toolCallPartComponent}
-    />
+  const UserMessageWithReasoningPart = useCallback(
+    () => (
+      <UserMessage
+        reasoningPartComponent={reasoningPartComponent}
+        toolCallPartComponent={toolCallPartComponent}
+      />
+    ),
+    [reasoningPartComponent, toolCallPartComponent]
+  );
+  const messageComponents = useMemo(
+    () => ({
+      AssistantMessage: AssistantMessageWithReasoningPart,
+      UserMessage: UserMessageWithReasoningPart,
+      UserEditComposer,
+      SystemMessage: AssistantMessageWithReasoningPart,
+    }),
+    [AssistantMessageWithReasoningPart, UserMessageWithReasoningPart]
   );
 
   return (
@@ -294,14 +309,7 @@ export const AssistantChatThread = ({
               slotSubheading={emptyState?.slotSubheading}
             />
           </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages
-            components={{
-              AssistantMessage: AssistantMessageWithReasoningPart,
-              UserMessage: UserMessageWithReasoningPart,
-              UserEditComposer,
-              SystemMessage: AssistantMessageWithReasoningPart,
-            }}
-          />
+          <ThreadPrimitive.Messages components={messageComponents} />
         </Stack>
         <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
           Scroll to bottom

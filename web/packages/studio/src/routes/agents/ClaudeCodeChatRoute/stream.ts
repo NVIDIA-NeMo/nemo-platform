@@ -28,6 +28,7 @@ interface ClaudeCodeContentPart {
 }
 
 interface ClaudeCodeMessage {
+  id?: unknown;
   content?: unknown;
 }
 
@@ -76,6 +77,9 @@ export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistan
   if (!isRecord(event) || event.type !== 'assistant') return [];
 
   const parts = getContentParts(event);
+  const message = event.message;
+  const messageId =
+    isRecord(message) && typeof message.id === 'string' && message.id ? message.id : 'message';
   return parts
     .map((part, index): ThreadAssistantMessagePart | undefined => {
       if (part.type === 'thinking' && typeof part.thinking === 'string') {
@@ -92,7 +96,7 @@ export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistan
         const toolCallId =
           typeof part.id === 'string' && part.id
             ? part.id
-            : `claude-code-tool-${toolName}-${index}`;
+            : `claude-code-tool-${messageId}-${toolName}-${index}`;
         return createClaudeCodeToolCallPart({
           input: part.input,
           toolCallId,

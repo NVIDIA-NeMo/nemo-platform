@@ -48,6 +48,17 @@ describe('Claude Code utilities', () => {
             { type: 'tool_use', name: 'ToolSearch', input: { query: 'read' } },
           ],
         },
+        {
+          kind: 'assistant',
+          parts: [
+            { type: 'thinking', thinking: 'checking again' },
+            { type: 'text', text: 'I found another route.' },
+            { type: 'tool_use', name: 'AskUserQuestion', input: { question: 'Continue?' } },
+            { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
+            { type: 'tool_use', name: 'Grep', input: { pattern: 'TODO' } },
+            { type: 'tool_use', name: 'Read', input: { file_path: 'package.json' } },
+          ],
+        },
       ],
     };
 
@@ -65,10 +76,28 @@ describe('Claude Code utilities', () => {
           { type: 'text', text: 'I found the route.' },
           {
             type: 'tool-call',
-            toolCallId: 'claude-history-tool-Read-5',
+            toolCallId:
+              'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1-Read-5',
             toolName: 'Read',
             args: { file_path: 'README.md' },
             argsText: '{"file_path":"README.md"}',
+          },
+        ],
+        status: { type: 'complete', reason: 'stop' },
+      },
+      {
+        id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3',
+        role: 'assistant',
+        content: [
+          { type: 'reasoning', text: 'checking again' },
+          { type: 'text', text: 'I found another route.' },
+          {
+            type: 'tool-call',
+            toolCallId:
+              'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3-Read-5',
+            toolName: 'Read',
+            args: { file_path: 'package.json' },
+            argsText: '{"file_path":"package.json"}',
           },
         ],
         status: { type: 'complete', reason: 'stop' },

@@ -100,4 +100,30 @@ describe('DashboardLandingRoute', () => {
       `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
     );
   });
+
+  it('submits the landing composer when Enter is pressed', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    await user.type(await screen.findByRole('textbox', { name: 'Message Claude' }), 'Check repo');
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
+      `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
+    );
+  });
+
+  it('keeps Shift Enter as a new line in the landing composer', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    const composer = await screen.findByRole('textbox', { name: 'Message Claude' });
+
+    await user.type(composer, 'Line one');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    await user.type(composer, 'Line two');
+
+    expect(screen.queryByTestId(CHAT_ROUTE_TEST_ID)).not.toBeInTheDocument();
+    expect(composer).toHaveValue('Line one\nLine two');
+  });
 });

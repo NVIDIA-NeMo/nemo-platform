@@ -14,6 +14,7 @@ import {
   type ChangeEvent,
   type FC,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useState,
@@ -75,12 +76,23 @@ const LandingComposer = ({
   onChange: (value: string) => void;
   onSubmit: (prompt: string) => void;
 }) => {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitInput = () => {
     const prompt = input.trim();
     if (!prompt) return;
 
     onSubmit(prompt);
+  };
+
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitInput();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+
+    event.preventDefault();
+    submitInput();
   };
 
   return (
@@ -99,6 +111,7 @@ const LandingComposer = ({
         attributes={{
           TextAreaElement: {
             className: 'focus-visible:outline-none',
+            onKeyDown: handleKeyDown,
           },
         }}
       />

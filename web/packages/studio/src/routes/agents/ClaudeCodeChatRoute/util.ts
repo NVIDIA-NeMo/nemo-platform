@@ -29,7 +29,8 @@ export const getSelectedClaudeCodeSessionId = (search: string): string | undefin
 
 const getAssistantMessagePart = (
   part: ClaudeCodeAssistantHistoryPart,
-  index: number
+  index: number,
+  assistantMessageId: string
 ): ThreadAssistantMessagePart | undefined => {
   if (part.type === 'thinking') return { type: 'reasoning', text: part.thinking };
   if (part.type === 'text') return { type: 'text', text: part.text };
@@ -39,7 +40,7 @@ const getAssistantMessagePart = (
 
     return createClaudeCodeToolCallPart({
       input: part.input,
-      toolCallId: `claude-history-tool-${toolName}-${index}`,
+      toolCallId: `claude-history-tool-${assistantMessageId}-${toolName}-${index}`,
       toolName,
     });
   }
@@ -61,13 +62,14 @@ export const getClaudeCodeHistoryMessages = (
         };
       }
 
+      const messageId = `${history.session_id}-${index}`;
       const content = item.parts
-        .map(getAssistantMessagePart)
+        .map((part, partIndex) => getAssistantMessagePart(part, partIndex, messageId))
         .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
       if (!content.length) return undefined;
 
       return {
-        id: `${history.session_id}-${index}`,
+        id: messageId,
         role: 'assistant',
         content,
         status: COMPLETE_STATUS,

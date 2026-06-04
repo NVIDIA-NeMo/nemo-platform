@@ -90,6 +90,26 @@ describe('Claude Code stream utilities', () => {
     expect(getAssistantPartsFromClaudeEvent(event)).toEqual([]);
   });
 
+  it('scopes fallback streamed tool-call ids to the Claude message id', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        id: 'msg_123',
+        content: [{ type: 'tool_use', name: 'Read', input: { file_path: 'README.md' } }],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([
+      {
+        type: 'tool-call',
+        toolCallId: 'claude-code-tool-msg_123-Read-0',
+        toolName: 'Read',
+        args: { file_path: 'README.md' },
+        argsText: '{"file_path":"README.md"}',
+      },
+    ]);
+  });
+
   it('returns undefined and logs when JSON parsing fails', () => {
     const loggerSpy = vi.spyOn(websiteLogger, 'error').mockImplementation(() => undefined);
 
