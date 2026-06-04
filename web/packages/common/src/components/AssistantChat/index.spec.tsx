@@ -6,6 +6,7 @@ import {
   type ThreadMessageLike,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
+import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
 import {
   ThemeProvider as KaizenThemeProvider,
   TooltipProvider,
@@ -16,7 +17,6 @@ import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/index
 import type { Stream } from 'openai/streaming.mjs';
 import { type ReactElement, useState } from 'react';
 
-import { AssistantChatThread } from './AssistantChatThread';
 import { AssistantChat } from './index';
 
 const mocks = vi.hoisted(() => ({

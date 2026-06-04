@@ -107,10 +107,11 @@ const LandingComposer = ({
         placeholder="Message Claude"
         rows={3}
         resizeable="auto"
-        className="max-h-56 w-full border-0 bg-transparent shadow-none outline-none focus-within:outline-none [&:has(:focus-visible)]:outline-none"
+        className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:border-accent [&:has(:focus-visible)]:outline-accent"
         attributes={{
           TextAreaElement: {
-            className: 'focus-visible:outline-none',
+            className:
+              '[&&]:focus-visible:outline [&&]:focus-visible:outline-2 [&&]:focus-visible:outline-offset-2 [&&]:focus-visible:outline-accent',
             onKeyDown: handleKeyDown,
           },
         }}
