@@ -5,7 +5,7 @@ description: ""
 <a id="auditor-nmp-sdk-resources"></a>
 
 
-The \{\{__auditor_short_name}} plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
+The NeMo Auditor plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
 This page documents that surface: how to manage audit configurations and targets in the entity store, and how to run an audit in-process using the local execution path.
 
 The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](/documentation/vulnerability-scanning/configurations) and [audit target](/documentation/vulnerability-scanning/targets) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
@@ -13,7 +13,7 @@ The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets
 
 ## AuditorPluginResource
 
-The `AuditorPluginResource` is the sync SDK object for working with the \{\{__auditor_short_name}} plugin.
+The `AuditorPluginResource` is the sync SDK object for working with the NeMo Auditor plugin.
 It is accessed directly from a `NeMoPlatform` instance:
 
 ```python

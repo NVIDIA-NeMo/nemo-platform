@@ -12,7 +12,7 @@ Note: This setup is the full enterprise platform, meant for advanced use. If you
 
 To deploy the NeMo Platform, follow these steps after completing the [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites).
 
-1. Add the \{\{helm_chart_short_name}} to your local Helm repositories.
+1. Add the NeMo Platform Helm Chart to your local Helm repositories.
 
  ```sh
  helm repo add nmp https://helm.ngc.nvidia.com/nvidia/nemo-microservices \
@@ -23,7 +23,7 @@ To deploy the NeMo Platform, follow these steps after completing the [Prerequisi
  helm repo update
  ```
 
-2. Review the default values in the [\{\{helm_chart_short_name}} reference](/documentation/self-managed-deployment/helm/helm-reference). To override the default values, create a custom values file. Review the following while creating your custom values file.
+2. Review the default values in the [NeMo Platform Helm Chart reference](/documentation/self-managed-deployment/helm/helm-reference). To override the default values, create a custom values file. Review the following while creating your custom values file.
 
  - To configure an external database, see [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup).
  - To configure persistent volumes for jobs and files storage, see [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes).
@@ -36,7 +36,7 @@ To deploy the NeMo Platform, follow these steps after completing the [Prerequisi
 
  ```sh
 
- kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v{{volcano_version}}/installer/volcano-development.yaml
+ kubectl apply -f https://raw.githubusercontent.com/volcano-sh/volcano/v1.9.0/installer/volcano-development.yaml
 
  ```
 
