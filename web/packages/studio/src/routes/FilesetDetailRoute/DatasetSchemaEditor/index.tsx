@@ -9,6 +9,7 @@ import {
   buildDatasetMetadata,
   canonicalJson,
   inferJsonSchema,
+  isSchemaAssignableFile,
   parseAndValidate,
   type PerFileInferred,
 } from '@nemo/common/src/utils/jsonSchema';
@@ -366,7 +367,10 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
   //   Show All view: diff parsed metadata against `savedMetadata` and count
   //   files whose RESOLVED schema would change.
   const sharedReferrerCount = useMemo(() => {
-    const files = filesList ?? [];
+    // Only data files (`.json` / `.jsonl`) carry a schema in this UI. Non-data
+    // files inflated the "Schema is used by N files" count on external
+    // datasets where READMEs, images, and other artifacts dominate the tree.
+    const files = (filesList ?? []).filter((f) => isSchemaAssignableFile(f.path));
     if (selectedSchema === SHOW_ALL_VALUE) {
       const parsed = parseAndValidate(text);
       if (!parsed.valid) return 0;

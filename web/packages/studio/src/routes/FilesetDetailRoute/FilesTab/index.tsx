@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
+import { isSchemaAssignableFile } from '@nemo/common/src/utils/jsonSchema';
 import {
   FilesetPurpose,
   type FilesetFileOutput,
@@ -108,6 +109,9 @@ export const FilesTab: FC<FilesTabProps> = ({
         width: 140,
         cell: (node) => {
           if (node.type !== 'file') return null;
+          // Skip non-data files (README, images, scripts, etc.) — they do
+          // not carry a schema even when the dataset has one set.
+          if (!isSchemaAssignableFile(node.path)) return null;
           const mapped = schemasByPath[node.path];
           if (typeof mapped === 'string') return mapped;
           if (mapped && typeof mapped === 'object') return null;
