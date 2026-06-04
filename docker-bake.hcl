@@ -16,19 +16,19 @@
 # Automodel — build runtime images:
 #   docker buildx bake -f docker-bake.hcl nmp-automodel-base-builder
 #
-# Unsloth — local build (--load, no registry prefix when UNSLOTH_IMAGE_REGISTRY is empty):
+# Unsloth — local build (--load):
 #   docker buildx bake -f docker-bake.hcl nmp-unsloth-training --load \
 #     --set "*.platform=linux/amd64"
 #
 # Unsloth — push to registry:
-#   export UNSLOTH_IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
-#   export IMAGE_TAG=$(git rev-parse --short HEAD)
+#   export IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export BAKE_TAG=$(git rev-parse --short HEAD)
 #   docker buildx bake -f docker-bake.hcl nmp-unsloth-training --push \
 #     --set "*.platform=linux/amd64"
 #
 # Published tags:
 #   ${IMAGE_REGISTRY}/nmp-automodel-{base,tasks,training}:${BAKE_TAG}
-#   ${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}  (or bare name when registry empty)
+#   ${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}
 
 # ---------------------------------------------------------------------------
 # Shared / automodel variables
@@ -80,16 +80,8 @@ variable "BUILD_PLATFORMS" {
 }
 
 # ---------------------------------------------------------------------------
-# Unsloth variables (separate registry default so local --load stays unprefixed)
+# Unsloth variables
 # ---------------------------------------------------------------------------
-
-variable "UNSLOTH_IMAGE_REGISTRY" {
-  default = ""
-}
-
-variable "IMAGE_TAG" {
-  default = "local"
-}
 
 variable "BUILD_PLATFORM" {
   default = "linux/amd64"
@@ -271,8 +263,6 @@ target "nmp-unsloth-training" {
   contexts = {
     platform-workspace = "target:unsloth-platform-workspace"
   }
-  tags = [
-    UNSLOTH_IMAGE_REGISTRY != "" ? "${UNSLOTH_IMAGE_REGISTRY}/nmp-unsloth-training:${IMAGE_TAG}" : "nmp-unsloth-training:${IMAGE_TAG}",
-  ]
+  tags = ["${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}"]
   platforms = ["${BUILD_PLATFORM}"]
 }
