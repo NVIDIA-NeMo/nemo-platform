@@ -5,7 +5,7 @@
 
 This tutorial demonstrates the fundamentals of Data Designer by generating a product review dataset.
 
-For more detail about column behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/the-basics) of this tutorial.
+For more detail about column behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/tutorials/the-basics) of this tutorial.
 
 ## Prerequisites
 
@@ -44,7 +44,7 @@ config_builder = dd.DataDesignerConfigBuilder(model_configs)
 
 ### Add Columns
 
-Define the columns for your dataset. The [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/the-basics) explains these column types in detail.
+Define the columns for your dataset. The [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/tutorials/the-basics) explains these column types in detail.
 
 {% raw %}
 ```python
@@ -304,5 +304,5 @@ When you use CLI `submit` or the SDK today:
 
 - **Seed data:** Learn how to use external datasets in the [seeding tutorial](seeding.md)
 - **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](../execution-modes.md)
-- **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/columns)
-- **Advanced features:** Learn about [processors](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/processors) and [validation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/validators)
+- **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/columns)
+- **Advanced features:** Learn about [processors](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/processors) and [validation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/validators)
