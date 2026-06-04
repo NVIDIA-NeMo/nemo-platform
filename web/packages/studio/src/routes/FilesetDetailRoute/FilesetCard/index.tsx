@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
+import { Grid, GridItem, Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
 import { FilesetMetadataPanel } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel';
@@ -52,19 +52,14 @@ export const FilesetCard: FC<FilesetCardProps> = ({
     <Grid
       cols={{ base: 1, xl: 12 }}
       gap="density-xl"
-      className="w-full items-start"
+      className="max-h-full w-full items-start"
       data-testid="fileset-card"
     >
       <GridItem
         cols={{ lg: 8 }}
-        className="min-w-0 overflow-hidden rounded-lg border border-base bg-surface-raised p-density-xl"
+        className="min-w-0 max-h-full overflow-auto rounded-lg border border-base bg-surface-raised p-density-xl"
       >
         <Stack gap="density-md">
-          {fileset.description && (
-            <Text kind="body/regular/md" data-testid="fileset-card-description">
-              {fileset.description}
-            </Text>
-          )}
           <ReadmeBody
             isFilesError={isFilesError}
             readmePath={readmePath}
