@@ -23,13 +23,19 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
+import { useCallback, useMemo, type ComponentProps, type ReactNode } from 'react';
+
+export interface AssistantChatThreadAttributes {
+  ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
+}
 
 interface AssistantChatThreadProps {
   disabled?: boolean;
   placeholder: string;
   onReset: () => void;
+  showRunningIndicator?: boolean;
+  attributes?: AssistantChatThreadAttributes;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;
@@ -40,6 +46,7 @@ interface AssistantChatThreadProps {
   hideAssistantMessageActions?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
+  composerOverride?: ReactNode;
 }
 
 const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
@@ -72,13 +79,28 @@ const AssistantChatMessageContent = ({
 const ACTION_BUTTON_CLASS =
   'flex cursor-pointer size-8 items-center justify-center rounded text-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50';
 
+const CopyAction = () => (
+  <Tooltip slotContent="Copy message">
+    <ActionBarPrimitive.Copy aria-label="Copy message" className={ACTION_BUTTON_CLASS}>
+      <MessagePrimitive.If copied>
+        <Check size={16} />
+      </MessagePrimitive.If>
+      <MessagePrimitive.If copied={false}>
+        <Copy size={16} />
+      </MessagePrimitive.If>
+    </ActionBarPrimitive.Copy>
+  </Tooltip>
+);
+
 const AssistantMessage = ({
   hideAssistantMessageActions,
   reasoningPartComponent,
+  showRunningIndicator = true,
   toolCallPartComponent,
 }: {
   hideAssistantMessageActions?: boolean;
   reasoningPartComponent?: ReasoningMessagePartComponent;
+  showRunningIndicator?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
   <MessagePrimitive.Root
@@ -90,33 +112,33 @@ const AssistantMessage = ({
       reasoningPartComponent={reasoningPartComponent}
       toolCallPartComponent={toolCallPartComponent}
     />
-    <div className="mt-density-sm flex h-8 items-center">
-      {!hideAssistantMessageActions && (
-        <ActionBarPrimitive.Root
-          hideWhenRunning
-          className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
-        >
-          <Tooltip slotContent="Copy message">
-            <ActionBarPrimitive.Copy aria-label="Copy message" className={ACTION_BUTTON_CLASS}>
-              <Copy size={16} />
-            </ActionBarPrimitive.Copy>
-          </Tooltip>
-          <Tooltip slotContent="Regenerate response">
-            <ActionBarPrimitive.Reload
-              aria-label="Regenerate response"
-              className={ACTION_BUTTON_CLASS}
-            >
-              <RefreshCw size={16} />
-            </ActionBarPrimitive.Reload>
-          </Tooltip>
-        </ActionBarPrimitive.Root>
-      )}
-      <MessagePrimitive.If last>
-        <ThreadPrimitive.If running>
-          <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
-        </ThreadPrimitive.If>
-      </MessagePrimitive.If>
-    </div>
+    {showRunningIndicator || !hideAssistantMessageActions ? (
+      <div className="mt-density-sm flex h-8 items-center">
+        {showRunningIndicator && (
+          <MessagePrimitive.If last>
+            <ThreadPrimitive.If running>
+              <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
+            </ThreadPrimitive.If>
+          </MessagePrimitive.If>
+        )}
+        {!hideAssistantMessageActions && (
+          <ActionBarPrimitive.Root
+            hideWhenRunning
+            className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
+          >
+            <Tooltip slotContent="Regenerate response">
+              <ActionBarPrimitive.Reload
+                aria-label="Regenerate response"
+                className={ACTION_BUTTON_CLASS}
+              >
+                <RefreshCw size={16} />
+              </ActionBarPrimitive.Reload>
+            </Tooltip>
+            <CopyAction />
+          </ActionBarPrimitive.Root>
+        )}
+      </div>
+    ) : null}
   </MessagePrimitive.Root>
 );
 
@@ -148,6 +170,7 @@ const UserMessage = ({
             <Pencil size={16} />
           </ActionBarPrimitive.Edit>
         </Tooltip>
+        <CopyAction />
       </ActionBarPrimitive.Root>
     </div>
   </MessagePrimitive.Root>
@@ -259,6 +282,8 @@ export const AssistantChatThread = ({
   disabled,
   placeholder,
   onReset,
+  showRunningIndicator = true,
+  attributes,
   emptyState,
   contentClassName,
   composerContainerClassName,
@@ -266,16 +291,25 @@ export const AssistantChatThread = ({
   reasoningPartComponent,
   toolCallPartComponent,
   viewportClassName,
+  composerOverride,
 }: AssistantChatThreadProps) => {
+  const { className: threadViewportClassName, ...threadViewportAttributes } =
+    attributes?.ThreadViewport ?? {};
   const AssistantMessageWithReasoningPart = useCallback(
     () => (
       <AssistantMessage
         hideAssistantMessageActions={hideAssistantMessageActions}
         reasoningPartComponent={reasoningPartComponent}
+        showRunningIndicator={showRunningIndicator}
         toolCallPartComponent={toolCallPartComponent}
       />
     ),
-    [hideAssistantMessageActions, reasoningPartComponent, toolCallPartComponent]
+    [
+      hideAssistantMessageActions,
+      reasoningPartComponent,
+      showRunningIndicator,
+      toolCallPartComponent,
+    ]
   );
   const UserMessageWithReasoningPart = useCallback(
     () => (
@@ -299,7 +333,12 @@ export const AssistantChatThread = ({
   return (
     <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
       <ThreadPrimitive.Viewport
-        className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
+        {...threadViewportAttributes}
+        className={cn(
+          'relative flex min-h-0 flex-1 flex-col overflow-y-auto',
+          viewportClassName,
+          threadViewportClassName
+        )}
       >
         <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
           <ThreadPrimitive.Empty>
@@ -316,7 +355,9 @@ export const AssistantChatThread = ({
         </ThreadPrimitive.ScrollToBottom>
       </ThreadPrimitive.Viewport>
       <Flex className={cn('w-full', composerContainerClassName)}>
-        <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+        {composerOverride ?? (
+          <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+        )}
       </Flex>
     </ThreadPrimitive.Root>
   );

@@ -11,7 +11,7 @@ import {
   ThemeProvider as KaizenThemeProvider,
   TooltipProvider,
 } from '@nvidia/foundations-react-core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/index.mjs';
 import type { Stream } from 'openai/streaming.mjs';
@@ -213,21 +213,52 @@ describe('AssistantChat', () => {
       />
     );
 
+    const assistantMessage = screen
+      .getAllByTestId('assistant-chat-message')
+      .find((message) => message.getAttribute('data-testspeaker') === 'assistant');
+    if (!assistantMessage) throw new Error('Expected assistant message');
+
     expect(screen.getByText('Existing prompt')).toBeInTheDocument();
     expect(screen.getByText('Existing response')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Copy message/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Regenerate response/i })).toBeInTheDocument();
+    expect(
+      within(assistantMessage).getByRole('button', { name: /Copy message/i })
+    ).toBeInTheDocument();
+    expect(
+      within(assistantMessage).getByRole('button', { name: /Regenerate response/i })
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
   });
 
   it('can hide assistant copy and regenerate message actions', () => {
     renderAssistantChat(<StaticAssistantChatThread hideAssistantMessageActions />);
 
+    const assistantMessage = screen
+      .getAllByTestId('assistant-chat-message')
+      .find((message) => message.getAttribute('data-testspeaker') === 'assistant');
+    if (!assistantMessage) throw new Error('Expected assistant message');
+
     expect(screen.getByText('Existing prompt')).toBeInTheDocument();
     expect(screen.getByText('Existing response')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Copy message/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Regenerate response/i })).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByRole('button', { name: /Copy message/i })
+    ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByRole('button', { name: /Regenerate response/i })
+    ).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
+  it('renders composer override content in place of the prompt input', () => {
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        workspace="default"
+        composerOverride={<div>Approval required</div>}
+      />
+    );
+
+    expect(screen.getByText('Approval required')).toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: /Task prompt/i })).not.toBeInTheDocument();
   });
 
   it(
@@ -297,6 +328,27 @@ describe('AssistantChat', () => {
       );
       expect(screen.getByRole('button', { name: /Submit/i })).toBeInTheDocument();
       expect(screen.getByText('0 this is an example response')).toBeInTheDocument();
+    },
+    interactionTimeoutMs
+  );
+
+  it(
+    'can hide the running indicator while a stream is pending',
+    async () => {
+      const stream = createHangingStream('Waiting for user input.');
+      mocks.createChatCompletion.mockResolvedValueOnce(stream);
+
+      renderAssistantChat(
+        <AssistantChat model="test-model" workspace="default" showRunningIndicator={false} />
+      );
+
+      await userEvent.type(screen.getByRole('textbox', { name: /Task prompt/i }), 'Need input');
+      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
+
+      expect(await screen.findByText('Waiting for user input.')).toBeInTheDocument();
+      expect(screen.queryByTestId('assistant-chat-skeleton')).not.toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
     },
     interactionTimeoutMs
   );
