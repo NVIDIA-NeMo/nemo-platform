@@ -11,7 +11,7 @@ description: ""
 - The platform's shared persistent volume is likely full. Customization jobs require significant disk space: ~3× model size for full SFT, ~1.5× for LoRA. If you are also deploying the model from a base checkpoint fileset, plan for ~2.5× model size overall.
 - Clean up completed job artifacts or increase the PVC size (default: 200Gi at `/var/run/scratch/job`).
 - DPO/GRPO jobs also consume ephemeral node storage under `/tmp` via Ray workers — check node disk in addition to the PVC.
-- See [ft-tut-understand-models](../customizer/tutorials/understand-configurations-and-models.md) for full storage requirement details.
+- See [ft-tut-understand-models](/documentation/customizer-reference/tutorials/understanding-models-and-training) for full storage requirement details.
 
 **Job fails with OOM (Out of Memory):**
 1. Reduce `micro_batch_size` to 1

@@ -10,7 +10,7 @@ NeMo Platform centrally manages OpenTelemetry across services. You can configure
 
 ## Prerequisites
 
-To export guardrail traces, OpenTelemetry must be enabled in your deployment. See [OpenTelemetry](../set-up/opentelemetry.md) for instructions on enabling OpenTelemetry.
+To export guardrail traces, OpenTelemetry must be enabled in your deployment. See [OpenTelemetry](/documentation/self-managed-deployment/setup/observability) for instructions on enabling OpenTelemetry.
 
 You also need a VirtualModel configured with guardrails middleware. See [Architecture](/documentation/guardrail-models/core-concepts/architecture) for wiring details.
 
@@ -210,7 +210,7 @@ guardrails.request [server]
  action.has_llm_calls: false
 ```
 
-The `service.name` for all spans is determined by the platform's `OTEL_SERVICE_NAME` configuration. See [OpenTelemetry](../set-up/opentelemetry.md) for details.
+The `service.name` for all spans is determined by the platform's `OTEL_SERVICE_NAME` configuration. See [OpenTelemetry](/documentation/self-managed-deployment/setup/observability) for details.
 
 ---
 

@@ -6,7 +6,7 @@ Connect NeMo Platform to an external OIDC identity provider (IdP) so users sign 
 
 **Prerequisites**: You need an OAuth application registered in your IdP with the client ID, issuer URL, and device flow grant enabled. See the [Minimum IdP Checklist](#minimum-idp-checklist) below.
 
-For login after setup, see [Using Authentication](using-authentication.md). For the full config reference, see [Auth Configuration](../deployment/configuration.md).
+For login after setup, see [Using Authentication](/documentation/access-control/authentication/using-authentication). For the full config reference, see [Auth Configuration](/documentation/access-control/deployment/configuration).
 
 ## How OIDC Fits in NeMo Platform
 
@@ -38,7 +38,7 @@ In your IdP (Azure AD, Okta, Keycloak, etc.):
 1. Create a new application registration
 2. Note the **client ID**
 3. Enable **device flow** (device authorization grant)
-4. *(Optional)* Create custom API scopes (`platform:read`, `platform:write`) if you want token-level scope restrictions. See [API Scopes](../authorization/api-scopes.md).
+4. *(Optional)* Create custom API scopes (`platform:read`, `platform:write`) if you want token-level scope restrictions. See [API Scopes](/documentation/access-control/authorization/api-scopes).
 5. If you created custom scopes, grant admin consent for them (if required by your IdP)
 
 ### Step 2: Configure NeMo Platform
@@ -63,7 +63,7 @@ auth:
 
 ### Step 3: Configure Scopes (Optional)
 
-This step is only needed if you created custom API scopes in Step 1. If you skip scopes, NeMo Platform still enforces RBAC — scopes add an additional token-level restriction on top. See [API Scopes](../authorization/api-scopes.md).
+This step is only needed if you created custom API scopes in Step 1. If you skip scopes, NeMo Platform still enforces RBAC — scopes add an additional token-level restriction on top. See [API Scopes](/documentation/access-control/authorization/api-scopes).
 
 If you are using scopes, configure the default scopes requested during login:
 
@@ -126,7 +126,7 @@ Regardless of IdP, ensure:
 
 ## Claim mapping
 
-NeMo Platform maps JWT claims to [trusted identity headers](../security-model.md#trusted-identity-headers) using `email_claim`, `subject_claim`, and `groups_claim` (defaults: `email`, `sub`, `groups`). Override them when your IdP uses different claim names — values must match what you use for workspace members and authorization.
+NeMo Platform maps JWT claims to [trusted identity headers](/documentation/access-control/security-model#trusted-identity-headers) using `email_claim`, `subject_claim`, and `groups_claim` (defaults: `email`, `sub`, `groups`). Override them when your IdP uses different claim names — values must match what you use for workspace members and authorization.
 
 | Purpose | Config key | Default | Header |
 |---------|------------|---------|--------|
@@ -137,17 +137,17 @@ NeMo Platform maps JWT claims to [trusted identity headers](../security-model.md
 
 <Note>
 
-Group values are extracted from the JWT and included in the `X-NMP-Principal-Groups` header and OPA policy data, but **automatic group-to-role mapping is not yet implemented**. Role assignments must be made explicitly via the members API. See [Managing Access](../authorization/managing-access.md).
+Group values are extracted from the JWT and included in the `X-NMP-Principal-Groups` header and OPA policy data, but **automatic group-to-role mapping is not yet implemented**. Role assignments must be made explicitly via the members API. See [Managing Access](/documentation/access-control/authorization/managing-access).
 
 </Note>
 ## Provider-Specific Notes
 
-- **Azure AD**: See [Azure AD Setup](providers/azure-ad.md) (issuer, `additional_issuers`, device flow, claim overrides).
+- **Azure AD**: See [Azure AD Setup](/documentation/access-control/authentication/providers/azure-ad-entra-id) (issuer, `additional_issuers`, device flow, claim overrides).
 - **Okta**: Choose the correct authorization server (custom vs org). Ensure device flow is enabled.
 - **Keycloak**: Configure realm, client, and role mappers. Enable device flow in client settings.
-- **Other providers**: See [Generic OIDC Provider](providers/generic.md) for a provider-agnostic checklist.
+- **Other providers**: See [Generic OIDC Provider](/documentation/access-control/authentication/providers/generic-oidc) for a provider-agnostic checklist.
 
 ## Related
 
-- [Using Authentication](using-authentication.md) — Log in, make API calls, and manage tokens.
-- [Auth Configuration](../deployment/configuration.md) — Full auth config reference.
+- [Using Authentication](/documentation/access-control/authentication/using-authentication) — Log in, make API calls, and manage tokens.
+- [Auth Configuration](/documentation/access-control/deployment/configuration) — Full auth config reference.

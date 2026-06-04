@@ -10,7 +10,7 @@ Learn the fundamentals of NeMo Safe Synthesizer by creating your first Safe Synt
 
 Before you begin, make sure that you have:
 
-- Access to a deployment of NeMo Safe Synthesizer (see [getting-started](../getting-started.md))
+- Access to a deployment of NeMo Safe Synthesizer (see [getting-started](/documentation/safe-synthesizer-reference/getting-started))
 - **An NVIDIA GPU with 80 GB+ VRAM** — Safe Synthesizer requires GPU access for model training, even when using remote inference for other services. Verify with `nvidia-smi`.
 - Python environment with `nemo-platform` SDK installed
 - Basic understanding of Python and pandas
@@ -309,7 +309,7 @@ job.display_report_in_notebook()
 
 ### Interpreting Scores
 
-The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](../about/evaluation.md).
+The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](/documentation/safe-synthesizer-reference/about/evaluation).
 
 ---
 
@@ -319,11 +319,11 @@ Now that you've completed your first Safe Synthesizer job, explore more advanced
 
 ### Advanced Tutorials
 
-- [Differential Privacy Tutorial](differential-privacy.md) - Apply mathematical privacy guarantees
+- [Differential Privacy Tutorial](/documentation/safe-synthesizer-reference/tutorials/differential-privacy) - Apply mathematical privacy guarantees
 
 ### Documentation
 
-- [index](../about/index.md) - Understand core concepts
+- [index](/documentation/safe-synthesizer-reference/about/overview) - Understand core concepts
 
 ### Try These Next
 
@@ -372,7 +372,7 @@ print(f"Total jobs: {len(all_jobs.data)}")
 - Use smaller model (adjust `training.pretrained_model`)
 - Check GPU availability
 
-For more help, see [jobs](../about/jobs.md).
+For more help, see [jobs](/documentation/safe-synthesizer-reference/about/jobs).
 
 **Error: "Dataset must have at least 200 records to use holdout."**
 

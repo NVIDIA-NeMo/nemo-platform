@@ -10,7 +10,7 @@ Run NeMo Safe Synthesizer on your machine's GPU with `nemo safe-synthesizer run-
 
 ## Prerequisites
 
-- CUDA-capable NVIDIA GPU on the host (80GB+ VRAM recommended; check with `nvidia-smi`). See [Getting Started](../getting-started.md).
+- CUDA-capable NVIDIA GPU on the host (80GB+ VRAM recommended; check with `nvidia-smi`). See [Getting Started](/documentation/safe-synthesizer-reference/getting-started).
 - NeMo Platform repository checkout with the Safe Synthesizer plugin installed.
 - **No running platform required** for a typical local run when you pass `--data-source` — the NSS runtime can download base models from Hugging Face directly.
 
@@ -164,7 +164,7 @@ Requires `RUN_NSS_LOCAL_E2E=1`, CUDA, and `nemo safe-synthesizer runtime setup`.
 
 ## Related topics
 
-- [Parameters Reference](reference.md) — spec and `config` fields
-- [Getting Started](../getting-started.md) — GPU and platform context
-- [Jobs](jobs.md) — platform job lifecycle (separate from this run-local guide)
+- [Parameters Reference](/documentation/safe-synthesizer-reference/about/parameters-reference) — spec and `config` fields
+- [Getting Started](/documentation/safe-synthesizer-reference/getting-started) — GPU and platform context
+- [Jobs](/documentation/safe-synthesizer-reference/about/jobs) — platform job lifecycle (separate from this run-local guide)
 - Plugin README: `plugins/nemo-safe-synthesizer/README.md`

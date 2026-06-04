@@ -17,7 +17,7 @@ All job configuration (model, dataset, training, and output) is specified in the
 | `workspace` | Yes | Workspace where the job runs. Determines what datasets and models are authorized to be used in the job. |
 | `spec.model` | Yes | Reference to the Model Entity (`workspace/name` format) |
 | `spec.dataset` | Yes | Dataset URI (`fileset://workspace/name`) |
-| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](hyperparameters.md)) |
+| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](/documentation/customizer-reference/manage-jobs/training-configuration)) |
 | `spec.training.type` | Yes | Training method: `sft`, `distillation`, or `dpo` |
 | `spec.training.peft` | No | PEFT adapter configuration (e.g., `{"type": "lora", ...}`). Omit for full-weight training |
 | `spec.output` | No | Output artifact configuration (`{"name": "..."}`). Auto-generated if not provided |
@@ -98,7 +98,7 @@ To create the secret, see [Weights & Biases Keys](/documentation/get-started/cor
 | `notes` | Notes or description for the run |
 | `base_url` | Base URL for self-hosted W&B servers (e.g., `https://wandb.mycompany.com`). Omit to use W&B cloud |
 
-To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](../tutorials/metrics.md).
+To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](/documentation/customizer-reference/tutorials/job-metrics).
 
 ---
 
@@ -161,6 +161,6 @@ nemo customization jobs create my-job \
 ## Next Steps
 
 - [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job): Start a job with a model, dataset, training configuration, and optional integrations.
-- [Monitor training metrics](../tutorials/metrics.md): View logs and metrics through MLflow or W&B.
+- [Monitor training metrics](/documentation/customizer-reference/tutorials/job-metrics): View logs and metrics through MLflow or W&B.
 - [Manage secrets](/documentation/get-started/core-concepts/manage-secrets): Store credentials such as W&B API keys and provider tokens.
 - [Troubleshooting MLflow integrations](/documentation/reference/troubleshooting/customizer): Diagnose failed or misconfigured customization jobs.

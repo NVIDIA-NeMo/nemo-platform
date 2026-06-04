@@ -10,7 +10,7 @@ Note: This setup is the full enterprise platform, meant for advanced use. If you
 
 </Tip>
 
-To deploy the NeMo Platform, follow these steps after completing the [Prerequisites](./prerequisites.md).
+To deploy the NeMo Platform, follow these steps after completing the [Prerequisites](/documentation/self-managed-deployment/setup/helm/prerequisites).
 
 1. Add the \{\{helm_chart_short_name}} to your local Helm repositories.
 
@@ -23,14 +23,14 @@ To deploy the NeMo Platform, follow these steps after completing the [Prerequisi
  helm repo update
  ```
 
-2. Review the default values in the [\{\{helm_chart_short_name}} reference](../../helm/index.md). To override the default values, create a custom values file. Review the following while creating your custom values file.
+2. Review the default values in the [\{\{helm_chart_short_name}} reference](/documentation/self-managed-deployment/helm/helm-reference). To override the default values, create a custom values file. Review the following while creating your custom values file.
 
- - To configure an external database, see [Database Setup](./database-setup.md).
- - To configure persistent volumes for jobs and files storage, see [Persistent Volumes](./persistent-volumes.md).
- - To configure file storage options, see [File Storage](./file-storage.md).
- - To configure ingress, see [Ingress](./ingress.md).
- - To configure multi-node networking, see [Multi-Node Networking](./multinode-networking.md).
- - To configure OpenShift-compatible security context overrides, see [OpenShift](./openshift.md).
+ - To configure an external database, see [Database Setup](/documentation/self-managed-deployment/setup/helm/database-setup).
+ - To configure persistent volumes for jobs and files storage, see [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes).
+ - To configure file storage options, see [File Storage](/documentation/self-managed-deployment/setup/helm/file-storage).
+ - To configure ingress, see [Ingress](/documentation/self-managed-deployment/setup/helm/ingress).
+ - To configure multi-node networking, see [Multi-Node Networking](/documentation/self-managed-deployment/setup/helm/multinode-networking).
+ - To configure OpenShift-compatible security context overrides, see [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift).
 
 3. Install the Volcano scheduler before installing the chart. This is required for customization jobs that leverage multiple nodes.
 
@@ -63,7 +63,7 @@ To deploy the NeMo Platform, follow these steps after completing the [Prerequisi
  kubectl get pods
  ```
 
-For Red Hat OpenShift, use OpenShift-compatible security context overrides so pods satisfy the restricted SCC. See [OpenShift](./openshift.md).
+For Red Hat OpenShift, use OpenShift-compatible security context overrides so pods satisfy the restricted SCC. See [OpenShift](/documentation/self-managed-deployment/setup/helm/open-shift).
 
 <a id="upgrade-helm-chart"></a>
 To upgrade the deployment with new configurations, use the following command:

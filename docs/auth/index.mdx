@@ -13,12 +13,12 @@ Both layers are opt-in. When `auth.enabled` is `false` (the default), all reques
 
 ## How Authentication Works
 
-NeMo Platform authenticates every request using a JWT from your OIDC identity provider. The token is sent in the `Authorization: Bearer <token>` header, and NeMo Platform validates the signature, issuer, audience, and expiry. Refer to [OIDC Setup](authentication/oidc.md) to connect your identity provider.
+NeMo Platform authenticates every request using a JWT from your OIDC identity provider. The token is sent in the `Authorization: Bearer <token>` header, and NeMo Platform validates the signature, issuer, audience, and expiry. Refer to [OIDC Setup](/documentation/access-control/authentication/oidc-setup) to connect your identity provider.
 
 How you **obtain** the token depends on your context:
 
--   **CLI** — Run `nemo auth login` to authenticate using the browser-based device flow. The CLI stores and auto-refreshes the token. Refer to [Using Authentication](authentication/using-authentication.md).
--   **SDK** — After `nemo auth login`, the Python SDK automatically reads stored tokens from the CLI config and refreshes them transparently. Refer to [Using Authentication](authentication/using-authentication.md#python-sdk).
+-   **CLI** — Run `nemo auth login` to authenticate using the browser-based device flow. The CLI stores and auto-refreshes the token. Refer to [Using Authentication](/documentation/access-control/authentication/using-authentication).
+-   **SDK** — After `nemo auth login`, the Python SDK automatically reads stored tokens from the CLI config and refreshes them transparently. Refer to [Using Authentication](/documentation/access-control/authentication/using-authentication#python-sdk).
 -   **HTTP** — For raw HTTP calls, fetch a token from your IdP (or from the CLI using `nemo auth token`) and pass it in the `Authorization: Bearer <token>` header.
 -   **Studio** — When auth is enabled, Studio automatically redirects you to your IdP to sign in and uses the resulting token for all API calls.
 
@@ -119,38 +119,38 @@ print(f"Found {len(workspaces.data)} workspaces")
 </Tabs>
 ### Production / Helm Deployment
 
-For production or Helm-based deployments, enable auth by setting `platformConfig.auth.enabled: true` in your Helm values and configure the `auth:` section in platform config. Refer to [Auth Configuration](deployment/configuration.md) for the full reference and [OIDC Setup](authentication/oidc.md) to connect your identity provider.
+For production or Helm-based deployments, enable auth by setting `platformConfig.auth.enabled: true` in your Helm values and configure the `auth:` section in platform config. Refer to [Auth Configuration](/documentation/access-control/deployment/configuration) for the full reference and [OIDC Setup](/documentation/access-control/authentication/oidc-setup) to connect your identity provider.
 
 ## Where to Go Next
 
 <Cards>
 
-<Card title="Security Model" href="security-model.md">
+<Card title="Security Model" href="/documentation/access-control/security-model">
 
 Understand how NeMo Platform authentication and authorization work together — trust boundaries, principal model, and authorization layers.
 
 </Card>
-<Card title="Connect an Identity Provider" href="authentication/oidc.md">
+<Card title="Connect an Identity Provider" href="/documentation/access-control/authentication/oidc-setup">
 
 Configure NeMo Platform to authenticate users using your OIDC identity provider.
 
 </Card>
-<Card title="Manage Workspace Access" href="authorization/managing-access.md">
+<Card title="Manage Workspace Access" href="/documentation/access-control/authorization/managing-access">
 
 Add users to workspaces, assign roles, and control who can access your resources.
 
 </Card>
-<Card title="Configuration Reference" href="deployment/configuration.md">
+<Card title="Configuration Reference" href="/documentation/access-control/deployment/configuration">
 
 Full configuration reference — enabling auth, PDP provider, OIDC settings, environment variables.
 
 </Card>
-<Card title="Harden for Production" href="deployment/hardening.md">
+<Card title="Harden for Production" href="/documentation/access-control/deployment/production-hardening">
 
 Security checklist for production deployments — OIDC, gateway headers, scoped tokens, TLS.
 
 </Card>
-<Card title="Troubleshooting" href="troubleshooting.md">
+<Card title="Troubleshooting" href="/documentation/access-control/troubleshooting">
 
 Fix common auth issues — 401/403 errors, login failures, role propagation delays.
 

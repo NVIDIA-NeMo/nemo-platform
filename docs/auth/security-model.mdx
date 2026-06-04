@@ -4,7 +4,7 @@ description: ""
 ---
 This page describes the security architecture of NeMo Platform authentication and authorization — how requests are authenticated, how access decisions are made, and where trust boundaries lie. It is intended for platform operators and security reviewers evaluating NeMo Platform for production deployment.
 
-For hands-on setup, see [Auth Configuration](deployment/configuration.md). For the authorization model, see [Concepts](concepts.md).
+For hands-on setup, see [Auth Configuration](/documentation/access-control/deployment/configuration). For the authorization model, see [Concepts](/documentation/access-control/concepts).
 
 ## Architecture Overview
 
@@ -59,7 +59,7 @@ The request flow:
 
 <Note>
 
-In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](index.md).
+In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/documentation/access-control/overview).
 
 </Note>
 ## Authentication Modes
@@ -68,7 +68,7 @@ NeMo Platform supports two authentication modes: **service-level** (the service 
 
 In both modes, identity arrives as a **JWT** from the client. The JWT is validated exactly once — either by the first NeMo Platform service or by the gateway. After validation, the authenticated identity (email, subject, groups) is propagated to downstream services via **trusted `X-NMP-Principal-*` headers**. Downstream services accept these headers without re-validating the JWT.
 
-This "validate once, propagate via headers" design means that **network perimeter security is critical**: anything inside the trust boundary that receives `X-NMP-Principal-*` headers will trust them unconditionally. The gateway must strip these headers from all incoming external requests to prevent clients from forging an identity. See [Gateway Integration](deployment/gateway.md).
+This "validate once, propagate via headers" design means that **network perimeter security is critical**: anything inside the trust boundary that receives `X-NMP-Principal-*` headers will trust them unconditionally. The gateway must strip these headers from all incoming external requests to prevent clients from forging an identity. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 
 ### Service-Level Authentication
 
@@ -128,7 +128,7 @@ A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `s
 
 <Note>
 
-Service principals rely on perimeter security — the gateway strips `X-NMP-Principal-*` headers from incoming requests, so external callers cannot forge a `service:` identity. The gateway must also block external access to `/internal/*` paths. See [Gateway Integration](deployment/gateway.md).
+Service principals rely on perimeter security — the gateway strips `X-NMP-Principal-*` headers from incoming requests, so external callers cannot forge a `service:` identity. The gateway must also block external access to `/internal/*` paths. See [Gateway Integration](/documentation/access-control/deployment/gateway-integration).
 
 </Note>
 #### On-Behalf-Of Delegation
@@ -177,7 +177,7 @@ On top of RBAC, NeMo Platform supports **API scopes** as a second authorization 
 
 Both must pass. This enables least-privilege token usage — for example, an Editor can create a read-only token (`platform:read` only) for monitoring scripts.
 
-For details, see [Authorization Concepts](concepts.md), [Roles & Permissions](authorization/roles-and-permissions.md), and [API Scopes](authorization/api-scopes.md).
+For details, see [Authorization Concepts](/documentation/access-control/concepts), [Roles & Permissions](/documentation/access-control/authorization/roles-and-permissions), and [API Scopes](/documentation/access-control/authorization/api-scopes).
 
 ## What NeMo Platform Does NOT Do
 
@@ -185,12 +185,12 @@ The following are explicitly out of scope for the current implementation:
 
 - **Multi-tenancy with database isolation.** Workspaces provide logical isolation, not separate databases or schemas per tenant.
 - **Service mesh mTLS.** Service-to-service encryption and mutual authentication are delegated to the customer's infrastructure (e.g., Istio, Linkerd).
-- **Built-in audit logging.** The embedded PDP does not produce a dedicated audit trail. If you need structured decision logs, use [External OPA](authorization/policy-engine.md#external-opa) — OPA's [decision logging](https://www.openpolicyagent.org/docs/latest/management-decision-logs/) can export every authorization decision to your log aggregator.
+- **Built-in audit logging.** The embedded PDP does not produce a dedicated audit trail. If you need structured decision logs, use [External OPA](/documentation/access-control/authorization/policy-engine#external-opa) — OPA's [decision logging](https://www.openpolicyagent.org/docs/latest/management-decision-logs/) can export every authorization decision to your log aggregator.
 - **Custom RBAC at runtime.** Custom roles can be defined at deployment time via YAML configuration, but cannot be created or modified at runtime through the API.
 
 ## Related
 
-- [Authorization Concepts](concepts.md) — Workspaces, roles, bindings, and the RBAC model.
-- [Auth Configuration](deployment/configuration.md) — Enabling auth, PDP provider, OIDC settings.
-- [Gateway Integration](deployment/gateway.md) — Gateway-level auth and header configuration.
-- [Production Hardening](deployment/hardening.md) — Security checklist for production deployments.
+- [Authorization Concepts](/documentation/access-control/concepts) — Workspaces, roles, bindings, and the RBAC model.
+- [Auth Configuration](/documentation/access-control/deployment/configuration) — Enabling auth, PDP provider, OIDC settings.
+- [Gateway Integration](/documentation/access-control/deployment/gateway-integration) — Gateway-level auth and header configuration.
+- [Production Hardening](/documentation/access-control/deployment/production-hardening) — Security checklist for production deployments.

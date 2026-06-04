@@ -221,7 +221,7 @@ NeMo Platform Customizer supports various distributed training parallelization m
 
 [Tensor Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#tensor-parallelism) (TP) distributes the parameter tensor of an individual layer across GPUs. In addition to reducing model state memory usage, it also saves activation memory as the per-GPU tensor sizes shrink. The tradeoff is increased CPU overhead.
 
-TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](manage-customization-jobs/hyperparameters.md).
+TP can be configured via `parallelism.tensor_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
 
 <Note>
 
@@ -232,7 +232,7 @@ As of release 25.10.0, AutoModel engines including Phi-4, Qwen, and Gemma suppor
 
 [Pipeline Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#pipeline-parallelism) (PP) distributes the layers of a neural network across GPUs. The GPUs then process the different layers sequentially.
 
-PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](manage-customization-jobs/hyperparameters.md).
+PP can be configured via `parallelism.pipeline_parallel_size` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
 
 #### Configuration
 
@@ -250,7 +250,7 @@ PP can be configured via `parallelism.pipeline_parallel_size` in the [training c
 
 [Sequence Parallelism](https://docs.nvidia.com/nemo-framework/user-guide/latest/nemotoolkit/features/parallelisms.html#sequence-parallelism) (SP) extends tensor-level model parallelism by distributing computing load and activation memory across multiple GPUs along the sequence dimension of transformer layers. This method is particularly useful when training on the datasets with longer sequences. It also benefits portions of the layer that have previously not been parallelized, enhancing overall model performance and efficiency.
 
-Sequence Parallelism can be enabled/disabled using `parallelism.sequence_parallel` in the [training configuration](manage-customization-jobs/hyperparameters.md).
+Sequence Parallelism can be enabled/disabled using `parallelism.sequence_parallel` in the [training configuration](/documentation/customizer-reference/manage-jobs/training-configuration).
 
 ## Sequence Packing
 

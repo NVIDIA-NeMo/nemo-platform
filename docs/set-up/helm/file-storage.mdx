@@ -19,7 +19,7 @@ If using S3 storage, you must provision and manage your own bucket and credentia
 
 ## Local Storage (Default)
 
-By default, the Files service uses local filesystem storage. Files are stored on the shared PVC configured in [Persistent Volumes](./persistent-volumes.md).
+By default, the Files service uses local filesystem storage. Files are stored on the shared PVC configured in [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes).
 
 The default configuration is equivalent to:
 
@@ -31,7 +31,7 @@ platformConfig:
  path: /vol/files
 ```
 
-You do not need to add this to your `values.yaml`. Once the PVC is set up as described in [Persistent Volumes](./persistent-volumes.md), local storage works out of the box.
+You do not need to add this to your `values.yaml`. Once the PVC is set up as described in [Persistent Volumes](/documentation/self-managed-deployment/setup/helm/persistent-volumes), local storage works out of the box.
 
 ## S3 Object Storage
 

@@ -10,7 +10,7 @@ Learn how to fine-tune models by making requests to NVIDIA NeMo Customizer throu
 <a id="ft-workflow"></a>
 At a high level, the fine-tuning workflow consists of the following steps:
 
-1. [Create a Model Entity](manage-model-entities/index.md) pointing to your base model checkpoint (stored as a FileSet).
+1. [Create a Model Entity](/documentation/customizer-reference/manage-model-entities/overview) pointing to your base model checkpoint (stored as a FileSet).
 1. Format a compatible [dataset](/documentation/fine-tune-models/tutorials/format-training-dataset).
 1. [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs) referencing the Model Entity.
 1. Monitor the job until it completes.
@@ -29,22 +29,22 @@ Explore the model families and sizes supported by NVIDIA NeMo Customizer.
 
 <Cards>
 
-<Card title="Llama Models" href="models/llama.md">
+<Card title="Llama Models" href="/documentation/customizer-reference/models/llama">
 
 View the available Llama models in the model catalog.
 
 </Card>
-<Card title="Llama Nemotron Models" href="models/llama-nemotron.md">
+<Card title="Llama Nemotron Models" href="/documentation/customizer-reference/models/llama-nemotron">
 
 View the available Llama Nemotron models from NVIDIA, including Nano and Super variants for efficient and advanced instruction tuning.
 
 </Card>
-<Card title="Phi Models" href="models/phi.md">
+<Card title="Phi Models" href="/documentation/customizer-reference/models/phi">
 
 View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
 
 </Card>
-<Card title="GPT-OSS Models" href="models/gpt-oss.md">
+<Card title="GPT-OSS Models" href="/documentation/customizer-reference/models/gpt-oss">
 
 View the available GPT-OSS models supported for Full SFT customization.
 
@@ -68,7 +68,7 @@ Perform common fine-tuning tasks.
 Create, list, view, and cancel customization jobs.
 
 </Card>
-<Card title="Manage Model Entities" href="manage-model-entities/index.md">
+<Card title="Manage Model Entities" href="/documentation/customizer-reference/manage-model-entities/overview">
 
 Create FileSets and Model Entities to prepare base models for customization.
 
@@ -124,7 +124,7 @@ Learn how to compress a larger teacher model into a smaller student model.
 <small><span class="md-tag">nemo-customizer</span> <span class="md-tag">knowledge-distillation</span></small>
 
 </Card>
-<Card title="Check Customization Job Metrics" href="tutorials/metrics.md">
+<Card title="Check Customization Job Metrics" href="/documentation/customizer-reference/tutorials/job-metrics">
 
 Learn how to check job metrics using MLFlow or Weights & Biases.
 
@@ -147,7 +147,7 @@ Learn how to optimize the token-per-GPU throughput for a LoRA optimization job.
 
 <Cards>
 
-<Card title="Hyperparameters" href="manage-customization-jobs/hyperparameters.md">
+<Card title="Hyperparameters" href="/documentation/customizer-reference/manage-jobs/training-configuration">
 
 View the available hyperparameters and their valid options that you can set when creating a customization job.
 

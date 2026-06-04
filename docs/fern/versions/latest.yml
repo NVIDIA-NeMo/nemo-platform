@@ -287,3 +287,168 @@ navigation:
       path: ../../eula.mdx
     - page: Acknowledgements
       path: ../../acknowledgements/index.mdx
+  - section: Access Control
+    hidden: true
+    contents:
+      - page: Concepts
+        path: ../../auth/concepts.mdx
+      - page: Overview
+        path: ../../auth/index.mdx
+      - page: Security Model
+        path: ../../auth/security-model.mdx
+      - page: Troubleshooting
+        path: ../../auth/troubleshooting.mdx
+      - section: Authentication
+        contents:
+        - page: OIDC Setup
+          path: ../../auth/authentication/oidc.mdx
+        - page: Using Authentication
+          path: ../../auth/authentication/using-authentication.mdx
+        - section: Providers
+          contents:
+          - page: Azure AD (Entra ID)
+            path: ../../auth/authentication/providers/azure-ad.mdx
+          - page: Generic OIDC
+            path: ../../auth/authentication/providers/generic.mdx
+      - section: Authorization
+        contents:
+        - page: API Scopes
+          path: ../../auth/authorization/api-scopes.mdx
+        - page: Managing Access
+          path: ../../auth/authorization/managing-access.mdx
+        - page: Policy Engine
+          path: ../../auth/authorization/policy-engine.mdx
+        - page: Roles and Permissions
+          path: ../../auth/authorization/roles-and-permissions.mdx
+      - section: Deployment
+        contents:
+        - page: Configuration
+          path: ../../auth/deployment/configuration.mdx
+        - page: Gateway Integration
+          path: ../../auth/deployment/gateway.mdx
+        - page: Production Hardening
+          path: ../../auth/deployment/hardening.mdx
+  - section: Self-Managed Deployment
+    hidden: true
+    contents:
+      - section: Helm
+        contents:
+        - page: Helm Reference
+          path: ../../helm/index.mdx
+      - section: Setup
+        contents:
+        - page: About
+          path: ../../set-up/index.mdx
+        - page: Milvus
+          path: ../../set-up/milvus.mdx
+        - page: Observability
+          path: ../../set-up/opentelemetry.mdx
+        - section: Helm
+          contents:
+          - page: Backup and Restore
+            path: ../../set-up/helm/backup-and-restore.mdx
+          - page: Database Setup
+            path: ../../set-up/helm/database-setup.mdx
+          - page: File Storage
+            path: ../../set-up/helm/file-storage.mdx
+          - page: Overview
+            path: ../../set-up/helm/index.mdx
+          - page: Ingress
+            path: ../../set-up/helm/ingress.mdx
+          - page: Install
+            path: ../../set-up/helm/install.mdx
+          - page: Multinode Networking
+            path: ../../set-up/helm/multinode-networking.mdx
+          - page: OpenShift
+            path: ../../set-up/helm/openshift.mdx
+          - page: Persistent Volumes
+            path: ../../set-up/helm/persistent-volumes.mdx
+          - page: Prerequisites
+            path: ../../set-up/helm/prerequisites.mdx
+  - section: Customizer Reference
+    hidden: true
+    contents:
+      - page: Customization Concepts
+        path: ../../customizer/about.mdx
+      - section: Manage Jobs
+        contents:
+        - page: Cancel Job
+          path: ../../customizer/manage-customization-jobs/cancel-job.mdx
+        - page: Customization Job Reference
+          path: ../../customizer/manage-customization-jobs/customization-job-reference.mdx
+        - page: Get Job Status
+          path: ../../customizer/manage-customization-jobs/get-job-status.mdx
+        - page: Training Configuration
+          path: ../../customizer/manage-customization-jobs/hyperparameters.mdx
+        - page: List Active Jobs
+          path: ../../customizer/manage-customization-jobs/list-active-jobs.mdx
+      - section: Manage Model Entities
+        contents:
+        - page: Create a Model Entity
+          path: ../../customizer/manage-model-entities/create-model-entity.mdx
+        - page: Overview
+          path: ../../customizer/manage-model-entities/index.mdx
+      - section: Models
+        contents:
+        - page: Dataset Format
+          path: ../../customizer/models/data-format.mdx
+        - page: GPT-OSS
+          path: ../../customizer/models/gpt-oss.mdx
+        - page: Model Catalog
+          path: ../../customizer/models/index.mdx
+        - page: Llama Nemotron
+          path: ../../customizer/models/llama-nemotron.mdx
+        - page: Llama
+          path: ../../customizer/models/llama.mdx
+        - page: Mistral
+          path: ../../customizer/models/mistral.mdx
+        - page: Phi
+          path: ../../customizer/models/phi.mdx
+        - page: Qwen
+          path: ../../customizer/models/qwen.mdx
+      - section: Tutorials
+        contents:
+        - page: Import HuggingFace Models
+          path: ../../customizer/tutorials/import-hf-model.mdx
+        - page: Job Metrics
+          path: ../../customizer/tutorials/metrics.mdx
+        - page: Understanding Models and Training
+          path: ../../customizer/tutorials/understand-configurations-and-models.mdx
+  - section: Safe Synthesizer Reference
+    hidden: true
+    contents:
+      - page: Getting Started
+        path: ../../safe-synthesizer/getting-started.mdx
+      - section: About
+        contents:
+        - page: Data Synthesis
+          path: ../../safe-synthesizer/about/data-synthesis.mdx
+        - page: Evaluation
+          path: ../../safe-synthesizer/about/evaluation.mdx
+        - page: Host-Local Development
+          path: ../../safe-synthesizer/about/host-local-development.mdx
+        - page: Overview
+          path: ../../safe-synthesizer/about/index.mdx
+        - page: Jobs
+          path: ../../safe-synthesizer/about/jobs.mdx
+        - page: PII Replacement
+          path: ../../safe-synthesizer/about/pii-replacement.mdx
+        - page: Parameters Reference
+          path: ../../safe-synthesizer/about/reference.mdx
+      - section: Tutorials
+        contents:
+        - page: Differential Privacy
+          path: ../../safe-synthesizer/tutorials/differential-privacy.mdx
+        - page: Overview
+          path: ../../safe-synthesizer/tutorials/index.mdx
+  - section: Evaluator Benchmark Reference
+    hidden: true
+    contents:
+      - section: Benchmarks
+        contents:
+        - page: Job Management
+          path: ../../evaluator/benchmarks/job-management.mdx
+        - page: Manage Benchmarks
+          path: ../../evaluator/benchmarks/manage-benchmarks.mdx
+        - page: Benchmark Results
+          path: ../../evaluator/benchmarks/results.mdx

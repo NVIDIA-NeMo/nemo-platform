@@ -20,7 +20,7 @@ Top-level fields on the Safe Synthesizer job spec (alongside `config`):
 | `pretrained_model_job` | Prior completed job whose **`adapter`** result in Files is reused for **generation-only** synthesis. Format: `<job>` or `<workspace>/<job>`. Mutually exclusive with `config.training.pretrained_model`. |
 | `hf_token_secret` | Platform secret name for Hugging Face token during model initialization |
 
-For host-local runs, see [Host-Local Development and Testing](host-local-development.md). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
+For host-local runs, see [Host-Local Development and Testing](/documentation/safe-synthesizer-reference/about/host-local-development). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
 
 ## Top-Level Configuration
 
@@ -79,7 +79,7 @@ Configuration for synthetic data quality and privacy assessment, including MIA, 
 
 ## PII Replacement Configuration
 
-Configuration for PII detection and replacement. See [pii-replacement](../about/pii-replacement.md) for conceptual documentation.
+Configuration for PII detection and replacement. See [pii-replacement](/documentation/safe-synthesizer-reference/about/pii-replacement) for conceptual documentation.
 
 ### Column Classification Config (`replace_pii.globals.classify`)
 
@@ -131,6 +131,6 @@ job = builder.create_job(name="my-job", project="my-project")
 
 ## Related Topics
 
-- [data-synthesis](../about/data-synthesis.md) - Learn about synthesis concepts
-- [evaluation](../about/evaluation.md) - Learn about evaluation metrics
-- [index](../tutorials/index.md) - Hands-on tutorials
+- [data-synthesis](/documentation/safe-synthesizer-reference/about/data-synthesis) - Learn about synthesis concepts
+- [evaluation](/documentation/safe-synthesizer-reference/about/evaluation) - Learn about evaluation metrics
+- [index](/documentation/safe-synthesizer-reference/tutorials/overview) - Hands-on tutorials

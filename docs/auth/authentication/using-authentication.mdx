@@ -4,7 +4,7 @@ description: ""
 ---
 How to log in, make authenticated API calls, and manage tokens with the CLI and SDK.
 
-**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](oidc.md).
+**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](/documentation/access-control/authentication/oidc-setup).
 
 ## Log In
 
@@ -44,7 +44,7 @@ By default, the CLI requests the scopes configured in `auth.oidc.default_scopes`
 nemo auth login --scope "platform:read"
 ```
 
-See [API Scopes](../authorization/api-scopes.md) for the full list of available scopes.
+See [API Scopes](/documentation/access-control/authorization/api-scopes) for the full list of available scopes.
 
 ### Non-Interactive Login (CI/CD)
 
@@ -165,7 +165,7 @@ The OIDC token endpoint is **not** stored — it is discovered at runtime from y
 </Warning>
 ## Related
 
-- [OIDC Setup](oidc.md) — Configure your identity provider.
-- [API Scopes](../authorization/api-scopes.md) — Scope model and available scopes.
-- [Security Model](../security-model.md) — Trust boundaries and the principal model.
-- [Troubleshooting](../troubleshooting.md) — Fix common 401/403 errors and login failures.
+- [OIDC Setup](/documentation/access-control/authentication/oidc-setup) — Configure your identity provider.
+- [API Scopes](/documentation/access-control/authorization/api-scopes) — Scope model and available scopes.
+- [Security Model](/documentation/access-control/security-model) — Trust boundaries and the principal model.
+- [Troubleshooting](/documentation/access-control/troubleshooting) — Fix common 401/403 errors and login failures.
