@@ -14,6 +14,8 @@ from typing import Any
 
 from nmp.common.entities.values import Filter
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
+from nmp.intake.spans.domain import SpanStatus
+from nmp.intake.spans.experiment_session_repository import ExperimentSessionRow
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
 
@@ -148,3 +150,63 @@ class ExperimentFilter(Filter):
     experiment_group_id: str | None = Field(default=None, description="Filter experiments by owning group id.")
     agent_name: str | None = Field(default=None, description="Filter experiments by agent name.")
     dataset_name: str | None = Field(default=None, description="Filter experiments by dataset name.")
+
+
+class ExperimentSessionResponse(BaseModel):
+    """One ingested session of an Experiment — a single test case execution.
+
+    Hydrated from ClickHouse at read time by joining ``experiment_sessions`` with
+    the session's root span (for status, input, tokens, cost) and
+    ``evaluator_results`` (for per-evaluator session-mean scores).
+    """
+
+    workspace: str
+    experiment_name: str
+    session_id: str
+    test_case_id: str | None = Field(
+        default=None,
+        description="Producer-supplied test case identifier; null when the producer did not set one.",
+    )
+    trace_id: str
+    root_span_id: str
+
+    started_at: datetime
+    ended_at: datetime | None = None
+    latency_ms: float | None = None
+
+    status: SpanStatus = Field(description="Root-span status: success, error, cancelled, or unknown.")
+    input: str | None = Field(default=None, description="Root-span input text (the query).")
+
+    input_tokens: int | None = Field(default=None, description="Sum of input tokens across this session's spans.")
+    output_tokens: int | None = Field(default=None, description="Sum of output tokens across this session's spans.")
+    cached_tokens: int | None = Field(default=None, description="Sum of cached tokens across this session's spans.")
+    cost_total_usd: float | None = Field(default=None, description="Sum of cost across this session's spans.")
+
+    evaluator_scores: dict[str, float] = Field(
+        default_factory=dict,
+        description=(
+            "Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN evaluator results only; "
+            "text/categorical results are omitted."
+        ),
+    )
+
+    @classmethod
+    def from_row(cls, row: ExperimentSessionRow) -> ExperimentSessionResponse:
+        return cls(
+            workspace=row.workspace,
+            experiment_name=row.experiment_name,
+            session_id=row.session_id,
+            test_case_id=row.test_case_id,
+            trace_id=row.trace_id,
+            root_span_id=row.root_span_id,
+            started_at=row.started_at,
+            ended_at=row.ended_at,
+            latency_ms=row.latency_ms,
+            status=row.status,
+            input=row.input,
+            input_tokens=row.input_tokens,
+            output_tokens=row.output_tokens,
+            cached_tokens=row.cached_tokens,
+            cost_total_usd=row.cost_total_usd,
+            evaluator_scores=row.evaluator_scores,
+        )

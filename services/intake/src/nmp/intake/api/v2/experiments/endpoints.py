@@ -28,14 +28,18 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentGroupResponse,
     ExperimentRequest,
     ExperimentResponse,
+    ExperimentSessionResponse,
 )
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_rollup_repository import (
     ExperimentRollup,
     ExperimentRollupRepository,
     ScoreRollup,
 )
+from nmp.intake.spans.experiment_session_repository import ExperimentSessionRepository
+from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
@@ -67,6 +71,25 @@ def get_experiment_rollup_repository(request: Request) -> ExperimentRollupReposi
 
 
 ExperimentRollupRepositoryDep = Annotated[ExperimentRollupRepository | None, Depends(get_experiment_rollup_repository)]
+
+
+def get_experiment_session_repository(request: Request) -> ExperimentSessionRepository | None:
+    # Mirrors get_experiment_rollup_repository: optional dependency that returns None when
+    # ClickHouse is unavailable so the calling endpoint can surface a 503 deterministically.
+    service = getattr(request.app.state, "intake_service", None)
+    if service is None:
+        service = getattr(request.app.state, "service", None)
+    if service is None:
+        return None
+    service_client = getattr(service, "clickhouse_client", None)
+    if service_client is None:
+        return None
+    return ExperimentSessionRepository(service_client)
+
+
+ExperimentSessionRepositoryDep = Annotated[
+    ExperimentSessionRepository | None, Depends(get_experiment_session_repository)
+]
 
 
 @router.post(
@@ -365,6 +388,64 @@ async def delete_experiment(
         workspace=workspace,
         name=name,
         label="Experiment",
+    )
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/experiments/{name}/sessions",
+    response_model=Page[ExperimentSessionResponse],
+    tags=[EXPERIMENTS_TAG],
+    responses={
+        404: {"description": "Experiment not found"},
+        503: {"description": "ClickHouse unavailable"},
+    },
+)
+async def list_experiment_sessions(
+    workspace: str,
+    name: str,
+    entity_client: EntityClientDep,
+    session_repository: ExperimentSessionRepositoryDep,
+    status_filter: SpanStatus | None = Query(
+        default=None,
+        alias="status",
+        description="Filter by root-span status (success, error, cancelled, unknown).",
+    ),
+    test_case_id: str | None = Query(
+        default=None,
+        description="Filter by producer-supplied test case id.",
+    ),
+    page: int = Query(default=1, ge=1, description="Page number."),
+    page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
+) -> Page[ExperimentSessionResponse]:
+    await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+    if session_repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
+        )
+    result = await session_repository.list_sessions(
+        workspace=workspace,
+        experiment_name=name,
+        status=status_filter,
+        test_case_id=test_case_id,
+        page=page,
+        page_size=page_size,
+    )
+    data = [ExperimentSessionResponse.from_row(row) for row in result.rows]
+    return Page(
+        data=data,
+        pagination=make_pagination(
+            page=page,
+            page_size=page_size,
+            current_page_size=len(data),
+            total_results=result.total,
+        ),
     )
 
 
