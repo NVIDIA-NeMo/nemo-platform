@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
-import { isSchemaAssignableFile } from '@nemo/common/src/utils/jsonSchema';
 import {
   FilesetPurpose,
   type FilesetFileOutput,
@@ -16,6 +15,7 @@ import {
 } from '@studio/components/filesets/FilesetFileExplorer';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { DatasetSchemaEditor } from '@studio/routes/FilesetDetailRoute/DatasetSchemaEditor';
+import { getSchemaCellLabel } from '@studio/routes/FilesetDetailRoute/FilesTab/schemaColumn';
 import { useCallback, useMemo, type FC } from 'react';
 
 export interface FilesTabProps {
@@ -101,23 +101,12 @@ export const FilesTab: FC<FilesTabProps> = ({
   const datasetMetadata = fileset.metadata?.dataset;
   const extraColumns = useMemo<ExtraColumn[] | undefined>(() => {
     if (!showSchemaEditor) return undefined;
-    const schemasByPath = datasetMetadata?.schemas_by_path ?? {};
-    const rootSchema = datasetMetadata?.schema;
     return [
       {
         header: 'Schema',
         width: 140,
-        cell: (node) => {
-          if (node.type !== 'file') return null;
-          // Skip non-data files (README, images, scripts, etc.) — they do
-          // not carry a schema even when the dataset has one set.
-          if (!isSchemaAssignableFile(node.path)) return null;
-          const mapped = schemasByPath[node.path];
-          if (typeof mapped === 'string') return mapped;
-          if (mapped && typeof mapped === 'object') return null;
-          if (typeof rootSchema === 'string') return rootSchema;
-          return null;
-        },
+        cell: (node) =>
+          node.type === 'file' ? getSchemaCellLabel(node.path, datasetMetadata) : null,
       },
     ];
   }, [showSchemaEditor, datasetMetadata]);
