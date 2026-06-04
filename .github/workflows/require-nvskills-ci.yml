@@ -1,0 +1,60 @@
+name: Require NVSkills CI for skill changes
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  require-nvskills-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require trusted NVSkills signature for skills changes
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          SIGNATURE_ACTOR: ${{ vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing' }}
+          SIGNATURE_TITLE: ${{ vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures' }}
+          ONBOARDING_DOC: https://nvidia.atlassian.net/wiki/spaces/GAIT/pages/3483240468/Github+First+-+Outbound+Repos+Onboarding+doc+-+NVCARPS#Review-Internal-Pipeline-Logs
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const touchedSkills = files.some((file) => file.filename.startsWith('skills/'));
+            if (!touchedSkills) {
+              core.info('No files under skills/ changed.');
+              return;
+            }
+
+            const commit = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+
+            const actor = commit.data.author?.login || '';
+            const title = commit.data.commit.message.split('\n')[0];
+
+            const okActor = actor === process.env.SIGNATURE_ACTOR;
+            const okTitle = title.startsWith(process.env.SIGNATURE_TITLE);
+
+            if (!okActor || !okTitle) {
+              core.setFailed(
+                'Files under skills/ changed in this PR, but HEAD is not the trusted NVSkills signature commit. ' +
+                'Ask a maintainer/admin to comment /nvskills-ci. If new skills/ content was pushed after signing, rerun /nvskills-ci. ' +
+                `Expected HEAD GitHub author "${process.env.SIGNATURE_ACTOR}" and commit title prefix "${process.env.SIGNATURE_TITLE}". ` +
+                `See ${process.env.ONBOARDING_DOC}.`
+              );
+            }

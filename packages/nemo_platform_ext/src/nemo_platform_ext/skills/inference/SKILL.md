@@ -10,8 +10,8 @@ description: >
   guardrails alongside translate (correct middleware ordering for
   OpenAI/Anthropic cross-format setups), making inference calls through IGW,
   or debugging routing and translation failures locally. For platform startup,
-  Switchyard install, and DB-reset prerequisites, see the `nemo-setup` skill
-  (`skills/nemo-setup/SKILL.md`).
+  Switchyard install, and DB-reset prerequisites, see the setup playbook
+  (`SETUP.md` at the repo root).
 user-invocable: true
 allowed-tools: Bash, Read, Grep
 ---
@@ -22,8 +22,8 @@ allowed-tools: Bash, Read, Grep
 
 This skill assumes the platform is already running and any required plugins
 (`nemo-switchyard`, `nemo-guardrails`) are loaded. For local-platform startup,
-Switchyard install, and DB-reset choices, follow the **`nemo-setup` skill**
-(`skills/nemo-setup/SKILL.md`)
+Switchyard install, and DB-reset choices, follow the **setup playbook**
+(`SETUP.md` at the repo root)
 first and then return here.
 
 ## API key environment variables
@@ -66,7 +66,7 @@ printf '%s' "$INFERENCE_NVIDIA_API_KEY" | nemo secrets create nvidia-inference-k
 - Workspace: `my-workspace` (substitute as needed; `default` also works)
 - Backend: `https://inference-api.nvidia.com/v1`
 
-For platform startup (`nemo services run`), Switchyard install, and state reset, see the `nemo-setup` skill (`skills/nemo-setup/SKILL.md`).
+For platform startup (`nemo services run`), Switchyard install, and state reset, see the setup playbook (`SETUP.md` at the repo root).
 
 ---
 
