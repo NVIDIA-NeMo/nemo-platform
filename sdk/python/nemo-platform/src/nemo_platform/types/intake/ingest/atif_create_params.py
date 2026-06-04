@@ -41,6 +41,10 @@ class AtifCreateParams(TypedDict, total=False):
     continued_trajectory_ref: str
 
     evaluation_context: EvaluationContextParam
+    """Deprecated.
+
+    Use experiment_context; when both are sent, experiment_context takes precedence.
+    """
 
     experiment_context: ExperimentContextParam
     """Experiment context accepted by ingest endpoints."""
