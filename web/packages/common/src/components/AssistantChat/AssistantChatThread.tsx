@@ -256,35 +256,37 @@ export const AssistantChatThread = ({
 
   return (
     <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
-      <ThreadPrimitive.Viewport
-        {...threadViewportAttributes}
-        className={cn(
-          'relative flex min-h-0 flex-1 flex-col overflow-y-auto',
-          viewportClassName,
-          threadViewportClassName
-        )}
-      >
-        <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
-          <ThreadPrimitive.Empty>
-            <ChatEmptyState
-              className="h-full min-h-[250px] w-full"
-              slotHeading={emptyState?.slotHeading}
-              slotSubheading={emptyState?.slotSubheading}
+      <div className="relative min-h-0 flex-1">
+        <ThreadPrimitive.Viewport
+          {...threadViewportAttributes}
+          className={cn(
+            'flex h-full min-h-0 flex-col overflow-y-auto',
+            viewportClassName,
+            threadViewportClassName
+          )}
+        >
+          <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
+            <ThreadPrimitive.Empty>
+              <ChatEmptyState
+                className="h-full min-h-[250px] w-full"
+                slotHeading={emptyState?.slotHeading}
+                slotSubheading={emptyState?.slotSubheading}
+              />
+            </ThreadPrimitive.Empty>
+            <ThreadPrimitive.Messages
+              components={{
+                AssistantMessage: AssistantMessageComponent,
+                UserMessage,
+                UserEditComposer,
+                SystemMessage: AssistantMessageComponent,
+              }}
             />
-          </ThreadPrimitive.Empty>
-          <ThreadPrimitive.Messages
-            components={{
-              AssistantMessage: AssistantMessageComponent,
-              UserMessage,
-              UserEditComposer,
-              SystemMessage: AssistantMessageComponent,
-            }}
-          />
-        </Stack>
-        <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
+          </Stack>
+        </ThreadPrimitive.Viewport>
+        <ThreadPrimitive.ScrollToBottom className="absolute bottom-density-sm left-1/2 z-10 -translate-x-1/2 rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
           Scroll to bottom
         </ThreadPrimitive.ScrollToBottom>
-      </ThreadPrimitive.Viewport>
+      </div>
       <Flex className={cn('w-full', composerContainerClassName)}>
         {composerOverride ?? (
           <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />

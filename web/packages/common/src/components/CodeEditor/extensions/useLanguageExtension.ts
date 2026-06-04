@@ -3,6 +3,7 @@
 
 import { javascript } from '@codemirror/lang-javascript';
 import { json } from '@codemirror/lang-json';
+import { python } from '@codemirror/lang-python';
 import { yaml } from '@codemirror/lang-yaml';
 import { Compartment, Extension } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
@@ -31,6 +32,8 @@ const getLanguageExtension = (contentType: ContentType): Extension => {
   switch (contentType) {
     case ContentType.JAVASCRIPT:
       return javascript();
+    case ContentType.PYTHON:
+      return python();
     case ContentType.YAML:
       return yaml();
     case ContentType.JSON:
