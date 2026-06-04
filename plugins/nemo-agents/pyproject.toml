@@ -46,6 +46,7 @@ agents = "nemo_agents_plugin.skills:skills_dir"
 "agents.analyze" = "nemo_agents_plugin.jobs.analyze_batch:AnalyzeBatchJob"
 "agents.optimize-skills" = "nemo_agents_plugin.jobs.optimize_skills:OptimizeSkillsJob"
 "agents.triage-memory" = "nemo_agents_plugin.jobs.triage_memory:TriageMemoryJob"
+"agents.eval-triage" = "nemo_agents_plugin.jobs.eval_triage:EvalTriageJob"
 
 [project.entry-points."nemo.controllers"]
 "agents-deployment" = "nemo_agents_plugin.runner.controller:AgentDeploymentController"

@@ -36,24 +36,15 @@ debugging; the NemoJob is the canonical entry point.
 from __future__ import annotations
 
 import asyncio
-import contextlib
 import logging
 import subprocess
-import tempfile
 from collections import Counter
-from collections.abc import Iterator
-from pathlib import Path
 from typing import ClassVar
 
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
-from nemo_platform_plugin.refs import (
-    FilesetRef,
-    LocalDir,
-    OutputTarget,
-    classify_output_target,
-)
+from nemo_platform_plugin.refs import OutputTarget
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -209,14 +200,27 @@ class TriageMemoryJob(NemoJob):
         # pass-throughs; fileset cases stage to tempdirs and clean up / upload
         # on the way out. The output context only uploads on successful exit,
         # so a crashed run never leaves partial artifacts in a fileset.
+        from nemo_agents_plugin.improvement.memory._fileset_io import (
+            resolve_input_artifact,
+            resolve_output_target,
+        )
+
         with (
-            _resolve_corpus(cfg.corpus, workspace=cfg.workspace, sdk=sdk) as corpus,
-            _resolve_output(
+            resolve_input_artifact(
+                cfg.corpus,
+                workspace=cfg.workspace,
+                sdk=sdk,
+                suffix=".md",
+                kind_label="corpus",
+            ) as corpus,
+            resolve_output_target(
                 cfg.output,
                 workspace=cfg.workspace,
                 basename=cfg.basename,
                 ctx=ctx,
                 sdk=sdk,
+                persistent_subdir="triage-output",
+                job_label="triage-memory",
             ) as output_dir,
         ):
             logger.info("triage-memory: igw=%s corpus=%s judges=%s", igw_url, corpus, cfg.judges)
@@ -323,227 +327,36 @@ def _log_progress(done: int, total: int) -> None:
         logger.info("triage-memory: %d/%d entries judged", done, total)
 
 
-def _looks_pathy(ref: str) -> bool:
-    """True when *ref* looks like a filesystem path rather than a fileset reference.
-
-    Heuristic matches the convention in ``usage/cli.py``: leading ``.``, ``/``,
-    or ``~`` are unambiguous path shapes, and any string that already exists
-    on disk is treated as a path even when it has no leading sigil. A bare
-    name that does not exist locally falls through to fileset resolution.
-    """
-    if ref.startswith(("/", "./", "../", "~")):
-        return True
-    try:
-        return Path(ref).expanduser().exists()
-    except OSError:
-        # Path() can raise on pathologically long inputs; treat as non-path.
-        return False
+# Path/fileset dispatch helpers were factored into
+# ``improvement/memory/_fileset_io.py`` so the eval-triage job can share
+# them. We re-export ``_looks_pathy`` and ``_resolve_corpus`` at module
+# scope so existing tests that import them by name keep working without
+# having to chase the indirection.
 
 
-@contextlib.contextmanager
 def _resolve_corpus(
     corpus_ref: str,
     *,
     workspace: str,
     sdk: NeMoPlatform | None,
-) -> Iterator[Path]:
-    """Yield a local :class:`Path` to the corpus file.
+):
+    """Back-compat shim around the shared ``resolve_input_artifact`` helper.
 
-    When *corpus_ref* is path-shaped, expand + resolve it and yield directly.
-    Otherwise, treat it as a fileset reference, download the fileset to a
-    tempdir via the existing ``usage.sources.fileset`` helper, find the
-    single ``.md`` file inside, and yield that path. The tempdir is cleaned
-    up automatically when the context exits.
+    Existing unit tests import ``_resolve_corpus`` directly. The shared
+    helper has identical semantics for the corpus case (single .md file
+    from a fileset, or a local path). New callers should import
+    ``resolve_input_artifact`` from ``_fileset_io`` directly.
 
-    Raises :class:`RuntimeError` (not the platform-specific exception types)
-    on every failure shape so the caller can surface one consistent error
-    message to the job runner regardless of whether the corpus came from
-    the filesystem or the platform.
+    Returns the context manager so ``with _resolve_corpus(...) as path:``
+    continues to work; not decorated with ``@contextlib.contextmanager``
+    because the helper itself is already a context manager.
     """
-    if _looks_pathy(corpus_ref):
-        path = Path(corpus_ref).expanduser().resolve()
-        if not path.exists():
-            raise RuntimeError(
-                f"Corpus path does not exist: {path}. Set 'corpus' to a valid local "
-                "file or to a NeMo Platform fileset reference (workspace/name)."
-            )
-        yield path
-        return
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_input_artifact
 
-    # Fileset reference. Import lazily so a path-only job invocation does
-    # not pay the cost of pulling in the staging helper.
-    from nemo_agents_plugin.usage.sources.fileset import (
-        FilesetDownloadError,
-        FilesetRefError,
-        fileset_path,
+    return resolve_input_artifact(
+        corpus_ref,
+        workspace=workspace,
+        sdk=sdk,
+        suffix=".md",
+        kind_label="Corpus",
     )
-
-    try:
-        ref = FilesetRef(corpus_ref)
-    except Exception as err:
-        raise RuntimeError(
-            f"Could not parse corpus reference {corpus_ref!r} as a fileset reference. "
-            "Use 'fileset-name' (with 'workspace' set) or 'workspace/fileset-name'."
-        ) from err
-
-    # Same SDK-required guard the evaluate_agent fileset branch uses: surface
-    # an actionable message early rather than failing inside the SDK call.
-    if sdk is None:
-        raise RuntimeError(
-            "TriageMemoryJob.run requires a 'sdk: NeMoPlatform' to download "
-            f"the corpus fileset {corpus_ref!r}, but no platform SDK was available. "
-            "Set NMP_BASE_URL (so the local CLI can build a default SDK), pass "
-            "an explicit sdk via NemoJobScheduler.run_local(sdk=...), or use a "
-            "local path for 'corpus' instead."
-        )
-
-    try:
-        with fileset_path(ref, sdk=sdk, workspace=workspace) as tmp:
-            md_files = sorted(tmp.rglob("*.md"))
-            if not md_files:
-                raise RuntimeError(
-                    f"Fileset {corpus_ref!r} (workspace={workspace!r}) contains no "
-                    ".md files. Upload a single pi-hermes Markdown corpus file to "
-                    "the fileset (USER.md / MEMORY.md / failures.md)."
-                )
-            if len(md_files) > 1:
-                names = [p.name for p in md_files]
-                raise RuntimeError(
-                    f"Fileset {corpus_ref!r} contains multiple .md files: {names}. "
-                    "The triage-memory job expects exactly one corpus file per "
-                    "fileset; create separate filesets per corpus or remove the extras."
-                )
-            yield md_files[0]
-    except (FilesetRefError, FilesetDownloadError) as err:
-        # Re-wrap as RuntimeError so job-runner error handling sees a single
-        # error type for every corpus-resolution failure mode.
-        raise RuntimeError(f"Failed to stage fileset {corpus_ref!r}: {err}") from err
-
-
-@contextlib.contextmanager
-def _resolve_output(
-    output: OutputTarget | None,
-    *,
-    workspace: str,
-    basename: str,
-    ctx: JobContext,
-    sdk: NeMoPlatform | None,
-) -> Iterator[Path]:
-    """Yield the local directory artifacts should be written to.
-
-    Branches on the output union shape, matching the EvaluateAgent
-    convention exactly:
-
-    - ``None`` → ``ctx.storage.persistent / "triage-output"``. Survives
-      across job runs in the platform-injected persistent volume.
-    - :class:`LocalDir` → that directory, ``mkdir -p``-ed.
-    - :class:`FilesetRef` → a tempdir under ``ctx.storage.ephemeral``. On
-      successful exit, the two artifacts (``{basename}.json`` and
-      ``{basename}.md``) are uploaded to the named fileset (auto-created
-      if missing) via ``sdk.files.upload``, then the tempdir is removed.
-      A failed run (any exception propagating out of the ``with`` body)
-      skips the upload so the fileset never holds a half-finished pair.
-
-    *sdk* is required only on the fileset branch; we check up front and
-    raise :class:`RuntimeError` early so the job doesn't run for ten
-    minutes only to discover at the end it can't deliver the artifacts.
-    """
-    if output is None:
-        local = ctx.storage.persistent / "triage-output"
-        local.mkdir(parents=True, exist_ok=True)
-        logger.info("triage-memory: writing artifacts to platform-persistent dir %s", local)
-        yield local
-        return
-
-    cls = classify_output_target(str(output))
-    if cls is LocalDir:
-        local = Path(str(output)).expanduser().resolve()
-        local.mkdir(parents=True, exist_ok=True)
-        logger.info("triage-memory: writing artifacts to local dir %s", local)
-        yield local
-        return
-
-    # Fileset branch.
-    if sdk is None:
-        raise RuntimeError(
-            "TriageMemoryJob.run requires a 'sdk: NeMoPlatform' to upload "
-            f"artifacts to fileset {output!r}, but no platform SDK was available. "
-            "Set NMP_BASE_URL (so the local CLI can build a default SDK), pass "
-            "an explicit sdk via NemoJobScheduler.run_local(sdk=...), or use a "
-            "local path for 'output' instead."
-        )
-
-    ref = FilesetRef(str(output))
-    if "/" in ref:
-        ws, name = ref.split("/", 1)
-    else:
-        ws, name = workspace, str(ref)
-
-    with tempfile.TemporaryDirectory(
-        prefix=f".triage-output-{name}-",
-        dir=str(ctx.storage.ephemeral),
-    ) as tmp:
-        tmp_path = Path(tmp)
-        logger.info(
-            "triage-memory: staging artifacts in %s; will upload to fileset %s/%s on success.",
-            tmp_path,
-            ws,
-            name,
-        )
-        should_upload = True
-        try:
-            yield tmp_path
-        except BaseException:
-            # Don't pollute the fileset with broken / partial outputs from a
-            # crashed run. Re-raise so the job-runner sees the original error.
-            should_upload = False
-            raise
-        finally:
-            if should_upload:
-                _upload_artifacts_to_fileset(
-                    tmp_path,
-                    fileset=name,
-                    workspace=ws,
-                    basename=basename,
-                    sdk=sdk,
-                )
-
-
-def _upload_artifacts_to_fileset(
-    local_dir: Path,
-    *,
-    fileset: str,
-    workspace: str,
-    basename: str,
-    sdk: NeMoPlatform,
-) -> None:
-    """Upload ``{basename}.json`` and ``{basename}.md`` from *local_dir* to the fileset.
-
-    Auto-creates the fileset if missing (matches ``nemo files upload`` semantics).
-    Each artifact is uploaded individually so a partial failure leaves the
-    error attached to a specific file in the log rather than to a vague
-    "directory upload failed". Caller handles the surrounding tempdir
-    lifecycle.
-    """
-    for suffix in (".json", ".md"):
-        artifact = local_dir / f"{basename}{suffix}"
-        if not artifact.exists():
-            # Should not happen — write_artifacts always produces both — but
-            # raise a clear error rather than silently uploading less than
-            # the documented pair.
-            raise RuntimeError(
-                f"triage-memory: expected artifact {artifact} was not produced by write_artifacts. "
-                "This is a bug in the job; the fileset upload was aborted to avoid a partial pair."
-            )
-        sdk.files.upload(
-            local_path=str(artifact),
-            fileset=fileset,
-            workspace=workspace,
-            fileset_auto_create=True,
-        )
-        logger.info(
-            "triage-memory: uploaded %s to fileset %s/%s.",
-            artifact.name,
-            workspace,
-            fileset,
-        )

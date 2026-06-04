@@ -16,6 +16,7 @@ def test_jobs_discovered_via_entry_points() -> None:
     assert "agents.analyze" in jobs
     assert "agents.optimize-skills" in jobs
     assert "agents.triage-memory" in jobs
+    assert "agents.eval-triage" in jobs
 
 
 def test_evaluate_suite_job_metadata() -> None:
@@ -97,6 +98,38 @@ def test_triage_memory_config_rejects_empty_judges() -> None:
         TriageMemoryConfig.model_validate({"corpus": "./USER.md", "judges": []})
 
 
+def test_eval_triage_job_metadata() -> None:
+    from nemo_agents_plugin.jobs.eval_triage import EvalTriageJob
+
+    assert EvalTriageJob.name == "eval-triage"
+    assert EvalTriageJob.container == "cpu-tasks"
+
+
+def test_eval_triage_config_minimum_validation() -> None:
+    from nemo_agents_plugin.jobs.eval_triage import EvalTriageConfig
+
+    cfg = EvalTriageConfig.model_validate({"baseline": "./a.json", "candidate": "./b.json"})
+    assert cfg.baseline == "./a.json"
+    assert cfg.candidate == "./b.json"
+    assert cfg.workspace == "default"
+    assert cfg.output is None  # falls back to ctx.storage.persistent at run time
+    assert cfg.basename == "eval-triage"
+
+
+def test_eval_triage_config_requires_both_inputs() -> None:
+    # Without either baseline or candidate the spec is meaningless; the
+    # Pydantic validation should reject up-front, not let the job fail
+    # later trying to load None.
+    import pytest
+    from nemo_agents_plugin.jobs.eval_triage import EvalTriageConfig
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        EvalTriageConfig.model_validate({"baseline": "./a.json"})
+    with pytest.raises(ValidationError):
+        EvalTriageConfig.model_validate({"candidate": "./b.json"})
+
+
 def test_triage_memory_config_rejects_negative_max_tokens() -> None:
     import pytest
     from nemo_agents_plugin.jobs.triage_memory import TriageMemoryConfig
@@ -112,7 +145,7 @@ def test_triage_memory_looks_pathy_dispatch() -> None:
     # Verify the path/fileset dispatch heuristic. Anything that starts with
     # a path sigil OR exists locally is treated as a path; everything else
     # falls through to fileset resolution.
-    from nemo_agents_plugin.jobs.triage_memory import _looks_pathy
+    from nemo_agents_plugin.improvement.memory._fileset_io import looks_pathy as _looks_pathy
 
     assert _looks_pathy("./foo.md") is True
     assert _looks_pathy("/abs/path/USER.md") is True
@@ -159,22 +192,38 @@ def test_triage_memory_resolve_corpus_fileset_without_sdk_raises() -> None:
 def test_triage_memory_resolve_output_none_uses_persistent(tmp_path) -> None:
     # output=None falls back to ctx.storage.persistent / 'triage-output'
     # so artifacts survive across runs in the platform-injected volume.
-    from nemo_agents_plugin.jobs.triage_memory import _resolve_output
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_output_target as _resolve_output
 
     ctx = _make_fake_ctx(tmp_path)
-    with _resolve_output(None, workspace="default", basename="x", ctx=ctx, sdk=None) as out:
+    with _resolve_output(
+        None,
+        workspace="default",
+        basename="x",
+        ctx=ctx,
+        sdk=None,
+        persistent_subdir="triage-output",
+        job_label="triage-memory",
+    ) as out:
         assert out == ctx.storage.persistent / "triage-output"
         assert out.is_dir()
 
 
 def test_triage_memory_resolve_output_local_dir(tmp_path) -> None:
     # LocalDir-shaped output uses the path directly, mkdir -p semantics.
-    from nemo_agents_plugin.jobs.triage_memory import _resolve_output
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_output_target as _resolve_output
     from nemo_platform_plugin.refs import LocalDir
 
     ctx = _make_fake_ctx(tmp_path)
     target = tmp_path / "artifacts" / "subdir"
-    with _resolve_output(LocalDir(str(target)), workspace="default", basename="x", ctx=ctx, sdk=None) as out:
+    with _resolve_output(
+        LocalDir(str(target)),
+        workspace="default",
+        basename="x",
+        ctx=ctx,
+        sdk=None,
+        persistent_subdir="triage-output",
+        job_label="triage-memory",
+    ) as out:
         assert out == target.resolve()
         assert out.is_dir()
 
@@ -183,7 +232,7 @@ def test_triage_memory_resolve_output_fileset_without_sdk_raises(tmp_path) -> No
     # Fileset output without an SDK raises BEFORE staging — we don't want
     # to run the job for 10min and then fail to deliver artifacts.
     import pytest
-    from nemo_agents_plugin.jobs.triage_memory import _resolve_output
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_output_target as _resolve_output
     from nemo_platform_plugin.refs import FilesetRef
 
     ctx = _make_fake_ctx(tmp_path)
@@ -194,6 +243,8 @@ def test_triage_memory_resolve_output_fileset_without_sdk_raises(tmp_path) -> No
             basename="x",
             ctx=ctx,
             sdk=None,
+            persistent_subdir="triage-output",
+            job_label="triage-memory",
         ):
             pass
 
@@ -202,7 +253,7 @@ def test_triage_memory_resolve_output_fileset_uploads_on_success(tmp_path) -> No
     # Happy-path fileset upload: yields a tempdir, after the with-block
     # exits cleanly the helper calls sdk.files.upload for each artifact
     # (basename.json + basename.md) with fileset_auto_create=True.
-    from nemo_agents_plugin.jobs.triage_memory import _resolve_output
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_output_target as _resolve_output
     from nemo_platform_plugin.refs import FilesetRef
 
     ctx = _make_fake_ctx(tmp_path)
@@ -213,6 +264,8 @@ def test_triage_memory_resolve_output_fileset_uploads_on_success(tmp_path) -> No
         basename="run1",
         ctx=ctx,
         sdk=sdk,  # type: ignore[arg-type]
+        persistent_subdir="triage-output",
+        job_label="triage-memory",
     ) as staging:
         # Simulate write_artifacts: produce the two-file pair.
         (staging / "run1.json").write_text("{}", encoding="utf-8")
@@ -231,7 +284,7 @@ def test_triage_memory_resolve_output_fileset_uploads_on_success(tmp_path) -> No
 def test_triage_memory_resolve_output_fileset_skips_upload_on_error(tmp_path) -> None:
     # If the job body raises inside the with-block, the upload is skipped —
     # we don't want partial / broken artifacts polluting the fileset.
-    from nemo_agents_plugin.jobs.triage_memory import _resolve_output
+    from nemo_agents_plugin.improvement.memory._fileset_io import resolve_output_target as _resolve_output
     from nemo_platform_plugin.refs import FilesetRef
 
     ctx = _make_fake_ctx(tmp_path)
@@ -243,6 +296,8 @@ def test_triage_memory_resolve_output_fileset_skips_upload_on_error(tmp_path) ->
             basename="run1",
             ctx=ctx,
             sdk=sdk,  # type: ignore[arg-type]
+            persistent_subdir="triage-output",
+            job_label="triage-memory",
         ):
             raise RuntimeError("simulated job-body failure")
 

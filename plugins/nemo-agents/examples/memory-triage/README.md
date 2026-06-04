@@ -6,11 +6,16 @@ against a `pi-hermes`-style Markdown corpus. Talks to whatever models
 the local NeMo Platform IGW exposes via its OpenAI-compatible endpoint.
 No direct provider credentials are needed; IGW handles upstream auth.
 
-## Canonical entry point
+## Canonical entry points
 
-This subdirectory is the home of the **`nemo agents triage-memory`**
-NemoJob (registered under `nemo.jobs` as `agents.triage-memory` by the
-plugin's `pyproject.toml`).
+This subdirectory is the home of two NemoJobs in the memory-triage flow:
+
+1. **`nemo agents triage-memory`** (`agents.triage-memory`): runs the
+   council against a pi-hermes corpus, emits a JSON + Markdown artifact pair.
+2. **`nemo agents eval-triage`** (`agents.eval-triage`): diffs two
+   triage artifacts (a baseline and a candidate), emits an agreement
+   report. Pure offline (no LLM calls); the eval primitive for
+   evaluating tuned-model candidates against the locked Sonnet 4.6 baseline.
 
 ```bash
 # Lock the Sonnet 4.6 baseline (the gold reference for tuned-model comparison).
@@ -139,10 +144,74 @@ Use local paths or `nemo files download` to stage inputs first, and
   baseline-vs-candidate eval primitive (Phase 2 / bd `mdubrinsky-7au.6`).
   Markdown is human-reviewable, organized by verdict bucket.
 
+## Baseline-vs-candidate eval
+
+Once you have two triage artifacts (e.g. the locked Sonnet 4.6 baseline
+and a tuned-Nemotron candidate), the `eval-triage` job computes three
+agreement rates plus a confusion matrix and per-entry delta set.
+
+### Quickstart: laptop, local artifacts
+
+```bash
+nemo agents eval-triage run --spec '{
+  "baseline": "./baseline.json",
+  "candidate": "./candidate.json",
+  "basename": "my-eval"
+}'
+```
+
+Or from the raw driver (when iterating on metric definitions):
+
+```bash
+uv run --frozen python plugins/nemo-agents/examples/memory-triage/eval_triage.py \
+    --baseline plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/baseline-sonnet-4-6-user.json \
+    --candidate /tmp/some-candidate.json \
+    --output-dir /tmp/eval-out --basename my-eval
+```
+
+### Quickstart: omnistation, filesets on both ends
+
+Upload the laptop baseline to omnistation as a separate fileset once:
+
+```bash
+nemo --context omnistation files upload \
+    --fileset memory-triage-laptop-baseline \
+    plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/baseline-sonnet-4-6-user.json
+```
+
+Then on omnistation:
+
+```bash
+nemo agents eval-triage run \
+    --spec-file plugins/nemo-agents/examples/memory-triage/sonnet-vs-self-omnistation.eval-triage.yml
+```
+
+Pull the report back:
+
+```bash
+nemo --context omnistation files download memory-triage-eval-reports -o ./reports
+```
+
+### Metrics
+
+Three agreement rates, all over the entries common to both runs:
+
+| metric | what it measures |
+| --- | --- |
+| **Strict** | Exact verdict match. Bounded above by judge intra-stability (~95% on USER.md). |
+| **Retain vs drop** (2-way) | Both judges agree the entry should exist in some form vs. be dropped. Insensitive to keep/promote/refine boundaries. |
+| **Promote threshold** (2-way) | Both judges agree on whether the entry deserves prompt-level promotion. Sensitive to the boundary where same-judge runs jitter. |
+
+Plus a 5x5 confusion matrix (baseline verdict vs candidate verdict, diagonal = agreement) and a per-entry delta list grouped by `(baseline_verdict, candidate_verdict)` bands so reviewers can scan one flip type at a time.
+
+### Validated against intra-judge baseline
+
+Sonnet-4.6 laptop vs Sonnet-4.6 omnistation on USER.md: **strict 94.4%, retain-vs-drop 100%, promote-threshold 94.4%, 4 disagreements all at the promote boundary.** This is the noise floor any tuned-model candidate has to beat.
+
 ## See also
 
 - [`DESIGN.md`](../../src/nemo_agents_plugin/improvement/memory/DESIGN.md) — Phase 0 contract, council slots, phasing.
 - [`RESULTS.md`](../../src/nemo_agents_plugin/improvement/memory/RESULTS.md) — Phase 1 smoke results, calibration findings, v1-v4 evolution.
 - bd `mdubrinsky-7au` — parent issue.
-- bd `mdubrinsky-7au.6` — eval-loop work (baseline-vs-candidate diff primitive).
+- bd `mdubrinsky-7au.6` — eval-loop primitive (this).
 - bd `mdubrinsky-7au.3` — judge fine-tune corpus from the v1 disagreement set.
