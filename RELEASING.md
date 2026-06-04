@@ -28,6 +28,14 @@ Before triggering the release, merge a PR that bumps `version.py` to the *next* 
 - The bump is already on `main` before you touch the release workflow — no race window.
 - Nightlies built after the bump PR merges will immediately produce `0.1.3.dev...` strings.
 
+The bump PR must also regenerate the OpenAPI spec and SDKs, since they embed the version:
+
+```bash
+make update-sdk
+```
+
+This runs `make refresh-openapi` (regenerates `openapi/openapi.yaml` and plugin specs) and then syncs the Python and web SDKs via Stainless. Requires `STAINLESS_API_KEY` to be set — see `sdk/README.md` for setup instructions.
+
 To find the right SHA:
 
 ```bash
