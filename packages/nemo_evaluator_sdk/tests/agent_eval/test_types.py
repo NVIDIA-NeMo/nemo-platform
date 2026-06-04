@@ -4,48 +4,70 @@
 from __future__ import annotations
 
 import pytest
-from nemo_evaluator_sdk.agent_eval import (
-    AgentEvalMetricSpec,
-    AgentEvalTask,
-    EvidenceLocator,
-    ScoreDeduction,
-)
+from nemo_evaluator_sdk.agent_eval import AgentEvalTask
+from nemo_evaluator_sdk.agent_eval.types import SemanticView, ViewSignal
 from nemo_evaluator_sdk.execution.samples import build_metric_input
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import CandidateEvidence, EvidenceDescriptor
 
 
-def test_task_rejects_duplicate_metric_ids() -> None:
-    with pytest.raises(ValueError, match="duplicate task metric ids"):
+class _Metric:
+    @property
+    def type(self) -> str:
+        return "example_metric"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        raise NotImplementedError
+
+
+def test_task_serializes_metric_instances_as_descriptors() -> None:
+    task = AgentEvalTask(
+        id="task-1",
+        intent="answer the prompt",
+        inputs={"prompt": "Question?"},
+        metrics=[_Metric()],
+    )
+
+    assert task.model_dump(mode="json")["metrics"] == [
+        {
+            "type": "example_metric",
+            "outputs": [{"name": "score", "description": None, "value_schema": "ContinuousScore"}],
+        }
+    ]
+
+
+def test_task_rejects_duplicate_metric_types() -> None:
+    with pytest.raises(ValueError, match="duplicate task metric types"):
         AgentEvalTask(
             id="task-1",
             intent="answer the prompt",
             inputs={"prompt": "Question?"},
-            metrics=[
-                AgentEvalMetricSpec(id="metric", type="profbench_rubric"),
-                AgentEvalMetricSpec(id="metric", type="other"),
-            ],
+            metrics=[_Metric(), _Metric()],
         )
 
 
-def test_score_deduction_requires_evidence() -> None:
-    with pytest.raises(ValueError):
-        ScoreDeduction(
-            raw_points=1,
-            normalized_impact=0.25,
-            criterion_id="criterion-1",
-            reason="missing evidence",
-            evidence=[],
+def test_task_validates_view_signals_against_metric_outputs() -> None:
+    with pytest.raises(ValueError, match="unknown output"):
+        AgentEvalTask(
+            id="task-1",
+            intent="answer the prompt",
+            inputs={"prompt": "Question?"},
+            metrics=[_Metric()],
+            views={
+                "outcome_correctness": SemanticView(
+                    reducer="single",
+                    signals=[ViewSignal(metric="example_metric", output="missing")],
+                )
+            },
         )
-
-
-def test_atif_evidence_requires_line_number() -> None:
-    with pytest.raises(ValueError, match="ATIF evidence locators require a line number"):
-        EvidenceLocator(kind="atif", uri="atif://attempt-trace")
 
 
 def test_metric_input_preserves_candidate_evidence_out_of_metadata() -> None:
     evidence = CandidateEvidence(
-        trace=EvidenceDescriptor(kind="atif", ref="atif://attempt-trace#L9", format="atif")
+        descriptors={"trace": EvidenceDescriptor(kind="atif", ref="atif://attempt-trace#L9", format="atif")}
     )
 
     metric_input = build_metric_input(
@@ -55,4 +77,6 @@ def test_metric_input_preserves_candidate_evidence_out_of_metadata() -> None:
     )
 
     assert metric_input.candidate.evidence == evidence
+    assert metric_input.candidate.evidence is not None
+    assert metric_input.candidate.evidence.require("trace", kind="atif") == evidence.descriptors["trace"]
     assert metric_input.candidate.metadata == {"custom": "metadata"}

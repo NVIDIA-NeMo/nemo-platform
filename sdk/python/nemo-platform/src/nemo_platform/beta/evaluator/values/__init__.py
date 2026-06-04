@@ -10,6 +10,7 @@ from nemo_platform.beta.evaluator.values.dataset_schemas import (
     InputSchema,
 )
 from nemo_platform.beta.evaluator.values.datasets import DatasetInput, DatasetRows
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
 from nemo_platform.beta.evaluator.values.metrics import (
     BLEU,
     F1,
@@ -95,6 +96,7 @@ __all__ = [
     "AggregateScore",
     "AggregateScoreBase",
     "BooleanValue",
+    "CandidateEvidence",
     "CandidateOutput",
     "ContinuousScore",
     "DatasetRow",
@@ -121,6 +123,7 @@ __all__ = [
     "ModelRef",
     "DatasetInput",
     "EvaluationResult",
+    "EvidenceDescriptor",
     "Percentiles",
     "RangeScore",
     "ReasoningParams",

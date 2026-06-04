@@ -15,10 +15,10 @@ from urllib.parse import urlparse
 
 from pydantic import BaseModel
 
-import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard
-from nemo_evaluator_sdk.agent_eval.persistence import persist_run
-from nemo_evaluator_sdk.agent_eval.types import (
+import nemo_platform.beta.evaluator.inference as inference
+from nemo_platform.beta.evaluator.agent_eval.dashboard import write_dashboard
+from nemo_platform.beta.evaluator.agent_eval.persistence import persist_run
+from nemo_platform.beta.evaluator.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalAttempt,
     AgentEvalRunConfig,
@@ -30,13 +30,13 @@ from nemo_evaluator_sdk.agent_eval.types import (
     AgentOutput,
     mean_numeric,
 )
-from nemo_evaluator_sdk.agent_inference import make_agent_inference_request, new_agent_inference_client
-from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample, run_sync
-from nemo_evaluator_sdk.execution.samples import build_metric_input
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricOutput, validate_metric_result
-from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.agent_inference import make_agent_inference_request, new_agent_inference_client
+from nemo_platform.beta.evaluator.execution.metric_execution import generate_online_sample, run_sync
+from nemo_platform.beta.evaluator.execution.samples import build_metric_input
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricOutput, validate_metric_result
+from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
+from nemo_platform.beta.evaluator.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
 
 
 class AgentEvaluator:

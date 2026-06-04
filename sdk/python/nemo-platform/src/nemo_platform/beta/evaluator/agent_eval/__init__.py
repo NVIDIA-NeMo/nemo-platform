@@ -3,10 +3,10 @@
 
 """Standalone agent evaluation API."""
 
-from nemo_evaluator_sdk.agent_eval.dashboard import render_dashboard, write_dashboard
-from nemo_evaluator_sdk.agent_eval.evaluator import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.persistence import persist_run
-from nemo_evaluator_sdk.agent_eval.types import (
+from nemo_platform.beta.evaluator.agent_eval.dashboard import render_dashboard, write_dashboard
+from nemo_platform.beta.evaluator.agent_eval.evaluator import AgentEvaluator
+from nemo_platform.beta.evaluator.agent_eval.persistence import persist_run
+from nemo_platform.beta.evaluator.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalAttempt,
     AgentEvalRunConfig,
@@ -19,7 +19,7 @@ from nemo_evaluator_sdk.agent_eval.types import (
     SemanticView,
     ViewSignal,
 )
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
 
 __all__ = [
     "AgentEvalAttempt",

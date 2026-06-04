@@ -12,7 +12,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from nemo_evaluator_sdk.agent_eval.types import AgentEvalRunResult, AgentEvalTaskResult
+from nemo_platform.beta.evaluator.agent_eval.types import AgentEvalRunResult, AgentEvalTaskResult
 
 
 def write_dashboard(result: AgentEvalRunResult, output_path: str | Path) -> Path:

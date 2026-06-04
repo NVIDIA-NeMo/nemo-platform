@@ -12,10 +12,10 @@ from typing import Any, Literal, Protocol, runtime_checkable
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
 
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricOutput
-from nemo_evaluator_sdk.metrics.utils import metric_type_name
-from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence
+from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricOutput
+from nemo_platform.beta.evaluator.metrics.utils import metric_type_name
+from nemo_platform.beta.evaluator.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence
 
 AgentEvalAttemptStatus = Literal["completed", "failed", "partial"]
 SemanticReducer = Literal["single", "all", "any", "mean", "weighted_mean"]

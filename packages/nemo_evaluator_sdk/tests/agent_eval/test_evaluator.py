@@ -3,64 +3,58 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval import (
     AgentEvalAttempt,
-    AgentEvalMetricSpec,
     AgentEvalRunConfig,
     AgentEvalTask,
     AgentEvaluator,
     AgentOutput,
-    ProfBenchCriterion,
-    ProfBenchJudgeDecision,
 )
-from nemo_evaluator_sdk.agent_eval.profbench import PROFBENCH_METRIC_ID, PROFBENCH_METRIC_TYPE
 from nemo_evaluator_sdk.enums import AgentFormat, ModelFormat
+from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values import Agent, Model, RunConfigOnline, RunConfigOnlineModel
 
 
-class _FakeJudge:
-    async def judge(self, request: Any) -> ProfBenchJudgeDecision:
-        fulfilled = request.criterion_id.endswith("criterion-1")
-        return ProfBenchJudgeDecision(fulfilled=fulfilled, reason=f"fake judge for {request.criterion_id}")
+class _ConstantMetric:
+    @property
+    def type(self) -> str:
+        return "constant_metric"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        return MetricResult(outputs=[MetricOutput(name="score", value=0.75)])
 
 
-def _profbench_task() -> AgentEvalTask:
-    criterion_1 = ProfBenchCriterion(
-        id="task-1:criterion-1",
-        description="States the core answer.",
-        weight_name="Critical",
-        points=4,
-        criterion_type="Correctness",
-        source_uri="/tmp/profbench.jsonl",
-        line_number=12,
-        json_path="$.rubrics[0]",
-    )
-    criterion_2 = ProfBenchCriterion(
-        id="task-1:criterion-2",
-        description="Includes the caveat.",
-        weight_name="Minor",
-        points=2,
-        criterion_type="Completeness",
-        source_uri="/tmp/profbench.jsonl",
-        line_number=12,
-        json_path="$.rubrics[1]",
-    )
+class _EvidenceMetric:
+    def __init__(self) -> None:
+        self.inputs: list[MetricInput] = []
+
+    @property
+    def type(self) -> str:
+        return "evidence_metric"
+
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("score")]
+
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        self.inputs.append(input)
+        return MetricResult(outputs=[MetricOutput(name="score", value=1.0)])
+
+
+def _task(metric: Any | None = None) -> AgentEvalTask:
     return AgentEvalTask(
         id="task-1",
         intent="Answer a professional benchmark prompt.",
         inputs={"prompt": "What is the answer?", "domain": "Finance MBA"},
-        metrics=[
-            AgentEvalMetricSpec(
-                id=PROFBENCH_METRIC_ID,
-                type=PROFBENCH_METRIC_TYPE,
-                config={"rubrics": [criterion_1.model_dump(mode="json"), criterion_2.model_dump(mode="json")]},
-            )
-        ],
-        metadata={"benchmark": "ProfBench", "domain": "Finance MBA"},
+        metrics=[metric or _ConstantMetric()],
+        metadata={"benchmark": "Example", "domain": "Finance MBA"},
     )
 
 
@@ -68,9 +62,27 @@ def _candidate_attempt() -> AgentEvalAttempt:
     return AgentEvalAttempt(
         id="attempt-1",
         task_id="task-1",
-        output=AgentOutput(output_text="Candidate answer"),
+        output=AgentOutput(text="Candidate answer"),
         metadata={"model_id": "candidate"},
     )
+
+
+class _AttemptRuntime:
+    async def run_tasks(
+        self,
+        tasks: Sequence[AgentEvalTask],
+        config: AgentEvalRunConfig | None = None,
+    ) -> list[AgentEvalAttempt]:
+        del config
+        return [
+            AgentEvalAttempt(
+                id=f"{task.id}:runtime",
+                task_id=task.id,
+                output=AgentOutput(text="Runtime answer"),
+                metadata={"model_id": "runtime"},
+            )
+            for task in tasks
+        ]
 
 
 def test_run_rejects_attempts_and_target_together() -> None:
@@ -78,27 +90,55 @@ def test_run_rejects_attempts_and_target_together() -> None:
 
     with pytest.raises(ValueError, match="provide exactly one"):
         AgentEvaluator().run_sync(
-            tasks=[_profbench_task()],
+            tasks=[_task()],
             attempts=[_candidate_attempt()],
             target=model,
-            config=AgentEvalRunConfig(judge=_FakeJudge()),
         )
 
 
 @pytest.mark.asyncio
-async def test_scores_imported_attempts_with_fake_judge_and_artifacts(tmp_path: Path) -> None:
+async def test_scores_imported_attempts_with_metric_and_persists_bundle(tmp_path: Path) -> None:
     result = await AgentEvaluator().run(
-        tasks=[_profbench_task()],
+        tasks=[_task()],
         attempts=[_candidate_attempt()],
-        config=AgentEvalRunConfig(judge=_FakeJudge(), output_dir=tmp_path, parallelism=1),
+        config=AgentEvalRunConfig(output_dir=tmp_path, parallelism=1),
     )
 
-    assert result.summary.overall_score == 4 / 6
+    assert result.summary.overall_score == 0.75
+    assert result.summary.metric_scores == {"constant_metric": {"score": 0.75}}
     assert result.dashboard_path == tmp_path / "report.html"
     assert (tmp_path / "run.json").exists()
     assert (tmp_path / "results.jsonl").exists()
-    assert result.results[0].deductions[0].evidence[1].kind == "judge"
-    assert Path(result.results[0].deductions[0].evidence[1].uri).exists()
+    assert result.results[0].metric_type == "constant_metric"
+    assert result.results[0].outputs[0].value == 0.75
+
+
+@pytest.mark.asyncio
+async def test_scores_partial_attempts() -> None:
+    result = await AgentEvaluator().run(
+        tasks=[_task()],
+        attempts=[
+            AgentEvalAttempt(
+                id="attempt-1",
+                task_id="task-1",
+                status="partial",
+                output=AgentOutput(text="Partial answer"),
+            )
+        ],
+    )
+
+    assert result.summary.overall_score == 0.75
+
+
+@pytest.mark.asyncio
+async def test_target_runtime_produces_attempts_before_scoring() -> None:
+    result = await AgentEvaluator().run(
+        tasks=[_task()],
+        target=_AttemptRuntime(),
+    )
+
+    assert result.attempts[0].id == "task-1:runtime"
+    assert result.summary.overall_score == 0.75
 
 
 @pytest.mark.asyncio
@@ -116,10 +156,9 @@ async def test_live_model_generation_with_mocked_inference() -> None:
 
     model = Model(url="https://model.test/v1/chat/completions", name="target-model", format=ModelFormat.OPEN_AI)
     result = await AgentEvaluator().run(
-        tasks=[_profbench_task()],
+        tasks=[_task()],
         target=model,
         config=AgentEvalRunConfig(
-            judge=_FakeJudge(),
             model_inference_fn=fake_model_inference,
             params=RunConfigOnlineModel(parallelism=1),
         ),
@@ -128,11 +167,13 @@ async def test_live_model_generation_with_mocked_inference() -> None:
     assert result.attempts[0].metadata["model_id"] == "target-model"
     assert result.attempts[0].output is not None
     assert result.attempts[0].output.output_text == "Generated model answer"
-    assert result.summary.overall_score == 4 / 6
+    assert result.summary.overall_score == 0.75
 
 
 @pytest.mark.asyncio
-async def test_live_agent_generation_preserves_trace_evidence() -> None:
+async def test_live_agent_generation_preserves_trace_evidence_for_metrics() -> None:
+    metric = _EvidenceMetric()
+
     async def fake_agent_inference(
         agent: Agent,
         request: dict[str, Any],
@@ -153,17 +194,16 @@ async def test_live_agent_generation_preserves_trace_evidence() -> None:
         response_path="$.answer",
     )
     result = await AgentEvaluator().run(
-        tasks=[_profbench_task()],
+        tasks=[_task(metric)],
         target=agent,
         config=AgentEvalRunConfig(
-            judge=_FakeJudge(),
             agent_inference_fn=fake_agent_inference,
             params=RunConfigOnline(parallelism=1),
         ),
     )
 
+    assert result.attempts[0].evidence is not None
+    assert result.attempts[0].evidence.require("trace").kind == "trace"
     assert result.attempts[0].output is not None
-    assert result.attempts[0].output.evidence is not None
-    assert result.attempts[0].output.evidence.trace is not None
-    assert result.attempts[0].output.evidence.trace.kind == "trace"
     assert result.attempts[0].output.output_text == "Generated agent answer"
+    assert metric.inputs[0].candidate.evidence == result.attempts[0].evidence
