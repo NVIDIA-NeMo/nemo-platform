@@ -56,7 +56,6 @@ from ruamel.yaml.comments import CommentedMap
 
 # Repo root (parent of script/) — used for default output paths
 REPO_ROOT = Path(__file__).resolve().parent.parent
-PLATFORM_NAME_TOKEN = "{{platform_name}}"
 
 # All config classes to include in the reference, in display order.
 # Excluded services (e.g. hello_world) are omitted from this list.
@@ -187,16 +186,11 @@ def _build_field_info_tree(model_class: type) -> dict[str, Any]:
     return out
 
 
-def _format_doc_description(desc: str) -> str:
-    """Apply docs-only substitutions to generated config comments."""
-    return desc.replace("NeMo Platform", PLATFORM_NAME_TOKEN)
-
-
 def _format_comment(desc: str, default: Any, possible: str | None) -> str:
     """Single-line YAML comment: description, default, possible values (no class names). Caller adds indent."""
     parts: list[str] = []
     if desc:
-        parts.append(_format_doc_description(desc))
+        parts.append(desc)
     default_str = _scalar_default_str(default) if default is not None and not callable(default) else ""
     if default_str:
         parts.append(f"default: {default_str}")
