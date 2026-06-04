@@ -55,50 +55,67 @@ def build_dict(**kwargs: Any) -> dict[str, Any] | None:
     return result or None
 
 
-def merge_filter_dict(json_str: str | None, **kwargs: Any) -> dict[str, Any] | None:
+def merge_filter_dict(json_str: str | None, **kwargs: Any) -> str | dict[str, Any] | None:
     """
-    Merge a JSON string with individual field values.
+    Build a filter value from a filter expression and individual field values.
 
-    Individual field values (kwargs) take precedence over JSON values.
-    This allows users to use --filter '{"complex": {...}}' for complex fields
-    while also using --filter.namespace for simple fields.
+    The ``json_str`` argument accepts either form the platform supports:
+
+    * a JSON object (``{"name": {"$like": "nemo"}}``), which is merged with any
+      per-field ``--filter.<field>`` options (the field options take precedence), or
+    * a text-grammar filter expression (``name~"nemo" AND status:"active"``), which
+      is forwarded to the API as-is for server-side parsing.
+
+    A text expression cannot be merged with per-field options; supplying both is an
+    error. Individual field values may still be combined with a JSON object.
 
     Args:
-        json_str: Optional JSON string to parse as base dict
-        **kwargs: Individual field values to merge (override JSON)
+        json_str: Optional JSON object string or text-grammar filter expression.
+        **kwargs: Individual field values to merge (override JSON object values).
 
     Returns:
-        Merged dictionary, or None if empty
+        A text filter string, a merged dict, or None if no filter was provided.
+
+    Raises:
+        InvalidSearchPatternError: If ``json_str`` looks like JSON but fails to parse.
 
     Example:
         >>> merge_filter_dict('{"created_at": {"start": "2024-01-01"}}', namespace="default")
         {"created_at": {"start": "2024-01-01"}, "namespace": "default"}
+        >>> merge_filter_dict('name~"nemo"')
+        'name~"nemo"'
         >>> merge_filter_dict(None, namespace="default")
         {"namespace": "default"}
     """
     result: dict[str, Any] = {}
+    field_kwargs = {k: v for k, v in kwargs.items() if v is not None}
 
-    # Parse JSON if provided
-    if json_str:
+    if json_str and json_str.strip():
         stripped = json_str.strip()
-        if not stripped:
-            raise InvalidSearchPatternError(json_str)
-        try:
-            parsed = json.loads(json_str)
-            if isinstance(parsed, dict):
-                result = parsed
-            else:
+        if stripped.startswith("{") or stripped.startswith("["):
+            # JSON object filter; merged with any per-field options below.
+            try:
+                parsed = json.loads(json_str)
+            except json.JSONDecodeError as e:
+                raise InvalidSearchPatternError(json_str, parse_error=str(e)) from e
+            if not isinstance(parsed, dict):
                 typer.echo(f"Error: Expected JSON object, got {type(parsed).__name__}", err=True)
                 raise typer.Exit(code=2)
-        except json.JSONDecodeError as e:
-            if not (stripped.startswith("{") or stripped.startswith("[")):
-                raise InvalidSearchPatternError(json_str)
-            raise InvalidSearchPatternError(json_str, parse_error=str(e))
+            result = parsed
+        else:
+            # Text-grammar filter expression (e.g. name~"nemo"). Forward as-is for
+            # server-side parsing; it cannot be merged with per-field options.
+            if field_kwargs:
+                typer.echo(
+                    "Error: Cannot combine a text filter expression with per-field "
+                    "--filter.<field> options. Use one or the other.",
+                    err=True,
+                )
+                raise typer.Exit(code=2)
+            return json_str
 
-    # Merge individual fields (override JSON values)
-    for k, v in kwargs.items():
-        if v is not None:
-            result[k] = v
+    # Merge individual fields (override JSON object values)
+    result.update(field_kwargs)
 
     return result or None
 

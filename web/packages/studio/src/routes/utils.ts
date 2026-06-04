@@ -13,6 +13,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  EXPERIMENT_ENABLED,
   FILESET_DETAILS_ENABLED,
   GUARDRAILS_ENABLED,
   INFERENCE_PROVIDER_ENABLED,
@@ -26,8 +27,7 @@ import {
 } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
-import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
-import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
+import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -70,6 +70,9 @@ export const gateEvaluationRoutes = (routes: RouteObject | RouteObject[]) =>
 
 export const gateEvaluationBenchmarksRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(EVALUATOR_ENABLED && EVALUATOR_BENCHMARKS_ENABLED, routes);
+
+export const gateExperimentRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(EXPERIMENT_ENABLED, routes);
 
 export const gateSecretsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(SECRETS_ENABLED, routes);
@@ -307,6 +310,10 @@ export const getEvaluationResultDetailsRoute = (workspace: string, jobName: stri
   });
 };
 
+export const getExperimentRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.experiment, { workspace });
+};
+
 export const getPromptTuningFormRoute = (workspace: string, options?: { model?: string }) => {
   const basePath = generatePath(ROUTES.workspace.promptTuningForm, { workspace });
   if (options?.model) {
@@ -367,21 +374,12 @@ export const getFilesetDetailsRoute = (
   return searchParams.size ? `${baseUrl}?${searchParams.toString()}` : baseUrl;
 };
 
-export const getDatasetDetailRoute = (
+export const getFilesetDetailRoute = (
   workspace: string,
-  datasetName: string,
-  options?: { tab?: DatasetDetailTab }
+  filesetName: string,
+  options?: { tab?: FilesetDetailTab }
 ) => {
-  const base = generatePath(ROUTES.workspace.datasetDetail, { workspace, datasetName });
-  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
-};
-
-export const getModelDetailRoute = (
-  workspace: string,
-  modelName: string,
-  options?: { tab?: ModelDetailTab }
-) => {
-  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
+  const base = generatePath(ROUTES.workspace.filesetDetail, { workspace, filesetName });
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 

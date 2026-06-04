@@ -325,6 +325,7 @@ nav:
       - Data Synthesis: safe-synthesizer/about/data-synthesis.md
       - Evaluation: safe-synthesizer/about/evaluation.md
       - Jobs: safe-synthesizer/about/jobs.md
+      - Host-Local Development: safe-synthesizer/about/host-local-development.md
       - PII Replacement: safe-synthesizer/about/pii-replacement.md
       - Parameters Reference: safe-synthesizer/about/reference.md
     - Getting Started: safe-synthesizer/getting-started.md

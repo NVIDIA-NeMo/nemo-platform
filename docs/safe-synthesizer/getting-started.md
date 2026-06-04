@@ -18,20 +18,20 @@ For general platform troubleshooting (port conflicts, health checks, and so on),
 
 ---
 
-## Using the CLI
+## Host-local CLI
 
-Interact with {{nss_short_name}} using the `nemo` CLI:
+For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Host-Local Development and Testing](about/host-local-development.md)):
 
 ```shell
-# List jobs
-nemo safe-synthesizer jobs list
-
-# Create a job from a config file
-nemo safe-synthesizer jobs create --input-file config.json
-
-# Create a job with inline JSON
-nemo safe-synthesizer jobs create --input-data '{"spec": {...}}'
+BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
+uv run nemo safe-synthesizer runtime setup
+uv run nemo safe-synthesizer run-local \
+  --spec-file ./nss-job.json \
+  --data-source ./input.csv \
+  --output-dir ./nss-output
 ```
+
+Platform job submission (Jobs API, Studio, tutorials) is documented separately in [Jobs](about/jobs.md) and the [tutorials](tutorials/index.md). The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only.
 
 ---
 

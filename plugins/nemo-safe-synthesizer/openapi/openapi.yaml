@@ -1459,6 +1459,13 @@ components:
           description: Name of platform secret containing the HuggingFace token. Must
             exist in the same workspace as the job.
           type: string
+        pretrained_model_job:
+          title: Pretrained Model Job
+          description: Optional previous NSS job whose stored adapter artifact is
+            reused for generation-only synthesis. Accepts either '<job>' in the current
+            workspace or '<workspace>/<job>'. The plugin resolves the prior job's
+            'adapter' result from Files.
+          type: string
       type: object
       required:
       - data_source

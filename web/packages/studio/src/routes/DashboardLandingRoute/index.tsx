@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
 import { Button, Card, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
@@ -12,6 +14,7 @@ import {
   type ChangeEvent,
   type FC,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useState,
@@ -73,18 +76,30 @@ const LandingComposer = ({
   onChange: (value: string) => void;
   onSubmit: (prompt: string) => void;
 }) => {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitInput = () => {
     const prompt = input.trim();
     if (!prompt) return;
 
     onSubmit(prompt);
   };
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitInput();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+
+    event.preventDefault();
+    submitInput();
+  };
+
   return (
     <form
+      data-testid="dashboard-landing-composer"
       onSubmit={handleSubmit}
-      className="w-full rounded-2xl border border-base bg-surface-base p-2 shadow-xl"
+      className="w-full rounded-lg border border-base bg-surface-base p-2 shadow-xl"
     >
       <TextArea
         aria-label="Message Claude"
@@ -93,7 +108,14 @@ const LandingComposer = ({
         placeholder="Message Claude"
         rows={3}
         resizeable="auto"
-        className="max-h-56 w-full border-0 bg-transparent"
+        className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
+        attributes={{
+          TextAreaElement: {
+            className:
+              '[&&]:focus:outline-none [&&]:focus:ring-0 [&&]:focus-visible:outline-none [&&]:focus-visible:ring-0',
+            onKeyDown: handleKeyDown,
+          },
+        }}
       />
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
@@ -138,28 +160,32 @@ export const DashboardLandingRoute: FC = () => {
   );
 
   return (
-    <AccessibleTitle title="Dashboard">
-      <main className="flex h-full min-h-[calc(100vh-var(--nv-app-bar-height))] items-center justify-center bg-surface-sunken px-4 py-10 text-primary">
-        <Flex className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8">
-          <Flex className="flex flex-col items-center gap-3 text-center">
-            <Text kind="body/bold/2xl" className="text-center">
-              What would you like to do?
-            </Text>
-          </Flex>
+    <ClaudeCodeLayout>
+      <AccessibleTitle title="Dashboard">
+        <GradientBackground className="h-full w-full">
+          <main className="relative flex h-full w-full items-center justify-center px-4 py-10 text-primary">
+            <Flex className="mx-auto flex w-full max-w-4xl flex-col items-center gap-8">
+              <Flex className="flex flex-col items-center gap-3 text-center">
+                <Text kind="body/bold/2xl" className="text-center">
+                  What would you like to do?
+                </Text>
+              </Flex>
 
-          <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
+              <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
 
-          <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
-            {PROMPT_SUGGESTIONS.map((suggestion) => (
-              <PromptCard
-                key={suggestion.title}
-                suggestion={suggestion}
-                onSelect={() => handlePromptSelect(suggestion.prompt)}
-              />
-            ))}
-          </Flex>
-        </Flex>
-      </main>
-    </AccessibleTitle>
+              <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
+                {PROMPT_SUGGESTIONS.map((suggestion) => (
+                  <PromptCard
+                    key={suggestion.title}
+                    suggestion={suggestion}
+                    onSelect={() => handlePromptSelect(suggestion.prompt)}
+                  />
+                ))}
+              </Flex>
+            </Flex>
+          </main>
+        </GradientBackground>
+      </AccessibleTitle>
+    </ClaudeCodeLayout>
   );
 };

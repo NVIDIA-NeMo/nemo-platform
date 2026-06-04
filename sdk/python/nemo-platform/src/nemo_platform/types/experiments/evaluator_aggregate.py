@@ -23,10 +23,9 @@ __all__ = ["EvaluatorAggregate"]
 
 
 class EvaluatorAggregate(BaseModel):
-    """Cross-run statistics for one evaluator.
+    """Aggregate statistics over evaluator scores or session-level metric values."""
 
-    Populated by the rollup path (later PR).
-    """
+    count: Optional[int] = None
 
     mean: Optional[float] = None
 

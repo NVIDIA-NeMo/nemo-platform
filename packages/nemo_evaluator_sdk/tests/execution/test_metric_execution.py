@@ -14,10 +14,9 @@ from unittest.mock import AsyncMock, Mock
 import nemo_evaluator_sdk.inference as inference
 import pyarrow as pa
 import pytest
-from nemo_evaluator_sdk.datasets.loader import normalize_dataset, rows_from_dataset
+from nemo_evaluator_sdk.datasets.loader import discover_files, normalize_dataset, rows_from_dataset, split_glob_path
 from nemo_evaluator_sdk.enums import AgentFormat, MetricType, ModelFormat
 from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
-from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.execution.metric_execution import (
     ComputeMetricPipeline,
     _default_online_request_template,
@@ -395,6 +394,43 @@ class TestNormalizeDataset:
         with pytest.raises(FileNotFoundError, match="does not exist"):
             normalize_dataset(missing, pattern=None)
 
+    def test_glob_path_calls_loader_with_split_base_and_pattern(self, tmp_path: Path, mocker: MockerFixture):
+        mock_load = mocker.patch(
+            "nemo_evaluator_sdk.datasets.loader.load_dataset_as_dicts",
+            return_value=[{"a": 1}],
+        )
+
+        result = normalize_dataset(tmp_path / "splits" / "**" / "*.jsonl", pattern=None)
+
+        mock_load.assert_called_once_with(tmp_path / "splits", "**/*.jsonl")
+        assert result == [{"a": 1}]
+
+    def test_glob_string_path_calls_loader_with_split_base_and_pattern(self, tmp_path: Path, mocker: MockerFixture):
+        mock_load = mocker.patch(
+            "nemo_evaluator_sdk.datasets.loader.load_dataset_as_dicts",
+            return_value=[{"a": 1}],
+        )
+
+        result = normalize_dataset(str(tmp_path / "splits" / "*.jsonl"), pattern=None)
+
+        mock_load.assert_called_once_with(tmp_path / "splits", "*.jsonl")
+        assert result == [{"a": 1}]
+
+    def test_existing_exact_path_with_glob_metacharacters_calls_loader_as_file(
+        self, tmp_path: Path, mocker: MockerFixture
+    ):
+        file_path = tmp_path / "eval[1].jsonl"
+        file_path.touch()
+        mock_load = mocker.patch(
+            "nemo_evaluator_sdk.datasets.loader.load_dataset_as_dicts",
+            return_value=[{"a": 1}],
+        )
+
+        result = normalize_dataset(file_path, pattern=None)
+
+        mock_load.assert_called_once_with(tmp_path, "eval[1].jsonl")
+        assert result == [{"a": 1}]
+
     def test_directory_calls_loader(self, tmp_path: Path, mocker: MockerFixture):
         mock_load = mocker.patch(
             "nemo_evaluator_sdk.datasets.loader.load_dataset_as_dicts",
@@ -440,6 +476,48 @@ class TestNormalizeDataset:
         result = normalize_dataset(str(file_path), pattern=None)
         mock_load.assert_called_once_with(tmp_path, "data.jsonl")
         assert result == [{"x": 1}]
+
+
+class TestSplitGlobPath:
+    def test_splits_relative_glob_path(self):
+        base_path, pattern = split_glob_path(Path("datasets") / "splits" / "**" / "*.jsonl")
+
+        assert base_path == Path("datasets") / "splits"
+        assert pattern == "**/*.jsonl"
+
+    def test_splits_absolute_glob_path(self, tmp_path: Path):
+        base_path, pattern = split_glob_path(tmp_path / "splits" / "*.jsonl")
+
+        assert base_path == tmp_path / "splits"
+        assert pattern == "*.jsonl"
+
+    def test_splits_glob_in_first_relative_segment(self):
+        base_path, pattern = split_glob_path(Path("data*") / "eval.jsonl")
+
+        assert base_path == Path(".")
+        assert pattern == "data*/eval.jsonl"
+
+    def test_rejects_non_glob_path(self):
+        with pytest.raises(ValueError, match="does not contain a glob pattern"):
+            split_glob_path(Path("data") / "eval.jsonl")
+
+
+class TestDiscoverFiles:
+    def test_exact_existing_file_takes_precedence_over_glob_metacharacters(self, tmp_path: Path):
+        file_path = tmp_path / "eval[1].jsonl"
+        file_path.touch()
+
+        assert discover_files(tmp_path, "eval[1].jsonl") == [file_path]
+
+    def test_glob_pattern_discovers_files(self, tmp_path: Path):
+        train_path = tmp_path / "splits" / "train.jsonl"
+        validation_path = tmp_path / "splits" / "nested" / "validation.jsonl"
+        ignored_path = tmp_path / "splits" / "ignored.csv"
+        for path in (train_path, validation_path, ignored_path):
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.touch()
+
+        assert sorted(discover_files(tmp_path / "splits", "**/*.jsonl")) == sorted([train_path, validation_path])
 
 
 class TestIsCompletionsEndpoint:
@@ -994,6 +1072,7 @@ class TestComputeMetricPipeline:
             metric=_make_mock_metric(mocker),
             target=None,
             metric_key="mock",
+            params=RunConfig(),
             postprocess_hooks=[hook],
         )
 
@@ -1012,6 +1091,7 @@ class TestComputeMetricPipeline:
             metric=_make_mock_metric(mocker),
             target=cast(Any, _make_model()),
             metric_key="mock",
+            params=RunConfigOnlineModel(),
         )
 
         with pytest.raises(ValueError, match="prompt_template is required for service online evaluation"):
@@ -1031,6 +1111,7 @@ class TestComputeMetricPipeline:
             metric_key="mock",
             prompt_template={"messages": [{"role": "user", "content": "{{item.input}}"}]},
             inference_fn=cast(Any, None),
+            params=RunConfigOnline(),
         )
 
         with pytest.raises(TypeError, match="expected AgentInferenceFn for Agent target"):
@@ -1095,6 +1176,7 @@ class TestComputeMetricPipeline:
             metric=_make_mock_metric(mocker),
             target=None,
             metric_key="mock",
+            params=RunConfig(),
         )
 
         with pytest.raises(EvaluationError, match=expected_message) as exc_info:
@@ -1217,7 +1299,7 @@ class TestEvaluateMetricOnline:
             metric,
             rows=[{"prompt": "hello"}],
             target=model,
-            params=RunConfig(parallelism=1),
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
         row_score = result.row_scores[0]
@@ -1386,7 +1468,7 @@ class TestEvaluateMetricOnline:
                 metric,
                 rows=[{"prompt": "hello"}],
                 target=model,
-                params=RunConfig(parallelism=1),
+                params=RunConfigOnlineModel(parallelism=1),
             )
 
         metric.compute_scores.assert_not_awaited()
@@ -1458,7 +1540,7 @@ class TestEvaluateMetricOnline:
                 metric,
                 rows=[{"prompt": "hello"}],
                 target=model,
-                params=RunConfig(parallelism=1),
+                params=RunConfigOnlineModel(parallelism=1),
             )
 
         assert exc_info.value.index == 0
@@ -1496,7 +1578,7 @@ class TestEvaluateMetricOnline:
             metric,
             rows=[{"prompt": "hello"}],
             target=model,
-            params=RunConfig(parallelism=1),
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
     @pytest.mark.asyncio
@@ -1591,7 +1673,7 @@ class TestEvaluateMetricOnline:
             metric,
             rows=[{"question": "What is 2 + 2?"}],
             target=model,
-            params=RunConfig(parallelism=1),
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
         assert captured["request"] == {
@@ -1624,7 +1706,7 @@ class TestEvaluateMetricOnline:
             metric,
             rows=[{"query": "What is the capital of France?"}],
             target=model,
-            params=RunConfig(parallelism=1),
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
         assert captured["request"] == {
@@ -1733,12 +1815,10 @@ class TestEvaluateMetricOnline:
 
         result = await LocalBackend().evaluate(
             metric=metric,
-            request=EvaluationRequest(
-                dataset=[{"prompt": "What is the capital of France?"}],
-                target=candidate_model,
-                prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
-                params=RunConfig(parallelism=1),
-            ),
+            dataset=[{"prompt": "What is the capital of France?"}],
+            target=candidate_model,
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
         assert captured_generation_requests == [
@@ -1823,12 +1903,10 @@ class TestEvaluateMetricOnline:
 
         result = await LocalBackend().evaluate(
             metric=metric,
-            request=EvaluationRequest(
-                dataset=[{"prompt": "What is the capital of France?"}],
-                target=candidate_model,
-                prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
-                params=RunConfig(parallelism=1),
-            ),
+            dataset=[{"prompt": "What is the capital of France?"}],
+            target=candidate_model,
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            params=RunConfigOnlineModel(parallelism=1),
         )
 
         detect_mode.assert_awaited_once()

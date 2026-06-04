@@ -21,6 +21,7 @@ from nemo_evaluator_sdk.values import (
     AggregateFieldName,
     DatasetRows,
     DefaultAggregateFieldName,
+    RunConfig,
     SecretRef,
     SupportedJobTypes,
 )
@@ -446,6 +447,7 @@ class MetricsManager:
             metric=metric_impl,
             target=None,
             metric_key=metric_type_name(metric_impl),
+            params=RunConfig(),
         )
 
         try:

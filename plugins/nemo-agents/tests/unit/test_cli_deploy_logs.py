@@ -23,7 +23,7 @@ from typing import Any
 from unittest.mock import patch
 
 import httpx
-from nemo_agents_plugin.cli import AgentsCLI
+from nemo_agents_plugin.cli import _DEFAULT_WORKSPACE, AgentsCLI
 from typer.testing import CliRunner
 
 
@@ -182,18 +182,18 @@ def test_deploy_no_wait_returns_immediately_with_pending_json() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _make_log_for(name: str) -> Path:
+def _make_log_for(workspace: str, name: str) -> Path:
     """Materialise a log file at the deterministic path the CLI will look up."""
     from nemo_agents_plugin.runner.in_memory import log_path_for_deployment
 
-    path = log_path_for_deployment(name)
+    path = log_path_for_deployment(workspace, name)
     path.parent.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def test_logs_prints_file_contents_from_deterministic_path() -> None:
     """``nemo agents logs <name>`` reads the file at the conventional path."""
-    log_file = _make_log_for("calc-1")
+    log_file = _make_log_for(_DEFAULT_WORKSPACE, "calc-1")
     log_file.write_text("agent boot ok\nready on port 49200\n")
 
     def handler(req: httpx.Request) -> httpx.Response:
@@ -214,7 +214,7 @@ def test_logs_path_only_prints_path_without_reading_file() -> None:
     """``--path`` prints the absolute path even if the file doesn't exist locally."""
     from nemo_agents_plugin.runner.in_memory import log_path_for_deployment
 
-    expected_path = str(log_path_for_deployment("calc-1"))
+    expected_path = str(log_path_for_deployment(_DEFAULT_WORKSPACE, "calc-1"))
 
     app = AgentsCLI().get_cli()
     with _install_mock_transport(lambda r: httpx.Response(404)):
@@ -222,6 +222,34 @@ def test_logs_path_only_prints_path_without_reading_file() -> None:
 
     assert result.exit_code == 0, result.stderr or result.stdout
     assert expected_path in result.stdout
+
+
+def test_logs_uses_workspace_to_separate_same_named_deployments() -> None:
+    """The CLI's ``--workspace`` flag must drive the resolved log path.
+
+    Two workspaces with deployment ``shared`` produce distinct log files
+    (workspace-namespaced layout); ``nemo agents logs shared --workspace
+    other`` should read ``other``'s log, not ``default``'s.
+    """
+    default_log = _make_log_for(_DEFAULT_WORKSPACE, "shared")
+    default_log.write_text("from default workspace\n")
+    other_log = _make_log_for("other-ws", "shared")
+    other_log.write_text("from other workspace\n")
+
+    app = AgentsCLI().get_cli()
+    with _install_mock_transport(lambda r: httpx.Response(404)):
+        default_result = CliRunner().invoke(app, ["logs", "shared", "--base-url", "http://test"])
+        other_result = CliRunner().invoke(
+            app, ["logs", "shared", "--workspace", "other-ws", "--base-url", "http://test"]
+        )
+
+    assert default_result.exit_code == 0
+    assert "from default workspace" in default_result.stdout
+    assert "from other workspace" not in default_result.stdout
+
+    assert other_result.exit_code == 0
+    assert "from other workspace" in other_result.stdout
+    assert "from default workspace" not in other_result.stdout
 
 
 def test_logs_reports_helpful_error_when_file_missing() -> None:
@@ -237,7 +265,7 @@ def test_logs_reports_helpful_error_when_file_missing() -> None:
 
 def test_logs_tail_prints_only_last_n_lines() -> None:
     """``--tail N`` prints only the last N lines."""
-    log_file = _make_log_for("calc-1")
+    log_file = _make_log_for(_DEFAULT_WORKSPACE, "calc-1")
     log_file.write_text("\n".join(f"line-{i}" for i in range(20)) + "\n")
 
     app = AgentsCLI().get_cli()
@@ -270,7 +298,7 @@ def test_logs_resolves_most_recent_deployment_for_agent() -> None:
     Without sorting, an API change to the default deployments-list ordering
     would silently make ``--agent`` pick the wrong deployment.
     """
-    log_file = _make_log_for("calc-2")
+    log_file = _make_log_for(_DEFAULT_WORKSPACE, "calc-2")
     log_file.write_text("calc-2 ok\n")
 
     def handler(req: httpx.Request) -> httpx.Response:

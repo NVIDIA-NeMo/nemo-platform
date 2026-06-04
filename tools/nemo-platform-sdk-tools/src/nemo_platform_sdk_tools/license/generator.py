@@ -20,7 +20,14 @@ from typing import Optional
 
 from nemo_platform_sdk_tools.license.format_osv_licenses import format_licenses_table
 from nemo_platform_sdk_tools.license.formats import get_formatter
-from nemo_platform_sdk_tools.license.license_utils import ALLOWED_LICENSES, get_local_packages, resolve_license
+from nemo_platform_sdk_tools.license.license_utils import (
+    ALLOWED_LICENSES,
+    get_local_packages,
+    get_override_key_for_package,
+    normalize_package_name,
+    resolve_license,
+)
+from packaging.requirements import InvalidRequirement, Requirement
 
 logger = logging.getLogger(__name__)
 
@@ -153,6 +160,48 @@ def run_osv_scanner(lockfile: Path, output_file: Path, cwd: Optional[Path] = Non
         raise LicenseGenerationError("osv-scanner command not found")
 
 
+def _get_requirements_with_overrides(
+    requirements_file: Path, overrides: dict[str, str], local_packages: set[str]
+) -> list[dict[str, str]]:
+    """Return exported requirements that can be licensed from reviewed overrides."""
+    if not requirements_file.exists():
+        return []
+
+    packages = []
+    with open(requirements_file, encoding="utf-8") as f:
+        for line in f:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or line.startswith((" ", "\t")):
+                continue
+            if stripped == "-e" or stripped.startswith("-e "):
+                continue
+
+            requirement_text = stripped.removesuffix("\\").strip()
+            try:
+                requirement = Requirement(requirement_text)
+            except InvalidRequirement:
+                logger.warning("Could not parse exported requirement: %s", requirement_text)
+                continue
+
+            name = requirement.name
+            if normalize_package_name(name) in local_packages:
+                continue
+
+            version = ""
+            for specifier in requirement.specifier:
+                if specifier.operator == "==":
+                    version = specifier.version
+                    break
+
+            override_key = get_override_key_for_package(name, version)
+            if override_key not in overrides:
+                continue
+
+            packages.append({"name": name, "version": version, "license": overrides[override_key].upper()})
+
+    return packages
+
+
 def format_licenses(
     osv_json: Path, output_file: Path, overrides_file: Optional[Path] = None, format_type: str = "table"
 ) -> None:
@@ -208,11 +257,6 @@ def format_licenses(
                     licenses = pkg_data.get("licenses", [])
 
                     # Skip local packages
-                    from nemo_platform_sdk_tools.license.license_utils import (
-                        get_override_key_for_package,
-                        normalize_package_name,
-                    )
-
                     if normalize_package_name(name) in local_packages:
                         continue
 
@@ -227,6 +271,12 @@ def format_licenses(
                         license_str = resolve_license(licenses, ALLOWED_LICENSES)
 
                     packages.append({"name": name, "version": version, "license": license_str.upper()})
+
+            # OSV can emit a partial package list when the service is degraded.
+            # Keep output stable for reviewed licenses by filling only packages
+            # that are present in the exported requirements and overrides.yaml.
+            requirements_file = osv_json.parent / "requirements-main.txt"
+            packages.extend(_get_requirements_with_overrides(requirements_file, overrides, local_packages))
 
             # Deduplicate by name (keep first occurrence)
             seen_names = set()

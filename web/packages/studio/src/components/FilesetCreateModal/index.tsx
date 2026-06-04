@@ -11,7 +11,7 @@ import {
   getFilesListFilesetsQueryKey,
   useFilesCreateFileset,
 } from '@nemo/sdk/generated/platform/api';
-import { FilesetOutput, FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
+import { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { SegmentedControl, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage as getApiErrorMessage } from '@studio/api/common/utils';
 import {
@@ -22,11 +22,10 @@ import {
   type SupportedPurpose,
 } from '@studio/components/FilesetCreateModal/constants';
 import { useRemoteRepoMetadata } from '@studio/hooks/useRemoteRepoMetadata';
-import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
-import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
+import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
-import { getDatasetDetailRoute, getModelDetailRoute } from '@studio/routes/utils';
+import { getFilesetDetailRoute } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import {
   isHuggingFaceUrl,
@@ -187,17 +186,9 @@ export const FilesetCreateModal: FC<FilesetCreateModalProps> = ({
       //   External -> Card tab (where the README renders)
       //   Local    -> Files tab (where the user uploads next)
       handleClose();
-      if (purpose === FilesetPurpose.dataset) {
-        navigate(
-          getDatasetDetailRoute(fileset.workspace, fileset.name, {
-            tab: isExternal ? DatasetDetailTab.Card : DatasetDetailTab.Files,
-          })
-        );
-        return;
-      }
       navigate(
-        getModelDetailRoute(fileset.workspace, fileset.name, {
-          tab: isExternal ? ModelDetailTab.Card : ModelDetailTab.Files,
+        getFilesetDetailRoute(fileset.workspace, fileset.name, {
+          tab: isExternal ? FilesetDetailTab.Card : FilesetDetailTab.Files,
         })
       );
     },

@@ -85,14 +85,13 @@ def test_parse_resource_id_no_arguments():
     assert exc_info.value.exit_code == 1
 
 
-def test_merge_filter_dict_whitespace_only_raises():
-    """Whitespace-only value raises InvalidSearchPatternError."""
-    with pytest.raises(InvalidSearchPatternError):
-        merge_filter_dict("   ")
+def test_merge_filter_dict_whitespace_only_returns_none():
+    """Whitespace-only value means no filter (returns None)."""
+    assert merge_filter_dict("   ") is None
 
 
 def test_merge_filter_dict_invalid_json_raises_invalid_search_pattern():
-    """Invalid JSON in --search raises InvalidSearchPatternError with parse_error set."""
+    """A value that looks like JSON but fails to parse raises with parse_error set."""
     invalid_json = '{"name": ["nemo", "djs]}'  # missing closing quote
     with pytest.raises(InvalidSearchPatternError) as exc_info:
         merge_filter_dict(invalid_json)
@@ -107,16 +106,40 @@ def test_merge_filter_dict_json_object_parsed():
     assert result == {"name": "nemo"}
 
 
-def test_merge_filter_dict_bare_value_raises():
-    """Single bare value (e.g. --search meta) is not valid; must be JSON."""
-    with pytest.raises(InvalidSearchPatternError):
-        merge_filter_dict("meta")
+def test_merge_filter_dict_json_object_merged_with_field_options():
+    """Per-field options merge into a JSON object and take precedence."""
+    result = merge_filter_dict('{"name": "old", "status": "active"}', name="new")
+    assert result == {"name": "new", "status": "active"}
 
 
-def test_merge_filter_dict_key_value_raises():
-    """key=value string is not valid; must be JSON."""
-    with pytest.raises(InvalidSearchPatternError):
-        merge_filter_dict("name=myvalue")
+def test_merge_filter_dict_json_non_object_raises_exit():
+    """A JSON value that is not an object (e.g. a list) is a usage error."""
+    with pytest.raises(typer.Exit) as exc_info:
+        merge_filter_dict('["a", "b"]')
+    assert exc_info.value.exit_code == 2
+
+
+def test_merge_filter_dict_text_expression_forwarded():
+    """A text-grammar filter expression is forwarded as-is for server-side parsing."""
+    assert merge_filter_dict('name~"nemotron"') == 'name~"nemotron"'
+    assert merge_filter_dict('status:"active" AND amount>500') == 'status:"active" AND amount>500'
+
+
+def test_merge_filter_dict_bare_value_forwarded():
+    """A bare value is forwarded as a text filter (server validates the grammar)."""
+    assert merge_filter_dict("meta") == "meta"
+
+
+def test_merge_filter_dict_legacy_key_value_forwarded():
+    """A key=value string is forwarded as a text filter; the server reports grammar errors."""
+    assert merge_filter_dict("name=myvalue") == "name=myvalue"
+
+
+def test_merge_filter_dict_text_expression_with_field_options_raises_exit():
+    """A text expression cannot be combined with per-field options."""
+    with pytest.raises(typer.Exit) as exc_info:
+        merge_filter_dict('name~"nemo"', name="other")
+    assert exc_info.value.exit_code == 2
 
 
 def test_merge_filter_dict_none_with_kwargs():

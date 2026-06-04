@@ -31,11 +31,11 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 
 ## Pre-flight
 
-1. Confirm the platform is up using `lsof` (ground truth) + `curl` (functional). If either fails, route to `nemo-setup` and stop. Do not trust `nemo services status` — it reports stale "running" from held locks after the process has died.
+1. Confirm the platform is up using `lsof` (ground truth) + `curl` against `/health/ready` (functional). If either fails, route to `nemo-setup` and stop. Do not trust `nemo services status` — it reports stale "running" from held locks after the process has died.
 
    ```bash
    lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-   curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -qE "^[24][0-9][0-9]$" || { echo "PLATFORM_WEDGED"; exit 1; }
+   curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
    ```
 
 2. Confirm a spec exists at `agents/$AGENT_NAME.spec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.

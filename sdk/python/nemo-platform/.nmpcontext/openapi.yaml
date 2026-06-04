@@ -10628,6 +10628,14 @@ components:
       title: AtifImageSource
     AtifIngestRequest:
       properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         schema_version:
           type: string
           enum:
@@ -10643,8 +10651,6 @@ components:
         session_id:
           title: Session Id
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
         agent:
           $ref: '#/components/schemas/AtifAgent'
         final_metrics:
@@ -10675,7 +10681,7 @@ components:
 
         ATIF project scoping is intentionally not accepted here; use the workspace
 
-        route and ``evaluation_context`` for evaluation/run identity.'
+        route and ``experiment_context`` for experiment identity.'
     AtifMetrics:
       properties:
         prompt_tokens:
@@ -12225,6 +12231,14 @@ components:
       description: User message parameter for chat completion.
     ChatCompletionsIngestRequest:
       properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         request:
           $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
@@ -12240,8 +12254,6 @@ components:
             This is not a grouping mechanism for chat-completions calls; use session_id
             to group related calls.
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
         provider:
           title: Provider
           type: string
@@ -14604,10 +14616,14 @@ components:
         p99:
           title: P99
           type: number
+        count:
+          type: integer
+          title: Count
+          default: 0
       type: object
       title: EvaluatorAggregate
-      description: Cross-run statistics for one evaluator. Populated by the rollup
-        path (later PR).
+      description: Aggregate statistics over evaluator scores or session-level metric
+        values.
     EvaluatorResult:
       properties:
         evaluator_result_id:
@@ -15035,6 +15051,22 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
+    ExperimentContext:
+      properties:
+        experiment_id:
+          type: string
+          title: Experiment Id
+          description: Name of an existing Experiment entity.
+        test_case_id:
+          title: Test Case Id
+          description: Optional producer-supplied test case id.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - experiment_id
+      title: ExperimentContext
+      description: Experiment context accepted by ingest endpoints.
     ExperimentFilter:
       additionalProperties: false
       description: Filter for listing Experiments.
@@ -15251,7 +15283,10 @@ components:
           items:
             type: string
           type: array
+          uniqueItems: true
           title: Model Names
+          description: Distinct model names observed across ingested sessions for
+            this experiment.
         aggregate_scores:
           title: Aggregate Scores
           additionalProperties:
@@ -15260,7 +15295,13 @@ components:
         run_count:
           type: integer
           title: Run Count
+          description: Number of distinct ingested experiment sessions; one session
+            is treated as one run.
           default: 0
+        cost_usd:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+        latency_ms:
+          $ref: '#/components/schemas/EvaluatorAggregate'
       type: object
       required:
       - id

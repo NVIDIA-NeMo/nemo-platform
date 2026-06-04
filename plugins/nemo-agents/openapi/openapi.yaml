@@ -309,6 +309,80 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/deployments/{name}/logs:
+    get:
+      tags:
+      - Agent Deployments
+      summary: Get Deployment Logs
+      description: Return the most recent *tail* lines from the deployment's log file.
+      operationId: get_deployment_logs_apis_agents_v2_workspaces__workspace__deployments__name__logs_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: tail
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10000
+          minimum: 0
+          default: 500
+          title: Tail
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeploymentLogsResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/agents/v2/workspaces/{workspace}/deployments/{name}/logs/stream:
+    get:
+      tags:
+      - Agent Deployments
+      summary: Stream Deployment Logs
+      description: SSE tail-follow of the deployment's log file; resumes via ``Last-Event-ID``.
+      operationId: stream_deployment_logs_apis_agents_v2_workspaces__workspace__deployments__name__logs_stream_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/agents/v2/workspaces/{workspace}/jobs/evaluate:
     post:
       tags:
@@ -933,6 +1007,29 @@ components:
           type: string
       title: DatetimeFilter
       type: object
+    DeploymentLogsResponse:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/LogLine'
+          type: array
+          title: Data
+        total_lines:
+          type: integer
+          title: Total Lines
+          description: Number of lines actually returned.
+        next_offset:
+          type: integer
+          title: Next Offset
+          description: Byte offset just past the returned tail; pass as Last-Event-ID
+            to resume the stream without gaps.
+      type: object
+      required:
+      - data
+      - total_lines
+      - next_offset
+      title: DeploymentLogsResponse
+      description: Response body for ``GET /deployments/{name}/logs``.
     EvaluateAgentSpec:
       properties:
         agent:
@@ -1153,6 +1250,38 @@ components:
           title: Detail
       type: object
       title: HTTPValidationError
+    LogLine:
+      properties:
+        timestamp:
+          type: string
+          title: Timestamp
+          description: ISO-8601 timestamp parsed from the line; empty when absent.
+        job:
+          type: string
+          title: Job
+          description: "Empty \u2014 kept for shape compatibility with jobs logs."
+          default: ''
+        job_step:
+          type: string
+          title: Job Step
+          description: "Empty \u2014 kept for shape compatibility."
+          default: ''
+        job_task:
+          type: string
+          title: Job Task
+          description: "Empty \u2014 kept for shape compatibility."
+          default: ''
+        message:
+          type: string
+          title: Message
+          description: The raw log line minus any parsed timestamp prefix.
+      type: object
+      required:
+      - timestamp
+      - message
+      title: LogLine
+      description: One line shaped to match ``PlatformJobLog`` so Studio's LogViewer
+        renders it as-is.
     NemoListResponse_AgentDeployment_:
       properties:
         data:

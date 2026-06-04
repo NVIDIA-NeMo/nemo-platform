@@ -51,17 +51,17 @@ class IntakeService(Service[IntakeConfig]):
                 tag="Annotations",
                 description="Post-hoc annotation endpoints (feedback, labels, notes, metadata)",
             ),
+            RouterConfig(
+                experiments.router,
+                tag="Experiments",
+                description="Create, list, get, and delete Experiments and Experiment Groups",
+            ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),
             RouterConfig(atif.router, tag="Ingest", description="ATIF trajectory ingest endpoints"),
             RouterConfig(
                 chat_completions.router,
                 tag="Ingest",
                 description="OpenAI-compatible chat-completion ingest endpoint",
-            ),
-            RouterConfig(
-                experiments.router,
-                tag="Experiments",
-                description="Create, list, get, and delete Experiments and Experiment Groups",
             ),
         ]
 

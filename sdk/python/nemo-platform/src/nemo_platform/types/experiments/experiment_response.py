@@ -42,6 +42,9 @@ class ExperimentResponse(BaseModel):
 
     aggregate_scores: Optional[Dict[str, EvaluatorAggregate]] = None
 
+    cost_usd: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
+
     created_at: Optional[datetime] = None
 
     dataset_version: Optional[str] = None
@@ -56,11 +59,19 @@ class ExperimentResponse(BaseModel):
     Soft reference, not validated.
     """
 
+    latency_ms: Optional[EvaluatorAggregate] = None
+    """Aggregate statistics over evaluator scores or session-level metric values."""
+
     metadata: Optional[Dict[str, object]] = None
 
     model_names: Optional[List[str]] = None
+    """Distinct model names observed across ingested sessions for this experiment."""
 
     run_count: Optional[int] = None
+    """
+    Number of distinct ingested experiment sessions; one session is treated as one
+    run.
+    """
 
     source_link: Optional[str] = None
 

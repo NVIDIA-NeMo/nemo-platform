@@ -64,6 +64,7 @@ export const flagDefinitions = {
   deploymentsEnabled: previewFlag('VITE_FF_DEPLOYMENTS_ENABLED'),
   evaluatorBenchmarksEnabled: previewFlag('VITE_FF_EVALUATOR_BENCHMARKS_ENABLED', false),
   evaluatorEnabled: previewFlag('VITE_FF_EVALUATOR_ENABLED', true),
+  experiment: previewFlag('VITE_FF_EXPERIMENT', false),
   filesetDetailsEnabled: previewFlag('VITE_FF_FILESET_DETAILS_ENABLED'),
   guardrailsEnabled: previewFlag('VITE_FF_GUARDRAILS_ENABLED'),
   inferenceProviderEnabled: previewFlag('VITE_FF_INFERENCE_PROVIDER_ENABLED'),

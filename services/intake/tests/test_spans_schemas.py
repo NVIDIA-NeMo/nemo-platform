@@ -41,10 +41,10 @@ def test_span_response_raw_attributes_merges_atif_raw_with_unknown_attributes():
         event_ts=now,
         attributes_string={
             "atif.raw": json_dumps_preserve(
-                {"source_session_id": "session-a", "evaluation.metadata": {"source": "atif.raw"}}
+                {"source_session_id": "session-a", "experiment.metadata": {"source": "atif.raw"}}
             ),
             "custom.string": "value-a",
-            "evaluation.metadata": json.dumps({"source": "attribute.bag"}),
+            "experiment.metadata": json.dumps({"source": "attribute.bag"}),
             "gen_ai.request.model": "model-a",
         },
         attributes_number={"custom.number": 1.25, "llm.token_count.prompt": 42},
@@ -74,9 +74,6 @@ def test_trace_response_maps_core_trace_fields():
         name="root",
         input="root input",
         output="root output",
-        environment="prod",
-        tags=["red", "blue"],
-        metadata={"owner": "intake"},
         project="project-a",
         evaluation_context=TraceEvaluationContext(
             evaluation_id="eval-a",

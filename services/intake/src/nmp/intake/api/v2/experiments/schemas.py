@@ -3,10 +3,8 @@
 
 """Request, response, and filter schemas for the Experiments API.
 
-Response models are standalone (not entity subclasses): they translate from the
-stored entity via ``from_entity`` and carry rollup fields that are hydrated from
-ClickHouse at read time. In this PR the rollups are always defaults; the
-hydration path lands in a later PR.
+Response models are standalone: they translate from the stored entity via
+``from_entity`` and carry rollup fields hydrated from ClickHouse at read time.
 """
 
 from __future__ import annotations
@@ -17,10 +15,6 @@ from typing import Any
 from nmp.common.entities.values import Filter
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
-
-# =============================================================================
-# Requests (workspace comes from the route parameter)
-# =============================================================================
 
 
 class ExperimentGroupRequest(BaseModel):
@@ -52,11 +46,6 @@ class ExperimentRequest(BaseModel):
     summary: str | None = Field(default=None, description="Human-authored summary of results.")
 
 
-# =============================================================================
-# Responses
-# =============================================================================
-
-
 class ExperimentGroupResponse(BaseModel):
     """ExperimentGroup as served by the API."""
 
@@ -80,7 +69,7 @@ class ExperimentGroupResponse(BaseModel):
 
 
 class EvaluatorAggregate(BaseModel):
-    """Cross-run statistics for one evaluator. Populated by the rollup path (later PR)."""
+    """Aggregate statistics over evaluator scores or session-level metric values."""
 
     sum: float | None = None
     mean: float | None = None
@@ -88,6 +77,7 @@ class EvaluatorAggregate(BaseModel):
     p90: float | None = None
     p95: float | None = None
     p99: float | None = None
+    count: int = 0
 
 
 class ExperimentResponse(BaseModel):
@@ -111,11 +101,19 @@ class ExperimentResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
-    # Hydrated from ClickHouse at read time in a later PR; defaults until then.
     evaluator_names: list[str] = Field(default_factory=list)
-    model_names: list[str] = Field(default_factory=list)
+    model_names: list[str] = Field(
+        default_factory=list,
+        description="Distinct model names observed across ingested sessions for this experiment.",
+        json_schema_extra={"uniqueItems": True},
+    )
     aggregate_scores: dict[str, EvaluatorAggregate] | None = None
-    run_count: int = 0
+    run_count: int = Field(
+        default=0,
+        description="Number of distinct ingested experiment sessions; one session is treated as one run.",
+    )
+    cost_usd: EvaluatorAggregate | None = None
+    latency_ms: EvaluatorAggregate | None = None
 
     @classmethod
     def from_entity(cls, entity: Experiment) -> ExperimentResponse:
@@ -135,11 +133,6 @@ class ExperimentResponse(BaseModel):
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
-
-
-# =============================================================================
-# List filters (declarative; the entity store applies them)
-# =============================================================================
 
 
 class ExperimentGroupFilter(Filter):
