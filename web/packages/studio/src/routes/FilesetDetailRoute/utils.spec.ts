@@ -8,7 +8,7 @@ import {
   type LocalStorageConfig,
   type NGCStorageConfig,
 } from '@nemo/sdk/generated/platform/schema';
-import { getModelSource, isRootReadme, parseReadme } from '@studio/routes/ModelDetailRoute/utils';
+import { getModelSource, isRootReadme, parseReadme } from '@studio/routes/FilesetDetailRoute/utils';
 
 const makeFileset = (storage: FilesetOutput['storage']): FilesetOutput => ({
   id: 'fs',

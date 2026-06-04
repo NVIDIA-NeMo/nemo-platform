@@ -27,8 +27,7 @@ import {
 } from '@studio/constants/environment';
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
-import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
-import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
+import { FilesetDetailTab } from '@studio/routes/FilesetDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -375,21 +374,12 @@ export const getFilesetDetailsRoute = (
   return searchParams.size ? `${baseUrl}?${searchParams.toString()}` : baseUrl;
 };
 
-export const getDatasetDetailRoute = (
+export const getFilesetDetailRoute = (
   workspace: string,
-  datasetName: string,
-  options?: { tab?: DatasetDetailTab }
+  filesetName: string,
+  options?: { tab?: FilesetDetailTab }
 ) => {
-  const base = generatePath(ROUTES.workspace.datasetDetail, { workspace, datasetName });
-  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
-};
-
-export const getModelDetailRoute = (
-  workspace: string,
-  modelName: string,
-  options?: { tab?: ModelDetailTab }
-) => {
-  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
+  const base = generatePath(ROUTES.workspace.filesetDetail, { workspace, filesetName });
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 

@@ -100,14 +100,9 @@ const FilesetNewRoute = lazy(() =>
 const FilesetListRoute = lazy(() =>
   import('@studio/routes/FilesetListRoute').then((module) => ({ default: module.FilesetListRoute }))
 );
-const DatasetDetailRoute = lazy(() =>
-  import('@studio/routes/DatasetDetailRoute').then((module) => ({
-    default: module.DatasetDetailRoute,
-  }))
-);
-const ModelDetailRoute = lazy(() =>
-  import('@studio/routes/ModelDetailRoute').then((module) => ({
-    default: module.ModelDetailRoute,
+const FilesetDetailRoute = lazy(() =>
+  import('@studio/routes/FilesetDetailRoute').then((module) => ({
+    default: module.FilesetDetailRoute,
   }))
 );
 const SecretsListRoute = lazy(() =>
@@ -470,22 +465,13 @@ export const routes: RouteObject[] = [
                 },
                 ...gateFilesetDetailsRoutes([
                   {
-                    path: ROUTES.workspace.datasetDetail,
+                    path: ROUTES.workspace.filesetDetail,
                     element: (
-                      <Suspense fallback={<Loading description="Loading Dataset..." />}>
-                        <DatasetDetailRoute />
+                      <Suspense fallback={<Loading description="Loading Fileset..." />}>
+                        <FilesetDetailRoute />
                       </Suspense>
                     ),
-                    errorElement: <ErrorPanel title="Dataset" />,
-                  },
-                  {
-                    path: ROUTES.workspace.modelDetail,
-                    element: (
-                      <Suspense fallback={<Loading description="Loading Model..." />}>
-                        <ModelDetailRoute />
-                      </Suspense>
-                    ),
-                    errorElement: <ErrorPanel title="Model" />,
+                    errorElement: <ErrorPanel title="Fileset" />,
                   },
                 ]),
               ]),

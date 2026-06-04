@@ -4,22 +4,28 @@
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { ReadmeBody } from '@studio/routes/ModelDetailRoute/ModelCardTab/ReadmeBody';
-import { ModelMetadataPanel } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel';
-import { isRootReadme, parseReadme } from '@studio/routes/ModelDetailRoute/utils';
+import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
+import { FilesetMetadataPanel } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel';
+import { isRootReadme, parseReadme } from '@studio/routes/FilesetDetailRoute/utils';
 import { useMemo, type FC } from 'react';
 
-export interface ModelCardTabProps {
+export interface FilesetCardProps {
   workspace: string;
-  modelName: string;
+  filesetName: string;
   fileset: FilesetOutput;
   files: FilesetFileOutput[] | undefined;
   isFilesError: boolean;
 }
 
-export const ModelCardTab: FC<ModelCardTabProps> = ({
+/**
+ * Purpose-agnostic card for a fileset detail page: renders the root README as
+ * markdown alongside a metadata panel. Used for every fileset purpose — the
+ * panel's README-frontmatter "Details" section simply collapses when those
+ * fields (license, tags, base model, …) aren't present.
+ */
+export const FilesetCard: FC<FilesetCardProps> = ({
   workspace,
-  modelName,
+  filesetName,
   fileset,
   files,
   isFilesError,
@@ -32,7 +38,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
     isError: isContentError,
   } = useDatasetFileContent({
     workspace,
-    name: modelName,
+    name: filesetName,
     path: readmePath ?? '',
     enabled: Boolean(readmePath),
   });
@@ -47,7 +53,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
       cols={{ base: 1, xl: 12 }}
       gap="density-xl"
       className="w-full items-start"
-      data-testid="model-card-tab"
+      data-testid="fileset-card"
     >
       <GridItem
         cols={{ lg: 8 }}
@@ -55,7 +61,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
       >
         <Stack gap="density-md">
           {fileset.description && (
-            <Text kind="body/regular/md" data-testid="model-card-fileset-description">
+            <Text kind="body/regular/md" data-testid="fileset-card-description">
               {fileset.description}
             </Text>
           )}
@@ -69,7 +75,7 @@ export const ModelCardTab: FC<ModelCardTabProps> = ({
         </Stack>
       </GridItem>
       <GridItem cols={{ lg: 4 }} className="min-w-0">
-        <ModelMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+        <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
       </GridItem>
     </Grid>
   );

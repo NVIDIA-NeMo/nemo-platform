@@ -3,8 +3,8 @@
 
 import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { Anchor } from '@nvidia/foundations-react-core';
-import { TagList } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/TagList';
-import { getModelSource } from '@studio/routes/ModelDetailRoute/utils';
+import { TagList } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel/TagList';
+import { getModelSource } from '@studio/routes/FilesetDetailRoute/utils';
 import { formatStorageBackendLabel } from '@studio/util/storageBackend';
 import { type ReactNode } from 'react';
 

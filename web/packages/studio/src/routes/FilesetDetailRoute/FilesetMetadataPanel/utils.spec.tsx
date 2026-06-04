@@ -6,7 +6,7 @@ import {
   type FilesetOutput,
   type HuggingfaceStorageConfig,
 } from '@nemo/sdk/generated/platform/schema';
-import { getMetadataSections } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/utils';
+import { getMetadataSections } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel/utils';
 import { isValidElement } from 'react';
 
 const huggingfaceFileset: FilesetOutput = {

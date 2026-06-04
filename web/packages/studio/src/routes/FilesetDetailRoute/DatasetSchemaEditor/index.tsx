@@ -27,8 +27,8 @@ import {
   DEFAULT_SCHEMA_VALUE,
   SchemaSelectControl,
   SHOW_ALL_VALUE,
-} from '@studio/routes/DatasetDetailRoute/DatasetSchemaEditor/SchemaSelectControl';
-import { SharedSchemaConfirmModal } from '@studio/routes/DatasetDetailRoute/DatasetSchemaEditor/SharedSchemaConfirmModal';
+} from '@studio/routes/FilesetDetailRoute/DatasetSchemaEditor/SchemaSelectControl';
+import { SharedSchemaConfirmModal } from '@studio/routes/FilesetDetailRoute/DatasetSchemaEditor/SharedSchemaConfirmModal';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState, type FC } from 'react';
 
