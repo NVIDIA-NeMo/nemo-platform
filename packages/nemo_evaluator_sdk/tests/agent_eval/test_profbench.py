@@ -3,35 +3,34 @@
 
 from __future__ import annotations
 
-import importlib.util
+import importlib
 import json
-import sys
+import re
 from pathlib import Path
-from types import ModuleType
 from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval import AgentEvaluator
 from nemo_evaluator_sdk.values import Model
 
-EXAMPLES_DIR = Path(__file__).resolve().parents[2] / "examples"
-PROFBENCH_EXAMPLE: Any = None
+profbench = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.profbench")
+profbench_dashboard = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.dashboard")
+profbench_runner = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.runner")
 
 
-def _profbench_example() -> Any:
-    global PROFBENCH_EXAMPLE
-    if PROFBENCH_EXAMPLE is not None:
-        return PROFBENCH_EXAMPLE
+class _FakeUrlopenResponse:
+    def __init__(self, body: str) -> None:
+        self._body = body
+        self.headers = {"ETag": "test-etag", "x-repo-commit": "test-commit"}
 
-    spec = importlib.util.spec_from_file_location("profbench_example", EXAMPLES_DIR / "profbench.py")
-    if spec is None or spec.loader is None:
-        raise RuntimeError("failed to load ProfBench example module")
-    module = importlib.util.module_from_spec(spec)
-    assert isinstance(module, ModuleType)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    PROFBENCH_EXAMPLE = module
-    return module
+    def __enter__(self) -> "_FakeUrlopenResponse":
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def read(self) -> bytes:
+        return self._body.encode("utf-8")
 
 
 def _write_profbench_fixture(path: Path) -> Path:
@@ -65,10 +64,21 @@ def _write_profbench_fixture(path: Path) -> Path:
     return path
 
 
+def _stub_remote_profbench_source(monkeypatch: pytest.MonkeyPatch, body: str) -> str:
+    remote_source = "https://example.test/profbench/test.jsonl"
+
+    def fake_urlopen(request: Any, timeout: int) -> _FakeUrlopenResponse:
+        assert request.full_url == remote_source
+        assert timeout == 60
+        return _FakeUrlopenResponse(body)
+
+    monkeypatch.setattr(profbench, "urlopen", fake_urlopen)
+    return remote_source
+
+
 def test_load_profbench_expands_tasks_attempts_and_line_index(tmp_path: Path) -> None:
     fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
 
-    profbench = _profbench_example()
     benchmark = profbench.load_profbench(fixture)
 
     assert benchmark.metadata["record_count"] == 1
@@ -86,7 +96,6 @@ def test_load_profbench_expands_tasks_attempts_and_line_index(tmp_path: Path) ->
 
 
 def test_profbench_baseline_scoring_creates_traceable_deductions(tmp_path: Path) -> None:
-    profbench = _profbench_example()
     benchmark = profbench.load_profbench(_write_profbench_fixture(tmp_path / "profbench.jsonl"))
 
     result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
@@ -111,8 +120,6 @@ def test_profbench_baseline_scoring_creates_traceable_deductions(tmp_path: Path)
 
 
 def test_profbench_live_judge_mode_scores_recorded_attempts_without_cached_labels(tmp_path: Path) -> None:
-    profbench = _profbench_example()
-
     class FakeJudge:
         def __init__(self) -> None:
             self.requests: list[Any] = []
@@ -149,7 +156,6 @@ def test_profbench_live_judge_mode_scores_recorded_attempts_without_cached_label
 
 
 def test_agent_evaluator_scores_loaded_profbench_baselines(tmp_path: Path) -> None:
-    profbench = _profbench_example()
     benchmark = profbench.load_profbench(_write_profbench_fixture(tmp_path / "profbench.jsonl"))
 
     result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
@@ -160,11 +166,10 @@ def test_agent_evaluator_scores_loaded_profbench_baselines(tmp_path: Path) -> No
 
 
 def test_profbench_dashboard_renders_rubric_report(tmp_path: Path) -> None:
-    profbench = _profbench_example()
     benchmark = profbench.load_profbench(_write_profbench_fixture(tmp_path / "profbench.jsonl"))
     result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
 
-    html = profbench.render_profbench_dashboard(result)
+    html = profbench_dashboard.render_profbench_dashboard(result)
 
     assert "ProfBench Agent Eval Report" in html
     assert "Highest-Impact Failures" in html
@@ -175,25 +180,242 @@ def test_profbench_dashboard_renders_rubric_report(tmp_path: Path) -> None:
     assert "Dataset fulfilment label" not in html
     assert "dataset_label" in html
 
-    report_path = profbench.write_profbench_dashboard(result, tmp_path / "report.html")
+    report_path = profbench_dashboard.write_profbench_dashboard(result, tmp_path / "report.html")
     assert report_path.read_text(encoding="utf-8") == html
 
 
 def test_profbench_example_writes_sdk_and_profbench_dashboards(tmp_path: Path) -> None:
-    profbench = _profbench_example()
     benchmark = profbench.load_profbench(_write_profbench_fixture(tmp_path / "profbench.jsonl"))
     result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
 
-    sdk_path, profbench_path, default_path = profbench.write_example_dashboards(result, tmp_path)
+    sdk_path, default_path = profbench_dashboard.write_example_dashboards(result, tmp_path)
 
     assert "Agent Eval Report" in sdk_path.read_text(encoding="utf-8")
-    assert "ProfBench Agent Eval Report" in profbench_path.read_text(encoding="utf-8")
-    assert default_path.read_text(encoding="utf-8") == profbench_path.read_text(encoding="utf-8")
+    assert "ProfBench Agent Eval Report" in default_path.read_text(encoding="utf-8")
+    assert not (tmp_path / "profbench-report.html").exists()
+
+
+def test_profbench_run_instance_id_has_expected_format() -> None:
+    run_instance_id = profbench_runner._new_profbench_run_instance_id()
+
+    assert re.fullmatch(r"\d{8}_\d{6}_\d{5}_[0-9a-f]{6}", run_instance_id)
+
+
+def test_profbench_output_root_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_root = tmp_path / "env-root"
+    cli_root = tmp_path / "cli-root"
+
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_OUTPUT_DIR", str(env_root))
+
+    assert profbench_runner._resolve_profbench_output_root(cli_root) == cli_root
+    assert profbench_runner._resolve_profbench_output_root() == env_root
+
+    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_OUTPUT_DIR")
+    assert profbench_runner._resolve_profbench_output_root() == profbench_runner.DEFAULT_OUTPUT_DIR
+
+
+def test_profbench_output_dir_uses_run_then_mode_tree(tmp_path: Path) -> None:
+    run_instance_id = "20260604_154749_70985_82f7dd"
+
+    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "baseline") == (
+        tmp_path / run_instance_id / "baseline"
+    )
+    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "live-candidate") == (
+        tmp_path / run_instance_id / "live-candidate"
+    )
+    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "live-judge") == (
+        tmp_path / run_instance_id / "live-judge"
+    )
+
+
+def test_remote_profbench_source_is_saved_as_local_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    remote_source = _stub_remote_profbench_source(monkeypatch, fixture.read_text(encoding="utf-8"))
+    evidence_dir = tmp_path / "run" / "evidence"
+
+    benchmark = profbench.load_profbench(remote_source, limit=1, evidence_dir=evidence_dir)
+
+    dataset_path = evidence_dir / "profbench-dataset.jsonl"
+    assert dataset_path.read_text(encoding="utf-8") == fixture.read_text(encoding="utf-8")
+    assert benchmark.metadata["source"] == str(dataset_path.resolve())
+    assert benchmark.metadata["source_file"] == str(dataset_path.resolve())
+    assert benchmark.metadata["remote_source"] == remote_source
+    assert benchmark.metadata["etag"] == "test-etag"
+    assert benchmark.metadata["resolved_commit"] == "test-commit"
+    assert benchmark.tasks[0].metadata["source_uri"] == str(dataset_path.resolve())
+    assert benchmark.attempts[0].evidence is not None
+    assert benchmark.attempts[0].evidence.descriptors["source"].ref == str(dataset_path.resolve())
+
+    result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
+    failed_result = next(row for row in result.results if row.attempt_id == "pb-1:o3")
+    details_output = next(output for output in failed_result.outputs if output.name == profbench.PROFBENCH_DETAILS_OUTPUT)
+    details = profbench.profbench_details(details_output)
+    assert details is not None
+    assert details.deductions[0].evidence[0].href().startswith("file://")
+    assert not details.deductions[0].evidence[0].href().startswith("https://")
+
+
+def test_profbench_model_helpers_separate_evaluated_and_judge_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL_URL", "https://legacy.test/v1/chat/completions")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL", "legacy-model")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL", "https://evaluated.test/v1/chat/completions")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL", "evaluated-model")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL_URL", "https://judge.test/v1/chat/completions")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL", "judge-model")
+
+    evaluated_model = profbench_runner._evaluated_model()
+    judge_model = profbench_runner._judge_model()
+
+    assert evaluated_model.url == "https://evaluated.test/v1/chat/completions"
+    assert evaluated_model.name == "evaluated-model"
+    assert judge_model.url == "https://judge.test/v1/chat/completions"
+    assert judge_model.name == "judge-model"
+
+
+def test_profbench_model_helpers_preserve_legacy_shared_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL", raising=False)
+    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL", raising=False)
+    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL_URL", raising=False)
+    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL", raising=False)
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL_URL", "https://legacy.test/v1/chat/completions")
+    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL", "legacy-model")
+
+    evaluated_model = profbench_runner._evaluated_model()
+    judge_model = profbench_runner._judge_model()
+
+    assert evaluated_model.url == "https://legacy.test/v1/chat/completions"
+    assert evaluated_model.name == "legacy-model"
+    assert judge_model.url == "https://legacy.test/v1/chat/completions"
+    assert judge_model.name == "legacy-model"
+
+
+@pytest.mark.asyncio
+async def test_profbench_run_examples_reuses_one_run_folder_for_enabled_modes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    run_instance_id = "20260604_154749_70985_82f7dd"
+    calls: list[tuple[str, int | None, Path, str]] = []
+
+    async def fake_baseline(*, limit: int | None, output_root: str | Path | None, run_instance_id: str | None) -> None:
+        assert output_root is not None
+        assert run_instance_id is not None
+        calls.append(("baseline", limit, Path(output_root), run_instance_id))
+
+    async def fake_live_judge(*, limit: int | None, output_root: str | Path | None, run_instance_id: str | None) -> None:
+        assert output_root is not None
+        assert run_instance_id is not None
+        calls.append(("live-judge", limit, Path(output_root), run_instance_id))
+
+    async def fake_live_candidate(
+        *, limit: int | None, output_root: str | Path | None, run_instance_id: str | None
+    ) -> None:
+        assert output_root is not None
+        assert run_instance_id is not None
+        calls.append(("live-candidate", limit, Path(output_root), run_instance_id))
+
+    monkeypatch.setattr(profbench_runner, "run_profbench_baseline_example", fake_baseline)
+    monkeypatch.setattr(profbench_runner, "run_profbench_live_judge_example", fake_live_judge)
+    monkeypatch.setattr(profbench_runner, "run_profbench_live_candidate_example", fake_live_candidate)
+
+    await profbench_runner.run_examples(
+        limit=1,
+        run_live_judge=True,
+        run_live_candidate=True,
+        output_root=tmp_path,
+        run_instance_id=run_instance_id,
+    )
+
+    assert calls == [
+        ("baseline", 1, tmp_path, run_instance_id),
+        ("live-judge", 1, tmp_path, run_instance_id),
+        ("live-candidate", 1, tmp_path, run_instance_id),
+    ]
+    assert (tmp_path / run_instance_id).is_dir()
+    assert not (tmp_path / run_instance_id / "baseline").exists()
+    assert not (tmp_path / run_instance_id / "live-judge").exists()
+    assert not (tmp_path / run_instance_id / "live-candidate").exists()
+
+
+@pytest.mark.asyncio
+async def test_profbench_baseline_example_writes_run_then_mode_output(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    remote_source = _stub_remote_profbench_source(monkeypatch, fixture.read_text(encoding="utf-8"))
+    run_instance_id = "20260601_175657_75909_573ed6"
+    monkeypatch.setattr(profbench_runner, "_profbench_source", lambda: remote_source)
+
+    await profbench_runner.run_profbench_baseline_example(
+        limit=1,
+        output_root=tmp_path,
+        run_instance_id=run_instance_id,
+    )
+
+    output_dir = tmp_path / run_instance_id / "baseline"
+    evidence_dir = output_dir / "evidence"
+    assert (output_dir / "summary.json").is_file()
+    assert (output_dir / "report.html").is_file()
+    assert (evidence_dir / "profbench-dataset.jsonl").is_file()
+    assert not (output_dir / "profbench-report.html").exists()
+    assert not (tmp_path / run_instance_id / "evidence" / "profbench-dataset.jsonl").exists()
+
+    run_payload = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    assert run_payload["run_id"] == f"{run_instance_id}-baseline"
+    assert run_payload["output_dir"] == str(output_dir)
+
+
+@pytest.mark.asyncio
+async def test_profbench_live_judge_example_writes_mode_evidence_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    remote_source = _stub_remote_profbench_source(monkeypatch, fixture.read_text(encoding="utf-8"))
+    run_instance_id = "20260601_175657_75909_573ed6"
+
+    class FakeProfBenchModelJudge:
+        def __init__(self, model: Model) -> None:
+            self.model = model
+
+        async def judge(self, request: Any) -> Any:
+            return profbench.ProfBenchJudgeDecision(
+                fulfilled=request.criterion_id.endswith("criterion-1"),
+                reason=f"judged {request.criterion_id}",
+            )
+
+    monkeypatch.setattr(profbench_runner, "_profbench_source", lambda: remote_source)
+    monkeypatch.setattr(profbench_runner, "ProfBenchModelJudge", FakeProfBenchModelJudge)
+
+    await profbench_runner.run_profbench_live_judge_example(
+        limit=1,
+        output_root=tmp_path,
+        run_instance_id=run_instance_id,
+    )
+
+    output_dir = tmp_path / run_instance_id / "live-judge"
+    evidence_dir = output_dir / "evidence"
+    judge_artifacts = sorted(evidence_dir.glob("judge-*.json"))
+    assert (evidence_dir / "profbench-dataset.jsonl").is_file()
+    assert judge_artifacts
+    assert not list((tmp_path / run_instance_id / "evidence").glob("judge-*.json"))
+
+    run_payload = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    first_judge_uri = next(
+        locator["uri"]
+        for result in run_payload["results"]
+        for output in result["outputs"]
+        if output["name"] == profbench.PROFBENCH_DETAILS_OUTPUT
+        for criterion in output["value"]["criterion_scores"]
+        for locator in criterion["evidence"]
+        if locator["kind"] == "judge"
+    )
+    assert first_judge_uri.startswith(str(evidence_dir.resolve()))
+    assert Path(first_judge_uri).is_file()
+    assert profbench.EvidenceLocator(kind="judge", uri=first_judge_uri, line=1).href().startswith("file://")
 
 
 def test_profbench_judge_parser_accepts_embedded_json_and_yes_no_fallback() -> None:
-    profbench = _profbench_example()
-
     embedded = profbench._parse_yes_no_decision('```json\n{"fulfilled": true, "reason": "matched"}\n```')
     assert embedded.fulfilled is True
     assert embedded.reason == "matched"
@@ -210,8 +432,6 @@ def test_profbench_judge_parser_accepts_embedded_json_and_yes_no_fallback() -> N
 
 
 def test_profbench_judge_parser_conservatively_scores_unparseable_output() -> None:
-    profbench = _profbench_example()
-
     decision = profbench._parse_yes_no_decision(
         r"\boxed{\begin{aligned}&\text{Liouville equation instead of judge JSON}\end{aligned}}"
     )
@@ -227,7 +447,6 @@ def test_profbench_judge_parser_conservatively_scores_unparseable_output() -> No
 
 @pytest.mark.asyncio
 async def test_profbench_model_judge_uses_short_structured_params() -> None:
-    profbench = _profbench_example()
     captured: dict[str, Any] = {}
 
     async def fake_inference(

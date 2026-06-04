@@ -1,16 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""ProfBench loading, rubric scoring, and runnable agent-eval example."""
+"""ProfBench loading, rubric scoring, and judging helpers."""
 
 from __future__ import annotations
 
-import argparse
-import asyncio
-import html
 import json
-import logging
-import os
 import re
 from collections.abc import Awaitable
 from pathlib import Path
@@ -19,19 +14,10 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 import nemo_evaluator_sdk.inference as inference
-from nemo_evaluator_sdk.agent_eval import (
-    AgentEvalAttempt,
-    AgentEvalRunConfig,
-    AgentEvalRunResult,
-    AgentEvalTask,
-    AgentEvalTaskResult,
-    AgentEvaluator,
-    AgentOutput,
-)
-from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard as write_sdk_dashboard
+from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalTask, AgentOutput
 from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
-from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel, SecretRef
+from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -52,10 +38,6 @@ PROFBENCH_BASELINE_RESPONSES = {
 }
 FULFILLED_PATTERN = re.compile(r"\bfulfilled\s*[:=]\s*(true|false)\b", re.IGNORECASE)
 REASON_PATTERN = re.compile(r"\breason\s*[:=]\s*(?P<reason>.*?)(?:\}+\s*)?$", re.IGNORECASE | re.DOTALL)
-DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "profbench-agent-eval-output"
-DEFAULT_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-DEFAULT_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
-DEFAULT_API_KEY_SECRET = os.getenv("NMP_EVALUATOR_DEFAULT_API_KEY_SECRET", "NVIDIA_API_KEY")
 MAX_JUDGE_REASON_EXCERPT_CHARS = 320
 PROFBENCH_JUDGE_STRUCTURED_OUTPUT = {
     "schema": {
@@ -445,7 +427,7 @@ class ProfBenchRubricMetric:
             + "\n",
             encoding="utf-8",
         )
-        return EvidenceLocator(kind="judge", uri=str(path), line=1, json_path="$.decision", excerpt=decision.reason)
+        return EvidenceLocator(kind="judge", uri=str(path.resolve()), line=1, json_path="$.decision", excerpt=decision.reason)
 
 
 def load_profbench(
@@ -457,7 +439,7 @@ def load_profbench(
     include_cached_fulfilments: bool = True,
 ) -> ProfBenchBenchmark:
     """Load ProfBench from local JSONL or the Hugging Face raw URL."""
-    source_uri, lines, metadata = _read_jsonl_source(source)
+    source_uri, lines, metadata = _read_jsonl_source(source, evidence_dir=evidence_dir)
     tasks: list[AgentEvalTask] = []
     attempts: list[AgentEvalAttempt] = []
 
@@ -518,399 +500,6 @@ def profbench_details(output: MetricOutput) -> ProfBenchRubricDetails | None:
         return output.value
     return ProfBenchRubricDetails.model_validate(output.value)
 
-
-def write_profbench_dashboard(result: AgentEvalRunResult, output_path: str | Path) -> Path:
-    """Write the ProfBench-specific HTML report for an example run."""
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_profbench_dashboard(result), encoding="utf-8")
-    return path
-
-
-def write_example_dashboards(result: AgentEvalRunResult, output_dir: str | Path) -> tuple[Path, Path, Path]:
-    """Write generic SDK and ProfBench-specific dashboards for this example."""
-    path = Path(output_dir)
-    sdk_dashboard_path = write_sdk_dashboard(result, path / "sdk-report.html")
-    profbench_dashboard_path = write_profbench_dashboard(result, path / "profbench-report.html")
-    default_dashboard_path = write_profbench_dashboard(result, path / "report.html")
-    return sdk_dashboard_path, profbench_dashboard_path, default_dashboard_path
-
-
-def render_profbench_dashboard(result: AgentEvalRunResult) -> str:
-    """Render a ProfBench-aware HTML report from generic agent-eval results."""
-    rows = _profbench_result_rows(result.results)
-    data_json = json.dumps(result.model_dump(mode="json"), sort_keys=True)
-    overall = _format_percent(result.summary.overall_score)
-    top_deductions = sorted(
-        ((task_result, details, deduction) for task_result, details in rows for deduction in details.deductions),
-        key=lambda item: item[2].normalized_impact,
-        reverse=True,
-    )[:25]
-
-    return f"""<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{_e(result.run_id)} ProfBench Report</title>
-  <style>
-    :root {{ color-scheme: light dark; --bg:#f7f8fa; --fg:#15171a; --muted:#667085; --line:#d0d5dd; --panel:#fff; --accent:#0f766e; --bad:#b42318; --soft:#f8fafc; }}
-    @media (prefers-color-scheme: dark) {{ :root {{ --bg:#111418; --fg:#f3f4f6; --muted:#a4aebc; --line:#30363d; --panel:#1b2027; --accent:#5eead4; --bad:#ff8a80; --soft:#151a21; }} }}
-    * {{ box-sizing: border-box; }}
-    body {{ margin:0; background:var(--bg); color:var(--fg); font:14px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }}
-    header {{ padding:28px 32px 20px; border-bottom:1px solid var(--line); background:var(--panel); }}
-    h1 {{ margin:0 0 8px; font-size:28px; letter-spacing:0; }}
-    h2 {{ margin:28px 0 12px; font-size:18px; letter-spacing:0; }}
-    main {{ max-width:1280px; margin:0 auto; padding:24px 32px 48px; }}
-    .hero {{ display:flex; gap:24px; align-items:flex-end; flex-wrap:wrap; }}
-    .score {{ font-size:54px; font-weight:700; line-height:1; color:var(--accent); }}
-    .muted {{ color:var(--muted); }}
-    .grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:12px; }}
-    .card {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; }}
-    .card strong {{ display:block; font-size:22px; margin-top:6px; }}
-    table {{ width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); }}
-    th, td {{ padding:9px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:top; }}
-    th {{ font-size:12px; text-transform:uppercase; color:var(--muted); background:var(--soft); }}
-    tr:last-child td {{ border-bottom:0; }}
-    .deduction {{ color:var(--bad); font-weight:600; }}
-    .pass {{ color:var(--accent); font-weight:600; }}
-    .fail {{ color:var(--bad); font-weight:600; }}
-    .toolbar {{ display:flex; gap:8px; margin:16px 0; flex-wrap:wrap; }}
-    input, select, button {{ border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:var(--panel); color:var(--fg); }}
-    button {{ cursor:pointer; }}
-    details {{ background:var(--panel); border:1px solid var(--line); border-radius:8px; margin:10px 0; }}
-    summary {{ padding:12px 14px; cursor:pointer; }}
-    details table {{ border:0; border-top:1px solid var(--line); }}
-    a {{ color:var(--accent); }}
-    code {{ background:var(--soft); border-radius:4px; padding:1px 4px; }}
-    .chips {{ display:flex; flex-wrap:wrap; gap:6px; }}
-    .chip {{ border:1px solid var(--line); border-radius:999px; padding:2px 8px; color:var(--muted); text-decoration:none; }}
-  </style>
-</head>
-<body>
-<header>
-  <div class="hero">
-    <div>
-      <h1>ProfBench Agent Eval Report</h1>
-      <div class="muted">Run {_e(result.run_id)} · {_e(result.summary.task_count)} tasks · {_e(result.summary.attempt_count)} attempts</div>
-    </div>
-    <div class="score">{overall}</div>
-  </div>
-</header>
-<main>
-  <section>
-    <div class="grid">
-      {_cards("Model Scores", _scores_by_model(rows))}
-      {_cards("Domain Scores", _scores_by_domain(rows))}
-      {_cards("Criterion Fulfilment", _criterion_fulfilment(rows))}
-      <div class="card"><span class="muted">Deductions</span><strong>{_e(_deduction_count(rows))}</strong></div>
-    </div>
-  </section>
-  <section>
-    <h2>Highest-Impact Failures</h2>
-    <div class="toolbar">
-      <input id="filter" placeholder="Filter task, model, reason">
-      <select id="modelFilter"><option value="">All models</option>{_model_options(rows)}</select>
-      <button id="exportJson">Export JSON</button>
-    </div>
-    <table id="deductions">
-      <thead><tr><th>Task</th><th>Model</th><th>Lost</th><th>Criterion</th><th>Reason</th><th>Evidence</th></tr></thead>
-      <tbody>{_deduction_rows(top_deductions)}</tbody>
-    </table>
-  </section>
-  <section>
-    <h2>Task Details</h2>
-    {_task_details(rows)}
-  </section>
-</main>
-<script id="run-data" type="application/json">{html.escape(data_json)}</script>
-<script>
-const data = JSON.parse(document.getElementById("run-data").textContent);
-const filter = document.getElementById("filter");
-const modelFilter = document.getElementById("modelFilter");
-function applyFilters() {{
-  const query = filter.value.toLowerCase();
-  const model = modelFilter.value;
-  for (const row of document.querySelectorAll("#deductions tbody tr")) {{
-    const matchesQuery = !query || row.textContent.toLowerCase().includes(query);
-    const matchesModel = !model || row.dataset.model === model;
-    row.style.display = matchesQuery && matchesModel ? "" : "none";
-  }}
-}}
-filter.addEventListener("input", applyFilters);
-modelFilter.addEventListener("change", applyFilters);
-document.getElementById("exportJson").addEventListener("click", () => {{
-  const blob = new Blob([JSON.stringify(data, null, 2)], {{type: "application/json"}});
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `${{data.run_id}}.json`;
-  link.click();
-  URL.revokeObjectURL(url);
-}});
-</script>
-</body>
-</html>
-"""
-
-
-def _profbench_result_rows(
-    results: list[AgentEvalTaskResult],
-) -> list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]:
-    rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]] = []
-    for task_result in results:
-        for output in task_result.outputs:
-            details = profbench_details(output)
-            if details is not None:
-                rows.append((task_result, details))
-    return rows
-
-
-def _cards(title: str, values: dict[str, float]) -> str:
-    if not values:
-        return f'<div class="card"><span class="muted">{_e(title)}</span><strong>n/a</strong></div>'
-    return "".join(
-        f'<div class="card"><span class="muted">{_e(title)} · {_e(name)}</span><strong>{_format_percent(score)}</strong></div>'
-        for name, score in sorted(values.items())
-    )
-
-
-def _scores_by_model(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> dict[str, float]:
-    values: dict[str, list[float]] = {}
-    for _, details in rows:
-        values.setdefault(details.model_id, []).append(details.score)
-    return _mean_by_key(values)
-
-
-def _scores_by_domain(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> dict[str, float]:
-    values: dict[str, list[float]] = {}
-    for _, details in rows:
-        values.setdefault(details.domain or "unknown", []).append(details.score)
-    return _mean_by_key(values)
-
-
-def _criterion_fulfilment(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> dict[str, float]:
-    values: dict[str, list[float]] = {}
-    for _, details in rows:
-        for criterion in details.criterion_scores:
-            for criterion_type in _criterion_type_labels(criterion.criterion_type):
-                values.setdefault(criterion_type, []).append(1.0 if criterion.fulfilled else 0.0)
-    return _mean_by_key(values)
-
-
-def _deduction_count(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> int:
-    return sum(len(details.deductions) for _, details in rows)
-
-
-def _model_options(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> str:
-    models = sorted({details.model_id for _, details in rows})
-    return "".join(f'<option value="{_e(model)}">{_e(model)}</option>' for model in models)
-
-
-def _deduction_rows(
-    rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails, ScoreDeduction]],
-) -> str:
-    rendered = []
-    for task_result, details, deduction in rows:
-        rendered.append(
-            "<tr "
-            f'data-model="{_e(details.model_id)}">'
-            f"<td>{_e(task_result.task_id)}</td>"
-            f"<td>{_e(details.model_id)}</td>"
-            f'<td class="deduction">{deduction.raw_points:g}</td>'
-            f"<td>{_e(deduction.criterion_id)}</td>"
-            f"<td>{_e(deduction.reason)}</td>"
-            f"<td>{_evidence_links(deduction.evidence)}</td>"
-            "</tr>"
-        )
-    return "".join(rendered)
-
-
-def _task_details(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> str:
-    rendered = []
-    for task_result, details in rows:
-        criterion_rows = "".join(
-            "<tr>"
-            f"<td>{_e(criterion.criterion_id)}</td>"
-            f"<td>{_e(criterion.weight_name)}</td>"
-            f"<td>{_e(_criterion_type_label(criterion.criterion_type))}</td>"
-            f"<td>{criterion.points:g}</td>"
-            f'<td class="{"pass" if criterion.fulfilled else "fail"}">{"yes" if criterion.fulfilled else "no"}</td>'
-            f"<td>{_e(criterion.description)}</td>"
-            f"<td>{_e(criterion.metadata.get('score_source', ''))}</td>"
-            f"<td>{_e(criterion.judge_reason or '')}</td>"
-            f"<td>{_evidence_links(criterion.evidence)}</td>"
-            "</tr>"
-            for criterion in details.criterion_scores
-        )
-        rendered.append(
-            "<details>"
-            f"<summary>{_e(task_result.task_id)} · {_e(details.model_id)} · {_format_percent(details.score)}</summary>"
-            "<table><thead><tr><th>Criterion</th><th>Weight</th><th>Type</th><th>Points</th>"
-            "<th>Fulfilled</th><th>Description</th><th>Source</th><th>Reason</th><th>Evidence</th></tr></thead>"
-            f"<tbody>{criterion_rows}</tbody></table>"
-            "</details>"
-        )
-    return "".join(rendered)
-
-
-def _evidence_links(locators: list[EvidenceLocator]) -> str:
-    if not locators:
-        return ""
-    return '<div class="chips">' + "".join(_evidence_link(locator) for locator in locators) + "</div>"
-
-
-def _evidence_link(locator: EvidenceLocator) -> str:
-    label = locator.label or locator.kind
-    if locator.line is not None:
-        label = f"{label}:L{locator.line}"
-    if locator.json_path:
-        label = f"{label} {locator.json_path}"
-    return f'<a class="chip" href="{_e(locator.href())}">{_e(label)}</a>'
-
-
-def _mean_by_key(values: dict[str, list[float]]) -> dict[str, float]:
-    return {key: _mean(scores) for key, scores in values.items()}
-
-
-def _mean(values: list[float]) -> float:
-    if not values:
-        return 0.0
-    return sum(values) / len(values)
-
-
-def _format_percent(value: float | None) -> str:
-    if value is None:
-        return "n/a"
-    return f"{value * 100:.1f}%"
-
-
-def _criterion_type_label(value: CriterionType | None) -> str:
-    return ", ".join(_criterion_type_labels(value))
-
-
-def _e(value: object) -> str:
-    return html.escape(str(value), quote=True)
-
-
-def configure_example_logging() -> None:
-    """Enable SDK progress logs when this example file is executed directly."""
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s:%(name)s:%(message)s")
-    logging.getLogger("httpx").setLevel(logging.WARNING)
-    logging.getLogger("nemo_evaluator_sdk.inference").setLevel(logging.WARNING)
-
-
-async def run_profbench_baseline_example(*, limit: int | None) -> None:
-    """Score the ProfBench baseline model responses bundled in the dataset."""
-    _print_example_separator(run_profbench_baseline_example.__name__)
-
-    output_dir = _profbench_output_dir("baseline")
-    benchmark = load_profbench(_profbench_source(), limit=limit, evidence_dir=output_dir / "evidence")
-    result = await AgentEvaluator().run(
-        tasks=benchmark.tasks,
-        attempts=benchmark.attempts,
-        config=AgentEvalRunConfig(
-            output_dir=output_dir,
-            benchmark=benchmark.metadata,
-            write_dashboard=False,
-        ),
-    )
-    sdk_dashboard_path, profbench_dashboard_path, default_dashboard_path = write_example_dashboards(result, output_dir)
-
-    print(f"ProfBench tasks: {result.summary.task_count}")
-    print(f"ProfBench attempts: {result.summary.attempt_count}")
-    print(f"Overall score: {result.summary.overall_score:.3f}" if result.summary.overall_score is not None else "n/a")
-    print(f"Metric scores: {result.summary.metric_scores}")
-    print(f"SDK dashboard: {sdk_dashboard_path}")
-    print(f"ProfBench dashboard: {profbench_dashboard_path}")
-    print(f"Default dashboard: {default_dashboard_path}")
-
-
-async def run_profbench_live_judge_example(*, limit: int | None) -> None:
-    """Score the recorded ProfBench responses with a live LLM judge."""
-    _print_example_separator(run_profbench_live_judge_example.__name__)
-
-    model = _example_model()
-    output_dir = _profbench_output_dir("live-judge")
-    benchmark = load_profbench(
-        _profbench_source(),
-        limit=limit,
-        judge=ProfBenchModelJudge(model=model),
-        evidence_dir=output_dir / "evidence",
-        include_cached_fulfilments=False,
-    )
-
-    result = await AgentEvaluator().run(
-        tasks=benchmark.tasks,
-        attempts=benchmark.attempts,
-        config=AgentEvalRunConfig(
-            output_dir=output_dir,
-            benchmark={**benchmark.metadata, "score_source": "live_judge"},
-            write_dashboard=False,
-        ),
-    )
-    sdk_dashboard_path, profbench_dashboard_path, default_dashboard_path = write_example_dashboards(result, output_dir)
-
-    print(f"ProfBench tasks: {result.summary.task_count}")
-    print(f"Recorded attempts judged: {result.summary.attempt_count}")
-    print(f"Live judge score: {result.summary.metric_scores}")
-    print(f"SDK dashboard: {sdk_dashboard_path}")
-    print(f"ProfBench dashboard: {profbench_dashboard_path}")
-    print(f"Default dashboard: {default_dashboard_path}")
-
-
-async def run_profbench_live_candidate_example(*, limit: int | None) -> None:
-    """Generate fresh ProfBench responses from a model and score them with a judge."""
-    _print_example_separator(run_profbench_live_candidate_example.__name__)
-
-    model = _example_model()
-    output_dir = _profbench_output_dir("live-candidate")
-    params = RunConfigOnlineModel(
-        parallelism=2,
-        inference=InferenceParams(temperature=0.0, max_tokens=4096),
-    )
-    benchmark = load_profbench(
-        _profbench_source(),
-        limit=limit,
-        judge=ProfBenchModelJudge(model=model),
-        evidence_dir=output_dir / "evidence",
-        include_cached_fulfilments=False,
-    )
-
-    result = await AgentEvaluator().run(
-        tasks=benchmark.tasks,
-        target=model,
-        config=AgentEvalRunConfig(
-            output_dir=output_dir,
-            params=params,
-            benchmark={**benchmark.metadata, "score_source": "fresh_candidate_and_live_judge"},
-            write_dashboard=False,
-        ),
-    )
-    sdk_dashboard_path, profbench_dashboard_path, default_dashboard_path = write_example_dashboards(result, output_dir)
-
-    print(f"ProfBench tasks: {result.summary.task_count}")
-    print(f"Live model score: {result.summary.metric_scores}")
-    print(f"SDK dashboard: {sdk_dashboard_path}")
-    print(f"ProfBench dashboard: {profbench_dashboard_path}")
-    print(f"Default dashboard: {default_dashboard_path}")
-
-
-async def run_examples(*, limit: int | None, run_live_judge: bool, run_live_candidate: bool) -> None:
-    """Execute the ProfBench agent-eval examples."""
-    await run_profbench_baseline_example(limit=limit)
-
-    if run_live_judge:
-        await run_profbench_live_judge_example(limit=limit)
-    else:
-        print("Skipping live ProfBench judge example. Pass --run-live-judge to run it.")
-
-    if run_live_candidate:
-        await run_profbench_live_candidate_example(limit=limit)
-    else:
-        print("Skipping live ProfBench candidate example. Pass --run-live-candidate to run it.")
-
-
 def _recorded_attempts(
     *,
     row: dict[str, Any],
@@ -956,35 +545,6 @@ def _recorded_attempts(
         )
     return attempts
 
-
-def _profbench_source() -> str:
-    return os.getenv("NEMO_EVALUATOR_PROFBENCH_SOURCE", PROFBENCH_DATASET_URL)
-
-
-def _profbench_limit_from_args(limit: int) -> int | None:
-    return None if limit == 0 else limit
-
-
-def _profbench_output_dir(suffix: str) -> Path:
-    root = Path(os.getenv("NEMO_EVALUATOR_PROFBENCH_OUTPUT_DIR", str(DEFAULT_OUTPUT_DIR)))
-    return root / suffix
-
-
-def _example_model() -> Model:
-    return Model(
-        url=os.getenv("NEMO_EVALUATOR_PROFBENCH_MODEL_URL", DEFAULT_MODEL_URL),
-        name=os.getenv("NEMO_EVALUATOR_PROFBENCH_MODEL", DEFAULT_MODEL_NAME),
-        api_key_secret=SecretRef(root=DEFAULT_API_KEY_SECRET),
-    )
-
-
-def _print_example_separator(name: str) -> None:
-    edge = "====="
-    middle_line = f"{edge} {name} {edge}"
-    rule = "=" * len(middle_line)
-    print(f"\n{rule}\n{middle_line}\n{rule}\n")
-
-
 def _baseline_fulfilments(metadata: dict[str, Any]) -> dict[str, bool]:
     raw = metadata.get("profbench_fulfilments")
     if not isinstance(raw, dict):
@@ -992,7 +552,7 @@ def _baseline_fulfilments(metadata: dict[str, Any]) -> dict[str, bool]:
     return {str(key): _coerce_bool(value) for key, value in raw.items()}
 
 
-def _read_jsonl_source(source: str | Path) -> tuple[str, list[tuple[int, str]], dict[str, Any]]:
+def _read_jsonl_source(source: str | Path, *, evidence_dir: Path | None = None) -> tuple[str, list[tuple[int, str]], dict[str, Any]]:
     source_text = str(source)
     if source_text.startswith(("http://", "https://")):
         request = Request(source_text, headers={"User-Agent": "nemo-evaluator-sdk"})
@@ -1002,9 +562,17 @@ def _read_jsonl_source(source: str | Path) -> tuple[str, list[tuple[int, str]], 
         metadata = {
             "etag": headers.get("ETag"),
             "resolved_commit": headers.get("x-repo-commit"),
+            "remote_source": source_text,
         }
+        source_uri = source_text
+        if evidence_dir is not None:
+            evidence_dir.mkdir(parents=True, exist_ok=True)
+            dataset_path = evidence_dir / "profbench-dataset.jsonl"
+            dataset_path.write_text(body, encoding="utf-8")
+            source_uri = str(dataset_path.resolve())
+            metadata["source_file"] = source_uri
         lines = [(index, line) for index, line in enumerate(body.splitlines(), start=1) if line.strip()]
-        return source_text, lines, metadata
+        return source_uri, lines, metadata
 
     path = Path(source).expanduser().resolve()
     raw_lines = path.read_text(encoding="utf-8").splitlines()
@@ -1143,41 +711,3 @@ def _criterion_type_labels(value: CriterionType | None) -> list[str]:
 
 def _safe_artifact_name(value: str) -> str:
     return "".join(character if character.isalnum() or character in {"-", "_", "."} else "_" for character in value)
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run ProfBench agent-eval examples.")
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=1,
-        help="Maximum number of ProfBench tasks to evaluate (0 = no limit). Default: 1.",
-    )
-    parser.add_argument(
-        "--run-live",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Alias for --run-live-judge.",
-    )
-    parser.add_argument(
-        "--run-live-judge",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Score the recorded ProfBench responses with a live LLM judge after the baseline example.",
-    )
-    parser.add_argument(
-        "--run-live-candidate",
-        action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Generate fresh candidate responses from the configured model, then score them with a live LLM judge.",
-    )
-    args = parser.parse_args()
-
-    configure_example_logging()
-    asyncio.run(
-        run_examples(
-            limit=_profbench_limit_from_args(args.limit),
-            run_live_judge=args.run_live or args.run_live_judge,
-            run_live_candidate=args.run_live_candidate,
-        )
-    )
