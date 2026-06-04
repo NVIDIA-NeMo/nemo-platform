@@ -1,13 +1,17 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
-<!-- @nemo-nb: skip-test -->
-<!-- TODO: Contains %%bash cell that runs `pip install nemo-platform[all]` and `nemo setup` — incompatible with sandboxed test execution. Refactor to use SDK directly. -->
-<!--
+---
+title: "Run LLM-as-a-Judge Evaluation"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: download */}
+{/* @nemo-nb: skip-test */}
+{/* TODO: Contains %%bash cell that runs `pip install nemo-platform[all]` and `nemo setup` — incompatible with sandboxed test execution. Refactor to use SDK directly. */}
+{/*
 ```python
 # @nemo-nb: hide
 # type: ignore
 ```
--->
+*/}
 <a id="evaluate-run-llm-judge-evaluation"></a>
 # Evaluate Response Quality with LLM-as-a-Judge
 
@@ -33,12 +37,11 @@ This tutorial shows you how to build, validate, and iterate on LLM judge metrics
 | Complexity | Sophistication and depth of the response | 0-4 |
 | Verbosity | Appropriate level of detail | 0-4 |
 
-!!! tip
-    This tutorial takes approximately **20 minutes** to complete.
+<Tip>This tutorial takes approximately **20 minutes** to complete.</Tip>
 
 ## Prerequisites
 
-1. Install and start {{platform_name}} using the [Setup guide](../../get-started/setup.md).
+1. Install and start NeMo Platform using the [Setup guide](/get-started/setup).
 
 ```bash
 ! pip install nemo-platform[all]
@@ -59,7 +62,7 @@ Before you begin, here is a quick overview of the resources you will use:
 
 - **Evaluator resource**: The plugin SDK resource mounted at `client.evaluator`. Use it to run metrics locally or submit durable platform jobs.
 - **Metric**: An inline Python object that defines how to score model outputs. In this tutorial, we create LLM judge metrics that prompt a model to rate responses.
-- **Fileset**: A dataset registered with {{platform_name}}. The evaluator plugin SDK accepts fileset references directly, so this tutorial passes the registered HelpSteer2 split to evaluations as a `FilesetRef`.
+- **Fileset**: A dataset registered with NeMo Platform. The evaluator plugin SDK accepts fileset references directly, so this tutorial passes the registered HelpSteer2 split to evaluations as a `FilesetRef`.
 - **Workspace**: A workspace that isolates your resources. Secrets, filesets, and jobs belong to a workspace.
 - **Job**: A durable remote platform task created with `evaluator.submit(...)`.
 - **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` for local in-process execution, `evaluator.submit(...)` for durable jobs
@@ -139,8 +142,9 @@ print(
 )
 ```
 
-!!! note
-    Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
+<Note>
+Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
+</Note>
 
 ---
 
@@ -178,8 +182,9 @@ REMOTE_JUDGE_MODEL = Model(
 )
 ```
 
-!!! tip
-    When using hosted APIs, keep `parallelism` low to avoid rate-limit errors. You can increase it for locally deployed models.
+<Tip>
+When using hosted APIs, keep `parallelism` low to avoid rate-limit errors. You can increase it for locally deployed models.
+</Tip>
 
 ---
 
@@ -227,8 +232,9 @@ except ConflictError:
     print(f"{fileset.workspace}/{fileset.name} dataset already registered")
 ```
 
-!!! note
-    HelpSteer2 contains prompt-response pairs with human ratings for helpfulness, correctness, coherence, complexity, and verbosity. Each rating is on a 0-4 scale. We'll use these human scores as ground truth to validate our LLM judge.
+<Note>
+HelpSteer2 contains prompt-response pairs with human ratings for helpfulness, correctness, coherence, complexity, and verbosity. Each rating is on a 0-4 scale. We'll use these human scores as ground truth to validate our LLM judge.
+</Note>
 
 Create a fileset reference for the validation split. The evaluator SDK resolves the selected fileset path when it runs, so you do not need to download the split into memory yourself:
 
@@ -249,11 +255,11 @@ Now let's create our first LLM judge metric. We'll start with a simple prompt fo
 A metric definition includes:
 
 - **Model**: Which LLM to use as the judge
-- **Prompt template**: Instructions for the judge, with `{% raw %}{{item...}}{% endraw %}` fields filled from your dataset rows
+- **Prompt template**: Instructions for the judge, with `&#123;&#123;item...&#125;&#125;` fields filled from your dataset rows
 - **Score definition**: The name, scale, and how to parse the judge's output
 
 ```python
-{% raw %}
+
 def create_helpfulness_metric(prompt_template: str, judge_model: Model) -> LLMJudgeMetric:
     """Create a helpfulness metric with the given system prompt."""
     score = RangeScore(
@@ -291,11 +297,12 @@ Respond with JSON only: {"helpfulness": <0-4>}"""
 
 metric_v1_local = create_helpfulness_metric(PROMPT_V1, LOCAL_JUDGE_MODEL)
 metric_v1_remote = create_helpfulness_metric(PROMPT_V1, REMOTE_JUDGE_MODEL)
-{% endraw %}
+
 ```
 
-!!! tip
-    Use low temperature for evaluation tasks. Low or zero temperature produces outputs with less variability, which is critical for reproducible scoring. This ensures the same response gets the same score across runs, making it easier to validate your judge and compare prompt versions.
+<Tip>
+Use low temperature for evaluation tasks. Low or zero temperature produces outputs with less variability, which is critical for reproducible scoring. This ensures the same response gets the same score across runs, making it easier to validate your judge and compare prompt versions.
+</Tip>
 
 ---
 
@@ -304,7 +311,7 @@ metric_v1_remote = create_helpfulness_metric(PROMPT_V1, REMOTE_JUDGE_MODEL)
 Before running a durable job, test your metric with a few examples using `evaluator.run(...)`. This runs locally in-process and returns results immediately, which is useful for prompt iteration.
 
 ```python
-{% raw %}
+
 quick_test_result = evaluator.run(
     metric=metric_v1_local,
     dataset=[
@@ -338,7 +345,7 @@ print("Quick test results:")
 for row in quick_test_result.row_scores:
     helpfulness = score_value(row, "helpfulness")
     print(f" Row {row.row_index}: helpfulness = {helpfulness}")
-{% endraw %}
+
 ```
 
 **Expected output:**
@@ -531,8 +538,9 @@ else:
     print("\nPrompt V1 performs better; simpler prompts can work well.")
 ```
 
-!!! note
-    More complex prompts do not always perform better. The best prompt depends on the model, task, and how well it aligns with the original annotation guidelines. If your V1 prompt outperforms V2, that's a valid result. Use what works best for your use case.
+<Note>
+More complex prompts do not always perform better. The best prompt depends on the model, task, and how well it aligns with the original annotation guidelines. If your V1 prompt outperforms V2, that's a valid result. Use what works best for your use case.
+</Note>
 
 ---
 
@@ -593,17 +601,18 @@ plt.show()
 print("Saved visualization to score_distributions.png")
 ```
 
-!!! tip
-    If you run this tutorial as a headless script instead of a notebook, configure a non-interactive Matplotlib backend before importing `pyplot`:
+<Tip>
+If you run this tutorial as a headless script instead of a notebook, configure a non-interactive Matplotlib backend before importing `pyplot`:
 
-    ```python
-    import matplotlib
+```python
+import matplotlib
 
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    ```
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+```
 
-    In that mode, save the figure with `plt.savefig(...)` and skip `plt.show()`.
+In that mode, save the figure with `plt.savefig(...)` and skip `plt.show()`.
+</Tip>
 
 *The code above generates a chart showing score distributions. Your results will vary depending on the model used and the specific samples evaluated.*
 
@@ -630,8 +639,9 @@ for name, scores in [
     )
 ```
 
-!!! tip
-    If your judge's distribution looks very different from humans, such as always scoring 3-4 while humans use the full range, adjust your prompt to calibrate the scoring criteria.
+<Tip>
+If your judge's distribution looks very different from humans, such as always scoring 3-4 while humans use the full range, adjust your prompt to calibrate the scoring criteria.
+</Tip>
 
 ---
 
@@ -668,8 +678,9 @@ client.workspaces.delete(name=WORKSPACE)
 print("Cleanup complete!")
 ```
 
-!!! note
-    Workspaces cannot be deleted while they contain resources. The code above deletes resources in dependency order.
+<Note>
+Workspaces cannot be deleted while they contain resources. The code above deletes resources in dependency order.
+</Note>
 
 ---
 
@@ -804,12 +815,12 @@ In this tutorial, you learned how to:
 
 ## Next Steps
 
-- **Experiment with rubric scores**: Use [categorical rubrics](../metrics/llm-as-a-judge.md) instead of numeric ranges for more interpretable criteria
+- **Experiment with rubric scores**: Use [categorical rubrics](/evaluation/metrics/llm-as-a-judge) instead of numeric ranges for more interpretable criteria
 - **Try different judge models**: Larger models often correlate better with human judgment
-- **Explore other evaluation types**: [RAG evaluation](../metrics/rag.md) or [agentic evaluation](../metrics/agentic.md)
+- **Explore other evaluation types**: [RAG evaluation](/evaluation/metrics/rag-metrics) or [agentic evaluation](/evaluation/metrics/agentic-metrics)
 
 ## Related
 
-- [LLM-as-a-Judge Reference](../metrics/llm-as-a-judge.md) - Complete guide to judge configuration
-- [SDK Resources](../sdk-resources.md) - Evaluator plugin SDK resource reference
-- [Manage Metrics](../metrics/manage-metrics.md) - Using evaluator SDK metric objects
+- [LLM-as-a-Judge Reference](/evaluation/metrics/llm-as-a-judge) - Complete guide to judge configuration
+- [SDK Resources](/evaluation/sdk-resources) - Evaluator plugin SDK resource reference
+- [Manage Metrics](/evaluation/metrics/manage-metrics) - Using evaluator SDK metric objects

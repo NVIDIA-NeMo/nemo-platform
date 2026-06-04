@@ -1,3 +1,7 @@
+---
+title: "Multinode Networking"
+description: ""
+---
 <a id="multinode-networking"></a>
 # Multinode Networking
 
@@ -10,8 +14,9 @@ Multi-node GPU training requires high-bandwidth, low-latency east-west networkin
 - Nodes with high-performance networking hardware (EFA, InfiniBand, etc.)
 - The cloud provider's device plugin or network operator deployed so that networking resources are visible to Kubernetes
 
-!!! note
-    The {{platform_name}} does not provision or manage the underlying cloud networking infrastructure. Each cloud provider section below lists the cluster-level prerequisites your administrator must configure. Refer to your cloud provider's documentation for setup instructions.
+<Note>
+The NeMo Platform does not provision or manage the underlying cloud networking infrastructure. Each cloud provider section below lists the cluster-level prerequisites your administrator must configure. Refer to your cloud provider's documentation for setup instructions.
+</Note>
 
 ## How It Works
 
@@ -21,8 +26,9 @@ When a job requests more than one node, the jobs controller annotates the pod wi
 
 Enable **exactly one** cloud provider in the `multinodeNetworking` section of your `values.yaml`. Enabling more than one causes a Helm install error.
 
-!!! info
-    Device-count parameters (`efaDevicesPerGPU`, `rdmaDevicesPerGPU`) must match the hardware ratio of your instance type. A mismatch causes jobs to either fail scheduling or silently run without high-speed networking.
+<Note>
+Device-count parameters (`efaDevicesPerGPU`, `rdmaDevicesPerGPU`) must match the hardware ratio of your instance type. A mismatch causes jobs to either fail scheduling or silently run without high-speed networking.
+</Note>
 
 ### AWS (EFA)
 

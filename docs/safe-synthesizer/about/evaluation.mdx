@@ -1,8 +1,12 @@
-<!-- @nemo-nb: process -->
+---
+title: "Evaluation"
+description: ""
+---
+{/* @nemo-nb: process */}
 <a id="about-evaluation"></a>
 # Evaluation
 
-Evaluation is a critical component of {{nss_short_name}} that helps you understand both the utility and privacy of your synthetic data. The evaluation step is enabled by default and provides comprehensive reports comparing your training and synthetic datasets across multiple dimensions.
+Evaluation is a critical component of NeMo Safe Synthesizer that helps you understand both the utility and privacy of your synthetic data. The evaluation step is enabled by default and provides comprehensive reports comparing your training and synthetic datasets across multiple dimensions.
 
 ## How It Works
 
@@ -85,11 +89,11 @@ You should expect some PII replay, and it is often not a cause for concern. We t
 - Lower epsilon (stronger privacy) generally yields higher DPS scores
 - Enabling DP can reduce **SQS** due to privacy-utility tradeoff (noise affects quality)
 
-For differential privacy configuration and privacy-utility tradeoffs, refer to [data-synthesis](data-synthesis.md) and [differential-privacy](../tutorials/differential-privacy.md).
+For differential privacy configuration and privacy-utility tradeoffs, refer to [data-synthesis](/synthesize-safe-data/about/data-synthesis) and [differential-privacy](/synthesize-safe-data/tutorials/differential-privacy).
 
 ## Evaluation Reports
 
-Every {{nss_short_name}} job automatically generates an HTML evaluation report containing:
+Every NeMo Safe Synthesizer job automatically generates an HTML evaluation report containing:
 
 - Overall SQS and DPS scores
 - Detailed subscores for each metric
@@ -121,6 +125,6 @@ We enable evaluation by default.
 
 ## Related Topics
 
-- [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with evaluation
-- [differential-privacy](../tutorials/differential-privacy.md): Learn about privacy metrics
-- [index](../tutorials/index.md): More tutorials
+- [safe-synthesizer-101](/synthesize-safe-data/tutorials/safe-synthesizer-101): Get started with evaluation
+- [differential-privacy](/synthesize-safe-data/tutorials/differential-privacy): Learn about privacy metrics
+- [index](/synthesize-safe-data/tutorials/overview): More tutorials

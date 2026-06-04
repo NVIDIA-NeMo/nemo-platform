@@ -1,8 +1,10 @@
-# Policy Engine
+---
+title: "Policy Engine"
+description: ""
+---
+The Policy Decision Point (PDP) evaluates every authorization request in NeMo Platform. It checks role bindings and scopes against the operation's requirements and returns allow or deny. This page covers the PDP internals, configuration, and operational details.
 
-The Policy Decision Point (PDP) evaluates every authorization request in {{platform_name}}. It checks role bindings and scopes against the operation's requirements and returns allow or deny. This page covers the PDP internals, configuration, and operational details.
-
-For the conceptual overview, see [Authorization Concepts](../concepts.md). For configuration, see [Auth Configuration](../deployment/configuration.md).
+For the conceptual overview, see [Authorization Concepts](/platform/authentication-authorization/concepts). For configuration, see [Auth Configuration](/platform/authentication-authorization/deployment/configuration).
 
 ## How the PDP Works
 
@@ -84,7 +86,7 @@ Use external OPA when you:
 
 - Already run OPA for other services and want a single policy engine
 - Need gateway-level auth via Envoy `ext_authz` with gRPC
-- Want to add custom policy rules alongside {{platform_name}} authorization
+- Want to add custom policy rules alongside NeMo Platform authorization
 - Prefer to manage OPA's lifecycle separately
 
 ### Bundle Caching and Propagation Delay
@@ -152,7 +154,7 @@ Loaded from the entity store:
 
 ## Related
 
-- [Auth Configuration](../deployment/configuration.md) — PDP provider settings and environment variables.
-- [Authorization Concepts](../concepts.md) — RBAC model and role propagation.
-- [API Scopes](api-scopes.md) — Scope checking in the PDP.
-- [Security Model](../security-model.md) — Architecture and trust boundaries.
+- [Auth Configuration](/platform/authentication-authorization/deployment/configuration) — PDP provider settings and environment variables.
+- [Authorization Concepts](/platform/authentication-authorization/concepts) — RBAC model and role propagation.
+- [API Scopes](/platform/authentication-authorization/authorization/api-scopes) — Scope checking in the PDP.
+- [Security Model](/platform/authentication-authorization/security-model) — Architecture and trust boundaries.

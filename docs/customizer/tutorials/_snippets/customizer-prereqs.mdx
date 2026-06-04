@@ -1,32 +1,33 @@
-# NeMo Customizer Prerequisites
+---
+title: "NeMo Customizer Prerequisites"
+description: ""
+---
+<Accordion title="Platform Setup Requirements and Environment Variables">
+Before starting, make sure you have:
 
-??? "Platform Setup Requirements and Environment Variables"
-    :icon: gear
+- NeMo Platform installed and deployed (see [Setup](/customizer/get-started/setup))
+- The `nemo-platform` Python SDK installed (`pip install nemo-platform[all]`)
+- (Optional) Weights & Biases account and API key for enhanced visualization
 
-    Before starting, make sure you have:
+**Set up environment variables:**
 
-    - {{platform_name}} installed and deployed (see [Setup](../../get-started/setup.md))
-    - The `nemo-platform` Python SDK installed (`pip install nemo-platform[all]`)
-    - (Optional) Weights & Biases account and API key for enhanced visualization
+```bash
+# Set the base URL for {{platform_name}}
+export NMP_BASE_URL="http://localhost:8080" # Or your deployed platform URL
 
-    **Set up environment variables:**
+# Optional: Weights & Biases for experiment tracking
+export WANDB_API_KEY="<your-wandb-api-key>"
+```
 
-    ```bash
-    # Set the base URL for {{platform_name}}
-    export NMP_BASE_URL="http://localhost:8080" # Or your deployed platform URL
+**Initialize the SDK:**
 
-    # Optional: Weights & Biases for experiment tracking
-    export WANDB_API_KEY="<your-wandb-api-key>"
-    ```
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    **Initialize the SDK:**
-
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
-
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+```
+</Accordion>

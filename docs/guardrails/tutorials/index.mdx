@@ -1,11 +1,17 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="guardrails-tutorials"></a>
 # Guardrail Tutorials
 
 Use the following tutorials to learn how to accomplish common guardrail tasks using the NeMo Guardrails API.
 
-!!! tip "Before starting a tutorial, complete [Setup](../../get-started/setup.md) to configure a `ModelProvider` and discover models. The tutorials assume you have models available in the `default` workspace."
+<Tip>
+Before starting a tutorial, complete [Setup](/get-started/setup) to configure a `ModelProvider` and discover models. The tutorials assume you have models available in the `default` workspace.
+</Tip>
 
-Once a `ModelProvider` is configured, use Model Entity references (`workspace/name` format) as the `model` in your guardrail configurations. The guardrails plugin resolves task model endpoints through IGW's route table. Refer to [Model Routing](../concepts/inference.md#guardrails-model-routing) for more details.
+Once a `ModelProvider` is configured, use Model Entity references (`workspace/name` format) as the `model` in your guardrail configurations. The guardrails plugin resolves task model endpoints through IGW's route table. Refer to [Model Routing](/guardrails/core-concepts/running-inference#guardrails-model-routing) for more details.
 
 ```python
 guardrails_config = {
@@ -22,7 +28,7 @@ guardrails_config = {
 
 <div class="grid cards" markdown>
 
--   **[Deploy NemoGuard NIMs](deploy-nemoguard-nims.md)**
+-   **[Deploy NemoGuard NIMs](/guardrails/tutorials/deploy-nemoguard-nims)**
 
     ---
 
@@ -30,7 +36,7 @@ guardrails_config = {
 
     <small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
 
--   **[Improving Content Safety with NemoGuard NIMs](content-safety.md)**
+-   **[Improving Content Safety with NemoGuard NIMs](/guardrails/tutorials/content-safety)**
 
     ---
 
@@ -38,7 +44,7 @@ guardrails_config = {
 
     <small><span class="md-tag">nemo-guardrails</span> <span class="md-tag">nemoguard</span></small>
 
--   **[Running Rails in Parallel](parallel-rails.md)**
+-   **[Running Rails in Parallel](/guardrails/tutorials/parallel-rails)**
 
     ---
 
@@ -46,7 +52,7 @@ guardrails_config = {
 
     <small><span class="md-tag">nemo-guardrails</span></small>
 
--   **[Adding Safety Checks to Multimodal Data](multimodal-data.md)**
+-   **[Adding Safety Checks to Multimodal Data](/guardrails/tutorials/multimodal-data)**
 
     ---
 
@@ -54,7 +60,7 @@ guardrails_config = {
 
     <small><span class="md-tag">nemo-guardrails</span></small>
 
--   **[Detecting Injection Attacks](injection-detection.md)**
+-   **[Detecting Injection Attacks](/guardrails/tutorials/injection-detection)**
 
     ---
 

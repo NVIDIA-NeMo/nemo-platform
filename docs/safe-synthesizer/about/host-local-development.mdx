@@ -1,13 +1,17 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: skip-test -->
+---
+title: "Host-Local Development and Testing"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: skip-test */}
 <a id="host-local-development"></a>
 # Host-Local Development and Testing
 
-Run {{nss_short_name}} on your machine's GPU with `nemo safe-synthesizer run-local`. This page covers the plugin CLI only (`run-local` and `runtime`). It does not cover platform job submission or `nemo safe-synthesizer jobs …` commands (not exposed in the CLI today).
+Run NeMo Safe Synthesizer on your machine's GPU with `nemo safe-synthesizer run-local`. This page covers the plugin CLI only (`run-local` and `runtime`). It does not cover platform job submission or `nemo safe-synthesizer jobs …` commands (not exposed in the CLI today).
 
 ## Prerequisites
 
-- CUDA-capable NVIDIA GPU on the host (80GB+ VRAM recommended; check with `nvidia-smi`). See [Getting Started](../getting-started.md).
+- CUDA-capable NVIDIA GPU on the host (80GB+ VRAM recommended; check with `nvidia-smi`). See [Getting Started](/synthesize-safe-data/getting-started).
 - NeMo Platform repository checkout with the Safe Synthesizer plugin installed.
 - **No running platform required** for a typical local run when you pass `--data-source` — the NSS runtime can download base models from Hugging Face directly.
 
@@ -161,7 +165,7 @@ Requires `RUN_NSS_LOCAL_E2E=1`, CUDA, and `nemo safe-synthesizer runtime setup`.
 
 ## Related topics
 
-- [Parameters Reference](reference.md) — spec and `config` fields
-- [Getting Started](../getting-started.md) — GPU and platform context
-- [Jobs](jobs.md) — platform job lifecycle (separate from this run-local guide)
+- [Parameters Reference](/synthesize-safe-data/about/parameters-reference) — spec and `config` fields
+- [Getting Started](/synthesize-safe-data/getting-started) — GPU and platform context
+- [Jobs](/synthesize-safe-data/about/jobs) — platform job lifecycle (separate from this run-local guide)
 - Plugin README: `plugins/nemo-safe-synthesizer/README.md`

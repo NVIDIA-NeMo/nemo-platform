@@ -1,5 +1,9 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Deploy NemoGuard NIMs"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: download */}
 <a id="guardrails-deploy-nemoguard-nims"></a>
 # Deploy NemoGuard NIMs
 
@@ -15,8 +19,8 @@ NemoGuard NIMs are specialized models built for specific use cases supported by 
 
 Before you begin:
 
-- You have access to a running {{platform_name}}.
-- `NMP_BASE_URL` is set to the {{platform_name}} base URL.
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
 - Your infrastructure has 1 GPU available per NIM deployment.
 
 ---
@@ -41,154 +45,156 @@ client = NeMoPlatform(
 
 Use the Platform's Inference Gateway service to deploy each NIM. This process creates a `DeploymentConfig` that specifies the NIM image, and a `Deployment` that runs it.
 
-!!! tip "Enabling [KV cache reuse](https://docs.nvidia.com/nim/large-language-models/latest/kv-cache-reuse.html) on the LLM-based NIMs could improve inference speed. These examples enable this feature by setting `NIM_ENABLE_KV_CACHE_REUSE=1` via the `nim_deployment.additional_envs` option."
+<Tip>
+Enabling [KV cache reuse](https://docs.nvidia.com/nim/large-language-models/latest/kv-cache-reuse.html) on the LLM-based NIMs could improve inference speed. These examples enable this feature by setting `NIM_ENABLE_KV_CACHE_REUSE=1` via the `nim_deployment.additional_envs` option.
+</Tip>
 
 ### Deploy a Content-Safety NIM
 
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference deployment-configs create \
+--name "nemotron-safety-guard-config" \
+--nim-deployment '{
+"gpu": 1,
+"image_name": "nvcr.io/nim/nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+"image_tag": "1.14.0",
+"additional_envs": {"NIM_ENABLE_KV_CACHE_REUSE": "1"}
+}'
 
-    ```bash
-    nemo inference deployment-configs create \
-    --name "nemotron-safety-guard-config" \
-    --nim-deployment '{
-    "gpu": 1,
-    "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
-    "image_tag": "1.14.0",
-    "additional_envs": {"NIM_ENABLE_KV_CACHE_REUSE": "1"}
-    }'
+nemo inference deployments create \
+--name "nemotron-safety-guard" \
+--config "nemotron-safety-guard-config"
 
-    nemo inference deployments create \
-    --name "nemotron-safety-guard" \
-    --config "nemotron-safety-guard-config"
-
-    nemo wait inference deployment nemotron-safety-guard
-    ```
-
-=== "Python SDK"
-
-    ```python
-    client.inference.deployment_configs.create(
-        name="nemotron-safety-guard-config",
-        nim_deployment={
-            "gpu": 1,
-            "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
-            "image_tag": "1.14.0",
-            "additional_envs": {
-                "NIM_ENABLE_KV_CACHE_REUSE": "1",
-            },
+nemo wait inference deployment nemotron-safety-guard
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.deployment_configs.create(
+    name="nemotron-safety-guard-config",
+    nim_deployment={
+        "gpu": 1,
+        "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemotron-safety-guard-8b-v3",
+        "image_tag": "1.14.0",
+        "additional_envs": {
+            "NIM_ENABLE_KV_CACHE_REUSE": "1",
         },
-    )
+    },
+)
 
-    client.inference.deployments.create(
-        name="nemotron-safety-guard",
-        config="nemotron-safety-guard-config",
-    )
+client.inference.deployments.create(
+    name="nemotron-safety-guard",
+    config="nemotron-safety-guard-config",
+)
 
-    client.models.wait_for_status(
-        deployment_name="nemotron-safety-guard",
-        desired_status="READY",
-    )
+client.models.wait_for_status(
+    deployment_name="nemotron-safety-guard",
+    desired_status="READY",
+)
 
-    print("Content safety NIM ready")
-    ```
-
+print("Content safety NIM ready")
+```
+</Tab>
+</Tabs>
 ### Deploy a Topic-Control NIM
 
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference deployment-configs create \
+--name "nemoguard-topic-control-config" \
+--nim-deployment '{
+"gpu": 1,
+"image_name": "nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-topic-control",
+"image_tag": "1.10.1",
+"additional_envs": {"NIM_ENABLE_KV_CACHE_REUSE": "1"}
+}'
 
-    ```bash
-    nemo inference deployment-configs create \
-    --name "nemoguard-topic-control-config" \
-    --nim-deployment '{
-    "gpu": 1,
-    "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-topic-control",
-    "image_tag": "1.10.1",
-    "additional_envs": {"NIM_ENABLE_KV_CACHE_REUSE": "1"}
-    }'
+nemo inference deployments create \
+--name "nemoguard-topic-control" \
+--config "nemoguard-topic-control-config"
 
-    nemo inference deployments create \
-    --name "nemoguard-topic-control" \
-    --config "nemoguard-topic-control-config"
-
-    nemo wait inference deployment nemoguard-topic-control
-    ```
-
-=== "Python SDK"
-
-    ```python
-    client.inference.deployment_configs.create(
-        name="nemoguard-topic-control-config",
-        nim_deployment={
-            "gpu": 1,
-            "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-topic-control",
-            "image_tag": "1.10.1",
-            "additional_envs": {
-                "NIM_ENABLE_KV_CACHE_REUSE": "1",
-            },
+nemo wait inference deployment nemoguard-topic-control
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.deployment_configs.create(
+    name="nemoguard-topic-control-config",
+    nim_deployment={
+        "gpu": 1,
+        "image_name": "nvcr.io/nim/nvidia/llama-3.1-nemoguard-8b-topic-control",
+        "image_tag": "1.10.1",
+        "additional_envs": {
+            "NIM_ENABLE_KV_CACHE_REUSE": "1",
         },
-    )
+    },
+)
 
-    client.inference.deployments.create(
-        name="nemoguard-topic-control",
-        config="nemoguard-topic-control-config",
-    )
+client.inference.deployments.create(
+    name="nemoguard-topic-control",
+    config="nemoguard-topic-control-config",
+)
 
-    client.models.wait_for_status(
-        deployment_name="nemoguard-topic-control",
-        desired_status="READY",
-    )
+client.models.wait_for_status(
+    deployment_name="nemoguard-topic-control",
+    desired_status="READY",
+)
 
-    print("Topic control NIM ready")
-    ```
-
+print("Topic control NIM ready")
+```
+</Tab>
+</Tabs>
 ### Deploy a Jailbreak-Detection NIM
 
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference deployment-configs create \
+--name "nemoguard-jailbreak-config" \
+--nim-deployment '{
+"gpu": 1,
+"image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+"image_tag": "1.10.1"
+}'
 
-    ```bash
-    nemo inference deployment-configs create \
-    --name "nemoguard-jailbreak-config" \
-    --nim-deployment '{
-    "gpu": 1,
-    "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
-    "image_tag": "1.10.1"
-    }'
+nemo inference deployments create \
+--name "nemoguard-jailbreak" \
+--config "nemoguard-jailbreak-config"
 
-    nemo inference deployments create \
-    --name "nemoguard-jailbreak" \
-    --config "nemoguard-jailbreak-config"
+nemo wait inference deployment nemoguard-jailbreak
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.deployment_configs.create(
+    name="nemoguard-jailbreak-config",
+    nim_deployment={
+        "gpu": 1,
+        "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+        "image_tag": "1.10.1",
+    },
+)
 
-    nemo wait inference deployment nemoguard-jailbreak
-    ```
+client.inference.deployments.create(
+    name="nemoguard-jailbreak",
+    config="nemoguard-jailbreak-config",
+)
 
-=== "Python SDK"
+client.models.wait_for_status(
+    deployment_name="nemoguard-jailbreak",
+    desired_status="READY",
+)
 
-    ```python
-    client.inference.deployment_configs.create(
-        name="nemoguard-jailbreak-config",
-        nim_deployment={
-            "gpu": 1,
-            "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
-            "image_tag": "1.10.1",
-        },
-    )
-
-    client.inference.deployments.create(
-        name="nemoguard-jailbreak",
-        config="nemoguard-jailbreak-config",
-    )
-
-    client.models.wait_for_status(
-        deployment_name="nemoguard-jailbreak",
-        desired_status="READY",
-    )
-
-    print("Jailbreak detection NIM ready")
-    ```
-
+print("Jailbreak detection NIM ready")
+```
+</Tab>
+</Tabs>
 ---
 
 ## Step 3: Verify the Model Entity Names
@@ -210,7 +216,9 @@ The NemoGuard NIMs register Model Entities with the following default names:
 | `llama-3.1-nemotron-safety-guard-8b-v3` | `default/nvidia-llama-3-1-nemotron-safety-guard-8b-v3` |
 | `llama-3.1-nemoguard-8b-topic-control` | `default/nvidia-llama-3-1-nemoguard-8b-topic-control` |
 
-!!! note "The jailbreak detection NIM exposes a `/v1/classify` endpoint rather than an OpenAI-compatible chat completions endpoint, so it does not register a Model Entity. Reference the NIM by setting `nim_base_url` to its Inference Gateway URL — see [Step 4](#step-4-use-the-nims-in-guardrail-configurations) below."
+<Note>
+The jailbreak detection NIM exposes a `/v1/classify` endpoint rather than an OpenAI-compatible chat completions endpoint, so it does not register a Model Entity. Reference the NIM by setting `nim_base_url` to its Inference Gateway URL — see [Step 4](#step-4-use-the-nims-in-guardrail-configurations) below.
+</Note>
 
 ---
 
@@ -218,7 +226,7 @@ The NemoGuard NIMs register Model Entities with the following default names:
 
 ### Content Safety and Topic Control
 
-Reference the Model Entities in your guardrail configuration using the `workspace/name` format. For a complete example combining content safety and topic control rails, see [Executing Input and Output Rails in Parallel](parallel-rails.md).
+Reference the Model Entities in your guardrail configuration using the `workspace/name` format. For a complete example combining content safety and topic control rails, see [Executing Input and Output Rails in Parallel](/guardrails/tutorials/parallel-rails).
 
 ### Jailbreak Detection
 
@@ -249,55 +257,55 @@ print(f"Created config: {config.name}")
 ## Cleanup
 
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo guardrail configs delete nemoguard-jailbreak-config
 
-    ```bash
-    nemo guardrail configs delete nemoguard-jailbreak-config
+# Note: Deleting the deployment will free up its GPU(s) when complete
+nemo inference deployments delete nemotron-safety-guard
+nemo inference deployments delete nemoguard-topic-control
+nemo inference deployments delete nemoguard-jailbreak
 
-    # Note: Deleting the deployment will free up its GPU(s) when complete
-    nemo inference deployments delete nemotron-safety-guard
-    nemo inference deployments delete nemoguard-topic-control
-    nemo inference deployments delete nemoguard-jailbreak
+nemo wait inference deployment nemotron-safety-guard --status DELETED
+nemo wait inference deployment nemoguard-topic-control --status DELETED
+nemo wait inference deployment nemoguard-jailbreak --status DELETED
 
-    nemo wait inference deployment nemotron-safety-guard --status DELETED
-    nemo wait inference deployment nemoguard-topic-control --status DELETED
-    nemo wait inference deployment nemoguard-jailbreak --status DELETED
+nemo inference deployment-configs delete nemotron-safety-guard-config
+nemo inference deployment-configs delete nemoguard-topic-control-config
+nemo inference deployment-configs delete nemoguard-jailbreak-config
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.guardrail.configs.delete(name="nemoguard-jailbreak-config")
 
-    nemo inference deployment-configs delete nemotron-safety-guard-config
-    nemo inference deployment-configs delete nemoguard-topic-control-config
-    nemo inference deployment-configs delete nemoguard-jailbreak-config
-    ```
+# Note: Deleting the deployment will free up its GPU(s) when complete
+client.inference.deployments.delete(name="nemotron-safety-guard")
+client.inference.deployments.delete(name="nemoguard-topic-control")
+client.inference.deployments.delete(name="nemoguard-jailbreak")
 
-=== "Python SDK"
+client.models.wait_for_status(
+    deployment_name="nemotron-safety-guard", desired_status="DELETED"
+)
+client.models.wait_for_status(
+    deployment_name="nemoguard-topic-control", desired_status="DELETED"
+)
+client.models.wait_for_status(
+    deployment_name="nemoguard-jailbreak", desired_status="DELETED"
+)
 
-    ```python
-    client.guardrail.configs.delete(name="nemoguard-jailbreak-config")
+client.inference.deployment_configs.delete(name="nemotron-safety-guard-config")
+client.inference.deployment_configs.delete(name="nemoguard-topic-control-config")
+client.inference.deployment_configs.delete(name="nemoguard-jailbreak-config")
 
-    # Note: Deleting the deployment will free up its GPU(s) when complete
-    client.inference.deployments.delete(name="nemotron-safety-guard")
-    client.inference.deployments.delete(name="nemoguard-topic-control")
-    client.inference.deployments.delete(name="nemoguard-jailbreak")
-
-    client.models.wait_for_status(
-        deployment_name="nemotron-safety-guard", desired_status="DELETED"
-    )
-    client.models.wait_for_status(
-        deployment_name="nemoguard-topic-control", desired_status="DELETED"
-    )
-    client.models.wait_for_status(
-        deployment_name="nemoguard-jailbreak", desired_status="DELETED"
-    )
-
-    client.inference.deployment_configs.delete(name="nemotron-safety-guard-config")
-    client.inference.deployment_configs.delete(name="nemoguard-topic-control-config")
-    client.inference.deployment_configs.delete(name="nemoguard-jailbreak-config")
-
-    print("Cleanup complete")
-    ```
-
+print("Cleanup complete")
+```
+</Tab>
+</Tabs>
 ---
 
 ## Next Steps
 
-- [Improving Content Safety with NemoGuard NIMs](content-safety.md) - Full content safety tutorial using `build.nvidia.com`-hosted NIMs
-- [Executing Input and Output Rails in Parallel](parallel-rails.md) - Combine multiple rails for comprehensive safety coverage
+- [Improving Content Safety with NemoGuard NIMs](/guardrails/tutorials/content-safety) - Full content safety tutorial using `build.nvidia.com`-hosted NIMs
+- [Executing Input and Output Rails in Parallel](/guardrails/tutorials/parallel-rails) - Combine multiple rails for comprehensive safety coverage

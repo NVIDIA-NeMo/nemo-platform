@@ -1,9 +1,11 @@
-# Customization Job Reference
-
+---
+title: "Customization Job Reference"
+description: ""
+---
 <a id="ft-customization-job-reference"></a>
 Use this page when you need field-level details for customization job specifications, the complete API schema, or integration options.
 
-For concepts, see [Customization Job overview](index.md).
+For concepts, see [Customization Job overview](/fine-tune-models/manage-jobs/overview).
 
 ## Key Fields
 
@@ -15,7 +17,7 @@ All job configuration (model, dataset, training, and output) is specified in the
 | `workspace` | Yes | Workspace where the job runs. Determines what datasets and models are authorized to be used in the job. |
 | `spec.model` | Yes | Reference to the Model Entity (`workspace/name` format) |
 | `spec.dataset` | Yes | Dataset URI (`fileset://workspace/name`) |
-| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](hyperparameters.md)) |
+| `spec.training` | Yes | Training method and hyperparameters (see [Training Configuration](/fine-tune-models/manage-jobs/training-configuration)) |
 | `spec.training.type` | Yes | Training method: `sft`, `distillation`, or `dpo` |
 | `spec.training.peft` | No | PEFT adapter configuration (e.g., `{"type": "lora", ...}`). Omit for full-weight training |
 | `spec.output` | No | Output artifact configuration (`{"name": "..."}`). Auto-generated if not provided |
@@ -25,7 +27,7 @@ All job configuration (model, dataset, training, and output) is specified in the
 
 ## Complete API Reference
 
-For generated REST API details, see the [Customizer API Reference](../../api/index.md#tag-customizer) and
+For generated REST API details, see the [Customizer API Reference](/reference/api-reference#tag-customizer) and
 search for `CustomizationJobInput`.
 
 ---
@@ -34,51 +36,51 @@ search for `CustomizationJobInput`.
 
 To enable W&B integration, add the `integrations` configuration:
 
-=== "Python"
-
-    ```python
-    job = client.customization.jobs.create(
-        name="my-job",
-        workspace="default",
-        spec={
-            "model": "default/llama-3-2-1b",
-            "dataset": "fileset://default/my-dataset",
-            "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-            "integrations": {
-                "wandb": {
-                    "project": "my-finetuning-project",
-                    "entity": "my-team",
-                    "tags": ["fine-tuning", "llama"],
-                    "api_key_secret": "my-wandb-key",
-                }
-            },
-        },
-    )
-    ```
-
-=== "CLI"
-
-    ```bash
-    nemo customization jobs create my-job \
-      --workspace default \
-      --spec '{
+<Tabs>
+<Tab title="Python">
+```python
+job = client.customization.jobs.create(
+    name="my-job",
+    workspace="default",
+    spec={
         "model": "default/llama-3-2-1b",
         "dataset": "fileset://default/my-dataset",
         "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
         "integrations": {
-          "wandb": {
-            "project": "my-finetuning-project",
-            "entity": "my-team",
-            "tags": ["fine-tuning", "llama"],
-            "api_key_secret": "my-wandb-key"
-          }
-        }
-      }'
-    ```
-
+            "wandb": {
+                "project": "my-finetuning-project",
+                "entity": "my-team",
+                "tags": ["fine-tuning", "llama"],
+                "api_key_secret": "my-wandb-key",
+            }
+        },
+    },
+)
+```
+</Tab>
+<Tab title="CLI">
+```bash
+nemo customization jobs create my-job \
+  --workspace default \
+  --spec '{
+    "model": "default/llama-3-2-1b",
+    "dataset": "fileset://default/my-dataset",
+    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
+    "integrations": {
+      "wandb": {
+        "project": "my-finetuning-project",
+        "entity": "my-team",
+        "tags": ["fine-tuning", "llama"],
+        "api_key_secret": "my-wandb-key"
+      }
+    }
+  }'
+```
+</Tab>
+</Tabs>
 The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`.
 Use the secret name (e.g., `"my-wandb-key"`) to resolve it from the request workspace.
-To create the secret, see [Weights & Biases Keys](../../get-started/concepts/manage-secrets.md).
+To create the secret, see [Weights & Biases Keys](/get-started/core-concepts/manage-secrets).
 
 | Field | Description |
 |-------|-------------|
@@ -90,7 +92,7 @@ To create the secret, see [Weights & Biases Keys](../../get-started/concepts/man
 | `notes` | Notes or description for the run |
 | `base_url` | Base URL for self-hosted W&B servers (e.g., `https://wandb.mycompany.com`). Omit to use W&B cloud |
 
-To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](../tutorials/metrics.md).
+To view your training metrics in W&B after the job starts, see [ft-tut-metrics-wandb](/fine-tune-models/tutorials/job-metrics).
 
 ---
 
@@ -98,44 +100,44 @@ To view your training metrics in W&B after the job starts, see [ft-tut-metrics-w
 
 To enable MLflow integration:
 
-=== "Python"
-
-    ```python
-    job = client.customization.jobs.create(
-        name="my-job",
-        workspace="default",
-        spec={
-            "model": "default/llama-3-2-1b",
-            "dataset": "fileset://default/my-dataset",
-            "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
-            "integrations": {
-                "mlflow": {
-                    "experiment_name": "llama-finetuning",
-                    "tracking_uri": "http://mlflow.example.com:5000",
-                }
-            },
-        },
-    )
-    ```
-
-=== "CLI"
-
-    ```bash
-    nemo customization jobs create my-job \
-      --workspace default \
-      --spec '{
+<Tabs>
+<Tab title="Python">
+```python
+job = client.customization.jobs.create(
+    name="my-job",
+    workspace="default",
+    spec={
         "model": "default/llama-3-2-1b",
         "dataset": "fileset://default/my-dataset",
         "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
         "integrations": {
-          "mlflow": {
-            "experiment_name": "llama-finetuning",
-            "tracking_uri": "http://mlflow.example.com:5000"
-          }
-        }
-      }'
-    ```
-
+            "mlflow": {
+                "experiment_name": "llama-finetuning",
+                "tracking_uri": "http://mlflow.example.com:5000",
+            }
+        },
+    },
+)
+```
+</Tab>
+<Tab title="CLI">
+```bash
+nemo customization jobs create my-job \
+  --workspace default \
+  --spec '{
+    "model": "default/llama-3-2-1b",
+    "dataset": "fileset://default/my-dataset",
+    "training": {"type": "sft", "peft": {"type": "lora"}, "epochs": 3},
+    "integrations": {
+      "mlflow": {
+        "experiment_name": "llama-finetuning",
+        "tracking_uri": "http://mlflow.example.com:5000"
+      }
+    }
+  }'
+```
+</Tab>
+</Tabs>
 | Field | Description |
 |-------|-------------|
 | `experiment_name` | MLflow experiment name. Defaults to `output.name` if not set |
@@ -146,7 +148,7 @@ To enable MLflow integration:
 
 ## Next Steps
 
-- [Create a customization job](create-job.md): Start a job with a model, dataset, training configuration, and optional integrations.
-- [Monitor training metrics](../tutorials/metrics.md): View logs and metrics through MLflow or W&B.
-- [Manage secrets](../../get-started/concepts/manage-secrets.md): Store credentials such as W&B API keys and provider tokens.
-- [Troubleshooting MLflow integrations](../../troubleshooting/customizer.md): Diagnose failed or misconfigured customization jobs.
+- [Create a customization job](/fine-tune-models/manage-jobs/create-job): Start a job with a model, dataset, training configuration, and optional integrations.
+- [Monitor training metrics](/fine-tune-models/tutorials/job-metrics): View logs and metrics through MLflow or W&B.
+- [Manage secrets](/get-started/core-concepts/manage-secrets): Store credentials such as W&B API keys and provider tokens.
+- [Troubleshooting MLflow integrations](/reference/troubleshooting/customizer): Diagnose failed or misconfigured customization jobs.

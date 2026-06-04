@@ -1,15 +1,19 @@
+---
+title: "SDK Resources"
+description: ""
+---
 <a id="evaluator-nmp-sdk-resources"></a>
 
-# Evaluator {{platform_name}} SDK Resources
+# Evaluator NeMo Platform SDK Resources
 
 The `nemo_evaluator_sdk` package provides context-agnostic objects for defining metrics, datasets, evaluation configuration, and result handling.
-When you want to execute those evaluations through the {{platform_name}} Evaluator plugin, use the Evaluator SDK resource mounted on the `nemo_platform` SDK.
-This page explains the {{platform_name}}-specific objects used to run local plugin jobs, submit durable platform jobs, and retrieve evaluator job results.
+When you want to execute those evaluations through the NeMo Platform Evaluator plugin, use the Evaluator SDK resource mounted on the `nemo_platform` SDK.
+This page explains the NeMo Platform-specific objects used to run local plugin jobs, submit durable platform jobs, and retrieve evaluator job results.
 
 
 ## Evaluator
 
-The `Evaluator` resource is the sync SDK object for working with the Evaluator plugin on {{platform_name}}.
+The `Evaluator` resource is the sync SDK object for working with the Evaluator plugin on NeMo Platform.
 It is accessed directly from a `NeMoPlatform` instance:
 
 ```python
@@ -61,7 +65,7 @@ The `dataset` argument accepts inline rows, local dataset paths, local glob path
 
 ### Run locally
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
@@ -77,11 +81,11 @@ result = evaluator.run(metric=metric, dataset=dataset)
 print(result.aggregate_scores)
 ```
 
-{% endraw %}
+
 
 ### Submit a platform job
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import ExactMatchMetric
@@ -99,7 +103,7 @@ result = job.get_result()
 print(result.aggregate_scores)
 ```
 
-{% endraw %}
+
 
 
 ## AsyncEvaluator
@@ -129,7 +133,7 @@ evaluator: AsyncEvaluator = client.evaluator
 
 `AsyncEvaluator.run()` and `AsyncEvaluator.submit()` accept the same arguments as the sync methods [above](#run-arguments).
 
-{% raw %}
+
 
 ```python
 import asyncio
@@ -154,7 +158,7 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-{% endraw %}
+
 
 
 ## EvaluatorJobResource

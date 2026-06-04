@@ -1,5 +1,7 @@
-# Troubleshooting
-
+---
+title: "Troubleshooting"
+description: ""
+---
 When something goes wrong with authentication or authorization, start here. Problems are organized by symptom.
 
 ## "I Get 401 Unauthorized on Every Request"
@@ -28,7 +30,7 @@ When something goes wrong with authentication or authorization, start here. Prob
  nemo auth login
  ```
 
-3. Verify the token is being sent. For SDK/curl, ensure the `Authorization: Bearer <token>` header is present.
+3. Verify the token is being sent. For SDK/curl, ensure the `Authorization: Bearer &lt;token&gt;` header is present.
 
 **Common causes**:
 
@@ -81,7 +83,7 @@ The requested scope is not configured or admin consent has not been granted.
 
 ### "Device flow not enabled" or "Public client flows not allowed"
 
-Your IdP doesn't have device flow enabled for the {{platform_name}} application.
+Your IdP doesn't have device flow enabled for the NeMo Platform application.
 
 **Fix**:
 
@@ -91,7 +93,7 @@ Your IdP doesn't have device flow enabled for the {{platform_name}} application.
 
 ### Client ID Mismatch
 
-The `client_id` in {{platform_name}} config doesn't match the application in your IdP.
+The `client_id` in NeMo Platform config doesn't match the application in your IdP.
 
 **Fix**: Verify `auth.oidc.client_id` matches the client ID in your IdP exactly.
 
@@ -160,7 +162,7 @@ If these steps don't resolve the issue:
 
 ## Related
 
-- [Auth Configuration](deployment/configuration.md) — Configuration reference.
-- [Security Model](security-model.md) — Architecture and trust boundaries.
-- [OIDC Setup](authentication/oidc.md) — IdP configuration.
-- [Gateway Integration](deployment/gateway.md) — Gateway auth and headers.
+- [Auth Configuration](/platform/authentication-authorization/deployment/configuration) — Configuration reference.
+- [Security Model](/platform/authentication-authorization/security-model) — Architecture and trust boundaries.
+- [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup) — IdP configuration.
+- [Gateway Integration](/platform/authentication-authorization/deployment/gateway-integration) — Gateway auth and headers.

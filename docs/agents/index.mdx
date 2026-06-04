@@ -1,8 +1,10 @@
-# About Agents
-
+---
+title: "About"
+description: ""
+---
 <a id="agents"></a>
 
-An agent on {{platform_name}} is a workflow that calls tools, talks to models
+An agent on NeMo Platform is a workflow that calls tools, talks to models
 through the local platform, and runs as a managed service you can deploy,
 invoke, evaluate, and optimize as a unit. Agents are defined as NeMo Agent
 Toolkit (NAT) workflows and are managed through the `nemo agents` command
@@ -14,7 +16,7 @@ NVIDIA NeMo Agent Toolkit is a flexible, lightweight, and unifying library
 that allows you to easily connect existing enterprise agents to data sources
 and tools across any framework.
 
-{{platform_name}} uses NAT as the runtime wrapper around your agent so the
+NeMo Platform uses NAT as the runtime wrapper around your agent so the
 platform can deploy it, evaluate it, optimize it, and route its model traffic
 through shared infrastructure. For the toolkit itself, see the
 [NeMo Agent Toolkit documentation](https://docs.nvidia.com/nemo/agent-toolkit/latest/).
@@ -53,14 +55,14 @@ workflow:
   llm_name: llm
 ```
 
-The [Inference Gateway](../run-inference/about.md) is the local platform's
+The [Inference Gateway](/models-and-inference/about) is the local platform's
 model proxy. Agents send model requests to it instead of to provider APIs
 directly, so the platform can resolve model names, attach credentials, and
 route through middleware on the agent's behalf. Two conventions apply when a
 config targets a deployed agent:
 
 - **Model names use the Inference Gateway entity form**, with slashes and dots converted to hyphens (`nvidia/nemotron-3-nano-30b-a3b` becomes `nvidia-nemotron-3-nano-30b-a3b`). The Inference Gateway resolves the entity to the upstream provider that owns it.
-- **Leave `base_url` and `api_key` unset on `openai` and `nim` LLMs.** {{platform_name}} injects an Inference Gateway URL when it deploys the agent, and the gateway retrieves upstream credentials from the secrets service. Setting `base_url` explicitly bypasses both.
+- **Leave `base_url` and `api_key` unset on `openai` and `nim` LLMs.** NeMo Platform injects an Inference Gateway URL when it deploys the agent, and the gateway retrieves upstream credentials from the secrets service. Setting `base_url` explicitly bypasses both.
 
 ## Agent Lifecycle
 
@@ -68,15 +70,15 @@ Agents are managed end-to-end through the `nemo agents` command group:
 
 | Stage | Command | What it does |
 |-------|---------|--------------|
-| Register | `nemo agents create --name <name> --agent-config <path>` | Store the workflow YAML as an `agent` entity in a workspace. |
-| Deploy | `nemo agents deploy --agent <name>` | Start a running service from the stored config. |
-| Wait | `nemo agents deployments wait --agent <name>` | Block until the deployment is `running` or `failed`. |
-| Invoke | `nemo agents invoke --agent <name> --input "..."` or `nemo agents invoke --agent-config <path> --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
-| Evaluate | `nemo agents evaluate run --eval-config <path> --agent <name>` | Run a NAT evaluation against the deployed agent. |
-| Optimize | `nemo agents optimize run --optimize-config <path> --agent <name>` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
-| Tear down | `nemo agents undeploy --agent <name>` then `nemo agents delete <name>` | Stop the running service and remove the agent entity. |
+| Register | `nemo agents create --name &lt;name&gt; --agent-config &lt;path&gt;` | Store the workflow YAML as an `agent` entity in a workspace. |
+| Deploy | `nemo agents deploy --agent &lt;name&gt;` | Start a running service from the stored config. |
+| Wait | `nemo agents deployments wait --agent &lt;name&gt;` | Block until the deployment is `running` or `failed`. |
+| Invoke | `nemo agents invoke --agent &lt;name&gt; --input "..."` or `nemo agents invoke --agent-config &lt;path&gt; --input "..."` | Send a single request through the Agents gateway or run a local config directly. |
+| Evaluate | `nemo agents evaluate run --eval-config &lt;path&gt; --agent &lt;name&gt;` | Run a NAT evaluation against the deployed agent. |
+| Optimize | `nemo agents optimize run --optimize-config &lt;path&gt; --agent &lt;name&gt;` | Run NAT parameter or prompt tuning trials against the agent's stored config. |
+| Tear down | `nemo agents undeploy --agent &lt;name&gt;` then `nemo agents delete &lt;name&gt;` | Stop the running service and remove the agent entity. |
 
-To run a workflow YAML directly without registering it on the platform, pass `--agent-config <path>` to `nemo agents invoke` or `nemo agents run`.
+To run a workflow YAML directly without registering it on the platform, pass `--agent-config &lt;path&gt;` to `nemo agents invoke` or `nemo agents run`.
 
 ## How It Works
 
@@ -84,13 +86,13 @@ A platform-managed agent consists of three components:
 
 1. **The agent entity.** `nemo agents create` stores the workflow YAML as an entity in the workspace. The same configuration can be redeployed, evaluated, or optimized without re-registering it.
 1. **The deployment controller.** `nemo agents deploy` passes the stored config to the Agents service controller, which launches a `nat start fastapi` process for it, assigns a port, watches its health, and tears it down on `nemo agents undeploy`.
-1. **The Agents gateway.** Client requests reach the agent at `/apis/agents/v2/workspaces/<workspace>/agents/<name>/-/<path>`. The gateway resolves the agent to its current running deployment and proxies the request, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by {{platform_name}}.
+1. **The Agents gateway.** Client requests reach the agent at `/apis/agents/v2/workspaces/&lt;workspace&gt;/agents/&lt;name&gt;/-/&lt;path&gt;`. The gateway resolves the agent to its current running deployment and proxies the request, including streaming responses. From a client's perspective, the agent is an OpenAI-compatible endpoint owned by NeMo Platform.
 
 Model traffic from inside the agent process routes back through the Inference Gateway, which resolves model entity names to upstream providers and supplies their credentials. This is why agent configs do not carry `base_url` or `api_key` values — the deployment injects the gateway URL automatically, and the gateway looks up the rest.
 
 A virtual model is a platform-managed wrapper around one or more backend
 models. An agent can point at a virtual model entity while the virtual model
-handles routing, format translation, and [guardrails](../guardrails/index.md)
+handles routing, format translation, and [guardrails](/guardrails)
 behind the scenes — no changes to the agent's workflow YAML required.
 
 ### Applying Changes Through Candidate Agents
@@ -108,11 +110,11 @@ undeploying the candidate.
 
 ## Common Tasks
 
-- [Optimize Agents](optimization.md): analyze deployed agents for model routing,
+- [Optimize Agents](/agents/optimize-agents): analyze deployed agents for model routing,
   skill, prompt, and new-model opportunities.
-- [Secure Agents](security.md): check guardrail coverage and scan recent
+- [Secure Agents](/agents/secure-agents): check guardrail coverage and scan recent
   telemetry for sensitive data.
-- [Plugins and Skills](plugins.md): understand how agent, middleware, and
+- [Plugins and Skills](/agents/plugins-and-skills): understand how agent, middleware, and
   coding-agent integrations extend the local platform.
-- [Agentic Metrics](../evaluator/metrics/agentic.md): evaluate tool use, goal completion, topic adherence, answer accuracy, and trajectories.
-- [Agent Configuration](../evaluator/metrics/agent-configuration.md): use agents as online evaluation targets.
+- [Agentic Metrics](/evaluation/metrics/agentic-metrics): evaluate tool use, goal completion, topic adherence, answer accuracy, and trajectories.
+- [Agent Configuration](/evaluation/metrics/agent-configuration): use agents as online evaluation targets.

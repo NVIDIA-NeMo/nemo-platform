@@ -1,13 +1,17 @@
+---
+title: "Setup"
+description: ""
+---
 <a id="nemo-setup"></a>
 # Setup
 
-Install {{platform_name}} and start working with AI agents.
+Install NeMo Platform and start working with AI agents.
 
 <a id="nemo-setup-prerequisites"></a>
 ## Prerequisites
 
 - Python 3.11-3.13
-- [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, <23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
+- [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, &lt;23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
 - An API key from one of: [NVIDIA Build](https://build.nvidia.com), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys), [Google Gemini](https://aistudio.google.com/apikey), or a local [Ollama](https://ollama.com) instance (no key needed)
 - 16 GB available disk space and 8 GB RAM
 
@@ -97,7 +101,7 @@ export OPENAI_API_KEY=sk-...
 nemo setup --auto --start-services
 ```
 
-**Priority order:** `NEMO_DEFAULT_INFERENCE_KEY` > `NVIDIA_API_KEY` > `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`
+**Priority order:** `NEMO_DEFAULT_INFERENCE_KEY` &gt; `NVIDIA_API_KEY` &gt; `OPENAI_API_KEY` &gt; `ANTHROPIC_API_KEY` &gt; `GEMINI_API_KEY`
 
 ### Flags
 
@@ -136,13 +140,13 @@ nemo setup --no-install-skills --no-deploy-agent
 
 | Goal | Command or link |
 |------|-----------------|
-| Chat with a model | `nemo chat <model-name>` |
+| Chat with a model | `nemo chat &lt;model-name&gt;` |
 | List available models | `nemo models list` |
 | Open the Studio UI | [http://localhost:8080](http://localhost:8080) |
 | Browse docs from the CLI | `nemo docs --list` |
-| Evaluate a model | [Run LLM-as-a-Judge Evaluation](../evaluator/tutorials/run-llm-judge-evaluation.md) |
-| Generate synthetic data | [Data Designer Tutorials](../data-designer/tutorials/index.md) |
-| Optimize an agent | [Optimize Agents](../agents/optimization.md) |
+| Evaluate a model | [Run LLM-as-a-Judge Evaluation](/evaluation/tutorials/run-llm-as-a-judge-evaluation) |
+| Generate synthetic data | [Data Designer Tutorials](/design-synthetic-data/tutorials/overview) |
+| Optimize an agent | [Optimize Agents](/agents/optimize-agents) |
 
 ## Python SDK
 
@@ -166,13 +170,13 @@ client = NeMoPlatform(
 )
 ```
 
-An asynchronous client is also available. See the [SDK reference](../pysdk/index.md) for details.
+An asynchronous client is also available. See the [SDK reference](/reference/python-sdk/overview) for details.
 
 ## Troubleshooting
 
 ### Platform won't start
 
-Check `~/.local/state/nmp/instances/<scope>/services.log` in the directory where you ran `nemo setup`. The most common cause is port 8080 already in use.
+Check `~/.local/state/nmp/instances/&lt;scope&gt;/services.log` in the directory where you ran `nemo setup`. The most common cause is port 8080 already in use.
 
 ### Studio returns 404 or unavailable
 

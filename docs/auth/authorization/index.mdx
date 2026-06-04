@@ -1,6 +1,8 @@
-# Authorization
-
-{{platform_name}} authorization controls what authenticated users can do. Every API request is evaluated against the user's token scopes and role bindings before it is allowed.
+---
+title: "Authorization"
+description: ""
+---
+NeMo Platform authorization controls what authenticated users can do. Every API request is evaluated against the user's token scopes and role bindings before it is allowed.
 
 The authorization model has four building blocks:
 
@@ -15,37 +17,37 @@ Request → PDP → Scope check → Role binding check → Allow / Deny
 
 For a request to succeed, both the scope check (does the token allow it?) and the role check (does the user have permission?) must pass.
 
-For the full conceptual background, see [Authorization Concepts](../concepts.md). For the security architecture, see [Security Model](../security-model.md).
+For the full conceptual background, see [Authorization Concepts](/platform/authentication-authorization/concepts). For the security architecture, see [Security Model](/platform/authentication-authorization/security-model).
 
 ## Key Pages
 
 <div class="grid cards" markdown>
 
--   **[Roles & Permissions](roles-and-permissions.md)**
+-   **[Roles & Permissions](/platform/authentication-authorization/authorization/roles-and-permissions)**
 
     ---
 
     Complete permission matrix — what each role can do.
 
--   **[Managing Access](managing-access.md)**
+-   **[Managing Access](/platform/authentication-authorization/authorization/managing-access)**
 
     ---
 
     Add users to workspaces, assign roles, manage members.
 
--   **[API Scopes](api-scopes.md)**
+-   **[API Scopes](/platform/authentication-authorization/authorization/api-scopes)**
 
     ---
 
     Token-level scope model and two-layer authorization.
 
--   **[Permissions Reference](permissions-reference.md)**
+-   **[Permissions Reference](/platform/authentication-authorization/authorization/permissions-reference)**
 
     ---
 
     Complete list of all permissions with role assignments.
 
--   **[Policy Engine](policy-engine.md)**
+-   **[Policy Engine](/platform/authentication-authorization/authorization/policy-engine)**
 
     ---
 

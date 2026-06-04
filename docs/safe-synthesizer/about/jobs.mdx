@@ -1,15 +1,19 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: skip-test -->
+---
+title: "Safe Synthesizer Jobs"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: skip-test */}
 <a id="about-jobs"></a>
 # Safe Synthesizer Jobs
 
-{{nss_short_name}} jobs orchestrate the complete pipeline from data preparation through synthesis to evaluation. Understanding the job lifecycle and configuration options is essential for effective use of the platform.
+NeMo Safe Synthesizer jobs orchestrate the complete pipeline from data preparation through synthesis to evaluation. Understanding the job lifecycle and configuration options is essential for effective use of the platform.
 
-<!-- TODO: Link to generic {{platform_name}} jobs documentation when available for common job management concepts -->
+{/* TODO: Link to generic NeMo Platform jobs documentation when available for common job management concepts */}
 
 ## Job Lifecycle
 
-A {{nss_short_name}} job progresses through several states:
+A NeMo Safe Synthesizer job progresses through several states:
 
 ### Job States
 
@@ -109,7 +113,7 @@ When the job completes, access:
 
 For **platform jobs**, set `pretrained_model_job` in the job spec to a completed job that has an **`adapter`** result in Files. Reuse is generation-only (no retraining). Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.
 
-For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Host-Local Development and Testing](host-local-development.md).
+For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Host-Local Development and Testing](/synthesize-safe-data/about/host-local-development).
 
 ## Job Builder API
 
@@ -193,7 +197,7 @@ for log in job.fetch_logs():
 
 ### Docker Compose Deployments
 
-When running {{nss_short_name}} using Docker Compose, view container logs directly:
+When running NeMo Safe Synthesizer using Docker Compose, view container logs directly:
 
 ```bash
 # View safe-synthesizer service logs
@@ -309,7 +313,7 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 ## Related Topics
 
-- [Host-Local Development and Testing](host-local-development.md): `run-local`, adapter reuse, and plugin tests
-- [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with {{nss_short_name}} jobs
-- [index](../tutorials/index.md): More hands-on tutorials
-- [reference](reference.md): Full parameter reference
+- [Host-Local Development and Testing](/synthesize-safe-data/about/host-local-development): `run-local`, adapter reuse, and plugin tests
+- [safe-synthesizer-101](/synthesize-safe-data/tutorials/safe-synthesizer-101): Get started with NeMo Safe Synthesizer jobs
+- [index](/synthesize-safe-data/tutorials/overview): More hands-on tutorials
+- [reference](/synthesize-safe-data/about/parameters-reference): Full parameter reference

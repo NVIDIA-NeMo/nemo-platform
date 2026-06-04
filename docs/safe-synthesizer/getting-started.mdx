@@ -1,26 +1,38 @@
+---
+title: "Getting Started with NeMo Safe Synthesizer"
+description: ""
+---
 <a id="nss-getting-started"></a>
-# Getting Started with {{nss_short_name}}
+# Getting Started with NeMo Safe Synthesizer
 
-Get started with {{nss_short_name}} for generating private synthetic versions of sensitive tabular datasets.
+Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets.
 
 ## Prerequisites
 
-Before using {{nss_short_name}}, complete the [{{platform_name}} Quickstart](../get-started/quickstart.md) to install the CLI/SDK and deploy the platform.
+Before using NeMo Safe Synthesizer, complete the NeMo Platform Quickstart to install the CLI/SDK and deploy the platform.
 
-{{nss_short_name}} has the following additional requirements:
+NeMo Safe Synthesizer has the following additional requirements:
 
 - An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container — Safe Synthesizer training runs directly on the host.
 - Sufficient disk space for generated datasets (50GB+ recommended)
 
-For general platform troubleshooting (port conflicts, health checks, and so on), refer to the [main quickstart guide](../get-started/quickstart.md).
+For general platform troubleshooting (port conflicts, health checks, and so on), refer to the main quickstart guide.
 
---8<-- "_snippets/nvidia-build-model-provider.md"
+<Note>
+The platform pre-configures a `system/nvidia-build` model provider during startup.
+This provider routes inference requests to models hosted on `build.nvidia.com` using the API base URL `https://integrate.api.nvidia.com`
+and the NGC API key with `Public API Endpoints` permissions provided during deployment (automatically saved as the built-in `system/ngc-api-key` secret).
+
+You can verify this provider exists by running `nemo inference providers list --workspace system`.
+
+The tutorials in these docs use this provider for inference, but you can alternatively create your own and use it instead.
+</Note>
 
 ---
 
 ## Host-local CLI
 
-For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Host-Local Development and Testing](about/host-local-development.md)):
+For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Host-Local Development and Testing](/synthesize-safe-data/about/host-local-development)):
 
 ```shell
 BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
@@ -31,15 +43,15 @@ uv run nemo safe-synthesizer run-local \
   --output-dir ./nss-output
 ```
 
-Platform job submission (Jobs API, Studio, tutorials) is documented separately in [Jobs](about/jobs.md) and the [tutorials](tutorials/index.md). The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only.
+Platform job submission (Jobs API, Studio, tutorials) is documented separately in [Jobs](/synthesize-safe-data/about/jobs) and the [tutorials](/synthesize-safe-data/tutorials/overview). The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only.
 
 ---
 
 ## Next Steps
 
-Run one of the [tutorials](tutorials/index.md) to create your first synthetic dataset:
+Run one of the [tutorials](/synthesize-safe-data/tutorials/overview) to create your first synthetic dataset:
 
-- [Safe Synthesizer 101 Tutorial](tutorials/safe-synthesizer-101.md) - A beginner-friendly introduction
-- [Differential Privacy Tutorial](tutorials/differential-privacy.md) - Generate differentially-private synthetic data
+- [Safe Synthesizer 101 Tutorial](/synthesize-safe-data/tutorials/safe-synthesizer-101) - A beginner-friendly introduction
+- [Differential Privacy Tutorial](/synthesize-safe-data/tutorials/differential-privacy) - Generate differentially-private synthetic data
 
 ---

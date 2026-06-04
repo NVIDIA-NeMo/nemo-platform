@@ -1,0 +1,41 @@
+instances:
+  - url: nemoplatform.docs.buildwithfern.com
+
+title: NeMo Platform
+
+# Branding: this uses a minimal NVIDIA-green accent so the site builds and previews
+# locally for anyone (`fern docs dev`). To switch to the shared NVIDIA global theme
+# (logo, fonts, layout, footer), replace the `colors` block below with:
+#     global-theme: nvidia
+# That requires the publishing Fern account/org to have access to the NVIDIA/fern-components
+# theme; without it `fern docs dev`/`generate` returns HTTP 403. See the PR description.
+colors:
+  accent-primary:
+    light: "#76B900"
+    dark: "#76B900"
+
+navbar-links:
+  - type: github
+    value: https://github.com/NVIDIA-NeMo/nemo-platform
+
+experimental:
+  mdx-components:
+    - ./components
+
+# Intra-site redirects carried over from the old mkdocs `redirects` plugin (redirect_maps).
+redirects:
+  - source: /get-started/platform-prereq
+    destination: /get-started/setup
+  - source: /get-started/installation
+    destination: /get-started/setup
+  - source: /get-started/quickstart
+    destination: /get-started/setup
+  - source: /get-started/getting-started
+    destination: /
+  - source: /generate-synthetic-data
+    destination: /design-synthetic-data
+
+versions:
+  - display-name: Latest
+    path: versions/latest.yml
+    slug: latest

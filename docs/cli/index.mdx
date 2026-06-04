@@ -1,7 +1,11 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="nemo-ms-cli"></a>
-# {{platform_name}} CLI
+# NeMo Platform CLI
 
-The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {{platform_name}}. It provides a unified interface for managing models, running jobs, deploying inference endpoints, and working with a local setup.
+The NeMo Platform CLI (`nemo`) is a command-line tool for interacting with NeMo Platform. It provides a unified interface for managing models, running jobs, deploying inference endpoints, and working with a local setup.
 
 ## Key Capabilities
 
@@ -13,10 +17,13 @@ The {{platform_name}} CLI (`nemo`) is a command-line tool for interacting with {
 
 ## Installation
 
-!!! note "This package downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use."
-    If you previously installed the `nemo-microservices` package, uninstall it first to avoid conflicts:
+<Note>
+This package downloads and installs additional third-party open source software projects. Review the license terms of these open source projects before use.
+If you previously installed the `nemo-microservices` package, uninstall it first to avoid conflicts:
 
-    pip uninstall nemo-microservices
+pip uninstall nemo-microservices
+</Note>
+
 ### Install in a Virtual Environment
 
 ```bash
@@ -29,7 +36,9 @@ Or with uv:
 uv pip install nemo-platform[all]
 ```
 
-!!! warning "When installed in a virtual environment, the `nemo` command is only available when the environment is activated."
+<Warning>
+When installed in a virtual environment, the `nemo` command is only available when the environment is activated.
+</Warning>
 
 ### Verify Installation
 
@@ -37,7 +46,7 @@ uv pip install nemo-platform[all]
 nemo --help
 ```
 
-If you see `Unknown command: nemo`, see the [troubleshooting](troubleshooting.md) page.
+If you see `Unknown command: nemo`, see the [troubleshooting](/reference/cli-reference/troubleshooting) page.
 
 ## Getting Started
 
@@ -56,7 +65,7 @@ nemo auth login
 nemo workspaces list
 ```
 
-This command outputs a list of available workspaces. If the connection fails, see [troubleshooting](troubleshooting.md) for common issues and solutions.
+This command outputs a list of available workspaces. If the connection fails, see [troubleshooting](/reference/cli-reference/troubleshooting) for common issues and solutions.
 
 ## Command Structure
 
@@ -66,7 +75,25 @@ The CLI follows a consistent pattern:
 nemo [GLOBAL OPTIONS] <command> [<subcommand>...] [OPTIONS]
 ```
 
---8<-- "_snippets/cli-summary.md"
+**Global options** apply to all commands:
+
+| Option | Description |
+|--------|-------------|
+| `--base-url` | Base URL for the NeMo Platform API |
+| `--output-format, -f &lt;CHOICE&gt;` | Output format for how results are printed. [possible values: table, json, yaml, markdown, csv, raw, code] |
+| `--no-truncate` | Don't truncate long values in table/markdown/csv output |
+| `--timestamp-format &lt;CHOICE&gt;` | Timestamp format for table/markdown/csv output [possible values: relative, iso8601] |
+| `--verbose, -v` | Enable verbose messaging. This only impacts logs that are visible, it doesn't change any data outputs. |
+| `--agent-mode, -A` | Enable agent-friendly output mode with extra context for coding agents. |
+
+**Commands** are organized into categories:
+
+| Category | Commands | Description |
+|----------|----------|-------------|
+| Setup | `setup`, `services`, `skills` | Set up and run local platform components |
+| CLI functions | `chat`, `docs`, `wait`, `agent`, `plugins` | Interactive, documentation, and agent-oriented workflows |
+| Core plugins | `files`, `inference`, `jobs`, `models`, `secrets`, `workspaces` | Core platform resources |
+| Functional plugins | `guardrail` | Functional service and plugin commands |
 
 ## Common Workflows
 
@@ -123,7 +150,7 @@ nemo models list -f csv --all-pages --no-truncate --output-columns all > models.
 ```
 
 ## Next Steps
-- [configuration](configuration.md) - Contexts, authentication, environment variables, and shell completion
-- [working-with-resources](working-with-resources.md) - Output formats, pagination, and input methods
-- [troubleshooting](troubleshooting.md) - Common issues and solutions
-- [reference](reference.md) - Full command reference
+- [configuration](/reference/cli-reference/configuration) - Contexts, authentication, environment variables, and shell completion
+- [working-with-resources](/reference/cli-reference/working-with-resources) - Output formats, pagination, and input methods
+- [troubleshooting](/reference/cli-reference/troubleshooting) - Common issues and solutions
+- [reference](/reference/cli-reference/full-cli-reference) - Full command reference

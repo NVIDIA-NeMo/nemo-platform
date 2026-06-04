@@ -1,9 +1,13 @@
+---
+title: "Ingress"
+description: ""
+---
 <a id="ingress"></a>
 # Ingress
 
-The {{platform_name}} Helm chart can expose the API service externally using **Kubernetes Ingress**, the **Gateway API HTTPRoute**, or on OpenShift an **OpenShift Route**. Choose one based on your cluster.
+The NeMo Platform Helm chart can expose the API service externally using **Kubernetes Ingress**, the **Gateway API HTTPRoute**, or on OpenShift an **OpenShift Route**. Choose one based on your cluster.
 
-**Prerequisites:** Complete [Prerequisites](./prerequisites.md) and [Install](./install.md) (or [OpenShift](./openshift.md)) so the platform is installed. Ensure your cluster has an [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) controller (e.g. Traefik, OpenShift IngressController) or a [Gateway API](https://gateway-api.sigs.k8s.io/) Gateway configured.
+**Prerequisites:** Complete [Prerequisites](/platform/deploying-on-kubernetes/prerequisites) and [Install](/platform/deploying-on-kubernetes/install) (or [OpenShift](/platform/deploying-on-kubernetes/openshift)) so the platform is installed. Ensure your cluster has an [Ingress](https://kubernetes.io/docs/concepts/services-networking/ingress/) controller (e.g. Traefik, OpenShift IngressController) or a [Gateway API](https://gateway-api.sigs.k8s.io/) Gateway configured.
 
 ## Kubernetes Ingress
 
@@ -46,7 +50,7 @@ To use standard Kubernetes [Ingress](https://kubernetes.io/docs/concepts/service
 
 Install or upgrade with your values file so the Ingress resource is created. After installation, use the URL shown in the Helm notes (`helm status nemo-platform`) or the host you configured.
 
-**Advanced:** For multiple hostnames or different paths per host, leave `defaultHost` unset and use `ingress.hosts` (each entry has `name` and `paths`). See the [{{helm_chart_short_name}} reference](../../helm/index.md) for the full structure.
+**Advanced:** For multiple hostnames or different paths per host, leave `defaultHost` unset and use `ingress.hosts` (each entry has `name` and `paths`). See the [NeMo Platform Helm Chart reference](/reference/helm-reference) for the full structure.
 
 ## Gateway API HTTPRoute
 
@@ -66,7 +70,7 @@ On clusters that use the [Gateway API](https://gateway-api.sigs.k8s.io/), you ca
 
 2. Install or upgrade with this values file. The HTTPRoute will be created and bound to the specified Gateway(s).
 
-For full option details (e.g. `filters`, `labels`, `annotations`), see the [{{helm_chart_short_name}} reference](../../helm/index.md).
+For full option details (e.g. `filters`, `labels`, `annotations`), see the [NeMo Platform Helm Chart reference](/reference/helm-reference).
 
 ## OpenShift Route
 
@@ -86,12 +90,12 @@ On Red Hat OpenShift you can expose the API using an [OpenShift Route](https://d
 
 3. Install or upgrade with your values file. After installation, use the URL from the Helm notes (`helm status nemo-platform`) or the host you configured.
 
-For all options (`targetPort`, `annotations`, `labels`), see the [{{helm_chart_short_name}} reference](../../helm/index.md).
+For all options (`targetPort`, `annotations`, `labels`), see the [NeMo Platform Helm Chart reference](/reference/helm-reference).
 
 ## Related
 
-- [Install](./install.md) — Install steps and upgrade commands
-- [OpenShift](./openshift.md) — OpenShift: security context, and optional Route (`openshiftRoute.enabled`), Ingress, or HTTPRoute
+- [Install](/platform/deploying-on-kubernetes/install) — Install steps and upgrade commands
+- [OpenShift](/platform/deploying-on-kubernetes/openshift) — OpenShift: security context, and optional Route (`openshiftRoute.enabled`), Ingress, or HTTPRoute
 
 ## Cloud Provider Specific Ingress
 
@@ -135,7 +139,7 @@ On EKS, use the [AWS Load Balancer Controller](https://kubernetes-sigs.github.io
  alb.ingress.kubernetes.io/target-type: ip
  ```
 
-3. Install or upgrade with your values file. To verify, check that an ALB was provisioned with `kubectl get ingress -n <namespace>`.
+3. Install or upgrade with your values file. To verify, check that an ALB was provisioned with `kubectl get ingress -n &lt;namespace&gt;`.
 
 ### GKE Managed Ingress (GCE Ingress Controller)
 
@@ -152,5 +156,5 @@ On GKE, use the built-in [GCE Ingress controller](https://cloud.google.com/kuber
  defaultHost: "nmp.example.com" # optional
  ```
 
-3. Install or upgrade with your values file. To verify, check that a load balancer was provisioned with `kubectl get ingress -n <namespace>`.
+3. Install or upgrade with your values file. To verify, check that a load balancer was provisioned with `kubectl get ingress -n &lt;namespace&gt;`.
 

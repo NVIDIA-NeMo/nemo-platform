@@ -1,15 +1,19 @@
+---
+title: "Observability"
+description: ""
+---
 <a id="nemo-ms-guardrails-observability"></a>
-# Observability for {{ngm_short_name}}
+# Observability for NeMo Guardrails
 
-{{platform_name}} centrally manages OpenTelemetry across services. You can configure {{ngm_short_name}} to additionally enable tracing at the individual guardrail configuration level, providing visibility into how your rails execute - which rails fired, which actions ran, and how long each LLM call took.
+NeMo Platform centrally manages OpenTelemetry across services. You can configure NeMo Guardrails to additionally enable tracing at the individual guardrail configuration level, providing visibility into how your rails execute - which rails fired, which actions ran, and how long each LLM call took.
 
 ---
 
 ## Prerequisites
 
-To export guardrail traces, OpenTelemetry must be enabled in your deployment. See [OpenTelemetry](../set-up/opentelemetry.md) for instructions on enabling OpenTelemetry.
+To export guardrail traces, OpenTelemetry must be enabled in your deployment. See [OpenTelemetry](/platform/observability) for instructions on enabling OpenTelemetry.
 
-You also need a VirtualModel configured with guardrails middleware. See [Architecture](concepts/architecture.md) for wiring details.
+You also need a VirtualModel configured with guardrails middleware. See [Architecture](/guardrails/core-concepts/architecture) for wiring details.
 
 ---
 
@@ -32,7 +36,7 @@ client = NeMoPlatform(
 Create a guardrail configuration with tracing enabled with the `OpenTelemetry` adapter.
 
 ```python
-{% raw %}
+
 config_data = {
     "rails": {
         "input": {"flows": ["self check input"]},
@@ -69,35 +73,35 @@ try:
     )
 except ConflictError:
     print("Config tracing-config already exists, continuing...")
-{% endraw %}
+
 ```
 
 Create a VirtualModel that applies this configuration:
 
-=== "CLI"
-
-    ```bash
-    nemo inference virtual-models create guarded-tracing \
-      --default-model-entity default/meta-llama-3-1-8b-instruct \
-      --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/tracing-config"}]'
-    ```
-
-=== "Python SDK"
-
-    ```python
-    client.inference.virtual_models.create(
-        name="guarded-tracing",
-        default_model_entity="default/meta-llama-3-1-8b-instruct",
-        request_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "default/tracing-config",
-            }
-        ],
-    )
-    ```
-
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference virtual-models create guarded-tracing \
+  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/tracing-config"}]'
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.virtual_models.create(
+    name="guarded-tracing",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    request_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/tracing-config",
+        }
+    ],
+)
+```
+</Tab>
+</Tabs>
 ---
 
 ## Verify Tracing Integration
@@ -120,7 +124,7 @@ A typical trace for a guardrail chat completions request includes two categories
 
 1. **HTTP and infrastructure spans** — Captured by the platform's FastAPI instrumentation (`opentelemetry.instrumentation.fastapi`). These cover the full HTTP request lifecycle, entity lookups, and Inference Gateway calls.
 
-2. **Guardrails execution spans** — Captured by the {{ngm_short_name}} instrumentation scope (`nemo_guardrails`). These are nested within the HTTP trace and cover the internal processing steps. For each interaction, a span is captured for each rail, which contains the internal action(s) and LLM call(s) made by the rail.
+2. **Guardrails execution spans** — Captured by the NeMo Guardrails instrumentation scope (`nemo_guardrails`). These are nested within the HTTP trace and cover the internal processing steps. For each interaction, a span is captured for each rail, which contains the internal action(s) and LLM call(s) made by the rail.
 
 The following examples show the guardrails execution spans for a `self check input` rail.
 
@@ -201,7 +205,7 @@ guardrails.request [server]
  action.has_llm_calls: false
 ```
 
-The `service.name` for all spans is determined by the platform's `OTEL_SERVICE_NAME` configuration. See [OpenTelemetry](../set-up/opentelemetry.md) for details.
+The `service.name` for all spans is determined by the platform's `OTEL_SERVICE_NAME` configuration. See [OpenTelemetry](/platform/observability) for details.
 
 ---
 

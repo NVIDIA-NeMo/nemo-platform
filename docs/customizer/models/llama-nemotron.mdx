@@ -1,7 +1,11 @@
+---
+title: "Llama Nemotron Models"
+description: ""
+---
 <a id="model-catalog-llama-nemotron"></a>
 # Llama Nemotron Models
 
-This page provides detailed technical specifications for the Nemotron model family supported by {{ncm_short_name}}. For information about supported features and capabilities, refer to [Tested Models](index.md).
+This page provides detailed technical specifications for the Nemotron model family supported by NeMo Customizer. For information about supported features and capabilities, refer to [Tested Models](/fine-tune-models/models/model-catalog).
 
 ## Llama 3.1 Nemotron Nano 8B v1
 
@@ -84,10 +88,11 @@ This page provides detailed technical specifications for the Nemotron model fami
 - **LoRA**: 2x 80GB GPU, tensor parallel size 1, expert parallel size 2, pipeline parallel size 1
 - **Full SFT**: 8x 80GB GPU, tensor parallel size 1, expert parallel size 8, pipeline parallel size 1
 
-!!! note
-    **MoE Parallelism Constraints**
+<Note>
+**MoE Parallelism Constraints**
 
-    MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size > 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size &gt; 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+</Note>
 
 ### Deployment Configuration
 
@@ -95,8 +100,7 @@ This page provides detailed technical specifications for the Nemotron model fami
  - NIM Image: `nvcr.io/nim/nvidia/nemotron-3-nano:1.7.0-variant`
  - GPU Count: 2x 80GB
 
-!!! note
-    Deployment for LoRA using NIM is not supported for this model.
+<Note>Deployment for LoRA using NIM is not supported for this model.</Note>
 
 ## NVIDIA Nemotron 3 Super 120B A12B
 
@@ -114,10 +118,11 @@ This page provides detailed technical specifications for the Nemotron model fami
 
 - **LoRA**: 8x 80GB GPU, tensor parallel size 1, expert parallel size 8, pipeline parallel size 1
 
-!!! note
-    **MoE Parallelism Constraints**
+<Note>
+**MoE Parallelism Constraints**
 
-    MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size > 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size &gt; 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+</Note>
 
 ### Deployment Configuration
 

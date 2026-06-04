@@ -1,15 +1,19 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Differential Privacy Tutorial"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: download */}
 <a id="tutorial-differential-privacy"></a>
 # Differential Privacy Tutorial
 
 Learn how to apply differential privacy to achieve the maximum level of privacy with mathematical guarantees. This tutorial explores the privacy-utility tradeoff and demonstrates how to configure differential privacy parameters for optimal results.
 
-If you have not yet completed the [Safe Synthesizer 101](safe-synthesizer-101.md) tutorial, consider starting there first.
+If you have not yet completed the [Safe Synthesizer 101](/synthesize-safe-data/tutorials/safe-synthesizer-101) tutorial, consider starting there first.
 
 ## Prerequisites
 
-- Understanding of [differential privacy](../about/data-synthesis.md)
+- Understanding of [differential privacy](/synthesize-safe-data/about/data-synthesis)
 - Safe Synthesizer deployment with GPU resources
 
 ---
@@ -32,7 +36,7 @@ Differential privacy (DP) provides mathematical guarantees that synthetic data d
 - **Epsilon (ε)**: Privacy budget - lower values mean stronger privacy
     - ε = 1: Very strong privacy
     - ε = 6-10: Moderate privacy
-    - ε > 10: Weak privacy
+    - ε &gt; 10: Weak privacy
     - **Recommended starting range: ε ∈ [8, 12]** - adjust downward based on privacy needs
 
 - **Delta (δ)**: Probability of privacy breach
@@ -46,7 +50,7 @@ Differential privacy (DP) provides mathematical guarantees that synthetic data d
 
 ### Record-Level vs Group-Level Privacy
 
-By default, {{nss_short_name}} uses **record-level** differential privacy, which protects individual records. For datasets where multiple records belong to the same entity (e.g., a patient with multiple visits), you can use **group-level** privacy by setting `group_training_examples_by` to the column that identifies each entity. See [Group-Level Privacy](#group-level-privacy) in the Advanced Configuration section for a code example.
+By default, NeMo Safe Synthesizer uses **record-level** differential privacy, which protects individual records. For datasets where multiple records belong to the same entity (e.g., a patient with multiple visits), you can use **group-level** privacy by setting `group_training_examples_by` to the column that identifies each entity. See [Group-Level Privacy](#group-level-privacy) in the Advanced Configuration section for a code example.
 
 **When to use group-level privacy:**
 - Multiple records per person/entity in your dataset
@@ -57,7 +61,7 @@ By default, {{nss_short_name}} uses **record-level** differential privacy, which
 
 ## Setup
 
-Install the {{platform_name}} SDK with Safe Synthesizer support:
+Install the NeMo Platform SDK with Safe Synthesizer support:
 
 ```shell
 if command -v uv &> /dev/null; then

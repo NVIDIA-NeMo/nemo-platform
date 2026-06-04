@@ -1,11 +1,15 @@
+---
+title: "Similarity Metrics"
+description: ""
+---
 <a id="eval-metrics-similarity"></a>
 # Similarity Metrics
 
-{{platform_name}} offers [built-in metrics](index.md) that can be configured to evaluate on your custom data. Similarity metrics compare generated or precomputed text against references, labels, or numeric/string expectations. They support Jinja templates so you can map your dataset columns to the values each metric evaluates.
+NeMo Platform offers [built-in metrics](/evaluation/metrics/overview) that can be configured to evaluate on your custom data. Similarity metrics compare generated or precomputed text against references, labels, or numeric/string expectations. They support Jinja templates so you can map your dataset columns to the values each metric evaluates.
 
 Template functionality provides maximum flexibility for evaluating your models on proprietary, domain-specific, or novel tasks. You can bring your own datasets, define your own prompts and templates using [Jinja](https://github.com/pallets/jinja), and select the metrics that matter most for your use case. This approach is ideal when:
 
-- You want to evaluate on tasks, data, or formats not covered by [industry benchmarks](../benchmarks/industry.md) or built-in metrics.
+- You want to evaluate on tasks, data, or formats not covered by [industry benchmarks](/evaluation/benchmarks/industry-benchmarks) or built-in metrics.
 - You need to measure model performance using custom or business-specific criteria.
 - You want to experiment with new evaluation methodologies, metrics, or workflows.
 - You need to create custom prompts and templates for specific use cases.
@@ -37,13 +41,13 @@ result = job.get_result()
 
 All similarity metrics support Jinja templating with these variables:
 
-- `{%raw%}{{item}}{%endraw%}` - Access dataset columns (e.g., `{%raw%}{{item.question}}{%endraw%}`, `{%raw%}{{item.answer}}{%endraw%}`)
-- `{%raw%}{{sample.output_text}}{%endraw%}` - The model's generated output for online runs
+- `{%raw%}{{item}}{%endraw%}` - Access dataset columns (e.g., `{%raw%}&#123;&#123;item.question&#125;&#125;{%endraw%}`, `{%raw%}&#123;&#123;item.answer&#125;&#125;{%endraw%}`)
+- `{%raw%}&#123;&#123;sample.output_text&#125;&#125;{%endraw%}` - The model's generated output for online runs
 - Jinja filters: `lower`, `upper`, `trim`, `replace`, etc.
 
 Use Jinja filters to normalize text before comparison:
 
-{% raw %}
+
 ```python
 
 from nemo_evaluator_sdk import ExactMatchMetric
@@ -52,7 +56,7 @@ metric = ExactMatchMetric(
     candidate="{{item.output | lower | trim}}",
 )
 ```
-{% endraw %}
+
 
 ## BLEU Metric
 
@@ -65,92 +69,92 @@ BLEU (Bilingual Evaluation Understudy) measures the similarity between machine-g
 
 **Metric Output:** A score between 0 and 100, where 100 indicates perfect match with references.
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import BLEUMetric
+```python
+from nemo_evaluator_sdk import BLEUMetric
 
-    metric = BLEUMetric(
-        references=["{{item.reference_1}}", "{{item.reference_2}}"],
-        candidate="{{item.model_output}}",
-    )
+metric = BLEUMetric(
+    references=["{{item.reference_1}}", "{{item.reference_2}}"],
+    candidate="{{item.model_output}}",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "reference_1": "The cat sits on the mat.",
-                "reference_2": "A cat is sitting on the mat.",
-                "model_output": "The cat is on the mat.",
-            },
-            {
-                "reference_1": "Hello world!",
-                "reference_2": "Hi world!",
-                "model_output": "Hello world!",
-            },
-        ],
-    )
-
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
-
-=== "Remote Job"
-
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import BLEUMetric
-
-    metric = BLEUMetric(
-        references=["{{item.reference_1}}", "{{item.reference_2}}"],
-        candidate="{{item.model_output}}",
-        description="BLEU score for translation quality",
-    )
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "reference_1": "The cat sits on the mat.",
-                "reference_2": "A cat is sitting on the mat.",
-                "model_output": "The cat is on the mat.",
-            },
-            {
-                "reference_1": "Hello world!",
-                "reference_2": "Hi world!",
-                "model_output": "Hello world!",
-            },
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
-
-=== "Example Result"
-    {% raw %}
-    ```json
-    {
-      "scores": [
+result = evaluator.run(
+    metric=metric,
+    dataset=[
         {
-          "name": "sentence",
-          "count": 2,
-          "mean": 76.86,
-          "min": 53.73,
-          "max": 100.0
+            "reference_1": "The cat sits on the mat.",
+            "reference_2": "A cat is sitting on the mat.",
+            "model_output": "The cat is on the mat.",
         },
         {
-          "name": "corpus",
-          "count": 1,
-          "mean": 53.895
-        }
-      ]
-    }
-    ```
-    {% endraw %}
+            "reference_1": "Hello world!",
+            "reference_2": "Hi world!",
+            "model_output": "Hello world!",
+        },
+    ],
+)
 
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+
+</Tab>
+<Tab title="Remote Job">
+
+```python
+from nemo_evaluator_sdk import BLEUMetric
+
+metric = BLEUMetric(
+    references=["{{item.reference_1}}", "{{item.reference_2}}"],
+    candidate="{{item.model_output}}",
+    description="BLEU score for translation quality",
+)
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "reference_1": "The cat sits on the mat.",
+            "reference_2": "A cat is sitting on the mat.",
+            "model_output": "The cat is on the mat.",
+        },
+        {
+            "reference_1": "Hello world!",
+            "reference_2": "Hi world!",
+            "model_output": "Hello world!",
+        },
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
+
+</Tab>
+<Tab title="Example Result">
+
+```json
+{
+  "scores": [
+    {
+      "name": "sentence",
+      "count": 2,
+      "mean": 76.86,
+      "min": 53.73,
+      "max": 100.0
+    },
+    {
+      "name": "corpus",
+      "count": 1,
+      "mean": 53.895
+    }
+  ]
+}
+```
+
+</Tab>
+</Tabs>
 ## Exact Match Metric
 
 Exact Match compares the candidate text with the reference text for perfect equality. This metric returns 1 if the strings match exactly and 0 otherwise.
@@ -162,72 +166,71 @@ Exact Match compares the candidate text with the reference text for perfect equa
 
 **Metric Output:** Binary score (0 or 1).
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import ExactMatchMetric
+```python
+from nemo_evaluator_sdk import ExactMatchMetric
 
-    metric = ExactMatchMetric(
-        reference="{{item.correct_answer | lower | trim}}",
-        candidate="{{item.model_answer | lower | trim}}",
-        description="Exact match for question answering",
-    )
+metric = ExactMatchMetric(
+    reference="{{item.correct_answer | lower | trim}}",
+    candidate="{{item.model_answer | lower | trim}}",
+    description="Exact match for question answering",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {"correct_answer": "Paris", "model_answer": "Paris"},
-            {"correct_answer": "London", "model_answer": "london "},
-            {"correct_answer": "Berlin", "model_answer": "Munich"},
-        ],
-    )
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {"correct_answer": "Paris", "model_answer": "Paris"},
+        {"correct_answer": "London", "model_answer": "london "},
+        {"correct_answer": "Berlin", "model_answer": "Munich"},
+    ],
+)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
 
-=== "Remote Job"
+</Tab>
+<Tab title="Remote Job">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import ExactMatchMetric
+```python
+from nemo_evaluator_sdk import ExactMatchMetric
 
-    metric = ExactMatchMetric(
-        reference="{{item.correct_answer | lower | trim}}",
-        candidate="{{item.model_answer | lower | trim}}",
-    )
+metric = ExactMatchMetric(
+    reference="{{item.correct_answer | lower | trim}}",
+    candidate="{{item.model_answer | lower | trim}}",
+)
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {"correct_answer": "Paris", "model_answer": "Paris"},
-            {"correct_answer": "London", "model_answer": "london "},
-            {"correct_answer": "Berlin", "model_answer": "Munich"},
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {"correct_answer": "Paris", "model_answer": "Paris"},
+        {"correct_answer": "London", "model_answer": "london "},
+        {"correct_answer": "Berlin", "model_answer": "Munich"},
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
 
-=== "Example Result"
-
-    ```json
+</Tab>
+<Tab title="Example Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "name": "exact-match",
-          "count": 3,
-          "mean": 0.667,
-          "min": 0.0,
-          "max": 1.0
-        }
-      ]
+      "name": "exact-match",
+      "count": 3,
+      "mean": 0.667,
+      "min": 0.0,
+      "max": 1.0
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 ## F1 Metric
 
 F1 measures token-level overlap between candidate and reference text. It balances precision and recall, making it useful when there are multiple acceptable ways to phrase a response.
@@ -239,75 +242,74 @@ F1 measures token-level overlap between candidate and reference text. It balance
 
 **Metric Output:** A score between 0 and 1.
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import F1Metric
+```python
+from nemo_evaluator_sdk import F1Metric
 
-    metric = F1Metric(
-        reference="{{item.reference}}",
-        candidate="{{item.answer}}",
-    )
+metric = F1Metric(
+    reference="{{item.reference}}",
+    candidate="{{item.answer}}",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "reference": "the capital of France is Paris",
-                "answer": "Paris is the capital of France",
-            },
-            {"reference": "a red apple", "answer": "red apple"},
-        ],
-    )
-
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
-
-=== "Remote Job"
-
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import F1Metric
-
-    metric = F1Metric(
-        reference="{{item.reference}}",
-        candidate="{{item.answer}}",
-    )
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "reference": "the capital of France is Paris",
-                "answer": "Paris is the capital of France",
-            },
-            {"reference": "a red apple", "answer": "red apple"},
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
-
-=== "Example Result"
-
-    ```json
-    {
-      "scores": [
+result = evaluator.run(
+    metric=metric,
+    dataset=[
         {
-          "name": "f1",
-          "count": 2,
-          "mean": 0.75,
-          "min": 0.5,
-          "max": 1.0
-        }
-      ]
-    }
-    ```
+            "reference": "the capital of France is Paris",
+            "answer": "Paris is the capital of France",
+        },
+        {"reference": "a red apple", "answer": "red apple"},
+    ],
+)
 
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+
+</Tab>
+<Tab title="Remote Job">
+
+```python
+from nemo_evaluator_sdk import F1Metric
+
+metric = F1Metric(
+    reference="{{item.reference}}",
+    candidate="{{item.answer}}",
+)
+
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "reference": "the capital of France is Paris",
+            "answer": "Paris is the capital of France",
+        },
+        {"reference": "a red apple", "answer": "red apple"},
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
+
+</Tab>
+<Tab title="Example Result">
+```json
+{
+  "scores": [
+    {
+      "name": "f1",
+      "count": 2,
+      "mean": 0.75,
+      "min": 0.5,
+      "max": 1.0
+    }
+  ]
+}
+```
+</Tab>
+</Tabs>
 ## Number Check Metric
 
 Number Check performs numerical comparisons and operations on extracted values. Supports equality, inequality, comparison operators, and absolute difference calculations.
@@ -322,81 +324,80 @@ Number Check performs numerical comparisons and operations on extracted values. 
 ### Supported Operations
 
 - Equality: `"equals"`, `"=="`
-- Inequality: `"!="`, `"<>"`, `"not equals"`
-- Comparisons: `">"`, `"gt"`, `">="`, `"gte"`, `"<"`, `"lt"`, `"<="`, `"lte"`
+- Inequality: `"!="`, `"&lt;&gt;"`, `"not equals"`
+- Comparisons: `"&gt;"`, `"gt"`, `"&gt;="`, `"gte"`, `"&lt;"`, `"lt"`, `"&lt;="`, `"lte"`
 - Absolute difference: `"absolute difference"` (requires `epsilon` parameter)
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import NumberCheckMetric
+```python
+from nemo_evaluator_sdk import NumberCheckMetric
 
-    metric = NumberCheckMetric(
-        operation="absolute difference",
-        epsilon=0.5,
-        left_template="{{item.expected}}",
-        right_template="{{item.predicted}}",
-        description="Check if values match within tolerance",
-    )
+metric = NumberCheckMetric(
+    operation="absolute difference",
+    epsilon=0.5,
+    left_template="{{item.expected}}",
+    right_template="{{item.predicted}}",
+    description="Check if values match within tolerance",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {"expected": "100", "predicted": "100"},
-            {"expected": "42.5", "predicted": "42.3"},
-            {"expected": "99", "predicted": "101"},
-        ],
-    )
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {"expected": "100", "predicted": "100"},
+        {"expected": "42.5", "predicted": "42.3"},
+        {"expected": "99", "predicted": "101"},
+    ],
+)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
 
-=== "Remote Job"
+</Tab>
+<Tab title="Remote Job">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import NumberCheckMetric
+```python
+from nemo_evaluator_sdk import NumberCheckMetric
 
-    metric = NumberCheckMetric(
-        operation=">",
-        left_template="{{item.predicted}}",
-        right_template="0.5",
-        description="Score must be greater than 0.5",
-    )
+metric = NumberCheckMetric(
+    operation=">",
+    left_template="{{item.predicted}}",
+    right_template="0.5",
+    description="Score must be greater than 0.5",
+)
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {"predicted": "1"},
-            {"predicted": "0.75"},
-            {"predicted": "0.5"},
-            {"predicted": "0.1"},
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {"predicted": "1"},
+        {"predicted": "0.75"},
+        {"predicted": "0.5"},
+        {"predicted": "0.1"},
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
 
-=== "Example Result"
-
-    ```json
+</Tab>
+<Tab title="Example Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "name": "number-check",
-          "count": 3,
-          "mean": 0.6667,
-          "min": 0.0,
-          "max": 1.0
-        }
-      ]
+      "name": "number-check",
+      "count": 3,
+      "mean": 0.6667,
+      "min": 0.0,
+      "max": 1.0
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 ## ROUGE Metric
 
 ROUGE (Recall-Oriented Understudy for Gisting Evaluation) measures overlap between generated text and reference text. It is commonly used for summarization and long-form generation quality checks.
@@ -408,94 +409,93 @@ ROUGE (Recall-Oriented Understudy for Gisting Evaluation) measures overlap betwe
 
 **Metric Output:** ROUGE-1, ROUGE-2, ROUGE-3, and ROUGE-L F1 scores between 0 and 1.
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import ROUGEMetric
+```python
+from nemo_evaluator_sdk import ROUGEMetric
 
-    metric = ROUGEMetric(
-        reference="{{item.reference_summary}}",
-        candidate="{{item.model_summary}}",
-    )
+metric = ROUGEMetric(
+    reference="{{item.reference_summary}}",
+    candidate="{{item.model_summary}}",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "reference_summary": "The cat sat on the mat and looked out the window.",
-                "model_summary": "A cat sat on a mat near the window.",
-            },
-            {
-                "reference_summary": "The launch was postponed because of high winds.",
-                "model_summary": "High winds delayed the launch.",
-            },
-        ],
-    )
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "reference_summary": "The cat sat on the mat and looked out the window.",
+            "model_summary": "A cat sat on a mat near the window.",
+        },
+        {
+            "reference_summary": "The launch was postponed because of high winds.",
+            "model_summary": "High winds delayed the launch.",
+        },
+    ],
+)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
 
-=== "Remote Job"
+</Tab>
+<Tab title="Remote Job">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import ROUGEMetric
+```python
+from nemo_evaluator_sdk import ROUGEMetric
 
-    metric = ROUGEMetric(
-        reference="{{item.reference_summary}}",
-        candidate="{{item.model_summary}}",
-    )
+metric = ROUGEMetric(
+    reference="{{item.reference_summary}}",
+    candidate="{{item.model_summary}}",
+)
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "reference_summary": "The cat sat on the mat and looked out the window.",
-                "model_summary": "A cat sat on a mat near the window.",
-            },
-            {
-                "reference_summary": "The launch was postponed because of high winds.",
-                "model_summary": "High winds delayed the launch.",
-            },
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "reference_summary": "The cat sat on the mat and looked out the window.",
+            "model_summary": "A cat sat on a mat near the window.",
+        },
+        {
+            "reference_summary": "The launch was postponed because of high winds.",
+            "model_summary": "High winds delayed the launch.",
+        },
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
 
-=== "Example Result"
-
-    ```json
+</Tab>
+<Tab title="Example Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "name": "rouge_1_score",
-          "count": 2,
-          "mean": 0.72
-        },
-        {
-          "name": "rouge_2_score",
-          "count": 2,
-          "mean": 0.43
-        },
-        {
-          "name": "rouge_3_score",
-          "count": 2,
-          "mean": 0.31
-        },
-        {
-          "name": "rouge_L_score",
-          "count": 2,
-          "mean": 0.67
-        }
-      ]
+      "name": "rouge_1_score",
+      "count": 2,
+      "mean": 0.72
+    },
+    {
+      "name": "rouge_2_score",
+      "count": 2,
+      "mean": 0.43
+    },
+    {
+      "name": "rouge_3_score",
+      "count": 2,
+      "mean": 0.31
+    },
+    {
+      "name": "rouge_L_score",
+      "count": 2,
+      "mean": 0.67
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 ## String Check Metric
 
 String Check performs various string operations and comparisons. Supports equality, containment, and prefix/suffix checks.
@@ -511,78 +511,77 @@ String Check performs various string operations and comparisons. Supports equali
 ### Supported Operations
 
 - Equality: `"equals"`, `"=="`
-- Inequality: `"!="`, `"<>"`, `"not equals"`
+- Inequality: `"!="`, `"&lt;&gt;"`, `"not equals"`
 - Containment: `"contains"`, `"not contains"`
 - Pattern: `"startswith"`, `"endswith"`
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import StringCheckMetric
+```python
+from nemo_evaluator_sdk import StringCheckMetric
 
-    metric = StringCheckMetric(
-        operation="contains",
-        left_template="{{item.output | trim}}",
-        right_template="{{item.must_contain}}",
-    )
+metric = StringCheckMetric(
+    operation="contains",
+    left_template="{{item.output | trim}}",
+    right_template="{{item.must_contain}}",
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {"output": "The answer is: 42", "must_contain": "answer"},
-            {"output": "Result: Success", "must_contain": "Success"},
-            {"output": "Error occurred", "must_contain": "Success"},
-        ],
-    )
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {"output": "The answer is: 42", "must_contain": "answer"},
+        {"output": "Result: Success", "must_contain": "Success"},
+        {"output": "Error occurred", "must_contain": "Success"},
+    ],
+)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-    {% endraw %}
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
 
-=== "Remote Job"
+</Tab>
+<Tab title="Remote Job">
 
-    {% raw %}
-    ```python
-    from nemo_evaluator_sdk import StringCheckMetric
+```python
+from nemo_evaluator_sdk import StringCheckMetric
 
-    metric = StringCheckMetric(
-        operation="startswith",
-        left_template="{{item.output}}",
-        right_template="Answer:",
-        description="Check if output starts with 'Answer:'",
-    )
+metric = StringCheckMetric(
+    operation="startswith",
+    left_template="{{item.output}}",
+    right_template="Answer:",
+    description="Check if output starts with 'Answer:'",
+)
 
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {"output": "Answer: 42"},
-            {"output": "Answer: Success"},
-            {"output": "Error occurred"},
-        ],
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-    {% endraw %}
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {"output": "Answer: 42"},
+        {"output": "Answer: Success"},
+        {"output": "Error occurred"},
+    ],
+)
+job.wait_until_done()
+result = job.get_result()
+```
 
-=== "Example Result"
-
-    ```json
+</Tab>
+<Tab title="Example Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "name": "string-check",
-          "count": 3,
-          "mean": 0.667,
-          "min": 0.0,
-          "max": 1.0
-        }
-      ]
+      "name": "string-check",
+      "count": 3,
+      "mean": 0.667,
+      "min": 0.0,
+      "max": 1.0
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 <a id="eval-custom-dataset-format"></a>
 ## Dataset Format
 
@@ -592,10 +591,10 @@ The examples on this page use inline dataset rows with `dataset=[...]`. Template
 - `candidate` reads from an `item` field for offline rows when configured.
 - If `candidate` is omitted for BLEU, Exact Match, F1, or ROUGE, the metric uses `sample.output_text`, which is populated during online evaluations.
 
-Keep field names consistent between the dataset rows and the templates you configure. For example, `{%raw%}{{item.expected}}{%endraw%}` requires each row to include an `expected` field.
+Keep field names consistent between the dataset rows and the templates you configure. For example, `{%raw%}&#123;&#123;item.expected&#125;&#125;{%endraw%}` requires each row to include an `expected` field.
 
 ## Related Topics
 
-- [Metric Overview](index.md)
-- [Model Configuration](model-configuration.md)
-- [RAG Evaluation Metrics](rag.md)
+- [Metric Overview](/evaluation/metrics/overview)
+- [Model Configuration](/evaluation/metrics/model-configuration)
+- [RAG Evaluation Metrics](/evaluation/metrics/rag-metrics)

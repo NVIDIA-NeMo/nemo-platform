@@ -1,13 +1,17 @@
+---
+title: "Run an Anonymizer Job"
+description: ""
+---
 <a id="anonymizer-tutorials-run"></a>
 # Run an Anonymizer Job
 
-This tutorial walks through the `anonymizer.run` job: defining a run spec, executing it locally or on the {{platform_name}} Jobs worker, and loading the parquet artifacts it produces.
+This tutorial walks through the `anonymizer.run` job: defining a run spec, executing it locally or on the NeMo Platform Jobs worker, and loading the parquet artifacts it produces.
 
 For detection, rewrite, and replacement strategy details, see the [open-source library documentation](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).
 
 ## Prerequisites
 
-- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](../quickstart.md).
+- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](/anonymize-data/quickstart).
 - An inference provider configured (default examples use `nvidia-build`).
 - A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded (created in the Quick Start).
 
@@ -20,7 +24,7 @@ There are three run commands:
 | Command                       | Where it runs                                | Local paths | `model_configs` required | Artifacts                                              |
 |-------------------------------|----------------------------------------------|-------------|--------------------------|--------------------------------------------------------|
 | `nemo anonymizer run run`     | Local CLI process via generated `is_local` path | Allowed     | Optional                 | Written under `persistent/results/artifacts` locally   |
-| `nemo anonymizer run submit`  | {{platform_name}} Jobs worker                | Rejected    | Required                 | Stored in {{platform_name}} job artifact storage; pull with `download_artifacts()` |
+| `nemo anonymizer run submit`  | NeMo Platform Jobs worker                | Rejected    | Required                 | Stored in NeMo Platform job artifact storage; pull with `download_artifacts()` |
 | `nemo anonymizer run explain` | Local schema introspection                   | n/a         | n/a                      | Prints job key, submit endpoint, and input/spec schemas |
 
 Job artifacts (under the `artifacts/` directory):
@@ -82,7 +86,7 @@ spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none
 
 ## Step 3: Run the Job
 
-Choose one execution path. Option A runs in the local CLI process. Option B submits the same request to the {{platform_name}} Jobs worker.
+Choose one execution path. Option A runs in the local CLI process. Option B submits the same request to the NeMo Platform Jobs worker.
 
 ### Option A: Run Locally
 
@@ -108,7 +112,7 @@ Use that path in the next step.
 
 ### Option B: Submit to the Jobs Worker
 
-To execute the same spec on the {{platform_name}} Jobs worker instead of in the CLI process, use `run submit`:
+To execute the same spec on the NeMo Platform Jobs worker instead of in the CLI process, use `run submit`:
 
 ```bash
 nemo anonymizer run submit \
@@ -134,7 +138,7 @@ job = sdk.anonymizer.run(request)
 
 Compared to `run run`, the submit path:
 
-- Rejects local file paths in `data.source` — use a fileset reference (`<fileset>#<path>`) or `http(s)` URL.
+- Rejects local file paths in `data.source` — use a fileset reference (`&lt;fileset&gt;#&lt;path&gt;`) or `http(s)` URL.
 - Requires explicit `model_configs` referencing Inference Gateway providers, because the job runs outside the CLI process and cannot inherit Data Designer's locally-defined providers.
 
 ## Step 4: Get Results
@@ -169,7 +173,7 @@ print(dataset.head())
 print(f"records={len(dataset)} failures={len(failed_records)}")
 ```
 
-The trace dataset (and the dataset itself for `annotate` / `substitute` strategies) contains pyarrow-backed `struct<entities: list<...>>` columns. If you need plain Python `dict`/`list` values for JSON output, use `pyarrow.parquet`:
+The trace dataset (and the dataset itself for `annotate` / `substitute` strategies) contains pyarrow-backed `struct&lt;entities: list&lt;...&gt;&gt;` columns. If you need plain Python `dict`/`list` values for JSON output, use `pyarrow.parquet`:
 
 ```python
 import pyarrow.parquet as pq
@@ -231,7 +235,7 @@ trace   = results.load_trace()
 failed  = results.load_failed_records()
 ```
 
-`AnonymizerJobResults` exposes `load_dataset()`, `load_trace()`, `load_failed_records()`, and `display_record()` over the same underlying files. See [SDK Resources](../sdk-resources.md#anonymizerjobresults).
+`AnonymizerJobResults` exposes `load_dataset()`, `load_trace()`, `load_failed_records()`, and `display_record()` over the same underlying files. See [SDK Resources](/anonymize-data/sdk-resources#anonymizerjobresults).
 
 ## Inspect the Schema Without Running
 
@@ -259,6 +263,6 @@ For `run submit`, provider endpoints are re-resolved at runtime so the job uses 
 
 ## Next Steps
 
-- Iterate faster with [preview](preview.md) before scaling to a full job.
-- Refer to [SDK Resources](../sdk-resources.md) for `AnonymizerJobResource` and `AnonymizerJobResults` details.
+- Iterate faster with [preview](/anonymize-data/tutorials/preview-a-config) before scaling to a full job.
+- Refer to [SDK Resources](/anonymize-data/sdk-resources) for `AnonymizerJobResource` and `AnonymizerJobResults` details.
 - Replacement strategy parameters and rewrite mode are documented in the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).

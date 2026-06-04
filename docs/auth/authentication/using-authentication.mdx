@@ -1,8 +1,10 @@
-# Using Authentication
-
+---
+title: "Using Authentication"
+description: ""
+---
 How to log in, make authenticated API calls, and manage tokens with the CLI and SDK.
 
-**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](oidc.md).
+**Prerequisites**: OIDC must be configured on the platform. See [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup).
 
 ## Log In
 
@@ -42,14 +44,15 @@ By default, the CLI requests the scopes configured in `auth.oidc.default_scopes`
 nemo auth login --scope "platform:read"
 ```
 
-See [API Scopes](../authorization/api-scopes.md) for the full list of available scopes.
+See [API Scopes](/platform/authentication-authorization/authorization/api-scopes) for the full list of available scopes.
 
 ### Non-Interactive Login (CI/CD)
 
-For CI pipelines, use the password grant to obtain a token without a browser: `nemo auth login --username <user> --password <pass>` (or set `NMP_OIDC_USERNAME` / `NMP_OIDC_PASSWORD` environment variables). If your CI system can obtain tokens directly (e.g., workload identity federation), pass the token via `access_token` as shown in [Make API Calls](#make-api-calls) below.
+For CI pipelines, use the password grant to obtain a token without a browser: `nemo auth login --username &lt;user&gt; --password &lt;pass&gt;` (or set `NMP_OIDC_USERNAME` / `NMP_OIDC_PASSWORD` environment variables). If your CI system can obtain tokens directly (e.g., workload identity federation), pass the token via `access_token` as shown in [Make API Calls](#make-api-calls) below.
 
-!!! warning
-    Password grant sends credentials directly to the IdP and **bypasses MFA**. Many production IdPs disable it. Use a dedicated service account with minimal scopes where possible.
+<Warning>
+Password grant sends credentials directly to the IdP and **bypasses MFA**. Many production IdPs disable it. Use a dedicated service account with minimal scopes where possible.
+</Warning>
 
 ## Make API Calls
 
@@ -149,17 +152,18 @@ users:
 
 The OIDC token endpoint is **not** stored — it is discovered at runtime from your cluster's `/apis/auth/discovery` endpoint. This keeps the config portable across environments.
 
-!!! warning
-    **Token storage security** — Access and refresh tokens are stored in plaintext. Protect this file:
+<Warning>
+**Token storage security** — Access and refresh tokens are stored in plaintext. Protect this file:
 
-    - **File permissions**: Ensure `0600` (owner read/write only). The CLI sets this by default — verify after manual edits: `chmod 600 ~/.config/nmp/config.yaml`.
-    - **Shared directories**: Do not store in cloud-synced folders (Dropbox, OneDrive, Google Drive) or shared home directories.
-    - **Refresh token rotation**: Configure your IdP to rotate refresh tokens on each use. A stolen refresh token becomes invalid after the legitimate client uses it once.
-    - **Logout when done**: Run `nemo auth logout` on shared or temporary machines.
+- **File permissions**: Ensure `0600` (owner read/write only). The CLI sets this by default — verify after manual edits: `chmod 600 ~/.config/nmp/config.yaml`.
+- **Shared directories**: Do not store in cloud-synced folders (Dropbox, OneDrive, Google Drive) or shared home directories.
+- **Refresh token rotation**: Configure your IdP to rotate refresh tokens on each use. A stolen refresh token becomes invalid after the legitimate client uses it once.
+- **Logout when done**: Run `nemo auth logout` on shared or temporary machines.
+</Warning>
 
 ## Related
 
-- [OIDC Setup](oidc.md) — Configure your identity provider.
-- [API Scopes](../authorization/api-scopes.md) — Scope model and available scopes.
-- [Security Model](../security-model.md) — Trust boundaries and the principal model.
-- [Troubleshooting](../troubleshooting.md) — Fix common 401/403 errors and login failures.
+- [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup) — Configure your identity provider.
+- [API Scopes](/platform/authentication-authorization/authorization/api-scopes) — Scope model and available scopes.
+- [Security Model](/platform/authentication-authorization/security-model) — Trust boundaries and the principal model.
+- [Troubleshooting](/platform/authentication-authorization/troubleshooting) — Fix common 401/403 errors and login failures.

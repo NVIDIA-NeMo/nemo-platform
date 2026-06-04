@@ -1,8 +1,10 @@
-# Security Model
+---
+title: "Security Model"
+description: ""
+---
+This page describes the security architecture of NeMo Platform authentication and authorization — how requests are authenticated, how access decisions are made, and where trust boundaries lie. It is intended for platform operators and security reviewers evaluating NeMo Platform for production deployment.
 
-This page describes the security architecture of {{platform_name}} authentication and authorization — how requests are authenticated, how access decisions are made, and where trust boundaries lie. It is intended for platform operators and security reviewers evaluating {{platform_name}} for production deployment.
-
-For hands-on setup, see [Auth Configuration](deployment/configuration.md). For the authorization model, see [Concepts](concepts.md).
+For hands-on setup, see [Auth Configuration](/platform/authentication-authorization/deployment/configuration). For the authorization model, see [Concepts](/platform/authentication-authorization/concepts).
 
 ## Architecture Overview
 
@@ -55,22 +57,23 @@ The request flow:
 3. **PDP** (Policy Decision Point) evaluates authorization — checks the principal's role bindings and token scopes against the operation's requirements.
 4. If allowed, the service handles the request. In gateway deployments, the gateway forwards the request with trusted `X-NMP-Principal-*` headers so downstream services skip re-validation.
 
-!!! note
-    In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](index.md).
+<Note>
+In quickstart deployments without an OIDC provider, the `X-NMP-Principal-*` headers are set directly by the client instead of being derived from a validated JWT. See [Getting Started](/platform/authentication-authorization/overview).
+</Note>
 
 ## Authentication Modes
 
-{{platform_name}} supports two authentication modes: **service-level** (the service validates the JWT) and **gateway-level** (the gateway validates at the edge).
+NeMo Platform supports two authentication modes: **service-level** (the service validates the JWT) and **gateway-level** (the gateway validates at the edge).
 
-In both modes, identity arrives as a **JWT** from the client. The JWT is validated exactly once — either by the first {{platform_name}} service or by the gateway. After validation, the authenticated identity (email, subject, groups) is propagated to downstream services via **trusted `X-NMP-Principal-*` headers**. Downstream services accept these headers without re-validating the JWT.
+In both modes, identity arrives as a **JWT** from the client. The JWT is validated exactly once — either by the first NeMo Platform service or by the gateway. After validation, the authenticated identity (email, subject, groups) is propagated to downstream services via **trusted `X-NMP-Principal-*` headers**. Downstream services accept these headers without re-validating the JWT.
 
-This "validate once, propagate via headers" design means that **network perimeter security is critical**: anything inside the trust boundary that receives `X-NMP-Principal-*` headers will trust them unconditionally. The gateway must strip these headers from all incoming external requests to prevent clients from forging an identity. See [Gateway Integration](deployment/gateway.md).
+This "validate once, propagate via headers" design means that **network perimeter security is critical**: anything inside the trust boundary that receives `X-NMP-Principal-*` headers will trust them unconditionally. The gateway must strip these headers from all incoming external requests to prevent clients from forging an identity. See [Gateway Integration](/platform/authentication-authorization/deployment/gateway-integration).
 
 ### Service-Level Authentication
 
-The first {{platform_name}} service that receives the request validates the JWT directly:
+The first NeMo Platform service that receives the request validates the JWT directly:
 
-1. Extracts the `Authorization: Bearer <token>` header
+1. Extracts the `Authorization: Bearer &lt;token&gt;` header
 2. Validates the JWT signature, issuer, audience, and expiry against the configured OIDC provider
 3. Extracts the principal identity (email, subject, groups) from JWT claims
 4. Calls the PDP for an authorization decision
@@ -94,8 +97,9 @@ A **principal** is an authenticated identity — typically a human user identifi
 
 When OIDC is enabled, the principal is resolved from JWT claims: the `sub` claim becomes the principal ID (or `oid` for Azure AD), the `email` claim provides the email (or `upn` for Azure AD), and group memberships come from the `groups` claim. These claim names are configurable. In gateway deployments, the gateway performs this extraction and forwards the result in `X-NMP-Principal-*` headers.
 
-!!! note
-    **Quickstart shortcut** — When running without OIDC (`email-as-API-key` mode), the principal is the raw value of the `X-NMP-Principal-Id` header, without any token validation. This is intended for quick testing only.
+<Note>
+**Quickstart shortcut** — When running without OIDC (`email-as-API-key` mode), the principal is the raw value of the `X-NMP-Principal-Id` header, without any token validation. This is intended for quick testing only.
+</Note>
 
 ### Trusted Identity Headers
 
@@ -116,12 +120,13 @@ Whichever component performs the initial authentication and authorization — th
 
 Not all requests originate from human users. Platform services that need cross-workspace access — for example, the jobs controller monitoring jobs across all users, or the evaluator coordinating evaluations — authenticate as **service principals**.
 
-A service principal's ID has the form `service:<name>` (e.g., `service:jobs`, `service:evaluator`). Service principals are auto-authorized without a PDP call and have access to all workspaces and all operations. They are created internally by the platform and are never exposed to external callers.
+A service principal's ID has the form `service:&lt;name&gt;` (e.g., `service:jobs`, `service:evaluator`). Service principals are auto-authorized without a PDP call and have access to all workspaces and all operations. They are created internally by the platform and are never exposed to external callers.
 
 **Internal endpoints** (`/internal/*`) are also auto-authorized — they bypass PDP checks entirely and are reserved for service-to-service communication.
 
-!!! info
-    Service principals rely on perimeter security — the gateway strips `X-NMP-Principal-*` headers from incoming requests, so external callers cannot forge a `service:` identity. The gateway must also block external access to `/internal/*` paths. See [Gateway Integration](deployment/gateway.md).
+<Note>
+Service principals rely on perimeter security — the gateway strips `X-NMP-Principal-*` headers from incoming requests, so external callers cannot forge a `service:` identity. The gateway must also block external access to `/internal/*` paths. See [Gateway Integration](/platform/authentication-authorization/deployment/gateway-integration).
+</Note>
 
 #### On-Behalf-Of Delegation
 
@@ -147,40 +152,41 @@ The downstream service constructs a principal from this object and evaluates the
 
 #### Job Credential Propagation
 
-Many {{platform_name}} operations — customization, evaluation, synthetic data generation — run as asynchronous jobs. When a user submits a job, the platform propagates the submitting user's identity into the job container via the `NMP_PRINCIPAL` environment variable.
+Many NeMo Platform operations — customization, evaluation, synthetic data generation — run as asynchronous jobs. When a user submits a job, the platform propagates the submitting user's identity into the job container via the `NMP_PRINCIPAL` environment variable.
 
-!!! info
-    Job containers need to run inside the trust boundary — they call {{platform_name}} APIs using the propagated identity headers and are subject to the same authorization checks as any other caller. The key distinction is that jobs act as the *user*, not as a privileged service principal, so they can only access resources the submitting user is permitted to reach.
+<Note>
+Job containers need to run inside the trust boundary — they call NeMo Platform APIs using the propagated identity headers and are subject to the same authorization checks as any other caller. The key distinction is that jobs act as the *user*, not as a privileged service principal, so they can only access resources the submitting user is permitted to reach.
+</Note>
 
 ## Authorization: Workspace-Scoped RBAC
 
-{{platform_name}} uses **workspace-scoped Role-Based Access Control (RBAC)**. All resources (models, datasets, jobs, evaluations) belong to exactly one workspace, and access is controlled at the workspace level — not per-resource.
+NeMo Platform uses **workspace-scoped Role-Based Access Control (RBAC)**. All resources (models, datasets, jobs, evaluations) belong to exactly one workspace, and access is controlled at the workspace level — not per-resource.
 
 - Users are granted roles (Viewer, Editor, Admin) per workspace via **role bindings**
 - The wildcard principal `*` binds a role for all authenticated users at once
 - Workspaces are private by default; the creator becomes Admin automatically
 
-On top of RBAC, {{platform_name}} supports **API scopes** as a second authorization layer at the token level. Every authorized request passes through two independent checks:
+On top of RBAC, NeMo Platform supports **API scopes** as a second authorization layer at the token level. Every authorized request passes through two independent checks:
 
 1. **Scope check** (token level): The JWT must carry at least one of the scopes required by the endpoint (e.g., `platform:read` or `platform:write`). Scopes limit what the *token* can do.
 2. **Permission check** (role level): The principal must have the necessary permissions via role bindings in the workspace. Roles limit what the *user* can do.
 
 Both must pass. This enables least-privilege token usage — for example, an Editor can create a read-only token (`platform:read` only) for monitoring scripts.
 
-For details, see [Authorization Concepts](concepts.md), [Roles & Permissions](authorization/roles-and-permissions.md), and [API Scopes](authorization/api-scopes.md).
+For details, see [Authorization Concepts](/platform/authentication-authorization/concepts), [Roles & Permissions](/platform/authentication-authorization/authorization/roles-and-permissions), and [API Scopes](/platform/authentication-authorization/authorization/api-scopes).
 
-## What {{platform_name}} Does NOT Do
+## What NeMo Platform Does NOT Do
 
 The following are explicitly out of scope for the current implementation:
 
 - **Multi-tenancy with database isolation.** Workspaces provide logical isolation, not separate databases or schemas per tenant.
 - **Service mesh mTLS.** Service-to-service encryption and mutual authentication are delegated to the customer's infrastructure (e.g., Istio, Linkerd).
-- **Built-in audit logging.** The embedded PDP does not produce a dedicated audit trail. If you need structured decision logs, use [External OPA](authorization/policy-engine.md#external-opa) — OPA's [decision logging](https://www.openpolicyagent.org/docs/latest/management-decision-logs/) can export every authorization decision to your log aggregator.
+- **Built-in audit logging.** The embedded PDP does not produce a dedicated audit trail. If you need structured decision logs, use [External OPA](/platform/authentication-authorization/authorization/policy-engine#external-opa) — OPA's [decision logging](https://www.openpolicyagent.org/docs/latest/management-decision-logs/) can export every authorization decision to your log aggregator.
 - **Custom RBAC at runtime.** Custom roles can be defined at deployment time via YAML configuration, but cannot be created or modified at runtime through the API.
 
 ## Related
 
-- [Authorization Concepts](concepts.md) — Workspaces, roles, bindings, and the RBAC model.
-- [Auth Configuration](deployment/configuration.md) — Enabling auth, PDP provider, OIDC settings.
-- [Gateway Integration](deployment/gateway.md) — Gateway-level auth and header configuration.
-- [Production Hardening](deployment/hardening.md) — Security checklist for production deployments.
+- [Authorization Concepts](/platform/authentication-authorization/concepts) — Workspaces, roles, bindings, and the RBAC model.
+- [Auth Configuration](/platform/authentication-authorization/deployment/configuration) — Enabling auth, PDP provider, OIDC settings.
+- [Gateway Integration](/platform/authentication-authorization/deployment/gateway-integration) — Gateway-level auth and header configuration.
+- [Production Hardening](/platform/authentication-authorization/deployment/production-hardening) — Security checklist for production deployments.

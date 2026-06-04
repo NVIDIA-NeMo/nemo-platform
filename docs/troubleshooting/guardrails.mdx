@@ -1,10 +1,12 @@
-# Troubleshooting {{ngm_short_name}}
-
-Use this documentation to troubleshoot issues that can arise when you work with [{{ngm_long_name}}].
+---
+title: "Guardrails"
+description: ""
+---
+Use this documentation to troubleshoot issues that can arise when you work with [NVIDIA NeMo Guardrails].
 
 ## API Catalog Endpoint Issues
 
-Several sample configurations in the documentation use NIMs with model endpoints hosted at <https://integrate.api.nvidia.com/v1>.
+Several sample configurations in the documentation use NIMs with model endpoints hosted at [https://integrate.api.nvidia.com/v1](https://integrate.api.nvidia.com/v1).
 The purpose of using the endpoints is to avoid deploying NIMs locally to reduce the initial effort to get started.
 
 Perform the following steps to troubleshoot configurations that use model endpoints from the API catalog:
@@ -17,14 +19,53 @@ Perform the following steps to troubleshoot configurations that use model endpoi
 
 1. Access a model, such as the Llama 3.1 8B NemoGuard Content Safety, from the model endpoint:
 
- --8<-- "troubleshooting/_snippets/input/guardrails-cmds.sh"
+ ```bash
+ # start-content-safety
+ curl https://integrate.api.nvidia.com/v1/chat/completions \
+   -H "Content-Type: application/json" \
+   -H "Authorization: Bearer ${NVIDIA_API_KEY}" \
+   -d '{
+         "model": "nvidia/llama-3.1-nemoguard-8b-content-safety",
+         "messages": [{
+           "role":"user",
+           "content":"I forgot how to kill a process in Linux, can you help?"
+         }],
+         "stream": false
+       }'
+ # end-content-safety
+ ```
 
  ??? "Example Output"
 
- --8<-- "troubleshooting/_snippets/output/guardrails-content-safety.json"
+ ```json
+ {
+   "id": "chat-2aaefebc0963475d862f1fd202f172b2",
+   "object": "chat.completion",
+   "created": 1743540105,
+   "model": "nvidia/llama-3.1-nemoguard-8b-content-safety",
+   "choices": [
+     {
+       "index": 0,
+       "message": {
+         "role": "assistant",
+         "content": "{\"User Safety\": \"safe\"} "
+       },
+       "logprobs": null,
+       "finish_reason": "stop",
+       "stop_reason": null
+     }
+   ],
+   "usage": {
+     "prompt_tokens": 408,
+     "total_tokens": 416,
+     "completion_tokens": 8
+   },
+   "prompt_logprobs": null
+ }
+ ```
 
  If your request is not successful, such as a 401 or 403 HTTP status code,
- go to <https://build.nvidia.com/settings/api-keys> to generate a new API key.
+ go to [https://build.nvidia.com/settings/api-keys](https://build.nvidia.com/settings/api-keys) to generate a new API key.
 
 1. Access other models.
  In the preceding sample `curl` command, replace the `model` value with one of the following:

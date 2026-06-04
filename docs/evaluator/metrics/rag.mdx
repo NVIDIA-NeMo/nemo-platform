@@ -1,3 +1,7 @@
+---
+title: "RAG Metrics"
+description: ""
+---
 <a id="eval-metrics-rag"></a>
 <a id="eval-flow-rag"></a>
 # RAG Evaluation Metrics
@@ -75,7 +79,7 @@ client.secrets.create(
 )
 ```
 
-Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -85,8 +89,10 @@ judge_model = Model(
 )
 ```
 
-!!! tip "RAGAS metrics accept inline model definitions for `judge_model` and, where required, `embeddings_model`."
-    See [Model Configuration](model-configuration.md) for details.
+<Tip>
+RAGAS metrics accept inline model definitions for `judge_model` and, where required, `embeddings_model`.
+See [Model Configuration](/evaluation/metrics/model-configuration) for details.
+</Tip>
 
 ---
 
@@ -113,7 +119,7 @@ judge_model = Model(
 
 The metric examples below use these inline values:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -150,7 +156,7 @@ offline_rows = [
 
 Use online arguments when the evaluator should generate the response first:
 
-{% raw %}
+
 
 ```python
 online_dataset = [
@@ -173,7 +179,7 @@ online_config = RunConfigOnlineModel(
     inference=InferenceParams(temperature=0.2, max_tokens=1024),
 )
 ```
-{% endraw %}
+
 
 ---
 
@@ -196,50 +202,49 @@ Measures the fraction of relevant content retrieved compared to the total releva
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ContextRecallMetric(judge_model=judge_model)
 
-    ```python
-    metric = ContextRecallMetric(judge_model=judge_model)
+result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
 
-    result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ContextRecallMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ContextRecallMetric(judge_model=judge_model)
-
-    job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
-=== "Result"
-
-    ```json
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+<Tab title="Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "count": 1,
-          "histogram": {},
-          "name": "context_recall",
-          "nan_count": 0,
-          "max": 1.0,
-          "mean": 1.0,
-          "min": 1.0,
-          "percentiles": {},
-          "score_type": "range",
-          "std_dev": 0.0,
-          "sum": 1.0,
-          "variance": 0.0
-        }
-      ]
+      "count": 1,
+      "histogram": {},
+      "name": "context_recall",
+      "nan_count": 0,
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "percentiles": {},
+      "score_type": "range",
+      "std_dev": 0.0,
+      "sum": 1.0,
+      "variance": 0.0
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 ---
 
 ## Context Precision
@@ -261,45 +266,44 @@ Measures the proportion of relevant chunks in the retrieved contexts (precision@
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ContextPrecisionMetric(judge_model=judge_model)
 
-    ```python
-    metric = ContextPrecisionMetric(judge_model=judge_model)
+result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
 
-    result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ContextPrecisionMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ContextPrecisionMetric(judge_model=judge_model)
-
-    job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
-=== "Result"
-
-    ```json
+job = evaluator.submit(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+<Tab title="Result">
+```json
+{
+  "scores": [
     {
-      "scores": [
-        {
-          "count": 1,
-          "histogram": {},
-          "name": "context_precision",
-          "nan_count": 0,
-          "max": 1.0,
-          "mean": 1.0,
-          "min": 1.0
-        }
-      ]
+      "count": 1,
+      "histogram": {},
+      "name": "context_precision",
+      "nan_count": 0,
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0
     }
-    ```
-
+  ]
+}
+```
+</Tab>
+</Tabs>
 ---
 
 ## Context Relevance
@@ -320,45 +324,45 @@ Measures how relevant the retrieved contexts are to the user input.
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ContextRelevanceMetric(judge_model=judge_model)
 
-    ```python
-    metric = ContextRelevanceMetric(judge_model=judge_model)
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "retrieved_contexts": ["Paris is the capital and largest city of France."],
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "retrieved_contexts": ["Paris is the capital and largest city of France."],
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ContextRelevanceMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ContextRelevanceMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "retrieved_contexts": ["Paris is the capital and largest city of France."],
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "retrieved_contexts": ["Paris is the capital and largest city of France."],
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Context Entity Recall
@@ -379,45 +383,45 @@ Measures how many important entities from the reference are present in the retri
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ContextEntityRecallMetric(judge_model=judge_model)
 
-    ```python
-    metric = ContextEntityRecallMetric(judge_model=judge_model)
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "retrieved_contexts": ["Paris is the capital and largest city of France."],
+            "reference": "Paris is the capital of France.",
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "retrieved_contexts": ["Paris is the capital and largest city of France."],
-                "reference": "Paris is the capital of France.",
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ContextEntityRecallMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ContextEntityRecallMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "retrieved_contexts": ["Paris is the capital and largest city of France."],
-                "reference": "Paris is the capital of France.",
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "retrieved_contexts": ["Paris is the capital and largest city of France."],
+            "reference": "Paris is the capital of France.",
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Faithfulness
@@ -439,50 +443,49 @@ Measures factual consistency of the response with the retrieved context.
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = FaithfulnessMetric(judge_model=judge_model)
 
-    ```python
-    metric = FaithfulnessMetric(judge_model=judge_model)
+result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
 
-    result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Online Evaluation">
+```python
+metric = FaithfulnessMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
+result = evaluator.run(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
 
-=== "Online Evaluation"
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = FaithfulnessMetric(judge_model=judge_model)
 
-    ```python
-    metric = FaithfulnessMetric(judge_model=judge_model)
-
-    result = evaluator.run(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = FaithfulnessMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Response Groundedness
@@ -503,50 +506,49 @@ Evaluates whether the response is grounded in the retrieved context without hall
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-    ```python
-    metric = ResponseGroundednessMetric(judge_model=judge_model)
+result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
 
-    result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Online Evaluation">
+```python
+metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
+result = evaluator.run(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
 
-=== "Online Evaluation"
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ResponseGroundednessMetric(judge_model=judge_model)
 
-    ```python
-    metric = ResponseGroundednessMetric(judge_model=judge_model)
-
-    result = evaluator.run(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ResponseGroundednessMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Noise Sensitivity
@@ -570,55 +572,55 @@ Measures robustness when retrieved contexts contain noisy or irrelevant informat
 }
 ```
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = NoiseSensitivityMetric(judge_model=judge_model)
 
-    ```python
-    metric = NoiseSensitivityMetric(judge_model=judge_model)
+result = evaluator.run(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "retrieved_contexts": [
+                "Paris is the capital and largest city of France.",
+                "Berlin is the capital of Germany.",
+            ],
+            "response": "The capital of France is Paris.",
+            "reference": "Paris is the capital of France.",
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
 
-    result = evaluator.run(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "retrieved_contexts": [
-                    "Paris is the capital and largest city of France.",
-                    "Berlin is the capital of Germany.",
-                ],
-                "response": "The capital of France is Paris.",
-                "reference": "Paris is the capital of France.",
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = NoiseSensitivityMetric(judge_model=judge_model)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = NoiseSensitivityMetric(judge_model=judge_model)
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=[
-            {
-                "user_input": "What is the capital of France?",
-                "retrieved_contexts": [
-                    "Paris is the capital and largest city of France.",
-                    "Berlin is the capital of Germany.",
-                ],
-                "response": "The capital of France is Paris.",
-                "reference": "Paris is the capital of France.",
-            }
-        ],
-        config=RunConfig(parallelism=8),
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=[
+        {
+            "user_input": "What is the capital of France?",
+            "retrieved_contexts": [
+                "Paris is the capital and largest city of France.",
+                "Berlin is the capital of Germany.",
+            ],
+            "response": "The capital of France is Paris.",
+            "reference": "Paris is the capital of France.",
+        }
+    ],
+    config=RunConfig(parallelism=8),
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Response Relevancy
@@ -646,62 +648,61 @@ Measures how relevant a response is to the user input using generated questions 
 |-----------|------|---------|-------------|
 | `strictness` | int | `1` | Number of parallel questions generated. NIM supports `1`. |
 
-=== "Local Evaluation"
+<Tabs>
+<Tab title="Local Evaluation">
+```python
+metric = ResponseRelevancyMetric(
+    judge_model=judge_model,
+    embeddings_model=embeddings_model,
+    strictness=1,
+)
 
-    ```python
-    metric = ResponseRelevancyMetric(
-        judge_model=judge_model,
-        embeddings_model=embeddings_model,
-        strictness=1,
-    )
+result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
 
-    result = evaluator.run(metric=metric, dataset=offline_rows, config=RunConfig(parallelism=8))
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Online Evaluation">
+```python
+metric = ResponseRelevancyMetric(
+    judge_model=judge_model,
+    embeddings_model=embeddings_model,
+    strictness=1,
+)
 
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
+result = evaluator.run(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
 
-=== "Online Evaluation"
+for score in result.aggregate_scores.scores:
+    print(f"{score.name}: mean={score.mean}")
+```
+</Tab>
+<Tab title="Remote Job">
+```python
+metric = ResponseRelevancyMetric(
+    judge_model=judge_model,
+    embeddings_model=embeddings_model,
+    strictness=1,
+)
 
-    ```python
-    metric = ResponseRelevancyMetric(
-        judge_model=judge_model,
-        embeddings_model=embeddings_model,
-        strictness=1,
-    )
-
-    result = evaluator.run(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-
-    for score in result.aggregate_scores.scores:
-        print(f"{score.name}: mean={score.mean}")
-    ```
-
-=== "Remote Job"
-
-    ```python
-    metric = ResponseRelevancyMetric(
-        judge_model=judge_model,
-        embeddings_model=embeddings_model,
-        strictness=1,
-    )
-
-    job = evaluator.submit(
-        metric=metric,
-        dataset=online_dataset,
-        config=online_config,
-        target=generation_model,
-        prompt_template=online_prompt_template,
-    )
-    job.wait_until_done()
-    result = job.get_result()
-    ```
-
+job = evaluator.submit(
+    metric=metric,
+    dataset=online_dataset,
+    config=online_config,
+    target=generation_model,
+    prompt_template=online_prompt_template,
+)
+job.wait_until_done()
+result = job.get_result()
+```
+</Tab>
+</Tabs>
 ---
 
 ## Dataset Format
@@ -715,8 +716,9 @@ RAGAS metrics use specific column names:
 | `response` | string | Some metrics | Generated answer. Required for offline response-quality metrics; generated as `sample.output_text` for online model requests. |
 | `reference` | string | Some metrics | Reference answer or ground truth |
 
-!!! note
-    Different metrics require different columns. Check the metric documentation for specific requirements.
+<Note>
+Different metrics require different columns. Check the metric documentation for specific requirements.
+</Note>
 
 ### Example Dataset
 
@@ -798,7 +800,7 @@ client.secrets.create(name="judge-api-key", value="<your-judge-key>")
 client.secrets.create(name="embedding-api-key", value="<your-embedding-key>")
 ```
 
-Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -831,13 +833,15 @@ print(f"Saved artifacts under {artifacts_dir}")
 |-------|-------|----------|
 | `judge_model` is required | Missing judge LLM config for metric | Add `judge_model` to metric configuration |
 | `embeddings_model` is required | Using `response_relevancy` without embeddings | Add `embeddings_model` to metric configuration |
-| Job stuck in "pending" | Model endpoint not accessible | Verify endpoint URLs and API key secrets. See [Model API Authentication](model-configuration.md#model-api-authentication) |
-| Authentication failed | Invalid or missing API key | Check `api_key_secret` for the execution mode. See [Model API Authentication](model-configuration.md#model-api-authentication) |
-| `nan_count > 0` and `mean = null` | Judge/model call failures, such as auth, endpoint, quota, or timeout. Some RAGAS metrics are known to return `NaN` instead of raising on these failures. | Inspect row-level `error`; verify API key, endpoint, and model access |
+| Job stuck in "pending" | Model endpoint not accessible | Verify endpoint URLs and API key secrets. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication) |
+| Authentication failed | Invalid or missing API key | Check `api_key_secret` for the execution mode. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication) |
+| `nan_count &gt; 0` and `mean = null` | Judge/model call failures, such as auth, endpoint, quota, or timeout. Some RAGAS metrics are known to return `NaN` instead of raising on these failures. | Inspect row-level `error`; verify API key, endpoint, and model access |
 | Low faithfulness scores | Context doesn't support the response | Improve retrieval or response generation |
 
-!!! warning "If you see `nan_count > 0` with `mean = null`, first validate judge model authentication."
-    For some RAGAS metrics, auth failures can be converted to `NaN` scores instead of surfacing as a hard error.
+<Warning>
+If you see `nan_count &gt; 0` with `mean = null`, first validate judge model authentication.
+For some RAGAS metrics, auth failures can be converted to `NaN` scores instead of surfacing as a hard error.
+</Warning>
 
 ### Tips for Better Results
 
@@ -851,7 +855,7 @@ print(f"Saved artifacts under {artifacts_dir}")
 
 ## Important Notes
 
-1. **Secret Management**: API keys should be referenced through `api_key_secret`, with different local `run` and remote `submit` behavior. See [Model API Authentication](model-configuration.md#model-api-authentication). Never pass API keys directly in the request.
+1. **Secret Management**: API keys should be referenced through `api_key_secret`, with different local `run` and remote `submit` behavior. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication). Never pass API keys directly in the request.
 2. **Column Names**: RAGAS metrics use specific column names:
    - `user_input` (not `question`)
    - `response` (not `answer`)
@@ -865,7 +869,7 @@ print(f"Saved artifacts under {artifacts_dir}")
 
 2. **Dataset Format**: RAGAS metrics use specific column names (`user_input`, `retrieved_contexts`, `response`, `reference`). Ensure your data matches this structure.
 
-!!! info
-
-    - [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
-    - [Agentic Metrics](agentic.md) - Evaluate agent workflows
+<Note>
+- [LLM-as-a-Judge](/evaluation/metrics/llm-as-a-judge) - Custom judge-based evaluation
+- [Agentic Metrics](/evaluation/metrics/agentic-metrics) - Evaluate agent workflows
+</Note>

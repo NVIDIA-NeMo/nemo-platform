@@ -1,7 +1,11 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="auditor-configs"></a>
 # Manage Audit Configurations
 
-An `AuditConfig` selects which garak probes and detectors run during an audit, how many generations to make per probe, and where the reports land. Configurations are persisted in the {{platform_name}} entity store and referenced by name from `client.auditor.run(...)`.
+An `AuditConfig` selects which garak probes and detectors run during an audit, how many generations to make per probe, and where the reports land. Configurations are persisted in the NeMo Platform entity store and referenced by name from `client.auditor.run(...)`.
 
 ## What an AuditConfig Holds
 
@@ -14,7 +18,7 @@ A configuration has four sub-blocks plus a free-form description. Each sub-block
 | `plugins` | The probes and detectors to run (`probe_spec`, `detector_spec`) and any plugin-specific options. |
 | `reporting` | Output file prefix and directory, optional taxonomy, and which modules are surfaced in summaries. |
 
-The full field reference is in [Configuration Schema](schema.md).
+The full field reference is in [Configuration Schema](/vulnerability-scanning/configurations/schema).
 
 ## The Seeded Default
 
@@ -51,7 +55,7 @@ config = client.auditor.configs.create(
 )
 ```
 
-The `probe_spec` field takes a comma-separated list of probe categories or fully-qualified probe classes. See [Selecting Probes](probes.md) for the syntax and worked examples.
+The `probe_spec` field takes a comma-separated list of probe categories or fully-qualified probe classes. See [Selecting Probes](/vulnerability-scanning/configurations/selecting-probes) for the syntax and worked examples.
 
 ## List Configurations
 

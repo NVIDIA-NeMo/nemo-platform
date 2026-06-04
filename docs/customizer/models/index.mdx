@@ -1,15 +1,20 @@
+---
+title: "Model Catalog"
+description: ""
+---
 <a id="ft-model-catalog"></a>
 # Model Catalog
 
-Explore the model families and sizes supported by {{ncm_long_name}}.
+Explore the model families and sizes supported by NVIDIA NeMo Customizer.
 
-!!! note
-    For information on setting up model entities for customization, see the [Manage Model Entities](../manage-model-entities/index.md) guide.
-    For fine-tuning and deployment tutorials, see the [Tutorials](../tutorials/index.md) guide.
+<Note>
+For information on setting up model entities for customization, see the [Manage Model Entities](/fine-tune-models/manage-model-entities/overview) guide.
+For fine-tuning and deployment tutorials, see the [Tutorials](/fine-tune-models/tutorials/overview) guide.
+</Note>
 
 ## Before You Start
 
-If downloading models hosted on Hugging Face, create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](../manage-model-entities/index.md) for setup instructions.
+If downloading models hosted on Hugging Face, create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](/fine-tune-models/manage-model-entities/overview) for setup instructions.
 
 ---
 
@@ -18,43 +23,43 @@ If downloading models hosted on Hugging Face, create a secret with your HuggingF
 
 <div class="grid cards" markdown>
 
--   **[Llama Models](llama.md)**
+-   **[Llama Models](/fine-tune-models/models/llama)**
 
     ---
 
     View the available Llama models from Meta, ranging from 8 billion to 70 billion parameters.
 
--   **[Llama Nemotron Models](llama-nemotron.md)**
+-   **[Llama Nemotron Models](/fine-tune-models/models/llama-nemotron)**
 
     ---
 
     View the available Llama Nemotron models from NVIDIA, including Nano and Super variants for efficient and advanced instruction tuning.
 
--   **[Phi Models](phi.md)**
+-   **[Phi Models](/fine-tune-models/models/phi)**
 
     ---
 
     View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
 
--   **[Embedding Models](embedding.md)**
+-   **[Embedding Models](/fine-tune-models/models/embedding)**
 
     ---
 
     View the available embedding models optimized for retrieval and question-answering tasks.
 
--   **[GPT-OSS Models](gpt-oss.md)**
+-   **[GPT-OSS Models](/fine-tune-models/models/gpt-oss)**
 
     ---
 
     View the available GPT-OSS models supported for customization.
 
--   **[Qwen Models](qwen.md)**
+-   **[Qwen Models](/fine-tune-models/models/qwen)**
 
     ---
 
     View the available Qwen models from Alibaba Cloud, including compact variants for efficient customization.
 
--   **[Mistral Models](mistral.md)**
+-   **[Mistral Models](/fine-tune-models/models/mistral)**
 
     ---
 
@@ -64,7 +69,7 @@ If downloading models hosted on Hugging Face, create a secret with your HuggingF
 
 ## Tested Models
 
-The following table lists models that NVIDIA tested and their available features. While {{ncm_short_name}} works with all LLM NIM microservices, the table lists the models that NVIDIA tested. Models available for fine-tuning with {{ncm_short_name}} are not limited to those listed.
+The following table lists models that NVIDIA tested and their available features. While NeMo Customizer works with all LLM NIM microservices, the table lists the models that NVIDIA tested. Models available for fine-tuning with NeMo Customizer are not limited to those listed.
 
 For detailed technical specifications of each model such as architecture, parameters, and token limits, refer to the [model family](#model-families) pages.
 
@@ -97,4 +102,4 @@ The following models support both chat and completion model training.
 |--|--|--|
 | [nvidia/llama-nemotron-embed-1b-v2](https://huggingface.co/nvidia/llama-nemotron-embed-1b-v2) | Full SFT, LoRA (merged) | Supported |
 
-For detailed technical specifications and configuration information for embedding models, see the [Embedding Models](embedding.md) page.
+For detailed technical specifications and configuration information for embedding models, see the [Embedding Models](/fine-tune-models/models/embedding) page.

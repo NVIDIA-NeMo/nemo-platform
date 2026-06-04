@@ -1,3 +1,7 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="anonymizer-tutorials"></a>
 # Tutorials
 
@@ -9,7 +13,7 @@ Anonymizer separates **configuration** (what to detect and how to replace it) fr
 
 **Part 1: Build the config (library)**
 
-Use [`anonymizer.config`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) to define the rewrite or replacement strategy and detection options. This code is identical whether you run Anonymizer standalone or through the {{platform_name}} service.
+Use [`anonymizer.config`](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) to define the rewrite or replacement strategy and detection options. This code is identical whether you run Anonymizer standalone or through the NeMo Platform service.
 
 ```python
 from anonymizer.config.anonymizer_config import AnonymizerConfig
@@ -66,17 +70,17 @@ preview = anonymizer.preview(PreviewRequest(
 
 ## Service-Specific Considerations
 
-When using Anonymizer as a {{platform_name}} service:
+When using Anonymizer as a NeMo Platform service:
 
 | Feature        | Difference                                              | Details                                                                                |
 |----------------|---------------------------------------------------------|----------------------------------------------------------------------------------------|
 | **Inference**  | Routes through the Inference Gateway                    | Configure providers once and reference them by name from `model_configs`.              |
-| **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
-| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in {{platform_name}} job storage. |
+| **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#&lt;path&gt;`. |
+| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in NeMo Platform job storage. |
 
 ## Prerequisites
 
-Before starting these tutorials, complete the [Quick Start](../quickstart.md) to:
+Before starting these tutorials, complete the [Quick Start](/anonymize-data/quickstart) to:
 
 - Install the plugin and verify the `nemo anonymizer` CLI.
 - Configure an inference provider used in `model_configs`.
@@ -86,7 +90,7 @@ Before starting these tutorials, complete the [Quick Start](../quickstart.md) to
 
 <div class="grid cards" markdown>
 
--   **[Preview a Config](preview.md)**
+-   **[Preview a Config](/anonymize-data/tutorials/preview-a-config)**
 
     ---
 
@@ -94,7 +98,7 @@ Before starting these tutorials, complete the [Quick Start](../quickstart.md) to
 
     <small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
 
--   **[Run an Anonymizer Job](run.md)**
+-   **[Run an Anonymizer Job](/anonymize-data/tutorials/run-an-anonymizer-job)**
 
     ---
 

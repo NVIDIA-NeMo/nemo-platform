@@ -1,7 +1,11 @@
+---
+title: "Entities"
+description: ""
+---
 <a id="entities"></a>
 # Entities
 
-Entities are the underlying data objects that power the {{platform_name}}. Models, datasets, jobs, configurations, and other resources are all represented as entities in the platform's storage layer.
+Entities are the underlying data objects that power the NeMo Platform. Models, datasets, jobs, configurations, and other resources are all represented as entities in the platform's storage layer.
 
 ---
 
@@ -25,7 +29,7 @@ Entities are always scoped to a **workspace**. When you create or reference an e
 
 In most cases, you interact with entities through service-specific APIs rather than a generic entity API. The platform CLI and Python SDK expose these through familiar commands and client methods:
 
-- **Evaluator** — Create metrics, benchmarks, and evaluation jobs; retrieve results. See [About Evaluating](../../evaluator/index.md) and the evaluation tutorials.
-- **Models and inference** — Register model entities, create deployments, and run inference through the gateway. See [about](../../run-inference/about.md) and the inference tutorials.
+- **Evaluator** — Create metrics, benchmarks, and evaluation jobs; retrieve results. See [About Evaluating](/evaluation/about) and the evaluation tutorials.
+- **Models and inference** — Register model entities, create deployments, and run inference through the gateway. See [about](/models-and-inference/about) and the inference tutorials.
 
-These service APIs provide typed interfaces and validation specific to each resource type, built on top of the entity system. For raw HTTP access, see the [Entity Store API reference](../../api/index.md#tag-entity-store).
+These service APIs provide typed interfaces and validation specific to each resource type, built on top of the entity system. For raw HTTP access, see the [Entity Store API reference](/reference/api-reference#tag-entity-store).

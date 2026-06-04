@@ -1,12 +1,18 @@
+---
+title: "List benchmarks with pagination:"
+description: ""
+---
 ### Discover Industry Benchmarks
 
 Discover industry benchmarks available to use for your evaluation job within the `system` workspace. List all industry benchmarks or filter by label category.
 
-!!! note
-    The `system` workspace is a reserved workspace for {{platform_name}} that contains ready-to-use benchmarks representing industry benchmarks with published datasets and metrics.
+<Note>
+The `system` workspace is a reserved workspace for NeMo Platform that contains ready-to-use benchmarks representing industry benchmarks with published datasets and metrics.
+</Note>
 
-!!! note
-    **Initialization:** This example uses `NeMoPlatform()` with no arguments so the SDK reads your active CLI context (set by `nemo auth login`). The `workspace="system"` is passed per-call to access the reserved system workspace. For the standard local initialization pattern, see [CLI and SDK initialization](../../get-started/setup.md#setup-init).
+<Note>
+**Initialization:** This example uses `NeMoPlatform()` with no arguments so the SDK reads your active CLI context (set by `nemo auth login`). The `workspace="system"` is passed per-call to access the reserved system workspace. For the standard local initialization pattern, see [CLI and SDK initialization](/get-started/setup#setup-init).
+</Note>
 
 ```python
 from nemo_platform import NeMoPlatform

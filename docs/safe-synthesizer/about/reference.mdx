@@ -1,11 +1,15 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: skip-test -->
+---
+title: "Parameters Reference"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: skip-test */}
 <a id="safe-synthesizer-reference"></a>
 # Parameters Reference
 
 This page summarizes the main configuration groups available when creating
-{{nss_short_name}} jobs. For generated REST API schema details, see the
-[Safe Synthesizer API Reference](../../api/index.md#tag-safe-synthesizer).
+NeMo Safe Synthesizer jobs. For generated REST API schema details, see the
+[Safe Synthesizer API Reference](/reference/api-reference#tag-safe-synthesizer).
 
 ## Job Spec (Plugin / REST)
 
@@ -14,10 +18,10 @@ Top-level fields on the Safe Synthesizer job spec (alongside `config`):
 | Field | Description |
 |-------|-------------|
 | `data_source` | Input data as a platform fileset URL (`workspace/fileset#path`). With `run-local`, override via `--data-source` and use any placeholder in the spec. |
-| `pretrained_model_job` | Prior completed job whose **`adapter`** result in Files is reused for **generation-only** synthesis. Format: `<job>` or `<workspace>/<job>`. Mutually exclusive with `config.training.pretrained_model`. |
+| `pretrained_model_job` | Prior completed job whose **`adapter`** result in Files is reused for **generation-only** synthesis. Format: `&lt;job&gt;` or `&lt;workspace&gt;/&lt;job&gt;`. Mutually exclusive with `config.training.pretrained_model`. |
 | `hf_token_secret` | Platform secret name for Hugging Face token during model initialization |
 
-For host-local runs, see [Host-Local Development and Testing](host-local-development.md). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
+For host-local runs, see [Host-Local Development and Testing](/synthesize-safe-data/about/host-local-development). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
 
 ## Top-Level Configuration
 
@@ -26,7 +30,7 @@ The `SafeSynthesizerParameters` schema defines the main configuration structure 
 ### SafeSynthesizerParameters
 
 All fields are optional at the top level. For nested field constraints, see the
-[Safe Synthesizer API Reference](../../api/index.md#tag-safe-synthesizer) and
+[Safe Synthesizer API Reference](/reference/api-reference#tag-safe-synthesizer) and
 search for the schema name in the **Type** column.
 
 | Field | Type | Constraints / description |
@@ -76,7 +80,7 @@ Configuration for synthetic data quality and privacy assessment, including MIA, 
 
 ## PII Replacement Configuration
 
-Configuration for PII detection and replacement. See [pii-replacement](../about/pii-replacement.md) for conceptual documentation.
+Configuration for PII detection and replacement. See [pii-replacement](/synthesize-safe-data/about/pii-replacement) for conceptual documentation.
 
 ### Column Classification Config (`replace_pii.globals.classify`)
 
@@ -128,6 +132,6 @@ job = builder.create_job(name="my-job", project="my-project")
 
 ## Related Topics
 
-- [data-synthesis](../about/data-synthesis.md) - Learn about synthesis concepts
-- [evaluation](../about/evaluation.md) - Learn about evaluation metrics
-- [index](../tutorials/index.md) - Hands-on tutorials
+- [data-synthesis](/synthesize-safe-data/about/data-synthesis) - Learn about synthesis concepts
+- [evaluation](/synthesize-safe-data/about/evaluation) - Learn about evaluation metrics
+- [index](/synthesize-safe-data/tutorials/overview) - Hands-on tutorials

@@ -1,8 +1,12 @@
-<!-- @nemo-nb: process -->
+---
+title: "Default Configurations"
+description: ""
+---
+{/* @nemo-nb: process */}
 <a id="guardrails-default-configurations"></a>
 # Default Guardrail Configurations
 
-{{ngm_short_name}} ships with three built-in guardrail configurations that are automatically created in the `system` workspace.
+NeMo Guardrails ships with three built-in guardrail configurations that are automatically created in the `system` workspace.
 
 ---
 
@@ -24,9 +28,9 @@ Applies NemoGuard Content Safety checks to both user inputs and model outputs us
 
 The `content-safety` configuration requires the `system/nvidia-llama-3-1-nemotron-safety-guard-8b-v3` Model Entity to be deployed and accessible in the `system` workspace.
 
-The model is available on [build.nvidia.com](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) if you do not have access to GPUs. See [Setup](../../../get-started/setup.md) for instructions on creating a `ModelProvider` that routes requests to that endpoint.
+The model is available on [build.nvidia.com](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) if you do not have access to GPUs. See [Setup](/get-started/setup) for instructions on creating a `ModelProvider` that routes requests to that endpoint.
 
-See [About Models and Inference](../../../run-inference/about.md) for how models are made available through the platform.
+See [About Models and Inference](/models-and-inference/about) for how models are made available through the platform.
 
 ---
 
@@ -42,7 +46,7 @@ Unlike `content-safety`, this configuration does not require a dedicated safety 
 
 ## Using a Default Configuration
 
-Default configurations live in the `system` workspace. Reference them in your VirtualModel's middleware entry as `system/<config_name>`.
+Default configurations live in the `system` workspace. Reference them in your VirtualModel's middleware entry as `system/&lt;config_name&gt;`.
 
 ```python
 import os
@@ -56,38 +60,38 @@ client = NeMoPlatform(
 
 Create a VirtualModel that uses the `content-safety` default configuration:
 
-=== "CLI"
-
-    ```bash
-    nemo inference virtual-models create guarded-with-defaults \
-      --default-model-entity system/meta-llama-3-1-8b-instruct \
-      --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]' \
-      --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]'
-    ```
-
-=== "Python SDK"
-
-    ```python
-    client.inference.virtual_models.create(
-        name="guarded-with-defaults",
-        default_model_entity="system/meta-llama-3-1-8b-instruct",
-        request_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "system/content-safety",
-            }
-        ],
-        response_middleware=[
-            {
-                "name": "nemo-guardrails",
-                "config_type": "guardrail_config",
-                "config_id": "system/content-safety",
-            }
-        ],
-    )
-    ```
-
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference virtual-models create guarded-with-defaults \
+  --default-model-entity system/meta-llama-3-1-8b-instruct \
+  --request-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]' \
+  --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"system/content-safety"}]'
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.virtual_models.create(
+    name="guarded-with-defaults",
+    default_model_entity="system/meta-llama-3-1-8b-instruct",
+    request_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "system/content-safety",
+        }
+    ],
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "system/content-safety",
+        }
+    ],
+)
+```
+</Tab>
+</Tabs>
 Then make inference calls using the VirtualModel:
 
 ```bash
@@ -100,23 +104,23 @@ nemo chat default/guarded-with-defaults "Hello"
 
 Delete the VirtualModel when you no longer need it. The `system/content-safety` configuration is platform-managed, so you do not delete it.
 
-=== "CLI"
-
-    ```bash
-    nemo inference virtual-models delete guarded-with-defaults
-    ```
-
-=== "Python SDK"
-
-    ```python
-    client.inference.virtual_models.delete(name="guarded-with-defaults")
-    ```
-
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference virtual-models delete guarded-with-defaults
+```
+</Tab>
+<Tab title="Python SDK">
+```python
+client.inference.virtual_models.delete(name="guarded-with-defaults")
+```
+</Tab>
+</Tabs>
 ---
 
 ## Related
 
-- [Architecture](../architecture.md) — Understand the middleware pipeline and VirtualModel wiring
-- [Configuration Structure](configuration-structure.md) — Configuration schema reference
-- [Manage Configurations](manage-configs.md) — Create and manage your own configurations
-- [Run Inference](../../../run-inference/tutorials/run-inference.md) — Run inference with a guardrail configuration
+- [Architecture](/guardrails/core-concepts/architecture) — Understand the middleware pipeline and VirtualModel wiring
+- [Configuration Structure](/guardrails/core-concepts/configurations/configuration-structure) — Configuration schema reference
+- [Manage Configurations](/guardrails/core-concepts/configurations/manage-configurations) — Create and manage your own configurations
+- [Run Inference](/models-and-inference/tutorials/run-inference) — Run inference with a guardrail configuration

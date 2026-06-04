@@ -1,3 +1,7 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="eval-metrics-index"></a>
 # Evaluation Metrics
 
@@ -11,10 +15,13 @@ A metric is a scoring definition that evaluates model or agent outputs. In the E
 - **Outputs**: Row-level scores and aggregate statistics.
 - **Execution**: Metric objects run with `dataset`, optional runtime configuration, and an optional model or agent target.
 
-!!! note "Terminology on this page:"
-    - **Metric definition**: The reusable scoring configuration.
-    - **Metric type**: The metric family (for example exact-match, BLEU, LLM-as-a-judge).
-    - **Metric score**: The numeric or rubric output produced at evaluation time.
+<Note>
+Terminology on this page:
+- **Metric definition**: The reusable scoring configuration.
+- **Metric type**: The metric family (for example exact-match, BLEU, LLM-as-a-judge).
+- **Metric score**: The numeric or rubric output produced at evaluation time.
+</Note>
+
 ## The Evaluation Workflow
 
 ```text
@@ -34,7 +41,7 @@ A metric is a scoring definition that evaluates model or agent outputs. In the E
 
 Minimal sync evaluation with a built-in metric:
 
-{% raw %}
+
 ```python
 import os
 
@@ -60,7 +67,7 @@ result = evaluator.run(
 
 print(result.aggregate_scores)
 ```
-{% endraw %}
+
 
 ## Execution Modes
 
@@ -80,15 +87,15 @@ Online evaluation jobs can target either a **model** (an OpenAI-compatible chat 
 | **Model** | Standalone LLM endpoints using a standard chat completions API. |
 | **Agent** | Agentic systems, NeMo Agent Toolkit workflows, or custom HTTP endpoints with non-standard response formats. |
 
-See [Model Configuration](model-configuration.md) and [Agent Configuration](agent-configuration.md) for setup details.
+See [Model Configuration](/evaluation/metrics/model-configuration) and [Agent Configuration](/evaluation/metrics/agent-configuration) for setup details.
 
 ## Built-in vs. Custom Metrics
 
-- **Built-in metrics**: Ready-to-use metrics provided by {{platform_name}} (for example `exact-match`, `bleu`, `rouge`).
+- **Built-in metrics**: Ready-to-use metrics provided by NeMo Platform (for example `exact-match`, `bleu`, `rouge`).
 - **Custom metrics**: Metrics you define for domain-specific evaluation needs.
 
-To configure inline metric objects, see [Manage Metrics](manage-metrics.md).
-For custom metric creation guides, start with [Similarity Metrics](similarity.md), [LLM-as-a-Judge](llm-as-a-judge.md), or [Bring Your Own Metric](remote.md).
+To configure inline metric objects, see [Manage Metrics](/evaluation/metrics/manage-metrics).
+For custom metric creation guides, start with [Similarity Metrics](/evaluation/metrics/similarity-metrics), [LLM-as-a-Judge](/evaluation/metrics/llm-as-a-judge), or [Bring Your Own Metric](/evaluation/metrics/bring-your-own-metric).
 
 ## Datasets
 
@@ -97,7 +104,7 @@ Evaluation jobs need dataset input. You can provide data in two ways:
 | Dataset Source | Description | Best For |
 |------|-------------|----------|
 | **DatasetRows** | Inline rows sent directly in the request | Quick testing and live evaluation |
-| **FilesetRef** | Reference to a persisted [fileset](../../get-started/concepts/manage-files.md) (`workspace/fileset-name`) | Production jobs and reusable datasets |
+| **FilesetRef** | Reference to a persisted [fileset](/get-started/core-concepts/manage-files) (`workspace/fileset-name`) | Production jobs and reusable datasets |
 
 Example of providing a `FilesetRef` to reference specific files or globs:
 
@@ -124,7 +131,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
 <div class="grid cards" markdown>
 
--   **[LLM-as-a-Judge](llm-as-a-judge.md)**
+-   **[LLM-as-a-Judge](/evaluation/metrics/llm-as-a-judge)**
 
     ---
 
@@ -132,7 +139,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
     <small><span class="md-tag">custom-scoring</span> <span class="md-tag">rubrics</span></small>
 
--   **[Agentic Metrics](agentic.md)**
+-   **[Agentic Metrics](/evaluation/metrics/agentic-metrics)**
 
     ---
 
@@ -140,7 +147,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
     <small><span class="md-tag">RAGAS</span> <span class="md-tag">tool-calling</span></small>
 
--   **[RAG Metrics](rag.md)**
+-   **[RAG Metrics](/evaluation/metrics/rag-metrics)**
 
     ---
 
@@ -148,7 +155,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
     <small><span class="md-tag">faithfulness</span> <span class="md-tag">relevancy</span></small>
 
--   **[Similarity Metrics](similarity.md)**
+-   **[Similarity Metrics](/evaluation/metrics/similarity-metrics)**
 
     ---
 
@@ -156,7 +163,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
     <small><span class="md-tag">F1</span> <span class="md-tag">ROUGE</span> <span class="md-tag">BLEU</span></small>
 
--   **[Bring Your Own Metric](remote.md)**
+-   **[Bring Your Own Metric](/evaluation/metrics/bring-your-own-metric)**
 
     ---
 
@@ -164,7 +171,7 @@ Use the metric-type pages below to create and configure custom metrics.
 
     <small><span class="md-tag">remote</span> <span class="md-tag">custom</span></small>
 
--   **[Agent Configuration](agent-configuration.md)**
+-   **[Agent Configuration](/evaluation/metrics/agent-configuration)**
 
     ---
 
@@ -185,4 +192,4 @@ Scores are the metric outputs produced during evaluation:
 
 ## Manage Metric Definitions
 
-Create inline metric objects that can be reused from Python helpers or modules. See [Manage Metrics](manage-metrics.md) for SDK patterns.
+Create inline metric objects that can be reused from Python helpers or modules. See [Manage Metrics](/evaluation/metrics/manage-metrics) for SDK patterns.

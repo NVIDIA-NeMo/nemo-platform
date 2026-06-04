@@ -1,11 +1,15 @@
+---
+title: "GPT-OSS Models"
+description: ""
+---
 <a id="model-catalog-gpt-oss"></a>
 # GPT-OSS Models
 
-This page provides detailed technical specifications for the OpenAI GPT-OSS model family supported by {{ncm_short_name}}. For supported features and capabilities, refer to [Tested Models](index.md).
+This page provides detailed technical specifications for the OpenAI GPT-OSS model family supported by NeMo Customizer. For supported features and capabilities, refer to [Tested Models](/fine-tune-models/models/model-catalog).
 
 ## Before You Start
 
-These models require a HuggingFace token to download. Create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](../manage-model-entities/index.md) for setup instructions.
+These models require a HuggingFace token to download. Create a secret with your HuggingFace API key, then create a FileSet and Model Entity referencing the model. See [index](/fine-tune-models/manage-model-entities/overview) for setup instructions.
 
 ---
 
@@ -61,10 +65,11 @@ Example: Set reasoning level using "Reasoning: high" in the system prompt.
 
 GPT-OSS models use a Mixture of Experts (MoE) architecture and benefit from specialized parallelization across expert layers for optimal performance. 
 
-!!! note
-    **MoE Parallelism Constraints**
+<Note>
+**MoE Parallelism Constraints**
 
-    MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size > 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+MoE models only support expert parallelism for distributing experts across GPUs. When `expert_parallel_size &gt; 1`, `tensor_parallel_size` must be set to 1. Additionally, `expert_parallel_size` must evenly divide the number of GPUs. These constraints apply to training parallelism only and NIM deployment may use different GPU counts optimized for inference.
+</Note>
 
 ### Model Selection Guidelines
 
@@ -75,5 +80,4 @@ GPT-OSS models use a Mixture of Experts (MoE) architecture and benefit from spec
 
 Both models use the harmony response format and require this format for proper functionality.
 
-!!! note
-    Sequence packing is not supported for GPT-OSS models in {{ncm_short_name}}.
+<Note>Sequence packing is not supported for GPT-OSS models in NeMo Customizer.</Note>

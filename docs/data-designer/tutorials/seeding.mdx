@@ -1,5 +1,9 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Seeding with External Datasets"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: download */}
 <a id="data-designer-tutorials-seeding"></a>
 # Seeding with External Datasets
 
@@ -17,8 +21,9 @@ Seed source support depends on where the workload executes:
 | **HuggingFace** | Supported | Supported | Publicly available datasets or private HuggingFace datasets. |
 | **Files API Filesets** | Supported when NeMo Services access is configured | Supported | Shared seed data stored through the Files API. |
 
-!!! note
-    `run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
+<Note>
+`run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
+</Note>
 
 ### HuggingFace Datasets
 
@@ -55,7 +60,7 @@ FilesetFileSeedSource(
 
 ## Prerequisites
 
-Ensure you have completed the [tutorials prerequisites](index.md#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
+Ensure you have completed the [tutorials prerequisites](/design-synthetic-data/tutorials/overview#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
 
 ## Example: Medical Notes from Symptom Data
 
@@ -135,7 +140,7 @@ config_builder.with_seed_dataset(
 
 Add columns that reference and extend the seed data:
 
-{% raw %}
+
 ```python
 # Patient details
 config_builder.add_column(
@@ -241,7 +246,7 @@ Respond with only the notes, no other text.
     )
 )
 ```
-{% endraw %}
+
 
 **Note:** The `diagnosis` and `patient_summary` variables come from the seed dataset columns.
 
@@ -302,7 +307,11 @@ print(df.head())
 preview.analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/preview-results.md"
+<Accordion title="More about preview results">
+The `PreviewResults` object returned by `client.data_designer.preview` stores all its fields in memory; nothing is persisted to disk by default.
+Use standard Python methods to save any preview data you want to keep around longer term.
+For example, the `dataset` is a regular Pandas DataFrame and can be saved to disk via methods like `to_csv` or `to_parquet`.
+</Accordion>
 
 ### Generating the Full Dataset
 
@@ -327,7 +336,15 @@ analysis = results.load_analysis()
 analysis.to_report()
 ```
 
---8<-- "data-designer/_snippets/job-results.md"
+<Accordion title="More about job results">
+The Data Designer library writes several artifacts to disk when running a full generation job, including the final dataset as parquet.
+When a Data Designer job runs through NeMo Services, the entire working directory of artifacts produced by the library is saved as a job result.
+The `download_artifacts` method downloads this artifacts directory (stored as a `.tar.gz` archive),
+unarchives it, and returns a `DataDesignerJobResults` object that can be used to load results into memory as DataFrames or other objects for programmatic inspection.
+
+By default, `download_artifacts` saves the artifacts to a relative local directory named after the job.
+An alternative path can be passed to `download_artifacts`.
+</Accordion>
 
 ## How Seeding Works
 
@@ -342,6 +359,6 @@ When you configure a seed dataset:
 
 ## Next Steps
 
-- **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](../execution-modes.md)
+- **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](/design-synthetic-data/execution-modes)
 - **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/columns)
 - **Processors:** Transform your data with processors in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/processors)

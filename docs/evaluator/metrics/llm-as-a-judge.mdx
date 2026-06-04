@@ -1,3 +1,7 @@
+---
+title: "LLM-as-a-Judge"
+description: ""
+---
 <a id="eval-metrics-llm-as-a-judge"></a>
 # Evaluate with LLM-as-a-Judge
 
@@ -11,7 +15,7 @@ LLM-as-a-Judge evaluation sends each dataset row to a judge LLM and parses the j
 - **Pre-generated data**: Score existing question-answer pairs or conversations.
 - **Custom criteria**: Define range scores, rubric scores, prompt templates, and parser behavior.
 
-{{nem_short_name}} supports two execution modes through the Evaluator plugin SDK:
+NeMo Evaluator supports two execution modes through the Evaluator plugin SDK:
 
 | Mode | Use Case | SDK Call |
 |------|----------|----------|
@@ -45,8 +49,9 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 
 ## Local Execution
 
-!!! tip
-    The `model` field accepts both inline model definitions and model references (for example, `"my-workspace/my-model"`). Refer to [Model Configuration](model-configuration.md) for details.
+<Tip>
+The `model` field accepts both inline model definitions and model references (for example, `"my-workspace/my-model"`). Refer to [Model Configuration](/evaluation/metrics/model-configuration) for details.
+</Tip>
 
 Live evaluation is designed for rapid iteration when developing and refining your evaluation metrics. Use it to quickly test different judge prompts, scoring criteria, and data formats before committing to a full evaluation job. Results return immediately, making it easy to experiment and debug.
 
@@ -54,7 +59,7 @@ Live evaluation is designed for rapid iteration when developing and refining you
 
 Evaluate responses using numerical range scores, such as a 1-5 scale:
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import (
     InferenceParams,
@@ -128,41 +133,40 @@ for score in result.aggregate_scores.scores:
 for row in result.row_scores:
     print(row.row_index, row.item, row.metrics)
 ```
-{% endraw %}
+
 
 The result includes aggregate scores and row scores. Row scores are useful when you are debugging the prompt or parser because they show how each individual row was scored.
 
-??? "Example Response"
-    :icon: code-square
-
-    ```python
-    {
-        "aggregate_scores": {
-            "scores": [
-                {"name": "helpfulness", "count": 2, "mean": 4.5, "min": 4.0, "max": 5.0},
-                {"name": "accuracy", "count": 2, "mean": 4.0, "min": 3.0, "max": 5.0},
-            ]
-        },
-        "row_scores": [
-            {
-                "row_index": 0,
-                "item": {
-                    "input": "What is the capital of France?",
-                    "output": "The capital of France is Paris.",
-                },
-                "metrics": {
-                    "llm-judge": {"scores": [{"name": "helpfulness", "value": 5.0}]}
-                },
-            }
-        ],
-    }
-    ```
+<Accordion title="Example Response">
+```python
+{
+    "aggregate_scores": {
+        "scores": [
+            {"name": "helpfulness", "count": 2, "mean": 4.5, "min": 4.0, "max": 5.0},
+            {"name": "accuracy", "count": 2, "mean": 4.0, "min": 3.0, "max": 5.0},
+        ]
+    },
+    "row_scores": [
+        {
+            "row_index": 0,
+            "item": {
+                "input": "What is the capital of France?",
+                "output": "The capital of France is Paris.",
+            },
+            "metrics": {
+                "llm-judge": {"scores": [{"name": "helpfulness", "value": 5.0}]}
+            },
+        }
+    ],
+}
+```
+</Accordion>
 
 ### Example with Rubric Scores
 
 Use rubric scores when you want categorical labels with explicit descriptions:
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import JSONScoreParser, Model, RubricScore, LLMJudgeMetric
 
@@ -256,13 +260,13 @@ result = evaluator.run(
 
 print(result.aggregate_scores.model_dump(exclude_none=True))
 ```
-{% endraw %}
+
 
 ### Custom Aggregate Fields
 
 By default, aggregate scores include `count`, `mean`, `min`, and `max`. Request additional statistics with `aggregate_fields`:
 
-{% raw %}
+
 ```python
 
 result = evaluator.run(
@@ -282,7 +286,7 @@ for score in result.aggregate_scores.scores:
         print(f" p50: {score.percentiles.p50:.3f}")
         print(f" p90: {score.percentiles.p90:.3f}")
 ```
-{% endraw %}
+
 
 ---
 
@@ -290,7 +294,7 @@ for score in result.aggregate_scores.scores:
 
 For production workloads, submit the same metric and dataset as a durable platform job. The SDK returns a job resource that can wait for completion and download the final `EvaluationResult`.
 
-{% raw %}
+
 ```python
 from nemo_evaluator_sdk import RunConfig, JSONScoreParser, Model, RubricScore, LLMJudgeMetric
 
@@ -350,7 +354,7 @@ result = job.get_result()
 for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}, count={score.count}")
 ```
-{% endraw %}
+
 
 ---
 
@@ -411,8 +415,9 @@ Use rubric scores for categorical evaluations with explicit criteria:
 }
 ```
 
-!!! tip
-    Rubric scores use [structured outputs](https://docs.nvidia.com/nim/large-language-models/latest/structured-generation.html) by default, which constrains the judge model to output valid JSON. This significantly reduces parsing errors.
+<Tip>
+Rubric scores use [structured outputs](https://docs.nvidia.com/nim/large-language-models/latest/structured-generation.html) by default, which constrains the judge model to output valid JSON. This significantly reduces parsing errors.
+</Tip>
 
 ### Score Parsers
 
@@ -436,19 +441,20 @@ By default, the JSON parser is used for range and rubric scores, with the score 
 "parser": {"type": "regex", "pattern": "SCORE: (\\d+)", "method": "search"}
 ```
 
-!!! tip
-    **Regex method options:**
+<Tip>
+**Regex method options:**
 
-    - `match` (default): Matches the pattern only at the **beginning** of the text. Use when your prompt instructs the judge to output the score first.
-    - `search`: Finds the pattern **anywhere** in the text. Uses the first match of the regex found in the judge output.
+- `match` (default): Matches the pattern only at the **beginning** of the text. Use when your prompt instructs the judge to output the score first.
+- `search`: Finds the pattern **anywhere** in the text. Uses the first match of the regex found in the judge output.
 
-    For example, with `method: "search"` and pattern `SCORE: (\d+)`, the parser can extract the score from:
+For example, with `method: "search"` and pattern `SCORE: (\d+)`, the parser can extract the score from:
 
-    ```text
-    The response is accurate and well-written. SCORE: 5
-    ```
+```text
+The response is accurate and well-written. SCORE: 5
+```
 
-    This would fail with the default `match` method since "SCORE:" is not at the beginning. If multiple matches exist, `search` returns the first occurrence.
+This would fail with the default `match` method since "SCORE:" is not at the beginning. If multiple matches exist, `search` returns the first occurrence.
+</Tip>
 
 ---
 
@@ -463,18 +469,18 @@ Customize the judge prompt to match your evaluation criteria. Use Jinja2 templat
 | `{%raw%}{{input}}{%endraw%}` | Input field from dataset row |
 | `{%raw%}{{output}}{%endraw%}` | Output field from dataset row |
 | `{%raw%}{{context}}{%endraw%}`, `{%raw%}{{reference}}{%endraw%}`, `{%raw%}{{messages}}{%endraw%}`, `{%raw%}{{tool_calls}}{%endraw%}`, `{%raw%}{{tools}}{%endraw%}` | Other canonical evaluator fields |
-| `item.<field>` | Any field from the dataset row |
+| `item.&lt;field&gt;` | Any field from the dataset row |
 | `sample.output_text` | Model-generated response (when evaluating a model) |
-| `scores` | Dictionary of score definitions (typically used in expressions/loops, for example `{% raw %}{{ scores.keys() | join(", ") }}{% endraw %}`) |
+| `scores` | Dictionary of score definitions (typically used in expressions/loops, for example `&#123;&#123;scores.keys() | join(", ")&#125;&#125;`) |
 
 ### Canonical vs Legacy Prompt Variables
 
 LLM judge prompt variables define the fields required from the evaluation context:
 
-{% raw %}
+
 - Prefer canonical evaluator variables such as `{{input}}`, `{{output}}`, `{{context}}`, and `{{reference}}` for reusable metrics.
-- Raw dataset variables such as `{{item.question}}`, `{{item.response}}`, `{{question}}`, or `{{sample.output_text}}` continue to work for backward compatibility.
-{% endraw %}
+- Raw dataset variables such as `&#123;&#123;item.question&#125;&#125;`, `&#123;&#123;item.response&#125;&#125;`, `{{question}}`, or `&#123;&#123;sample.output_text&#125;&#125;` continue to work for backward compatibility.
+
 
 When your dataset uses different field names, keep the metric prompt stable and map dataset columns at job or benchmark submission time with `field_mapping`:
 
@@ -505,14 +511,14 @@ With the mapping above, a dataset row like this:
 
 renders the prompt template variables as:
 
-{% raw %}
-- `{{input}}` -> `question` -> `"What is the capital of France?"`
-- `{{output}}` -> `response` -> `"Paris"`
+
+- `{{input}}` -&gt; `question` -&gt; `"What is the capital of France?"`
+- `{{output}}` -&gt; `response` -&gt; `"Paris"`
 
 Custom prompt variables are also allowed. For example, `{{input}} {{output}} {{custom_value}}` produces a required schema with all three fields, and `field_mapping.custom.custom_value` can bind that prompt variable to a dataset column when needed.
 
 When no `field_mapping` is provided, prompt variable names are matched directly against dataset columns. That means a prompt using `{{question}}` and `{{response}}` expects dataset rows with `question` and `response` fields unless you remap them explicitly.
-{% endraw %}
+
 
 If a prompt field should be available when present but not required in every row, add it to `optional_fields` on the metric. This is useful for prompts that can use `reference` when available but should still validate against datasets that only provide `input` and `output`.
 
@@ -537,7 +543,7 @@ metric = {
 
 ### Schema-Aware Validation
 
-{{nem_short_name}} derives the required prompt fields directly from the prompt variables used by the metric and validates them against dataset metadata during benchmark and job creation.
+NeMo Evaluator derives the required prompt fields directly from the prompt variables used by the metric and validates them against dataset metadata during benchmark and job creation.
 
 - Add fileset metadata `dataset.schema` for a default row schema.
 - Add `dataset.schemas_by_path` when different files in the same fileset have different row shapes.
@@ -551,7 +557,7 @@ Benchmark-level `field_mapping` is shared by every metric in that benchmark. If 
 ### Example: Custom Judge Template
 
 ```python
-{% raw %}
+
 JUDGE_TEMPLATE = """You are an expert evaluator assessing AI assistant responses.
 
 Evaluate the response on these criteria:
@@ -591,7 +597,7 @@ metric = {
  ]
  }
 }
-{% endraw %}
+
 ```
 
 ---
@@ -600,7 +606,7 @@ metric = {
 
 If your judge model endpoint requires an API key, store it as a secret. The secret is automatically resolved from the same workspace as your evaluation.
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication).
 
 ### Create a Secret
 
@@ -631,7 +637,7 @@ metric = {
 Control judge model behavior with inference parameters:
 
 ```python
-{% raw %}
+
 "prompt_template": {
     "messages": [...],
     "temperature": 0.1, # Lower for more consistent scoring
@@ -639,10 +645,12 @@ Control judge model behavior with inference parameters:
     "timeout": 30, # Request timeout in seconds
     "stop": ["<{{ end_of_text }}>"] # Stop sequences
 }
-{% endraw %}
+
 ```
 
-!!! note "The default value for `max_tokens` for judge models is set to `1024`. It is highly recommended to set an appropriate value for your judge model based on the expected outputs (for example, `structured_output` is used by default to format model output, ensure your `max_tokens` is set to accommodate the full JSON output). Incomplete JSON outputs will cause parsing errors and result in NaN score values."
+<Note>
+The default value for `max_tokens` for judge models is set to `1024`. It is highly recommended to set an appropriate value for your judge model based on the expected outputs (for example, `structured_output` is used by default to format model output, ensure your `max_tokens` is set to accommodate the full JSON output). Incomplete JSON outputs will cause parsing errors and result in NaN score values.
+</Note>
 
 ### Reasoning Model Configuration
 
@@ -679,9 +687,9 @@ metric = {
 
 4. **Live Evaluation Limits**: Live evaluations are limited to 10 rows. Use job-based evaluation for larger datasets.
 
-!!! info
-
-    - [Model Configuration](model-configuration.md) - Inline models vs model references
-    - [Evaluation Results](results.md) - Understanding and downloading results
-    - [Agentic Evaluation](agentic.md) - Evaluate agent workflows
-    - [RAG Evaluation](rag.md) - Evaluate retrieval-augmented generation
+<Note>
+- [Model Configuration](/evaluation/metrics/model-configuration) - Inline models vs model references
+- [Evaluation Results](/evaluation/metrics/metric-results) - Understanding and downloading results
+- [Agentic Evaluation](/evaluation/metrics/agentic-metrics) - Evaluate agent workflows
+- [RAG Evaluation](/evaluation/metrics/rag-metrics) - Evaluate retrieval-augmented generation
+</Note>

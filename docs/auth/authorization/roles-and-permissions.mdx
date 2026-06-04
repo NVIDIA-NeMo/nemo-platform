@@ -1,10 +1,12 @@
-# Roles and Permissions
-
-The authoritative reference for {{platform_name}} roles and their permissions. For background on how RBAC works, see [Authorization Concepts](../concepts.md). For managing workspace members, see [Managing Access](managing-access.md).
+---
+title: "Roles and Permissions"
+description: ""
+---
+The authoritative reference for NeMo Platform roles and their permissions. For background on how RBAC works, see [Authorization Concepts](/platform/authentication-authorization/concepts). For managing workspace members, see [Managing Access](/platform/authentication-authorization/authorization/managing-access).
 
 ## Role Descriptions
 
-{{platform_name}} provides four predefined roles, each designed for a specific user persona:
+NeMo Platform provides four predefined roles, each designed for a specific user persona:
 
 **Viewer** — For stakeholders who need visibility into resources but should not modify them.
 
@@ -28,7 +30,7 @@ The authoritative reference for {{platform_name}} roles and their permissions. F
 - Grant wildcard access (`*`) to the workspace
 - Change workspace visibility
 
-**PlatformAdmin** — For platform operators who manage the entire {{platform_name}} deployment. This role bypasses all workspace-level authorization.
+**PlatformAdmin** — For platform operators who manage the entire NeMo Platform deployment. This role bypasses all workspace-level authorization.
 
 - All Admin permissions across every workspace
 - Access all workspaces regardless of role bindings
@@ -64,8 +66,7 @@ Rows are operations; columns are roles. A checkmark indicates the role has permi
 | Add / remove members | | | ✓ | ✓ |
 | Change workspace visibility | | | ✓ | ✓ |
 
-!!! note
-    All authenticated users can create workspaces. The creator automatically becomes Admin.
+<Note>All authenticated users can create workspaces. The creator automatically becomes Admin.</Note>
 
 ### Resource Operations (Models, Datasets, Projects)
 
@@ -115,7 +116,7 @@ Example:
 
 ## Default Workspace Bindings
 
-{{platform_name}} automatically provisions wildcard bindings on built-in workspaces:
+NeMo Platform automatically provisions wildcard bindings on built-in workspaces:
 
 | Workspace | Wildcard Role | Effect |
 |-----------|--------------|--------|
@@ -133,7 +134,7 @@ To leave a workspace where you are the only Admin, add another Admin first.
 
 ## Related
 
-- [Authorization Concepts](../concepts.md) — Workspaces, roles, bindings, and the RBAC model.
-- [Managing Access](managing-access.md) — Add users, assign roles, manage workspace members.
-- [API Scopes](api-scopes.md) — Token-level scope restrictions.
-- [Security Model](../security-model.md) — Trust boundaries and authorization layers.
+- [Authorization Concepts](/platform/authentication-authorization/concepts) — Workspaces, roles, bindings, and the RBAC model.
+- [Managing Access](/platform/authentication-authorization/authorization/managing-access) — Add users, assign roles, manage workspace members.
+- [API Scopes](/platform/authentication-authorization/authorization/api-scopes) — Token-level scope restrictions.
+- [Security Model](/platform/authentication-authorization/security-model) — Trust boundaries and authorization layers.

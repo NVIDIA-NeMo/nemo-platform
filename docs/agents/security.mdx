@@ -1,5 +1,7 @@
-# Secure Agents
-
+---
+title: "Secure Agents"
+description: ""
+---
 <a id="agents-security"></a>
 
 Use the agent security workflow to check a deployed agent for guardrail
@@ -47,94 +49,93 @@ with `nemo models list`):
 - `nvidia-llama-3-1-nemotron-safety-guard-8b-v3`
 
 For how to create the guardrail config that the virtual model references, see
-the [Guardrails documentation](../guardrails/index.md).
+the [Guardrails documentation](/guardrails).
 
 There are two steps: create the guarded VirtualModel, then update the agent's
 `llms` block to reference it.
 
 ### 1. Create a Guarded VirtualModel
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo inference virtual-models create guarded-agent-model \
+  --workspace default \
+  --models '[{"model":"default/<main-model-entity>","backend_format":"OPENAI_CHAT"}]' \
+  --request-middleware '[{
+    "name":"nemo-guardrails",
+    "config_type":"guardrail_config",
+    "config_id":"default/<guardrail-config>"
+  }]' \
+  --response-middleware '[{
+    "name":"nemo-guardrails",
+    "config_type":"guardrail_config",
+    "config_id":"default/<guardrail-config>"
+  }]'
+```
 
-    ```bash
-    nemo inference virtual-models create guarded-agent-model \
-      --workspace default \
-      --models '[{"model":"default/<main-model-entity>","backend_format":"OPENAI_CHAT"}]' \
-      --request-middleware '[{
-        "name":"nemo-guardrails",
-        "config_type":"guardrail_config",
-        "config_id":"default/<guardrail-config>"
-      }]' \
-      --response-middleware '[{
-        "name":"nemo-guardrails",
-        "config_type":"guardrail_config",
-        "config_id":"default/<guardrail-config>"
-      }]'
-    ```
+Wire the same `&lt;guardrail-config&gt;` on both `--request-middleware` (for
+input rails) and `--response-middleware` (for output rails). Omit a side
+if the config defines no flows for it. For the full middleware schema,
+entity-backed vs inline configs, and caching behavior, refer to
+[Guardrails Architecture](/guardrails/core-concepts/architecture).
+</Tab>
+<Tab title="Skill">
+Ask your coding agent:
 
-    Wire the same `<guardrail-config>` on both `--request-middleware` (for
-    input rails) and `--response-middleware` (for output rails). Omit a side
-    if the config defines no flows for it. For the full middleware schema,
-    entity-backed vs inline configs, and caching behavior, refer to
-    [Guardrails Architecture](../guardrails/concepts/architecture.md).
+> Secure my deployed agent.
 
-=== "Skill"
+The `agents-secure` skill picks a deployed agent, checks guardrail
+coverage, samples recent telemetry, and writes suggestions to the
+`nemo-agent-security` fileset.
 
-    Ask your coding agent:
+Verify the skill is installed:
 
-    > Secure my deployed agent.
+```bash
+nemo skills show agents-secure
+```
 
-    The `agents-secure` skill picks a deployed agent, checks guardrail
-    coverage, samples recent telemetry, and writes suggestions to the
-    `nemo-agent-security` fileset.
+What it does under the hood:
 
-    Verify the skill is installed:
+- Lists deployed agents and prompts you to choose one.
+- Inspects each LLM's `base_url`. If it does not route through a
+  guardrails virtual model, suggests creating one with a content-safety,
+  topic-control, or safety-guard backend.
+- Names the recommended guardrails catalog model and walks you through
+  creating the guarded virtual model.
+- Persists suggestions to the `nemo-agent-security` fileset.
+</Tab>
+<Tab title="Python SDK">
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    ```bash
-    nemo skills show agents-secure
-    ```
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-    What it does under the hood:
+guardrail_mw = {
+    "name": "nemo-guardrails",
+    "config_type": "guardrail_config",
+    "config_id": "default/<guardrail-config>",
+}
 
-    - Lists deployed agents and prompts you to choose one.
-    - Inspects each LLM's `base_url`. If it does not route through a
-      guardrails virtual model, suggests creating one with a content-safety,
-      topic-control, or safety-guard backend.
-    - Names the recommended guardrails catalog model and walks you through
-      creating the guarded virtual model.
-    - Persists suggestions to the `nemo-agent-security` fileset.
-
-=== "Python SDK"
-
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
-
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
-
-    guardrail_mw = {
-        "name": "nemo-guardrails",
-        "config_type": "guardrail_config",
-        "config_id": "default/<guardrail-config>",
-    }
-
-    client.inference.virtual_models.create(
-        name="guarded-agent-model",
-        workspace="default",
-        models=[{"model": "default/<main-model-entity>", "backend_format": "OPENAI_CHAT"}],
-        request_middleware=[guardrail_mw],
-        response_middleware=[guardrail_mw],
-    )
-    ```
-
+client.inference.virtual_models.create(
+    name="guarded-agent-model",
+    workspace="default",
+    models=[{"model": "default/<main-model-entity>", "backend_format": "OPENAI_CHAT"}],
+    request_middleware=[guardrail_mw],
+    response_middleware=[guardrail_mw],
+)
+```
+</Tab>
+</Tabs>
 ### 2. Point the Agent at the Guarded VirtualModel
 
 In the agent's workflow YAML, set `model_name` on the relevant `llms` entry to
 the guarded VirtualModel's entity reference, with slashes converted to hyphens
-(per the [agent configuration conventions](index.md#agent-definition)):
+(per the [agent configuration conventions](/agents#agent-definition)):
 
 ```yaml
 llms:
@@ -149,7 +150,7 @@ unchanged and unaware of the rails.
 
 For the end-to-end request flow, streaming behavior, header forwarding, and
 the `guardrails` request options, refer to
-[Running Inference with Guardrails](../guardrails/concepts/inference.md).
+[Running Inference with Guardrails](/guardrails/core-concepts/running-inference).
 
 Redeploy the agent, re-run evaluation, and compare quality, cost, latency,
 and safety signals against the baseline before promoting.
@@ -166,55 +167,54 @@ For leaked secrets, rotate the credential before doing any other cleanup. For
 PII in trace data, redact or regenerate affected traces before using them for
 evaluation or optimization.
 
-=== "CLI"
+<Tabs>
+<Tab title="CLI">
+```bash
+nemo files list nemo-agent-telemetry
+```
 
-    ```bash
-    nemo files list nemo-agent-telemetry
-    ```
+Inspect the most recent trace files manually, or use the security skill
+to do this for you. Cap the data you download — telemetry can be large.
+</Tab>
+<Tab title="Skill">
+Ask your coding agent:
 
-    Inspect the most recent trace files manually, or use the security skill
-    to do this for you. Cap the data you download — telemetry can be large.
+> Scan recent telemetry for my agent for PII and leaked secrets.
 
-=== "Skill"
+The `agents-secure` skill caps downloaded telemetry at 1 GB and walks the
+most recent traces first. Verify it is installed:
 
-    Ask your coding agent:
+```bash
+nemo skills show agents-secure
+```
 
-    > Scan recent telemetry for my agent for PII and leaked secrets.
+What it does under the hood:
 
-    The `agents-secure` skill caps downloaded telemetry at 1 GB and walks the
-    most recent traces first. Verify it is installed:
+- Samples recent files from `nemo-agent-telemetry` until the 1 GB cap.
+- Runs a high-confidence regex pass for PII and leaked credentials.
+- Writes findings with masked previews and follow-up actions to
+  `nemo-agent-security/security_suggestions.jsonl`.
+- Optionally suggests a higher-recall GLiNER or NemoGuard scan on a
+  subset of traces when regex coverage is not enough.
+</Tab>
+<Tab title="Python SDK">
+The skill drives this workflow directly. To inspect what was written,
+list and download files from the security fileset:
 
-    ```bash
-    nemo skills show agents-secure
-    ```
+```python
+import os
+from nemo_platform import NeMoPlatform
 
-    What it does under the hood:
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
 
-    - Samples recent files from `nemo-agent-telemetry` until the 1 GB cap.
-    - Runs a high-confidence regex pass for PII and leaked credentials.
-    - Writes findings with masked previews and follow-up actions to
-      `nemo-agent-security/security_suggestions.jsonl`.
-    - Optionally suggests a higher-recall GLiNER or NemoGuard scan on a
-      subset of traces when regex coverage is not enough.
-
-=== "Python SDK"
-
-    The skill drives this workflow directly. To inspect what was written,
-    list and download files from the security fileset:
-
-    ```python
-    import os
-    from nemo_platform import NeMoPlatform
-
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace="default",
-    )
-
-    for f in client.files.list(fileset="nemo-agent-security"):
-        print(f.remote_path)
-    ```
-
+for f in client.files.list(fileset="nemo-agent-security"):
+    print(f.remote_path)
+```
+</Tab>
+</Tabs>
 ## Review Results
 
 Use the Files service to inspect saved suggestions:
@@ -233,15 +233,15 @@ nemo files download nemo-agent-security \
 
 **No data safety findings appear.** Data safety scans require telemetry. Confirm the `nemo-agent-telemetry` fileset exists with `nemo files list nemo-agent-telemetry`. If the fileset is empty, the agent is not exporting traces — verify the agent uses the `nemo_files` telemetry exporter and that recent invocations have completed.
 
-**The `agents-secure` skill is not available.** Run `nemo skills list` to confirm the skill is installed. If it is missing, install it with `nemo skills install --agent <claude|codex|cursor|opencode>`.
+**The `agents-secure` skill is not available.** Run `nemo skills list` to confirm the skill is installed. If it is missing, install it with `nemo skills install --agent &lt;claude|codex|cursor|opencode&gt;`.
 
-**Guardrail virtual model creation fails with an unknown model.** Confirm the backend model entity exists with `nemo models list`. The `<main-model-entity>` and `<guardrail-config>` placeholders must reference entities the workspace can resolve.
+**Guardrail virtual model creation fails with an unknown model.** Confirm the backend model entity exists with `nemo models list`. The `&lt;main-model-entity&gt;` and `&lt;guardrail-config&gt;` placeholders must reference entities the workspace can resolve.
 
 ## Next Steps
 
-- [Optimize Agents](optimization.md): reduce cost and improve quality after
+- [Optimize Agents](/agents/optimize-agents): reduce cost and improve quality after
   security coverage is in place.
-- [Guardrails](../guardrails/index.md): create and manage guardrail
+- [Guardrails](/guardrails): create and manage guardrail
   configurations.
-- [Models and Inference](../run-inference/about.md): manage model providers,
+- [Models and Inference](/models-and-inference/about): manage model providers,
   model entities, and virtual models.

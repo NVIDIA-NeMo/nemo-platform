@@ -1,7 +1,11 @@
+---
+title: "About"
+description: ""
+---
 <a id="data-designer"></a>
 # Data Designer
 
-Data Designer on {{platform_name}} enables high-quality synthetic data generation through the NeMo Data Designer plugin. You can execute workloads locally from the CLI, submit them to a running NeMo Services cluster, or call the Data Designer API from the SDK.
+Data Designer on NeMo Platform enables high-quality synthetic data generation through the NeMo Data Designer plugin. You can execute workloads locally from the CLI, submit them to a running NeMo Services cluster, or call the Data Designer API from the SDK.
 
 ## Overview
 
@@ -13,9 +17,10 @@ The plugin is built on the open-source [NVIDIA NeMo Data Designer library](https
 
 Data Designer separates **configuration** from **execution**.
 
-!!! note
-    The code snippets below are for conceptual demonstration purposes only.
-    For runnable examples, see the [tutorials](tutorials/index.md).
+<Note>
+The code snippets below are for conceptual demonstration purposes only.
+For runnable examples, see the [tutorials](/design-synthetic-data/tutorials/overview).
+</Note>
 
 ### 1. Build Configurations
 
@@ -55,7 +60,7 @@ The same configuration can run through different plugin surfaces:
 
 `run` versus `submit` primarily controls where the plugin workload execution happens. A local `run` can be fully local, but it is not an offline-only mode: it can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources.
 
-See [Execution Modes](execution-modes.md) for the full model.
+See [Execution Modes](/design-synthetic-data/execution-modes) for the full model.
 
 ## NeMo Services Integration
 
@@ -74,25 +79,25 @@ These integrations are required for `submit` and SDK execution. They are optiona
 
 <div class="grid cards" markdown>
 
--   **[Execution Modes](execution-modes.md)**
+-   **[Execution Modes](/design-synthetic-data/execution-modes)**
 
     ---
 
     Understand local execution, NeMo Services execution, and NeMo resources.
 
--   **[CLI](cli.md)**
+-   **[CLI](/design-synthetic-data/cli)**
 
     ---
 
     Run previews and create datasets with `nemo data-designer`.
 
--   **[Tutorials](tutorials/index.md)**
+-   **[Tutorials](/design-synthetic-data/tutorials/overview)**
 
     ---
 
     Learn through examples: basics, seeding, and more.
 
--   **[Migration Guide](migration.md)**
+-   **[Migration Guide](/design-synthetic-data/migrating-from-standalone-library)**
 
     ---
 

@@ -1,24 +1,29 @@
+---
+title: "Run an Audit Locally"
+description: ""
+---
 <a id="auditor-run-audit-locally"></a>
 # Run an Audit Locally
 
-This tutorial walks through running a single audit end-to-end with the {{__auditor_short_name}} plugin SDK. You will persist an audit configuration and a target, run the audit in-process, and inspect the resulting report artifacts.
+This tutorial walks through running a single audit end-to-end with the NeMo Auditor plugin SDK. You will persist an audit configuration and a target, run the audit in-process, and inspect the resulting report artifacts.
 
 **What you will learn:**
 
-- Initialize the {{platform_name}} SDK and reach the `client.auditor` resource.
+- Initialize the NeMo Platform SDK and reach the `client.auditor` resource.
 - Create an `AuditConfig` selecting which garak probes to run.
 - Create an `AuditTarget` pointing at a model through the Inference Gateway.
 - Execute the audit locally with `client.auditor.run(...)`.
 - Read the JSONL, HTML, and hitlog report artifacts the run produces.
 
-!!! tip
-    This tutorial takes approximately **10 minutes** to complete, plus however long garak takes to run the selected probes against your target.
+<Tip>
+This tutorial takes approximately **10 minutes** to complete, plus however long garak takes to run the selected probes against your target.
+</Tip>
 
 ## Prerequisites
 
-- Install and start {{platform_name}} using the [Setup guide](../../get-started/setup.md).
+- Install and start NeMo Platform using the [Setup guide](/get-started/setup).
 - Install garak in a Python virtual environment so the plugin can shell out to it. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`. Override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if your install lives elsewhere.
-- Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](../targets/inference-gateway.md) for details on the `nmp_uri_spec` block used below.
+- Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](/vulnerability-scanning/targets/inference-gateway) for details on the `nmp_uri_spec` block used below.
 
 ---
 
@@ -50,7 +55,7 @@ print(auditor.plugin_status())
 # {'plugin': 'auditor', 'status': 'ok', ...}
 ```
 
-If `plugin_status()` raises a connection error, the platform is not running or `NMP_BASE_URL` is misconfigured. Refer back to [Setup](../../get-started/setup.md).
+If `plugin_status()` raises a connection error, the platform is not running or `NMP_BASE_URL` is misconfigured. Refer back to [Setup](/get-started/setup).
 
 ---
 
@@ -79,7 +84,7 @@ config = auditor.configs.create(
 print(config.model_dump_json(indent=2))
 ```
 
-For the full set of options on each sub-block, see [Configuration Schema](../configs/schema.md). For probe selection syntax, see [Selecting Probes](../configs/probes.md).
+For the full set of options on each sub-block, see [Configuration Schema](/vulnerability-scanning/configurations/schema). For probe selection syntax, see [Selecting Probes](/vulnerability-scanning/configurations/selecting-probes).
 
 ---
 
@@ -108,7 +113,7 @@ target = auditor.targets.create(
 print(target.model_dump_json(indent=2))
 ```
 
-The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a concrete URI from the Inference Gateway provider at run time. See [Inference Gateway](../targets/inference-gateway.md) for the full conflict rules and resolution behavior.
+The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a concrete URI from the Inference Gateway provider at run time. See [Inference Gateway](/vulnerability-scanning/targets/inference-gateway) for the full conflict rules and resolution behavior.
 
 ---
 
@@ -198,17 +203,25 @@ Report artifacts are left in place under the scheduler's temporary directory; th
 
 ## Troubleshooting
 
-**`FileNotFoundError: garak interpreter not found at ...`**
-: The plugin couldn't find a garak install. Either install garak at `~/.auditor/.venv/bin/python`, or set `NEMO_AUDITOR_GARAK_PYTHON` to the absolute path of a Python interpreter that has garak installed.
+****`FileNotFoundError: garak interpreter not found at ...`****
 
-**`RuntimeError: Failed to resolve inference gateway provider '<workspace>/<provider>'`**
-: The `nmp_uri_spec` block in your target's options references an Inference Gateway provider that doesn't exist. List your providers with `client.inference.providers.list(workspace="default")` and update the target to reference an existing one.
+- The plugin couldn't find a garak install. Either install garak at `~/.auditor/.venv/bin/python`, or set `NEMO_AUDITOR_GARAK_PYTHON` to the absolute path of a Python interpreter that has garak installed.
 
-**`returncode != 0` with empty `results`**
-: garak started but failed early, usually because the target endpoint is unreachable. Inspect `result["stderr_tail"]` for the error message, and verify the model is reachable through the provider you configured.
 
-**Where do the report files live?**
-: The scheduler writes garak output under `<temp-dir>/garak/<reporting.report_dir>/<reporting.report_prefix>.*`, then copies the produced files into the local results directory referenced by each `artifact_url`. For a local run this is a temporary directory under the system's `$TMPDIR`.
+****`RuntimeError: Failed to resolve inference gateway provider '&lt;workspace&gt;/&lt;provider&gt;'`****
+
+- The `nmp_uri_spec` block in your target's options references an Inference Gateway provider that doesn't exist. List your providers with `client.inference.providers.list(workspace="default")` and update the target to reference an existing one.
+
+
+****`returncode != 0` with empty `results`****
+
+- garak started but failed early, usually because the target endpoint is unreachable. Inspect `result["stderr_tail"]` for the error message, and verify the model is reachable through the provider you configured.
+
+
+****Where do the report files live?****
+
+- The scheduler writes garak output under `&lt;temp-dir&gt;/garak/&lt;reporting.report_dir&gt;/&lt;reporting.report_prefix&gt;.*`, then copies the produced files into the local results directory referenced by each `artifact_url`. For a local run this is a temporary directory under the system's `$TMPDIR`.
+
 
 ---
 
@@ -216,6 +229,6 @@ Report artifacts are left in place under the scheduler's temporary directory; th
 
 You created an `AuditConfig` and `AuditTarget`, ran a single audit locally with `client.auditor.run(...)`, and loaded the resulting reports.
 
-- For the full SDK surface — including async variants — see [SDK Resources](../sdk-resources.md).
-- For more probe selection options, see [Selecting Probes](../configs/probes.md).
-- For other generator types (OpenAI-compatible endpoints, REST targets, test targets), see [Audit Targets](../targets/index.md).
+- For the full SDK surface — including async variants — see [SDK Resources](/vulnerability-scanning/sdk-resources).
+- For more probe selection options, see [Selecting Probes](/vulnerability-scanning/configurations/selecting-probes).
+- For other generator types (OpenAI-compatible endpoints, REST targets, test targets), see [Audit Targets](/vulnerability-scanning/targets/overview).

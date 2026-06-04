@@ -1,5 +1,7 @@
-# NeMo Platform Skills Spec
-
+---
+title: "NeMo Platform Skills Spec"
+description: ""
+---
 **Status:** Draft.
 
 This document defines the conventions for skills shipped with NeMo Platform: how they're structured, what their frontmatter must contain, how they get tested, and where they live in the repo.
@@ -45,7 +47,7 @@ Entry point: a coding agent (Claude Code, Cursor, Codex, OpenCode) opened inside
 |---|---|---|
 | 1 | `nemo-skill-selection` | Router: parses natural-language intent, picks the right downstream skill |
 | 2 | `nemo-explore` | Design conversation: captures goal, audience, tools, constraints |
-| 3 | `nemo-spec` | Writes the design to `agents/<name>.spec.md` |
+| 3 | `nemo-spec` | Writes the design to `agents/&lt;name&gt;.spec.md` |
 | 4 | `nemo-build-agent` | Scaffolds NAT workflow YAML and deploys |
 | 5 | `nemo-try-agent` | Sends queries to the deployed agent |
 | 6 | `nemo-status` | Read-only platform health dashboard |
@@ -101,7 +103,7 @@ Every skill ships with the following YAML frontmatter at the top of `SKILL.md`. 
 
 Library-prefix naming (`nemo-*`) is required for user-invocable skills (skills install into shared agent catalogs alongside skills from other plugins; the prefix prevents collisions). It's optional for internal helpers.
 
-**Canonical location:** `packages/nemo_platform_ext/src/nemo_platform_ext/skills/<name>/`. Skills there ship with `pip install nemo-platform[all]`.
+**Canonical location:** `packages/nemo_platform_ext/src/nemo_platform_ext/skills/&lt;name&gt;/`. Skills there ship with `pip install nemo-platform[all]`.
 
 ---
 
@@ -148,14 +150,14 @@ If user-invocable, the `nemo-*` prefix is required. If internal, optional.
 ### 2. Pick the name
 
 - Kebab-case.
-- `nemo-<verb>-<noun>` or `nemo-<noun>` for user-invocable. Verb is preferred for action skills (`nemo-build-agent`, not `nemo-agent-build`).
+- `nemo-&lt;verb&gt;-&lt;noun&gt;` or `nemo-&lt;noun&gt;` for user-invocable. Verb is preferred for action skills (`nemo-build-agent`, not `nemo-agent-build`).
 - Run `nemo skills list` to confirm no existing name collides.
 
 ### 3. Pick the canonical location
 
-- User-invocable: `packages/nemo_platform_ext/src/nemo_platform_ext/skills/<name>/` (ships with the platform package).
-- Plugin-owned (skill is specific to a plugin): `plugins/<plugin-name>/src/<plugin_module>/skills/<name>/`.
-- Internal-only dev skills: `.agents/skills/<name>/` (gitignored from skills install by default).
+- User-invocable: `packages/nemo_platform_ext/src/nemo_platform_ext/skills/&lt;name&gt;/` (ships with the platform package).
+- Plugin-owned (skill is specific to a plugin): `plugins/&lt;plugin-name&gt;/src/&lt;plugin_module&gt;/skills/&lt;name&gt;/`.
+- Internal-only dev skills: `.agents/skills/&lt;name&gt;/` (gitignored from skills install by default).
 
 ### 4. Write the frontmatter
 
@@ -177,7 +179,7 @@ Optional:
 - Lead with one-sentence purpose.
 - Step-by-step instructions in the order the agent should run them.
 - One verification step after any state-changing action. Skills must not claim success without verification.
-- Lean: under 500 lines. Lift detail into `references/<topic>.md` if needed.
+- Lean: under 500 lines. Lift detail into `references/&lt;topic&gt;.md` if needed.
 - Use real `nemo` CLI commands; never improvise flags. `scripts/skill-cli-lint.py` enforces this against `nemo --help`.
 
 ### 6. Write `tests.json` (four-mode routing tests)
@@ -193,7 +195,7 @@ At least 3 examples per mode. `scripts/skill-test.py` runs them and fails if rou
 
 ### 7. Add `references/` only if needed
 
-If the skill body needs reference material (template files, troubleshooting tables, deep-dive documentation), put it under `references/<topic>.md` and point at it from the body. Don't pre-emptively create `references/` for short skills.
+If the skill body needs reference material (template files, troubleshooting tables, deep-dive documentation), put it under `references/&lt;topic&gt;.md` and point at it from the body. Don't pre-emptively create `references/` for short skills.
 
 ### 8. Local verification before PR
 

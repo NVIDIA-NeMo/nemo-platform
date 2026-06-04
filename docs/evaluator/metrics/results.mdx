@@ -1,3 +1,7 @@
+---
+title: "Metric Results"
+description: ""
+---
 <a id="eval-metric-results"></a>
 # Metric Results
 
@@ -12,7 +16,7 @@ An `EvaluationResult` contains:
 
 ## Get Results from a Local Run
 
-{% raw %}
+
 ```python
 import os
 
@@ -36,11 +40,11 @@ result = evaluator.run(
     ],
 )
 ```
-{% endraw %}
+
 
 ## Get Results from a Submitted Job
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import RunConfig, ExactMatchMetric
@@ -58,7 +62,7 @@ job = evaluator.submit(
 job.wait_until_done()
 ```
 
-{% endraw %}
+
 
 ### Get Results in Memory
 

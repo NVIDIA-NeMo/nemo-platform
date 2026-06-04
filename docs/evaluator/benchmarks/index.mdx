@@ -1,3 +1,7 @@
+---
+title: "Evaluation Benchmarks"
+description: ""
+---
 <a id="eval-benchmarks-index"></a>
 # Evaluation Benchmarks
 
@@ -10,7 +14,7 @@ Use benchmarks when you want to:
 - Compare multiple model versions using the same scoring criteria and dataset
 - Package validated metrics with domain-specific test data for repeatable evaluation
 
-{{platform_name}} provides two types of benchmarks:
+NeMo Platform provides two types of benchmarks:
 
 -   **Industry Benchmarks**: Industry-standard academic benchmarks such as MMLU, HumanEval, and GSM8K for comparing model capabilities against published baselines
 -   **Custom Benchmarks**: User-defined evaluation suites that combine your choice of metrics with domain-specific datasets
@@ -21,14 +25,63 @@ Custom benchmarks are valuable for domain-specific evaluation where standard ben
 
 | Type | Use Case | Dataset | Metrics |
 |------|----------|---------|---------|
-| [**Industry Benchmarks**](industry.md) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
-| [**Custom Benchmarks**](custom.md) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
+| [**Industry Benchmarks**](/evaluation/benchmarks/industry-benchmarks) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
+| [**Custom Benchmarks**](/evaluation/benchmarks/custom-benchmarks) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
 
---8<-- "evaluator/benchmarks/discover-industry-benchmarks.md"
+### Discover Industry Benchmarks
+
+Discover industry benchmarks available to use for your evaluation job within the `system` workspace. List all industry benchmarks or filter by label category.
+
+<Note>
+The `system` workspace is a reserved workspace for NeMo Platform that contains ready-to-use benchmarks representing industry benchmarks with published datasets and metrics.
+</Note>
+
+<Note>
+**Initialization:** This example uses `NeMoPlatform()` with no arguments so the SDK reads your active CLI context (set by `nemo auth login`). The `workspace="system"` is passed per-call to access the reserved system workspace. For the standard local initialization pattern, see [CLI and SDK initialization](/get-started/setup#setup-init).
+</Note>
+
+```python
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform()
+
+benchmarks = client.evaluation.benchmarks.list(workspace="system")
+
+print(f"{benchmarks.pagination.total_results} benchmarks")
+for benchmark in benchmarks:
+    print(f"{benchmark.name}: {benchmark.description}")
+
+# List benchmarks with pagination:
+benchmarks = client.evaluation.benchmarks.list(
+    workspace="system", page=2, page_size=100
+)
+for benchmark in benchmarks:
+    print(f"{benchmark.name}: {benchmark.description}")
+
+# Filter by evaluation category label
+filtered_benchmarks = client.evaluation.benchmarks.list(
+    workspace="system",
+    extra_query={"filter[data.labels.eval_category]": "advanced_reasoning"},
+)
+print(filtered_benchmarks)
+```
+
+| Category Label | Description |
+|----------------|-------------|
+| `agentic` | Evaluate the performance of agent-based or multi-step reasoning models, especially in scenarios requiring planning, tool use, and iterative reasoning. |
+| `advanced_reasoning` | Evaluate reasoning capabilities of large language models through complex tasks. |
+| `code` | Evaluate code generation capabilities using functional correctness benchmarks that test synthesis of working programs. |
+| `content_safety` | Evaluate model safety risks including vulnerability to generate harmful, biased, or misleading content. |
+| `instruction_following` | Evaluate the ability to follow explicit formatting and structural instructions |
+| `language_understanding` | Evaluate knowledge and reasoning across diverse subjects in different languages. |
+| `math` | Evaluate mathematical reasoning abilities. |
+| `question_answering` | Evaluate the ability to generate answers to questions. |
+| `rag` | Evaluate the quality of RAG pipelines by measuring both retrieval and answer generation performance. |
+| `retrieval` | Evaluate the quality of document retriever pipelines. |
 
 ## Create Custom Benchmarks
 
-Create a custom benchmark by combining metrics with your dataset. Before creating a benchmark, you will need to [create the metrics](../metrics/index.md) that define how to score your model's outputs.
+Create a custom benchmark by combining metrics with your dataset. Before creating a benchmark, you will need to [create the metrics](/evaluation/metrics/overview) that define how to score your model's outputs.
 
 ```python
 benchmark = client.evaluation.benchmarks.create(
@@ -43,7 +96,7 @@ benchmark = client.evaluation.benchmarks.create(
 )
 ```
 
-Refer to [Manage Benchmarks](manage-benchmarks.md) for listing and managing custom benchmarks.
+Refer to [Manage Benchmarks](/evaluation/benchmarks/manage-benchmarks) for listing and managing custom benchmarks.
 
 ## Run Benchmark Jobs
 
@@ -91,17 +144,17 @@ print(f"Job created: {job.name}")
 
 List, retrieve, and delete evaluation benchmarks using the Python SDK. You can discover industry benchmarks in the `system` workspace, list custom benchmarks in your workspace, retrieve detailed benchmark configurations, and delete custom benchmarks when no longer needed.
 
-Refer to [Manage Benchmarks](manage-benchmarks.md) for complete SDK examples including pagination, sorting, filtering, and extended response options.
+Refer to [Manage Benchmarks](/evaluation/benchmarks/manage-benchmarks) for complete SDK examples including pagination, sorting, filtering, and extended response options.
 
 ## Job Management
 
-After successfully creating a job, refer to [Benchmark Job Management](job-management.md) to oversee its execution and monitor progress.
+After successfully creating a job, refer to [Benchmark Job Management](/evaluation/benchmarks/job-management) to oversee its execution and monitor progress.
 
 ## Benchmark Categories
 
 <div class="grid cards" markdown>
 
--   **[Custom Benchmarks](custom.md)**
+-   **[Custom Benchmarks](/evaluation/benchmarks/custom-benchmarks)**
 
     ---
 
@@ -109,7 +162,7 @@ After successfully creating a job, refer to [Benchmark Job Management](job-manag
 
     <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
 
--   **[Agentic Benchmarks](agentic.md)**
+-   **[Agentic Benchmarks](/evaluation/benchmarks/agentic-benchmarks)**
 
     ---
 
@@ -117,7 +170,7 @@ After successfully creating a job, refer to [Benchmark Job Management](job-manag
 
     <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
 
--   **[Industry Benchmarks](industry.md)**
+-   **[Industry Benchmarks](/evaluation/benchmarks/industry-benchmarks)**
 
     ---
 

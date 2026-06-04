@@ -1,23 +1,26 @@
-# Get Job Status
-
+---
+title: "Get Job Status"
+description: ""
+---
 <a id="ft-get-customization-job-status"></a>
 Get detailed execution status for a customization job, including step-by-step progress and real-time training metrics.
 
-!!! tip
-    This endpoint provides granular execution details including:
+<Tip>
+This endpoint provides granular execution details including:
 
-    - **Step-level status**: `model-and-dataset-download` → `customization-training-job` → `model-upload` → `model-entity-creation`
-    - **Training metrics**: `step`, `epoch`, `loss`, `lr` (learning rate), `grad_norm`, `val_loss`
-    - **Progress tracking**: `downloaded_files`, `uploaded_bytes`, `progress_pct`
+- **Step-level status**: `model-and-dataset-download` → `customization-training-job` → `model-upload` → `model-entity-creation`
+- **Training metrics**: `step`, `epoch`, `loss`, `lr` (learning rate), `grad_norm`, `val_loss`
+- **Progress tracking**: `downloaded_files`, `uploaded_bytes`, `progress_pct`
 
-    To list jobs or get job definitions (model entity, hyperparameters, spec), use [List Active Jobs](list-active-jobs.md) instead.
+To list jobs or get job definitions (model entity, hyperparameters, spec), use [List Active Jobs](/fine-tune-models/manage-jobs/list-active-jobs) instead.
+</Tip>
 
 ## Prerequisites
 
 Before you can get the status of a customization job, make sure that you have:
 
-- Obtained the base URL of your {{platform_name}}.
-- Set the `NMP_BASE_URL` environment variable to your {{platform_name}} endpoint
+- Obtained the base URL of your NeMo Platform.
+- Set the `NMP_BASE_URL` environment variable to your NeMo Platform endpoint
 
 ```bash
 export NMP_BASE_URL="https://your-nmp-base-url"
@@ -58,7 +61,8 @@ for step in status.steps or []:
                 print(f"    Progress: {current_step}/{max_steps}")
 ```
 
-???+ "Example Response"
+<Accordion title="Example Response">
+</Accordion>
 
  **Active Job (Training in Progress)**
 

@@ -1,7 +1,11 @@
+---
+title: "Manage Benchmarks"
+description: ""
+---
 <a id="eval-benchmarks-manage-benchmarks"></a>
 # Manage Benchmarks
 
-List, retrieve, and delete evaluation benchmarks using the {{platform_name}} Python SDK.
+List, retrieve, and delete evaluation benchmarks using the NeMo Platform Python SDK.
 
 ```python
 import os
@@ -130,8 +134,9 @@ benchmarks = client.evaluation.benchmarks.list(
 
 Delete a custom evaluation benchmark. Industry benchmarks in the `system` workspace cannot be deleted.
 
-!!! warning
-    Deleting a benchmark is permanent and cannot be undone. Ensure the benchmark is not being used by any active evaluations before deletion.
+<Warning>
+Deleting a benchmark is permanent and cannot be undone. Ensure the benchmark is not being used by any active evaluations before deletion.
+</Warning>
 
 ```python
 client.evaluation.benchmarks.delete(name="my-custom-benchmark")
@@ -140,6 +145,6 @@ client.evaluation.benchmarks.delete(name="my-custom-benchmark")
 
 ## Related Topics
 
-- [Custom Benchmarks](custom.md) - Create custom benchmarks
-- [Benchmark Job Management](job-management.md) - Manage benchmark evaluation jobs
-- [Benchmark Results](results.md) - View and download benchmark evaluation results
+- [Custom Benchmarks](/evaluation/benchmarks/custom-benchmarks) - Create custom benchmarks
+- [Benchmark Job Management](/evaluation/benchmarks/job-management) - Manage benchmark evaluation jobs
+- [Benchmark Results](/evaluation/benchmarks/benchmark-results) - View and download benchmark evaluation results

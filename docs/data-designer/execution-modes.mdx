@@ -1,3 +1,7 @@
+---
+title: "Execution Modes"
+description: ""
+---
 <a id="data-designer-execution-modes"></a>
 # Execution Modes
 
@@ -12,8 +16,9 @@ The important distinction is not simply "local" versus "remote". There are two s
 
 `run` versus `submit` primarily controls where the plugin workload execution happens. It does not necessarily determine whether the workload uses NeMo Services APIs.
 
-!!! note
-    `nemo data-designer ... run` can be fully local, but it is not an offline-only mode. A local run can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources.
+<Note>
+`nemo data-designer ... run` can be fully local, but it is not an offline-only mode. A local run can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources.
+</Note>
 
 ## Terms
 

@@ -1,7 +1,11 @@
+---
+title: "File Storage"
+description: ""
+---
 <a id="file-storage"></a>
 # File Storage
 
-The {{platform_name}} Files service stores uploaded files and datasets. By default, it uses filesystem storage backed by a Kubernetes ReadWriteMany PersistentVolumeClaim (PVC). Alternatively, you can configure S3-compatible object storage.
+The NeMo Platform Files service stores uploaded files and datasets. By default, it uses filesystem storage backed by a Kubernetes ReadWriteMany PersistentVolumeClaim (PVC). Alternatively, you can configure S3-compatible object storage.
 
 ## Prerequisites
 
@@ -16,7 +20,7 @@ If using S3 storage, you must provision and manage your own bucket and credentia
 
 ## Local Storage (Default)
 
-By default, the Files service uses local filesystem storage. Files are stored on the shared PVC configured in [Persistent Volumes](./persistent-volumes.md).
+By default, the Files service uses local filesystem storage. Files are stored on the shared PVC configured in [Persistent Volumes](/platform/deploying-on-kubernetes/persistent-volumes).
 
 The default configuration is equivalent to:
 
@@ -28,7 +32,7 @@ platformConfig:
  path: /vol/files
 ```
 
-You do not need to add this to your `values.yaml`. Once the PVC is set up as described in [Persistent Volumes](./persistent-volumes.md), local storage works out of the box.
+You do not need to add this to your `values.yaml`. Once the PVC is set up as described in [Persistent Volumes](/platform/deploying-on-kubernetes/persistent-volumes), local storage works out of the box.
 
 ## S3 Object Storage
 
@@ -127,8 +131,9 @@ platformConfig:
  use_sdk_auth: true
 ```
 
-!!! note
-    Some older S3-compatible systems may require `signature_version: s3` instead of the default `s3v4`. Only change this if you encounter signature-related errors.
+<Note>
+Some older S3-compatible systems may require `signature_version: s3` instead of the default `s3v4`. Only change this if you encounter signature-related errors.
+</Note>
 
 ### Configuration Reference
 

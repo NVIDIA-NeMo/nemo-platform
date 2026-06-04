@@ -1,15 +1,19 @@
-<!-- @nemo-nb: process -->
-<!-- @nemo-nb: download -->
+---
+title: "Safe Synthesizer 101"
+description: ""
+---
+{/* @nemo-nb: process */}
+{/* @nemo-nb: download */}
 <a id="tutorial-safe-synthesizer-101"></a>
 # Safe Synthesizer 101
 
-Learn the fundamentals of {{nss_short_name}} by creating your first Safe Synthesizer job using provided defaults. In this tutorial, you'll upload sample customer data, replace personally identifiable information, fine-tune a model, generate synthetic records, and review the evaluation report.
+Learn the fundamentals of NeMo Safe Synthesizer by creating your first Safe Synthesizer job using provided defaults. In this tutorial, you'll upload sample customer data, replace personally identifiable information, fine-tune a model, generate synthetic records, and review the evaluation report.
 
 ## Prerequisites
 
 Before you begin, make sure that you have:
 
-- Access to a deployment of {{nss_short_name}} (see [getting-started](../getting-started.md))
+- Access to a deployment of NeMo Safe Synthesizer (see [getting-started](/synthesize-safe-data/getting-started))
 - **An NVIDIA GPU with 80 GB+ VRAM** — Safe Synthesizer requires GPU access for model training, even when using remote inference for other services. Verify with `nvidia-smi`.
 - Python environment with `nemo-platform` SDK installed
 - Basic understanding of Python and pandas
@@ -29,7 +33,7 @@ By the end of this tutorial, you'll understand how to:
 
 ## Step 1: Install the SDK
 
-Install the {{platform_name}} SDK with Safe Synthesizer support. Run the following command in a **terminal (shell)**:
+Install the NeMo Platform SDK with Safe Synthesizer support. Run the following command in a **terminal (shell)**:
 
 ```shell
 if command -v uv &> /dev/null; then
@@ -108,10 +112,19 @@ print(df.head())
 
 Before running jobs, set up column classification for accurate PII detection.
 
-!!! tip
-    Column classification uses an LLM to automatically detect column types and improve PII detection accuracy. Without this setup, you may see classification errors and reduced detection quality.
+<Tip>
+Column classification uses an LLM to automatically detect column types and improve PII detection accuracy. Without this setup, you may see classification errors and reduced detection quality.
+</Tip>
 
---8<-- "_snippets/nvidia-build-model-provider.md"
+<Note>
+The platform pre-configures a `system/nvidia-build` model provider during startup.
+This provider routes inference requests to models hosted on `build.nvidia.com` using the API base URL `https://integrate.api.nvidia.com`
+and the NGC API key with `Public API Endpoints` permissions provided during deployment (automatically saved as the built-in `system/ngc-api-key` secret).
+
+You can verify this provider exists by running `nemo inference providers list --workspace system`.
+
+The tutorials in these docs use this provider for inference, but you can alternatively create your own and use it instead.
+</Note>
 
 ```python
 # Use the pre-configured NVIDIA Build model provider
@@ -120,8 +133,9 @@ provider_name = "system/nvidia-build"
 print(f"✅ Using model provider: {provider_name}")
 ```
 
-!!! note
-    If you prefer not to send column data to `build.nvidia.com`, you can [deploy your own LLM](../../run-inference/tutorials/deploy-models.md) and create a custom model provider. Pass the fully-qualified provider name (`workspace/provider-name`) to `.with_classify_model_provider()` instead.
+<Note>
+If you prefer not to send column data to `build.nvidia.com`, you can deploy your own LLM and create a custom model provider. Pass the fully-qualified provider name (`workspace/provider-name`) to `.with_classify_model_provider()` instead.
+</Note>
 
 ---
 
@@ -305,7 +319,7 @@ job.display_report_in_notebook()
 
 ### Interpreting Scores
 
-The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](../about/evaluation.md).
+The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](/synthesize-safe-data/about/evaluation).
 
 ---
 
@@ -315,11 +329,11 @@ Now that you've completed your first Safe Synthesizer job, explore more advanced
 
 ### Advanced Tutorials
 
-- [Differential Privacy Tutorial](differential-privacy.md) - Apply mathematical privacy guarantees
+- [Differential Privacy Tutorial](/synthesize-safe-data/tutorials/differential-privacy) - Apply mathematical privacy guarantees
 
 ### Documentation
 
-- [index](../about/index.md) - Understand core concepts
+- [index](/synthesize-safe-data/about/overview) - Understand core concepts
 
 ### Try These Next
 
@@ -368,7 +382,7 @@ print(f"Total jobs: {len(all_jobs.data)}")
 - Use smaller model (adjust `training.pretrained_model`)
 - Check GPU availability
 
-For more help, see [jobs](../about/jobs.md).
+For more help, see [jobs](/synthesize-safe-data/about/jobs).
 
 **Error: "Dataset must have at least 200 records to use holdout."**
 
@@ -387,6 +401,7 @@ builder = (
 )
 ```
 
-!!! warning
-    Disabling holdout means you won't get quality metrics like privacy scores and synthetic data quality
-    scores. For production use, ensure your dataset has at least 200 records.
+<Warning>
+Disabling holdout means you won't get quality metrics like privacy scores and synthetic data quality
+scores. For production use, ensure your dataset has at least 200 records.
+</Warning>

@@ -1,7 +1,11 @@
+---
+title: "Schema"
+description: ""
+---
 <a id="auditor-configs-schema"></a>
 # Configuration Schema
 
-This page lists every field on `AuditConfig` and its four sub-models. Defaults match the pydantic definitions in `nemo_auditor.entities`; the {{platform_name}} entity store validates writes against these schemas.
+This page lists every field on `AuditConfig` and its four sub-models. Defaults match the pydantic definitions in `nemo_auditor.entities`; the NeMo Platform entity store validates writes against these schemas.
 
 ## `AuditConfig`
 
@@ -43,7 +47,7 @@ Controls how each probe is executed.
 | `deprefix` | `bool` | `True` | Strip prompt prefixes from responses before detection. |
 | `eval_threshold` | `float` (0–1) | `0.5` | Detector score threshold above which a response is flagged as a hit. |
 | `generations` | `int` (≥1) | `5` | Generations per probe. Lower for fast iteration; raise for statistical confidence. |
-| `probe_tags` | `str \| None` | `None` | Comma-separated tag filter (`"owasp:llm06,payload:hallucination"`). Intersects with `plugins.probe_spec`. See [Selecting Probes](probes.md). |
+| `probe_tags` | `str \| None` | `None` | Comma-separated tag filter (`"owasp:llm06,payload:hallucination"`). Intersects with `plugins.probe_spec`. See [Selecting Probes](/vulnerability-scanning/configurations/selecting-probes). |
 | `user_agent` | `str` | `"garak/{version} (LLM vulnerability scanner https://garak.ai)"` | HTTP `User-Agent` garak sends. The `{version}` placeholder is substituted at runtime. |
 
 ## `AuditPluginsData`
@@ -54,7 +58,7 @@ Controls probe, detector, generator, buff, and harness selection.
 |-------|------|---------|-------------|
 | `model_type` | `str \| None` | `None` | Garak generator type override. Normally set on the target instead. |
 | `model_name` | `str \| None` | `None` | Garak model name override. Normally set on the target instead. |
-| `probe_spec` | `str` | `"all"` | Comma-separated probe selection. See [Selecting Probes](probes.md). |
+| `probe_spec` | `str` | `"all"` | Comma-separated probe selection. See [Selecting Probes](/vulnerability-scanning/configurations/selecting-probes). |
 | `detector_spec` | `str` | `"auto"` | Detector selection — `"auto"` lets each probe pick its detectors. |
 | `extended_detectors` | `bool` | `False` | Enable garak's extended detector set. |
 | `buff_spec` | `str \| None` | `None` | Comma-separated buff selection (prompt mutations applied before sending). |

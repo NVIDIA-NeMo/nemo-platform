@@ -1,14 +1,19 @@
+---
+title: "Metric Job Management"
+description: ""
+---
 <a id="evaluate-manage-metric-job"></a>
 # Metric Job Management
 
-!!! note
-    **Performance Tuning**: You can improve evaluation speed by passing `RunConfig(parallelism=...)` in `config=...`. Adjust parallelism based on your model capacity and rate limits.
+<Note>
+**Performance Tuning**: You can improve evaluation speed by passing `RunConfig(parallelism=...)` in `config=...`. Adjust parallelism based on your model capacity and rate limits.
+</Note>
 
 ## Submit a Job
 
 Submit a metric evaluation with the Evaluator plugin SDK. The `submit` method returns an `EvaluatorJobResource` that you can use to monitor the job and download results.
 
-{% raw %}
+
 ```python
 import os
 
@@ -38,7 +43,7 @@ print("Submitted job:", job.name)
 job.wait_until_done()
 result = job.get_result()
 ```
-{% endraw %}
+
 
 ## Monitor Job
 
@@ -54,7 +59,7 @@ if not job.check_if_complete():
 
 `wait_until_done()` raises if the job reaches a terminal failure status or times out.
 
-Refer to [Evaluator Troubleshooting](../../troubleshooting/evaluator.md) for help troubleshooting job failures.
+Refer to [Evaluator Troubleshooting](/reference/troubleshooting/evaluator) for help troubleshooting job failures.
 
 ## Reconnect to a Job
 
@@ -79,7 +84,7 @@ for row in result.row_scores:
     print(row.item, row.metrics)
 ```
 
-See [Evaluation Results](results.md) for details on aggregate and row-level result fields.
+See [Evaluation Results](/evaluation/metrics/metric-results) for details on aggregate and row-level result fields.
 
 ## Download Job Artifacts
 

@@ -1,7 +1,11 @@
+---
+title: "Embedding Models"
+description: ""
+---
 <a id="model-catalog-embedding"></a>
 # Embedding Models
 
-This page provides detailed technical specifications for the embedding model family supported by {{ncm_short_name}}. For information about supported features and capabilities, refer to [Tested Models](index.md).
+This page provides detailed technical specifications for the embedding model family supported by NeMo Customizer. For information about supported features and capabilities, refer to [Tested Models](/fine-tune-models/models/model-catalog).
 
 ## Llama Nemotron Embedding 1B v2
 
@@ -37,8 +41,9 @@ Create a Model Entity for this embedding model:
 - **LoRA (merged)**: 1x 80GB GPU, tensor parallel size 1
 - **Full SFT**: 1x 80GB GPU, tensor parallel size 1
 
-!!! note
-    Embedding models only support **merged LoRA** (`peft` with `merge=True`). Unmerged LoRA adapters are not supported because the embedding NIM requires ONNX format, which cannot represent standalone adapters.
+<Note>
+Embedding models only support **merged LoRA** (`peft` with `merge=True`). Unmerged LoRA adapters are not supported because the embedding NIM requires ONNX format, which cannot represent standalone adapters.
+</Note>
 
 ### Resource Requirements
 
@@ -71,7 +76,7 @@ NVIDIA recommends evaluating fine-tuned embedding models against the baseline to
 
 This model supports inference deployment through NVIDIA Inference Microservices (NIM). After customization, access your model through the **Inference Gateway**:
 
-1. **Deploy the model**: Create a ModelDeploymentConfig and ModelDeployment to deploy your fine-tuned model. See [about](../../run-inference/about.md) for details.
+1. **Deploy the model**: Create a ModelDeploymentConfig and ModelDeployment to deploy your fine-tuned model. See [about](/models-and-inference/about) for details.
 2. **Access through Inference Gateway**: The Inference Gateway provides unified access to all deployed models via three routing patterns:
 
  - **Model Entity routing**: `/v2/workspaces/{workspace}/inference/gateway/model/{name}/-/v1/embeddings`
@@ -90,8 +95,9 @@ client = NeMoPlatform(
 oai_client = client.models.get_openai_client()
 ```
 
-!!! note
-    The embedding model requires NIM container images that support embedding inference. When the deployment reaches `READY` state, a ModelProvider is automatically created for routing inference requests.
+<Note>
+The embedding model requires NIM container images that support embedding inference. When the deployment reaches `READY` state, a ModelProvider is automatically created for routing inference requests.
+</Note>
 
 ### Example Usage
 
@@ -125,6 +131,6 @@ embedding = response["data"][0]["embedding"]
 print(f"Embedding dimension: {len(embedding)}")
 ```
 
-For detailed fine-tuning instructions, refer to the [Embedding Customization tutorial](../tutorials/embedding-customization-job.ipynb).
+For detailed fine-tuning instructions, refer to the Embedding Customization tutorial.
 
-For more information about formatting training datasets for the embedding model, refer to [Dataset Format Requirements](data-format.md).
+For more information about formatting training datasets for the embedding model, refer to [Dataset Format Requirements](/fine-tune-models/models/dataset-format).

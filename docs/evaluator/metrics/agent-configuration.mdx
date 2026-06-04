@@ -1,3 +1,7 @@
+---
+title: "Agent Configuration"
+description: ""
+---
 <a id="eval-metrics-agent-configuration"></a>
 # Agent Configuration
 
@@ -34,7 +38,7 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 
 If your agent endpoint requires authentication, configure `api_key_secret` on the `Agent`.
 
-For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For remote `evaluator.submit(...)` jobs, it must name a NeMo platform secret in the target workspace. See [Model API Authentication](model-configuration.md#model-api-authentication) for the local-versus-remote behavior.
+For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For remote `evaluator.submit(...)` jobs, it must name a NeMo platform secret in the target workspace. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication) for the local-versus-remote behavior.
 
 For remote `evaluator.submit(...)` jobs, create the secret in the platform workspace before submitting the job:
 
@@ -63,14 +67,14 @@ You control the request shape with `body` and extract values from the response w
 | `url` | Yes | string | Base URL of the agent endpoint. |
 | `name` | Yes | string | Agent name or identifier. |
 | `format` | No | string |  `generic` (default) or `nemo_agent_toolkit`. |
-| `api_key_secret` | No | string | API key reference. See [Model API Authentication](model-configuration.md#model-api-authentication). |
+| `api_key_secret` | No | string | API key reference. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication). |
 | `body` | Yes | dict | Jinja template for the request payload. Use `{%raw%}{{ prompt }}{%endraw%}`, `{%raw%}{{ messages }}{%endraw%}`, or fields from the rendered prompt context. |
 | `response_path` | Yes | string | [JSONPath](https://datatracker.ietf.org/doc/html/rfc9535) expression to extract the response text. |
 | `trajectory_path` | No | string | JSONPath expression to extract the trajectory. |
 
 ### Run a Generic Agent Evaluation
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import Agent, RunConfigOnline
@@ -99,7 +103,7 @@ for score in result.aggregate_scores.scores:
     print(f"{score.name}: mean={score.mean}")
 ```
 
-{% endraw %}
+
 
 Use `evaluator.submit(...)` with the same argument shape when you want a durable remote job, but set `api_key_secret` to a platform secret name for the target workspace.
 
@@ -138,7 +142,7 @@ async def invoke(request: AgentRequest) -> AgentResponse:
 
 Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo Agent Toolkit](https://docs.nvidia.com/nemo/agent-toolkit/latest/index.html). This format uses the NAT streaming protocol:
 
-1. Sends a POST to `{url}/generate/full?filter_steps=none` with `{"input_message": "<text>"}`.
+1. Sends a POST to `{url}/generate/full?filter_steps=none` with `{"input_message": "&lt;text&gt;"}`.
 2. Reads the SSE (Server-Sent Events) stream.
 3. Extracts the final `value` from the last SSE `data:` chunk.
 4. Returns it as the agent response.
@@ -150,11 +154,11 @@ Use the `nemo_agent_toolkit` format when evaluating agents built with the [NeMo 
 | `url` | Yes | string | Base URL of the agent endpoint. |
 | `name` | Yes | string | Agent name or identifier. |
 | `format` | Yes | string | Set to `nemo_agent_toolkit`. |
-| `api_key_secret` | No | string | API key reference. See [Model API Authentication](model-configuration.md#model-api-authentication). |
+| `api_key_secret` | No | string | API key reference. See [Model API Authentication](/evaluation/metrics/model-configuration#model-api-authentication). |
 
 ### Run a NAT Agent Evaluation
 
-{% raw %}
+
 
 ```python
 from nemo_evaluator_sdk import Agent, RunConfigOnline
@@ -186,7 +190,7 @@ job.wait_until_done()
 result = job.get_result()
 ```
 
-{% endraw %}
+
 
 ## Model vs Agent: When to Use Which
 
@@ -198,12 +202,11 @@ result = job.get_result()
 | Evaluate a custom HTTP endpoint with non-standard response format | | x |
 | Use a standard chat completions API | x | |
 
-!!! info
-    Online evaluations accept **either** a model **or** an agent as the request target, never both.
+<Note>Online evaluations accept **either** a model **or** an agent as the request target, never both.</Note>
 
 ## Related
 
-- [Model Configuration](model-configuration.md) - Inline model targets for LLM endpoints.
-- [Agentic Evaluation Metrics](agentic.md) - Metrics for evaluating agent tool calling, goal accuracy, and trajectory.
-- [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation with flexible scoring criteria.
-- [Bring Your Own Metric](remote.md) - Integrate custom evaluation endpoints.
+- [Model Configuration](/evaluation/metrics/model-configuration) - Inline model targets for LLM endpoints.
+- [Agentic Evaluation Metrics](/evaluation/metrics/agentic-metrics) - Metrics for evaluating agent tool calling, goal accuracy, and trajectory.
+- [LLM-as-a-Judge](/evaluation/metrics/llm-as-a-judge) - Custom judge-based evaluation with flexible scoring criteria.
+- [Bring Your Own Metric](/evaluation/metrics/bring-your-own-metric) - Integrate custom evaluation endpoints.

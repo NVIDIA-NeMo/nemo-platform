@@ -1,8 +1,10 @@
-# Configuration Reference
-
+---
+title: "Configuration Reference"
+description: ""
+---
 Complete reference for enabling and configuring platform authorization: the `auth` section in config, Helm values, environment variables, and the choice between embedded and external OPA.
 
-For quickstart setup, see [Authentication and Authorization](../index.md). For OIDC settings, see [OIDC Setup](../authentication/oidc.md).
+For quickstart setup, see [Authentication and Authorization](/platform/authentication-authorization/overview). For OIDC settings, see [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup).
 
 ## Enabling Authorization
 
@@ -27,7 +29,7 @@ When `auth.enabled` is `false` (the default), all API requests are allowed witho
 
 ### Bootstrap Admin
 
-When authorization is enabled, a platform administrator can be configured. Setting **`admin_email`** gives that identity the **PlatformAdmin** role at platform start. Use it to create the first workspaces and grant roles to other users. After bootstrap, manage access via workspaces and members as described in [Managing Access](../authorization/managing-access.md).
+When authorization is enabled, a platform administrator can be configured. Setting **`admin_email`** gives that identity the **PlatformAdmin** role at platform start. Use it to create the first workspaces and grant roles to other users. After bootstrap, manage access via workspaces and members as described in [Managing Access](/platform/authentication-authorization/authorization/managing-access).
 
 ```yaml
 auth:
@@ -35,13 +37,13 @@ auth:
  admin_email: "your-admin@company.com"
 ```
 
-For a complete reference of all `auth` fields and their defaults, see the [platform configuration reference](../../set-up/config-reference.md). Auth-related values are found under `platformConfig.auth` in the values file.
+For a complete reference of all `auth` fields and their defaults, see the [platform configuration reference](/reference/config-reference). Auth-related values are found under `platformConfig.auth` in the values file.
 
-For OIDC-specific fields (`auth.oidc`), see [OIDC Setup](../authentication/oidc.md).
+For OIDC-specific fields (`auth.oidc`), see [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup).
 
 ## Authorization Engine: Embedded vs External OPA
 
-The PDP can run in two modes. For technical details, see [Policy Engine](../authorization/policy-engine.md).
+The PDP can run in two modes. For technical details, see [Policy Engine](/platform/authentication-authorization/authorization/policy-engine).
 
 ### Embedded (default)
 
@@ -121,8 +123,8 @@ auth:
 
 ## Related
 
-- [Authentication and Authorization](../index.md) — Overview, auth methods, and getting started.
-- [OIDC Setup](../authentication/oidc.md) — IdP configuration and CLI login.
-- [Gateway Integration](gateway.md) — Using a gateway for authorization.
-- [Managing Access](../authorization/managing-access.md) — Workspaces and member management.
-- [Policy Engine](../authorization/policy-engine.md) — PDP internals and configuration.
+- [Authentication and Authorization](/platform/authentication-authorization/overview) — Overview, auth methods, and getting started.
+- [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup) — IdP configuration and CLI login.
+- [Gateway Integration](/platform/authentication-authorization/deployment/gateway-integration) — Using a gateway for authorization.
+- [Managing Access](/platform/authentication-authorization/authorization/managing-access) — Workspaces and member management.
+- [Policy Engine](/platform/authentication-authorization/authorization/policy-engine) — PDP internals and configuration.

@@ -1,7 +1,9 @@
-# Manage Customization Jobs
-
+---
+title: "Manage Customization Jobs"
+description: ""
+---
 <a id="ft-manage-customization-jobs"></a>
-Use customization jobs to fine-tune a [model](../models/index.md) using a [dataset](../../get-started/concepts/manage-files.md) and [hyperparameters](hyperparameters.md).
+Use customization jobs to fine-tune a [model](/fine-tune-models/models/model-catalog) using a [dataset](/get-started/core-concepts/manage-files) and [hyperparameters](/fine-tune-models/manage-jobs/training-configuration).
 
 ## How It Works
 
@@ -14,7 +16,7 @@ This design keeps adapters organized with their parent models and simplifies dep
 
 ## Prerequisites
 
-Before you can customize a model using a customization job, make sure that you have `prepared and uploaded a dataset <../tutorials/format-training-dataset>` to the dataset repository. See also [format-training-dataset](../tutorials/format-training-dataset.md) for dataset formatting requirements.
+Before you can customize a model using a customization job, make sure that you have `prepared and uploaded a dataset &lt;../tutorials/format-training-dataset&gt;` to the dataset repository. See also [format-training-dataset](/fine-tune-models/tutorials/format-training-dataset) for dataset formatting requirements.
 
 ---
 
@@ -22,30 +24,31 @@ Before you can customize a model using a customization job, make sure that you h
 
 Perform common customization job tasks.
 
-!!! tip
-    The value for `NMP_BASE_URL` will depend on your deployment. After the standard [Setup](../../get-started/setup.md) flow, the default local URL is `http://localhost:8080`. Otherwise, consult with your cluster administrator.
+<Tip>
+The value for `NMP_BASE_URL` will depend on your deployment. After the standard [Setup](/get-started/setup) flow, the default local URL is `http://localhost:8080`. Otherwise, consult with your cluster administrator.
+</Tip>
 
 <div class="grid cards" markdown>
 
--   **[Create a Customization Job](create-job.md)**
+-   **[Create a Customization Job](/fine-tune-models/manage-jobs/create-job)**
 
     ---
 
     Create a customization job using SFT, DPO, or Knowledge Distillation.
 
--   **[Get Job Status](get-job-status.md)**
+-   **[Get Job Status](/fine-tune-models/manage-jobs/get-job-status)**
 
     ---
 
     Check the status of a customization job.
 
--   **[List Active Jobs](list-active-jobs.md)**
+-   **[List Active Jobs](/fine-tune-models/manage-jobs/list-active-jobs)**
 
     ---
 
     List all active customization jobs to find a job name for use with Get Status or Cancel.
 
--   **[Cancel a Job](cancel-job.md)**
+-   **[Cancel a Job](/fine-tune-models/manage-jobs/cancel-job)**
 
     ---
 
@@ -59,13 +62,13 @@ Refer to the following pages for more information on customization jobs.
 
 <div class="grid cards" markdown>
 
--   **[Hyperparameters](hyperparameters.md)**
+-   **[Hyperparameters](/fine-tune-models/manage-jobs/training-configuration)**
 
     ---
 
     Review the hyperparameters that you can use to customize a model.
 
--   **[Troubleshoot Failed Jobs](../../troubleshooting/customizer.md)**
+-   **[Troubleshoot Failed Jobs](/reference/troubleshooting/customizer)**
 
     ---
 

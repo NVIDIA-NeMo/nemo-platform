@@ -1,10 +1,15 @@
+---
+title: "Evaluator"
+description: ""
+---
 <a id="evaluator-troubleshooting"></a>
-# Troubleshooting {{nem_short_name}}
+# Troubleshooting NeMo Evaluator
 
-Use this documentation to troubleshoot issues that can arise when you work with [{{nem_long_name}}](../evaluator/index.md).
+Use this documentation to troubleshoot issues that can arise when you work with [NVIDIA NeMo Evaluator](/evaluation/about).
 
-!!! tip
-    You can [get metric logs](../evaluator/metrics/job-management.md) or [get benchmark logs](../evaluator/benchmarks/job-management.md) for `COMPLETED` or `FAILED` jobs and use them to help troubleshoot.
+<Tip>
+You can [get metric logs](/evaluation/metrics/job-management) or [get benchmark logs](/evaluation/benchmarks/job-management) for `COMPLETED` or `FAILED` jobs and use them to help troubleshoot.
+</Tip>
 
 ---
 
@@ -35,12 +40,12 @@ Not all models make good judges. If the judge produces inconsistent output and d
 Incoming request body={'messages': [{'content': 'The output string did not satisfy the constraints given in the prompt. Fix the output string and return it.\nPlease return the output in a JSON format that complies with the following schema as specified in JSON Schema:\n{"properties": {"text": {"title": "Text", "type": "string"}}, "required": ["text"], "title": "StringIO", "type": "object"}
 ```
 
-## Dataset {dataset} is not in the expected format; it needs to have the files_url property set
+## Dataset \{dataset\} is not in the expected format; it needs to have the files_url property set
 
 This means that either the `files_url` is not provided as part of the dataset specification in the config, 
 or that the `files_url` is not provided in the expected format. 
 The dataset must be a JSON object with the `files_url` property set, 
-pointing to the path of the file in the {{nds_short_name}} in the format: `hf://datasets/<dataset-namespace>/<dataset-namespace>/<file-path>`.
+pointing to the path of the file in the NeMo Data Store in the format: `hf://datasets/&lt;dataset-namespace&gt;/&lt;dataset-namespace&gt;/&lt;file-path&gt;`.
 
 
 ## Error connecting to inference server
@@ -49,18 +54,18 @@ This means that for a custom evaluation, the target LLM endpoint is unable to co
 
 ## Inference SSL Error
 
-An evaluation job that uses an HTTPS model endpoint can fail if the endpoint certificate or DNS name is not trusted by the local environment. Verify that the model URL is reachable from the host running {{platform_name}} and that the endpoint presents a valid certificate for its hostname.
+An evaluation job that uses an HTTPS model endpoint can fail if the endpoint certificate or DNS name is not trusted by the local environment. Verify that the model URL is reachable from the host running NeMo Platform and that the endpoint presents a valid certificate for its hostname.
 
 ```
 Error: HTTPSConnectionPool(host="<NIM Proxy URL>", port=443): Max retries exceeded with url: /v1/chat/completions (Caused by SSLError(SSLError))
 ```
 
-## Error occurred while checking the existence of file {file_ref} on {{nds_short_name}}
+## Error occurred while checking the existence of file \{file_ref\} on NeMo Data Store
 
-This could mean that the dataset is not specified correctly, or that the {{nds_short_name}} itself is unresponsive.
+This could mean that the dataset is not specified correctly, or that the NeMo Data Store itself is unresponsive.
 
-- Verify that the files URL is correct and that the dataset and file exists in the {{nds_short_name}}.
-- Verify that the {{nds_short_name}} is responsive and reachable. 
+- Verify that the files URL is correct and that the dataset and file exists in the NeMo Data Store.
+- Verify that the NeMo Data Store is responsive and reachable. 
 
 If the error contains the string `Dataset {file_ref} is not present on datastore`, 
 it means that the datastore is responsive, but the file reference does not exist.
@@ -91,7 +96,9 @@ If you changed the platform URL, use the value configured in `NMP_BASE_URL` or i
 
 To troubleshoot an evaluation job that has failed, download the evaluation result archive and inspect the job logs.
 
-!!! warning "These are advanced troubleshooting steps that should only be done after all other troubleshooting fails."
+<Warning>
+These are advanced troubleshooting steps that should only be done after all other troubleshooting fails.
+</Warning>
 
 ### Evaluation Job Logs
 
@@ -114,36 +121,38 @@ Log files can be found in the results folder with the file extension `*.log`.
 
 ## Skip validation checks
 
-When you launch an evaluation job, {{nem_short_name}} performs availability checks (for example, checking if the dataset and files exist in {{nds_short_name}}). 
+When you launch an evaluation job, NeMo Evaluator performs availability checks (for example, checking if the dataset and files exist in NeMo Data Store). 
 To speed up job launch, or due to strict constraints of validation checks, you can pass the query parameter `skip_validation_checks` during job launch. 
 
 Use the following code to create an evaluation job that skips validation checks.
 
 
-=== "curl"
-    ```bash
-    curl -X 'POST' \
-    'https://${EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True' \
-    -H 'accept: application/json' \
-    -H 'Content-Type: application/json' \
-    -d '{
+<Tabs>
+<Tab title="curl">
+```bash
+curl -X 'POST' \
+'https://${EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True' \
+-H 'accept: application/json' \
+-H 'Content-Type: application/json' \
+-d '{
+"namespace": "my-organization",
+"target": "<my-target-namespace/my-target-name>",
+"config": "<my-config-namespace/my-config-name>"
+}'
+```
+</Tab>
+<Tab title="Python">
+```python
+data = {
     "namespace": "my-organization",
     "target": "<my-target-namespace/my-target-name>",
-    "config": "<my-config-namespace/my-config-name>"
-    }'
-    ```
+    "config": "<my-config-namespace/my-config-name>",
+}
 
-=== "Python"
-    ```python
-    data = {
-        "namespace": "my-organization",
-        "target": "<my-target-namespace/my-target-name>",
-        "config": "<my-config-namespace/my-config-name>",
-    }
+endpoint = f"{EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True"
 
-    endpoint = f"{EVALUATOR_BASE_URL}/v1/evaluation/jobs?skip_validation_checks=True"
-
-    response = requests.post(endpoint, json=data).json()
-    ```
-
-<!-- end of tab set -->
+response = requests.post(endpoint, json=data).json()
+```
+</Tab>
+</Tabs>
+{/* end of tab set */}

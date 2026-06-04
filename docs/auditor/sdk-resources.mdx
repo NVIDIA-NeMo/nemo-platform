@@ -1,16 +1,20 @@
+---
+title: "SDK Resources"
+description: ""
+---
 <a id="auditor-nmp-sdk-resources"></a>
 
-# {{__auditor_short_name}} {{platform_name}} SDK Resources
+# NeMo Auditor NeMo Platform SDK Resources
 
-The {{__auditor_short_name}} plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
+The NeMo Auditor plugin mounts a Python SDK surface on the `nemo_platform` client at `client.auditor`.
 This page documents that surface: how to manage audit configurations and targets in the entity store, and how to run an audit in-process using the local execution path.
 
-The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](configs/index.md) and [audit target](targets/index.md) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
+The CRUD methods exposed on `client.auditor.configs` and `client.auditor.targets` are 1:1 mirrors of the [audit configuration](/vulnerability-scanning/configurations/overview) and [audit target](/vulnerability-scanning/targets/overview) lifecycle and use the same `AuditConfig` and `AuditTarget` pydantic schemas the entity store persists.
 
 
 ## AuditorPluginResource
 
-The `AuditorPluginResource` is the sync SDK object for working with the {{__auditor_short_name}} plugin.
+The `AuditorPluginResource` is the sync SDK object for working with the NeMo Auditor plugin.
 It is accessed directly from a `NeMoPlatform` instance:
 
 ```python
@@ -34,7 +38,7 @@ auditor = client.auditor  # AuditorPluginResource
 
 ### `configs` sub-resource
 
-Five CRUD methods for `AuditConfig` entities. The full field reference is in [Configuration Schema](configs/schema.md).
+Five CRUD methods for `AuditConfig` entities. The full field reference is in [Configuration Schema](/vulnerability-scanning/configurations/schema).
 
 | Method | Description | Returns |
 |--------|-------------|---------|
@@ -46,7 +50,7 @@ Five CRUD methods for `AuditConfig` entities. The full field reference is in [Co
 
 ### `targets` sub-resource
 
-Five CRUD methods for `AuditTarget` entities. The full field reference is in [Target Schema](targets/schema.md).
+Five CRUD methods for `AuditTarget` entities. The full field reference is in [Target Schema](/vulnerability-scanning/targets/schema).
 
 | Method | Description | Returns |
 |--------|-------------|---------|

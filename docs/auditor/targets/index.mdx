@@ -1,7 +1,11 @@
+---
+title: "Overview"
+description: ""
+---
 <a id="auditor-targets"></a>
 # Manage Audit Targets
 
-An `AuditTarget` identifies the model under test. It pairs a garak generator class (`type`) with a model identifier (`model`) and a generator-specific options dict (`options`). Targets are persisted in the {{platform_name}} entity store and referenced by name from `client.auditor.run(...)`.
+An `AuditTarget` identifies the model under test. It pairs a garak generator class (`type`) with a model identifier (`model`) and a generator-specific options dict (`options`). Targets are persisted in the NeMo Platform entity store and referenced by name from `client.auditor.run(...)`.
 
 ## What an AuditTarget Holds
 
@@ -9,16 +13,16 @@ An `AuditTarget` identifies the model under test. It pairs a garak generator cla
 |-------|-------------|
 | `type` | A fully-qualified [garak generator class](https://reference.garak.ai/en/latest/generators.html), such as `nim.NVOpenAIChat`, `openai.OpenAIGenerator`, `rest.RestGenerator`, or `test.Blank`. |
 | `model` | The provider's model identifier passed through to garak (for example, `meta/llama-3.1-8b-instruct`). |
-| `options` | A nested dict whose top-level key is the generator namespace (`nim`, `openai`, `rest`, ...). Contents are passed through to garak unchanged, with one exception: the [`nmp_uri_spec`](inference-gateway.md) sentinel is resolved to a concrete `uri` at run time. |
+| `options` | A nested dict whose top-level key is the generator namespace (`nim`, `openai`, `rest`, ...). Contents are passed through to garak unchanged, with one exception: the [`nmp_uri_spec`](/vulnerability-scanning/targets/inference-gateway) sentinel is resolved to a concrete `uri` at run time. |
 | `description` | Optional free-form description shown in listings. |
 
-See [Target Schema](schema.md) for the full field reference.
+See [Target Schema](/vulnerability-scanning/targets/schema) for the full field reference.
 
 ## Common Target Types
 
 ### NIM via Inference Gateway
 
-Audit a NIM (or any OpenAI-compatible chat endpoint) routed through a {{platform_name}} provider:
+Audit a NIM (or any OpenAI-compatible chat endpoint) routed through a NeMo Platform provider:
 
 ```python
 target = client.auditor.targets.create(
@@ -40,7 +44,7 @@ target = client.auditor.targets.create(
 )
 ```
 
-The `nmp_uri_spec` block resolves to a concrete `uri` at run time. See [Inference Gateway](inference-gateway.md) for details.
+The `nmp_uri_spec` block resolves to a concrete `uri` at run time. See [Inference Gateway](/vulnerability-scanning/targets/inference-gateway) for details.
 
 ### OpenAI-compatible Endpoint
 

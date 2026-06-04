@@ -1,32 +1,34 @@
-# Authentication
+---
+title: "Authentication"
+description: ""
+---
+NeMo Platform authenticates requests using **OpenID Connect (OIDC)**. You register an OAuth application in your identity provider, configure NeMo Platform with the issuer and client ID, and users sign in via the CLI, SDK, or browser. NeMo Platform validates the JWT on every request and extracts the user's identity for authorization.
 
-{{platform_name}} authenticates requests using **OpenID Connect (OIDC)**. You register an OAuth application in your identity provider, configure {{platform_name}} with the issuer and client ID, and users sign in via the CLI, SDK, or browser. {{platform_name}} validates the JWT on every request and extracts the user's identity for authorization.
-
-For the quickstart (no IdP), see the [email-based shortcut](../index.md). For the authorization model, see [Authorization Concepts](../concepts.md).
+For the quickstart (no IdP), see the [email-based shortcut](/platform/authentication-authorization/overview). For the authorization model, see [Authorization Concepts](/platform/authentication-authorization/concepts).
 
 ## Connect Your Identity Provider
 
-Start here — register an OAuth application in your IdP and configure {{platform_name}}:
+Start here — register an OAuth application in your IdP and configure NeMo Platform:
 
-- [OIDC Setup](oidc.md) — Step-by-step: register an app, configure {{platform_name}}, verify login.
-- [Azure AD (Entra ID)](providers/azure-ad.md) — Azure-specific walkthrough (app registration, scopes, claim mapping).
-- [Generic OIDC Provider](providers/generic.md) — Checklist for any OIDC-compliant IdP.
+- [OIDC Setup](/platform/authentication-authorization/authentication/oidc-setup) — Step-by-step: register an app, configure NeMo Platform, verify login.
+- [Azure AD (Entra ID)](/platform/authentication-authorization/authentication/providers/azure-ad-entra-id) — Azure-specific walkthrough (app registration, scopes, claim mapping).
+- [Generic OIDC Provider](/platform/authentication-authorization/authentication/providers/generic-oidc) — Checklist for any OIDC-compliant IdP.
 
 ## Log In and Make API Calls
 
-Once your IdP is connected, see [Using Authentication](using-authentication.md) for the full walkthrough: device flow login, SDK and curl examples, token management, and config file reference.
+Once your IdP is connected, see [Using Authentication](/platform/authentication-authorization/authentication/using-authentication) for the full walkthrough: device flow login, SDK and curl examples, token management, and config file reference.
 
 | Method | Command / Action | Best For |
 |--------|-----------------|----------|
 | **Device flow** (browser) | `nemo auth login` | Interactive use — opens browser to sign in with your IdP |
-| **Password grant** | `nemo auth login --username <user> --password <pass>` | CI/CD pipelines — non-interactive |
+| **Password grant** | `nemo auth login --username &lt;user&gt; --password &lt;pass&gt;` | CI/CD pipelines — non-interactive |
 | **Direct from IdP** | Use your IdP's token endpoint or workload identity | Custom integrations, service accounts |
 
 The CLI stores the token and auto-refreshes it before expiry. The SDK reads the stored token from the CLI config automatically — after `nemo auth login`, `NeMoPlatform()` works with no arguments.
 
 ## Discovery Endpoint
 
-{{platform_name}} exposes an unauthenticated endpoint that clients and the SDK use to discover OIDC settings:
+NeMo Platform exposes an unauthenticated endpoint that clients and the SDK use to discover OIDC settings:
 
 ```text
 GET {BASE_URL}/apis/auth/discovery
@@ -52,5 +54,5 @@ The CLI and SDK call this endpoint automatically during `nemo auth login` or whe
 
 ## Related
 
-- [Using Authentication](using-authentication.md) — Log in, make API calls, and manage tokens.
-- [Security Model](../security-model.md) — Trust boundaries and the principal model.
+- [Using Authentication](/platform/authentication-authorization/authentication/using-authentication) — Log in, make API calls, and manage tokens.
+- [Security Model](/platform/authentication-authorization/security-model) — Trust boundaries and the principal model.

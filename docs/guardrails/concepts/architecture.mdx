@@ -1,11 +1,15 @@
+---
+title: "Architecture"
+description: ""
+---
 <a id="nemo-ms-guardrails-architecture"></a>
 # Guardrails Architecture
 
-{{ngm_short_name}} runs as an Inference Gateway (IGW) middleware plugin that intercepts inference requests and responses to apply configurable safety checks. Rather than routing traffic through a separate service, guardrails execute in-process on IGW as part of the VirtualModel middleware pipeline.
+NeMo Guardrails runs as an Inference Gateway (IGW) middleware plugin that intercepts inference requests and responses to apply configurable safety checks. Rather than routing traffic through a separate service, guardrails execute in-process on IGW as part of the VirtualModel middleware pipeline.
 
 ## How Guardrails Integrates with Inference
 
-{{ngm_short_name}} is wired into the inference pipeline through **VirtualModels**. A VirtualModel is a logical inference route that maps a user-facing model name to a backend model and defines ordered middleware pipelines for request and response processing.
+NeMo Guardrails is wired into the inference pipeline through **VirtualModels**. A VirtualModel is a logical inference route that maps a user-facing model name to a backend model and defines ordered middleware pipelines for request and response processing.
 
 When you create a VirtualModel with `nemo-guardrails` middleware entries, every inference request to that VirtualModel flows through the guardrails pipeline automatically:
 
@@ -48,8 +52,9 @@ flowchart LR
     OutputRails <-.->|rail checks| Tasks
 ```
 
-!!! note
-    `self-check` rails reuse the main model that IGW resolved from the VirtualModel's `default_model_entity`, so no extra model deployment is needed.
+<Note>
+`self-check` rails reuse the main model that IGW resolved from the VirtualModel's `default_model_entity`, so no extra model deployment is needed.
+</Note>
 
 A single IGW instance can serve multiple VirtualModels, each with different guardrail configurations and backend models. Task models (content safety, topic control, embeddings) are declared in the guardrail configuration and resolved through IGW's model routing. The main model is owned by IGW and comes from the VirtualModel's `default_model_entity` — guardrail configurations typically omit it.
 
@@ -70,7 +75,7 @@ nemo inference virtual-models create my-guarded-model \
   --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/my-config"}]'
 ```
 
-Wire the same config on both `request_middleware` (for input rails) and `response_middleware` (for output rails). If your config only defines input flows, you can omit `response_middleware` — the plugin skips output processing when no output flows are configured, and vice versa. See [Running Inference](inference.md) for the equivalent Python SDK call and a fuller end-to-end example.
+Wire the same config on both `request_middleware` (for input rails) and `response_middleware` (for output rails). If your config only defines input flows, you can omit `response_middleware` — the plugin skips output processing when no output flows are configured, and vice versa. See [Running Inference](/guardrails/core-concepts/running-inference) for the equivalent Python SDK call and a fuller end-to-end example.
 
 ---
 
@@ -89,12 +94,12 @@ Both paths flow through the same execution pipeline and share the same content-h
 
 ## Model Routing
 
-{{ngm_short_name}} uses IGW's model routing for all model calls:
+NeMo Guardrails uses IGW's model routing for all model calls:
 
 - **Main model**: Owned by IGW. The VirtualModel's `default_model_entity` sets the model used for generation. Your guardrail configuration should omit the `type: "main"` model entry — IGW injects the per-request main model at runtime.
 - **Task models**: Declared in the guardrail configuration (e.g., `content_safety`, `topic_control`, `self_check_input`). The plugin resolves each task model's `base_url` through IGW's route table using the model's entity reference (`workspace/name` format).
 
-For more details on model entities and providers, refer to [About Models and Inference](../../run-inference/about.md).
+For more details on model entities and providers, refer to [About Models and Inference](/models-and-inference/about).
 
 ---
 
@@ -110,6 +115,6 @@ The plugin caches `LLMRails` instances (the NeMo Guardrails runtime) by content 
 
 ## Next Steps
 
-- [Guardrail Configurations](configurations/index.md) — Define guardrail configurations (models, prompts, rails).
-- [Running Inference](inference.md) — Make inference calls through a guarded VirtualModel.
-- [Deploy NemoGuard NIMs](../tutorials/deploy-nemoguard-nims.md) — Deploy NemoGuard NIMs for content safety and topic control.
+- [Guardrail Configurations](/guardrails/core-concepts/configurations/overview) — Define guardrail configurations (models, prompts, rails).
+- [Running Inference](/guardrails/core-concepts/running-inference) — Make inference calls through a guarded VirtualModel.
+- [Deploy NemoGuard NIMs](/guardrails/tutorials/deploy-nemoguard-nims) — Deploy NemoGuard NIMs for content safety and topic control.

@@ -1,5 +1,7 @@
-# Manage Model Entities for Customization
-
+---
+title: "Manage Model Entities for Customization"
+description: ""
+---
 <a id="ft-manage-model-entities"></a>
 Before running a customization job, you need to set up a **Model Entity** that points to your base model checkpoint. This section covers creating the required FileSet and Model Entity.
 
@@ -7,13 +9,13 @@ Before running a customization job, you need to set up a **Model Entity** that p
 
 <div class="grid cards" markdown>
 
--   **[Create a Model FileSet](create-fileset.md)**
+-   **[Create a Model FileSet](/fine-tune-models/manage-model-entities/create-a-model-fileset)**
 
     ---
 
     Create a FileSet containing your base model checkpoint from HuggingFace, NGC, or local storage.
 
--   **[Create a Model Entity](create-model-entity.md)**
+-   **[Create a Model Entity](/fine-tune-models/manage-model-entities/create-a-model-entity)**
 
     ---
 
@@ -53,8 +55,9 @@ A **Model Entity** is the platform's representation of a model. It contains:
 
 Complete example of setting up a model for customization:
 
-!!! tip
-    **HuggingFace Token**: If downloading from a gated HuggingFace repository (like Llama models), you will need to create a secret containing your HuggingFace API token first. Refer to [Manage Secrets](../../get-started/concepts/manage-secrets.md) for instructions.
+<Tip>
+**HuggingFace Token**: If downloading from a gated HuggingFace repository (like Llama models), you will need to create a secret containing your HuggingFace API token first. Refer to [Manage Secrets](/get-started/core-concepts/manage-secrets) for instructions.
+</Tip>
 
 ```python
 import os

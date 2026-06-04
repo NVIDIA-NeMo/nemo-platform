@@ -1,11 +1,15 @@
+---
+title: "OpenShift"
+description: ""
+---
 <a id="nemo-ms-install-openshift"></a>
 # OpenShift
 
-The {{platform_name}} chart works on Red Hat OpenShift when security context overrides are applied. OpenShift’s **restricted** or **restricted-v2** Security Context Constraint (SCC) requires pods to run as non-root with explicit `runAsUser` and `runAsNonRoot`.
+The NeMo Platform chart works on Red Hat OpenShift when security context overrides are applied. OpenShift’s **restricted** or **restricted-v2** Security Context Constraint (SCC) requires pods to run as non-root with explicit `runAsUser` and `runAsNonRoot`.
 
 ## Values
 
-You can override the default values for the {{platform_name}} chart to make it compatible with OpenShift.
+You can override the default values for the NeMo Platform chart to make it compatible with OpenShift.
 
 1. **Create the OpenShift values file.** Save the following as `openshift-values.yaml`:
 
@@ -34,7 +38,7 @@ You can override the default values for the {{platform_name}} chart to make it c
  fsGroup: 999
  ```
 
-2. **Install** with your custom values and the OpenShift overrides (order matters; later files override earlier). Complete the [Prerequisites](./prerequisites.md) and follow [Install](./install.md), using the provided OpenShift values file.
+2. **Install** with your custom values and the OpenShift overrides (order matters; later files override earlier). Complete the [Prerequisites](/platform/deploying-on-kubernetes/prerequisites) and follow [Install](/platform/deploying-on-kubernetes/install), using the provided OpenShift values file.
 
  ```sh
  helm upgrade --install --namespace <namespace-to-install-nemo-microservices> \
@@ -47,9 +51,9 @@ You can override the default values for the {{platform_name}} chart to make it c
 
 You can expose the API using the following methods:
 
-- **Kubernetes Ingress** — supported by OpenShift’s default IngressController; set `ingress.enabled: true` and `ingress.defaultHost` as in [Ingress](./ingress.md).
-- **Gateway API HTTPRoute** — optional; configure `httpRoute` in values. See [Gateway API HTTPRoute](./ingress.md#gateway-api-httproute).
-- **OpenShift Route** — enable the chart’s Route and set an optional hostname. See [OpenShift Route](./ingress.md#openshift-route) for steps.
+- **Kubernetes Ingress** — supported by OpenShift’s default IngressController; set `ingress.enabled: true` and `ingress.defaultHost` as in [Ingress](/platform/deploying-on-kubernetes/ingress).
+- **Gateway API HTTPRoute** — optional; configure `httpRoute` in values. See [Gateway API HTTPRoute](/platform/deploying-on-kubernetes/ingress#gateway-api-httproute).
+- **OpenShift Route** — enable the chart’s Route and set an optional hostname. See [OpenShift Route](/platform/deploying-on-kubernetes/ingress#openshift-route) for steps.
 
 ## Troubleshooting
 
