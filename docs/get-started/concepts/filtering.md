@@ -131,10 +131,10 @@ client.files.filesets.list(filter={"purpose": {"$eq": "dataset"}})
 
 ## Nested fields
 
-The API supports filtering on nested fields stored under an entity's `data.*` blob. Some services expose such a blob as a **declared namespace** — for example, evaluator `labels` — which you address with a short path (`labels.<key>`); the API rewrites it to the stored `data.labels.<key>`:
+The API supports filtering on labels via `extra_query` with bracket notation:
 
 ```python
-# Filter by a custom label (short namespace path)
+# Filter by a custom label
 benchmarks = client.evaluation.benchmarks.list(
     extra_query={"filter[labels.eval_category]": "agentic"}
 )
@@ -145,8 +145,6 @@ The equivalent REST call:
 ```
 ?filter[labels.eval_category]=agentic
 ```
-
-The fully-qualified `data.*` path still works as an explicit alternative — and is the only way to reach a nested field that isn't a declared namespace — e.g. `filter[data.labels.eval_category]=agentic`.
 
 ## Common patterns
 
