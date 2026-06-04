@@ -77,7 +77,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
     workspace,
     name: filesetName,
     path: filePath,
-    enabled: !externalContent && enabled && !binary && !isBinaryLoading,
+    enabled: externalContent === undefined && enabled && !binary && !isBinaryLoading,
   });
 
   const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {

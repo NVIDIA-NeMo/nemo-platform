@@ -78,6 +78,8 @@ const TEXT_CONTENT_TYPES = [
 ];
 
 function isTextContentType(ct: string): boolean {
-  const lower = ct.toLowerCase();
-  return TEXT_CONTENT_TYPES.some((prefix) => lower.includes(prefix));
+  // Extract the MIME type token only (strip "; charset=..." parameters) before
+  // matching, so parameter values can't accidentally trigger a false positive.
+  const mimeToken = ct.split(';')[0].trim().toLowerCase();
+  return TEXT_CONTENT_TYPES.some((prefix) => mimeToken.startsWith(prefix));
 }
