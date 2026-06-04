@@ -127,6 +127,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                 composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
                 viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
                 reasoningPartComponent={ClaudeCodeReasoningPart}
+                hideAssistantMessageActions
                 toolCallPartComponent={ClaudeCodeToolCallPart}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}

@@ -21,7 +21,7 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { Pencil, RotateCcw, Send, Square, X } from 'lucide-react';
+import { Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
 
 import { ChatEmptyState } from '../Chat/ChatEmptyState';
 import { MessageContent } from '../Chat/MessageContent';
@@ -37,6 +37,7 @@ interface AssistantChatThreadProps {
   contentClassName?: string;
   composerContainerClassName?: string;
   reasoningPartComponent?: ReasoningMessagePartComponent;
+  hideAssistantMessageActions?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
 }
@@ -72,9 +73,11 @@ const ACTION_BUTTON_CLASS =
   'flex cursor-pointer size-8 items-center justify-center rounded text-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50';
 
 const AssistantMessage = ({
+  hideAssistantMessageActions,
   reasoningPartComponent,
   toolCallPartComponent,
 }: {
+  hideAssistantMessageActions?: boolean;
   reasoningPartComponent?: ReasoningMessagePartComponent;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
@@ -88,6 +91,26 @@ const AssistantMessage = ({
       toolCallPartComponent={toolCallPartComponent}
     />
     <div className="mt-density-sm flex h-8 items-center">
+      {!hideAssistantMessageActions && (
+        <ActionBarPrimitive.Root
+          hideWhenRunning
+          className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <Tooltip slotContent="Copy message">
+            <ActionBarPrimitive.Copy aria-label="Copy message" className={ACTION_BUTTON_CLASS}>
+              <Copy size={16} />
+            </ActionBarPrimitive.Copy>
+          </Tooltip>
+          <Tooltip slotContent="Regenerate response">
+            <ActionBarPrimitive.Reload
+              aria-label="Regenerate response"
+              className={ACTION_BUTTON_CLASS}
+            >
+              <RefreshCw size={16} />
+            </ActionBarPrimitive.Reload>
+          </Tooltip>
+        </ActionBarPrimitive.Root>
+      )}
       <MessagePrimitive.If last>
         <ThreadPrimitive.If running>
           <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
@@ -239,12 +262,14 @@ export const AssistantChatThread = ({
   emptyState,
   contentClassName,
   composerContainerClassName,
+  hideAssistantMessageActions,
   reasoningPartComponent,
   toolCallPartComponent,
   viewportClassName,
 }: AssistantChatThreadProps) => {
   const AssistantMessageWithReasoningPart = () => (
     <AssistantMessage
+      hideAssistantMessageActions={hideAssistantMessageActions}
       reasoningPartComponent={reasoningPartComponent}
       toolCallPartComponent={toolCallPartComponent}
     />

@@ -2,6 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AssistantRuntimeProvider,
+  type ThreadMessageLike,
+  useExternalStoreRuntime,
+} from '@assistant-ui/react';
+import {
   ThemeProvider as KaizenThemeProvider,
   TooltipProvider,
 } from '@nvidia/foundations-react-core';
@@ -9,8 +14,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/index.mjs';
 import type { Stream } from 'openai/streaming.mjs';
-import type { ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 
+import { AssistantChatThread } from './AssistantChatThread';
 import { AssistantChat } from './index';
 
 const mocks = vi.hoisted(() => ({
@@ -92,6 +98,47 @@ const renderAssistantChat = (element: ReactElement) =>
     </KaizenThemeProvider>
   );
 
+const StaticAssistantChatThread = ({
+  hideAssistantMessageActions,
+}: {
+  hideAssistantMessageActions?: boolean;
+}) => {
+  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([
+    {
+      role: 'user',
+      content: [{ type: 'text', text: 'Existing prompt' }],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Existing response' }],
+      status: { type: 'complete', reason: 'stop' },
+    },
+  ]);
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages,
+    setMessages,
+    isRunning: false,
+    onNew: async () => undefined,
+    onEdit: async () => undefined,
+    onReload: async () => undefined,
+    onCancel: async () => undefined,
+    convertMessage: (message) => message,
+    unstable_capabilities: {
+      copy: true,
+    },
+  });
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <AssistantChatThread
+        hideAssistantMessageActions={hideAssistantMessageActions}
+        placeholder="Task prompt"
+        onReset={() => undefined}
+      />
+    </AssistantRuntimeProvider>
+  );
+};
+
 describe('AssistantChat', () => {
   beforeEach(() => {
     mocks.createChatCompletion.mockReset();
@@ -148,7 +195,7 @@ describe('AssistantChat', () => {
     interactionTimeoutMs
   );
 
-  it('omits copy and regenerate message actions', () => {
+  it('shows copy and regenerate message actions by default', () => {
     renderAssistantChat(
       <AssistantChat
         model="test-model"
@@ -165,6 +212,16 @@ describe('AssistantChat', () => {
         ]}
       />
     );
+
+    expect(screen.getByText('Existing prompt')).toBeInTheDocument();
+    expect(screen.getByText('Existing response')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Copy message/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Regenerate response/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
+  it('can hide assistant copy and regenerate message actions', () => {
+    renderAssistantChat(<StaticAssistantChatThread hideAssistantMessageActions />);
 
     expect(screen.getByText('Existing prompt')).toBeInTheDocument();
     expect(screen.getByText('Existing response')).toBeInTheDocument();
