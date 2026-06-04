@@ -60,7 +60,7 @@ The `/v1/models` response is OpenAI-shaped (`{data: [{id, ...}, ...]}`); the par
 
 Before the profile questions, ask which path the user is on:
 
-```
+```txt
 Quick check before I ask the design questions:
 
 A. **You're choosing a model.** Walk me through what the agent does and I'll
@@ -81,7 +81,7 @@ If the user picks **B** → continue to Step 1 with the assess flow:
 
 Ask all three questions in a single message. Skip any that the conversation has already answered (for example, `nemo-explore` already captured tools and deployment).
 
-```
+```txt
 Before I recommend a model, three quick things about what the agent will do:
 
 1. **Tool density.** How many tools, and how do they interact?
@@ -123,7 +123,7 @@ When `/v1/models` was unreachable, also tell the user the rest of this flow is o
 
 The pattern depends on the *evidence quality* of the candidate that best matches the profile:
 
-```
+```txt
 Identify the best-matching candidate.
 Inspect its evidence for the primary axis from profile question 2:
   - "code"               → scores.arena_elo.coding  AND  scores.bfcl_v4
@@ -288,11 +288,11 @@ workflow:
   tool_names: []
 ```
 
-#### Picking the right `_type`
+### Picking the right `_type`
 
 Match the chosen model's namespace prefix against `namespace_to_type[]` from the cache:
 
-```
+```txt
 For each rule in cache.namespace_to_type:
   if model_string.startswith(rule.prefix):
     use rule.nat_type for the YAML _type field
@@ -322,7 +322,7 @@ When the chosen model is non-NIM, also remind the user to set `base_url` and `ap
 
 End with:
 
-```
+```txt
 These recommendations reflect benchmark data current as of this skill's last
 cache refresh. LLM rankings shift often. To pull fresh scores:
 
