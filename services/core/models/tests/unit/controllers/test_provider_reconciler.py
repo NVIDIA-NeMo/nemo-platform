@@ -78,6 +78,25 @@ def _make_discoverable_provider(
     )
 
 
+def _configure_discovery_sdk(mock_models_sdk: MagicMock) -> MagicMock:
+    """Wire mock_models_sdk.with_options to return a discovery-scoped SDK mock."""
+    discovery_sdk = MagicMock()
+    discovery_sdk.inference.gateway.provider.get = AsyncMock(
+        return_value={"object": "list", "data": [{"id": "model-1"}]}
+    )
+    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
+    return discovery_sdk
+
+
+def _assert_discovery_failure_logged_at_debug_not_warning(caplog) -> None:
+    """Discovery transient failures must log at DEBUG, not WARNING."""
+    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
+    assert any(
+        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
+        for r in caplog.records
+    )
+
+
 @pytest.fixture
 def controller_config():
     """Default controller config for provider reconciler tests."""
@@ -158,85 +177,69 @@ async def test_discover_models_passes_configured_timeout(mock_models_sdk):
     )
 
 
+@pytest.mark.parametrize(
+    ("max_retries", "expect_get_call_kwargs"),
+    [
+        (0, None),
+        (
+            2,
+            {
+                "path": "v1/models",
+                "workspace": "test-ns",
+                "name": "test-provider",
+            },
+        ),
+    ],
+)
 @pytest.mark.asyncio
-async def test_discover_models_uses_discovery_sdk_with_configured_retries(mock_models_sdk):
-    """Discovery SDK should be created with controller_config.provider_discovery_max_retries."""
-    discovery_sdk = MagicMock()
-    discovery_sdk.inference.gateway.provider.get = AsyncMock(
-        return_value={"object": "list", "data": [{"id": "model-1"}]}
-    )
-    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
-
-    config = ControllerConfig(provider_discovery_max_retries=0)
+async def test_discover_models_uses_discovery_sdk_with_configured_retries(
+    mock_models_sdk, max_retries, expect_get_call_kwargs
+):
+    """Discovery SDK should honor controller_config.provider_discovery_max_retries."""
+    discovery_sdk = _configure_discovery_sdk(mock_models_sdk)
+    config = ControllerConfig(provider_discovery_max_retries=max_retries)
     reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
 
     await reconciler._discover_models(_make_discoverable_provider())
 
-    mock_models_sdk.with_options.assert_called_once_with(max_retries=0)
-    discovery_sdk.inference.gateway.provider.get.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_discover_models_uses_discovery_sdk_with_nonzero_retries(mock_models_sdk):
-    """Discovery SDK should honor a non-zero provider_discovery_max_retries override."""
-    discovery_sdk = MagicMock()
-    discovery_sdk.inference.gateway.provider.get = AsyncMock(
-        return_value={"object": "list", "data": [{"id": "model-1"}]}
-    )
-    mock_models_sdk.with_options = MagicMock(return_value=discovery_sdk)
-
-    config = ControllerConfig(provider_discovery_max_retries=2)
-    reconciler = ModelProviderReconciler(models_sdk=mock_models_sdk, controller_config=config)
-
-    await reconciler._discover_models(_make_discoverable_provider())
-
-    mock_models_sdk.with_options.assert_called_once_with(max_retries=2)
-    discovery_sdk.inference.gateway.provider.get.assert_called_once_with(
-        "v1/models",
-        workspace="test-ns",
-        name="test-provider",
-        timeout=config.provider_discovery_timeout_seconds,
-    )
-
-
-@pytest.mark.asyncio
-async def test_discover_models_transient_http_error_logs_debug_not_warning(reconciler, mock_models_sdk, caplog):
-    """Transient gateway HTTP errors must log at debug, not warning."""
-    mock_response = MagicMock()
-    mock_response.status_code = 502
-    mock_models_sdk.inference.gateway.provider.get = AsyncMock(
-        side_effect=APIStatusError(
-            "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
-            response=mock_response,
-            body={"detail": "Backend networking error: Connection refused"},
+    mock_models_sdk.with_options.assert_called_once_with(max_retries=max_retries)
+    if expect_get_call_kwargs is None:
+        discovery_sdk.inference.gateway.provider.get.assert_called_once()
+    else:
+        discovery_sdk.inference.gateway.provider.get.assert_called_once_with(
+            expect_get_call_kwargs["path"],
+            workspace=expect_get_call_kwargs["workspace"],
+            name=expect_get_call_kwargs["name"],
+            timeout=config.provider_discovery_timeout_seconds,
         )
-    )
-
-    with caplog.at_level(logging.DEBUG):
-        result = await reconciler._discover_models(_make_discoverable_provider())
-
-    assert isinstance(result, DiscoveryTransientError)
-    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
-    assert any(
-        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
-        for r in caplog.records
-    )
 
 
+@pytest.mark.parametrize(
+    "discovery_side_effect",
+    [
+        pytest.param(
+            APIStatusError(
+                "Error code: 502 - {'detail': 'Backend networking error: Connection refused'}",
+                response=MagicMock(status_code=502),
+                body={"detail": "Backend networking error: Connection refused"},
+            ),
+            id="http_502",
+        ),
+        pytest.param(Exception("Request timed out."), id="network_timeout"),
+    ],
+)
 @pytest.mark.asyncio
-async def test_discover_models_transient_exception_logs_debug_not_warning(reconciler, mock_models_sdk, caplog):
-    """Network/timeout exceptions during discovery must log at debug, not warning."""
-    mock_models_sdk.inference.gateway.provider.get = AsyncMock(side_effect=Exception("Request timed out."))
+async def test_discover_models_transient_errors_log_debug_not_warning(
+    reconciler, mock_models_sdk, caplog, discovery_side_effect
+):
+    """Transient gateway and network failures during discovery must log at debug, not warning."""
+    mock_models_sdk.inference.gateway.provider.get = AsyncMock(side_effect=discovery_side_effect)
 
     with caplog.at_level(logging.DEBUG):
         result = await reconciler._discover_models(_make_discoverable_provider())
 
     assert isinstance(result, DiscoveryTransientError)
-    assert not any(r.levelname == "WARNING" and "Failed to get models" in r.getMessage() for r in caplog.records)
-    assert any(
-        r.levelname == "DEBUG" and "Failed to get models from provider via gateway" in r.getMessage()
-        for r in caplog.records
-    )
+    _assert_discovery_failure_logged_at_debug_not_warning(caplog)
 
 
 @pytest.mark.asyncio
@@ -1845,8 +1848,6 @@ async def test_ensure_passthrough_virtual_model_ignores_conflict_error(reconcile
 @pytest.mark.asyncio
 async def test_ensure_passthrough_virtual_model_logs_warning_on_unexpected_error(reconciler, mock_models_sdk, caplog):
     """Unexpected exceptions are logged as warnings and must not propagate."""
-    import logging
-
     mock_models_sdk.inference.virtual_models.create = AsyncMock(side_effect=RuntimeError("network timeout"))
 
     with caplog.at_level(logging.WARNING):
@@ -2051,8 +2052,6 @@ async def test_cleanup_never_deletes_user_created_virtual_model(reconciler, mock
 @pytest.mark.asyncio
 async def test_cleanup_delete_failure_is_logged_and_non_fatal(reconciler, mock_models_sdk, caplog):
     """Delete failures are swallowed so the next reconcile cycle can retry."""
-    import logging
-
     mock_models_sdk.inference.virtual_models.list = MagicMock(
         return_value=_AsyncPaginator(
             [
