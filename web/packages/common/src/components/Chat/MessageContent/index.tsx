@@ -75,7 +75,7 @@ interface MarkdownTableData {
 
 const MarkdownParagraph: FC<PropsWithChildren> = ({ children }) => (
   <Text asChild kind="body/regular/md">
-    <p className="mb-density-lg text-sm leading-[160%] last:mb-0">{children}</p>
+    <p className="mb-density-xl text-sm leading-[160%] last:mb-0">{children}</p>
   </Text>
 );
 
@@ -345,10 +345,10 @@ const messageMarkdownComponents: Components = {
   ),
   p: MarkdownParagraph,
   ul: ({ children, className }) => (
-    <ul className={cn('my-density-lg list-disc pl-density-lg', className)}>{children}</ul>
+    <ul className={cn('my-density-xl list-disc pl-density-lg', className)}>{children}</ul>
   ),
   ol: ({ children, className, start }) => (
-    <ol className={cn('my-density-lg list-decimal pl-density-2xl', className)} start={start}>
+    <ol className={cn('my-density-xl list-decimal pl-density-2xl', className)} start={start}>
       {children}
     </ol>
   ),

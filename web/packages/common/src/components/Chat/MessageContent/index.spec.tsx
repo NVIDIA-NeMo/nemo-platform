@@ -15,7 +15,9 @@ describe('MessageContent', () => {
   it('renders markdown headings and list items with visible list styling', () => {
     render(
       <MessageContent
-        content={'# Overview\n\n## Plan\n\n- Read the route\n- Update the renderer\n\n### Details'}
+        content={
+          '# Overview\n\n## Plan\n\nRead the route carefully.\n\n- Read the route\n- Update the renderer\n\n### Details'
+        }
       />
     );
 
@@ -38,7 +40,8 @@ describe('MessageContent', () => {
       'leading-[160%]'
     );
     expect(screen.getByTestId('chat-message-content-text')).not.toHaveClass('text-base');
-    expect(screen.getByRole('list')).toHaveClass('my-density-lg', 'list-disc');
+    expect(screen.getByText('Read the route carefully.')).toHaveClass('mb-density-xl');
+    expect(screen.getByRole('list')).toHaveClass('my-density-xl', 'list-disc');
     expect(screen.getByRole('list')).not.toHaveClass('space-y-0.5');
     const listItems = screen.getAllByRole('listitem');
     expect(listItems).toHaveLength(2);
@@ -73,7 +76,7 @@ describe('MessageContent', () => {
     expect(screen.getByTestId('chat-message-content-text')).toHaveClass('whitespace-normal');
     expect(orderedList.tagName).toBe('OL');
     expect(orderedList).toHaveAttribute('start', '2');
-    expect(orderedList).toHaveClass('list-decimal', 'pl-density-2xl');
+    expect(orderedList).toHaveClass('my-density-xl', 'list-decimal', 'pl-density-2xl');
     expect(orderedList).not.toHaveClass('pl-density-lg');
 
     const listItems = within(orderedList).getAllByRole('listitem');
