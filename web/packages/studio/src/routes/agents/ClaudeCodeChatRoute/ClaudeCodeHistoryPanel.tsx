@@ -104,10 +104,10 @@ const HistorySessionButton = ({
             active && 'text-accent'
           )}
         >
-          <MessageSquare size={12} className="fill-current" />
+          <MessageSquare size={12} />
         </span>
         <Flex align="center" justify="between" gap="density-sm" className="min-w-0 flex-1">
-          <Text kind="label/bold/sm" className="min-w-0 flex-1 line-clamp-2">
+          <Text kind="body/regular/sm" className="min-w-0 flex-1 line-clamp-2">
             {session.first_prompt || 'Claude Code session'}
           </Text>
           <Text kind="body/regular/sm" color="secondary" className="shrink-0 whitespace-nowrap">

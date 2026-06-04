@@ -95,7 +95,12 @@ const LandingComposer = ({
         placeholder="Message Claude"
         rows={3}
         resizeable="auto"
-        className="max-h-56 w-full border-0 bg-transparent"
+        className="max-h-56 w-full border-0 bg-transparent shadow-none outline-none focus-within:outline-none [&:has(:focus-visible)]:outline-none"
+        attributes={{
+          TextAreaElement: {
+            className: 'focus-visible:outline-none',
+          },
+        }}
       />
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
