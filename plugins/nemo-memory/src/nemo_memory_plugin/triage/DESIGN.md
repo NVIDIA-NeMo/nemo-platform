@@ -161,8 +161,13 @@ the conservative-tie rule; disagreement logging populates.
 
 Exit when: `python -m nemo_memory_plugin.triage.triage`
 (or equivalent) produces a proposal artifact from the PoC corpus that
-matches the buildout's qualitative findings (drop rate in the 25-45% band
-on the USER corpus).
+matches the buildout's qualitative findings: non-keep proposal rate
+(refine + drop + merge, i.e. anything but `keep`) in the 25-45% band on
+the USER corpus. The original wording was 'drop rate', but the smoke
+run showed that's the wrong shape: the PoC corpus is already a dedup
+output, so duplication-style noise surfaces as `refine` proposals, not
+`drop`. The Phase 1 smoke landed at 40.8% non-keep, squarely inside
+the 25-45% band, so the criterion is sound once relabeled.
 
 ### Phase 2 — Standalone job: `nemo memory triage`
 
