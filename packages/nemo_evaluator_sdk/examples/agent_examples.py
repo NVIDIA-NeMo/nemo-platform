@@ -8,14 +8,13 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-import tempfile
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval import AgentEvalRunConfig, AgentEvaluator, load_profbench
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel, SecretRef
 
 DEFAULT_PROFBENCH_SOURCE = "https://huggingface.co/datasets/nvidia/ProfBench/resolve/main/test.jsonl"
-DEFAULT_OUTPUT_DIR = Path(tempfile.gettempdir()) / "profbench-agent-eval-output"
+DEFAULT_OUTPUT_DIR = Path(__file__).resolve().parent / "profbench-agent-eval-output"
 DEFAULT_MODEL_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 DEFAULT_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
 DEFAULT_API_KEY_SECRET = os.getenv("NMP_EVALUATOR_DEFAULT_API_KEY_SECRET", "NVIDIA_API_KEY")
@@ -128,7 +127,7 @@ async def run_examples() -> None:
     """Execute the agent-eval examples exposed by this module."""
     await run_profbench_baseline_example()
 
-    if os.getenv("NEMO_EVALUATOR_RUN_LIVE_PROFBENCH") == "1":
+    if os.getenv("NEMO_EVALUATOR_RUN_LIVE_PROFBENCH", "1") == "1":
         await run_profbench_live_model_example()
     else:
         print("Skipping live ProfBench model example. Set NEMO_EVALUATOR_RUN_LIVE_PROFBENCH=1 to run it.")
