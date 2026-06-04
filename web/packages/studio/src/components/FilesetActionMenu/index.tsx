@@ -19,20 +19,20 @@ import { EllipsisVertical } from 'lucide-react';
 import { type FC, useState } from 'react';
 
 export interface FilesetActionMenuProps {
-  dataset: FilesetOutput;
-  onNavigateToDetails?: (dataset: FilesetOutput) => void;
-  onDatasetUpdated?: (dataset: FilesetOutput) => void;
-  onDatasetDeleted?: (dataset: FilesetOutput) => void;
+  fileset: FilesetOutput;
+  onNavigateToDetails?: (fileset: FilesetOutput) => void;
+  onFilesetUpdated?: (fileset: FilesetOutput) => void;
+  onFilesetDeleted?: (fileset: FilesetOutput) => void;
 }
 
 export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
-  dataset,
+  fileset,
   onNavigateToDetails,
-  onDatasetUpdated,
-  onDatasetDeleted,
+  onFilesetUpdated,
+  onFilesetDeleted,
 }) => {
   const [modalOpen, setModalOpen] = useState<'edit' | 'delete' | undefined>(undefined);
-  const { mutateAsync: deleteDataset } = useFilesDeleteFileset({
+  const { mutateAsync: deleteFileset } = useFilesDeleteFileset({
     mutation: {
       onSuccess: (_data, variables) => {
         invalidateDatasetCaches(variables.workspace, variables.name, ['list']);
@@ -40,16 +40,16 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
     },
   });
 
-  const handleDeleteDataset = async (): Promise<boolean> => {
+  const handleDeleteFileset = async (): Promise<boolean> => {
     try {
-      if (!dataset?.workspace || !dataset?.name) {
-        throw new Error('Dataset workspace or name is undefined');
+      if (!fileset?.workspace || !fileset?.name) {
+        throw new Error('Fileset workspace or name is undefined');
       }
-      await deleteDataset({ workspace: dataset.workspace, name: dataset.name });
-      onDatasetDeleted?.(dataset);
+      await deleteFileset({ workspace: fileset.workspace, name: fileset.name });
+      onFilesetDeleted?.(fileset);
       return true;
     } catch (error) {
-      console.error('Failed to delete dataset:', error);
+      console.error('Failed to delete fileset:', error);
       return false;
     }
   };
@@ -58,8 +58,8 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
     setModalOpen(undefined);
   };
 
-  const handleDatasetUpdated = (updatedDataset: FilesetOutput) => {
-    onDatasetUpdated?.(updatedDataset);
+  const handleFilesetUpdated = (updatedFileset: FilesetOutput) => {
+    onFilesetUpdated?.(updatedFileset);
     handleModalClose();
   };
 
@@ -67,13 +67,13 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
     <>
       <DropdownRoot>
         <DropdownTrigger asChild showChevron={false} data-testid="quick-actions-menu-trigger">
-          <Button kind="tertiary" aria-label="Open dataset actions menu">
+          <Button kind="tertiary" aria-label="Open fileset actions menu">
             <EllipsisVertical />
           </Button>
         </DropdownTrigger>
         <DropdownContent align="end" className="w-[180px]">
           {onNavigateToDetails && (
-            <DropdownItem onClick={() => onNavigateToDetails(dataset)}>View</DropdownItem>
+            <DropdownItem onClick={() => onNavigateToDetails(fileset)}>View</DropdownItem>
           )}
           <DropdownItem onClick={() => setModalOpen('edit')}>Edit</DropdownItem>
           <DropdownItem onClick={() => setModalOpen('delete')} danger>
@@ -84,10 +84,10 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
 
       {modalOpen === 'edit' && (
         <DatasetCreateModal
-          dataset={dataset}
+          dataset={fileset}
           mode={DatasetCreateModalMode.Edit}
           onClose={handleModalClose}
-          onDatasetUpdated={handleDatasetUpdated}
+          onDatasetUpdated={handleFilesetUpdated}
           open={modalOpen === 'edit'}
         />
       )}
@@ -96,11 +96,11 @@ export const FilesetActionMenu: FC<FilesetActionMenuProps> = ({
         <DeleteConfirmationModal
           open={modalOpen === 'delete'}
           onClose={handleModalClose}
-          onDelete={handleDeleteDataset}
-          title={`Delete Dataset: ${dataset.name}`}
-          confirmationText={dataset.name ?? getEntityReference(dataset)}
+          onDelete={handleDeleteFileset}
+          title={`Delete Fileset: ${fileset.name}`}
+          confirmationText={fileset.name ?? getEntityReference(fileset)}
           simpleConfirm
-          successText="Dataset deleted successfully"
+          successText="Fileset deleted successfully"
         />
       )}
     </>

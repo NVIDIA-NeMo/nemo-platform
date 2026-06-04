@@ -130,8 +130,8 @@ export const FilesetDetailRoute: FC = () => {
               <Flex gap="density-sm" align="center" justify="between">
                 <span>{filesetName}</span>
                 <FilesetActionMenu
-                  dataset={fileset}
-                  onDatasetDeleted={() => navigate(getWorkspaceFilesetsRoute(workspace))}
+                  fileset={fileset}
+                  onFilesetDeleted={() => navigate(getWorkspaceFilesetsRoute(workspace))}
                 />
               </Flex>
             </Stack>
