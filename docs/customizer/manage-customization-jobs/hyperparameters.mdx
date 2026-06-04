@@ -10,7 +10,7 @@ Want to learn about training concepts at a high level? Check out the [Customizat
 </Tip>
 ## Complete Schema Reference
 
-For generated REST API details, see the [Customizer API Reference](../../api/index.md#tag-customizer) and
+For generated REST API details, see the [Customizer API Reference](/documentation/reference/api-reference) and
 search for `CustomizationJobInput`.
 
 Training is configured in the job's `spec.training` object.
@@ -26,7 +26,7 @@ The `training` field is a discriminated union on the `type` field. Each training
 | `training.type` | `sft`, `dpo`, `distillation` | Training method (discriminated union) |
 | `training.peft` | `{ type: "lora", rank: 8, ... }` or omit | PEFT adapter configuration. If set, trains an adapter; if omitted, performs full-weight training |
 
-For generated SFT schema details, see the [Customizer API Reference](../../api/index.md#tag-customizer)
+For generated SFT schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
 and search for `SFTTrainingInput`.
 
 ### DPO Configuration
@@ -41,7 +41,7 @@ When `training.type` is `"dpo"`, additional DPO-specific fields are available:
 | `preference_loss_weight` | Weight for preference loss | `1.0` |
 | `sft_loss_weight` | Weight for SFT loss | `0.0` |
 
-For generated DPO schema details, see the [Customizer API Reference](../../api/index.md#tag-customizer)
+For generated DPO schema details, see the [Customizer API Reference](/documentation/reference/api-reference)
 and search for `DPOTrainingInput`.
 
 <Note>
@@ -114,7 +114,7 @@ When `training.type` is `"distillation"`, additional KD-specific fields are avai
 | `distillation_temperature` | Softmax temperature for KD. Higher = softer probability distributions | `1.0–5.0` (start with `2.0`) |
 
 For generated distillation schema details, see the
-[Customizer API Reference](../../api/index.md#tag-customizer) and search for
+[Customizer API Reference](/documentation/reference/api-reference) and search for
 `DistillationTrainingInput`.
 
 <a id="kd-constraints"></a>

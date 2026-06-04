@@ -243,8 +243,7 @@ navigation:
       path: ../../requirements.mdx
     - page: Support Matrix
       path: ../../support-matrix.mdx
-    - page: API Reference
-      path: ../../api/index.mdx
+    - api: API Reference
     - section: Python SDK
       path: ../../pysdk/index.mdx
       contents:

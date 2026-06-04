@@ -76,13 +76,14 @@ Avoid source-path links such as `/get-started/concepts/workspaces`, `/latest/get
 
 ## API Reference
 
-The API reference page lives at `versions/latest/pages/api/index.mdx` and renders `versions/latest/pages/api/openapi.yaml` with:
+The REST API reference is generated natively by Fern from the OpenAPI spec — no `<swagger-ui>` embed. Two pieces wire it up:
 
-```mdx
-<swagger-ui src="./openapi.yaml" />
-```
+- `generators.yml` declares the spec: `api.specs[].openapi: ./openapi/openapi.yaml`.
+- `versions/latest.yml` surfaces it with an `- api: API Reference` navigation node (under the **Reference** section).
 
-Regenerate or replace `openapi.yaml` when the Platform API changes, then run `npm run check`.
+`openapi/openapi.yaml` is a symlink to the repo-root `openapi/openapi.yaml` (the generated source of truth), so the reference tracks the Platform API automatically. Regenerate the spec with `make refresh-openapi` from the repo root, then run `npm run check`.
+
+Fern groups endpoints by their OpenAPI tag in the sidebar (Customizer, Evaluator, Guardrails, …), which replaces the old per-service filter chips. Link to it from other pages with the nav URL `/documentation/reference/api-reference`.
 
 ## CI and Publishing
 
