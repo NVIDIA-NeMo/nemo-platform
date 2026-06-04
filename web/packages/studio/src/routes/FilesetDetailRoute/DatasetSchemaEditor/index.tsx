@@ -23,7 +23,7 @@ import type {
   FilesetOutput,
 } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Stack, TableToolbar, Text } from '@nvidia/foundations-react-core';
-import { useDownloadFileAsArrayBuffer } from '@studio/components/filesets/hooks/useDownloadFileAsArrayBuffer';
+import { useDownloadFileHead } from '@studio/components/filesets/hooks/useDownloadFileHead';
 import {
   DEFAULT_SCHEMA_VALUE,
   SchemaSelectControl,
@@ -287,7 +287,7 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
   const [isInferring, setIsInferring] = useState(false);
   const [inferError, setInferError] = useState<string | null>(null);
 
-  const downloadFile = useDownloadFileAsArrayBuffer();
+  const downloadFileHead = useDownloadFileHead();
 
   const supportedExistingFiles = useMemo(
     () =>
@@ -318,7 +318,7 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
       for (const file of supportedExistingFiles.slice(0, INFER_FROM_EXISTING_MAX_FILES)) {
         const format = detectFormatFromPath(file.path);
         if (!format) continue;
-        const buffer = await downloadFile({ workspace, datasetName, path: file.path });
+        const buffer = await downloadFileHead({ workspace, datasetName, path: file.path });
         if (!buffer) continue;
         const textContent = decoder.decode(buffer);
         const blob = new File([textContent], file.path);
@@ -350,7 +350,8 @@ export const DatasetSchemaEditor: FC<DatasetSchemaEditorProps> = ({
     } finally {
       setIsInferring(false);
     }
-  }, [supportedExistingFiles, downloadFile, workspace, datasetName]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace/datasetName captured inside downloadFileHead's own useCallback
+  }, [supportedExistingFiles, downloadFileHead]);
 
   const { mutateAsync: updateMetadata, isPending: isSaving } = useFilesUpdateFilesetMetadata();
   const queryClient = useQueryClient();

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
+import { isSchemaAssignableFile } from '@nemo/common/src/utils/jsonSchema';
 import {
   FilesetPurpose,
   type FilesetFileOutput,
@@ -131,7 +132,7 @@ export const FilesTab: FC<FilesTabProps> = ({
       className="w-full h-full min-h-0"
       data-testid="fileset-files-tab"
     >
-      <Flex direction="col" className="flex-1 min-w-0 min-h-0">
+      <Flex direction="col" className="flex-1 min-w-0 min-h-0 h-full">
         {selectedFilePath ? (
           <div className="w-full h-full min-h-0" data-testid="fileset-files-tab-preview">
             <FilesetFilePreviewContent
@@ -145,7 +146,7 @@ export const FilesTab: FC<FilesTabProps> = ({
             />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 overflow-auto">
+          <div className="h-full min-h-0">
             <FilesetFileExplorer
               workspace={workspace}
               datasetName={filesetName}
@@ -161,11 +162,11 @@ export const FilesTab: FC<FilesTabProps> = ({
           </div>
         )}
       </Flex>
-      {showSchemaEditor && (
-        <div
-          className="w-[480px] shrink-0 h-full min-h-0 flex flex-col p-density-lg"
-          data-testid="fileset-files-tab-right-panel"
-        >
+      <div
+        className="w-[480px] shrink-0 h-full min-h-0 flex flex-col px-density-lg pb-density-lg"
+        data-testid="fileset-files-tab-right-panel"
+      >
+        {showSchemaEditor && !(selectedFilePath && !isSchemaAssignableFile(selectedFilePath)) && (
           <DatasetSchemaEditor
             workspace={workspace}
             datasetName={filesetName}
@@ -173,8 +174,8 @@ export const FilesTab: FC<FilesTabProps> = ({
             filesList={files}
             selectedFilePath={selectedFilePath}
           />
-        </div>
-      )}
+        )}
+      </div>
     </Flex>
   );
 };

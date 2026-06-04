@@ -3,14 +3,21 @@
 
 import { filesDownloadFile, filesHeadFile } from '@nemo/sdk/generated/platform/api';
 import { EntityIdentifier } from '@studio/api/common/types';
-import { PREVIEWABLE_FILE_TYPES } from '@studio/api/datasets/constants';
+import { BINARY_FILE_EXTENSIONS } from '@studio/api/datasets/constants';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
+import { useAuth } from 'react-oidc-context';
+
+// Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
+// while preventing OOM crashes on multi-GB external dataset shards.
+const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 
 interface UseDatasetFileContentParams extends Required<EntityIdentifier> {
   path: string;
   range?: [number, number];
+  accessToken?: string;
 }
 
 export type UseDatasetFilesOptions = Omit<UseQueryOptions<string, Error>, 'queryFn' | 'queryKey'> &
@@ -21,6 +28,7 @@ export const datasetFileContentQueryOptions = ({
   name,
   path,
   range,
+  accessToken,
 }: UseDatasetFileContentParams) =>
   queryOptions<string, Error>({
     staleTime: Infinity, // We should prevent refetching full files (costly) unless directly invalidated
@@ -29,10 +37,9 @@ export const datasetFileContentQueryOptions = ({
       ...(range ? range.map((bound) => String(bound)) : []),
     ],
     queryFn: async () => {
-      if (!path.includes('.') || !PREVIEWABLE_FILE_TYPES.has(path.split('.').at(-1)!)) {
-        throw new Error(
-          `Unsupported file type. Currently supports: ${[...PREVIEWABLE_FILE_TYPES].join(', ')}`
-        );
+      const ext = path.split('.').at(-1)?.toLowerCase();
+      if (ext && BINARY_FILE_EXTENSIONS.has(ext)) {
+        throw new Error('Text preview not available for binary files.');
       }
 
       // Check if file exists
@@ -66,16 +73,25 @@ export const datasetFileContentQueryOptions = ({
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {
-        const blob = await filesDownloadFile(workspace!, name, path);
-        if (!blob) throw new Error('Invalid response while downloading file');
-
-        // Handle range requests for non-parquet files
-        if (range) {
-          const slicedBlob = blob.slice(range[0], range[1]);
-          return slicedBlob.text();
-        }
-
-        return blob.text();
+        const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
+        const start = range ? range[0] : 0;
+        const fileUrl = [
+          PLATFORM_BASE_URL,
+          '/apis/files/v2/workspaces/',
+          encodeURIComponent(workspace!),
+          '/filesets/',
+          encodeURIComponent(name),
+          '/-/',
+          encodeURIComponent(path),
+        ].join('');
+        const headers: Record<string, string> = {
+          Range: `bytes=${start}-${end}`,
+        };
+        if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+        const res = await fetch(fileUrl, { headers });
+        if (!res.ok && res.status !== 206)
+          throw new Error('Invalid response while downloading file');
+        return res.text();
       }
     },
   });
@@ -87,8 +103,10 @@ export const useDatasetFileContent = ({
   range,
   ...options
 }: UseDatasetFilesOptions) => {
+  const auth = useAuth();
+  const accessToken = auth.user?.access_token;
   return useQuery({
-    ...datasetFileContentQueryOptions({ workspace, name, path, range }),
+    ...datasetFileContentQueryOptions({ workspace, name, path, range, accessToken }),
     enabled: Boolean(workspace && name && path),
     ...options,
   });
