@@ -18,6 +18,7 @@
 from typing import Dict, List, Optional
 from datetime import datetime
 
+from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
 from .evaluator_aggregate import EvaluatorAggregate
 
@@ -66,3 +67,7 @@ class ExperimentResponse(BaseModel):
     summary: Optional[str] = None
 
     updated_at: Optional[datetime] = None
+
+    if not PYDANTIC_V1:
+        # allow fields with a `model_` prefix
+        model_config = ConfigDict(protected_namespaces=tuple())
