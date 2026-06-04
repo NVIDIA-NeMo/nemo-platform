@@ -1,6 +1,6 @@
 # Contributing
 
-For the release process (version bumps, triggering stable releases, verification, rollback), see [RELEASING.md](RELEASING.md).
+For the release process (version bumps, triggering stable releases, verification), see [RELEASING.md](RELEASING.md).
 
 ## Getting Started
 
