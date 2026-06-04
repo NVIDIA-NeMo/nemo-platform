@@ -13,6 +13,9 @@ Example (customization job collection)::
 
     from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
 
+    # Backend contributors implement get_authz_contribution on the contributor class.
+    # CustomizationRouterService (nemo.services) aggregates them at policy discovery time.
+
     class AutomodelContributor:
         ...
         def get_authz_contribution(self) -> AuthzContribution:
@@ -139,3 +142,18 @@ def authz_for_workspace_job_collection(
         }
 
     return AuthzContribution(permissions=perms, endpoints=endpoints)
+
+
+def combine_authz_contributions(*contribs: AuthzContribution) -> AuthzContribution:
+    """Merge multiple :class:`AuthzContribution` objects into one (e.g. hub + backends)."""
+    merged = AuthzContribution()
+    for contrib in contribs:
+        merged.permissions.update(contrib.permissions)
+        for path, methods in contrib.endpoints.items():
+            merged.endpoints.setdefault(path, {}).update(methods)
+        for role, perms in contrib.role_permissions.items():
+            existing = merged.role_permissions.setdefault(role, [])
+            for perm in perms:
+                if perm not in existing:
+                    existing.append(perm)
+    return merged
