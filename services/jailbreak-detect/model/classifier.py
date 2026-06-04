@@ -73,12 +73,9 @@ class SnowflakeEmbed:
             SNOWFLAKE_MODEL_ID,
             revision=SNOWFLAKE_MODEL_REVISION,
             trust_remote_code=True,
-            add_pooling_layer=False,
-            # The repo ships safetensors only. The model's custom (nomic-bert)
-            # loader reads `safe_serialization` (not `use_safetensors`); without
-            # it the loader looks for a non-existent pytorch_model.bin and fails.
             use_safetensors=True,
             safe_serialization=True,
+            add_pooling_layer=False,
         )
         self.model.to(self.device)
         self.model.eval()
@@ -126,12 +123,10 @@ class JailbreakClassifier:
     def __call__(self, text: str) -> tuple[bool, float]:
         embedding = self.embed(text)
         proba = self.classifier.predict_proba([embedding])[0]
-        # Exact NIM scoring (model/model.py in the NIM image): verdict is argmax,
-        # score is the signed max-probability (-p0 when benign, +p1 when jailbreak).
-        classification = int(np.argmax(proba))
-        prob = float(np.max(proba))
-        score = -prob if classification == 0 else prob
-        return bool(classification), score
+        class_idx = int(np.argmax(proba))
+        prob = float(proba[class_idx])
+        score = -prob if class_idx == 0 else prob
+        return bool(class_idx), score
 
 
 class JailbreakClassifierONNX:

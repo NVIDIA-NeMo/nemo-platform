@@ -21,11 +21,9 @@ ENV JAILBREAK_CHECK_DEVICE=cpu \
 
 WORKDIR /app
 
-# Install locked dependencies (cached layer; no dev deps).
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# App sources (change more often than deps).
 COPY model/classifier.py model/server.py ./
 
 ENV PATH="/app/.venv/bin:$PATH"
