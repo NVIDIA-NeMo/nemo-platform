@@ -1,0 +1,1652 @@
+{
+  "store_name": "pi-hermes:CONSOLIDATED:user",
+  "council_models": [
+    "azure-anthropic-claude-sonnet-4-6"
+  ],
+  "started_at": "2026-06-04T15:36:51.245389+00:00",
+  "finished_at": "2026-06-04T15:48:19.887708+00:00",
+  "elapsed_sec": 688.6392454998568,
+  "verdict_counts": {
+    "promote_to_prompt": 21,
+    "drop": 1,
+    "refine": 17,
+    "keep": 32
+  },
+  "proposals": [
+    {
+      "entry_id": "2c52e8806ac9ede6",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.85,
+      "necessity_score": 0.95,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.85,
+          "necessity": 0.95,
+          "justification": "This entry has 8-session corroboration, contains a direct quote, and defines a concrete behavioral rule (pause before acting when uncertain, surface gaps explicitly) that should govern every interaction\u2014not just retrieved when contextually relevant. It directly changes agent decisions about when to proceed vs. ask.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.85,\n  \"necessity\": 0.95,\n  \"justification\": \"This entry has 8-session corroboration, contains a direct quote, and defines a concrete behavioral rule (pause before acting when uncertain, surface gaps explicitly) that should govern every interaction\u2014not just retrieved when contextually relevant. It directly changes agent decisions about when to proceed vs. ask.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 6.483006249880418
+        }
+      },
+      "justification": "This entry has 8-session corroboration, contains a direct quote, and defines a concrete behavioral rule (pause before acting when uncertain, surface gaps explicitly) that should govern every interaction\u2014not just retrieved when contextually relevant. It directly changes agent decisions about when to proceed vs. ask.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "2d5005c7ea8c6a13",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.85,
+      "necessity_score": 0.95,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.85,
+          "necessity": 0.95,
+          "justification": "This entry is corroborated across 6 sessions, contains direct quotes, and describes a core interaction style that should govern every response involving recommendations or architectural proposals\u2014not just retrieved situationally. Removing it would cause the agent to default to deferential validation rather than substantive pushback.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.85,\n  \"necessity\": 0.95,\n  \"justification\": \"This entry is corroborated across 6 sessions, contains direct quotes, and describes a core interaction style that should govern every response involving recommendations or architectural proposals\u2014not just retrieved situationally. Removing it would cause the agent to default to deferential validation rather than substantive pushback.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.135127790970728
+        }
+      },
+      "justification": "This entry is corroborated across 6 sessions, contains direct quotes, and describes a core interaction style that should govern every response involving recommendations or architectural proposals\u2014not just retrieved situationally. Removing it would cause the agent to default to deferential validation rather than substantive pushback.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "9cd72c55fda5ded2",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.9,
+          "justification": "This entry captures a consistent, high-impact working style preference (deliberate investigation before action, understanding before implementing) that should govern every interaction rather than being retrieved situationally. With 4-session corroboration it is well-established and directly changes agent behavior at every tool introduction or architectural decision point.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a consistent, high-impact working style preference (deliberate investigation before action, understanding before implementing) that should govern every interaction rather than being retrieved situationally. With 4-session corroboration it is well-established and directly changes agent behavior at every tool introduction or architectural decision point.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.885664250003174
+        }
+      },
+      "justification": "This entry captures a consistent, high-impact working style preference (deliberate investigation before action, understanding before implementing) that should govern every interaction rather than being retrieved situationally. With 4-session corroboration it is well-established and directly changes agent behavior at every tool introduction or architectural decision point.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "55a644cd8f6ff2c0",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "This entry captures a precise, multi-faceted behavioral contract with direct quotes that should govern nearly every interaction involving implementation decisions, git workflows, or discussion vs. action tradeoffs \u2014 making it broadly applicable enough for the always-on system prompt rather than retrieval. The 3-session corroboration and specific quotes confirm its reliability.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a precise, multi-faceted behavioral contract with direct quotes that should govern nearly every interaction involving implementation decisions, git workflows, or discussion vs. action tradeoffs \u2014 making it broadly applicable enough for the always-on system prompt rather than retrieval. The 3-session corroboration and specific quotes confirm its reliability.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.662992666941136
+        }
+      },
+      "justification": "This entry captures a precise, multi-faceted behavioral contract with direct quotes that should govern nearly every interaction involving implementation decisions, git workflows, or discussion vs. action tradeoffs \u2014 making it broadly applicable enough for the always-on system prompt rather than retrieval. The 3-session corroboration and specific quotes confirm its reliability.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "3b633c1de36c5c76",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.72,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.72,
+          "necessity": 0.85,
+          "justification": "This entry captures a consistent, high-signal behavioral preference (accept explicit decisions, clarify ambiguity, prefer narrow iterations) observed across 3 sessions that would meaningfully alter agent behavior if absent. It applies broadly enough to every interaction that it belongs in the always-on system prompt rather than being retrieved situationally.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.72,\n  \"necessity\": 0.85,\n  \"justification\": \"This entry captures a consistent, high-signal behavioral preference (accept explicit decisions, clarify ambiguity, prefer narrow iterations) observed across 3 sessions that would meaningfully alter agent behavior if absent. It applies broadly enough to every interaction that it belongs in the always-on system prompt rather than being retrieved situationally.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.4903717080596834
+        }
+      },
+      "justification": "This entry captures a consistent, high-signal behavioral preference (accept explicit decisions, clarify ambiguity, prefer narrow iterations) observed across 3 sessions that would meaningfully alter agent behavior if absent. It applies broadly enough to every interaction that it belongs in the always-on system prompt rather than being retrieved situationally.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "3ebdcd9b6c4913b5",
+      "verdict": "drop",
+      "quality_score": 0.2,
+      "necessity_score": 0.1,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "drop",
+          "quality": 0.2,
+          "necessity": 0.1,
+          "justification": "This entry describes a general epistemic virtue (comfort with uncertainty, honesty about knowledge gaps) that applies to any thoughtful person and is not specific to this user's workflows, tools, or decisions. It would not change concrete agent behavior and is too vague to be retrievable in a meaningful way.",
+          "raw_response": "{\n  \"verdict\": \"drop\",\n  \"quality\": 0.2,\n  \"necessity\": 0.1,\n  \"justification\": \"This entry describes a general epistemic virtue (comfort with uncertainty, honesty about knowledge gaps) that applies to any thoughtful person and is not specific to this user's workflows, tools, or decisions. It would not change concrete agent behavior and is too vague to be retrievable in a meaningful way.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.787849541986361
+        }
+      },
+      "justification": "This entry describes a general epistemic virtue (comfort with uncertainty, honesty about knowledge gaps) that applies to any thoughtful person and is not specific to this user's workflows, tools, or decisions. It would not change concrete agent behavior and is too vague to be retrievable in a meaningful way.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "ecbfeb8c7243fb9d",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.8,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.8,
+          "necessity": 0.8,
+          "justification": "This entry encodes a clear, actionable design philosophy about skill authoring with a direct quote \u2014 it would actively prevent the agent from over-constraining skills. Its broad applicability across all interactions makes it a strong candidate for the always-on system prompt rather than a retrieved memory.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.8,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry encodes a clear, actionable design philosophy about skill authoring with a direct quote \u2014 it would actively prevent the agent from over-constraining skills. Its broad applicability across all interactions makes it a strong candidate for the always-on system prompt rather than a retrieved memory.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.991082207998261
+        }
+      },
+      "justification": "This entry encodes a clear, actionable design philosophy about skill authoring with a direct quote \u2014 it would actively prevent the agent from over-constraining skills. Its broad applicability across all interactions makes it a strong candidate for the always-on system prompt rather than a retrieved memory.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "a2904a90b343a7bf",
+      "verdict": "refine",
+      "quality_score": 0.75,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.75,
+          "necessity": 0.9,
+          "justification": "The entry combines two distinct topics (AGENTS.md formatting preference and general output length preference) that should be separate entries for clean retrieval and targeted application.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.75,\n  \"necessity\": 0.9,\n  \"justification\": \"The entry combines two distinct topics (AGENTS.md formatting preference and general output length preference) that should be separate entries for clean retrieval and targeted application.\",\n  \"refined_text\": \"Strongly dislikes adding imperatives/directives in front of existing DO/DO NOT blocks in AGENTS.md. \\\"If an agent isn't obeying [the DO/DO NOT block], then I don't know what will.\\\" Don't stack ceremony in front of existing instructions.\",\n  \"merge_with\": []\n}",
+          "refined_text": "Strongly dislikes adding imperatives/directives in front of existing DO/DO NOT blocks in AGENTS.md. \"If an agent isn't obeying [the DO/DO NOT block], then I don't know what will.\" Don't stack ceremony in front of existing instructions.",
+          "merge_with": [],
+          "elapsed_sec": 5.961988333845511
+        }
+      },
+      "justification": "The entry combines two distinct topics (AGENTS.md formatting preference and general output length preference) that should be separate entries for clean retrieval and targeted application.",
+      "refined_text": "Strongly dislikes adding imperatives/directives in front of existing DO/DO NOT blocks in AGENTS.md. \"If an agent isn't obeying [the DO/DO NOT block], then I don't know what will.\" Don't stack ceremony in front of existing instructions.",
+      "merge_with": []
+    },
+    {
+      "entry_id": "84d3ccff688a9114",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This entry has 3-session corroboration, contains specific quotes, and describes a core communication preference that would affect nearly every agent response. It belongs in the always-on system prompt rather than retrieved on demand.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry has 3-session corroboration, contains specific quotes, and describes a core communication preference that would affect nearly every agent response. It belongs in the always-on system prompt rather than retrieved on demand.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.3269191251602024
+        }
+      },
+      "justification": "This entry has 3-session corroboration, contains specific quotes, and describes a core communication preference that would affect nearly every agent response. It belongs in the always-on system prompt rather than retrieved on demand.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "bd67f4f43e9c9694",
+      "verdict": "keep",
+      "quality_score": 0.6,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.6,
+          "necessity": 0.6,
+          "justification": "This is specific actionable guidance about file structure (CLAUDE.md/AGENTS.md) with a concrete named location ('top vs rule #7') and a clear rationale about framing effects. It would meaningfully influence how the agent structures identity/character instructions in agent configuration files.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.6,\n  \"necessity\": 0.6,\n  \"justification\": \"This is specific actionable guidance about file structure (CLAUDE.md/AGENTS.md) with a concrete named location ('top vs rule #7') and a clear rationale about framing effects. It would meaningfully influence how the agent structures identity/character instructions in agent configuration files.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.437230916926637
+        }
+      },
+      "justification": "This is specific actionable guidance about file structure (CLAUDE.md/AGENTS.md) with a concrete named location ('top vs rule #7') and a clear rationale about framing effects. It would meaningfully influence how the agent structures identity/character instructions in agent configuration files.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "07b56fbdcc233913",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "This entry describes a consistent, broad preference that should govern every memory-writing and cleanup interaction\u2014not just recalled occasionally. It directly changes agent behavior (trimming specifics, proactive cleanup proposals) and applies universally enough to warrant always-on inclusion rather than retrieval-based access.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"This entry describes a consistent, broad preference that should govern every memory-writing and cleanup interaction\u2014not just recalled occasionally. It directly changes agent behavior (trimming specifics, proactive cleanup proposals) and applies universally enough to warrant always-on inclusion rather than retrieval-based access.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.9033325840719044
+        }
+      },
+      "justification": "This entry describes a consistent, broad preference that should govern every memory-writing and cleanup interaction\u2014not just recalled occasionally. It directly changes agent behavior (trimming specifics, proactive cleanup proposals) and applies universally enough to warrant always-on inclusion rather than retrieval-based access.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "e37c64430111426a",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This entry captures a specific, quoted user preference that would directly change agent behavior\u2014providing plain editable text instead of polished, voice-matched copy for team-facing content. The direct quote anchors the guidance concretely and it is not obviously covered by system prompt defaults.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry captures a specific, quoted user preference that would directly change agent behavior\u2014providing plain editable text instead of polished, voice-matched copy for team-facing content. The direct quote anchors the guidance concretely and it is not obviously covered by system prompt defaults.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.58698962489143
+        }
+      },
+      "justification": "This entry captures a specific, quoted user preference that would directly change agent behavior\u2014providing plain editable text instead of polished, voice-matched copy for team-facing content. The direct quote anchors the guidance concretely and it is not obviously covered by system prompt defaults.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "1afa1e62e8955f70",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.6,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.6,
+          "necessity": 0.8,
+          "justification": "This describes a fundamental interaction style preference that applies to every session, not just retrievable in specific contexts. It should be always-on so the agent never defaults to presenting finished conclusions without showing reasoning.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.6,\n  \"necessity\": 0.8,\n  \"justification\": \"This describes a fundamental interaction style preference that applies to every session, not just retrievable in specific contexts. It should be always-on so the agent never defaults to presenting finished conclusions without showing reasoning.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.34213366615586
+        }
+      },
+      "justification": "This describes a fundamental interaction style preference that applies to every session, not just retrievable in specific contexts. It should be always-on so the agent never defaults to presenting finished conclusions without showing reasoning.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "fa248bb8026a7f3e",
+      "verdict": "refine",
+      "quality_score": 0.6,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.6,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics that should be separated: (1) a presentation/interaction preference (chunked, incremental delivery) and (2) a technical methodology preference (exploring types/contracts first). Splitting them makes each retrievable and actionable on its own.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.6,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics that should be separated: (1) a presentation/interaction preference (chunked, incremental delivery) and (2) a technical methodology preference (exploring types/contracts first). Splitting them makes each retrievable and actionable on its own.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.122714250115678
+        }
+      },
+      "justification": "The entry combines two distinct topics that should be separated: (1) a presentation/interaction preference (chunked, incremental delivery) and (2) a technical methodology preference (exploring types/contracts first). Splitting them makes each retrievable and actionable on its own.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "0cf94a88d9bf510e",
+      "verdict": "refine",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "The entry combines two distinct topics (explanation style preferences and time-estimate preferences) that should be separate entries for precise retrieval. Both topics are high-quality with direct quotes and concrete behavioral signals.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"The entry combines two distinct topics (explanation style preferences and time-estimate preferences) that should be separate entries for precise retrieval. Both topics are high-quality with direct quotes and concrete behavioral signals.\",\n  \"refined_text\": null,\n  \"merge_with\": [],\n  \"_entries\": [\n    {\n      \"topic\": \"explanation_style\",\n      \"text\": \"Prefers deep \\\"under the hood\\\" explanations that connect abstract mechanisms to familiar experiences (\\\"you've used this without realizing\\\"). Appreciates bridging theory to practice rather than surface-level how-to guides.\"\n    },\n    {\n      \"topic\": \"time_estimates\",\n      \"text\": \"Dislikes time estimates in agentic development contexts: \\\"I don't care about estimates and they only serve to muddy the waters. We're all doing agentic development, so engineering days means very little.\\\" \\\"Estimates muddy the waters.\\\" Considers them subjective and unlikely to influence decisions unless something will take a year. Prefers categorical scales (none/small/non-trivial) over specific durations. What matters is whether a slice depends on hard design calls, not calendar-day framing.\"\n    }\n  ]\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 5.440316500142217
+        }
+      },
+      "justification": "The entry combines two distinct topics (explanation style preferences and time-estimate preferences) that should be separate entries for precise retrieval. Both topics are high-quality with direct quotes and concrete behavioral signals.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "2b7aab650de6b343",
+      "verdict": "keep",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "Highly specific preference with a concrete example (73:21 vs 1:13:21) and a quoted emotional reaction ('demoralizing'); this would directly change how the agent formats elapsed time displays above 60 minutes.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"Highly specific preference with a concrete example (73:21 vs 1:13:21) and a quoted emotional reaction ('demoralizing'); this would directly change how the agent formats elapsed time displays above 60 minutes.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.5766547080129385
+        }
+      },
+      "justification": "Highly specific preference with a concrete example (73:21 vs 1:13:21) and a quoted emotional reaction ('demoralizing'); this would directly change how the agent formats elapsed time displays above 60 minutes.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "f5632decb7fda7e1",
+      "verdict": "keep",
+      "quality_score": 0.6,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.6,
+          "necessity": 0.6,
+          "justification": "This captures a specific, actionable working-style preference (tackling easy tasks first) that would influence how the agent structures and presents work breakdowns. It's reasonably concrete and retrievable, though single-session corroboration makes it tentative.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.6,\n  \"necessity\": 0.6,\n  \"justification\": \"This captures a specific, actionable working-style preference (tackling easy tasks first) that would influence how the agent structures and presents work breakdowns. It's reasonably concrete and retrievable, though single-session corroboration makes it tentative.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.759801584063098
+        }
+      },
+      "justification": "This captures a specific, actionable working-style preference (tackling easy tasks first) that would influence how the agent structures and presents work breakdowns. It's reasonably concrete and retrievable, though single-session corroboration makes it tentative.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "1b1ef746cf511fe9",
+      "verdict": "refine",
+      "quality_score": 0.75,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.75,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics (planning preference and static typing preference) that should be separate entries for clean retrieval. Both contain specific, actionable signals including a direct quote and a named reference entity.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.75,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics (planning preference and static typing preference) that should be separate entries for clean retrieval. Both contain specific, actionable signals including a direct quote and a named reference entity.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.4743034169077873
+        }
+      },
+      "justification": "The entry combines two distinct topics (planning preference and static typing preference) that should be separate entries for clean retrieval. Both contain specific, actionable signals including a direct quote and a named reference entity.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "7350bebdc6f86fbf",
+      "verdict": "keep",
+      "quality_score": 0.4,
+      "necessity_score": 0.5,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.4,
+          "necessity": 0.5,
+          "justification": "The entry captures a meaningful preference (willingness to deviate from existing codebase patterns in favor of proper module separation) that could influence architectural suggestions. It's somewhat vague but specific enough to distinguish this user from one who always follows existing patterns.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.4,\n  \"necessity\": 0.5,\n  \"justification\": \"The entry captures a meaningful preference (willingness to deviate from existing codebase patterns in favor of proper module separation) that could influence architectural suggestions. It's somewhat vague but specific enough to distinguish this user from one who always follows existing patterns.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.718993166927248
+        }
+      },
+      "justification": "The entry captures a meaningful preference (willingness to deviate from existing codebase patterns in favor of proper module separation) that could influence architectural suggestions. It's somewhat vague but specific enough to distinguish this user from one who always follows existing patterns.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "8f83115f4850f5ef",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This captures a specific, non-obvious engineering philosophy about error handling trade-offs (TOCTOU checks vs. letting exceptions propagate) that would meaningfully change how the agent structures file-system code suggestions. The concrete example of stat-able but not list-able directories makes it retrievable and actionable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This captures a specific, non-obvious engineering philosophy about error handling trade-offs (TOCTOU checks vs. letting exceptions propagate) that would meaningfully change how the agent structures file-system code suggestions. The concrete example of stat-able but not list-able directories makes it retrievable and actionable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.021656750002876
+        }
+      },
+      "justification": "This captures a specific, non-obvious engineering philosophy about error handling trade-offs (TOCTOU checks vs. letting exceptions propagate) that would meaningfully change how the agent structures file-system code suggestions. The concrete example of stat-able but not list-able directories makes it retrievable and actionable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "ccd19a2fa2414c49",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This is a clear, actionable preference that should govern every code-related decision the agent makes, not just ones where it happens to retrieve this memory. It captures a specific behavioral directive ('do whatever is most consistent') that would meaningfully change agent behavior if absent.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This is a clear, actionable preference that should govern every code-related decision the agent makes, not just ones where it happens to retrieve this memory. It captures a specific behavioral directive ('do whatever is most consistent') that would meaningfully change agent behavior if absent.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.886783207999542
+        }
+      },
+      "justification": "This is a clear, actionable preference that should govern every code-related decision the agent makes, not just ones where it happens to retrieve this memory. It captures a specific behavioral directive ('do whatever is most consistent') that would meaningfully change agent behavior if absent.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "f4a359b3859edf3d",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.9,
+      "necessity_score": 1.0,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.9,
+          "necessity": 1.0,
+          "justification": "This preference directly and concretely affects how the agent formats every formula or algorithm explanation\u2014always use Python-style pseudocode instead of LaTeX math notation. The direct quote and clear rationale make it high quality, and the broad applicability across all technical interactions warrants promotion to the always-on system prompt.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.9,\n  \"necessity\": 1.0,\n  \"justification\": \"This preference directly and concretely affects how the agent formats every formula or algorithm explanation\u2014always use Python-style pseudocode instead of LaTeX math notation. The direct quote and clear rationale make it high quality, and the broad applicability across all technical interactions warrants promotion to the always-on system prompt.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.579540457809344
+        }
+      },
+      "justification": "This preference directly and concretely affects how the agent formats every formula or algorithm explanation\u2014always use Python-style pseudocode instead of LaTeX math notation. The direct quote and clear rationale make it high quality, and the broad applicability across all technical interactions warrants promotion to the always-on system prompt.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "3a4f5eb974a14f65",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "This entry captures a concrete, high-impact behavioral expectation (provide verifiable evidence like git range-diff/patch-ids rather than assertions) that applies to virtually every technical interaction with this user. Its broad applicability and direct effect on agent behavior make it a strong candidate for the always-on system prompt rather than retrieval-only memory.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a concrete, high-impact behavioral expectation (provide verifiable evidence like git range-diff/patch-ids rather than assertions) that applies to virtually every technical interaction with this user. Its broad applicability and direct effect on agent behavior make it a strong candidate for the always-on system prompt rather than retrieval-only memory.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.631964040920138
+        }
+      },
+      "justification": "This entry captures a concrete, high-impact behavioral expectation (provide verifiable evidence like git range-diff/patch-ids rather than assertions) that applies to virtually every technical interaction with this user. Its broad applicability and direct effect on agent behavior make it a strong candidate for the always-on system prompt rather than retrieval-only memory.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "da5498e4affca2a0",
+      "verdict": "refine",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics \u2014 verification/impact-checking behavior (with a direct quote) and data model evolution philosophy \u2014 which should be separate entries for precise retrieval. The defect is multiple distinct topics merged together.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics \u2014 verification/impact-checking behavior (with a direct quote) and data model evolution philosophy \u2014 which should be separate entries for precise retrieval. The defect is multiple distinct topics merged together.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.521238457877189
+        }
+      },
+      "justification": "The entry combines two distinct topics \u2014 verification/impact-checking behavior (with a direct quote) and data model evolution philosophy \u2014 which should be separate entries for precise retrieval. The defect is multiple distinct topics merged together.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "ffccf834cf1224a4",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "This is a consistent, actionable design philosophy with a direct quote that would influence proposal framing across many sessions \u2014 the agent should default to minimal/explicit solutions and avoid suggesting configuration mechanisms without this needing to be retrieved. It applies broadly enough to warrant always-on presence.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"This is a consistent, actionable design philosophy with a direct quote that would influence proposal framing across many sessions \u2014 the agent should default to minimal/explicit solutions and avoid suggesting configuration mechanisms without this needing to be retrieved. It applies broadly enough to warrant always-on presence.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.194989582989365
+        }
+      },
+      "justification": "This is a consistent, actionable design philosophy with a direct quote that would influence proposal framing across many sessions \u2014 the agent should default to minimal/explicit solutions and avoid suggesting configuration mechanisms without this needing to be retrieved. It applies broadly enough to warrant always-on presence.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "552517c9122f43f4",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This entry names specific components (openshell-sdk, openshell-cli) and encodes a concrete architectural preference that would directly influence decisions about where to place shared logic. Removing it would cause the agent to miss a stated preference and potentially recommend inline implementations in consumers instead of extending the SDK.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry names specific components (openshell-sdk, openshell-cli) and encodes a concrete architectural preference that would directly influence decisions about where to place shared logic. Removing it would cause the agent to miss a stated preference and potentially recommend inline implementations in consumers instead of extending the SDK.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.8936336250044405
+        }
+      },
+      "justification": "This entry names specific components (openshell-sdk, openshell-cli) and encodes a concrete architectural preference that would directly influence decisions about where to place shared logic. Removing it would cause the agent to miss a stated preference and potentially recommend inline implementations in consumers instead of extending the SDK.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "3adf210f1341a445",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "This captures a concrete, actionable preference ('who is consumer #3') that would materially change how the agent responds to architecture questions\u2014pushing toward concrete consumer enumeration and YAGNI justification rather than speculative abstraction. It's specific enough and broadly applicable enough to belong in the always-on system prompt.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"This captures a concrete, actionable preference ('who is consumer #3') that would materially change how the agent responds to architecture questions\u2014pushing toward concrete consumer enumeration and YAGNI justification rather than speculative abstraction. It's specific enough and broadly applicable enough to belong in the always-on system prompt.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.078531707869843
+        }
+      },
+      "justification": "This captures a concrete, actionable preference ('who is consumer #3') that would materially change how the agent responds to architecture questions\u2014pushing toward concrete consumer enumeration and YAGNI justification rather than speculative abstraction. It's specific enough and broadly applicable enough to belong in the always-on system prompt.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "cd59e47469ff3772",
+      "verdict": "refine",
+      "quality_score": 0.45,
+      "necessity_score": 0.5,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.45,
+          "necessity": 0.5,
+          "justification": "The entry combines two distinct behavioral signals that should be separated: (1) architectural thinking / evaluating second-order implications before implementing, and (2) preferring to ground discussions in actual code before reasoning about design. These are independent preferences that could be retrieved in different contexts.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.45,\n  \"necessity\": 0.5,\n  \"justification\": \"The entry combines two distinct behavioral signals that should be separated: (1) architectural thinking / evaluating second-order implications before implementing, and (2) preferring to ground discussions in actual code before reasoning about design. These are independent preferences that could be retrieved in different contexts.\",\n  \"refined_text\": \"Thinks architecturally before implementing \u2014 considers whether ideas are 'in step with project direction' and evaluates second-order implications before committing to an approach.\",\n  \"merge_with\": []\n}",
+          "refined_text": "Thinks architecturally before implementing \u2014 considers whether ideas are 'in step with project direction' and evaluates second-order implications before committing to an approach.",
+          "merge_with": [],
+          "elapsed_sec": 3.4152564578689635
+        }
+      },
+      "justification": "The entry combines two distinct behavioral signals that should be separated: (1) architectural thinking / evaluating second-order implications before implementing, and (2) preferring to ground discussions in actual code before reasoning about design. These are independent preferences that could be retrieved in different contexts.",
+      "refined_text": "Thinks architecturally before implementing \u2014 considers whether ideas are 'in step with project direction' and evaluates second-order implications before committing to an approach.",
+      "merge_with": []
+    },
+    {
+      "entry_id": "d78b6a695264b8f4",
+      "verdict": "keep",
+      "quality_score": 0.75,
+      "necessity_score": 0.7,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.75,
+          "necessity": 0.7,
+          "justification": "The entry captures a specific, named design principle with a concrete example (removing `--model` flag, trajectory.json as authoritative source) that would guide future feature-removal decisions. Two-session corroboration and the specific artifact names make this retrievable and actionable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.75,\n  \"necessity\": 0.7,\n  \"justification\": \"The entry captures a specific, named design principle with a concrete example (removing `--model` flag, trajectory.json as authoritative source) that would guide future feature-removal decisions. Two-session corroboration and the specific artifact names make this retrievable and actionable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 18.518145541194826
+        }
+      },
+      "justification": "The entry captures a specific, named design principle with a concrete example (removing `--model` flag, trajectory.json as authoritative source) that would guide future feature-removal decisions. Two-session corroboration and the specific artifact names make this retrievable and actionable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "f06b7cf3228f3384",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.7,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.7,
+          "justification": "The entry captures a specific, actionable preference\u2014quantitative measurements (LOC, file counts, time estimates) over speculation when evaluating architectural decisions\u2014and includes a direct quote that anchors the signal. It would concretely change how the agent frames migration/cost analyses.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.7,\n  \"justification\": \"The entry captures a specific, actionable preference\u2014quantitative measurements (LOC, file counts, time estimates) over speculation when evaluating architectural decisions\u2014and includes a direct quote that anchors the signal. It would concretely change how the agent frames migration/cost analyses.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.7923901251051575
+        }
+      },
+      "justification": "The entry captures a specific, actionable preference\u2014quantitative measurements (LOC, file counts, time estimates) over speculation when evaluating architectural decisions\u2014and includes a direct quote that anchors the signal. It would concretely change how the agent frames migration/cost analyses.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "e85750de7b7fc4fa",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This entry captures a specific architectural preference with named systems (Claude Code, deepagents-cli) and named artifact types (reviewer prompts, synthesis templates, shell scripts), making it retrievable and actionable. It would meaningfully change how the agent structures multi-runtime workflows.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry captures a specific architectural preference with named systems (Claude Code, deepagents-cli) and named artifact types (reviewer prompts, synthesis templates, shell scripts), making it retrievable and actionable. It would meaningfully change how the agent structures multi-runtime workflows.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.301796792075038
+        }
+      },
+      "justification": "This entry captures a specific architectural preference with named systems (Claude Code, deepagents-cli) and named artifact types (reviewer prompts, synthesis templates, shell scripts), making it retrievable and actionable. It would meaningfully change how the agent structures multi-runtime workflows.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "777f85f2c2a6580f",
+      "verdict": "refine",
+      "quality_score": 0.7,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.7,
+          "necessity": 0.85,
+          "justification": "The entry combines two distinct topics (skills-vs-agents framework distinction and RFC/doc writing style preferences) that should be separate entries for clean retrieval. This is the 'multiple distinct topics' defect.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.7,\n  \"necessity\": 0.85,\n  \"justification\": \"The entry combines two distinct topics (skills-vs-agents framework distinction and RFC/doc writing style preferences) that should be separate entries for clean retrieval. This is the 'multiple distinct topics' defect.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.7576897498220205
+        }
+      },
+      "justification": "The entry combines two distinct topics (skills-vs-agents framework distinction and RFC/doc writing style preferences) that should be separate entries for clean retrieval. This is the 'multiple distinct topics' defect.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "0f7fb9245ec9337d",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.9,
+      "necessity_score": 1.0,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.9,
+          "necessity": 1.0,
+          "justification": "This entry is highly specific (named phrases, named formatting elements, named artifact type), directly actionable, and applies to virtually every writing task the agent assists with. It should be in the always-on system prompt so the agent never needs to retrieve it to avoid banned patterns.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.9,\n  \"necessity\": 1.0,\n  \"justification\": \"This entry is highly specific (named phrases, named formatting elements, named artifact type), directly actionable, and applies to virtually every writing task the agent assists with. It should be in the always-on system prompt so the agent never needs to retrieve it to avoid banned patterns.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.9717787918634713
+        }
+      },
+      "justification": "This entry is highly specific (named phrases, named formatting elements, named artifact type), directly actionable, and applies to virtually every writing task the agent assists with. It should be in the always-on system prompt so the agent never needs to retrieve it to avoid banned patterns.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "09d03f0713454d63",
+      "verdict": "keep",
+      "quality_score": 0.85,
+      "necessity_score": 0.7,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.85,
+          "necessity": 0.7,
+          "justification": "The entry is specific and verifiable, citing a concrete rejected phrase ('Anatomy of an Agent') and the preferred alternative ('Agent Definition') in a named context (NeMo Platform agents page). It would meaningfully guide heading choices in future documentation drafting tasks.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.85,\n  \"necessity\": 0.7,\n  \"justification\": \"The entry is specific and verifiable, citing a concrete rejected phrase ('Anatomy of an Agent') and the preferred alternative ('Agent Definition') in a named context (NeMo Platform agents page). It would meaningfully guide heading choices in future documentation drafting tasks.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.8119437920395285
+        }
+      },
+      "justification": "The entry is specific and verifiable, citing a concrete rejected phrase ('Anatomy of an Agent') and the preferred alternative ('Agent Definition') in a named context (NeMo Platform agents page). It would meaningfully guide heading choices in future documentation drafting tasks.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "afee580c9feb00bf",
+      "verdict": "keep",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This entry provides specific, actionable guidance with concrete examples of prohibited patterns ('the existing X tests', 'closes a coverage gap') and a named task trigger ('audit docstrings for leakage'). It would directly change agent behavior when reviewing or writing documentation, and this type of domain-specific housekeeping rule is unlikely to be covered by a general system prompt.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry provides specific, actionable guidance with concrete examples of prohibited patterns ('the existing X tests', 'closes a coverage gap') and a named task trigger ('audit docstrings for leakage'). It would directly change agent behavior when reviewing or writing documentation, and this type of domain-specific housekeeping rule is unlikely to be covered by a general system prompt.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.321715584024787
+        }
+      },
+      "justification": "This entry provides specific, actionable guidance with concrete examples of prohibited patterns ('the existing X tests', 'closes a coverage gap') and a named task trigger ('audit docstrings for leakage'). It would directly change agent behavior when reviewing or writing documentation, and this type of domain-specific housekeeping rule is unlikely to be covered by a general system prompt.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "33490df8bf4790b5",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This is a clear, actionable instruction with a direct quote from the user that would meaningfully change agent behavior on every bug report interaction. It applies broadly enough to warrant always-on inclusion rather than retrieval.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This is a clear, actionable instruction with a direct quote from the user that would meaningfully change agent behavior on every bug report interaction. It applies broadly enough to warrant always-on inclusion rather than retrieval.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 21.82034350000322
+        }
+      },
+      "justification": "This is a clear, actionable instruction with a direct quote from the user that would meaningfully change agent behavior on every bug report interaction. It applies broadly enough to warrant always-on inclusion rather than retrieval.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "1f841c1e54060e46",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "The entry contains a direct quote and a specific behavioral rule about GitHub issue labeling that would concretely change agent behavior \u2014 it prevents over-labeling when filing issues. Quality is slightly below 1.0 only because it's a single-session observation, but the content is specific and actionable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry contains a direct quote and a specific behavioral rule about GitHub issue labeling that would concretely change agent behavior \u2014 it prevents over-labeling when filing issues. Quality is slightly below 1.0 only because it's a single-session observation, but the content is specific and actionable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.373790542129427
+        }
+      },
+      "justification": "The entry contains a direct quote and a specific behavioral rule about GitHub issue labeling that would concretely change agent behavior \u2014 it prevents over-labeling when filing issues. Quality is slightly below 1.0 only because it's a single-session observation, but the content is specific and actionable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "b6d1a2581c4fd3b3",
+      "verdict": "refine",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "The entry combines two distinct topics: (1) tone/voice preferences for NVIDIA/OpenShell GitHub issues/PRs, and (2) length/format preference (minimal viable version first, avoid walls of text). These should ideally be separate, but more critically the entry is more than twice as long as needed \u2014 the core signals can be expressed concisely without losing the named entities or the direct quote.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"The entry combines two distinct topics: (1) tone/voice preferences for NVIDIA/OpenShell GitHub issues/PRs, and (2) length/format preference (minimal viable version first, avoid walls of text). These should ideally be separate, but more critically the entry is more than twice as long as needed \u2014 the core signals can be expressed concisely without losing the named entities or the direct quote.\",\n  \"refined_text\": \"For NVIDIA/OpenShell GitHub issues/PRs: use casual, conversational first-person ('I'm thinking we just add the command') not formal third-person. Use 'we' instead of 'maintainers' \u2014 user is part of the team. Keep drafts minimal: show the shortest viable version first, no walls of text (user replaced a 4-paragraph feature-request body with ~3 sentences).\",\n  \"merge_with\": []\n}",
+          "refined_text": "For NVIDIA/OpenShell GitHub issues/PRs: use casual, conversational first-person ('I'm thinking we just add the command') not formal third-person. Use 'we' instead of 'maintainers' \u2014 user is part of the team. Keep drafts minimal: show the shortest viable version first, no walls of text (user replaced a 4-paragraph feature-request body with ~3 sentences).",
+          "merge_with": [],
+          "elapsed_sec": 6.277644124813378
+        }
+      },
+      "justification": "The entry combines two distinct topics: (1) tone/voice preferences for NVIDIA/OpenShell GitHub issues/PRs, and (2) length/format preference (minimal viable version first, avoid walls of text). These should ideally be separate, but more critically the entry is more than twice as long as needed \u2014 the core signals can be expressed concisely without losing the named entities or the direct quote.",
+      "refined_text": "For NVIDIA/OpenShell GitHub issues/PRs: use casual, conversational first-person ('I'm thinking we just add the command') not formal third-person. Use 'we' instead of 'maintainers' \u2014 user is part of the team. Keep drafts minimal: show the shortest viable version first, no walls of text (user replaced a 4-paragraph feature-request body with ~3 sentences).",
+      "merge_with": []
+    },
+    {
+      "entry_id": "c14577e2c749b6a5",
+      "verdict": "refine",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "The entry combines two distinct topics\u2014Linear document posting preference and the council-of-elders code review pattern\u2014that should be separate entries for precise retrieval. Each topic is specific and behavior-changing, but conflating them reduces retrievability when only one is relevant.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"The entry combines two distinct topics\u2014Linear document posting preference and the council-of-elders code review pattern\u2014that should be separate entries for precise retrieval. Each topic is specific and behavior-changing, but conflating them reduces retrievability when only one is relevant.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.10507145896554
+        }
+      },
+      "justification": "The entry combines two distinct topics\u2014Linear document posting preference and the council-of-elders code review pattern\u2014that should be separate entries for precise retrieval. Each topic is specific and behavior-changing, but conflating them reduces retrievability when only one is relevant.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "fe3b38f60055f95f",
+      "verdict": "keep",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This entry captures a specific, actionable preference with a direct quote: when reviewing PRs, the agent must distinguish net-new issues from pre-existing ones on main. Without it, the agent would likely not make this distinction unprompted.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a specific, actionable preference with a direct quote: when reviewing PRs, the agent must distinguish net-new issues from pre-existing ones on main. Without it, the agent would likely not make this distinction unprompted.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.151399249909446
+        }
+      },
+      "justification": "This entry captures a specific, actionable preference with a direct quote: when reviewing PRs, the agent must distinguish net-new issues from pre-existing ones on main. Without it, the agent would likely not make this distinction unprompted.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "41503ab4453d0474",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "The entry captures a specific, actionable preference with a direct quote ('be discerning and fan out your team as necessary') that would concretely guide how the agent approaches PR review tasks\u2014defaulting to broad codebase audits rather than narrow fixes. Removing it would likely cause the agent to default to more surface-level PR feedback.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry captures a specific, actionable preference with a direct quote ('be discerning and fan out your team as necessary') that would concretely guide how the agent approaches PR review tasks\u2014defaulting to broad codebase audits rather than narrow fixes. Removing it would likely cause the agent to default to more surface-level PR feedback.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.723425833042711
+        }
+      },
+      "justification": "The entry captures a specific, actionable preference with a direct quote ('be discerning and fan out your team as necessary') that would concretely guide how the agent approaches PR review tasks\u2014defaulting to broad codebase audits rather than narrow fixes. Removing it would likely cause the agent to default to more surface-level PR feedback.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "225dfc15f4624267",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.9,
+          "justification": "This entry defines a concrete decision-making protocol for PR review behavior that would directly change agent actions (auto-apply vs. flag vs. justify-and-resolve). It applies broadly to all PR-related interactions, making it a good candidate for the always-on system prompt rather than a retrieval-dependent memory.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry defines a concrete decision-making protocol for PR review behavior that would directly change agent actions (auto-apply vs. flag vs. justify-and-resolve). It applies broadly to all PR-related interactions, making it a good candidate for the always-on system prompt rather than a retrieval-dependent memory.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.081824833061546
+        }
+      },
+      "justification": "This entry defines a concrete decision-making protocol for PR review behavior that would directly change agent actions (auto-apply vs. flag vs. justify-and-resolve). It applies broadly to all PR-related interactions, making it a good candidate for the always-on system prompt rather than a retrieval-dependent memory.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "4fe0da7c8b7f985f",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This entry provides actionable, specific guidance about CodeRabbit + ruff.toml interactions that would meaningfully change how the agent evaluates and responds to lint suggestions. The named tools (CodeRabbit, Ruff, ruff.toml) and the concrete workflow (check config before applying) make it retrievable and non-obvious.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry provides actionable, specific guidance about CodeRabbit + ruff.toml interactions that would meaningfully change how the agent evaluates and responds to lint suggestions. The named tools (CodeRabbit, Ruff, ruff.toml) and the concrete workflow (check config before applying) make it retrievable and non-obvious.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 6.068400542018935
+        }
+      },
+      "justification": "This entry provides actionable, specific guidance about CodeRabbit + ruff.toml interactions that would meaningfully change how the agent evaluates and responds to lint suggestions. The named tools (CodeRabbit, Ruff, ruff.toml) and the concrete workflow (check config before applying) make it retrievable and non-obvious.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "d79b57fd26ea50c1",
+      "verdict": "keep",
+      "quality_score": 0.6,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.6,
+          "necessity": 0.6,
+          "justification": "The entry names a specific tool (CodeRabbit) and captures a meaningful behavioral preference \u2014 rejecting automated suggestions that conflict with project config or add unnecessary complexity \u2014 which would usefully guide the agent when reviewing or responding to linter/code-review output. It's not purely generic, though it sits at moderate specificity.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.6,\n  \"necessity\": 0.6,\n  \"justification\": \"The entry names a specific tool (CodeRabbit) and captures a meaningful behavioral preference \u2014 rejecting automated suggestions that conflict with project config or add unnecessary complexity \u2014 which would usefully guide the agent when reviewing or responding to linter/code-review output. It's not purely generic, though it sits at moderate specificity.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 184.06842383299954
+        }
+      },
+      "justification": "The entry names a specific tool (CodeRabbit) and captures a meaningful behavioral preference \u2014 rejecting automated suggestions that conflict with project config or add unnecessary complexity \u2014 which would usefully guide the agent when reviewing or responding to linter/code-review output. It's not purely generic, though it sits at moderate specificity.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "5312e5c7aaf8d182",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.9,
+          "justification": "This entry captures a concrete, actionable behavioral preference (FIX vs DON'T FIX with cost/benefit reasoning) that would directly change how the agent handles every code review interaction. It applies broadly enough to warrant always-on presence rather than retrieval.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a concrete, actionable behavioral preference (FIX vs DON'T FIX with cost/benefit reasoning) that would directly change how the agent handles every code review interaction. It applies broadly enough to warrant always-on presence rather than retrieval.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.733604875160381
+        }
+      },
+      "justification": "This entry captures a concrete, actionable behavioral preference (FIX vs DON'T FIX with cost/benefit reasoning) that would directly change how the agent handles every code review interaction. It applies broadly enough to warrant always-on presence rather than retrieval.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "b287eaa965ce9712",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This is a specific, retrievable workflow preference (multi-reviewer synthesis for code review feedback like coderabbit) that would concretely change how the agent responds when asked to evaluate review comments. The named tool (coderabbit) and the described process ('fan out and get multiple opinions') make it specific enough to be actionable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This is a specific, retrievable workflow preference (multi-reviewer synthesis for code review feedback like coderabbit) that would concretely change how the agent responds when asked to evaluate review comments. The named tool (coderabbit) and the described process ('fan out and get multiple opinions') make it specific enough to be actionable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.795636000111699
+        }
+      },
+      "justification": "This is a specific, retrievable workflow preference (multi-reviewer synthesis for code review feedback like coderabbit) that would concretely change how the agent responds when asked to evaluate review comments. The named tool (coderabbit) and the described process ('fan out and get multiple opinions') make it specific enough to be actionable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "fb1a3473bef6711a",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.5,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.5,
+          "justification": "The entry captures a specific, quoted attitude toward RFC review feedback that is concrete and retrievable, anchored by a direct quote. It describes a nuanced stance that could influence how the agent frames responses to review feedback, though it doesn't change hard decisions so much as tone and framing.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.5,\n  \"justification\": \"The entry captures a specific, quoted attitude toward RFC review feedback that is concrete and retrievable, anchored by a direct quote. It describes a nuanced stance that could influence how the agent frames responses to review feedback, though it doesn't change hard decisions so much as tone and framing.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.3882124999072403
+        }
+      },
+      "justification": "The entry captures a specific, quoted attitude toward RFC review feedback that is concrete and retrievable, anchored by a direct quote. It describes a nuanced stance that could influence how the agent frames responses to review feedback, though it doesn't change hard decisions so much as tone and framing.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "2b3f32758b063f73",
+      "verdict": "keep",
+      "quality_score": 0.6,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.6,
+          "necessity": 0.6,
+          "justification": "The entry captures a specific preference about how to weight feedback types when reviewing council/multi-reviewer outputs, with a concrete example quote that anchors it. It's retrievable in that context and would meaningfully shape how the agent frames its analysis, though it applies narrowly enough that it belongs in memory rather than the system prompt.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.6,\n  \"necessity\": 0.6,\n  \"justification\": \"The entry captures a specific preference about how to weight feedback types when reviewing council/multi-reviewer outputs, with a concrete example quote that anchors it. It's retrievable in that context and would meaningfully shape how the agent frames its analysis, though it applies narrowly enough that it belongs in memory rather than the system prompt.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.010976457968354
+        }
+      },
+      "justification": "The entry captures a specific preference about how to weight feedback types when reviewing council/multi-reviewer outputs, with a concrete example quote that anchors it. It's retrievable in that context and would meaningfully shape how the agent frames its analysis, though it applies narrowly enough that it belongs in memory rather than the system prompt.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "bb0d40fa9755379b",
+      "verdict": "refine",
+      "quality_score": 0.8,
+      "necessity_score": 0.95,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.8,
+          "necessity": 0.95,
+          "justification": "The entry combines three distinct topics (refactoring analysis preferences, Linear URL rewriting, and git branch workflow) that should be separate entries for reliable retrieval. The defect is topic consolidation \u2014 each topic is retrievable only when all three happen to be queried simultaneously.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.8,\n  \"necessity\": 0.95,\n  \"justification\": \"The entry combines three distinct topics (refactoring analysis preferences, Linear URL rewriting, and git branch workflow) that should be separate entries for reliable retrieval. The defect is topic consolidation \u2014 each topic is retrievable only when all three happen to be queried simultaneously.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.3203562919516116
+        }
+      },
+      "justification": "The entry combines three distinct topics (refactoring analysis preferences, Linear URL rewriting, and git branch workflow) that should be separate entries for reliable retrieval. The defect is topic consolidation \u2014 each topic is retrievable only when all three happen to be queried simultaneously.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "7d5cfef6e3046c40",
+      "verdict": "keep",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "This entry captures a specific, verifiable naming convention with concrete format (`md/<issue-number>-<short-description>`) and disambiguates a precise preference (`/md` over `+md`), which would directly affect branch and worktree creation decisions if removed.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry captures a specific, verifiable naming convention with concrete format (`md/<issue-number>-<short-description>`) and disambiguates a precise preference (`/md` over `+md`), which would directly affect branch and worktree creation decisions if removed.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.357137209037319
+        }
+      },
+      "justification": "This entry captures a specific, verifiable naming convention with concrete format (`md/<issue-number>-<short-description>`) and disambiguates a precise preference (`/md` over `+md`), which would directly affect branch and worktree creation decisions if removed.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "eb06022f0c6cec7a",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "This entry captures a concrete, actionable workflow preference (git worktree checkout of unmerged dependency branches) that would directly change agent behavior when blocked on PRs\u2014specifically choosing to proceed with iteration over waiting. Specific enough to be retrievable and actionable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry captures a concrete, actionable workflow preference (git worktree checkout of unmerged dependency branches) that would directly change agent behavior when blocked on PRs\u2014specifically choosing to proceed with iteration over waiting. Specific enough to be retrievable and actionable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.919042165856808
+        }
+      },
+      "justification": "This entry captures a concrete, actionable workflow preference (git worktree checkout of unmerged dependency branches) that would directly change agent behavior when blocked on PRs\u2014specifically choosing to proceed with iteration over waiting. Specific enough to be retrievable and actionable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "2071e206646832a9",
+      "verdict": "refine",
+      "quality_score": 0.7,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.7,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics (document sync strategy and zsh/dotfiles configuration) that should be separate entries for proper retrieval.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.7,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics (document sync strategy and zsh/dotfiles configuration) that should be separate entries for proper retrieval.\",\n  \"refined_text\": null,\n  \"merge_with\": [],\n  \"refined_entries\": [\n    \"When syncing between local and remote document mirrors (e.g., in-repo RFC and Linear doc): update whichever is more current. If both are the same, start with the local copy then push that up.\",\n    \"Uses zsh with oh-my-zsh. ZDOTDIR is `~/.config/zsh`. Has `.zshrc.local` symlinked to `.config/zsh/locals/.zshrc.work`. Prefers cached completion approach for shell startup performance.\"\n  ]\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.7679940829984844
+        }
+      },
+      "justification": "The entry combines two distinct topics (document sync strategy and zsh/dotfiles configuration) that should be separate entries for proper retrieval.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "ef4733acc96c530e",
+      "verdict": "refine",
+      "quality_score": 0.6,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.6,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics (dotfile/machine setup philosophy and shell startup performance preference) that should be separate entries for cleaner retrieval.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.6,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics (dotfile/machine setup philosophy and shell startup performance preference) that should be separate entries for cleaner retrieval.\",\n  \"refined_text\": \"Manages dotfiles with GNU Stow for both work and personal machines. Spins up new machines rarely. Prefers declarative, in-repo configuration over implicit machine-local setup.\",\n  \"merge_with\": []\n}",
+          "refined_text": "Manages dotfiles with GNU Stow for both work and personal machines. Spins up new machines rarely. Prefers declarative, in-repo configuration over implicit machine-local setup.",
+          "merge_with": [],
+          "elapsed_sec": 4.179997332859784
+        }
+      },
+      "justification": "The entry combines two distinct topics (dotfile/machine setup philosophy and shell startup performance preference) that should be separate entries for cleaner retrieval.",
+      "refined_text": "Manages dotfiles with GNU Stow for both work and personal machines. Spins up new machines rarely. Prefers declarative, in-repo configuration over implicit machine-local setup.",
+      "merge_with": []
+    },
+    {
+      "entry_id": "8936920730d38570",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This entry names specific platforms (macOS, Ubuntu, Debian, Arch, CentOS) and prescribes concrete solution approaches (shell scripts and git clone over package managers). It would change agent behavior on nearly every dotfiles/tooling question, making it always-on system prompt material rather than a retrieved hint.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry names specific platforms (macOS, Ubuntu, Debian, Arch, CentOS) and prescribes concrete solution approaches (shell scripts and git clone over package managers). It would change agent behavior on nearly every dotfiles/tooling question, making it always-on system prompt material rather than a retrieved hint.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.572101625148207
+        }
+      },
+      "justification": "This entry names specific platforms (macOS, Ubuntu, Debian, Arch, CentOS) and prescribes concrete solution approaches (shell scripts and git clone over package managers). It would change agent behavior on nearly every dotfiles/tooling question, making it always-on system prompt material rather than a retrieved hint.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "c793c6c82dacdb5e",
+      "verdict": "keep",
+      "quality_score": 0.9,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.9,
+          "necessity": 0.8,
+          "justification": "Highly specific entry with concrete commands and a named pattern (`touch ~/.config/zsh/.work`, `[[ -f $ZDOTDIR/.work ]] && source ...`), plus an explicit rationale for choosing this approach over alternatives. Would directly inform any zsh config or dotfile advice the agent gives this user.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.9,\n  \"necessity\": 0.8,\n  \"justification\": \"Highly specific entry with concrete commands and a named pattern (`touch ~/.config/zsh/.work`, `[[ -f $ZDOTDIR/.work ]] && source ...`), plus an explicit rationale for choosing this approach over alternatives. Would directly inform any zsh config or dotfile advice the agent gives this user.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 6.4799327498767525
+        }
+      },
+      "justification": "Highly specific entry with concrete commands and a named pattern (`touch ~/.config/zsh/.work`, `[[ -f $ZDOTDIR/.work ]] && source ...`), plus an explicit rationale for choosing this approach over alternatives. Would directly inform any zsh config or dotfile advice the agent gives this user.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "e626e4bbb2861be3",
+      "verdict": "refine",
+      "quality_score": 0.7,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.7,
+          "necessity": 0.9,
+          "justification": "The entry combines three distinct topics (shell startup performance preferences, beads memory tool workflow, and tmux team session preferences) into one entry, which is the 'multiple distinct topics' defect. Each topic should be a separate entry for clean retrieval.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.7,\n  \"necessity\": 0.9,\n  \"justification\": \"The entry combines three distinct topics (shell startup performance preferences, beads memory tool workflow, and tmux team session preferences) into one entry, which is the 'multiple distinct topics' defect. Each topic should be a separate entry for clean retrieval.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.6858211660292
+        }
+      },
+      "justification": "The entry combines three distinct topics (shell startup performance preferences, beads memory tool workflow, and tmux team session preferences) into one entry, which is the 'multiple distinct topics' defect. Each topic should be a separate entry for clean retrieval.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "4c3b54653e36b0a0",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.9,
+          "justification": "This entry encodes a specific behavioral preference (skip asking, run without sandbox immediately) in a concrete, retrievable scenario. It would directly change agent behavior when macOS sandbox permission errors arise with local services.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry encodes a specific behavioral preference (skip asking, run without sandbox immediately) in a concrete, retrievable scenario. It would directly change agent behavior when macOS sandbox permission errors arise with local services.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.16754825017415
+        }
+      },
+      "justification": "This entry encodes a specific behavioral preference (skip asking, run without sandbox immediately) in a concrete, retrievable scenario. It would directly change agent behavior when macOS sandbox permission errors arise with local services.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "daa44d66c1c0e810",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "This is a broadly applicable behavioral directive that should govern every interaction where the user specifies a tool or method \u2014 not just occasionally retrieved ones. The concrete example ('use tmux' vs 'parallel subagents') grounds it well, and removing it would likely cause the agent to substitute tools it deems 'equivalent' without asking.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"This is a broadly applicable behavioral directive that should govern every interaction where the user specifies a tool or method \u2014 not just occasionally retrieved ones. The concrete example ('use tmux' vs 'parallel subagents') grounds it well, and removing it would likely cause the agent to substitute tools it deems 'equivalent' without asking.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 5.004208083031699
+        }
+      },
+      "justification": "This is a broadly applicable behavioral directive that should govern every interaction where the user specifies a tool or method \u2014 not just occasionally retrieved ones. The concrete example ('use tmux' vs 'parallel subagents') grounds it well, and removing it would likely cause the agent to substitute tools it deems 'equivalent' without asking.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "27ab19ee42afc820",
+      "verdict": "keep",
+      "quality_score": 0.8,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.8,
+          "necessity": 0.9,
+          "justification": "This entry contains concrete, specific UI preferences with named examples (numbered multi-choice menus, hierarchical multiselect with plugin>skill sublabels) that would directly change how the agent designs or recommends UI flows. The specificity is high enough to be actionable and unambiguously retrievable.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.8,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry contains concrete, specific UI preferences with named examples (numbered multi-choice menus, hierarchical multiselect with plugin>skill sublabels) that would directly change how the agent designs or recommends UI flows. The specificity is high enough to be actionable and unambiguously retrievable.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.658362040994689
+        }
+      },
+      "justification": "This entry contains concrete, specific UI preferences with named examples (numbered multi-choice menus, hierarchical multiselect with plugin>skill sublabels) that would directly change how the agent designs or recommends UI flows. The specificity is high enough to be actionable and unambiguously retrievable.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "59c8938da3dfc3dc",
+      "verdict": "keep",
+      "quality_score": 0.6,
+      "necessity_score": 0.7,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.6,
+          "necessity": 0.7,
+          "justification": "The entry provides concrete, named directory examples (nat-jobs/, eval-out/, optimizer_results/) and a specific behavioral rule (check existing stages before adding new output dirs) that would meaningfully guide agent decisions about file placement in this project.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.6,\n  \"necessity\": 0.7,\n  \"justification\": \"The entry provides concrete, named directory examples (nat-jobs/, eval-out/, optimizer_results/) and a specific behavioral rule (check existing stages before adding new output dirs) that would meaningfully guide agent decisions about file placement in this project.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.111942541785538
+        }
+      },
+      "justification": "The entry provides concrete, named directory examples (nat-jobs/, eval-out/, optimizer_results/) and a specific behavioral rule (check existing stages before adding new output dirs) that would meaningfully guide agent decisions about file placement in this project.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "24883461872a7245",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.9,
+          "justification": "This captures a specific, non-obvious preference about credential isolation that would directly change agent behavior when setting up multi-provider API configurations or debugging authentication fallback chains. It's concrete enough to be actionable and unlikely to be inferred from general principles.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.9,\n  \"justification\": \"This captures a specific, non-obvious preference about credential isolation that would directly change agent behavior when setting up multi-provider API configurations or debugging authentication fallback chains. It's concrete enough to be actionable and unlikely to be inferred from general principles.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.888210457982495
+        }
+      },
+      "justification": "This captures a specific, non-obvious preference about credential isolation that would directly change agent behavior when setting up multi-provider API configurations or debugging authentication fallback chains. It's concrete enough to be actionable and unlikely to be inferred from general principles.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "5e218e8023703797",
+      "verdict": "promote_to_prompt",
+      "quality_score": 0.85,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "promote_to_prompt",
+          "quality": 0.85,
+          "necessity": 0.9,
+          "justification": "This is a concrete, actionable preference backed by a direct quote that would meaningfully change agent behavior during bug-filing tasks. It applies broadly enough to any bug-filing interaction that it belongs in the always-on system prompt rather than relying on retrieval.",
+          "raw_response": "{\n  \"verdict\": \"promote_to_prompt\",\n  \"quality\": 0.85,\n  \"necessity\": 0.9,\n  \"justification\": \"This is a concrete, actionable preference backed by a direct quote that would meaningfully change agent behavior during bug-filing tasks. It applies broadly enough to any bug-filing interaction that it belongs in the always-on system prompt rather than relying on retrieval.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 187.40182224987075
+        }
+      },
+      "justification": "This is a concrete, actionable preference backed by a direct quote that would meaningfully change agent behavior during bug-filing tasks. It applies broadly enough to any bug-filing interaction that it belongs in the always-on system prompt rather than relying on retrieval.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "81d7a0d390ee897d",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.7,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.7,
+          "justification": "The entry captures a specific syntax pattern (@filename) with a concrete example, and the behavioral guidance (ask for path rather than searching) is actionable and would change agent behavior if removed. Single-session corroboration is the main weakness, but the specificity makes it worth retaining.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.7,\n  \"justification\": \"The entry captures a specific syntax pattern (@filename) with a concrete example, and the behavioral guidance (ask for path rather than searching) is actionable and would change agent behavior if removed. Single-session corroboration is the main weakness, but the specificity makes it worth retaining.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.139986583031714
+        }
+      },
+      "justification": "The entry captures a specific syntax pattern (@filename) with a concrete example, and the behavioral guidance (ask for path rather than searching) is actionable and would change agent behavior if removed. Single-session corroboration is the main weakness, but the specificity makes it worth retaining.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "44321d2304e81f90",
+      "verdict": "refine",
+      "quality_score": 0.6,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.6,
+          "necessity": 0.8,
+          "justification": "The entry combines two distinct topics that should be separated: Max's testing pragmatism/YOLO preference, and his identity/contact info. Mixing PII with a behavioral preference makes both harder to retrieve accurately.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.6,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines two distinct topics that should be separated: Max's testing pragmatism/YOLO preference, and his identity/contact info. Mixing PII with a behavioral preference makes both harder to retrieve accurately.\",\n  \"refined_text\": \"Max is pragmatic about testing: comfortable with 'YOLO' approaches for small changes and prefers to defer test infrastructure until it's genuinely needed rather than building it upfront.\",\n  \"merge_with\": []\n}",
+          "refined_text": "Max is pragmatic about testing: comfortable with 'YOLO' approaches for small changes and prefers to defer test infrastructure until it's genuinely needed rather than building it upfront.",
+          "merge_with": [],
+          "elapsed_sec": 4.1749119171872735
+        }
+      },
+      "justification": "The entry combines two distinct topics that should be separated: Max's testing pragmatism/YOLO preference, and his identity/contact info. Mixing PII with a behavioral preference makes both harder to retrieve accurately.",
+      "refined_text": "Max is pragmatic about testing: comfortable with 'YOLO' approaches for small changes and prefers to defer test infrastructure until it's genuinely needed rather than building it upfront.",
+      "merge_with": []
+    },
+    {
+      "entry_id": "ffebf77904896ae7",
+      "verdict": "refine",
+      "quality_score": 0.75,
+      "necessity_score": 0.85,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.75,
+          "necessity": 0.85,
+          "justification": "The entry combines multiple distinct topics (NVIDIA project involvement, cmux integration testing, Omnistations access, NeMo Platform benchmarking work, and NGC/inference API key access) that would be more useful and retrievable as separate entries. This is the 'combines multiple distinct topics' defect.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.75,\n  \"necessity\": 0.85,\n  \"justification\": \"The entry combines multiple distinct topics (NVIDIA project involvement, cmux integration testing, Omnistations access, NeMo Platform benchmarking work, and NGC/inference API key access) that would be more useful and retrievable as separate entries. This is the 'combines multiple distinct topics' defect.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.3122102920897305
+        }
+      },
+      "justification": "The entry combines multiple distinct topics (NVIDIA project involvement, cmux integration testing, Omnistations access, NeMo Platform benchmarking work, and NGC/inference API key access) that would be more useful and retrievable as separate entries. This is the 'combines multiple distinct topics' defect.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "cc2763c3925d2b64",
+      "verdict": "refine",
+      "quality_score": 0.7,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.7,
+          "necessity": 0.6,
+          "justification": "The entry combines two distinct facts that should be separated: (1) Max Dubrinsky's identity and GitHub handle as an NVIDIA/OpenShell maintainer, and (2) his contribution method (via fork, not direct push access). These are separate retrievable facts with different use cases.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.7,\n  \"necessity\": 0.6,\n  \"justification\": \"The entry combines two distinct facts that should be separated: (1) Max Dubrinsky's identity and GitHub handle as an NVIDIA/OpenShell maintainer, and (2) his contribution method (via fork, not direct push access). These are separate retrievable facts with different use cases.\",\n  \"refined_text\": \"Max Dubrinsky (GitHub: maxdubrinsky) is a maintainer of NVIDIA/OpenShell with personal connections to other maintainers, but contributes via fork rather than direct push access to the repository.\",\n  \"merge_with\": []\n}",
+          "refined_text": "Max Dubrinsky (GitHub: maxdubrinsky) is a maintainer of NVIDIA/OpenShell with personal connections to other maintainers, but contributes via fork rather than direct push access to the repository.",
+          "merge_with": [],
+          "elapsed_sec": 3.5624325410462916
+        }
+      },
+      "justification": "The entry combines two distinct facts that should be separated: (1) Max Dubrinsky's identity and GitHub handle as an NVIDIA/OpenShell maintainer, and (2) his contribution method (via fork, not direct push access). These are separate retrievable facts with different use cases.",
+      "refined_text": "Max Dubrinsky (GitHub: maxdubrinsky) is a maintainer of NVIDIA/OpenShell with personal connections to other maintainers, but contributes via fork rather than direct push access to the repository.",
+      "merge_with": []
+    },
+    {
+      "entry_id": "c39e32157fe70312",
+      "verdict": "keep",
+      "quality_score": 0.9,
+      "necessity_score": 0.9,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.9,
+          "necessity": 0.9,
+          "justification": "This entry contains concrete, named-entity-rich information (GitHub handle, email, domain scope) that would directly change agent behavior when assigning reviewers for CLI/agent work on NeMo Platform. Removing it would cause the agent to miss a specific reviewer assignment.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.9,\n  \"necessity\": 0.9,\n  \"justification\": \"This entry contains concrete, named-entity-rich information (GitHub handle, email, domain scope) that would directly change agent behavior when assigning reviewers for CLI/agent work on NeMo Platform. Removing it would cause the agent to miss a specific reviewer assignment.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.5799626670777798
+        }
+      },
+      "justification": "This entry contains concrete, named-entity-rich information (GitHub handle, email, domain scope) that would directly change agent behavior when assigning reviewers for CLI/agent work on NeMo Platform. Removing it would cause the agent to miss a specific reviewer assignment.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "6935e3c6fc1098b3",
+      "verdict": "refine",
+      "quality_score": 0.65,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "refine",
+          "quality": 0.65,
+          "necessity": 0.8,
+          "justification": "The entry combines multiple distinct topics: (1) deepagents-cli setup and workflow split between Claude Code vs deepagents, (2) model preference (Opus-4.7 for coding), and (3) cost-consciousness. These should be separated so each can be retrieved independently. Also, 'Opus-4.7' appears to be a non-standard model name that may reflect a misremembering (Claude Opus 4 / claude-opus-4-5 are real; '4.7' is not standard) \u2014 preserving as-stated since it's the user's own claim.",
+          "raw_response": "{\n  \"verdict\": \"refine\",\n  \"quality\": 0.65,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry combines multiple distinct topics: (1) deepagents-cli setup and workflow split between Claude Code vs deepagents, (2) model preference (Opus-4.7 for coding), and (3) cost-consciousness. These should be separated so each can be retrieved independently. Also, 'Opus-4.7' appears to be a non-standard model name that may reflect a misremembering (Claude Opus 4 / claude-opus-4-5 are real; '4.7' is not standard) \u2014 preserving as-stated since it's the user's own claim.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 5.504373708972707
+        }
+      },
+      "justification": "The entry combines multiple distinct topics: (1) deepagents-cli setup and workflow split between Claude Code vs deepagents, (2) model preference (Opus-4.7 for coding), and (3) cost-consciousness. These should be separated so each can be retrieved independently. Also, 'Opus-4.7' appears to be a non-standard model name that may reflect a misremembering (Claude Opus 4 / claude-opus-4-5 are real; '4.7' is not standard) \u2014 preserving as-stated since it's the user's own claim.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "3362ba488cf7a744",
+      "verdict": "keep",
+      "quality_score": 0.75,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.75,
+          "necessity": 0.8,
+          "justification": "The entry captures a specific named preference ('frontier chat across all providers') with concrete provider examples, making it retrievable and actionable when the agent assists with LLM configuration decisions. Single-session observation reduces confidence but the specificity warrants retention.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.75,\n  \"necessity\": 0.8,\n  \"justification\": \"The entry captures a specific named preference ('frontier chat across all providers') with concrete provider examples, making it retrievable and actionable when the agent assists with LLM configuration decisions. Single-session observation reduces confidence but the specificity warrants retention.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 4.979227500036359
+        }
+      },
+      "justification": "The entry captures a specific named preference ('frontier chat across all providers') with concrete provider examples, making it retrievable and actionable when the agent assists with LLM configuration decisions. Single-session observation reduces confidence but the specificity warrants retention.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "7bb47dba9a7be92c",
+      "verdict": "keep",
+      "quality_score": 0.7,
+      "necessity_score": 0.6,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.7,
+          "necessity": 0.6,
+          "justification": "The entry includes a direct quote and names NVBugs as the context, making it specific and retrievable. It signals a concrete user preference that could change agent behavior when deciding whether to use MCP tools versus guessing at system state.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.7,\n  \"necessity\": 0.6,\n  \"justification\": \"The entry includes a direct quote and names NVBugs as the context, making it specific and retrievable. It signals a concrete user preference that could change agent behavior when deciding whether to use MCP tools versus guessing at system state.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 3.4957240000367165
+        }
+      },
+      "justification": "The entry includes a direct quote and names NVBugs as the context, making it specific and retrievable. It signals a concrete user preference that could change agent behavior when deciding whether to use MCP tools versus guessing at system state.",
+      "refined_text": null,
+      "merge_with": []
+    },
+    {
+      "entry_id": "aa59a8b701389ed4",
+      "verdict": "keep",
+      "quality_score": 0.75,
+      "necessity_score": 0.8,
+      "confidence": 1.0,
+      "judge_votes": {
+        "azure-anthropic-claude-sonnet-4-6": {
+          "model": "azure-anthropic-claude-sonnet-4-6",
+          "verdict": "keep",
+          "quality": 0.75,
+          "necessity": 0.8,
+          "justification": "This entry contains specific named entities (Gretel, OpenAPI Generator) and explains the experiential basis for the user's skepticism about off-the-shelf OpenAPI generators, which would meaningfully affect how the agent frames recommendations in that domain.",
+          "raw_response": "{\n  \"verdict\": \"keep\",\n  \"quality\": 0.75,\n  \"necessity\": 0.8,\n  \"justification\": \"This entry contains specific named entities (Gretel, OpenAPI Generator) and explains the experiential basis for the user's skepticism about off-the-shelf OpenAPI generators, which would meaningfully affect how the agent frames recommendations in that domain.\",\n  \"refined_text\": null,\n  \"merge_with\": []\n}",
+          "refined_text": null,
+          "merge_with": [],
+          "elapsed_sec": 2.9757883751299232
+        }
+      },
+      "justification": "This entry contains specific named entities (Gretel, OpenAPI Generator) and explains the experiential basis for the user's skepticism about off-the-shelf OpenAPI generators, which would meaningfully affect how the agent frames recommendations in that domain.",
+      "refined_text": null,
+      "merge_with": []
+    }
+  ],
+  "errors": [],
+  "skipped_entries": []
+}
