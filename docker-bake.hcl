@@ -164,6 +164,7 @@ target "automodel-platform-workspace" {
   target     = "platform-workspace"
   context    = "."
   dockerfile = "services/automodel/docker/Dockerfile.platform-workspace"
+  platforms = BUILD_PLATFORMS
 }
 
 target "nmp-automodel-base-builder" {
@@ -254,6 +255,7 @@ target "unsloth-platform-workspace" {
   dockerfile = "services/unsloth/docker/Dockerfile.platform-workspace"
   target     = "platform-workspace"
   output     = ["type=cacheonly"]
+  platforms = BUILD_PLATFORMS
 }
 
 target "nmp-unsloth-training" {
@@ -264,5 +266,5 @@ target "nmp-unsloth-training" {
     platform-workspace = "target:unsloth-platform-workspace"
   }
   tags = ["${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}"]
-  platforms = ["${BUILD_PLATFORM}"]
+  platforms = BUILD_PLATFORMS
 }

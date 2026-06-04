@@ -7,7 +7,6 @@ import json
 from typing import Any, cast
 
 import pytest
-
 from nemo_platform_sdk_tools.license.license_utils import (
     get_override_key_for_package,
     normalize_package_name,
