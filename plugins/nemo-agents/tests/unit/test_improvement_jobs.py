@@ -17,6 +17,7 @@ def test_jobs_discovered_via_entry_points() -> None:
     assert "agents.optimize-skills" in jobs
     assert "agents.triage-memory" in jobs
     assert "agents.eval-triage" in jobs
+    assert "agents.export-finetune-corpus" in jobs
 
 
 def test_evaluate_suite_job_metadata() -> None:
@@ -128,6 +129,47 @@ def test_eval_triage_config_requires_both_inputs() -> None:
         EvalTriageConfig.model_validate({"baseline": "./a.json"})
     with pytest.raises(ValidationError):
         EvalTriageConfig.model_validate({"candidate": "./b.json"})
+
+
+def test_export_finetune_corpus_job_metadata() -> None:
+    from nemo_agents_plugin.jobs.export_finetune_corpus import ExportFinetuneCorpusJob
+
+    assert ExportFinetuneCorpusJob.name == "export-finetune-corpus"
+    assert ExportFinetuneCorpusJob.container == "cpu-tasks"
+
+
+def test_export_finetune_corpus_config_minimum_validation() -> None:
+    from nemo_agents_plugin.jobs.export_finetune_corpus import ExportFinetuneCorpusConfig
+
+    cfg = ExportFinetuneCorpusConfig.model_validate(
+        {
+            "triage_artifact": "./triage.json",
+            "corpus": "./USER.md",
+            "reference_judge": "azure-anthropic-claude-sonnet-4-5",
+        }
+    )
+    assert cfg.triage_artifact == "./triage.json"
+    assert cfg.corpus == "./USER.md"
+    assert cfg.reference_judge == "azure-anthropic-claude-sonnet-4-5"
+    assert cfg.candidate_judge is None
+    assert cfg.only_disagreements is False
+    assert cfg.basename == "finetune-corpus"
+
+
+def test_export_finetune_corpus_config_requires_required_inputs() -> None:
+    import pytest
+    from nemo_agents_plugin.jobs.export_finetune_corpus import ExportFinetuneCorpusConfig
+    from pydantic import ValidationError
+
+    # Missing reference_judge
+    with pytest.raises(ValidationError):
+        ExportFinetuneCorpusConfig.model_validate({"triage_artifact": "./a.json", "corpus": "./b.md"})
+    # Missing triage_artifact
+    with pytest.raises(ValidationError):
+        ExportFinetuneCorpusConfig.model_validate({"corpus": "./b.md", "reference_judge": "sonnet"})
+    # Missing corpus
+    with pytest.raises(ValidationError):
+        ExportFinetuneCorpusConfig.model_validate({"triage_artifact": "./a.json", "reference_judge": "sonnet"})
 
 
 def test_triage_memory_config_rejects_negative_max_tokens() -> None:
