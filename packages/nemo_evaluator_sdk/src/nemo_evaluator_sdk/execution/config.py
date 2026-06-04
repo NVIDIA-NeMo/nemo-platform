@@ -24,6 +24,10 @@ def resolve_params(
 ) -> _RunConfigT:
     """Return params after validating that they match the selected target mode."""
     if isinstance(target, Model):
+        if params is None or type(params) is RunConfig:
+            raise TypeError("model target requires RunConfigOnlineModel")
+        if type(params) is RunConfigOnline:
+            return RunConfigOnlineModel.model_validate(params.model_dump())
         if not isinstance(params, RunConfigOnlineModel):
             raise TypeError("model target requires RunConfigOnlineModel")
         return params

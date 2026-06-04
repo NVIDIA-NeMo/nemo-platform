@@ -49,6 +49,17 @@ class TestResolveParams:
 
         assert resolve_params(params=params, target=target) is params
 
+    def test_converts_generic_online_params_for_model_target(self) -> None:
+        """Model targets accept generic online params from JSON specs."""
+        target = Model(url="http://example.test/v1", name="test-model")
+        params = RunConfigOnline(parallelism=3, ignore_request_failure=True)
+
+        resolved = resolve_params(params=params, target=target)
+
+        assert isinstance(resolved, RunConfigOnlineModel)
+        assert resolved.parallelism == 3
+        assert resolved.ignore_request_failure is True
+
     def test_accepts_agent_online_params(self) -> None:
         """Agent targets require RunConfigOnline-compatible params."""
         target = Agent(
