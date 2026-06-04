@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 import os
@@ -40,12 +41,9 @@ def _profbench_source() -> str:
     return os.getenv("NEMO_EVALUATOR_PROFBENCH_SOURCE", DEFAULT_PROFBENCH_SOURCE)
 
 
-def _profbench_limit() -> int | None:
-    """Return an optional sample limit for quick example runs."""
-    raw_limit = os.getenv("NEMO_EVALUATOR_PROFBENCH_LIMIT", "1")
-    if not raw_limit:
-        return None
-    return int(raw_limit)
+def _profbench_limit_from_args(limit: int) -> int | None:
+    """Convert a CLI limit value into the optional limit expected by load_profbench."""
+    return None if limit == 0 else limit
 
 
 def _profbench_output_dir(suffix: str) -> Path:
@@ -63,7 +61,7 @@ def _example_model() -> Model:
     )
 
 
-async def run_profbench_baseline_example() -> None:
+async def run_profbench_baseline_example(*, limit: int | None) -> None:
     """Score the ProfBench baseline model responses bundled in the dataset.
 
     This path does not need a judge model: ProfBench includes per-rubric
@@ -72,7 +70,7 @@ async def run_profbench_baseline_example() -> None:
 
     _print_example_separator(run_profbench_baseline_example.__name__)
 
-    benchmark = load_profbench(_profbench_source(), limit=_profbench_limit())
+    benchmark = load_profbench(_profbench_source(), limit=limit)
     result = await AgentEvaluator().run(
         tasks=benchmark.tasks,
         attempts=benchmark.attempts,
@@ -90,10 +88,10 @@ async def run_profbench_baseline_example() -> None:
     print(f"Dashboard: {result.dashboard_path}")
 
 
-async def run_profbench_live_model_example() -> None:
+async def run_profbench_live_model_example(*, limit: int | None) -> None:
     """Generate fresh ProfBench responses from a model and score them with a judge.
 
-    Set ``NEMO_EVALUATOR_RUN_LIVE_PROFBENCH=1`` to run this example. The same
+    Pass ``--run-live`` when executing this module to run this example. The same
     model is used as generator and judge by default; override the endpoint/name
     with ``NEMO_EVALUATOR_PROFBENCH_MODEL_URL`` and
     ``NEMO_EVALUATOR_PROFBENCH_MODEL``.
@@ -101,7 +99,7 @@ async def run_profbench_live_model_example() -> None:
 
     _print_example_separator(run_profbench_live_model_example.__name__)
 
-    benchmark = load_profbench(_profbench_source(), limit=_profbench_limit())
+    benchmark = load_profbench(_profbench_source(), limit=limit)
     model = _example_model()
 
     result = await AgentEvaluator().run(
@@ -123,16 +121,36 @@ async def run_profbench_live_model_example() -> None:
     print(f"Dashboard: {result.dashboard_path}")
 
 
-async def run_examples() -> None:
+async def run_examples(*, limit: int | None, run_live: bool) -> None:
     """Execute the agent-eval examples exposed by this module."""
-    await run_profbench_baseline_example()
+    await run_profbench_baseline_example(limit=limit)
 
-    if os.getenv("NEMO_EVALUATOR_RUN_LIVE_PROFBENCH", "1") == "1":
-        await run_profbench_live_model_example()
+    if run_live:
+        await run_profbench_live_model_example(limit=limit)
     else:
-        print("Skipping live ProfBench model example. Set NEMO_EVALUATOR_RUN_LIVE_PROFBENCH=1 to run it.")
+        print("Skipping live ProfBench model example. Pass --run-live to run it.")
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run ProfBench agent-eval examples.")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=1,
+        help="Maximum number of ProfBench tasks to evaluate (0 = no limit). Default: 1.",
+    )
+    parser.add_argument(
+        "--run-live",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Run the live ProfBench model example after the baseline example.",
+    )
+    args = parser.parse_args()
+
     configure_example_logging()
-    asyncio.run(run_examples())
+    asyncio.run(
+        run_examples(
+            limit=_profbench_limit_from_args(args.limit),
+            run_live=args.run_live,
+        )
+    )
