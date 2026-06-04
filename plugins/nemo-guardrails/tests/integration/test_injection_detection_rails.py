@@ -15,10 +15,9 @@ import pytest
 from nemo_guardrails_plugin.constants import GUARDRAILS_PLUGIN_CONFIG_TYPE
 from nemo_platform.types.inference.middleware_call_param import MiddlewareCallParam
 from nmp.core.inference_gateway.testing.harness import IGWLoopbackHarness
-from nmp.guardrails.service import GuardrailsService
 from nmp.testing.mock_chat_completions import ChatCompletion, chat_completion
 
-from .utils import DEFAULT_WORKSPACE, GUARDRAILS_PLUGIN_NAME, GuardrailsTestDataNames, make_guardrails_test_data_names
+from .utils import GUARDRAILS_PLUGIN_NAME, GuardrailsTestDataNames, make_guardrails_test_data_names
 
 pytestmark = [pytest.mark.integration]
 
@@ -41,17 +40,17 @@ class TestInjectionDetection:
     REFUSAL_PREFIX = "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of"
 
     @staticmethod
-    def _middleware_call(config_name: str) -> MiddlewareCallParam:
+    def _middleware_call(workspace: str, config_name: str) -> MiddlewareCallParam:
         return {
             "name": GUARDRAILS_PLUGIN_NAME,
             "config_type": GUARDRAILS_PLUGIN_CONFIG_TYPE,
-            "config_id": f"{DEFAULT_WORKSPACE}/{config_name}",
+            "config_id": f"{workspace}/{config_name}",
         }
 
     @staticmethod
     def _delete_config_if_present(harness: IGWLoopbackHarness, config_name: str) -> None:
         try:
-            harness.sdk.guardrail.configs.delete(name=config_name, workspace=DEFAULT_WORKSPACE)
+            harness.sdk.guardrail.configs.delete(name=config_name, workspace=harness.workspace)
         except nemo_platform.NotFoundError:
             pass
 
@@ -99,37 +98,40 @@ class TestInjectionDetection:
         *,
         config_data: dict[str, Any],
     ) -> GuardrailsTestDataNames:
-        test_data_names = make_guardrails_test_data_names(main_model_prefix="main-model")
+        test_data_names = make_guardrails_test_data_names(
+            main_model_prefix="main-model",
+            workspace=harness.workspace,
+        )
 
         harness.add_provider(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.model_provider_name,
             served_models={test_data_names.main_model_served_name: test_data_names.main_model_served_name},
         )
         harness.sdk.guardrail.configs.create(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.guardrail_config_name,
             description="Entity-backed injection detection config for integration tests",
             data=config_data,
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.main_model_served_name,
             default_model_entity=test_data_names.main_model_entity_ref,
         )
         harness.add_virtual_model(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             name=test_data_names.request_virtual_model_name,
             default_model_entity=test_data_names.main_model_entity_ref,
-            response_middleware=[self._middleware_call(test_data_names.guardrail_config_name)],
+            response_middleware=[self._middleware_call(harness.workspace, test_data_names.guardrail_config_name)],
         )
         return test_data_names
 
     def _chat_completions(self, harness: IGWLoopbackHarness, *, model: str) -> dict[str, Any]:
         return harness.chat_completions(
-            workspace=DEFAULT_WORKSPACE,
+            workspace=harness.workspace,
             body={
-                "model": f"{DEFAULT_WORKSPACE}/{model}",
+                "model": f"{harness.workspace}/{model}",
                 "messages": [{"role": "user", "content": self.USER_INPUT}],
             },
         )
@@ -153,7 +155,7 @@ class TestInjectionDetection:
 
         harness.assert_called_once(test_data_names.main_model_served_name)
         guardrails_data: dict[str, Any] = response.get("guardrails_data") or {}
-        assert guardrails_data.get("config_ids") == [f"{DEFAULT_WORKSPACE}/{test_data_names.guardrail_config_name}"]
+        assert guardrails_data.get("config_ids") == [f"{harness.workspace}/{test_data_names.guardrail_config_name}"]
 
         if expected_blocked_content is not None:
             assert response["choices"][0]["finish_reason"] == "content_filter"
@@ -175,7 +177,7 @@ class TestInjectionDetection:
         expect_blocked: bool,
     ) -> None:
         """Built-in injection detection should reject unsafe model output and allow safe output."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(
@@ -206,7 +208,7 @@ class TestInjectionDetection:
         expect_blocked: bool,
     ) -> None:
         """Custom inline YARA rules should reject matching model output and allow non-matches."""
-        harness = igw_loopback_harness(GuardrailsService)
+        harness = igw_loopback_harness()
 
         with harness.load_plugin(GUARDRAILS_PLUGIN_NAME):
             test_data_names = self._setup_entity_backed_vm(

@@ -24,6 +24,7 @@ from nmp.testing import (
     TEST_ADMIN_EMAIL,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -83,11 +84,11 @@ class TestViewerSecretsAccess:
             name=secret_name,
             value="secret-value",
         )
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         # Test: viewer can list secrets
@@ -110,11 +111,11 @@ class TestViewerSecretsAccess:
             name=secret_name,
             value="secret-value",
         )
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -136,11 +137,11 @@ class TestViewerSecretsAccess:
             name=secret_name,
             value="secret-value",
         )
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -154,11 +155,11 @@ class TestViewerSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -182,11 +183,11 @@ class TestViewerSecretsAccess:
             name=secret_name,
             value="original-value",
         )
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -210,11 +211,11 @@ class TestViewerSecretsAccess:
             name=secret_name,
             value="secret-value",
         )
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -233,11 +234,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -258,11 +259,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -285,11 +286,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -310,11 +311,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -339,11 +340,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -368,11 +369,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -394,11 +395,11 @@ class TestEditorSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -419,11 +420,11 @@ class TestAdminSecretsAccess:
         # Platform admin creates workspace and adds our test admin
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=admin_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         admin_sdk = as_user(sdk, admin_email)
@@ -443,11 +444,11 @@ class TestAdminSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=admin_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         admin_sdk = as_user(sdk, admin_email)
@@ -471,11 +472,11 @@ class TestAdminSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=admin_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         admin_sdk = as_user(sdk, admin_email)
@@ -495,11 +496,11 @@ class TestAdminSecretsAccess:
 
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=admin_email,
             roles=["Admin"],
-            wait_role_propagation=True,
         )
 
         admin_sdk = as_user(sdk, admin_email)
@@ -718,11 +719,11 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace, add viewer, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
         platform_admin_sdk.secrets.create(
             workspace=workspace_name,
@@ -770,11 +771,11 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
         platform_admin_sdk.secrets.create(
             workspace=workspace_name,
@@ -854,11 +855,11 @@ class TestDelegatedSecretAccess:
         # Setup: create workspace, add editor, create secret
         platform_admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         platform_admin_sdk.workspaces.create(name=workspace_name)
-        platform_admin_sdk.members.create(
+        grant_workspace_role(
+            platform_admin_sdk,
             workspace=workspace_name,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
         platform_admin_sdk.secrets.create(
             workspace=workspace_name,

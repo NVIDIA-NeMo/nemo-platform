@@ -31,10 +31,10 @@ The `nemo` CLI is available at `/app/.venv/bin/nemo`. You can use these commands
 
 All member commands operate on a workspace. Use `--workspace <name>` to specify the workspace.
 
-- `nemo members create --principal <email> --roles <role> --workspace <workspace>` - Add a member with a role (Viewer, Editor, or Admin)
-- `nemo members list --workspace <workspace>` - List all members and their roles
-- `nemo members update <principal> --roles <role> --workspace <workspace>` - Update a member's role
-- `nemo members delete <principal> --workspace <workspace>` - Remove a member
+- `nemo workspaces members create --principal <email> --roles <role> --workspace <workspace>` - Add a member with a role (Viewer, Editor, or Admin)
+- `nemo workspaces members list --workspace <workspace>` - List all members and their roles
+- `nemo workspaces members update <principal> --roles <role> --workspace <workspace>` - Update a member's role
+- `nemo workspaces members delete <principal> --workspace <workspace>` - Remove a member
 
 Note: The CLI connects to the local NeMo Platform API server at http://localhost:8080 by default.
 

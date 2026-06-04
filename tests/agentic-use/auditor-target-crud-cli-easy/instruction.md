@@ -28,15 +28,21 @@ Complete the following Auditor target operations using the `nemo` CLI.
 
 ## Available CLI Commands
 
-- `nemo audit targets create <name> --model <model> --type <type> --description "<description>"` - Create an audit target
-- `nemo audit targets list` - List all audit targets
-- `nemo audit targets get <name>` - Retrieve an audit target by name
-- `nemo audit targets update <name> --description "<description>"` - Update an audit target (pass only the fields you want to change)
-- `nemo audit targets delete <name>` - Delete an audit target
+- `nemo auditor targets create <name> -d '<json>'` - Create an audit target. The JSON body must include `model`, `type`, and optionally `description`.
+- `nemo auditor targets list` - List all audit targets
+- `nemo auditor targets get <name>` - Retrieve an audit target by name
+- `nemo auditor targets update <name> -d '<json>'` - Update an audit target. Include the current `model` and `type` plus any changed fields.
+- `nemo auditor targets delete <name>` - Delete an audit target
+
+Example create body:
+
+```json
+{"model": "mock-model-endpoint", "type": "nim", "description": "Initial audit target for harbor testing"}
+```
 
 ### Target Types
 
-The `--type` field specifies the model endpoint type. Common values: `nim`, `openai`.
+The `type` field in the JSON payload specifies the model endpoint type. Common values: `nim`, `openai`.
 
 ## Success Criteria
 

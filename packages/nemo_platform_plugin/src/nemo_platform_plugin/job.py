@@ -70,11 +70,12 @@ import logging
 from abc import abstractmethod
 from typing import TYPE_CHECKING, Any, ClassVar
 
+from nemo_platform import AsyncNeMoPlatform
 from nemo_platform_plugin._base import _NamedPlugin
+from pydantic import BaseModel
 
 if TYPE_CHECKING:
     from nemo_platform_plugin.job_context import JobContext
-    from pydantic import BaseModel
 
 
 logger = logging.getLogger(__name__)
@@ -226,7 +227,7 @@ class NemoJob(_NamedPlugin):
         *,
         workspace: str,
         entity_client: object,
-        async_sdk: object,
+        async_sdk: AsyncNeMoPlatform,
         is_local: bool,
     ) -> "BaseModel":
         """Transform *input_spec* into a canonical :attr:`spec_schema` instance.
@@ -271,7 +272,7 @@ class NemoJob(_NamedPlugin):
         spec: "BaseModel",
         entity_client: object,
         job_name: str | None,
-        async_sdk: object,
+        async_sdk: AsyncNeMoPlatform,
         profile: str | None = None,
         options: dict | None = None,
     ) -> object:

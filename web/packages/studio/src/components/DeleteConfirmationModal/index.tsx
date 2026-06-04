@@ -13,6 +13,7 @@ interface DeleteModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   simpleConfirm?: boolean;
   successText?: string;
   errorText?: string;
+  suppressResultToasts?: boolean;
 }
 
 export const DeleteConfirmationModal: FC<DeleteModalProps> = ({
@@ -22,6 +23,7 @@ export const DeleteConfirmationModal: FC<DeleteModalProps> = ({
   simpleConfirm = true,
   successText = 'Successfully deleted!',
   errorText = 'Something went wrong. Please try again.',
+  suppressResultToasts,
   ...rest
 }) => {
   const confirmationDescription =
@@ -41,6 +43,7 @@ export const DeleteConfirmationModal: FC<DeleteModalProps> = ({
       simpleConfirm={simpleConfirm}
       successText={successText}
       errorText={errorText}
+      suppressResultToasts={suppressResultToasts}
     />
   );
 };

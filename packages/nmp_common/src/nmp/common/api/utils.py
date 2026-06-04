@@ -11,7 +11,6 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 from fastapi import HTTPException
-from nemo_platform_plugin.jobs.openapi_utils import _query_param_schemas as _query_param_schemas  # noqa: F401
 from nemo_platform_plugin.jobs.openapi_utils import clear_query_param_schemas as clear_query_param_schemas  # noqa: F401
 from nemo_platform_plugin.jobs.openapi_utils import (
     generate_openapi_extra_params as generate_openapi_extra_params,  # noqa: F401

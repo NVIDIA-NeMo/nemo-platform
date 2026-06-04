@@ -4,7 +4,7 @@
 """Fileset download job step utilities."""
 
 from nemo_evaluator_sdk.values import DatasetRows
-from nmp.common.jobs.api_factory import (
+from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,
     EnvironmentVariable,

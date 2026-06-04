@@ -190,6 +190,53 @@ class EvaluatorResultListFilter(BaseModel):
     created_at_lte: datetime | None = None
 
 
+class AnnotationKind(StrEnum):
+    FEEDBACK = "feedback"
+    LABEL = "label"
+    NOTE = "note"
+    METADATA = "metadata"
+
+
+class Annotation(BaseModel):
+    """Post-hoc human-supplied signal on a span or session.
+
+    Distinct from `EvaluatorResult` (automated eval pipeline output). Annotations
+    are added after ingestion by humans or downstream processes: feedback (positive/
+    negative), labels (categorical or numeric), free-text notes, or structured
+    metadata.
+    """
+
+    annotation_id: str
+    workspace: str
+    span_id: str | None = None
+    session_id: str
+
+    kind: AnnotationKind
+    name: str | None = None
+    value_text: str | None = None
+    value_numeric: float | None = None
+    text: str | None = None
+    metadata: dict[str, Any] | None = None
+
+    created_by: str | None = None
+    created_at: datetime
+    ingested_at: datetime
+
+
+class AnnotationListFilter(BaseModel):
+    workspace: str
+    span_id: str | None = None
+    session_id: str | None = None
+    kind: AnnotationKind | None = None
+    name: str | None = None
+    value_text: str | None = None
+    value_numeric_gte: float | None = None
+    value_numeric_lte: float | None = None
+    created_by: str | None = None
+    created_at_gte: datetime | None = None
+    created_at_lte: datetime | None = None
+
+
 class TraceBatch(BaseModel):
     spans: list[IntakeSpan] = Field(default_factory=list)
     evaluator_results: list[EvaluatorResult] = Field(default_factory=list)

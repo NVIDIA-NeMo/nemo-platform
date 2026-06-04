@@ -48,7 +48,7 @@ def create_server(base_url: str | None = None) -> FastMCP:
     # Initialize platform aggregator
     platform = FastMCP(
         "NeMo Platform",
-        website_url="https://docs.nvidia.com/nemo/microservices/latest/about/index.html",
+        website_url="https://nvidia-nemo.github.io/nemo-platform/main/",
     )
 
     # Mount per service MCP servers

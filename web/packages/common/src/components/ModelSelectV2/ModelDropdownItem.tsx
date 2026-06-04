@@ -99,7 +99,7 @@ export const ModelDropdownItem: FC<ModelDropdownItemProps> = ({
         <DropdownSubTrigger
           slotEnd={false}
           data-testid="model-dropdown-item"
-          onSelect={() => onSelect({ model: modelUrn })}
+          onClick={() => onSelect({ model: modelUrn })}
         >
           <ModelName name={model.name} />
         </DropdownSubTrigger>

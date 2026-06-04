@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { getPartsFromNamedEntityRef, NamedEntityRef } from '@nemo/common/src/namedEntity';
-import { ListEntriesParams } from '@nemo/sdk/generated/platform/schema';
-import { generateFilterParam } from '@studio/api/intake/utils';
 import {
   AGENTS_ENABLED,
   BASE_MODELS_ENABLED,
+  CODING_AGENT_STUDIO_ENABLED,
   CUSTOMIZER_ENABLED,
   DASHBOARD_ENABLED,
   DATA_DESIGNER_ENABLED,
@@ -28,6 +27,7 @@ import {
 import { ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { DatasetDetailTab } from '@studio/routes/DatasetDetailRoute/constants';
+import { ModelDetailTab } from '@studio/routes/ModelDetailRoute/constants';
 import { generatePath, RouteObject } from 'react-router';
 
 const gateRoutes = (enabled: boolean, routes: RouteObject | RouteObject[]) => {
@@ -42,7 +42,7 @@ export const gateCustomizationRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(CUSTOMIZER_ENABLED, routes);
 
 export const gateDashboardRoutes = (routes: RouteObject | RouteObject[]) =>
-  gateRoutes(DASHBOARD_ENABLED, routes);
+  gateRoutes(DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED, routes);
 
 export const gateDatasetsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DATASETS_ENABLED, routes);
@@ -86,6 +86,9 @@ export const gateMembersRoutes = (routes: RouteObject | RouteObject[]) =>
 export const agentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(AGENTS_ENABLED, routes);
 
+export const gateCodingAgentStudioRoutes = (routes: RouteObject | RouteObject[]) =>
+  gateRoutes(CODING_AGENT_STUDIO_ENABLED, routes);
+
 export const gateDeploymentsRoutes = (routes: RouteObject | RouteObject[]) =>
   gateRoutes(DEPLOYMENTS_ENABLED, routes);
 
@@ -127,7 +130,8 @@ export const getWorkspaceIndexRoute = (workspace: string) => {
 };
 
 export const getWorkspaceDetailsDefaultRoute = (workspace: string) => {
-  if (DASHBOARD_ENABLED) return getWorkspaceDashboardRoute(workspace);
+  if (DASHBOARD_ENABLED || CODING_AGENT_STUDIO_ENABLED)
+    return getWorkspaceDashboardRoute(workspace);
   if (AGENTS_ENABLED) return getAgentsListRoute(workspace);
   if (BASE_MODELS_ENABLED) return getWorkspaceBaseModelsRoute(workspace);
   if (JOBS_ENABLED) return getWorkspaceJobsRoute(workspace);
@@ -227,10 +231,6 @@ export const getWorkspaceDeploymentDetailsRoute = (
     deploymentName: encodeURIComponent(deploymentName),
     deploymentPanelView: panelView,
   });
-};
-
-export const getWorkspaceIntakeRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intake, { workspace });
 };
 
 export const getWorkspaceSafeSynthesizerRoute = (workspace: string) => {
@@ -342,14 +342,14 @@ export const getModelCompareRoute = (workspace: string) => {
 export const getFilesetDetailsRoute = (
   workspace: string,
   filesetId: string,
-  datasetFolder?: string,
+  filesetFolder?: string,
   resetPage?: boolean
 ) => {
   const searchParams = new URLSearchParams(window.location.search);
-  if (datasetFolder) {
-    searchParams.set('datasetFolder', datasetFolder);
+  if (filesetFolder) {
+    searchParams.set(QUERY_PARAMETERS.filesetFolder, filesetFolder);
   } else {
-    searchParams.delete('datasetFolder');
+    searchParams.delete(QUERY_PARAMETERS.filesetFolder);
   }
   const baseUrl = generatePath(ROUTES.workspace.filesetDetails, {
     workspace,
@@ -376,6 +376,15 @@ export const getDatasetDetailRoute = (
   return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
 };
 
+export const getModelDetailRoute = (
+  workspace: string,
+  modelName: string,
+  options?: { tab?: ModelDetailTab }
+) => {
+  const base = generatePath(ROUTES.workspace.modelDetail, { workspace, modelName });
+  return options?.tab ? `${base}?${QUERY_PARAMETERS.tab}=${options.tab}` : base;
+};
+
 export const getFilesetFileRoute = (workspace: string, fileset: string, filePath: string) => {
   return generatePath(ROUTES.workspace.filesetFile, {
     workspace,
@@ -388,44 +397,20 @@ export const getIntakeRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.intake, { workspace });
 };
 
-export const getIntakeEntriesRoute = (workspace: string, options?: ListEntriesParams) => {
-  const queryParamStr = options
-    ? `?${generateFilterParam(options?.filter as Record<string, unknown>)}`
-    : '';
-  return generatePath(ROUTES.workspace.intakeEntries, { workspace }) + queryParamStr;
+export const getIntakeTracesRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.intakeTraces, { workspace });
 };
 
-export const getIntakeThreadsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intakeThreads, { workspace });
+export const getIntakeSpansRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.intakeSpans, { workspace });
 };
 
-export const getIntakeExportJobsRoute = (workspace: string) => {
-  return generatePath(ROUTES.workspace.intakeExportJobs, { workspace });
+export const getIntakeTraceRoute = (workspace: string, traceId: string) => {
+  return generatePath(ROUTES.workspace.intakeTrace, { workspace, traceId });
 };
 
-export const getIntakeEntryRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntry, { workspace, entryId });
-};
-
-export const getIntakeEntryMessagesRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryMessages, {
-    workspace,
-    entryId,
-  });
-};
-
-export const getIntakeEntryEventsRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryEvents, {
-    workspace,
-    entryId,
-  });
-};
-
-export const getIntakeEntryMetadataRoute = (workspace: string, entryId: string) => {
-  return generatePath(ROUTES.workspace.intakeEntryMetadata, {
-    workspace,
-    entryId,
-  });
+export const getIntakeSpanRoute = (workspace: string, spanId: string) => {
+  return generatePath(ROUTES.workspace.intakeSpan, { workspace, spanId });
 };
 
 export const getSafeSynthesizerRoute = (workspace: string) => {
@@ -475,6 +460,10 @@ export const getModelChatRoute = (model: NamedEntityRef) => {
 
 export const getAgentsListRoute = (workspace: string) => {
   return generatePath(ROUTES.workspace.agentsList, { workspace });
+};
+
+export const getClaudeCodeChatRoute = (workspace: string) => {
+  return generatePath(ROUTES.workspace.claudeCodeChat, { workspace });
 };
 
 export const getAgentDetailRoute = (workspace: string, agentName: string) => {

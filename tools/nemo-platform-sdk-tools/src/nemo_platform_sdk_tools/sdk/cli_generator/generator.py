@@ -58,7 +58,14 @@ class SimpleGenerator:
 
         # Set up Jinja2
         template_dir = get_templates_dir()
-        self._jinja_env = Environment(loader=FileSystemLoader(template_dir), trim_blocks=True, lstrip_blocks=True)
+        # Generates Python source, not HTML. Autoescape would corrupt Python
+        # string literals / type annotations containing quotes or angle brackets.
+        self._jinja_env = Environment(  # noqa: S701  # nosec B701
+            loader=FileSystemLoader(template_dir),
+            trim_blocks=True,
+            lstrip_blocks=True,
+            autoescape=False,
+        )
         self._jinja_env.filters["repr"] = repr
         self._jinja_env.filters["to_kebab"] = to_kebab
 

@@ -7,12 +7,9 @@ import logging
 from typing import ClassVar, List
 
 from nmp.common.service import RouterConfig, Service
-from nmp.intake.api.v2.apps import endpoints as apps
-from nmp.intake.api.v2.entries import endpoints as entries
-from nmp.intake.api.v2.exports import endpoints as exports
-from nmp.intake.api.v2.tasks import endpoints as tasks
+from nmp.intake.api.v2.experiments import endpoints as experiments
 from nmp.intake.config import IntakeConfig
-from nmp.intake.spans.api import evaluator_results, spans, traces
+from nmp.intake.spans.api import annotations, evaluator_results, spans, traces
 from nmp.intake.spans.clickhouse_client import ClickHouseSettings, ClickHouseSpanClient
 from nmp.intake.spans.ingest import atif, chat_completions, otlp
 
@@ -37,21 +34,27 @@ class IntakeService(Service[IntakeConfig]):
 
     @property
     def description(self) -> str:
-        return "Intake service for storing LLM entries and feedback"
+        return "Intake service for ingesting and reading spans, traces, annotations, and evaluator results"
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the intake service."""
         return [
-            RouterConfig(apps.router, tag="Apps", description="App management endpoints"),
-            RouterConfig(tasks.router, tag="Tasks", description="Task management endpoints"),
-            RouterConfig(entries.router, tag="Entries", description="Entry management endpoints"),
-            RouterConfig(exports.router, tag="Exports", description="Export endpoints"),
             RouterConfig(spans.router, tag="Spans", description="ClickHouse-backed span read endpoints"),
             RouterConfig(traces.router, tag="Traces", description="ClickHouse-backed trace summary read endpoints"),
             RouterConfig(
                 evaluator_results.router,
                 tag="Evaluator Results",
                 description="ClickHouse-backed evaluator_result endpoints",
+            ),
+            RouterConfig(
+                annotations.router,
+                tag="Annotations",
+                description="Post-hoc annotation endpoints (feedback, labels, notes, metadata)",
+            ),
+            RouterConfig(
+                experiments.router,
+                tag="Experiments",
+                description="Create, list, get, and delete Experiments and Experiment Groups",
             ),
             RouterConfig(otlp.router, tag="Ingest", description="OTLP/HTTP trace ingest endpoints"),
             RouterConfig(atif.router, tag="Ingest", description="ATIF trajectory ingest endpoints"),
@@ -67,8 +70,6 @@ class IntakeService(Service[IntakeConfig]):
 
         cfg = self.service_config or IntakeConfig()
         self.clickhouse_client = ClickHouseSpanClient(ClickHouseSettings.from_config(cfg))
-        # Keep the rest of Intake usable in dev when ClickHouse is not running.
-        # Trace endpoints lazily bootstrap the schema and return 503 while the datastore is unavailable.
         logger.warning(
             "ClickHouse schema setup was not run during Intake startup; "
             "trace endpoints will initialize ClickHouse on first use and return 503 until it is reachable",

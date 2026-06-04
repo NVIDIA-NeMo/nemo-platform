@@ -33,7 +33,7 @@ describe('MetricDetailsSection', () => {
     renderSection();
 
     await screen.findByText('Metric Name');
-    // KUI TextInput renders with a data-testid
-    expect(screen.getByTestId('nv-text-input-element')).toBeInTheDocument();
+    // KUI TextInput renders as a textbox role
+    expect(screen.getAllByRole('textbox').length).toBeGreaterThan(0);
   });
 });

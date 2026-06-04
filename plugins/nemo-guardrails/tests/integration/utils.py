@@ -15,6 +15,12 @@ from nemo_platform.types.inference.middleware_call_param import MiddlewareCallPa
 from nmp.testing.utils import short_unique_name
 
 DEFAULT_WORKSPACE = "default"
+"""Default workspace seeded by the module-scoped IGW fixture. Helpers
+default to this so parametrise-time builders that don't have a harness
+yet keep working; production test bodies pass ``harness.workspace``
+explicitly so the helpers stay portable if the fixture ever moves to
+per-test workspaces."""
+
 GUARDRAILS_PLUGIN_NAME = "nemo-guardrails"
 
 
@@ -44,9 +50,19 @@ def make_served_model(
     return ServedModel(served_name=served_name, entity_ref=f"{workspace}/{served_name}")
 
 
-def make_guardrails_test_data_names(*, main_model_prefix: str = "main-model") -> GuardrailsTestDataNames:
+def make_guardrails_test_data_names(
+    *,
+    main_model_prefix: str = "main-model",
+    workspace: str = DEFAULT_WORKSPACE,
+) -> GuardrailsTestDataNames:
+    """Build a unique set of names + entity refs for one test.
+
+    Pass ``workspace=harness.workspace`` so ``main_model_entity_ref``
+    lines up with the harness's workspace. The default is a safety
+    net for parametrise-time callers without a harness in scope.
+    """
     test_id = short_unique_name("test")
-    main_model = make_served_model(test_id=test_id, prefix=main_model_prefix)
+    main_model = make_served_model(test_id=test_id, prefix=main_model_prefix, workspace=workspace)
     return GuardrailsTestDataNames(
         test_id=test_id,
         main_model_served_name=main_model.served_name,

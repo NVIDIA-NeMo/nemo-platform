@@ -24,6 +24,7 @@ from nmp.testing import (
     TEST_ADMIN_EMAIL,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -50,7 +51,11 @@ def _platform_spec_with_secret(secret_ref: str, env_var_name: str = "MY_SECRET")
                 "executor": {
                     "provider": "cpu",
                     "profile": "default",
-                    "container": {"image": "busybox:latest"},
+                    "container": {
+                        "image": "busybox:latest",
+                        "entrypoint": ["entrypoint"],
+                        "command": ["command"],
+                    },
                 },
                 "environment": [
                     {"name": env_var_name, "from_secret": {"name": secret_ref}},
@@ -77,11 +82,11 @@ class TestJobCreationWithSecretsAccess:
             name=secret_name,
             value="secret-value-for-job",
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=user_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         user_sdk = as_user(sdk, user_email)
@@ -108,11 +113,11 @@ class TestJobCreationWithSecretsAccess:
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace_own)
         admin_sdk.workspaces.create(name=workspace_other)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace_own,
             principal=user_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
         # Secret only in workspace_other; user is not a member of workspace_other
         admin_sdk.secrets.create(
@@ -144,11 +149,11 @@ class TestJobCreationWithSecretsAccess:
         user_email = unique_email("user")
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=user_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         user_sdk = as_user(sdk, user_email)

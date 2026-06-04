@@ -217,10 +217,10 @@ def _fetch_secret(*, api_base_url: str, principal: Principal | None, workspace: 
     except URLError as exc:
         raise RuntimeError(f"failed to fetch secret {workspace}/{secret_name}: {exc.reason}") from exc
 
-    data = payload.get("data")
-    if not isinstance(data, str):
-        raise RuntimeError(f"failed to fetch secret {workspace}/{secret_name}: missing string data field")
-    return data
+    value = payload.get("value")
+    if not isinstance(value, str):
+        raise RuntimeError(f"failed to fetch secret {workspace}/{secret_name}: missing string value field")
+    return value
 
 
 def _validate_http_url(url: str, field_name: str) -> None:

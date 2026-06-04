@@ -10,7 +10,8 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any, Protocol
 
-from nemo_platform.beta.evaluator.values.results import MetricResult, RowScore
+from nemo_platform.beta.evaluator.metrics.protocol import MetricResult
+from nemo_platform.beta.evaluator.values.results import RowScore
 
 
 @dataclass

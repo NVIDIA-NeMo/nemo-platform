@@ -74,13 +74,10 @@ const evalRoutes = [
 
 const intakeRoutes = [
   ROUTES.workspace.intake,
-  ROUTES.workspace.intakeEntries,
-  ROUTES.workspace.intakeThreads,
-  ROUTES.workspace.intakeExportJobs,
-  ROUTES.workspace.intakeEntry,
-  ROUTES.workspace.intakeEntryMessages,
-  ROUTES.workspace.intakeEntryEvents,
-  ROUTES.workspace.intakeEntryMetadata,
+  ROUTES.workspace.intakeTraces,
+  ROUTES.workspace.intakeSpans,
+  ROUTES.workspace.intakeTrace,
+  ROUTES.workspace.intakeSpan,
 ];
 
 const safeSynthesizerRoutes = [
@@ -166,6 +163,13 @@ describe('Routes', () => {
       expect(
         findIfRouteExists(routes, getWorkspaceDetailsDefaultRoute(WORKSPACE_ROUTE_PLACEHOLDER))
       ).toBe(true);
+    });
+
+    it('should include the dashboard route if coding agent studio is enabled', async () => {
+      vi.stubEnv('VITE_FF_CODING_AGENT_STUDIO_ENABLED', 'true');
+      vi.stubEnv('VITE_FF_DASHBOARD_ENABLED', 'false');
+      const { routes } = await import('./index');
+      expect(findIfRouteExists(routes, ROUTES.workspace.dashboard)).toBe(true);
     });
 
     it('should exclude safe synthesizer routes if safe synthesizer is disabled', async () => {

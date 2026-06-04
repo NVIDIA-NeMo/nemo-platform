@@ -6,7 +6,10 @@
 from __future__ import annotations
 
 from nmp.common.api.common import PaginatedResult
+from nmp.intake.spans.annotations_repository import AnnotationsRepository
 from nmp.intake.spans.domain import (
+    Annotation,
+    AnnotationListFilter,
     EvaluatorResult,
     EvaluatorResultListFilter,
     IntakeSpan,
@@ -42,16 +45,25 @@ class TraceNotFoundError(Exception):
         self.trace_id = trace_id
 
 
+class AnnotationNotFoundError(Exception):
+    def __init__(self, workspace: str, annotation_id: str) -> None:
+        super().__init__(f"Annotation {workspace}/{annotation_id} not found")
+        self.workspace = workspace
+        self.annotation_id = annotation_id
+
+
 class IntakeSpansService:
     def __init__(
         self,
         span_repository: SpanRepository,
         trace_repository: TraceRepository,
         evaluator_results_repository: EvaluatorResultsRepository,
+        annotations_repository: AnnotationsRepository,
     ) -> None:
         self._spans = span_repository
         self._traces = trace_repository
         self._evaluator_results = evaluator_results_repository
+        self._annotations = annotations_repository
 
     async def ingest_batch(self, batch: TraceBatch) -> None:
         await self._spans.save_spans(batch.spans)
@@ -119,3 +131,31 @@ class IntakeSpansService:
 
     async def list_evaluator_results_for_span(self, *, workspace: str, span_id: str) -> list[EvaluatorResult]:
         return await self._evaluator_results.list_evaluator_results_for_span(workspace=workspace, span_id=span_id)
+
+    async def create_annotation(self, annotation: Annotation) -> Annotation:
+        """Persist one annotation. Target validation is permissive — no span/session existence check."""
+
+        await self._annotations.save_annotations([annotation])
+        return annotation
+
+    async def get_annotation(self, *, workspace: str, annotation_id: str) -> Annotation:
+        annotation = await self._annotations.get_annotation(workspace=workspace, annotation_id=annotation_id)
+        if annotation is None:
+            raise AnnotationNotFoundError(workspace, annotation_id)
+        return annotation
+
+    async def list_annotations(
+        self,
+        *,
+        filters: AnnotationListFilter,
+        page: int,
+        page_size: int,
+        sort: str,
+    ) -> PaginatedResult[Annotation]:
+        return await self._annotations.list_annotations(filters=filters, page=page, page_size=page_size, sort=sort)
+
+    async def delete_annotation(self, *, workspace: str, annotation_id: str) -> None:
+        existing = await self._annotations.get_annotation(workspace=workspace, annotation_id=annotation_id)
+        if existing is None:
+            raise AnnotationNotFoundError(workspace, annotation_id)
+        await self._annotations.soft_delete_annotation(annotation=existing)

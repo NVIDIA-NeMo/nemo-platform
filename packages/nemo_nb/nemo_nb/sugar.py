@@ -132,7 +132,6 @@ class BasePass(ABC):
 
     def strip_trailing_empty_lines(self, lines: List[str]) -> List[str]:
         """Remove trailing empty lines from a list of lines."""
-        end = len(lines)
         for i in range(len(lines) - 1, -1, -1):
             if lines[i].strip():
                 end = i + 1

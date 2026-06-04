@@ -30,7 +30,7 @@ export const ControlledCheckbox: FC<Props> = ({
             field.onChange(checked ?? false);
           }}
           attributes={{
-            CheckboxBox: {
+            CheckboxInput: {
               className: 'cursor-pointer',
             },
           }}

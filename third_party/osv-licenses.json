@@ -127,16 +127,6 @@
         },
         {
           "package": {
-            "name": "amqp",
-            "version": "5.3.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "annotated-doc",
             "version": "0.0.4",
             "ecosystem": "PyPI"
@@ -217,16 +207,6 @@
         },
         {
           "package": {
-            "name": "async-timeout",
-            "version": "5.0.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "asyncpg",
             "version": "0.31.0",
             "ecosystem": "PyPI"
@@ -297,16 +277,6 @@
         },
         {
           "package": {
-            "name": "billiard",
-            "version": "4.2.4",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "boto3",
             "version": "1.40.61",
             "ecosystem": "PyPI"
@@ -353,16 +323,6 @@
           },
           "licenses": [
             "UNKNOWN"
-          ]
-        },
-        {
-          "package": {
-            "name": "celery",
-            "version": "5.6.3",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
           ]
         },
         {
@@ -423,36 +383,6 @@
           },
           "licenses": [
             "BSD-3-Clause"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-didyoumean",
-            "version": "0.3.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-plugins",
-            "version": "1.1.1.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
-            "name": "click-repl",
-            "version": "0.3.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -975,16 +905,6 @@
         },
         {
           "package": {
-            "name": "flower",
-            "version": "2.0.1",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
-          ]
-        },
-        {
-          "package": {
             "name": "frozenlist",
             "version": "1.8.0",
             "ecosystem": "PyPI"
@@ -1141,16 +1061,6 @@
           },
           "licenses": [
             "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "humanize",
-            "version": "4.15.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
           ]
         },
         {
@@ -1405,16 +1315,6 @@
         },
         {
           "package": {
-            "name": "kombu",
-            "version": "5.6.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "BSD-3-Clause"
-          ]
-        },
-        {
-          "package": {
             "name": "kubernetes",
             "version": "35.0.0",
             "ecosystem": "PyPI"
@@ -1626,16 +1526,6 @@
         {
           "package": {
             "name": "lark",
-            "version": "1.2.2",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "lark",
             "version": "1.3.1",
             "ecosystem": "PyPI"
           },
@@ -1825,16 +1715,6 @@
         },
         {
           "package": {
-            "name": "nemo-safe-synthesizer",
-            "version": "0.0.4rc0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "nemoguardrails",
             "version": "0.21.0",
             "ecosystem": "PyPI"
@@ -1916,7 +1796,7 @@
         {
           "package": {
             "name": "nvidia-nat-atif",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1926,7 +1806,7 @@
         {
           "package": {
             "name": "nvidia-nat-config-optimizer",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1936,7 +1816,7 @@
         {
           "package": {
             "name": "nvidia-nat-core",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1946,7 +1826,7 @@
         {
           "package": {
             "name": "nvidia-nat-eval",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1956,7 +1836,7 @@
         {
           "package": {
             "name": "nvidia-nat-langchain",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -1966,7 +1846,7 @@
         {
           "package": {
             "name": "nvidia-nat-opentelemetry",
-            "version": "1.7.0rc3",
+            "version": "1.7.0",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2165,16 +2045,6 @@
         },
         {
           "package": {
-            "name": "opentelemetry-instrumentation-openai",
-            "version": "0.57.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "opentelemetry-instrumentation-requests",
             "version": "0.61b0",
             "ecosystem": "PyPI"
@@ -2237,16 +2107,6 @@
           "package": {
             "name": "opentelemetry-semantic-conventions",
             "version": "0.61b0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
-            "name": "opentelemetry-semantic-conventions-ai",
-            "version": "0.5.1",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -2941,16 +2801,6 @@
         },
         {
           "package": {
-            "name": "redis",
-            "version": "7.4.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "MIT"
-          ]
-        },
-        {
-          "package": {
             "name": "referencing",
             "version": "0.36.2",
             "ecosystem": "PyPI"
@@ -2962,7 +2812,7 @@
         {
           "package": {
             "name": "regex",
-            "version": "2025.7.34",
+            "version": "2026.5.9",
             "ecosystem": "PyPI"
           },
           "licenses": [
@@ -3242,7 +3092,7 @@
         {
           "package": {
             "name": "sqlfluff",
-            "version": "3.4.0",
+            "version": "4.1.0",
             "ecosystem": "PyPI"
           },
           "vulnerabilities": [
@@ -3461,221 +3311,6 @@
                 "nvd_published_at": null,
                 "severity": "HIGH"
               }
-            },
-            {
-              "modified": "2026-05-19T20:15:16Z",
-              "published": "2026-05-19T20:10:17Z",
-              "schema_version": "1.7.5",
-              "id": "GHSA-wmhf-fqc8-vxhh",
-              "aliases": [
-                "CVE-2026-46373"
-              ],
-              "summary": "SQLFluff: Recursive Stack Overflow in Parser",
-              "details": "### Impact\n\nIn deployments where untrusted users can provide SQL queries to be linted, an untrusted user can submit a malicious query with deliberate excessive nesting to any application using the parser to trigger a Denial of Service through resource exhaustion.\n\n### Patches\n\nVersions 4.1.0 and up contain a configurable recursion limit, which is enabled by default, to prevent this manner of exploit.\n\n### Credit\n\nOri Nakar from Imperva Threat Research Team.",
-              "severity": [
-                {
-                  "type": "CVSS_V3",
-                  "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"
-                }
-              ],
-              "affected": [
-                {
-                  "package": {
-                    "ecosystem": "PyPI",
-                    "name": "sqlfluff",
-                    "purl": "pkg:pypi/sqlfluff"
-                  },
-                  "ranges": [
-                    {
-                      "type": "ECOSYSTEM",
-                      "events": [
-                        {
-                          "introduced": "0"
-                        },
-                        {
-                          "fixed": "4.1.0"
-                        }
-                      ]
-                    }
-                  ],
-                  "versions": [
-                    "0.0.1",
-                    "0.0.2",
-                    "0.0.3",
-                    "0.0.4",
-                    "0.0.5",
-                    "0.0.6",
-                    "0.0.7",
-                    "0.0.9",
-                    "0.1.0",
-                    "0.1.1",
-                    "0.1.2",
-                    "0.1.3",
-                    "0.1.4",
-                    "0.1.5",
-                    "0.10.0",
-                    "0.10.1",
-                    "0.11.0",
-                    "0.11.1",
-                    "0.11.2",
-                    "0.12.0",
-                    "0.13.0",
-                    "0.13.1",
-                    "0.13.2",
-                    "0.2.0",
-                    "0.2.1",
-                    "0.2.2",
-                    "0.2.3",
-                    "0.2.4",
-                    "0.3.0",
-                    "0.3.1",
-                    "0.3.2",
-                    "0.3.2.post1",
-                    "0.3.2.post2",
-                    "0.3.3",
-                    "0.3.4",
-                    "0.3.5",
-                    "0.3.6",
-                    "0.4.0",
-                    "0.4.0a1",
-                    "0.4.0a2",
-                    "0.4.0a3",
-                    "0.4.1",
-                    "0.5.0",
-                    "0.5.1",
-                    "0.5.2",
-                    "0.5.3",
-                    "0.5.4",
-                    "0.5.5",
-                    "0.5.6",
-                    "0.6.0",
-                    "0.6.0a1",
-                    "0.6.0a2",
-                    "0.6.1",
-                    "0.6.2",
-                    "0.6.3",
-                    "0.6.4",
-                    "0.6.5",
-                    "0.6.6",
-                    "0.6.7",
-                    "0.6.8",
-                    "0.6.9",
-                    "0.7.0",
-                    "0.7.0a1",
-                    "0.7.0a2",
-                    "0.7.0a3",
-                    "0.7.0a5",
-                    "0.7.0a8",
-                    "0.7.1",
-                    "0.8.0",
-                    "0.8.1",
-                    "0.8.2",
-                    "0.9.0",
-                    "0.9.1",
-                    "0.9.2",
-                    "0.9.3",
-                    "0.9.4",
-                    "1.0.0",
-                    "1.1.0",
-                    "1.2.0",
-                    "1.2.1",
-                    "1.3.0",
-                    "1.3.1",
-                    "1.3.2",
-                    "1.4.0",
-                    "1.4.1",
-                    "1.4.2",
-                    "1.4.3",
-                    "1.4.4",
-                    "1.4.5",
-                    "2.0.0",
-                    "2.0.0a1",
-                    "2.0.0a2",
-                    "2.0.0a3",
-                    "2.0.0a4",
-                    "2.0.0a5",
-                    "2.0.0a6",
-                    "2.0.1",
-                    "2.0.2",
-                    "2.0.3",
-                    "2.0.4",
-                    "2.0.5",
-                    "2.0.6",
-                    "2.0.7",
-                    "2.1.0",
-                    "2.1.1",
-                    "2.1.2",
-                    "2.1.3",
-                    "2.1.4",
-                    "2.2.0",
-                    "2.2.1",
-                    "2.3.0",
-                    "2.3.1",
-                    "2.3.2",
-                    "2.3.3",
-                    "2.3.4",
-                    "2.3.5",
-                    "3.0.0",
-                    "3.0.0a1",
-                    "3.0.0a2",
-                    "3.0.0a3",
-                    "3.0.0a4",
-                    "3.0.0a5",
-                    "3.0.0a6",
-                    "3.0.1",
-                    "3.0.2",
-                    "3.0.3",
-                    "3.0.4",
-                    "3.0.5",
-                    "3.0.6",
-                    "3.0.7",
-                    "3.1.0",
-                    "3.1.1",
-                    "3.2.0",
-                    "3.2.1",
-                    "3.2.2",
-                    "3.2.3",
-                    "3.2.4",
-                    "3.2.5",
-                    "3.3.0",
-                    "3.3.1",
-                    "3.4.0",
-                    "3.4.1",
-                    "3.4.2",
-                    "3.5.0",
-                    "4.0.0",
-                    "4.0.0a1",
-                    "4.0.0a2",
-                    "4.0.0a3",
-                    "4.0.1.post1",
-                    "4.0.3",
-                    "4.0.4",
-                    "4.0.4a1"
-                  ],
-                  "database_specific": {
-                    "source": "https://github.com/github/advisory-database/blob/main/advisories/github-reviewed/2026/05/GHSA-wmhf-fqc8-vxhh/GHSA-wmhf-fqc8-vxhh.json"
-                  }
-                }
-              ],
-              "references": [
-                {
-                  "type": "WEB",
-                  "url": "https://github.com/sqlfluff/sqlfluff/security/advisories/GHSA-wmhf-fqc8-vxhh"
-                },
-                {
-                  "type": "PACKAGE",
-                  "url": "https://github.com/sqlfluff/sqlfluff"
-                }
-              ],
-              "database_specific": {
-                "cwe_ids": [
-                  "CWE-674"
-                ],
-                "github_reviewed": true,
-                "github_reviewed_at": "2026-05-19T20:10:17Z",
-                "nvd_published_at": null,
-                "severity": "HIGH"
-              }
             }
           ],
           "groups": [
@@ -3686,16 +3321,6 @@
               "aliases": [
                 "CVE-2026-46374",
                 "GHSA-73jc-5mrq-prw7"
-              ],
-              "max_severity": "7.5"
-            },
-            {
-              "ids": [
-                "GHSA-wmhf-fqc8-vxhh"
-              ],
-              "aliases": [
-                "CVE-2026-46373",
-                "GHSA-wmhf-fqc8-vxhh"
               ],
               "max_severity": "7.5"
             }
@@ -3730,6 +3355,287 @@
             "version": "0.52.1",
             "ecosystem": "PyPI"
           },
+          "vulnerabilities": [
+            {
+              "modified": "2026-05-26T15:41:31Z",
+              "published": "2026-05-22T13:11:38Z",
+              "schema_version": "1.7.5",
+              "id": "PYSEC-2026-161",
+              "aliases": [
+                "CVE-2026-48710",
+                "GHSA-86qp-5c8j-p5mr",
+                "X41-2026-002"
+              ],
+              "summary": "BadHost: Missing Host header validation poisons request.url.path, bypassing path-based security checks",
+              "details": "Starlette reconstructs the requested URL based on the HTTP Host request header and requested path, but does not perform any validation of the Host header value. This allows attackers to inject paths into the host part, prepending the actual path. However, routing in Starlette is based on the actual request path. This inconsistent interpretation of HTTP requests may lead to issues such as authentication bypass when the authentication depends on the reconstructed URL\u2019s path.",
+              "affected": [
+                {
+                  "package": {
+                    "ecosystem": "PyPI",
+                    "name": "starlette",
+                    "purl": "pkg:pypi/starlette"
+                  },
+                  "ranges": [
+                    {
+                      "type": "ECOSYSTEM",
+                      "events": [
+                        {
+                          "introduced": "0"
+                        },
+                        {
+                          "fixed": "1.0.1"
+                        }
+                      ]
+                    }
+                  ],
+                  "versions": [
+                    "0.1.0",
+                    "0.1.1",
+                    "0.1.10",
+                    "0.1.11",
+                    "0.1.12",
+                    "0.1.13",
+                    "0.1.14",
+                    "0.1.15",
+                    "0.1.16",
+                    "0.1.17",
+                    "0.1.2",
+                    "0.1.3",
+                    "0.1.4",
+                    "0.1.5",
+                    "0.1.6",
+                    "0.1.7",
+                    "0.1.8",
+                    "0.1.9",
+                    "0.10.0",
+                    "0.10.1",
+                    "0.10.2",
+                    "0.10.3",
+                    "0.10.4",
+                    "0.10.5",
+                    "0.10.6",
+                    "0.10.7",
+                    "0.11.0",
+                    "0.11.1",
+                    "0.11.2",
+                    "0.11.3",
+                    "0.11.4",
+                    "0.12.0",
+                    "0.12.0b1",
+                    "0.12.0b2",
+                    "0.12.0b3",
+                    "0.12.1",
+                    "0.12.10",
+                    "0.12.11",
+                    "0.12.12",
+                    "0.12.13",
+                    "0.12.2",
+                    "0.12.3",
+                    "0.12.4",
+                    "0.12.5",
+                    "0.12.6",
+                    "0.12.7",
+                    "0.12.8",
+                    "0.12.9",
+                    "0.13.0",
+                    "0.13.1",
+                    "0.13.2",
+                    "0.13.3",
+                    "0.13.4",
+                    "0.13.5",
+                    "0.13.6",
+                    "0.13.7",
+                    "0.13.8",
+                    "0.14.0",
+                    "0.14.1",
+                    "0.14.2",
+                    "0.15.0",
+                    "0.16.0",
+                    "0.17.0",
+                    "0.17.1",
+                    "0.18.0",
+                    "0.19.0",
+                    "0.19.1",
+                    "0.2.0",
+                    "0.2.1",
+                    "0.2.2",
+                    "0.2.3",
+                    "0.20.0",
+                    "0.20.1",
+                    "0.20.2",
+                    "0.20.3",
+                    "0.20.4",
+                    "0.21.0",
+                    "0.22.0",
+                    "0.23.0",
+                    "0.23.1",
+                    "0.24.0",
+                    "0.25.0",
+                    "0.26.0",
+                    "0.26.0.post1",
+                    "0.26.1",
+                    "0.27.0",
+                    "0.28.0",
+                    "0.29.0",
+                    "0.3.0",
+                    "0.3.1",
+                    "0.3.2",
+                    "0.3.3",
+                    "0.3.4",
+                    "0.3.5",
+                    "0.3.6",
+                    "0.3.7",
+                    "0.30.0",
+                    "0.31.0",
+                    "0.31.1",
+                    "0.32.0",
+                    "0.32.0.post1",
+                    "0.33.0",
+                    "0.34.0",
+                    "0.35.0",
+                    "0.35.1",
+                    "0.36.0",
+                    "0.36.1",
+                    "0.36.2",
+                    "0.36.3",
+                    "0.37.0",
+                    "0.37.1",
+                    "0.37.2",
+                    "0.38.0",
+                    "0.38.1",
+                    "0.38.2",
+                    "0.38.3",
+                    "0.38.4",
+                    "0.38.5",
+                    "0.38.6",
+                    "0.39.0",
+                    "0.39.1",
+                    "0.39.2",
+                    "0.4.0",
+                    "0.4.1",
+                    "0.4.2",
+                    "0.40.0",
+                    "0.41.0",
+                    "0.41.1",
+                    "0.41.2",
+                    "0.41.3",
+                    "0.42.0",
+                    "0.43.0",
+                    "0.44.0",
+                    "0.45.0",
+                    "0.45.1",
+                    "0.45.2",
+                    "0.45.3",
+                    "0.46.0",
+                    "0.46.1",
+                    "0.46.2",
+                    "0.47.0",
+                    "0.47.1",
+                    "0.47.2",
+                    "0.47.3",
+                    "0.48.0",
+                    "0.49.0",
+                    "0.49.1",
+                    "0.49.2",
+                    "0.49.3",
+                    "0.5.0",
+                    "0.5.1",
+                    "0.5.2",
+                    "0.5.3",
+                    "0.5.4",
+                    "0.5.5",
+                    "0.50.0",
+                    "0.51.0",
+                    "0.52.0",
+                    "0.52.1",
+                    "0.6.0",
+                    "0.6.1",
+                    "0.6.2",
+                    "0.6.3",
+                    "0.7.0",
+                    "0.7.1",
+                    "0.7.2",
+                    "0.7.3",
+                    "0.7.4",
+                    "0.8.0",
+                    "0.8.1",
+                    "0.8.2",
+                    "0.8.3",
+                    "0.8.4",
+                    "0.8.5",
+                    "0.8.6",
+                    "0.8.7",
+                    "0.8.8",
+                    "0.9.0",
+                    "0.9.1",
+                    "0.9.10",
+                    "0.9.11",
+                    "0.9.2",
+                    "0.9.3",
+                    "0.9.4",
+                    "0.9.5",
+                    "0.9.6",
+                    "0.9.7",
+                    "0.9.8",
+                    "0.9.9",
+                    "1.0.0",
+                    "1.0.0rc1"
+                  ],
+                  "database_specific": {
+                    "source": "https://github.com/pypa/advisory-database/blob/main/vulns/starlette/PYSEC-2026-161.yaml"
+                  }
+                }
+              ],
+              "references": [
+                {
+                  "type": "ARTICLE",
+                  "url": "https://badhost.org"
+                },
+                {
+                  "type": "ARTICLE",
+                  "url": "https://www.secwest.net/starlette"
+                },
+                {
+                  "type": "ARTICLE",
+                  "url": "https://ostif.org/disclosing-the-badhost-vulnerability-in-starlette/"
+                },
+                {
+                  "type": "DETECTION",
+                  "url": "https://badhost.org"
+                },
+                {
+                  "type": "EVIDENCE",
+                  "url": "https://github.com/Kludex/starlette/security/advisories/GHSA-86qp-5c8j-p5mr"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://github.com/Kludex/starlette/security/advisories/GHSA-86qp-5c8j-p5mr"
+                },
+                {
+                  "type": "ADVISORY",
+                  "url": "https://www.x41-dsec.de/lab/advisories/x41-2026-002-starlette/"
+                },
+                {
+                  "type": "FIX",
+                  "url": "https://github.com/Kludex/starlette/commit/764dab0dcfb9033d75442d7a359645c9f94648c6"
+                }
+              ]
+            }
+          ],
+          "groups": [
+            {
+              "ids": [
+                "PYSEC-2026-161"
+              ],
+              "aliases": [
+                "CVE-2026-48710",
+                "GHSA-86qp-5c8j-p5mr",
+                "PYSEC-2026-161",
+                "X41-2026-002"
+              ],
+              "max_severity": ""
+            }
+          ],
           "licenses": [
             "BSD-3-Clause"
           ]
@@ -3896,16 +3802,6 @@
         },
         {
           "package": {
-            "name": "types-requests",
-            "version": "2.33.0.20260327",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "Apache-2.0"
-          ]
-        },
-        {
-          "package": {
             "name": "types-s3transfer",
             "version": "0.16.0",
             "ecosystem": "PyPI"
@@ -4022,16 +3918,6 @@
           },
           "licenses": [
             "MIT"
-          ]
-        },
-        {
-          "package": {
-            "name": "vine",
-            "version": "5.1.0",
-            "ecosystem": "PyPI"
-          },
-          "licenses": [
-            "non-standard"
           ]
         },
         {
@@ -4340,19 +4226,19 @@
   "license_summary": [
     {
       "name": "MIT",
-      "count": 136
+      "count": 131
     },
     {
       "name": "Apache-2.0",
-      "count": 84
+      "count": 79
     },
     {
       "name": "non-standard",
-      "count": 47
+      "count": 42
     },
     {
       "name": "BSD-3-Clause",
-      "count": 33
+      "count": 31
     },
     {
       "name": "ISC",

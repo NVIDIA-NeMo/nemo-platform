@@ -82,8 +82,11 @@ export interface FilesetFileExplorerProps {
   isLoading: boolean;
   /** Whether files are currently being fetched */
   isFilesFetching: boolean;
-  /** Callback when a file is selected for viewing */
-  onFileSelect: (filePath: string) => void;
+  /** Callback when a file is selected for viewing. When omitted, file rows are
+   *  non-interactive (no row-click navigation, no "View File" quick action).
+   *  Hosts that don't yet have a preview surface should leave this undefined
+   *  rather than passing a no-op, so the view affordance isn't exposed. */
+  onFileSelect?: (filePath: string) => void;
   /** Gates the fileset metadata fetch. Defaults to true.
    *  Hosts that mount the explorer behind a panel animation can pass the panel's
    *  open state to suppress fetches while closed. */
@@ -94,7 +97,7 @@ export interface FilesetFileExplorerProps {
   extraColumns?: ExtraColumn[];
   /** Fires when the user explicitly toggles a folder open or closed (row click).
    *  Does NOT fire for the explorer's own auto-expansion from `currentFolder`.
-   *  Hosts can use this to sync URL state (e.g. drop `?datasetFolder=` when the
+   *  Hosts can use this to sync URL state (e.g. drop `?filesetFolder=` when the
    *  user collapses the folder that was named in the URL). */
   onFolderToggle?: (folderPath: string, isExpanded: boolean) => void;
 }
@@ -112,11 +115,18 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
   extraColumns,
   onFolderToggle,
 }) => {
-  // Dataset storage type: local and s3 are read/write; ngc and huggingface are read-only
+  // Only the default `local` backend is treated as mutable here. S3 supports
+  // writes in principle, but only when the linked secret carries write creds,
+  // and the FE has no way to know — defaulting to read-only avoids surfacing
+  // affordances that would 4xx at the API. HF + NGC backends raise
+  // NotImplementedError on upload/delete server-side.
+  //
+  // Follow-up: when a backend write-capability endpoint ships (e.g. nmp-2gk),
+  // swap the source of this signal from `storage.type` to the API response.
   const { data: dataset } = useFilesRetrieveFileset(workspace, datasetName, {
     query: { enabled },
   });
-  const isReadWriteDataset = dataset?.storage?.type === 'local' || dataset?.storage?.type === 's3';
+  const isReadWriteDataset = dataset?.storage?.type === 'local';
 
   // Folder navigation
   const folderContents = useDatasetNavigator(filesList, currentFolder ?? '');
@@ -250,7 +260,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
               }
             }}
             attributes={{
-              CheckboxBox: {
+              CheckboxInput: {
                 'aria-label': `Select all files and directories`,
                 'aria-labelledby': undefined,
               },
@@ -325,7 +335,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                   }
                 }}
                 attributes={{
-                  CheckboxBox: {
+                  CheckboxInput: {
                     'aria-label': `Select path ${node.path}`,
                     'aria-labelledby': undefined,
                   },
@@ -363,14 +373,17 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
             ),
             onCellSelect: () => {
               if (node.type === 'file') {
-                onFileSelect(node.path);
+                onFileSelect?.(node.path);
               } else if (node.type === 'directory') {
                 handleUserFolderToggle(node.path);
               }
             },
             attributes: {
               TableDataCell: {
-                className: 'cursor-pointer',
+                // Directories always toggle on click; files only do so when a
+                // view handler is wired up. Skip the pointer cursor for files
+                // without a handler so the row doesn't look interactive.
+                className: node.type === 'directory' || onFileSelect ? 'cursor-pointer' : undefined,
               },
             },
           },
@@ -425,7 +438,11 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
   );
 
   return (
-    <DatasetFileDropzone onUpload={handleUploadIntent} datasetName={datasetName}>
+    <DatasetFileDropzone
+      onUpload={handleUploadIntent}
+      datasetName={datasetName}
+      disabled={!isReadWriteDataset}
+    >
       {(openFileDialog) => (
         <>
           {isLoading ? (
@@ -532,18 +549,20 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                       data-testid="dataset-details-search-input"
                       className="min-w-0 flex-1"
                     />
-                    <Flex gap="density-md" className="ml-auto">
-                      <Button
-                        kind="secondary"
-                        onClick={() => setNewDirectoryOpen(true)}
-                        data-testid="dataset-details-new-directory-button"
-                      >
-                        New Directory
-                      </Button>
-                      <Button kind="secondary" onClick={handleOpenUploadModal}>
-                        Upload File
-                      </Button>
-                    </Flex>
+                    {isReadWriteDataset && (
+                      <Flex gap="density-md" className="ml-auto">
+                        <Button
+                          kind="secondary"
+                          onClick={() => setNewDirectoryOpen(true)}
+                          data-testid="dataset-details-new-directory-button"
+                        >
+                          New Directory
+                        </Button>
+                        <Button kind="secondary" onClick={handleOpenUploadModal}>
+                          Upload File
+                        </Button>
+                      </Flex>
+                    )}
                   </Flex>
                 </TableToolbar>
                 {searchQuery && (
@@ -569,7 +588,7 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                       emptyMessage={
                         searchQuery ? (
                           'No files match your search.'
-                        ) : (
+                        ) : isReadWriteDataset ? (
                           <>
                             Organize with folders or upload files by drag-and-drop or browsing.{' '}
                             <br /> Visit the docs for setup instructions.{' '}
@@ -581,10 +600,12 @@ export const FilesetFileExplorer: FC<FilesetFileExplorerProps> = ({
                               Documentation
                             </Anchor>
                           </>
+                        ) : (
+                          'This fileset is read-only.'
                         )
                       }
                       actions={
-                        searchQuery ? null : (
+                        searchQuery || !isReadWriteDataset ? null : (
                           <Flex gap="density-md">
                             <Button kind="secondary" onClick={() => setNewDirectoryOpen(true)}>
                               New Directory

@@ -116,7 +116,7 @@ export const EvaluationModelSelect = <TFieldValues extends FieldValues = FieldVa
           required={required}
           status={fieldError ? 'error' : undefined}
         />
-        <SelectContent className="w-(--radix-popper-anchor-width)">
+        <SelectContent className="w-(--radix-popper-anchor-width) bg-surface-raised border border-base rounded-md shadow-md overflow-hidden">
           <Block className="p-2 w-full sticky top-0 bg-surface z-10">
             <TextInput
               ref={filterInputRef}
@@ -127,8 +127,8 @@ export const EvaluationModelSelect = <TFieldValues extends FieldValues = FieldVa
               value={search}
               onChange={handleSearchChange}
               attributes={{
-                TextInputValue: {
-                  'data-testid': 'model-filter',
+                Input: {
+                  ['data-testid' as never]: 'model-filter',
                 },
               }}
             />

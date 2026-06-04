@@ -10,10 +10,11 @@ describe('PanelFooterAccordion', () => {
   it('should render a panel footer accordion', async () => {
     const user = userEvent.setup();
     render(<PanelFooterAccordion slotTrigger="Test" slotContent="Value" value="Value" />);
-    const trigger = screen.getByRole('button', { name: 'Test' });
+    const trigger = screen.getByText('Test');
     expect(trigger).toBeInTheDocument();
-    expect(screen.queryByText('Value')).not.toBeInTheDocument();
+    const content = screen.getByText('Value');
+    expect(content).toHaveAttribute('data-state', 'closed');
     await user.click(trigger);
-    expect(screen.getByText('Value')).toBeInTheDocument();
+    expect(screen.getByText('Value')).toHaveAttribute('data-state', 'open');
   });
 });

@@ -30,7 +30,7 @@ export const EvalConfigFilesPanel: FC<EvalConfigFilesPanelProps> = ({ files }) =
         <Accordion
           multiple
           items={files.map((f) => ({
-            iconSide: 'left',
+            chevronPosition: 'start',
             value: f.name,
             slotTrigger: <Text kind="body/semibold/sm">{PRETTY_NAME[f.name] ?? f.name}</Text>,
             slotContent: (

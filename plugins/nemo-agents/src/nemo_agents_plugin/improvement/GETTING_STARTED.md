@@ -57,7 +57,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents evaluate-suite --config .agent-improver.yml
+nemo agents evaluate-suite run --spec-file .agent-improver.yml
 ```
 
 Output lands in `./runs/batch-<timestamp>/` with `report.md` / `report.csv`
@@ -67,7 +67,7 @@ data is also written to `<batch_dir>/<eval-name>__trials.json`.
 ### 3. Inspect the results
 
 ```bash
-nemo agents analyze --batch ./runs/batch-<timestamp> --format md
+nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "format": "md"}'
 ```
 
 You'll get a markdown report with:
@@ -79,7 +79,7 @@ You'll get a markdown report with:
 For just the mechanical pass (no LLM, no API key needed):
 
 ```bash
-nemo agents analyze --batch ./runs/batch-<timestamp> --mechanical-only
+nemo agents analyze run --spec '{"batch": "./runs/batch-<timestamp>", "mechanical_only": true}'
 ```
 
 ### 4. Run the optimize-skills loop
@@ -89,7 +89,7 @@ cd /path/to/my-agent
 export ANTHROPIC_API_KEY='<key>'
 export ANTHROPIC_BASE_URL='https://inference-api.nvidia.com'
 
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 The loop strips `CLAUDE_CODE_*` env markers when spawning `claude --print`,
@@ -98,22 +98,22 @@ session. For unattended runs, wrap in `tmux` so you can detach.
 
 What it does, per iteration:
 
-1. **Initial batch** — runs the configured evals (skipped if you pass
-   `--initial-batch <existing-dir>`)
+1. **Initial batch** — runs the configured evals (skipped when
+   `initial_batch: <existing-dir>` is set in the YAML)
 2. **Analyze** — clusters + LLM hypotheses
 3. **Pick a hypothesis** — non-overlapping, sorted by confidence, skipping
    ones already tried this loop
 4. **Apply** — creates an isolated git worktree, invokes `claude --print`
    with the hypothesis as the prompt, captures the diff
-5. **Guard** — reverts any change outside `--skills-path` and inside the
-   `--evals` directory (the eval immutability invariant)
-6. **Verify** — re-runs the affected evals (or all evals with
-   `--full-verification`)
+5. **Guard** — reverts any change outside `skills_path` and inside the
+   `evals` directory (the eval immutability invariant)
+6. **Verify** — re-runs the affected evals (or all evals when
+   `full_verification: true`)
 7. **Verdict** — pass/fail transitions take priority; then duration delta
    (±5%); then token delta (±10%) as tiebreaker. Status: `improved` /
    `regressed` / `neutral` / `error`
 8. **Keep or discard** — improvement keeps the worktree branch (locally,
-   or auto-opened as PR/MR with `--open-pr`); regression / neutral
+   or auto-opened as PR/MR when `open_pr: true`); regression / neutral
    discards
 
 The final `loop_state.json` records every iteration's hypothesis, files
@@ -127,7 +127,7 @@ NeMo Platform ships a working `.agent-improver.yml` at the repo root. Run from t
 repo root:
 
 ```bash
-nemo agents optimize-skills --config .agent-improver.yml
+nemo agents optimize-skills run --spec-file .agent-improver.yml
 ```
 
 This is also the cheapest way to validate the workflow end-to-end on a
@@ -135,27 +135,31 @@ real agent.
 
 ### Scope to a single eval (debug / fast iteration)
 
-```bash
-nemo agents optimize-skills --config .agent-improver.yml \
-  --filter my-task-1 --iterations 1
+Edit `.agent-improver.yml` (or a copy) to set:
+
+```yaml
+filter_glob: my-task-1
+iterations: 1
 ```
+
+Then re-run with `--spec-file <path>`.
 
 ### Use an existing batch as the baseline (skip the initial run)
 
-```bash
-nemo agents optimize-skills --config .agent-improver.yml \
-  --initial-batch ./runs/batch-2026-04-30__09-10-42
+Add to the YAML:
+
+```yaml
+initial_batch: ./runs/batch-2026-04-30__09-10-42
 ```
 
 ### Run with variance reduction
 
 Single-trial verdicts can commit noise as progress on containerized
 agentic runs (cold-cache effects routinely produce >5% wallclock variance
-trial-to-trial). Recommended `repeats: 3` in the YAML or `--repeats 3`
-on the CLI:
+trial-to-trial). Recommended `repeats: 3` in the YAML:
 
-```bash
-nemo agents optimize-skills --config .agent-improver.yml --repeats 3
+```yaml
+repeats: 3
 ```
 
 Median across trials for duration / tokens / tool-calls; majority vote
@@ -163,13 +167,9 @@ for pass/fail with ties going to FAIL (conservative).
 
 ### Open a PR/MR automatically on improvement
 
-```bash
-nemo agents optimize-skills --config .agent-improver.yml --open-pr
-```
-
-The loop detects `gh` (GitHub remote) or `glab` (GitLab remote)
-automatically and dispatches accordingly. With neither installed, falls
-back to "branch pushed; open manually."
+Set `open_pr: true` in the YAML. The loop detects `gh` (GitHub remote)
+or `glab` (GitLab remote) automatically and dispatches accordingly.
+With neither installed, falls back to "branch pushed; open manually."
 
 ## Troubleshooting
 
@@ -240,22 +240,20 @@ implementation, gated on plumbing ``workspace`` / ``agent_name`` /
 - **`plugins/nemo-agents/src/nemo_agents_plugin/skills/nemo-agent-skills-optimization/SKILL.md`** —
   the skill that teaches a Claude session how to drive these commands
 
-## Related plugin commands (auto-injected)
+## Command verbs
 
-The improvement workflow commands all have an auto-injected job form
-for cluster dispatch via the platform scheduler. Same Pydantic schema,
-just different invocation:
+Each improvement command is a NemoJob group with the standard `run` /
+`submit` / `explain` verbs:
 
 ```bash
-# Friendly form (daily use)
-nemo agents optimize-skills --config .agent-improver.yml
-
-# Platform-job form (cluster dispatch)
+# Run locally, in-process
 nemo agents optimize-skills run --spec-file .agent-improver.yml
+
+# Submit to a cluster
 nemo agents optimize-skills submit --spec-file .agent-improver.yml --cluster <url>
+
+# Print the spec schema
 nemo agents optimize-skills explain
 ```
 
-The friendly form is what users type day-to-day. The `run` / `submit` /
-`explain` subcommands are the platform-dispatch counterparts, served
-by the auto-injection machinery.
+`evaluate-suite` and `analyze` follow the same pattern.

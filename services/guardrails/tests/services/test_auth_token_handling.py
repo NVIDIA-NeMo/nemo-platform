@@ -3,6 +3,7 @@
 
 import unittest
 from unittest.mock import MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 from nmp.guardrails.app.llms.chat.nim import ChatNIM
@@ -197,7 +198,9 @@ class TestAuthTokenHandlingLLM:
             # verify that the base URL is the custom endpoint that was set earlier
             url_used = self.mock_httpx_client_class.return_value.__enter__.return_value.post.call_args[1]["url"]
 
-            assert url_used.startswith("http://custom-endpoint.com")
+            parsed = urlparse(url_used)
+            assert parsed.scheme == "http"
+            assert parsed.hostname == "custom-endpoint.com"
 
 
 if __name__ == "__main__":

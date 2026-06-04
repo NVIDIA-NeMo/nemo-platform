@@ -202,6 +202,229 @@ jobs:
             coverage.xml
             coverage.json
 
+  # Build wheels for all packages × python versions. Downstream jobs
+  # (wheel-test, python-e2e-test) download these artifacts instead
+  # of rebuilding.
+  wheel-build:
+    name: ${{ matrix.package }} wheel build (py${{ matrix.python-version }})
+    needs: [policy-wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nemo-platform, nemo-platform-plugin]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Download policy WASM
+        if: matrix.package == 'nemo-platform'
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Build ${{ matrix.package }} wheel
+        id: build
+        uses: ./.github/actions/build-nemo-platform-wheel
+        with:
+          package: ${{ matrix.package }}
+          out-dir: ${{ github.workspace }}/dist
+          cadence: nightly
+          # Sentinel epoch — the wheel version is meaningless for a CI test
+          # build, but stamp_sdk_version.py requires \d{14}.
+          nightly-timestamp: "19700101000000"
+          python-version: ${{ matrix.python-version }}
+      - name: Upload wheel
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
+          path: ${{ steps.build.outputs.wheel-path }}
+          retention-days: 7
+          if-no-files-found: error
+
+  # Test each wheel: install from the artifact and run basic CLI /
+  # import checks.
+  wheel-test:
+    name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
+    needs: [wheel-build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [nemo-platform, nemo-platform-plugin]
+        python-version: ["3.11", "3.12", "3.13"]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - name: Download wheel
+        uses: actions/download-artifact@v8
+        with:
+          name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/wheelcheck
+
+      - name: Install + test nemo-platform CLI
+        if: matrix.package == 'nemo-platform'
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+          NMP_DATA_DIR: ${{ runner.temp }}/nemo-data
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+        run: |
+          set -euo pipefail
+          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
+          uv tool install --force --python "${PYTHON_VERSION}" "${WHEEL}[services]"
+          cd "${RUNNER_TEMP}/wheelcheck"
+          unset PYTHONPATH VIRTUAL_ENV
+          bash "${GITHUB_WORKSPACE}/script/test-nemo-cli.sh"
+
+      - name: Install + test nemo-platform-plugin
+        if: matrix.package == 'nemo-platform-plugin'
+        shell: bash
+        env:
+          PYTHON_VERSION: ${{ matrix.python-version }}
+        run: |
+          set -euo pipefail
+          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
+          cd "${RUNNER_TEMP}/wheelcheck"
+          uv venv .venv --python "${PYTHON_VERSION}"
+          uv pip install --python .venv/bin/python "${WHEEL}"
+          unset PYTHONPATH VIRTUAL_ENV
+          # Import the package + a couple of representative submodules
+          # (cli, commands). These are the surfaces a plugin author would
+          # touch first; if any of them fail to import, the wheel is
+          # broken in a way that surfaces immediately on day one.
+          .venv/bin/python -c "
+          import nemo_platform_plugin
+          import nemo_platform_plugin.cli
+          import nemo_platform_plugin.commands
+          print('nemo_platform_plugin', getattr(nemo_platform_plugin, '__version__', '<no __version__>'))
+          "
+
+  # E2E tests: start services from the workspace venv and run the e2e
+  # suite against the real process.
+  python-e2e-test:
+    name: Python e2e tests
+    needs: [policy-wasm]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Download policy WASM
+        uses: actions/download-artifact@v8
+        with:
+          name: policy-wasm
+          path: services/core/auth/src/nmp/core/auth/assets
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.13"
+          enable-cache: true
+      - name: Run e2e tests
+        run: make test-e2e
+        env:
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+          E2E_SERVICES_LOG: ${{ runner.temp }}/services.log
+      - name: Dump server logs
+        if: always()
+        run: |
+          echo "::group::Server log"
+          cat "${{ runner.temp }}/services.log" 2>/dev/null || echo "No server log found"
+          echo "::endgroup::"
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: python-e2e-test-results
+          retention-days: 30
+          path: |
+            report.xml
+            ${{ runner.temp }}/services.log
+
+  # Required-check pin: branch protection should reference this aggregator
+  # rather than the per-row matrix jobs, so the matrix can grow or shrink
+  # without admin intervention. Skipped counts as pass.
+  wheel-test-aggregate:
+    name: Wheel build + test
+    needs: [wheel-test]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check matrix result
+        shell: bash
+        env:
+          MATRIX_RESULT: ${{ needs.wheel-test.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          case "${MATRIX_RESULT}" in
+            success|skipped)
+              echo "wheel-test matrix: ${MATRIX_RESULT}"
+              ;;
+            *)
+              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
+              echo "::error::see per-row results: ${RUN_URL}"
+              exit 1
+              ;;
+          esac
+
+  benchmark-guardrails:
+    name: Guardrails plugin benchmark
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout nemo-platform
+        uses: actions/checkout@v6
+        with:
+          path: nemo-platform
+      - name: Checkout NeMo-Guardrails
+        uses: actions/checkout@v6
+        with:
+          repository: NVIDIA/NeMo-Guardrails
+          path: NeMo-Guardrails
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          # Point setup-uv at the nemo-platform checkout so it picks up the
+          # repo's `required-version` constraint from pyproject.toml. Other
+          # jobs check out into the workspace root and get this implicitly.
+          working-directory: nemo-platform
+          python-version: "3.11"
+          enable-cache: true
+      - name: Bootstrap Python environment
+        working-directory: nemo-platform
+        run: make bootstrap-python
+        env:
+          PYTORCH_DEPS: cpu
+      - name: Run benchmark sweep
+        working-directory: nemo-platform
+        run: make benchmark-guardrails
+        env:
+          NEMO_GUARDRAILS_REPO_ROOT: ${{ github.workspace }}/NeMo-Guardrails
+          _TYPER_FORCE_DISABLE_TERMINAL: "1"
+      - name: Upload benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: benchmark-guardrails-results
+          retention-days: 30
+          path: |
+            nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
+
   coverage-comment:
     name: Post coverage comment
     needs: [python-unit-test, python-integration-test]
@@ -271,7 +494,7 @@ jobs:
 
   notify-ci-consumer:
     name: Notify CI consumer
-    needs: [lint, python-unit-test, opa-policy-test]
+    needs: [lint, python-unit-test, opa-policy-test, wheel-test-aggregate]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

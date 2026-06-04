@@ -21,6 +21,7 @@ from nemo_data_designer_plugin.sdk.job_results import DataDesignerJobResults
 from nemo_data_designer_plugin.sdk.logging import with_logging
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
 from nemo_platform.types import PlatformJobStatus
+from nemo_platform_plugin.jobs.archive import safe_extract_tar
 from typing_extensions import Self
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,10 @@ def _raise_for_status(resp: httpx.Response) -> None:
     except httpx.HTTPStatusError as exc:
         status_code, detail = extract_http_error_info(exc)
         raise DataDesignerJobError(detail, status_code=status_code) from exc
+
+
+def _safe_extract_tar(tar: tarfile.TarFile, output_path: Path) -> None:
+    safe_extract_tar(tar, output_path, error_cls=DataDesignerJobError)
 
 
 @dataclass
@@ -214,7 +219,7 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         )
         _raise_for_status(resp)
         with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:*") as tar:
-            tar.extractall(path=output_path)
+            _safe_extract_tar(tar, output_path)
 
         try:
             analysis_resp = self._platform._client.get(
@@ -421,7 +426,7 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         )
         _raise_for_status(resp)
         with tarfile.open(fileobj=io.BytesIO(resp.content), mode="r:*") as tar:
-            tar.extractall(path=output_path)
+            _safe_extract_tar(tar, output_path)
 
         try:
             analysis_resp = await self._platform._client.get(

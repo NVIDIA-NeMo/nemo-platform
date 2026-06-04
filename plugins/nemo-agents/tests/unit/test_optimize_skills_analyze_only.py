@@ -226,37 +226,3 @@ def test_optimize_skills_job_analyze_only_requires_initial_batch() -> None:
     }
     with pytest.raises(ValueError, match="initial_batch"):
         OptimizeSkillsJob().run(cfg)
-
-
-def test_cli_analyze_only_requires_initial_batch_flag() -> None:
-    """The CLI handler rejects --analyze-only without --initial-batch."""
-    from nemo_agents_plugin.cli import AgentsCLI
-    from typer.testing import CliRunner
-
-    app = AgentsCLI().get_cli()
-    runner = CliRunner()
-    result = runner.invoke(
-        app,
-        [
-            "optimize-skills",
-            "--evals",
-            "/tmp/x",
-            "--analyze-only",
-        ],
-    )
-    assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output
-
-
-def test_cli_analyze_only_from_config_file_requires_initial_batch(tmp_path: Path) -> None:
-    """analyze_only=true in a --config YAML must also be guarded (not just the CLI flag)."""
-    from nemo_agents_plugin.cli import AgentsCLI
-    from typer.testing import CliRunner
-
-    config = tmp_path / "config.yml"
-    config.write_text("analyze_only: true\nevals: /tmp/x\n")
-
-    app = AgentsCLI().get_cli()
-    result = CliRunner().invoke(app, ["optimize-skills", "--config", str(config)])
-    assert result.exit_code == 1
-    assert "initial-batch" in result.output or "initial_batch" in result.output

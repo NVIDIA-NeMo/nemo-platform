@@ -9,12 +9,10 @@ from unittest.mock import AsyncMock, Mock
 import pytest
 from nemo_platform.types.entities import EntitiesPage, Entity
 from nemo_platform.types.shared.pagination_data import PaginationData
+from nemo_platform_plugin.entities import _convert_filter_obj_to_filter_str
 from nmp.common.auth.models import AuthContext
 from nmp.common.entities import ALL_WORKSPACES, DEFAULT_WORKSPACE, DatetimeFilter, EntityBase, EntityClient
-from nmp.common.entities.client import (
-    EntityConflictError,
-    _convert_filter_obj_to_filter_str,
-)
+from nmp.common.entities.client import EntityConflictError
 from pydantic import BaseModel, Discriminator, Field, PrivateAttr, Tag, computed_field
 
 

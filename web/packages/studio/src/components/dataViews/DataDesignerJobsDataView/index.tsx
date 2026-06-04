@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import {
   ROW_SELECTION_COLUMN_SIZE,
@@ -86,9 +87,11 @@ export const DataDesignerJobsDataView: FC = () => {
       filter: {
         ...((dataViewState.apiFilter.filter ?? {}) as DataDesignerJobsListFilter),
         ...(dataViewState.apiFilter.searchText
-          ? { name: { $like: dataViewState.apiFilter.searchText } }
+          ? withOperators<DataDesignerJobsListFilter>({
+              name: { $like: dataViewState.apiFilter.searchText },
+            })
           : {}),
-      } as DataDesignerJobsListFilter | undefined,
+      },
     },
     {
       query: {

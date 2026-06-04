@@ -135,29 +135,29 @@ def create_docker_client(fail_message: str | None = None) -> docker.DockerClient
         A validated Docker client.
 
     Raises:
-        pytest.fail: If Docker client cannot be created or daemon is not responding.
+        pytest.fail.Exception: If Docker client cannot be created or daemon is not responding.
     """
     try:
         client = docker.from_env()
     except DockerException as e:
         msg = fail_message or "Docker client initialization failed"
-        pytest.fail(
+        raise pytest.fail.Exception(
             f"{msg}: {e}\n\n"
             "Please ensure Docker is installed and the Docker daemon is running:\n"
             "  - macOS/Windows: Start Docker Desktop\n"
             "  - Linux: Run 'sudo systemctl start docker' or 'sudo service docker start'\n"
             "  - Verify with: 'docker info'"
-        )
+        ) from e
 
     # Verify the daemon is actually responding
     try:
         client.ping()
     except DockerException as e:
-        pytest.fail(
+        raise pytest.fail.Exception(
             f"Docker daemon is not responding: {e}\n\n"
             "The Docker client was created but cannot communicate with the daemon.\n"
             "Please ensure the Docker daemon is running."
-        )
+        ) from e
 
     return client
 

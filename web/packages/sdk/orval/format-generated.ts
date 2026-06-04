@@ -7,24 +7,34 @@
  * Runs prettier and eslint fix on generated API files, and prefixes unused parameters with underscores.
  */
 
-import { execSync } from 'child_process';
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'fs';
+import { mkdirSync, readdirSync, readFileSync, writeFileSync, type Dirent } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import prettier from 'prettier';
+import { serviceConfigs } from './constants';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Get the service path from command line args
-const servicePath = process.argv[2];
+const ALLOWED_SERVICE_PATHS: ReadonlySet<string> = new Set(
+  Object.values(serviceConfigs).map((c) => c.path)
+);
+const rawServicePath = process.argv[2];
 
-if (!servicePath) {
+if (!rawServicePath) {
   console.error('Error: Service path is required');
   console.error('Usage: node format-generated.js <service-path>');
   process.exit(1);
 }
 
+if (!ALLOWED_SERVICE_PATHS.has(rawServicePath)) {
+  console.error(`Error: Unknown service path: ${rawServicePath}`);
+  console.error(`Allowed: ${[...ALLOWED_SERVICE_PATHS].join(', ')}`);
+  process.exit(1);
+}
+
+const servicePath = rawServicePath;
 const generatedPath = path.join(__dirname, '..', 'generated', servicePath);
 
 console.log(`\n📝 Processing generated files in ${generatedPath}...`);
@@ -36,15 +46,14 @@ function getTsFiles(dir: string): string[] {
   const files: string[] = [];
 
   try {
-    const entries = readdirSync(dir);
+    const entries = readdirSync(dir, { withFileTypes: true });
 
     for (const entry of entries) {
-      const fullPath = path.join(dir, entry);
-      const stat = statSync(fullPath);
+      const fullPath = path.join(dir, entry.name);
 
-      if (stat.isDirectory()) {
+      if (entry.isDirectory()) {
         files.push(...getTsFiles(fullPath));
-      } else if (entry.endsWith('.ts')) {
+      } else if (entry.isFile() && entry.name.endsWith('.ts')) {
         files.push(fullPath);
       }
     }
@@ -354,29 +363,145 @@ function prefixUnusedParameters(filePath: string): boolean {
   return false;
 }
 
-try {
-  // Step 1: Prefix unused parameters with underscore
+/**
+ * Split an orval-generated zod "tags" file (one file per OpenAPI tag, containing
+ * every operation's schemas/constants for that tag) into per-operation files,
+ * with a barrel re-export at the original path.
+ *
+ * Why: orval's zod generator inlines every $ref recursively (orval#2535), so a
+ * single tag file can be multiple megabytes. Rolldown does not tree-shake unused
+ * exports out of that file — importing one constant pulls the whole thing into
+ * the chunk. Physically splitting by operation lets the bundler include only
+ * the operation files actually referenced.
+ *
+ * Returns the number of per-operation files written, or 0 if the file did not
+ * look like a tags-mode zod output (e.g. it was already a barrel, or had no
+ * top-level `export const`).
+ */
+const SECTION_WORDS = /Query|Body|Response|Path|Params|Schema/;
+
+function findOperationRoot(exportName: string): string {
+  const camel = exportName[0].toLowerCase() + exportName.slice(1);
+  const match = camel.match(SECTION_WORDS);
+  return match ? camel.slice(0, match.index) : camel;
+}
+
+function splitZodTagFile(filePath: string): number {
+  const src = readFileSync(filePath, 'utf-8');
+
+  const exportPositions: Array<{ start: number; name: string }> = [];
+  const exportRegex = /^export const ([a-zA-Z_$][a-zA-Z0-9_$]*)/gm;
+  let match: RegExpExecArray | null;
+  while ((match = exportRegex.exec(src)) !== null) {
+    exportPositions.push({ start: match.index, name: match[1] });
+  }
+  if (exportPositions.length === 0) return 0;
+
+  const header = src.slice(0, exportPositions[0].start);
+
+  // Group export blocks by operation root, preserving source order.
+  const groups = new Map<string, string[]>();
+  const order: string[] = [];
+  for (let i = 0; i < exportPositions.length; i++) {
+    const { start, name } = exportPositions[i];
+    const end = i + 1 < exportPositions.length ? exportPositions[i + 1].start : src.length;
+    const root = findOperationRoot(name);
+    if (!groups.has(root)) {
+      groups.set(root, []);
+      order.push(root);
+    }
+    groups.get(root)!.push(src.slice(start, end));
+  }
+
+  // Skip files that contain only one operation — splitting them adds churn
+  // without helping the bundler.
+  if (order.length <= 1) return 0;
+
+  const tagName = path.basename(filePath, '.ts');
+  const outDir = path.join(path.dirname(filePath), tagName);
+  mkdirSync(outDir, { recursive: true });
+
+  for (const root of order) {
+    const contents = header + groups.get(root)!.join('');
+    writeFileSync(path.join(outDir, `${root}.ts`), contents, 'utf-8');
+  }
+
+  const barrelLines = [
+    '/**',
+    ' * SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.',
+    ' * SPDX-License-Identifier: Apache-2.0',
+    ' *',
+    ' * Auto-generated barrel that re-exports per-operation zod modules.',
+    ' * Split from a single orval tag file to keep the bundler from pulling',
+    ' * the entire tag into a route chunk. Do not edit manually.',
+    ' */',
+    ...order.map((root) => `export * from './${tagName}/${root}';`),
+    '',
+  ];
+  writeFileSync(filePath, barrelLines.join('\n'), 'utf-8');
+
+  return order.length;
+}
+
+function splitZodTagFilesIn(zodDir: string): void {
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(zodDir, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.ts')) continue;
+    const fullPath = path.join(zodDir, entry.name);
+    const count = splitZodTagFile(fullPath);
+    if (count > 0) {
+      console.log(`    Split ${entry.name} into ${count} operation files`);
+    }
+  }
+}
+
+async function formatWithPrettier(dir: string): Promise<void> {
+  const entries = readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      await formatWithPrettier(fullPath);
+      continue;
+    }
+    if (!entry.isFile()) continue;
+    const fileInfo = await prettier.getFileInfo(fullPath);
+    if (fileInfo.ignored || !fileInfo.inferredParser) continue;
+    const opts = (await prettier.resolveConfig(fullPath)) ?? {};
+    const source = readFileSync(fullPath, 'utf-8');
+    const formatted = await prettier.format(source, { ...opts, filepath: fullPath });
+    if (formatted !== source) {
+      writeFileSync(fullPath, formatted, 'utf-8');
+    }
+  }
+}
+
+async function run(): Promise<void> {
   console.log('Prefixing unused parameters...');
   const tsFiles = getTsFiles(generatedPath);
   let modifiedCount = 0;
-
   for (const file of tsFiles) {
     if (prefixUnusedParameters(file)) {
       modifiedCount++;
     }
   }
-
   console.log(`  Modified ${modifiedCount} file(s)`);
 
-  // Step 2: Run prettier
+  const zodDir = path.join(generatedPath, 'zod');
+  console.log('Splitting zod tag files by operation...');
+  splitZodTagFilesIn(zodDir);
+
   console.log('Running prettier...');
-  execSync(`prettier --write ${generatedPath}`, {
-    stdio: 'inherit',
-    cwd: path.join(__dirname, '..'),
-  });
+  await formatWithPrettier(generatedPath);
 
   console.log('✅ Successfully processed generated files\n');
-} catch (error) {
+}
+
+run().catch((error) => {
   console.error('❌ Error during processing:', (error as Error).message);
   process.exit(1);
-}
+});

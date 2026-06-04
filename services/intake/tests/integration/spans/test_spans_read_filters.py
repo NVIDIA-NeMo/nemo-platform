@@ -68,6 +68,14 @@ def test_spans_read_filters(client: TestClient, make_otlp_request):
     assert session_response.json()["pagination"]["total_results"] == 5
     assert {span["session_id"] for span in session_response.json()["data"]} == {"conv-a"}
 
+    trace_response = client.get(
+        "/apis/intake/v2/workspaces/default/spans",
+        params={"filter[trace_id]": "0" * 31 + "1", "page_size": 20},
+    )
+    assert trace_response.status_code == 200, trace_response.text
+    assert trace_response.json()["pagination"]["total_results"] == 10
+    assert {span["trace_id"] for span in trace_response.json()["data"]} == {"0" * 31 + "1"}
+
     source_format_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
         params={"filter[source]": "otel", "page_size": 20},

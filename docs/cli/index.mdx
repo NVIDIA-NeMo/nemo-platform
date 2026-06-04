@@ -27,13 +27,13 @@ This package downloads and installs additional third-party open source software 
 ### Install in a Virtual Environment
 
 ```bash
-pip install nemo-platform
+pip install nemo-platform[all]
 ```
 
 Or with uv:
 
 ```bash
-uv pip install nemo-platform
+uv pip install nemo-platform[all]
 ```
 
 <Warning>
@@ -105,7 +105,7 @@ nemo setup
 curl -s http://localhost:8080/health/ready
 
 # View service logs
-cat .nemo-services.log
+cat ~/.local/state/nmp/instances/<scope>/services.log
 
 # Stop services
 pkill -f "nemo services run"

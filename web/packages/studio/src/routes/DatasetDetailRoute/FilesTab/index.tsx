@@ -8,7 +8,7 @@ import {
 } from '@nemo/sdk/generated/platform/api';
 import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { Flex } from '@nvidia/foundations-react-core';
-import { DatasetFilePreviewContent } from '@studio/components/DatasetFilePreviewPanel/DatasetFilePreviewContent';
+import { FilesetFilePreviewContent } from '@studio/components/FilesetFilePreviewPanel/FilesetFilePreviewContent';
 import {
   FilesetFileExplorer,
   type ExtraColumn,
@@ -33,7 +33,7 @@ export interface FilesTabProps {
  */
 export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId }) => {
   const { getQueryParam, setQueryParam, setQueryParams } = useQueryParams();
-  const currentFolder = getQueryParam(QUERY_PARAMETERS.datasetFolder) ?? undefined;
+  const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder) ?? undefined;
   const selectedFilePath = getQueryParam(QUERY_PARAMETERS.file) || undefined;
 
   const {
@@ -62,7 +62,7 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
     // so the explorer renders at root and the URL reflects that.
     setQueryParams({
       [QUERY_PARAMETERS.file]: undefined,
-      [QUERY_PARAMETERS.datasetFolder]: undefined,
+      [QUERY_PARAMETERS.filesetFolder]: undefined,
     });
   }, [setQueryParams]);
 
@@ -72,7 +72,7 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
       // and navigate the explorer to that folder, atomically.
       setQueryParams({
         [QUERY_PARAMETERS.file]: undefined,
-        [QUERY_PARAMETERS.datasetFolder]: folderPath || undefined,
+        [QUERY_PARAMETERS.filesetFolder]: folderPath || undefined,
       });
     },
     [setQueryParams]
@@ -81,14 +81,14 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
   const handleFolderToggle = useCallback(
     (folderPath: string, isExpanded: boolean) => {
       // When the user collapses the folder that's currently named in the URL
-      // (or any ancestor of it), clear `?datasetFolder=` so URL and visual
+      // (or any ancestor of it), clear `?filesetFolder=` so URL and visual
       // state stay in sync. Expansions never write to the URL — that would
-      // churn `?datasetFolder=` on every folder click.
+      // churn `?filesetFolder=` on every folder click.
       if (isExpanded || !currentFolder) return;
       const isCurrentOrAncestor =
         currentFolder === folderPath || currentFolder.startsWith(`${folderPath}/`);
       if (isCurrentOrAncestor) {
-        setQueryParams({ [QUERY_PARAMETERS.datasetFolder]: undefined });
+        setQueryParams({ [QUERY_PARAMETERS.filesetFolder]: undefined });
       }
     },
     [currentFolder, setQueryParams]
@@ -130,11 +130,11 @@ export const FilesTab: FC<FilesTabProps> = ({ workspace, datasetName, datasetId 
       <Flex direction="col" className="flex-1 min-w-0 min-h-0">
         {selectedFilePath ? (
           <div className="w-full h-full min-h-0" data-testid="dataset-files-tab-preview">
-            <DatasetFilePreviewContent
-              datasetWorkspace={workspace}
-              datasetName={datasetName}
+            <FilesetFilePreviewContent
+              workspace={workspace}
+              filesetName={datasetName}
               filePath={selectedFilePath}
-              onDatasetClick={handleClosePreview}
+              onFilesetClick={handleClosePreview}
               onFolderClick={handleFolderChange}
               onDeleteSuccess={handleClosePreview}
               onRenameSuccess={(newPath) => setQueryParam(QUERY_PARAMETERS.file, newPath)}

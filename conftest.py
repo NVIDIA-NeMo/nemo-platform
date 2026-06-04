@@ -285,6 +285,9 @@ def pytest_runtest_setup(item):
     if "slow" in [marker.name for marker in item.iter_markers()]:
         if not item.config.getoption("--run-slow"):
             skip_test("Skipping slow test (use --run-slow to run)")
+    if "e2e" in [marker.name for marker in item.iter_markers()]:
+        if not item.config.getoption("--run-e2e"):
+            skip_test("Skipping e2e test (use --run-e2e to run)")
 
 
 from xdist.scheduler.loadscope import LoadScopeScheduling  # noqa: E402

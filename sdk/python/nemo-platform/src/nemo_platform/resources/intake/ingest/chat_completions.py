@@ -17,6 +17,8 @@
 
 from __future__ import annotations
 
+from typing import Dict
+
 import httpx
 
 from ...._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
@@ -30,12 +32,14 @@ from ...._response import (
     async_to_streamed_response_wrapper,
 )
 from ...._base_client import make_request_options
-from ....types.intake import FlexibleEntryRequestParam
-from ....types.intake.ingest import chat_completion_create_params
+from ....types.intake.ingest import (
+    chat_completion_create_params,
+)
 from ....types.intake.evaluation_context_param import EvaluationContextParam
-from ....types.intake.flexible_entry_request_param import FlexibleEntryRequestParam
-from ....types.intake.flexible_entry_response_param import FlexibleEntryResponseParam
+from ....types.intake.experiment_context_param import ExperimentContextParam
 from ....types.intake.ingest.chat_completions_ingest_response import ChatCompletionsIngestResponse
+from ....types.intake.ingest.captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
+from ....types.intake.ingest.captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
 __all__ = ["ChatCompletionsResource", "AsyncChatCompletionsResource"]
 
@@ -64,9 +68,14 @@ class ChatCompletionsResource(SyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        request: FlexibleEntryRequestParam,
-        response: FlexibleEntryResponseParam,
+        request: CapturedChatCompletionsRequestParam,
+        response: CapturedChatCompletionsResponseParam,
+        cost_details: Dict[str, float] | Omit = omit,
+        cost_input_usd: float | Omit = omit,
+        cost_output_usd: float | Omit = omit,
+        cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
+        experiment_context: ExperimentContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
         trace_id: str | Omit = omit,
@@ -81,23 +90,20 @@ class ChatCompletionsResource(SyncAPIResource):
         Ingest Chat Completion
 
         Args:
-          request: Flexible entry request that accepts any object shape.
+          request: Flexible captured chat-completions request.
 
-              This flexibility enables the Intake service to store requests from various LLM
-              providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-              multimodal, etc.) without requiring schema updates.
+          response: Flexible captured chat-completions response.
 
-              Required fields: `messages` and `model` Common optional fields: `temperature`,
-              `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
+          cost_details: Additional estimated cost breakdown fields in USD.
 
-          response: Flexible entry response that accepts any object shape.
+          cost_input_usd: Estimated input-token cost of this model call in USD.
 
-              This flexibility enables the Intake service to store responses from various LLM
-              providers and future model types without requiring schema updates.
+          cost_output_usd: Estimated output-token cost of this model call in USD.
 
-              Required: either `choices` (successful response) or `error` (failed call).
-              Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-              etc.
+          cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
+              Intake stores it as semantic cost_total_usd on spans.
+
+          experiment_context: Experiment context accepted by ingest endpoints.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
@@ -123,7 +129,12 @@ class ChatCompletionsResource(SyncAPIResource):
                 {
                     "request": request,
                     "response": response,
+                    "cost_details": cost_details,
+                    "cost_input_usd": cost_input_usd,
+                    "cost_output_usd": cost_output_usd,
+                    "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
+                    "experiment_context": experiment_context,
                     "provider": provider,
                     "session_id": session_id,
                     "trace_id": trace_id,
@@ -161,9 +172,14 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         self,
         *,
         workspace: str | None = None,
-        request: FlexibleEntryRequestParam,
-        response: FlexibleEntryResponseParam,
+        request: CapturedChatCompletionsRequestParam,
+        response: CapturedChatCompletionsResponseParam,
+        cost_details: Dict[str, float] | Omit = omit,
+        cost_input_usd: float | Omit = omit,
+        cost_output_usd: float | Omit = omit,
+        cost_usd: float | Omit = omit,
         evaluation_context: EvaluationContextParam | Omit = omit,
+        experiment_context: ExperimentContextParam | Omit = omit,
         provider: str | Omit = omit,
         session_id: str | Omit = omit,
         trace_id: str | Omit = omit,
@@ -178,23 +194,20 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
         Ingest Chat Completion
 
         Args:
-          request: Flexible entry request that accepts any object shape.
+          request: Flexible captured chat-completions request.
 
-              This flexibility enables the Intake service to store requests from various LLM
-              providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-              multimodal, etc.) without requiring schema updates.
+          response: Flexible captured chat-completions response.
 
-              Required fields: `messages` and `model` Common optional fields: `temperature`,
-              `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
+          cost_details: Additional estimated cost breakdown fields in USD.
 
-          response: Flexible entry response that accepts any object shape.
+          cost_input_usd: Estimated input-token cost of this model call in USD.
 
-              This flexibility enables the Intake service to store responses from various LLM
-              providers and future model types without requiring schema updates.
+          cost_output_usd: Estimated output-token cost of this model call in USD.
 
-              Required: either `choices` (successful response) or `error` (failed call).
-              Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-              etc.
+          cost_usd: Total estimated cost of this model call in USD. This matches ATIF step metrics;
+              Intake stores it as semantic cost_total_usd on spans.
+
+          experiment_context: Experiment context accepted by ingest endpoints.
 
           session_id: Groups related chat-completions calls without forcing them into the same trace.
 
@@ -220,7 +233,12 @@ class AsyncChatCompletionsResource(AsyncAPIResource):
                 {
                     "request": request,
                     "response": response,
+                    "cost_details": cost_details,
+                    "cost_input_usd": cost_input_usd,
+                    "cost_output_usd": cost_output_usd,
+                    "cost_usd": cost_usd,
                     "evaluation_context": evaluation_context,
+                    "experiment_context": experiment_context,
                     "provider": provider,
                     "session_id": session_id,
                     "trace_id": trace_id,

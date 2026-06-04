@@ -17,11 +17,13 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import Required, TypedDict
 
 from ..evaluation_context_param import EvaluationContextParam
-from ..flexible_entry_request_param import FlexibleEntryRequestParam
-from ..flexible_entry_response_param import FlexibleEntryResponseParam
+from ..experiment_context_param import ExperimentContextParam
+from .captured_chat_completions_request_param import CapturedChatCompletionsRequestParam
+from .captured_chat_completions_response_param import CapturedChatCompletionsResponseParam
 
 __all__ = ["ChatCompletionCreateParams"]
 
@@ -29,29 +31,32 @@ __all__ = ["ChatCompletionCreateParams"]
 class ChatCompletionCreateParams(TypedDict, total=False):
     workspace: str
 
-    request: Required[FlexibleEntryRequestParam]
-    """Flexible entry request that accepts any object shape.
+    request: Required[CapturedChatCompletionsRequestParam]
+    """Flexible captured chat-completions request."""
 
-    This flexibility enables the Intake service to store requests from various LLM
-    providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings,
-    multimodal, etc.) without requiring schema updates.
+    response: Required[CapturedChatCompletionsResponseParam]
+    """Flexible captured chat-completions response."""
 
-    Required fields: `messages` and `model` Common optional fields: `temperature`,
-    `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc.
-    """
+    cost_details: Dict[str, float]
+    """Additional estimated cost breakdown fields in USD."""
 
-    response: Required[FlexibleEntryResponseParam]
-    """Flexible entry response that accepts any object shape.
+    cost_input_usd: float
+    """Estimated input-token cost of this model call in USD."""
 
-    This flexibility enables the Intake service to store responses from various LLM
-    providers and future model types without requiring schema updates.
+    cost_output_usd: float
+    """Estimated output-token cost of this model call in USD."""
 
-    Required: either `choices` (successful response) or `error` (failed call).
-    Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`,
-    etc.
+    cost_usd: float
+    """Total estimated cost of this model call in USD.
+
+    This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on
+    spans.
     """
 
     evaluation_context: EvaluationContextParam
+
+    experiment_context: ExperimentContextParam
+    """Experiment context accepted by ingest endpoints."""
 
     provider: str
 

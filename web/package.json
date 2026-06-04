@@ -6,6 +6,7 @@
   "description": "A monorepo comprising the packages for nemo studio.",
   "scripts": {
     "preinstall": "npx only-allow pnpm",
+    "postinstall": "pnpm --filter @nemo/sdk gen:all",
     "test": "pnpm run -r test",
     "test:e2e": "pnpm run -r test:e2e",
     "build": "pnpm run -r build",
@@ -14,7 +15,7 @@
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "check": "pnpm run -r check",
-    "gen": "pnpm --filter @nemo/sdk gen:all",
+    "gen": "pnpm --filter @nemo/sdk gen:all-force",
     "gen:check": "pnpm tsx packages/scripts/src/check-generated-files.ts",
     "deps:studio": "pnpm tsx packages/scripts/src/deps-check.ts packages/studio",
     "deps:common": "pnpm tsx packages/scripts/src/deps-check.ts packages/common",

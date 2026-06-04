@@ -3,6 +3,9 @@
 
 """Tests for license utility functions."""
 
+import json
+from typing import Any, cast
+
 import pytest
 from nemo_platform_sdk_tools.license.license_utils import (
     get_override_key_for_package,
@@ -118,10 +121,10 @@ class TestResolveLicense:
     def test_invalid_type_raises_error(self):
         """Test that invalid input types raise appropriate errors."""
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(123)  # type: ignore[arg-type]
+            resolve_license(cast(Any, 123))
 
         with pytest.raises(TypeError, match="licenses must be a list or str"):
-            resolve_license(None)  # type: ignore[arg-type]
+            resolve_license(cast(Any, None))
 
     def test_single_license_list(self):
         """Test list with single license."""
@@ -133,9 +136,9 @@ class TestNormalizeVersionForOverride:
     """Tests for normalize_version_for_override (PEP 440 local version strip)."""
 
     def test_strips_plus_suffix(self):
-        """Version with +cu128 is normalized to base version."""
-        assert normalize_version_for_override("0.14.1+cu128") == "0.14.1"
-        assert normalize_version_for_override("2.9.0+cu128") == "2.9.0"
+        """Version with +cu129 is normalized to base version."""
+        assert normalize_version_for_override("0.14.1+cu129") == "0.14.1"
+        assert normalize_version_for_override("2.9.0+cu129") == "2.9.0"
 
     def test_unchanged_without_plus(self):
         """Version without + is unchanged."""
@@ -144,7 +147,7 @@ class TestNormalizeVersionForOverride:
 
     def test_strips_only_first_plus(self):
         """Only the first + and suffix are stripped."""
-        assert normalize_version_for_override("0.14.1+cu128+local") == "0.14.1"
+        assert normalize_version_for_override("0.14.1+cu129+local") == "0.14.1"
 
 
 class TestGetOverrideKeyForPackage:
@@ -155,34 +158,34 @@ class TestGetOverrideKeyForPackage:
         assert get_override_key_for_package("torchao", "0.14.1") == "torchao"
         assert get_override_key_for_package("nvidia-ml-py", "13.590.44") == "nvidia-ml-py"
 
-    def test_cu128_version_still_uses_name(self):
-        """Package with +cu128 version still matches override by name."""
-        assert get_override_key_for_package("torchao", "0.14.1+cu128") == "torchao"
+    def test_cu129_version_still_uses_name(self):
+        """Package with +cu129 version still matches override by name."""
+        assert get_override_key_for_package("torchao", "0.14.1+cu129") == "torchao"
 
-    def test_name_with_cu128_suffix_stripped(self):
-        """Name with -cu128 or _cu128 suffix is normalized for lookup."""
-        assert get_override_key_for_package("torchao-cu128", "0.14.1") == "torchao"
-        assert get_override_key_for_package("torchao_cu128", "0.14.1+cu128") == "torchao"
+    def test_name_with_cu129_suffix_stripped(self):
+        """Name with -cu129 or _cu129 suffix is normalized for lookup."""
+        assert get_override_key_for_package("torchao-cu129", "0.14.1") == "torchao"
+        assert get_override_key_for_package("torchao_cu129", "0.14.1+cu129") == "torchao"
 
     def test_empty_name(self):
         """Empty name returns empty key."""
         assert get_override_key_for_package("", "0.14.1") == ""
 
 
-class TestOverrideAppliedForCu128Version:
-    """Verify override is applied for +cu128-style version (torchao case)."""
+class TestOverrideAppliedForCu129Version:
+    """Verify override is applied for +cu129-style version (torchao case)."""
 
-    def test_format_licenses_table_applies_override_for_cu128_version(self):
-        """Package with version 0.14.1+cu128 and empty licenses gets override license."""
+    def test_format_licenses_table_applies_override_for_cu129_version(self):
+        """Package with version 0.14.1+cu129 and empty licenses gets override license."""
         from nemo_platform_sdk_tools.license.format_osv_licenses import format_licenses_table
 
-        # OSV-style package with +cu128 version and no license from scanner
+        # OSV-style package with +cu129 version and no license from scanner
         json_data = {
             "results": [
                 {
                     "packages": [
                         {
-                            "package": {"name": "torchao", "version": "0.14.1+cu128"},
+                            "package": {"name": "torchao", "version": "0.14.1+cu129"},
                             "licenses": [],
                         }
                     ]
@@ -195,3 +198,30 @@ class TestOverrideAppliedForCu128Version:
         assert "torchao" in result
         # Override was applied, so we should not see UNKNOWN for this package
         assert "✘" not in result or "BSD-3-CLAUSE" in result
+
+
+class TestFormatLicenses:
+    """Tests for license report formatting."""
+
+    def test_format_licenses_fills_missing_osv_package_from_overrides(self, tmp_path):
+        """A reviewed override fills an exported requirement omitted by OSV."""
+        from nemo_platform_sdk_tools.license.generator import format_licenses
+
+        license_dir = tmp_path / "third_party"
+        license_dir.mkdir()
+        osv_json = license_dir / "osv-licenses.json"
+        osv_json.write_text(json.dumps({"results": [{"packages": []}]}), encoding="utf-8")
+        (license_dir / "requirements-main.txt").write_text(
+            "cloudpickle==3.1.2 ; python_version >= '3.11' \\\n"
+            "    --hash=sha256:7fda9eb655c9c230dab534f1983763de5835249750e85fbcef43aaa30a9a2414\n",
+            encoding="utf-8",
+        )
+        overrides_file = tmp_path / "overrides.yaml"
+        overrides_file.write_text("overrides:\n  cloudpickle: BSD-3-Clause\n", encoding="utf-8")
+        output_file = license_dir / "licenses.jsonl"
+
+        format_licenses(osv_json, output_file, overrides_file, format_type="jsonl")
+
+        assert output_file.read_text(encoding="utf-8") == (
+            '{"name": "cloudpickle", "license": "BSD-3-CLAUSE", "compatible": true}'
+        )

@@ -52,7 +52,7 @@ describe('GeneralParameters', () => {
       </FormWrapper>
     );
 
-    expect(screen.queryByText('Micro Batch Size')).not.toBeInTheDocument();
-    expect(screen.queryByText('Max Steps')).not.toBeInTheDocument();
+    expect(screen.queryByText('Micro Batch Size')).not.toBeVisible();
+    expect(screen.queryByText('Max Steps')).not.toBeVisible();
   });
 });

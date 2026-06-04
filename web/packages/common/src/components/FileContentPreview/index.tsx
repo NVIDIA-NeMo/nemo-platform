@@ -1,22 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CodeEditor } from '@nemo/common/src/components/CodeEditor';
+import { ContentType } from '@nemo/common/src/components/CodeEditor/constants';
 import {
   getFileExtension,
   inferJsonContentType,
   isJsonFile,
 } from '@nemo/common/src/components/DatasetFileSelect/utils';
 import type { FileListItem } from '@nemo/common/src/components/FileList';
+import { MarkdownContent } from '@nemo/common/src/components/MarkdownContent';
 import { ScrollTable } from '@nemo/common/src/components/ScrollTable';
-import {
-  CodeSnippet,
-  Flex,
-  Spinner,
-  TableRowDefinition,
-  Text,
-} from '@nvidia/foundations-react-core';
+import { Flex, Spinner, TableRowDefinition, Text } from '@nvidia/foundations-react-core';
 import Papa from 'papaparse';
 import { FC, useEffect, useMemo, useState } from 'react';
+
+const MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
 
 export interface FileContentPreviewProps {
   isLoading: boolean;
@@ -40,7 +39,9 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   // Detect file types
   const jsonContentType = useMemo(() => inferJsonContentType(file.path), [file.path]);
   const isJson = useMemo(() => isJsonFile(jsonContentType), [jsonContentType]);
-  const isCsv = useMemo(() => getFileExtension(file.path) === '.csv', [file.path]);
+  const extension = useMemo(() => getFileExtension(file.path), [file.path]);
+  const isCsv = extension === '.csv';
+  const isMarkdown = extension !== null && MARKDOWN_EXTENSIONS.has(extension);
 
   // Parse CSV if applicable
   useEffect(() => {
@@ -102,11 +103,25 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
     );
   }
 
-  // JSON/JSONL files - use CodeSnippet
+  // Markdown files - rendered
+  if (isMarkdown) {
+    return (
+      <div className="h-full overflow-auto p-4">
+        <MarkdownContent content={content} />
+      </div>
+    );
+  }
+
+  // JSON / JSONL files
   if (isJson && jsonContentType) {
     return (
-      <div className="h-full">
-        <CodeSnippet value={content} language="json" kind="block" />
+      <div className="h-full min-h-0">
+        <CodeEditor
+          content={content}
+          contentType={jsonContentType}
+          readOnly
+          className="h-full min-h-0"
+        />
       </div>
     );
   }
@@ -131,10 +146,15 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
     );
   }
 
-  // Plain text fallback
+  // Plain text fallback (incl. .txt, .log, anything we don't have a richer view for)
   return (
-    <div className="h-full">
-      <CodeSnippet value={content} language="markdown" kind="block" />
+    <div className="h-full min-h-0">
+      <CodeEditor
+        content={content}
+        contentType={ContentType.TEXT}
+        readOnly
+        className="h-full min-h-0"
+      />
     </div>
   );
 };

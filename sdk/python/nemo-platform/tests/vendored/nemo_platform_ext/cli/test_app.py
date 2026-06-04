@@ -126,6 +126,31 @@ def test_entities_api_command_is_not_registered():
     assert "nemo_platform.cli.commands.api.entities" not in sys.modules
 
 
+def test_members_api_command_is_nested_under_workspaces():
+    runner = CliRunner()
+    sys.modules.pop("nemo_platform.cli.commands.api.members", None)
+    sys.modules.pop("nemo_platform.cli.commands.api.workspaces", None)
+    sys.modules.pop("nemo_platform.cli.commands.api.workspaces.members", None)
+
+    result = runner.invoke(app, ["workspaces", "members", "--help"])
+
+    assert result.exit_code == 0
+    assert "Manage members" in result.stdout
+    assert "nemo_platform.cli.commands.api.workspaces.members" in sys.modules
+    assert "nemo_platform.cli.commands.api.members" not in sys.modules
+
+
+def test_members_api_command_is_not_registered_at_top_level():
+    runner = CliRunner()
+    sys.modules.pop("nemo_platform.cli.commands.api.members", None)
+
+    result = runner.invoke(app, ["members", "--help"])
+
+    assert result.exit_code != 0
+    assert "No such command 'members'" in result.stderr
+    assert "nemo_platform.cli.commands.api.members" not in sys.modules
+
+
 def test_root_help_excludes_hidden_commands_and_context_option():
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
@@ -239,6 +264,45 @@ def test_lazy_group_help_uses_loaded_group_help():
     assert "Read NeMo Platform documentation." in result.stdout
     assert "Read NeMo Platform documentation from the CLI." not in result.stdout
     assert "--list" in result.stdout
+
+
+def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
+    from nemo_platform.cli.app import _build_top_level_lazy_entries
+
+    plugin_entry_points = {
+        "safe-synthesizer": SimpleNamespace(value="nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"),
+    }
+    api_entries = (
+        TopLevelEntry(
+            import_path="nemo_platform.cli.commands.api.safe_synthesizer:app",
+            name="safe-synthesizer",
+            help="Safe Synthesizer operations.",
+            panel="Functional plugins",
+            kind="group",
+        ),
+        TopLevelEntry(
+            import_path="nemo_platform.cli.commands.api.files:app",
+            name="files",
+            help="Manage files.",
+            panel="Core plugins",
+            kind="group",
+        ),
+    )
+
+    with (
+        patch("nemo_platform.cli.app.TOP_LEVEL_ENTRIES", ()),
+        patch("nemo_platform.cli.app.API_TOP_LEVEL_ENTRIES", api_entries),
+        patch(
+            "nemo_platform.cli.app._installed_plugin_command_entry_points",
+            return_value=plugin_entry_points,
+        ),
+    ):
+        entries = _build_top_level_lazy_entries()
+
+    by_name = {entry.name: entry for entry in entries}
+    assert set(by_name) == {"files", "safe-synthesizer"}
+    assert by_name["files"].source == "module"
+    assert by_name["safe-synthesizer"].source == "plugin"
 
 
 def test_plugin_entry_point_name_collision_is_skipped(caplog):

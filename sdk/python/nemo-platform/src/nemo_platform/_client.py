@@ -57,7 +57,6 @@ if TYPE_CHECKING:
         files,
         intake,
         models,
-        members,
         secrets,
         adapters,
         entities,
@@ -66,14 +65,14 @@ if TYPE_CHECKING:
         inference,
         evaluation,
         workspaces,
-        safe_synthesizer,
+        experiments,
+        experiment_groups,
     )
     from .resources.iam.iam import IamResource, AsyncIamResource
     from .resources.jobs.jobs import JobsResource, AsyncJobsResource
     from .filesets.resources import FilesResource, AsyncFilesResource
     from .resources.intake.intake import IntakeResource, AsyncIntakeResource
     from .models import ModelsResource, AsyncModelsResource
-    from .resources.members.members import MembersResource, AsyncMembersResource
     from .resources.secrets.secrets import SecretsResource, AsyncSecretsResource
     from .resources.adapters.adapters import AdaptersResource, AsyncAdaptersResource
     from .resources.entities.entities import EntitiesResource, AsyncEntitiesResource
@@ -82,7 +81,8 @@ if TYPE_CHECKING:
     from .resources.inference.inference import InferenceResource, AsyncInferenceResource
     from .resources.evaluation.evaluation import EvaluationResource, AsyncEvaluationResource
     from .resources.workspaces.workspaces import WorkspacesResource, AsyncWorkspacesResource
-    from .resources.safe_synthesizer.safe_synthesizer import SafeSynthesizerResource, AsyncSafeSynthesizerResource
+    from .resources.experiments.experiments import ExperimentsResource, AsyncExperimentsResource
+    from .resources.experiment_groups.experiment_groups import ExperimentGroupsResource, AsyncExperimentGroupsResource
 
 __all__ = [
     "Timeout",
@@ -271,12 +271,6 @@ class NeMoPlatform(SyncAPIClient):
         return WorkspacesResource(self)
 
     @cached_property
-    def safe_synthesizer(self) -> SafeSynthesizerResource:
-        from .resources.safe_synthesizer import SafeSynthesizerResource
-
-        return SafeSynthesizerResource(self)
-
-    @cached_property
     def secrets(self) -> SecretsResource:
         from .resources.secrets import SecretsResource
 
@@ -295,12 +289,6 @@ class NeMoPlatform(SyncAPIClient):
         return ProjectsResource(self)
 
     @cached_property
-    def members(self) -> MembersResource:
-        from .resources.members import MembersResource
-
-        return MembersResource(self)
-
-    @cached_property
     def adapters(self) -> AdaptersResource:
         from .resources.adapters import AdaptersResource
 
@@ -311,6 +299,18 @@ class NeMoPlatform(SyncAPIClient):
         from .resources.intake import IntakeResource
 
         return IntakeResource(self)
+
+    @cached_property
+    def experiment_groups(self) -> ExperimentGroupsResource:
+        from .resources.experiment_groups import ExperimentGroupsResource
+
+        return ExperimentGroupsResource(self)
+
+    @cached_property
+    def experiments(self) -> ExperimentsResource:
+        from .resources.experiments import ExperimentsResource
+
+        return ExperimentsResource(self)
 
     @cached_property
     def with_raw_response(self) -> NeMoPlatformWithRawResponse:
@@ -635,12 +635,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncWorkspacesResource(self)
 
     @cached_property
-    def safe_synthesizer(self) -> AsyncSafeSynthesizerResource:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResource
-
-        return AsyncSafeSynthesizerResource(self)
-
-    @cached_property
     def secrets(self) -> AsyncSecretsResource:
         from .resources.secrets import AsyncSecretsResource
 
@@ -659,12 +653,6 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         return AsyncProjectsResource(self)
 
     @cached_property
-    def members(self) -> AsyncMembersResource:
-        from .resources.members import AsyncMembersResource
-
-        return AsyncMembersResource(self)
-
-    @cached_property
     def adapters(self) -> AsyncAdaptersResource:
         from .resources.adapters import AsyncAdaptersResource
 
@@ -675,6 +663,18 @@ class AsyncNeMoPlatform(AsyncAPIClient):
         from .resources.intake import AsyncIntakeResource
 
         return AsyncIntakeResource(self)
+
+    @cached_property
+    def experiment_groups(self) -> AsyncExperimentGroupsResource:
+        from .resources.experiment_groups import AsyncExperimentGroupsResource
+
+        return AsyncExperimentGroupsResource(self)
+
+    @cached_property
+    def experiments(self) -> AsyncExperimentsResource:
+        from .resources.experiments import AsyncExperimentsResource
+
+        return AsyncExperimentsResource(self)
 
     @cached_property
     def with_raw_response(self) -> AsyncNeMoPlatformWithRawResponse:
@@ -862,12 +862,6 @@ class NeMoPlatformWithRawResponse:
         return WorkspacesResourceWithRawResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.SafeSynthesizerResourceWithRawResponse:
-        from .resources.safe_synthesizer import SafeSynthesizerResourceWithRawResponse
-
-        return SafeSynthesizerResourceWithRawResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.SecretsResourceWithRawResponse:
         from .resources.secrets import SecretsResourceWithRawResponse
 
@@ -886,12 +880,6 @@ class NeMoPlatformWithRawResponse:
         return ProjectsResourceWithRawResponse(self._client.projects)
 
     @cached_property
-    def members(self) -> members.MembersResourceWithRawResponse:
-        from .resources.members import MembersResourceWithRawResponse
-
-        return MembersResourceWithRawResponse(self._client.members)
-
-    @cached_property
     def adapters(self) -> adapters.AdaptersResourceWithRawResponse:
         from .resources.adapters import AdaptersResourceWithRawResponse
 
@@ -902,6 +890,18 @@ class NeMoPlatformWithRawResponse:
         from .resources.intake import IntakeResourceWithRawResponse
 
         return IntakeResourceWithRawResponse(self._client.intake)
+
+    @cached_property
+    def experiment_groups(self) -> experiment_groups.ExperimentGroupsResourceWithRawResponse:
+        from .resources.experiment_groups import ExperimentGroupsResourceWithRawResponse
+
+        return ExperimentGroupsResourceWithRawResponse(self._client.experiment_groups)
+
+    @cached_property
+    def experiments(self) -> experiments.ExperimentsResourceWithRawResponse:
+        from .resources.experiments import ExperimentsResourceWithRawResponse
+
+        return ExperimentsResourceWithRawResponse(self._client.experiments)
 
 
 class AsyncNeMoPlatformWithRawResponse:
@@ -959,12 +959,6 @@ class AsyncNeMoPlatformWithRawResponse:
         return AsyncWorkspacesResourceWithRawResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.AsyncSafeSynthesizerResourceWithRawResponse:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResourceWithRawResponse
-
-        return AsyncSafeSynthesizerResourceWithRawResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.AsyncSecretsResourceWithRawResponse:
         from .resources.secrets import AsyncSecretsResourceWithRawResponse
 
@@ -983,12 +977,6 @@ class AsyncNeMoPlatformWithRawResponse:
         return AsyncProjectsResourceWithRawResponse(self._client.projects)
 
     @cached_property
-    def members(self) -> members.AsyncMembersResourceWithRawResponse:
-        from .resources.members import AsyncMembersResourceWithRawResponse
-
-        return AsyncMembersResourceWithRawResponse(self._client.members)
-
-    @cached_property
     def adapters(self) -> adapters.AsyncAdaptersResourceWithRawResponse:
         from .resources.adapters import AsyncAdaptersResourceWithRawResponse
 
@@ -999,6 +987,18 @@ class AsyncNeMoPlatformWithRawResponse:
         from .resources.intake import AsyncIntakeResourceWithRawResponse
 
         return AsyncIntakeResourceWithRawResponse(self._client.intake)
+
+    @cached_property
+    def experiment_groups(self) -> experiment_groups.AsyncExperimentGroupsResourceWithRawResponse:
+        from .resources.experiment_groups import AsyncExperimentGroupsResourceWithRawResponse
+
+        return AsyncExperimentGroupsResourceWithRawResponse(self._client.experiment_groups)
+
+    @cached_property
+    def experiments(self) -> experiments.AsyncExperimentsResourceWithRawResponse:
+        from .resources.experiments import AsyncExperimentsResourceWithRawResponse
+
+        return AsyncExperimentsResourceWithRawResponse(self._client.experiments)
 
 
 class NeMoPlatformWithStreamedResponse:
@@ -1056,12 +1056,6 @@ class NeMoPlatformWithStreamedResponse:
         return WorkspacesResourceWithStreamingResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.SafeSynthesizerResourceWithStreamingResponse:
-        from .resources.safe_synthesizer import SafeSynthesizerResourceWithStreamingResponse
-
-        return SafeSynthesizerResourceWithStreamingResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.SecretsResourceWithStreamingResponse:
         from .resources.secrets import SecretsResourceWithStreamingResponse
 
@@ -1080,12 +1074,6 @@ class NeMoPlatformWithStreamedResponse:
         return ProjectsResourceWithStreamingResponse(self._client.projects)
 
     @cached_property
-    def members(self) -> members.MembersResourceWithStreamingResponse:
-        from .resources.members import MembersResourceWithStreamingResponse
-
-        return MembersResourceWithStreamingResponse(self._client.members)
-
-    @cached_property
     def adapters(self) -> adapters.AdaptersResourceWithStreamingResponse:
         from .resources.adapters import AdaptersResourceWithStreamingResponse
 
@@ -1096,6 +1084,18 @@ class NeMoPlatformWithStreamedResponse:
         from .resources.intake import IntakeResourceWithStreamingResponse
 
         return IntakeResourceWithStreamingResponse(self._client.intake)
+
+    @cached_property
+    def experiment_groups(self) -> experiment_groups.ExperimentGroupsResourceWithStreamingResponse:
+        from .resources.experiment_groups import ExperimentGroupsResourceWithStreamingResponse
+
+        return ExperimentGroupsResourceWithStreamingResponse(self._client.experiment_groups)
+
+    @cached_property
+    def experiments(self) -> experiments.ExperimentsResourceWithStreamingResponse:
+        from .resources.experiments import ExperimentsResourceWithStreamingResponse
+
+        return ExperimentsResourceWithStreamingResponse(self._client.experiments)
 
 
 class AsyncNeMoPlatformWithStreamedResponse:
@@ -1153,12 +1153,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         return AsyncWorkspacesResourceWithStreamingResponse(self._client.workspaces)
 
     @cached_property
-    def safe_synthesizer(self) -> safe_synthesizer.AsyncSafeSynthesizerResourceWithStreamingResponse:
-        from .resources.safe_synthesizer import AsyncSafeSynthesizerResourceWithStreamingResponse
-
-        return AsyncSafeSynthesizerResourceWithStreamingResponse(self._client.safe_synthesizer)
-
-    @cached_property
     def secrets(self) -> secrets.AsyncSecretsResourceWithStreamingResponse:
         from .resources.secrets import AsyncSecretsResourceWithStreamingResponse
 
@@ -1177,12 +1171,6 @@ class AsyncNeMoPlatformWithStreamedResponse:
         return AsyncProjectsResourceWithStreamingResponse(self._client.projects)
 
     @cached_property
-    def members(self) -> members.AsyncMembersResourceWithStreamingResponse:
-        from .resources.members import AsyncMembersResourceWithStreamingResponse
-
-        return AsyncMembersResourceWithStreamingResponse(self._client.members)
-
-    @cached_property
     def adapters(self) -> adapters.AsyncAdaptersResourceWithStreamingResponse:
         from .resources.adapters import AsyncAdaptersResourceWithStreamingResponse
 
@@ -1193,6 +1181,18 @@ class AsyncNeMoPlatformWithStreamedResponse:
         from .resources.intake import AsyncIntakeResourceWithStreamingResponse
 
         return AsyncIntakeResourceWithStreamingResponse(self._client.intake)
+
+    @cached_property
+    def experiment_groups(self) -> experiment_groups.AsyncExperimentGroupsResourceWithStreamingResponse:
+        from .resources.experiment_groups import AsyncExperimentGroupsResourceWithStreamingResponse
+
+        return AsyncExperimentGroupsResourceWithStreamingResponse(self._client.experiment_groups)
+
+    @cached_property
+    def experiments(self) -> experiments.AsyncExperimentsResourceWithStreamingResponse:
+        from .resources.experiments import AsyncExperimentsResourceWithStreamingResponse
+
+        return AsyncExperimentsResourceWithStreamingResponse(self._client.experiments)
 
 
 Client = NeMoPlatform

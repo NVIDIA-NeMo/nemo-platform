@@ -646,8 +646,10 @@ def _compute_balance_bonus(
         elif ratio <= balance_cfg.ratio_good:
             return balance_cfg.bonus_good_very_large  # Good balance
 
-    # Large models: moderate balance preference
-    if param_count_b > size_thresholds.large or (num_experts > 0 and ep >= balance_cfg.ep_significant_threshold):
+    # Large models: moderate balance preference. By construction MoE models
+    # (num_experts > 0) already returned above, so only the dense check needs
+    # to fire here.
+    if param_count_b > size_thresholds.large:
         if ratio == balance_cfg.ratio_perfect:
             return balance_cfg.bonus_perfect_large  # Perfect balance
         elif ratio <= balance_cfg.ratio_good:

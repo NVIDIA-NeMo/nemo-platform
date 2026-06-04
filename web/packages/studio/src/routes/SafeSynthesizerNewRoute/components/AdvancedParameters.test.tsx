@@ -6,7 +6,7 @@ import {
   SafeSynthesizerFormData,
   getSafeSynthesizerFormDefaults,
 } from '@studio/routes/SafeSynthesizerNewRoute/schema';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FormProvider, useForm } from 'react-hook-form';
 
@@ -71,8 +71,8 @@ describe('AdvancedParameters', () => {
       const sliders = screen.getAllByRole('slider');
       expect(sliders.length).toBeGreaterThanOrEqual(1);
       // First slider should be the temperature slider with correct max/min
-      expect(sliders[0]).toHaveAttribute('aria-valuemax', '2');
-      expect(sliders[0]).toHaveAttribute('aria-valuemin', '0');
+      expect(sliders[0]).toHaveAttribute('max', '2');
+      expect(sliders[0]).toHaveAttribute('min', '0');
     });
 
     it('renders top_p controls', async () => {
@@ -162,7 +162,6 @@ describe('AdvancedParameters', () => {
     });
 
     it('updates temperature value when typing in input', async () => {
-      const user = userEvent.setup();
       render(
         <TestWrapper>
           <AdvancedParameters />
@@ -174,8 +173,7 @@ describe('AdvancedParameters', () => {
         (input) => input.getAttribute('type') === 'number'
       ) as HTMLInputElement;
 
-      await user.clear(numberInput);
-      await user.type(numberInput, '1.5');
+      fireEvent.change(numberInput, { target: { value: '1.5' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(1.5);
@@ -183,7 +181,6 @@ describe('AdvancedParameters', () => {
     });
 
     it('clamps temperature value to minimum of 0', async () => {
-      const user = userEvent.setup();
       render(
         <TestWrapper>
           <AdvancedParameters />
@@ -195,8 +192,7 @@ describe('AdvancedParameters', () => {
         (input) => input.getAttribute('type') === 'number'
       ) as HTMLInputElement;
 
-      await user.clear(numberInput);
-      await user.type(numberInput, '0');
+      fireEvent.change(numberInput, { target: { value: '0' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(0);
@@ -240,8 +236,7 @@ describe('AdvancedParameters', () => {
       ) as HTMLInputElement;
 
       // Change the value
-      await user.clear(numberInput);
-      await user.type(numberInput, '1.5');
+      fireEvent.change(numberInput, { target: { value: '1.5' } });
 
       // Click reset button (first reset button is for temperature)
       const resetButton = screen.getByRole('button', {
@@ -267,7 +262,6 @@ describe('AdvancedParameters', () => {
     });
 
     it('updates top_p value when typing in input', async () => {
-      const user = userEvent.setup();
       render(
         <TestWrapper>
           <AdvancedParameters />
@@ -279,8 +273,7 @@ describe('AdvancedParameters', () => {
         (input) => input.getAttribute('type') === 'number' && input.getAttribute('max') === '1'
       ) as HTMLInputElement;
 
-      await user.clear(numberInput);
-      await user.type(numberInput, '0.7');
+      fireEvent.change(numberInput, { target: { value: '0.7' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(0.7);
@@ -343,8 +336,7 @@ describe('AdvancedParameters', () => {
       ) as HTMLInputElement;
 
       // Change the value
-      await user.clear(numberInput);
-      await user.type(numberInput, '0.5');
+      fireEvent.change(numberInput, { target: { value: '0.5' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(0.5);
@@ -385,12 +377,11 @@ describe('AdvancedParameters', () => {
       const sliders = screen.getAllByRole('slider');
       expect(sliders.length).toBeGreaterThanOrEqual(3);
       // Third slider should be repetition_penalty with min=1, max=2
-      expect(sliders[2]).toHaveAttribute('aria-valuemax', '2');
-      expect(sliders[2]).toHaveAttribute('aria-valuemin', '1');
+      expect(sliders[2]).toHaveAttribute('max', '2');
+      expect(sliders[2]).toHaveAttribute('min', '1');
     });
 
     it('updates repetition_penalty value when typing in input', async () => {
-      const user = userEvent.setup();
       render(
         <TestWrapper>
           <AdvancedParameters />
@@ -405,8 +396,7 @@ describe('AdvancedParameters', () => {
           input.getAttribute('min') === '1'
       ) as HTMLInputElement;
 
-      await user.clear(numberInput);
-      await user.type(numberInput, '1.5');
+      fireEvent.change(numberInput, { target: { value: '1.5' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(1.5);
@@ -478,8 +468,7 @@ describe('AdvancedParameters', () => {
       ) as HTMLInputElement;
 
       // Change the value
-      await user.clear(numberInput);
-      await user.type(numberInput, '1.8');
+      fireEvent.change(numberInput, { target: { value: '1.8' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(1.8);
@@ -630,19 +619,18 @@ describe('AdvancedParameters', () => {
       await waitFor(() =>
         expect(screen.getByRole('checkbox', { name: /use automatic scaling/i })).toBeChecked()
       );
-      // Fourth slider is rope_scaling_factor - it has data-disabled attribute
+      // Fourth slider is rope_scaling_factor - it should be disabled
       const sliders = screen.getAllByRole('slider');
       const ropeSlider = sliders[3];
-      expect(ropeSlider).toHaveAttribute('data-disabled');
+      expect(ropeSlider).toBeDisabled();
 
-      const allInputs = screen.getAllByDisplayValue('1');
-      const ropeInput = allInputs.find(
-        (input) =>
-          input.getAttribute('type') === 'number' &&
-          input.getAttribute('max') === '6' &&
-          input.getAttribute('min') === '1'
-      ) as HTMLInputElement;
-      expect(ropeInput).toBeDisabled();
+      const numberInputs = screen
+        .getAllByRole('spinbutton')
+        .filter(
+          (input) => input.getAttribute('max') === '6' && input.getAttribute('min') === '1'
+        ) as HTMLInputElement[];
+      expect(numberInputs.length).toBeGreaterThan(0);
+      expect(numberInputs[0]).toBeDisabled();
     });
 
     it('enables slider and input when automatic scaling is disabled', async () => {
@@ -936,8 +924,7 @@ describe('AdvancedParameters', () => {
       ) as HTMLInputElement;
 
       // Change the value
-      await user.clear(numberInput);
-      await user.type(numberInput, '1.5');
+      fireEvent.change(numberInput, { target: { value: '1.5' } });
 
       await waitFor(() => {
         expect(numberInput).toHaveValue(1.5);
@@ -969,16 +956,14 @@ describe('AdvancedParameters', () => {
       const temperatureInput = temperatureInputs.find(
         (input) => input.getAttribute('type') === 'number'
       ) as HTMLInputElement;
-      await user.clear(temperatureInput);
-      await user.type(temperatureInput, '1.2');
+      fireEvent.change(temperatureInput, { target: { value: '1.2' } });
 
       // Change top_p
       const topPInputs = screen.getAllByDisplayValue('1');
       const topPInput = topPInputs.find(
         (input) => input.getAttribute('type') === 'number' && input.getAttribute('max') === '1'
       ) as HTMLInputElement;
-      await user.clear(topPInput);
-      await user.type(topPInput, '0.8');
+      fireEvent.change(topPInput, { target: { value: '0.8' } });
 
       // Disable automatic sampling
       const samplingCheckbox = screen.getByRole('checkbox', { name: /use automatic sampling/i });

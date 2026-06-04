@@ -150,7 +150,7 @@ class TrainingRunner:
         finally:
             # === Phase 5: Write result (coordinator only) ===
             self._write_result(result)
-            return result
+        return result
 
     # --- Helper methods ---
     def _load_backend(self, backend_type: TrainingBackendEnum) -> TrainingBackend:

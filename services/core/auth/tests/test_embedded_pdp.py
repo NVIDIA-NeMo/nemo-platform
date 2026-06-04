@@ -473,7 +473,7 @@ class TestWithStaticAuthzData:
 
 
 class TestIntakeAuthorization:
-    """Verify Intake endpoints are workspace-scoped in static authz data."""
+    """Verify active Intake endpoints are workspace-scoped in static authz data."""
 
     def _setup_principals(self, static_authz_data):
         static_authz_data["authz"]["principals"] = {
@@ -483,38 +483,38 @@ class TestIntakeAuthorization:
         static_authz_data["authz"]["workspaces"] = {"my-ws": {}, "other-ws": {}}
         set_policy_data(static_authz_data)
 
-    def test_viewer_can_list_entries_in_workspace(self, static_authz_data):
+    def test_viewer_can_list_spans_in_workspace(self, static_authz_data):
         self._setup_principals(static_authz_data)
         result = evaluate(
             "allow",
             {
                 "principal_id": "viewer@test.com",
                 "method": "GET",
-                "path": "/apis/intake/v2/workspaces/my-ws/entries",
+                "path": "/apis/intake/v2/workspaces/my-ws/spans",
             },
         )
         assert result["allowed"] is True
 
-    def test_viewer_cannot_create_entries(self, static_authz_data):
+    def test_viewer_cannot_create_annotations(self, static_authz_data):
         self._setup_principals(static_authz_data)
         result = evaluate(
             "allow",
             {
                 "principal_id": "viewer@test.com",
                 "method": "POST",
-                "path": "/apis/intake/v2/workspaces/my-ws/entries",
+                "path": "/apis/intake/v2/workspaces/my-ws/annotations",
             },
         )
         assert result["allowed"] is False
 
-    def test_editor_can_create_entries(self, static_authz_data):
+    def test_editor_can_create_annotations(self, static_authz_data):
         self._setup_principals(static_authz_data)
         result = evaluate(
             "allow",
             {
                 "principal_id": "editor@test.com",
                 "method": "POST",
-                "path": "/apis/intake/v2/workspaces/my-ws/entries",
+                "path": "/apis/intake/v2/workspaces/my-ws/annotations",
             },
         )
         assert result["allowed"] is True
@@ -526,23 +526,34 @@ class TestIntakeAuthorization:
             {
                 "principal_id": "viewer@test.com",
                 "method": "GET",
-                "path": "/apis/intake/v2/workspaces/other-ws/entries",
+                "path": "/apis/intake/v2/workspaces/other-ws/spans",
             },
         )
         assert result["allowed"] is False
 
-    def test_preview_export_is_read_scoped(self, static_authz_data):
+    def test_ingest_is_write_scoped(self, static_authz_data):
         self._setup_principals(static_authz_data)
-        result = evaluate(
+        write_scoped = evaluate(
             "allow",
             {
-                "principal_id": "viewer@test.com",
+                "principal_id": "editor@test.com",
                 "method": "POST",
-                "path": "/apis/intake/v2/workspaces/my-ws/export/preview",
+                "path": "/apis/intake/v2/workspaces/my-ws/ingest/chat-completions",
+                "scopes": ["intake:write"],
+            },
+        )
+        assert write_scoped["allowed"] is True
+
+        read_scoped = evaluate(
+            "allow",
+            {
+                "principal_id": "editor@test.com",
+                "method": "POST",
+                "path": "/apis/intake/v2/workspaces/my-ws/ingest/chat-completions",
                 "scopes": ["intake:read"],
             },
         )
-        assert result["allowed"] is True
+        assert read_scoped["allowed"] is False
 
 
 class TestGenericEntitiesApiBlocked:
@@ -664,7 +675,6 @@ class TestPerAreaScopes:
     # These correctly use :read scopes despite being POST methods.
     READ_POST_ENDPOINTS: ClassVar[set[str]] = {
         "/apis/files/v2/workspaces/{workspace}/filesets/{name}/otlp/v1/logs/query",
-        "/apis/intake/v2/workspaces/{workspace}/export/preview",
     }
 
     def _get_area(self, endpoint_path: str) -> str:

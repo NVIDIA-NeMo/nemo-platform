@@ -145,28 +145,6 @@ authz:
         update:
           description: "Update virtual models"
     intake:
-      apps:
-        create:
-          description: "Create intake apps"
-        delete:
-          description: "Delete intake apps"
-        list:
-          description: "List intake apps"
-        read:
-          description: "Read intake apps"
-        update:
-          description: "Update intake apps"
-      entries:
-        create:
-          description: "Create intake entries"
-        delete:
-          description: "Delete intake entries"
-        list:
-          description: "List intake entries"
-        read:
-          description: "Read intake entries"
-        update:
-          description: "Update intake entries"
       evaluator-results:
         create:
           description: "Create intake evaluator results"
@@ -174,18 +152,33 @@ authz:
           description: "List intake evaluator results"
         read:
           description: "Read intake evaluator results"
-      events:
+      annotations:
         create:
-          description: "Create intake entry events"
-        delete:
-          description: "Delete intake entry events"
-      exports:
-        create:
-          description: "Create intake export jobs"
+          description: "Create intake annotations"
         list:
-          description: "List intake export jobs"
+          description: "List intake annotations"
         read:
-          description: "Read intake export jobs and previews"
+          description: "Read intake annotations"
+        delete:
+          description: "Delete intake annotations"
+      experiment-groups:
+        create:
+          description: "Create intake experiment groups"
+        delete:
+          description: "Delete intake experiment groups"
+        read:
+          description: "Read intake experiment groups"
+        update:
+          description: "Update intake experiment groups"
+      experiments:
+        create:
+          description: "Create intake experiments"
+        delete:
+          description: "Delete intake experiments"
+        read:
+          description: "Read intake experiments"
+        update:
+          description: "Update intake experiments"
       ingest:
         create:
           description: "Ingest traces into intake"
@@ -197,17 +190,6 @@ authz:
       traces:
         read:
           description: "Read intake traces"
-      tasks:
-        create:
-          description: "Create intake tasks"
-        delete:
-          description: "Delete intake tasks"
-        list:
-          description: "List intake tasks"
-        read:
-          description: "Read intake tasks"
-        update:
-          description: "Update intake tasks"
     jobs:
       cancel:
         description: "Cancel jobs"
@@ -341,18 +323,14 @@ authz:
       - inference.providers.read
       - inference.virtual-models.list
       - inference.virtual-models.read
-      - intake.apps.list
-      - intake.apps.read
-      - intake.entries.list
-      - intake.entries.read
+      - intake.annotations.list
+      - intake.annotations.read
       - intake.evaluator-results.list
       - intake.evaluator-results.read
-      - intake.exports.list
-      - intake.exports.read
+      - intake.experiment-groups.read
+      - intake.experiments.read
       - intake.spans.list
       - intake.spans.read
-      - intake.tasks.list
-      - intake.tasks.read
       - intake.traces.read
       - jobs.list
       - jobs.read
@@ -362,8 +340,6 @@ authz:
       - models.read
       - projects.list
       - projects.read
-      - safe-synthesizer.jobs.list
-      - safe-synthesizer.jobs.read
       - secrets.list
       - secrets.read
       - workspaces.list
@@ -401,20 +377,16 @@ authz:
       - inference.virtual-models.create
       - inference.virtual-models.delete
       - inference.virtual-models.update
-      - intake.apps.create
-      - intake.apps.delete
-      - intake.apps.update
-      - intake.entries.create
-      - intake.entries.delete
-      - intake.entries.update
+      - intake.annotations.create
+      - intake.annotations.delete
       - intake.evaluator-results.create
-      - intake.events.create
-      - intake.events.delete
-      - intake.exports.create
+      - intake.experiment-groups.create
+      - intake.experiment-groups.delete
+      - intake.experiment-groups.update
+      - intake.experiments.create
+      - intake.experiments.delete
+      - intake.experiments.update
       - intake.ingest.create
-      - intake.tasks.create
-      - intake.tasks.delete
-      - intake.tasks.update
       - jobs.cancel
       - jobs.create
       - jobs.delete
@@ -428,9 +400,6 @@ authz:
       - projects.create
       - projects.delete
       - projects.update
-      - safe-synthesizer.jobs.cancel
-      - safe-synthesizer.jobs.create
-      - safe-synthesizer.jobs.delete
       - secrets.create
       - secrets.delete
       - secrets.update
@@ -1181,116 +1150,32 @@ authz:
         scopes:
         - inference:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/apps:
+    /apis/intake/v2/workspaces/{workspace}/annotations:
       get:
         permissions:
-        - intake.apps.list
+        - intake.annotations.list
         scopes:
         - intake:read
         - platform:read
       post:
         permissions:
-        - intake.apps.create
+        - intake.annotations.create
         scopes:
         - intake:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/apps/{app}/tasks/{name}:
+    /apis/intake/v2/workspaces/{workspace}/annotations/{annotation_id}:
       delete:
         permissions:
-        - intake.tasks.delete
+        - intake.annotations.delete
         scopes:
         - intake:write
         - platform:write
       get:
         permissions:
-        - intake.tasks.read
+        - intake.annotations.read
         scopes:
         - intake:read
         - platform:read
-      patch:
-        permissions:
-        - intake.tasks.update
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/apps/{name}:
-      delete:
-        permissions:
-        - intake.apps.delete
-        scopes:
-        - intake:write
-        - platform:write
-      get:
-        permissions:
-        - intake.apps.read
-        scopes:
-        - intake:read
-        - platform:read
-      patch:
-        permissions:
-        - intake.apps.update
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/apps/{name}/tasks:
-      get:
-        permissions:
-        - intake.tasks.list
-        scopes:
-        - intake:read
-        - platform:read
-      post:
-        permissions:
-        - intake.tasks.create
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/entries:
-      get:
-        permissions:
-        - intake.entries.list
-        scopes:
-        - intake:read
-        - platform:read
-      post:
-        permissions:
-        - intake.entries.create
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/entries/{entry}/events/{name}:
-      delete:
-        permissions:
-        - intake.events.delete
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/entries/{name}:
-      delete:
-        permissions:
-        - intake.entries.delete
-        scopes:
-        - intake:write
-        - platform:write
-      get:
-        permissions:
-        - intake.entries.read
-        scopes:
-        - intake:read
-        - platform:read
-      patch:
-        permissions:
-        - intake.entries.update
-        scopes:
-        - intake:write
-        - platform:write
-    /apis/intake/v2/workspaces/{workspace}/entries/{name}/events:
-      post:
-        permissions:
-        - intake.events.create
-        scopes:
-        - intake:write
-        - platform:write
     /apis/intake/v2/workspaces/{workspace}/evaluator-results:
       get:
         permissions:
@@ -1311,33 +1196,70 @@ authz:
         scopes:
         - intake:read
         - platform:read
-    /apis/intake/v2/workspaces/{workspace}/export/jobs:
+    /apis/intake/v2/workspaces/{workspace}/experiment-groups:
       get:
         permissions:
-        - intake.exports.list
+        - intake.experiment-groups.read
         scopes:
         - intake:read
         - platform:read
       post:
         permissions:
-        - intake.exports.create
+        - intake.experiment-groups.create
         scopes:
         - intake:write
         - platform:write
-    /apis/intake/v2/workspaces/{workspace}/export/jobs/{name}:
+    /apis/intake/v2/workspaces/{workspace}/experiment-groups/{name}:
+      delete:
+        permissions:
+        - intake.experiment-groups.delete
+        scopes:
+        - intake:write
+        - platform:write
       get:
         permissions:
-        - intake.exports.read
+        - intake.experiment-groups.read
         scopes:
         - intake:read
         - platform:read
-    /apis/intake/v2/workspaces/{workspace}/export/preview:
+      put:
+        permissions:
+        - intake.experiment-groups.update
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiments:
+      get:
+        permissions:
+        - intake.experiments.read
+        scopes:
+        - intake:read
+        - platform:read
       post:
         permissions:
-        - intake.exports.read
+        - intake.experiments.create
+        scopes:
+        - intake:write
+        - platform:write
+    /apis/intake/v2/workspaces/{workspace}/experiments/{name}:
+      delete:
+        permissions:
+        - intake.experiments.delete
+        scopes:
+        - intake:write
+        - platform:write
+      get:
+        permissions:
+        - intake.experiments.read
         scopes:
         - intake:read
         - platform:read
+      put:
+        permissions:
+        - intake.experiments.update
+        scopes:
+        - intake:write
+        - platform:write
     /apis/intake/v2/workspaces/{workspace}/ingest/atif:
       post:
         permissions:
@@ -1778,102 +1700,6 @@ authz:
         scopes:
         - models:write
         - platform:write
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.list
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-      post:
-        permissions:
-        - safe-synthesizer.jobs.create
-        scopes:
-        - safe-synthesizer:write
-        - platform:write
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/adapter/download:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/evaluation-report/download:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/summary/download:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/synthetic-data/download:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{job}/results/{name}/download:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}:
-      delete:
-        permissions:
-        - safe-synthesizer.jobs.delete
-        scopes:
-        - safe-synthesizer:write
-        - platform:write
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/cancel:
-      post:
-        permissions:
-        - safe-synthesizer.jobs.cancel
-        scopes:
-        - safe-synthesizer:write
-        - platform:write
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/logs:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/results:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
-    /apis/safe-synthesizer/v2/workspaces/{workspace}/jobs/{name}/status:
-      get:
-        permissions:
-        - safe-synthesizer.jobs.read
-        scopes:
-        - safe-synthesizer:read
-        - platform:read
     /apis/secrets/v2/rotate-encryption-keys:
       post:
         permissions:

@@ -98,7 +98,7 @@ describe('CustomizationDetailsPanel', () => {
     });
 
     await screen.findByText('Status');
-    const accordionTrigger = screen.getByRole('button', { name: 'Status Logs' });
+    const accordionTrigger = screen.getByText('Status Logs');
     await user.click(accordionTrigger);
 
     await waitFor(() => {

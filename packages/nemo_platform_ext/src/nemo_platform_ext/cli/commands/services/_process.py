@@ -28,7 +28,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal
@@ -322,6 +322,53 @@ def log_path_for(scope: str, *, base_dir: Path | None = None) -> Path:
 @dataclass
 class StopResult:
     stopped_pids: list[int]
+    swept_children: list[int] = field(default_factory=list)
+
+
+def _snapshot_children(pid: int) -> list[psutil.Process]:
+    """Return all descendant processes of *pid*.
+
+    Must be called while the parent is still alive; once it exits,
+    children are reparented to init and won't appear in the tree.
+    """
+    try:
+        return psutil.Process(pid).children(recursive=True)
+    except (psutil.NoSuchProcess, psutil.AccessDenied):
+        return []
+
+
+def _sweep_orphans(children: list[psutil.Process], timeout: float = 5.0) -> list[int]:
+    """Terminate any still-alive processes from a prior snapshot.
+
+    Sends SIGTERM, waits up to *timeout*, then SIGKILL survivors.
+    Returns PIDs that were signaled.  Handles ``NoSuchProcess`` gracefully
+    since children may have already exited during graceful shutdown.
+    """
+    alive_children = [c for c in children if c.is_running()]
+    if not alive_children:
+        return []
+
+    killed: list[int] = []
+    for child in alive_children:
+        try:
+            child.terminate()
+            killed.append(child.pid)
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass  # Already exited or not owned by us — skip.
+
+    _, still_alive = psutil.wait_procs(alive_children, timeout=timeout)
+    for child in still_alive:
+        try:
+            child.kill()
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            pass  # Raced with exit or not owned — nothing to do.
+
+    if killed:
+        logger.info(
+            "Swept %d orphaned child %s: %s", len(killed), "process" if len(killed) == 1 else "processes", killed
+        )
+
+    return killed
 
 
 def stop_instance(
@@ -342,6 +389,8 @@ def stop_instance(
     stopped via Ctrl-C in their own terminal.  Pass *force=True* to override.
 
     Sends SIGTERM, waits up to *timeout* seconds, then escalates to SIGKILL.
+    After the parent exits, any surviving child processes (e.g. agent
+    deployments) are swept up via SIGTERM/SIGKILL.
     """
     desc = read_descriptor(scope, base_dir=base_dir)
     alive = is_instance_alive(scope, base_dir=base_dir)
@@ -361,6 +410,10 @@ def stop_instance(
         remove_descriptor(scope, base_dir=base_dir)
         return StopResult(stopped_pids=[])
 
+    # Snapshot child tree while parent is alive — children are reparented to
+    # init once the parent exits, making them invisible to psutil afterwards.
+    children = _snapshot_children(pid)
+
     try:
         os.kill(pid, signal.SIGTERM)
         logger.debug("Sent SIGTERM to pid %d", pid)
@@ -379,12 +432,16 @@ def stop_instance(
                 logger.debug("Sent SIGKILL to pid %d", pid)
             except PermissionError:
                 logger.warning("No permission to SIGKILL pid %d; process may still be running", pid)
-                return StopResult(stopped_pids=[])
+                swept = _sweep_orphans(children) if children else []
+                # Keep the descriptor so subsequent stop/restart can retry.
+                return StopResult(stopped_pids=[], swept_children=swept)
             except OSError:
                 logger.debug("Failed to send SIGKILL to pid %d", pid, exc_info=True)
 
+    swept = _sweep_orphans(children) if children else []
+
     remove_descriptor(scope, base_dir=base_dir)
-    return StopResult(stopped_pids=[pid])
+    return StopResult(stopped_pids=[pid], swept_children=swept)
 
 
 def _pid_alive(pid: int) -> bool:

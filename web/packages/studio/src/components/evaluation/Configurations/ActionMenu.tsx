@@ -27,7 +27,7 @@ interface ActionMenuProps {
  */
 export const ActionMenu: FC<ActionMenuProps> = ({ actions, slotTrigger }) => {
   const handleItemClicked =
-    (action: QuickActionItem): React.MouseEventHandler<HTMLLIElement> =>
+    (action: QuickActionItem): React.MouseEventHandler<HTMLButtonElement> =>
     (e) => {
       e.stopPropagation();
       action.onSelect();
@@ -42,7 +42,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({ actions, slotTrigger }) => {
         {actions.map((action, key) => (
           <DropdownItem key={`action-${key}`} onClick={handleItemClicked(action)}>
             <Flex gap="density-xs" align="center">
-              {action.slotIcon && action.slotIcon}
+              {action.slotIcon}
               {action.slotLabel}
             </Flex>
           </DropdownItem>

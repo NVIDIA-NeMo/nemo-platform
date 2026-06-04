@@ -24,7 +24,9 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
-from nemo_platform.types.intake.ingest import ChatCompletionsIngestResponse
+from nemo_platform.types.intake.ingest import (
+    ChatCompletionsIngestResponse,
+)
 
 base_url = os.environ.get("TEST_API_BASE_URL", "http://127.0.0.1:4010")
 
@@ -58,6 +60,10 @@ class TestChatCompletions:
                 "choices": [{"foo": "bar"}],
                 "error": {"foo": "bar"},
             },
+            cost_details={"foo": 0},
+            cost_input_usd=0,
+            cost_output_usd=0,
+            cost_usd=0,
             evaluation_context={
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",
@@ -66,6 +72,10 @@ class TestChatCompletions:
                 "evaluation_run_id": "evaluation_run_id",
                 "evaluation_sha": "evaluation_sha",
                 "metadata": {"foo": "bar"},
+                "test_case_id": "test_case_id",
+            },
+            experiment_context={
+                "experiment_id": "experiment_id",
                 "test_case_id": "test_case_id",
             },
             provider="provider",
@@ -155,6 +165,10 @@ class TestAsyncChatCompletions:
                 "choices": [{"foo": "bar"}],
                 "error": {"foo": "bar"},
             },
+            cost_details={"foo": 0},
+            cost_input_usd=0,
+            cost_output_usd=0,
+            cost_usd=0,
             evaluation_context={
                 "dataset_id": "dataset_id",
                 "dataset_name": "dataset_name",
@@ -163,6 +177,10 @@ class TestAsyncChatCompletions:
                 "evaluation_run_id": "evaluation_run_id",
                 "evaluation_sha": "evaluation_sha",
                 "metadata": {"foo": "bar"},
+                "test_case_id": "test_case_id",
+            },
+            experiment_context={
+                "experiment_id": "experiment_id",
                 "test_case_id": "test_case_id",
             },
             provider="provider",

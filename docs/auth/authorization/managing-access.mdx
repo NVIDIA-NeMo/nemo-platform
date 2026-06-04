@@ -68,7 +68,7 @@ Grant someone access to a workspace by adding them as a member with a specific r
 <Tab title="CLI">
 
 ```bash
-nemo members create --principal alice@example.com --roles Editor
+nemo workspaces members create --principal alice@example.com --roles Editor --workspace ml-team
 ```
 
 ```json
@@ -91,17 +91,17 @@ from nemo_platform import NeMoPlatform
 client = NeMoPlatform()
 
 # Add a member with Editor role
-client.members.create(
+client.workspaces.members.create(
     workspace="ml-team", principal="alice@example.com", roles=["Editor"]
 )
 
 # Add a member with Viewer role (read-only)
-client.members.create(
+client.workspaces.members.create(
     workspace="ml-team", principal="bob@example.com", roles=["Viewer"]
 )
 
 # Add a member with Admin role (full control)
-client.members.create(
+client.workspaces.members.create(
     workspace="ml-team", principal="charlie@example.com", roles=["Admin"]
 )
 ```
@@ -119,7 +119,7 @@ View all members of a workspace to audit access or verify permissions. The respo
 <Tab title="CLI">
 
 ```bash
-nemo members list
+nemo workspaces members list --workspace ml-team
 ```
 
 ```json
@@ -159,10 +159,10 @@ from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform()
 
-members = client.members.list(workspace="ml-team")
+members = client.workspaces.members.list(workspace="ml-team")
 
 for member in members.data:
-print(f"{member.principal}: {member.roles}")
+    print(f"{member.principal}: {member.roles}")
 ```
 
 </Tab>
@@ -178,7 +178,7 @@ Change a member role to adjust their permissions, for example, promoting a Viewe
 <Tab title="CLI">
 
 ```bash
-nemo members update bob@example.com --roles Editor
+nemo workspaces members update bob@example.com --roles Editor --workspace ml-team
 ```
 
 </Tab>
@@ -190,7 +190,7 @@ from nemo_platform import NeMoPlatform
 client = NeMoPlatform()
 
 # Promote a Viewer to Editor
-client.members.update(
+client.workspaces.members.update(
     workspace="ml-team", principal_id="bob@example.com", roles=["Editor"]
 )
 ```
@@ -208,7 +208,7 @@ Revoke a member's access by removing them from the workspace. This removes all t
 <Tab title="CLI">
 
 ```bash
-nemo members delete alice@example.com
+nemo workspaces members delete alice@example.com --workspace ml-team
 ```
 
 </Tab>
@@ -219,7 +219,7 @@ from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform()
 
-client.members.delete(workspace="ml-team", principal_id="alice@example.com")
+client.workspaces.members.delete(workspace="ml-team", principal_id="alice@example.com")
 ```
 
 </Tab>
@@ -245,7 +245,7 @@ Grant the Viewer role to `*` so all authenticated users can view resources.
 <Tab title="CLI">
 
 ```bash
-nemo members create --principal "*" --roles Viewer
+nemo workspaces members create --principal "*" --roles Viewer --workspace shared-models
 ```
 
 ```json
@@ -267,7 +267,7 @@ from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform()
 
-client.members.create(workspace="shared-models", principal="*", roles=["Viewer"])
+client.workspaces.members.create(workspace="shared-models", principal="*", roles=["Viewer"])
 ```
 
 </Tab>
@@ -283,7 +283,7 @@ Grant the Editor role to `*` so all authenticated users can create and modify re
 <Tab title="CLI">
 
 ```bash
-nemo members create --principal "*" --roles Editor
+nemo workspaces members create --principal "*" --roles Editor --workspace shared-datasets
 ```
 
 </Tab>
@@ -294,7 +294,7 @@ from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform()
 
-client.members.create(workspace="shared-datasets", principal="*", roles=["Editor"])
+client.workspaces.members.create(workspace="shared-datasets", principal="*", roles=["Editor"])
 ```
 
 </Tab>
@@ -310,7 +310,7 @@ Remove the wildcard binding to restrict the workspace to explicit members only.
 <Tab title="CLI">
 
 ```bash
-nemo members delete "*"
+nemo workspaces members delete "*" --workspace ml-team
 ```
 
 </Tab>
@@ -321,7 +321,7 @@ from nemo_platform import NeMoPlatform
 
 client = NeMoPlatform()
 
-client.members.delete(workspace="ml-team", principal_id="*")
+client.workspaces.members.delete(workspace="ml-team", principal_id="*")
 ```
 
 </Tab>
@@ -355,10 +355,10 @@ If you need to leave a workspace where you are the only Admin, add another Admin
 
 ```bash
 # Add another admin first
-nemo members create --principal charlie@example.com --roles Admin
+nemo workspaces members create --principal charlie@example.com --roles Admin --workspace ml-team
 
 # Now you can remove yourself
-nemo members delete alice@example.com
+nemo workspaces members delete alice@example.com --workspace ml-team
 ```
 
 </Tab>
@@ -370,12 +370,12 @@ from nemo_platform import NeMoPlatform
 client = NeMoPlatform()
 
 # Add another admin first
-client.members.create(
+client.workspaces.members.create(
     workspace="ml-team", principal="charlie@example.com", roles=["Admin"]
 )
 
 # Now you can remove yourself
-client.members.delete(workspace="ml-team", principal_id="alice@example.com")
+client.workspaces.members.delete(workspace="ml-team", principal_id="alice@example.com")
 ```
 
 </Tab>
@@ -422,15 +422,15 @@ from nemo_platform import NeMoPlatform, ConflictError
 client = NeMoPlatform()
 
 try:
-client.workspaces.delete("ml-team")
+    client.workspaces.delete("ml-team")
 except ConflictError as e:
-print(f"Cannot delete workspace: {e}")
-# Delete resources first, then retry
-projects = client.projects.list(workspace="ml-team")
-for project in projects.data:
-client.projects.delete(project.name, workspace="ml-team")
-# Now delete the workspace
-client.workspaces.delete("ml-team")
+    print(f"Cannot delete workspace: {e}")
+    # Delete resources first, then retry
+    projects = client.projects.list(workspace="ml-team")
+    for project in projects.data:
+        client.projects.delete(project.name, workspace="ml-team")
+    # Now delete the workspace
+    client.workspaces.delete("ml-team")
 ```
 
 </Tab>

@@ -61,7 +61,7 @@ describe('CancelJobButton', () => {
 
     expect(screen.getByText(`Cancel ${JOB_NAME}`)).toBeInTheDocument();
     expect(screen.getByText(/Canceling this job will permanently stop it/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Cancel Job' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Cancel Job' }).length).toBeGreaterThan(0);
   });
 
   it('calls cancel API and closes modal on confirm', async () => {

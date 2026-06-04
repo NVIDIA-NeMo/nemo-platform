@@ -185,7 +185,7 @@ export const WorkspaceMemberModal: FC<WorkspaceMemberModalProps> = ({
           label={isAdd ? 'Email' : 'Member'}
           placeholder={isAdd ? 'user@example.com' : 'Enter member email'}
           attributes={{
-            TextInputValue: {
+            Input: {
               'aria-label': isAdd ? 'Email Address' : 'Member',
               autoComplete: 'off',
             },
@@ -217,9 +217,7 @@ export const WorkspaceMemberModal: FC<WorkspaceMemberModalProps> = ({
                         value={role}
                         label={role}
                         description={WORKSPACE_ROLE_DESCRIPTIONS[role]}
-                        attributes={{
-                          RadioGroupItem: { labelSide: 'left' },
-                        }}
+                        labelSide="left"
                       />
                     ))}
                   </Stack>

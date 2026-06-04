@@ -418,7 +418,7 @@ def schema_tree(spec_file: str = typer.Argument(..., help="Path to OpenAPI speci
         print_verbose("\n[bold magenta]Schema Dependency Tree[/bold magenta]")
         print_verbose("Top-level schemas (used directly in endpoints) are shown at the root level")
         print_verbose("Dependent schemas are shown as children\n")
-        print_verbose("Unused schemas: ", ", ".join(sorted(unused_schemas)), style="bold yellow")
+        print_verbose(f"Unused schemas: {', '.join(sorted(unused_schemas))}", style="bold yellow")
 
         print_schema_tree(tree)
 
@@ -887,8 +887,7 @@ def fix_schema(
 
     except Exception as e:
         print_verbose(f"Error: {str(e)}", style="bold red")
-        raise e
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 def rename_schema_references(spec: dict, old_name: str, new_name: str) -> None:

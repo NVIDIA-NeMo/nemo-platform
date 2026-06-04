@@ -26,7 +26,8 @@ export const ROUTE_PARAMS = {
   evalConfigName: 'configName',
   safeSynthesizerJobName: 'safeSynthesizerJobName',
   dataDesignerJobName: 'dataDesignerJobName',
-  entryId: 'entryId',
+  traceId: 'traceId',
+  spanId: 'spanId',
   deploymentConfigName: 'deploymentConfigName',
   deploymentName: 'deploymentName',
   /** Side panel mode under deployments (e.g. `details`). */
@@ -76,19 +77,18 @@ export const ROUTES = {
     filesetFile: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}/file/:${P.filePathEncoded}`,
     /** Dataset-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
     datasetDetail: `/workspaces/:${P.workspace}/datasets/:${P.datasetName}`,
+    /** Model-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
+    modelDetail: `/workspaces/:${P.workspace}/models/:${P.modelName}`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,
     deployments: `/workspaces/:${P.workspace}/deployments`,
     /** Deployments list with details side panel (deployment name + panel segment, e.g. `details`). */
     deploymentsDeployment: `/workspaces/:${P.workspace}/deployments/:${P.deploymentName}/:${P.deploymentPanelView}`,
     intake: `/workspaces/:${P.workspace}/intake`,
-    intakeEntries: `/workspaces/:${P.workspace}/intake/entries`,
-    intakeThreads: `/workspaces/:${P.workspace}/intake/threads`,
-    intakeExportJobs: `/workspaces/:${P.workspace}/intake/export-jobs`,
-    intakeEntry: `/workspaces/:${P.workspace}/intake/entries/:${P.entryId}`,
-    intakeEntryMessages: `/workspaces/:${P.workspace}/intake/entries/:${P.entryId}/messages`,
-    intakeEntryEvents: `/workspaces/:${P.workspace}/intake/entries/:${P.entryId}/events`,
-    intakeEntryMetadata: `/workspaces/:${P.workspace}/intake/entries/:${P.entryId}/metadata`,
+    intakeTraces: `/workspaces/:${P.workspace}/intake/traces`,
+    intakeSpans: `/workspaces/:${P.workspace}/intake/spans`,
+    intakeTrace: `/workspaces/:${P.workspace}/intake/traces/:${P.traceId}`,
+    intakeSpan: `/workspaces/:${P.workspace}/intake/spans/:${P.spanId}`,
     safeSynthesizer: `/workspaces/:${P.workspace}/safe-synthesizer`,
     safeSynthesizerNew: `/workspaces/:${P.workspace}/safe-synthesizer/new`,
     safeSynthesizerJob: `/workspaces/:${P.workspace}/safe-synthesizer/job/:${P.safeSynthesizerJobName}`,
@@ -102,6 +102,7 @@ export const ROUTES = {
     /** Workspace members and role-based access (Entities role bindings) */
     members: `/workspaces/:${P.workspace}/members`,
     agentsList: `/workspaces/:${P.workspace}/agents`,
+    claudeCodeChat: `/workspaces/:${P.workspace}/dashboard/code-agent`,
     agentDetail: `/workspaces/:${P.workspace}/agents/:${P.agentName}`,
     agentDeploymentsList: `/workspaces/:${P.workspace}/agent-deployments`,
     agentDeploymentDetail: `/workspaces/:${P.workspace}/agent-deployments/:${P.agentDeploymentName}`,

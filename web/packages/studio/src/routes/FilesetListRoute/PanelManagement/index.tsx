@@ -5,7 +5,7 @@ import { useQueryParams } from '@nemo/common/src/hooks/useQueryParams';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
 import { DatasetFileManagementSidePanel } from '@studio/components/DatasetFileManagementSidePanel';
-import { DatasetFilePreviewPanel } from '@studio/components/DatasetFilePreviewPanel';
+import { FilesetFilePreviewPanel } from '@studio/components/FilesetFilePreviewPanel';
 import { ROUTE_PARAMS, ROUTES } from '@studio/constants/routes';
 import { QUERY_PARAMETERS } from '@studio/routes/constants';
 import { getFilesetDetailsRoute, getFilesetFileRoute } from '@studio/routes/utils';
@@ -41,7 +41,7 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
   } = useParams();
 
   const datasetIdFromUrl = datasetIdEncoded ? decodeURIComponent(datasetIdEncoded) : undefined;
-  const datasetFolder = getQueryParam(QUERY_PARAMETERS.datasetFolder);
+  const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder);
 
   // 2. Animation state (holds values during close animations)
   const [animatingDatasetId, setAnimatingDatasetId] = useState<string | undefined>();
@@ -173,7 +173,7 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
           workspace={datasetworkspace || ''}
           datasetName={datasetName || ''}
           datasetId={datasetFullName}
-          currentFolder={datasetFolder}
+          currentFolder={currentFolder}
           filesList={filesList}
           isLoading={isFilesPending}
           isFilesFetching={isFilesFetching}
@@ -186,14 +186,14 @@ export const PanelManagement: FC<PanelManagementProps> = ({ workspace }) => {
 
       {/* File Panel - renders last (top layer) */}
       {showFilePanel && (
-        <DatasetFilePreviewPanel
+        <FilesetFilePreviewPanel
           open={isFilePanelOpen}
           onCloseClick={handleFilePanelClose}
           onOutsideClick={handleFilePanelOutsideClick}
-          datasetWorkspace={datasetworkspace || ''}
-          datasetName={datasetName || ''}
+          workspace={datasetworkspace || ''}
+          filesetName={datasetName || ''}
           filePath={decodedFilePath}
-          onDatasetClick={handleDatasetClick}
+          onFilesetClick={handleDatasetClick}
           onFolderClick={handleFolderClick}
           onDeleteSuccess={handleFileDeleteSuccess}
           onRenameSuccess={handleFileRenameSuccess}

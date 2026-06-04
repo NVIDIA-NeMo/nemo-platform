@@ -15,9 +15,8 @@ import pytest
 from nemo_evaluator_sdk.agent_inference import make_agent_inference_request
 from nemo_evaluator_sdk.enums import AgentFormat
 from nemo_evaluator_sdk.execution.metric_execution import ComputeMetricPipeline, generate_online_sample_agent
-from nemo_evaluator_sdk.metrics.base import Metric
+from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutputSpec, MetricResult
 from nemo_evaluator_sdk.values.agents import Agent
-from nemo_evaluator_sdk.values.results import MetricResult
 from nmp.evaluator.app.values import BenchmarkOnlineAgentJob
 from nmp.evaluator.app.values.metrics_job import MetricOnlineAgentJob
 
@@ -48,12 +47,12 @@ class _TestMetric:
         del item, sample, trace
         return 1.0
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
-        del item, sample
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
+        del input
         raise AssertionError("compute_scores is not used in these generation-only tests")
 
-    def score_names(self) -> list[str]:
-        return ["exact-match"]
+    def output_spec(self) -> list[MetricOutputSpec]:
+        return [MetricOutputSpec.continuous_score("exact-match")]
 
 
 def _test_metric() -> Metric:

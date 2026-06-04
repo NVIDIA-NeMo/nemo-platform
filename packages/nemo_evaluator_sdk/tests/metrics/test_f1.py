@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.f1 import F1Metric, MetricResult
 
@@ -19,41 +20,41 @@ class TestF1Metric:
     @pytest.mark.asyncio
     async def test_metric_default_candidate(self, item, sample, expected):
         metric = F1Metric(reference="{{item.reference}}")
-        assert (await metric.compute_scores(item, sample)).scores[0].value == expected
+        assert (await compute_scores(metric, item, sample)).outputs[0].value == expected
 
     @pytest.mark.asyncio
     async def test_metric_with_custom_candidate(self):
         metric = F1Metric(reference="{{item.reference}}", candidate="{{item.pred}}")
-        assert (await metric.compute_scores({"reference": "a b c", "pred": "a b"}, {"output_text": "ignored"})).scores[
-            0
-        ].value == pytest.approx(0.6666666666666666)
+        assert (
+            await compute_scores(metric, {"reference": "a b c", "pred": "a b"}, {"output_text": "ignored"})
+        ).outputs[0].value == pytest.approx(0.6666666666666666)
 
     @pytest.mark.asyncio
     async def test_metric_validates_rendered_types(self):
         metric = F1Metric(reference="{{item.reference}}")
         with pytest.raises(TypeError, match="The reference must be a string"):
-            await metric.compute_scores({"reference": 1}, {"output_text": "1"})
+            await compute_scores(metric, {"reference": 1}, {"output_text": "1"})
         with pytest.raises(TypeError, match="The candidate must be a string"):
-            await metric.compute_scores({"reference": "1"}, {"output_text": 1})
+            await compute_scores(metric, {"reference": "1"}, {"output_text": 1})
 
     @pytest.mark.asyncio
     async def test_compute_scores(self):
         metric = F1Metric(reference="{{item.reference}}")
-        result = await metric.compute_scores({"reference": "cat"}, {"output_text": "cat"})
-        assert result.scores[0].name == "f1"
-        assert result.scores[0].value == 1.0
+        result = await compute_scores(metric, {"reference": "cat"}, {"output_text": "cat"})
+        assert result.outputs[0].name == "f1"
+        assert result.outputs[0].value == 1.0
 
     @pytest.mark.asyncio
     async def test_raises_clear_error_for_missing_reference_field(self):
         metric = F1Metric(reference="{{item.reference}}", candidate="{{sample.output_text}}")
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(item={"prompt": "hello"}, sample={"output_text": "hi"})
+            await compute_scores(metric, item={"prompt": "hello"}, sample={"output_text": "hi"})
         assert "could not render its 'reference' template for this row" in str(exc_info.value)
         assert "missing_key='reference'" in str(exc_info.value)
 
     def test_score_names(self):
         metric = F1Metric(reference="{{item.reference}}")
-        assert metric.score_names() == ["f1"]
+        assert output_names(metric) == ["f1"]
 
     def test_run_sync(self):
         metric = F1Metric(reference="{{item.reference}}", candidate="{{item.prediction}}")
@@ -92,18 +93,18 @@ class TestF1Metric:
         item = {"reference": "The cat sat on the mat"}
         sample = {"output_text": "The cat sat on the mat"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "f1"
-        assert result.scores[0].value == 1.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "f1"
+        assert result.outputs[0].value == 1.0
 
     @pytest.mark.asyncio
     async def test_score_names_match_compute_scores(self):
         metric = F1Metric(reference="{{item.reference}}")
-        result = await metric.compute_scores({"reference": "a"}, {"output_text": "a"})
-        assert {score.name for score in result.scores} == set(metric.score_names())
+        result = await compute_scores(metric, {"reference": "a"}, {"output_text": "a"})
+        assert {score.name for score in result.outputs} == set(output_names(metric))
 
     @pytest.mark.asyncio
     async def test_compute_scores_partial_overlap(self):
@@ -115,13 +116,13 @@ class TestF1Metric:
         item = {"reference": "The cat sat on the mat"}
         sample = {"output_text": "The cat slept on the floor"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].name == "f1"
+        assert len(result.outputs) == 1
+        assert result.outputs[0].name == "f1"
         # Partial overlap should give score between 0 and 1
-        assert 0.0 < result.scores[0].value < 1.0
+        assert 0.0 < result.outputs[0].value < 1.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_no_overlap(self):
@@ -133,11 +134,11 @@ class TestF1Metric:
         item = {"reference": "hello world"}
         sample = {"output_text": "goodbye universe"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].value == 0.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].value == 0.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_both_empty(self):
@@ -149,12 +150,12 @@ class TestF1Metric:
         item = {"reference": ""}
         sample = {"output_text": ""}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
+        assert len(result.outputs) == 1
         # Empty strings that agree should return 1
-        assert result.scores[0].value == 1
+        assert result.outputs[0].value == 1
 
     @pytest.mark.asyncio
     async def test_compute_scores_one_empty(self):
@@ -166,12 +167,12 @@ class TestF1Metric:
         item = {"reference": ""}
         sample = {"output_text": "some text"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
+        assert len(result.outputs) == 1
         # One empty, one not should return 0
-        assert result.scores[0].value == 0
+        assert result.outputs[0].value == 0
 
     @pytest.mark.asyncio
     async def test_compute_scores_case_insensitive(self):
@@ -183,11 +184,11 @@ class TestF1Metric:
         item = {"reference": "The Cat Sat"}
         sample = {"output_text": "the cat sat"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].value == 1.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].value == 1.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_ignores_punctuation(self):
@@ -199,11 +200,11 @@ class TestF1Metric:
         item = {"reference": "Hello, world!"}
         sample = {"output_text": "Hello world"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].value == 1.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].value == 1.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_ignores_articles(self):
@@ -215,11 +216,11 @@ class TestF1Metric:
         item = {"reference": "The cat sat on a mat"}
         sample = {"output_text": "cat sat on mat"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
-        assert result.scores[0].value == 1.0
+        assert len(result.outputs) == 1
+        assert result.outputs[0].value == 1.0
 
     @pytest.mark.asyncio
     async def test_compute_scores_duplicate_tokens(self):
@@ -231,9 +232,9 @@ class TestF1Metric:
         item = {"reference": "cat cat dog"}
         sample = {"output_text": "cat dog dog"}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 1
+        assert len(result.outputs) == 1
         # Should handle duplicate tokens with Counter intersection
-        assert 0.0 < result.scores[0].value < 1.0
+        assert 0.0 < result.outputs[0].value < 1.0

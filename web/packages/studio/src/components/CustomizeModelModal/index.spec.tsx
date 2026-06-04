@@ -138,16 +138,14 @@ describe('CustomizeModelModal', () => {
 
   it('disables the fine-tuned option when canFineTune is false', () => {
     renderModal({ canFineTune: false });
-    expect(screen.getByRole('radio', { name: /Fine-Tuned/ })).toHaveAttribute('data-disabled');
-    expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).not.toHaveAttribute(
-      'data-disabled'
-    );
+    expect(screen.getByRole('radio', { name: /Fine-Tuned/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).not.toBeDisabled();
   });
 
   it('disables the prompt-tuned option when canPromptTune is false', () => {
     renderModal({ canPromptTune: false });
-    expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).toHaveAttribute('data-disabled');
-    expect(screen.getByRole('radio', { name: /Fine-Tuned/ })).not.toHaveAttribute('data-disabled');
+    expect(screen.getByRole('radio', { name: /Prompt Tuned/ })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /Fine-Tuned/ })).not.toBeDisabled();
   });
 
   it('defaults selection to prompt-tuned when fine-tuning is disabled', async () => {

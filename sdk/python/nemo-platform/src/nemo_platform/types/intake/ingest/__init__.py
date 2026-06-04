@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from .atif_step_param import AtifStepParam as AtifStepParam
 from .atif_agent_param import AtifAgentParam as AtifAgentParam
+from .chat_message_role import ChatMessageRole as ChatMessageRole
 from .atif_create_params import AtifCreateParams as AtifCreateParams
 from .atif_metrics_param import AtifMetricsParam as AtifMetricsParam
 from .atif_step_user_param import AtifStepUserParam as AtifStepUserParam
@@ -29,9 +30,16 @@ from .atif_step_system_param import AtifStepSystemParam as AtifStepSystemParam
 from .atif_content_part_param import AtifContentPartParam as AtifContentPartParam
 from .atif_image_source_param import AtifImageSourceParam as AtifImageSourceParam
 from .atif_final_metrics_param import AtifFinalMetricsParam as AtifFinalMetricsParam
+from .captured_chat_message_param import CapturedChatMessageParam as CapturedChatMessageParam
 from .atif_content_part_text_param import AtifContentPartTextParam as AtifContentPartTextParam
 from .atif_content_part_image_param import AtifContentPartImageParam as AtifContentPartImageParam
 from .atif_observation_result_param import AtifObservationResultParam as AtifObservationResultParam
 from .chat_completion_create_params import ChatCompletionCreateParams as ChatCompletionCreateParams
 from .chat_completions_ingest_response import ChatCompletionsIngestResponse as ChatCompletionsIngestResponse
 from .atif_subagent_trajectory_ref_param import AtifSubagentTrajectoryRefParam as AtifSubagentTrajectoryRefParam
+from .captured_chat_completions_request_param import (
+    CapturedChatCompletionsRequestParam as CapturedChatCompletionsRequestParam,
+)
+from .captured_chat_completions_response_param import (
+    CapturedChatCompletionsResponseParam as CapturedChatCompletionsResponseParam,
+)

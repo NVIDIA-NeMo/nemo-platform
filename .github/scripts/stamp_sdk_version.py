@@ -110,8 +110,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--source-root", required=True, type=Path)
     parser.add_argument("--sdk-id", required=True)
     parser.add_argument("--cadence", required=True, choices=["nightly", "rc", "release"])
-    parser.add_argument("--release-label", required=True)
+    # --release-label is unused for cadence=nightly; cadence-specific validation
+    # in resolve_sdk_version() rejects empty/missing labels for rc and release.
+    parser.add_argument("--release-label", default="")
     parser.add_argument("--nightly-timestamp", default="")
+    parser.add_argument(
+        "--print-version",
+        action="store_true",
+        help="Print only the resolved version on stdout; send the human banner to stderr.",
+    )
     return parser.parse_args(argv)
 
 
@@ -129,7 +136,12 @@ def main(argv: list[str]) -> int:
         print(error, file=sys.stderr)
         return 1
 
-    print(f"Stamped sdk:{args.sdk_id} version {sdk_version}.")
+    if args.print_version:
+        # Machine-readable mode: human banner to stderr, just the version on stdout.
+        print(f"Stamped sdk:{args.sdk_id} version {sdk_version}.", file=sys.stderr)
+        print(sdk_version)
+    else:
+        print(f"Stamped sdk:{args.sdk_id} version {sdk_version}.")
     return 0
 
 

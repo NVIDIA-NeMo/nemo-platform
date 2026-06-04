@@ -30,6 +30,7 @@ from nmp.testing import (
     add_mock_provider,
     as_user,
     create_test_client,
+    grant_workspace_role,
     short_unique_name,
     unique_email,
 )
@@ -112,11 +113,11 @@ class TestIGWViewerAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -142,11 +143,11 @@ class TestIGWViewerAccess:
             name=model_name,
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -173,11 +174,11 @@ class TestIGWViewerAccess:
             name=model_name,
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -203,11 +204,11 @@ class TestIGWViewerAccess:
             name="test-prov",
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -233,11 +234,11 @@ class TestIGWViewerAccess:
             name="ready-prov",
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=viewer_email,
             roles=["Viewer"],
-            wait_role_propagation=True,
         )
 
         viewer_sdk = as_user(sdk, viewer_email)
@@ -262,11 +263,11 @@ class TestIGWEditorAccess:
 
         admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
         admin_sdk.workspaces.create(name=workspace)
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -292,11 +293,11 @@ class TestIGWEditorAccess:
             name=model_name,
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -323,11 +324,11 @@ class TestIGWEditorAccess:
             name=model_name,
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -353,11 +354,11 @@ class TestIGWEditorAccess:
             name="test-editor-prov",
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -383,11 +384,11 @@ class TestIGWEditorAccess:
             name="ready-editor-prov",
             mock_response_body=MOCK_CHAT_RESPONSE,
         )
-        admin_sdk.members.create(
+        grant_workspace_role(
+            admin_sdk,
             workspace=workspace,
             principal=editor_email,
             roles=["Editor"],
-            wait_role_propagation=True,
         )
 
         editor_sdk = as_user(sdk, editor_email)
@@ -572,11 +573,11 @@ class TestIGWScopeChecks:
 
             admin_sdk = as_user(sdk, TEST_ADMIN_EMAIL)
             admin_sdk.workspaces.create(name=workspace)
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=viewer_email,
                 roles=["Viewer"],
-                wait_role_propagation=True,
             )
 
             response = sdk._client.get(
@@ -599,11 +600,11 @@ class TestIGWScopeChecks:
                 name=model_name,
                 mock_response_body=MOCK_CHAT_RESPONSE,
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=viewer_email,
                 roles=["Viewer"],
-                wait_role_propagation=True,
             )
 
             response = sdk._client.post(
@@ -627,11 +628,11 @@ class TestIGWScopeChecks:
                 name=model_name,
                 mock_response_body=MOCK_CHAT_RESPONSE,
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=viewer_email,
                 roles=["Viewer"],
-                wait_role_propagation=True,
             )
 
             response = sdk._client.post(
@@ -654,11 +655,11 @@ class TestIGWScopeChecks:
                 name="ready-prov",
                 mock_response_body=MOCK_CHAT_RESPONSE,
             )
-            admin_sdk.members.create(
+            grant_workspace_role(
+                admin_sdk,
                 workspace=workspace,
                 principal=viewer_email,
                 roles=["Viewer"],
-                wait_role_propagation=True,
             )
 
             response = sdk._client.get(

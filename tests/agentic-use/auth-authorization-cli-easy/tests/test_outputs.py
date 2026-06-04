@@ -33,7 +33,7 @@ def test_workspace_exists() -> None:
 def test_current_members() -> None:
     """Test that the current member list matches expected final state."""
     client = _get_client()
-    response = client.members.list(workspace="harbor-auth-test")
+    response = client.workspaces.members.list(workspace="harbor-auth-test")
     members = {m.principal: m.roles for m in response.data}
 
     # viewer@test.com should now be Editor (was promoted from Viewer)

@@ -64,7 +64,6 @@ export const Default: Story = {
     attributes: {
       SidePanel: {
         open: true,
-        portal: false,
       },
     },
   },
@@ -129,7 +128,6 @@ export const WithAllDetails: Story = {
     attributes: {
       SidePanel: {
         open: true,
-        portal: false,
       },
     },
   },

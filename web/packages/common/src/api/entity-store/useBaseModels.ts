@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { WithFilterOperators } from '@nemo/common/src/api/filterOperators';
 import { modelsListModels } from '@nemo/sdk/generated/platform/api';
 import {
   ModelEntity,
@@ -29,16 +30,13 @@ const SORT_COMPARATORS: Record<ModelEntitySortField, (a: ModelEntity, b: ModelEn
 };
 
 /**
- * Widened input type for `useBaseModels({ filter })`. The generated SDK types
- * `ModelEntityFilter.name` as `string` only, but the NeMo Platform API documents support
- * for filter-operator objects (`{ $like, $eq }`) on `name` via the same unified
- * filter syntax used for `created_at` / `updated_at`. We widen here so call sites
- * can build text-search filters without bypassing the type system; the coercion
- * back to `ModelEntityFilter` happens once at the SDK boundary below.
+ * Widened input type for `useBaseModels({ filter })`. The generated SDK models
+ * filter fields as bare scalars, but the NeMo Platform API accepts operator
+ * objects on every field via the same unified filter syntax (`$like`, `$gte`,
+ * etc). Coercion back to `ModelEntityFilter` happens once at the SDK boundary
+ * below.
  */
-export type ModelEntityFilterInput = Omit<ModelEntityFilter, 'name'> & {
-  name?: string | { $like?: string; $eq?: string };
-};
+export type ModelEntityFilterInput = WithFilterOperators<ModelEntityFilter>;
 
 export interface UseBaseModelsOptions {
   workspace: string;
@@ -92,7 +90,7 @@ export function useBaseModels({
   const isDefaultWorkspace = workspace === DEFAULT_NAMESPACE;
 
   const baseQuery = {
-    // Cast reflects the SDK's under-typing of `name`; see ModelEntityFilterInput doc above.
+    // Cast reflects the SDK's scalar-only modeling of filter fields; see ModelEntityFilterInput.
     filter: { base_model: false, ...filter } as ModelEntityFilter,
     page_size: DEFAULT_PAGE_SIZE,
   };

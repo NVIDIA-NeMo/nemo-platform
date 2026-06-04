@@ -1,24 +1,39 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { exec, execSync } from 'child_process';
+import { execFile, execFileSync } from 'child_process';
 import * as process from 'process';
 
 /**
- * Open a URL in the default browser (works on macOS, Windows, and most Linux distros).
+ * Open an HTTP/HTTPS URL in the default browser (works on macOS, Windows, and most Linux distros).
  */
 export function openBrowser(url: string): void {
-  let command = '';
-  // Escape the URL to prevent shell interpretation of special characters
-  const escapedUrl = url.replace(/"/g, '\\"');
-  if (process.platform === 'darwin') {
-    command = `open "${escapedUrl}"`;
-  } else if (process.platform === 'win32') {
-    command = `start "" "${escapedUrl}"`;
-  } else {
-    command = `xdg-open "${escapedUrl}"`;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    console.error('Refusing to open invalid URL:', url);
+    return;
   }
-  exec(command, (error) => {
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    console.error('Refusing to open non-http(s) URL:', parsed.protocol);
+    return;
+  }
+  const safeUrl = parsed.toString();
+
+  let cmd: string;
+  let args: string[];
+  if (process.platform === 'darwin') {
+    cmd = 'open';
+    args = [safeUrl];
+  } else if (process.platform === 'win32') {
+    cmd = 'rundll32';
+    args = ['url.dll,FileProtocolHandler', safeUrl];
+  } else {
+    cmd = 'xdg-open';
+    args = [safeUrl];
+  }
+  execFile(cmd, args, (error) => {
     if (error) {
       console.error('Failed to open browser:', error);
     }
@@ -56,7 +71,7 @@ export function getBaseUrl(remoteUrl: string): string {
 // Check if git status is clean (no uncommitted changes)
 export function isGitStatusClean(): boolean {
   try {
-    const status = execSync('git status --porcelain').toString().trim();
+    const status = execFileSync('git', ['status', '--porcelain']).toString().trim();
     return status === '';
   } catch (error) {
     console.error('Failed to check git status:', error);
@@ -67,7 +82,7 @@ export function isGitStatusClean(): boolean {
 // Get the current branch name
 export function getCurrentBranch(): string {
   try {
-    return execSync('git rev-parse --abbrev-ref HEAD').toString().trim();
+    return execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD']).toString().trim();
   } catch (error) {
     console.error('Failed to get current branch:', error);
     throw error;

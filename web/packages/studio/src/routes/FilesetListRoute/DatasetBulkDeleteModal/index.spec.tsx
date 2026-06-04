@@ -10,7 +10,7 @@ import {
 import { server } from '@studio/mocks/node';
 import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
 import { render } from '@studio/tests/util/render';
-import { screen, waitFor } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 
@@ -173,7 +173,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Wait for all delete requests to complete
@@ -213,7 +215,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Wait for deletion to complete and success callback
@@ -253,7 +257,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Wait for error handling
@@ -304,7 +310,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Check loading state while deletion is still in-flight
@@ -353,7 +361,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Wait for delete request
@@ -394,7 +404,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Wait for delete request
@@ -435,7 +447,9 @@ describe('DatasetBulkDeleteModal', () => {
       expect(await screen.findByRole('dialog')).toBeInTheDocument();
 
       // Click delete
-      const deleteButton = screen.getByRole('button', { name: 'Delete' });
+      const deleteButton = within(screen.getByRole('dialog')).getByRole('button', {
+        name: 'Delete',
+      });
       await user.click(deleteButton);
 
       // Should call delete once

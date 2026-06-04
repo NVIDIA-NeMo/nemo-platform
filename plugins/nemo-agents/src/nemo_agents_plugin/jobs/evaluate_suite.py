@@ -3,12 +3,13 @@
 
 """EvaluateSuiteJob — run a directory of containerized eval tasks against an agent.
 
-Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. POC: invoke as
+Registered under ``nemo.jobs`` as ``agents.evaluate-suite``. Invoke as
 
     nemo agents evaluate-suite run --spec '{"evals": "./my-evals", "concurrency": 4}'
 
-The richer flag-based form (``nemo agents evaluate-suite --evals ... --agent ...``)
-is added directly to the CLI in ``cli.py``.
+or, preferred for repeatable runs, with a YAML spec file:
+
+    nemo agents evaluate-suite run --spec-file .agent-improver.yml
 """
 
 from __future__ import annotations
@@ -41,9 +42,7 @@ class EvaluateSuiteJob(NemoJob):
     """Run a suite of containerized eval tasks against an agent."""
 
     name: ClassVar[str] = "evaluate-suite"
-    description: ClassVar[str] = (
-        "Run a directory of containerized eval tasks (Harbor or NAT) — platform-job form. Daily use: `nemo agents evaluate-suite`."
-    )
+    description: ClassVar[str] = "Run a directory of containerized eval tasks (Harbor or NAT) against an agent."
     container: ClassVar[str] = "cpu-tasks"
 
     def run(self, config: dict) -> dict:

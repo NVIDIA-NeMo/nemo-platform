@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { withOperators } from '@nemo/common/src/api/filterOperators';
 import { BASIC_ALL_MODELS_DROPDOWN_FILTER } from '@nemo/common/src/api/models/useModels';
 import { useModelsFromWorkspace } from '@nemo/common/src/api/models/useModelsFromWorkspace';
 import { VariableButton } from '@nemo/common/src/components/buttons/VariableButton';
@@ -17,7 +18,10 @@ import {
   useEvaluationCreateMetricJob,
   useEvaluationListMetrics,
 } from '@nemo/sdk/generated/platform/api';
-import type { EvaluatorModel } from '@nemo/sdk/generated/platform/schema';
+import type {
+  EvaluationListMetricsParams,
+  EvaluatorModel,
+} from '@nemo/sdk/generated/platform/schema';
 import type { MetricEvaluationJobRequest } from '@nemo/sdk/generated/platform/schema/MetricEvaluationJobRequest';
 import {
   Button,
@@ -186,7 +190,9 @@ export const MetricRunSidePanel: FC<MetricRunSidePanelProps> = ({
       page: 1,
       page_size: 50,
       filter: metricSearch
-        ? ({ name: { $like: metricSearch } } as Record<string, unknown>)
+        ? withOperators<NonNullable<EvaluationListMetricsParams['filter']>>({
+            name: { $like: metricSearch },
+          })
         : undefined,
     },
     { query: { enabled: !metric && open } }

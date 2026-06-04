@@ -29,12 +29,12 @@ export const FilesTable: FC<Props> = ({ filesList, datasetFullName, isLoading })
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
 
-  const datasetFolder = getQueryParam(QUERY_PARAMETERS.datasetFolder);
-  const folderContents = useDatasetNavigator(filesList, datasetFolder ?? '');
+  const currentFolder = getQueryParam(QUERY_PARAMETERS.filesetFolder);
+  const folderContents = useDatasetNavigator(filesList, currentFolder ?? '');
 
   const handleDirectoryClick = useCallback(
     (path: string) => {
-      setQueryParam(QUERY_PARAMETERS.datasetFolder, path);
+      setQueryParam(QUERY_PARAMETERS.filesetFolder, path);
     },
     [setQueryParam]
   );

@@ -4,6 +4,7 @@
 import math
 
 import pytest
+from metrics.helpers import compute_scores, output_names
 from nemo_evaluator_sdk.execution.evaluator import Evaluator
 from nemo_evaluator_sdk.metrics.tool_calling import MetricResult, ToolCallingMetric
 
@@ -15,14 +16,14 @@ def _response(tool_calls):
 class TestToolCallingMetric:
     def test_score_names(self):
         metric = ToolCallingMetric(reference="{{item.reference}}")
-        assert metric.score_names() == ["function_name_accuracy", "function_name_and_args_accuracy"]
+        assert output_names(metric) == ["function_name_accuracy", "function_name_and_args_accuracy"]
 
     @pytest.mark.asyncio
     async def test_metric(self):
         metric = ToolCallingMetric(reference="{{item.reference}}")
         item = {"reference": [{"function": {"name": "sum", "arguments": {"x": 1}}}]}
         sample = {"response": _response([{"function": {"name": "sum", "arguments": '{"x": 1}'}}])}
-        assert (await metric.compute_scores(item, sample)).scores[0].value == 1.0
+        assert (await compute_scores(metric, item, sample)).outputs[0].value == 1.0
 
     def test_metric_uses_item_response_when_sample_missing(self):
         metric = ToolCallingMetric(reference="{{item.reference}}")
@@ -139,15 +140,16 @@ class TestToolCallingMetric:
         metric = ToolCallingMetric(reference="{{item.reference}}")
         item = {"reference": [{"function": {"name": "sum", "arguments": {"x": 1}}}]}
         sample = {"response": _response([{"function": {"name": "sum", "arguments": '{"x": 1}'}}])}
-        result = await metric.compute_scores(item, sample)
-        assert {score.name for score in result.scores} == {"function_name_accuracy", "function_name_and_args_accuracy"}
+        result = await compute_scores(metric, item, sample)
+        assert {score.name for score in result.outputs} == {"function_name_accuracy", "function_name_and_args_accuracy"}
 
     @pytest.mark.asyncio
     async def test_raises_clear_error_for_missing_reference_field(self):
         metric = ToolCallingMetric(reference="{{item.reference}}")
 
         with pytest.raises(ValueError) as exc_info:
-            await metric.compute_scores(
+            await compute_scores(
+                metric,
                 item={"prompt": "call sum"},
                 sample={"response": _response([])},
             )
@@ -204,14 +206,14 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 2
-        score_names = {s.name for s in result.scores}
+        assert len(result.outputs) == 2
+        score_names = {s.name for s in result.outputs}
         assert score_names == {"function_name_accuracy", "function_name_and_args_accuracy"}
         # Both should be 1.0 for exact match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 1.0
 
     @pytest.mark.asyncio
@@ -235,8 +237,8 @@ class TestToolCallingMetric:
                 ]
             }
         }
-        result = await metric.compute_scores(item, sample)
-        assert {score.name for score in result.scores} == set(metric.score_names())
+        result = await compute_scores(metric, item, sample)
+        assert {score.name for score in result.outputs} == set(output_names(metric))
 
     @pytest.mark.asyncio
     async def test_compute_scores_reference_without_tojson_preserves_list(self):
@@ -273,10 +275,10 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 1.0
 
     @pytest.mark.asyncio
@@ -315,11 +317,11 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        function_name_accuracy = next(s for s in result.scores if s.name == "function_name_accuracy")
-        function_name_and_args_accuracy = next(s for s in result.scores if s.name == "function_name_and_args_accuracy")
+        function_name_accuracy = next(s for s in result.outputs if s.name == "function_name_accuracy")
+        function_name_and_args_accuracy = next(s for s in result.outputs if s.name == "function_name_and_args_accuracy")
 
         # Function names match
         assert function_name_accuracy.value == 1.0
@@ -362,11 +364,11 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
         # Both should be 0.0 when function names don't match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 0.0
 
     @pytest.mark.asyncio
@@ -388,11 +390,11 @@ class TestToolCallingMetric:
         }
         sample = {"response": {"choices": [{"message": {}}]}}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
         # Both should be 0.0 when no tool calls present
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 0.0
 
     @pytest.mark.asyncio
@@ -443,11 +445,11 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
         # Both should be 1.0 even though order is different
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 1.0
 
     @pytest.mark.asyncio
@@ -486,11 +488,11 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        function_name_accuracy = next(s for s in result.scores if s.name == "function_name_accuracy")
-        function_name_and_args_accuracy = next(s for s in result.scores if s.name == "function_name_and_args_accuracy")
+        function_name_accuracy = next(s for s in result.outputs if s.name == "function_name_accuracy")
+        function_name_and_args_accuracy = next(s for s in result.outputs if s.name == "function_name_and_args_accuracy")
 
         # Function names still match
         assert function_name_accuracy.value == 1.0
@@ -533,10 +535,10 @@ class TestToolCallingMetric:
             }
         }
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         # Case sensitivity means this should not match
-        for score in result.scores:
+        for score in result.outputs:
             assert score.value == 0.0
 
     @pytest.mark.asyncio
@@ -575,7 +577,7 @@ class TestToolCallingMetric:
             }
         }
 
-        score = (await metric.compute_scores(item, sample)).scores[0].value
+        score = (await compute_scores(metric, item, sample)).outputs[0].value
         assert score == 1.0
 
     @pytest.mark.asyncio
@@ -619,11 +621,11 @@ class TestToolCallingMetric:
         # Empty sample - no live inference
         sample: dict = {}
 
-        result = await metric.compute_scores(item, sample)
+        result = await compute_scores(metric, item, sample)
 
         assert isinstance(result, MetricResult)
-        assert len(result.scores) == 2
-        for score in result.scores:
+        assert len(result.outputs) == 2
+        for score in result.outputs:
             assert score.value == 1.0
 
     @pytest.mark.asyncio
@@ -639,4 +641,4 @@ class TestToolCallingMetric:
         sample: dict = {}
 
         with pytest.raises(ValueError, match="No response found"):
-            await metric.compute_scores(item, sample)
+            await compute_scores(metric, item, sample)

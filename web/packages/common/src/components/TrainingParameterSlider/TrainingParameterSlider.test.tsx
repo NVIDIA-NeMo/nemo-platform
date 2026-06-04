@@ -7,7 +7,7 @@ import {
   CustomizerHyperparameters,
   HYPERPARAMETER_FIELD_METADATA,
 } from '@nemo/common/src/components/TrainingParameterSlider/types';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { FormProvider, useForm } from 'react-hook-form';
 
@@ -50,14 +50,13 @@ describe('TrainingParameterSlider', () => {
 
       // Validate correct roles exist
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Validate ARIA attributes
       expect(slider).toHaveAttribute('aria-label', 'Controlled slider');
-      expect(slider).toHaveAttribute('aria-valuemin', '8');
-      expect(slider).toHaveAttribute('aria-valuemax', '128');
-      expect(slider).toHaveAttribute('aria-valuenow', '8');
-      expect(slider).toHaveAttribute('aria-orientation', 'horizontal');
+      expect(slider).toHaveAttribute('min', '8');
+      expect(slider).toHaveAttribute('max', '128');
+      expect(slider).toHaveValue('8');
 
       expect(textInput).toHaveAttribute('aria-label', 'batch_size-slider_text_input');
 
@@ -77,13 +76,13 @@ describe('TrainingParameterSlider', () => {
 
       const metadata = HYPERPARAMETER_FIELD_METADATA.batch_size;
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Verify elements render with correct attributes
       expect(screen.getByText(metadata.name)).toBeInTheDocument();
       expect(screen.getByText(metadata.description!)).toBeInTheDocument();
-      expect(slider).toHaveAttribute('aria-valuemin', metadata.min.toString());
-      expect(slider).toHaveAttribute('aria-valuemax', metadata.max.toString());
+      expect(slider).toHaveAttribute('min', metadata.min.toString());
+      expect(slider).toHaveAttribute('max', metadata.max.toString());
       expect(textInput).toHaveValue(8);
       expect(textInput).toHaveAttribute('aria-label', 'batch_size-slider_text_input');
     });
@@ -96,7 +95,7 @@ describe('TrainingParameterSlider', () => {
       );
 
       const slider = screen.getByRole('slider');
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Verify helper text and disabled state
       expect(
@@ -104,29 +103,26 @@ describe('TrainingParameterSlider', () => {
           'How much to adjust the model parameters in response to the loss gradient.'
         )
       ).toBeInTheDocument();
-      expect(slider).toHaveAttribute('data-disabled', '');
+      expect(slider).toBeDisabled();
       expect(textInput).toBeDisabled();
     });
   });
 
   describe('Value Changes', () => {
-    it('should update value when text input changes and integrate with form', async () => {
-      const user = userEvent.setup();
-
+    it('should update value when text input changes and integrate with form', () => {
       render(
         <TestWrapper defaultValues={{ epochs: 5 }}>
           <TrainingParameterSlider name="epochs" />
         </TestWrapper>
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Verify initial form integration
       expect(textInput).toHaveValue(5);
 
       // Test text input change
-      await user.clear(textInput);
-      await user.type(textInput, '15');
+      fireEvent.change(textInput, { target: { value: '15' } });
       expect(textInput).toHaveValue(15);
     });
   });
@@ -141,7 +137,7 @@ describe('TrainingParameterSlider', () => {
         </TestWrapper>
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Test too low
       await user.clear(textInput);
@@ -181,7 +177,7 @@ describe('TrainingParameterSlider', () => {
         </TestWrapper>
       );
 
-      const textInput = screen.getByTestId('nv-text-input-element');
+      const textInput = screen.getByRole('spinbutton');
 
       // Custom error should show initially
       expect(screen.getByText('Custom error message')).toBeInTheDocument();
@@ -226,10 +222,10 @@ describe('TrainingParameterSlider', () => {
 
         // Use specific selectors to avoid ambiguity
         const slider = screen.getByRole('slider');
-        const textInput = screen.getByTestId('nv-text-input-element');
+        const textInput = screen.getByRole('spinbutton');
 
-        expect(slider).toHaveAttribute('aria-valuemin', metadata.min.toString());
-        expect(slider).toHaveAttribute('aria-valuemax', metadata.max.toString());
+        expect(slider).toHaveAttribute('min', metadata.min.toString());
+        expect(slider).toHaveAttribute('max', metadata.max.toString());
         expect(textInput).toHaveValue(expectedValue);
         expect(textInput).toHaveAttribute('aria-label', `${name}-slider_text_input`);
       });

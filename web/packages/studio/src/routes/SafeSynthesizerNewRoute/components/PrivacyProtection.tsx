@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { RadioGroupRoot, RadioGroupItem, Text, Label, Flex } from '@nvidia/foundations-react-core';
+import {
+  RadioGroupRoot,
+  RadioGroupItem,
+  RadioGroupInput,
+  Text,
+  Flex,
+} from '@nvidia/foundations-react-core';
 import { Controller, useFormContext } from 'react-hook-form';
 
 export const PrivacyProtection = () => {
@@ -35,19 +41,17 @@ export const PrivacyProtection = () => {
             <RadioGroupItem
               className="w-full cursor-pointer items-start justify-start gap-2 rounded-md border-1 border-interaction-base bg-surface-raised px-3 py-4 transition-all data-[state=checked]:translate-y-[-2px] data-[state=checked]:border-transparent data-[state=checked]:font-bold data-[state=checked]:shadow-md data-[state=checked]:ring-2 data-[state=checked]:ring-brand [&_*]:cursor-pointer"
               key={item.value}
-              value={item.value}
               aria-labelledby={`${item.value}-label`}
             >
-              <Label htmlFor={item.value} id={`${item.value}-label`}>
-                <Flex direction="col" align="start" gap="2">
-                  <Flex align="center" gap="1">
-                    <Text kind="label/regular/md">{item.label}</Text>
-                  </Flex>
-                  <Text kind="body/regular/sm" color="secondary" className="text-left">
-                    {item.description}
-                  </Text>
+              <RadioGroupInput value={item.value} id={item.value} />
+              <Flex direction="col" align="start" gap="2" id={`${item.value}-label`}>
+                <Flex align="center" gap="1">
+                  <Text kind="label/regular/md">{item.label}</Text>
                 </Flex>
-              </Label>
+                <Text kind="body/regular/sm" color="secondary" className="text-left">
+                  {item.description}
+                </Text>
+              </Flex>
             </RadioGroupItem>
           ))}
         </RadioGroupRoot>

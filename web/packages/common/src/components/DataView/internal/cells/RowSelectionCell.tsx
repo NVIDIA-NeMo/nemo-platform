@@ -22,7 +22,7 @@ export function RowSelectionCell<TData>({
   return (
     <Checkbox
       attributes={{
-        CheckboxBox: { 'aria-label': isSelected ? 'Deselect row' : 'Select row' },
+        CheckboxInput: { 'aria-label': isSelected ? 'Deselect row' : 'Select row' },
       }}
       checked={getIsSomeRowsSelected ? 'indeterminate' : isSelected}
       data-selected={isSelected}
@@ -48,7 +48,7 @@ export function RowSelectionHeaderCell<TData>({
   return (
     <Checkbox
       attributes={{
-        CheckboxBox: {
+        CheckboxInput: {
           'aria-label': isAllRowsSelected ? 'Deselect all rows' : 'Select all rows',
         },
       }}

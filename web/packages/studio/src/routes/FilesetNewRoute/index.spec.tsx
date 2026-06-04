@@ -73,7 +73,7 @@ describe('FilesetNewRoute', () => {
     renderRoute();
 
     const datasetCard = await screen.findByRole('radio', { name: 'Dataset' });
-    expect(datasetCard).toHaveAttribute('aria-checked', 'true');
+    expect(datasetCard).toBeChecked();
   });
 
   it('shows Create Fileset and Cancel in the footer', async () => {

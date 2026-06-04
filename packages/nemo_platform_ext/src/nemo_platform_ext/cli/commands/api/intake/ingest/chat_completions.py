@@ -27,19 +27,34 @@ def create_chat_completions(
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
     request: Annotated[
         str | None,
-        typer.Option(
-            "--request",
-            help="Flexible entry request that accepts any object shape.This flexibility enables the Intake service to store requests from various LLM providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal, etc.) without requiring schema updates.Required fields: `messages` and `model` Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc. (JSON string) (required)",
-        ),
+        typer.Option("--request", help="Flexible captured chat-completions request. (JSON string) (required)"),
     ] = None,
     response: Annotated[
         str | None,
+        typer.Option("--response", help="Flexible captured chat-completions response. (JSON string) (required)"),
+    ] = None,
+    cost_details: Annotated[
+        str | None,
+        typer.Option("--cost-details", help="Additional estimated cost breakdown fields in USD. (JSON string)"),
+    ] = None,
+    cost_input_usd: Annotated[
+        float | None, typer.Option("--cost-input-usd", help="Estimated input-token cost of this model call in USD.")
+    ] = None,
+    cost_output_usd: Annotated[
+        float | None, typer.Option("--cost-output-usd", help="Estimated output-token cost of this model call in USD.")
+    ] = None,
+    cost_usd: Annotated[
+        float | None,
         typer.Option(
-            "--response",
-            help="Flexible entry response that accepts any object shape.This flexibility enables the Intake service to store responses from various LLM providers and future model types without requiring schema updates.Required: either `choices` (successful response) or `error` (failed call). Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`, etc. (JSON string) (required)",
+            "--cost-usd",
+            help="Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.",
         ),
     ] = None,
     evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
+    experiment_context: Annotated[
+        str | None,
+        typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),
+    ] = None,
     provider: Annotated[str | None, typer.Option("--provider")] = None,
     session_id: Annotated[
         str | None,
@@ -87,8 +102,18 @@ def create_chat_completions(
         input_payload["request"] = read_payload("request", request)
     if response is not None:
         input_payload["response"] = read_payload("response", response)
+    if cost_details is not None:
+        input_payload["cost_details"] = read_payload("cost_details", cost_details)
+    if cost_input_usd is not None:
+        input_payload["cost_input_usd"] = cost_input_usd
+    if cost_output_usd is not None:
+        input_payload["cost_output_usd"] = cost_output_usd
+    if cost_usd is not None:
+        input_payload["cost_usd"] = cost_usd
     if evaluation_context is not None:
         input_payload["evaluation_context"] = read_payload("evaluation_context", evaluation_context)
+    if experiment_context is not None:
+        input_payload["experiment_context"] = read_payload("experiment_context", experiment_context)
     if provider is not None:
         input_payload["provider"] = provider
     if session_id is not None:
@@ -101,8 +126,8 @@ def create_chat_completions(
         ["request", "response"],
         "intake ingest chat-completions create",
         {
-            "request": "Flexible entry request that accepts any object shape.This flexibility enables the Intake service to store requests from various LLM providers (OpenAI, Anthropic, NIM, etc.) and future model types (embeddings, multimodal, etc.) without requiring schema updates.Required fields: `messages` and `model` Common optional fields: `temperature`, `max_tokens`, `top_p`, `tools`, `tool_choice`, `stream`, `response_format`, etc. (JSON string) (required)",
-            "response": "Flexible entry response that accepts any object shape.This flexibility enables the Intake service to store responses from various LLM providers and future model types without requiring schema updates.Required: either `choices` (successful response) or `error` (failed call). Common optional fields: `id`, `created`, `model`, `usage`, `system_fingerprint`, etc. (JSON string) (required)",
+            "request": "Flexible captured chat-completions request. (JSON string) (required)",
+            "response": "Flexible captured chat-completions response. (JSON string) (required)",
         },
     )
 

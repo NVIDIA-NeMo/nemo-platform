@@ -49,6 +49,11 @@ Match the user's intent to one downstream skill. Pick exactly one.
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
 | "shut down", "stop NeMo", "tear down", "clean up" | `nemo-teardown` | Stop the cluster (keep data, delete platform data, or full cleanup) |
 | "fine-tune", "customize the model", "train on my data" | `nemo-fine-tune` | Fine-tuning is not yet available on NeMo Platform. Pick this so the agent tells the user it's not shipped instead of going off to implement training with some other library. |
+| "optimize my agent", "make it cheaper", "reduce latency", "smaller model", "switchyard", "routing split", "compare against a newer model" | `agents-optimize` (plugin-owned, in `plugins/nemo-agents`) | Cost / latency / quality optimization for a **deployed** agent. Routing splits, skill tuning, prompt tuning, new-model scans. |
+| "secure my agent", "harden my agent", "check for PII", "leaked secrets", "guardrail coverage" | `agents-secure` (plugin-owned, in `plugins/nemo-agents`) | Safety and security audit for a **deployed** agent. Guardrails, PII, secrets scan. |
+| "evaluate my agent", "run a benchmark", "eval suite" | `nemo-evaluator` (plugin-owned, in `plugins/nemo-evaluator`) | Evaluation metrics, LLM-judge, benchmark jobs against a deployed agent or model. |
+
+**Optimize vs build:** Do NOT route optimize asks to `nemo-build-agent`. Build is for creating new agents from a spec; optimize is for tuning **already deployed** agents. If the user says "make my agent faster" or "use a cheaper model," that is `agents-optimize`, not `nemo-build-agent`.
 
 If two rows fit, pick the earliest one in the lifecycle (setup before build before try). If nothing matches, ask one disambiguating question with the relevant rows as a numbered list.
 
@@ -60,8 +65,8 @@ Before handing off, run a host-wide platform scan. Three signals, in order — t
 # 1. Ground truth: is anything listening on the canonical port?
 lsof -iTCP:8080 -sTCP:LISTEN 2>/dev/null
 
-# 2. Functional check: does the API actually answer?
-curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
+# 2. Functional check: does the platform readiness endpoint answer?
+curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null || echo "no-response"
 
 # 3. Conflict check: other platform processes / data dirs / configs on this host?
 ps -eo pid,user,command 2>/dev/null | grep -E "nemo services (run|start)|nemo-platform run" | grep -v grep
@@ -73,8 +78,8 @@ Interpretation:
 
 | What you observe | Hand off to | Why |
 |---|---|---|
-| (1) returns a listener AND (2) returns 2xx/4xx | the requested downstream skill | Platform is up and serving. Skip `setup`. |
-| (1) returns a listener but (2) returns `no-response` or 5xx | `nemo-status` | Something is bound to :8080 but the API is wedged. Do not start a second platform. |
+| (1) returns a listener AND (2) returns `200` | the requested downstream skill | Platform is up and ready. Skip `setup`. |
+| (1) returns a listener but (2) returns `no-response` or non-200 | `nemo-status` | Something is bound to :8080 but the platform is not ready. Do not start a second platform. |
 | (1) empty but (3) finds another `nemo services` process OR more than one data dir / config | **stop, do not hand off yet** | Another install on this host, possibly on a different port. Surface the inventory verbatim. Ask whether to tear that one down first, pick a different port + data dir, or abort. Two installs writing to the same `~/.config/nmp/config.yaml` is how users end up with one Studio frontend pointing at the wrong backend. |
 | (1), (2), and (3) all empty | `setup` | Clean machine, no platform installed. |
 
@@ -101,7 +106,14 @@ NeMo Platform skills I can route to:
   nemo-teardown   guided shutdown
   nemo-fine-tune  fine-tuning (not yet shipped; reports that honestly)
 
-Plus plugin-owned skills (guardrails, evaluator, auditor, data-designer, anonymizer, agents-optimize, agents-secure).
+Plugin-owned skills:
+  agents-optimize   cost / latency / quality optimization for a deployed agent
+  agents-secure     safety and security audit for a deployed agent
+  nemo-evaluator    evaluation metrics, LLM-judge, benchmark jobs
+  guardrails        content-safety middleware via virtual models
+  auditor           red-team vulnerability scanning (garak)
+  data-designer     synthetic dataset generation
+  anonymizer        PII handling for datasets
 
 Which one fits what you're trying to do?
 ```

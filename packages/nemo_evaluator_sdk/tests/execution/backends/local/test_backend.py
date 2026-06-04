@@ -9,7 +9,6 @@ from unittest.mock import AsyncMock
 
 import pytest
 from nemo_evaluator_sdk.execution.backends.local.backend import LocalBackend
-from nemo_evaluator_sdk.execution.config import EvaluationRequest
 from nemo_evaluator_sdk.values import Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.multi_metric_results import BenchmarkEvaluationResult
 from nemo_evaluator_sdk.values.results import AggregatedMetricResult
@@ -30,7 +29,7 @@ class TestLocalBackendEvaluateBenchmark:
     async def test_delegates_to_sdk_evaluate_benchmark_with_unique_metric_keys(self, mocker: MockerFixture) -> None:
         """The backend must pass unique metric keys and prepared rows to the SDK pipeline."""
         dataset = [{"prompt": "a"}, {"prompt": "b"}]
-        request = EvaluationRequest(dataset=dataset, params=RunConfig(parallelism=2))
+        params = RunConfig(parallelism=2)
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -46,7 +45,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         metrics = [DuplicateMetric(), DuplicateMetric()]
 
-        result = await backend.evaluate_benchmark(metrics=metrics, request=request)
+        result = await backend.evaluate_benchmark(metrics=metrics, dataset=dataset, params=params)
 
         assert result is expected_result
         mock_prepare.assert_called_once_with(dataset, None, None)
@@ -57,16 +56,13 @@ class TestLocalBackendEvaluateBenchmark:
         assert [metric for _, metric in sdk_kwargs["metrics"]] != metrics
         assert sdk_kwargs["rows"] is prepared_rows
         assert sdk_kwargs["target"] is None
-        assert sdk_kwargs["params"] is request.params
+        assert sdk_kwargs["params"] is params
 
     @pytest.mark.asyncio
     async def test_delegates_without_explicit_fail_fast(self, mocker: MockerFixture) -> None:
         """LocalBackend must let sdk_evaluate_benchmark derive fail-fast from params."""
         dataset = [{"prompt": "a"}]
-        request = EvaluationRequest(
-            dataset=dataset,
-            params=RunConfigOnline(parallelism=1, ignore_request_failure=True),
-        )
+        params = RunConfigOnline(parallelism=1, ignore_request_failure=True)
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -80,16 +76,17 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], request=request)
+        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
         assert mock_sdk.await_args is not None
         assert "fail_fast" not in mock_sdk.await_args.kwargs
-        assert mock_sdk.await_args.kwargs["params"] is request.params
+        assert mock_sdk.await_args.kwargs["params"] is params
 
     @pytest.mark.asyncio
     async def test_prepare_rows_failure_is_raised_without_sdk_call(self, mocker: MockerFixture) -> None:
         """Dataset preparation failures must abort before delegating to the SDK pipeline."""
-        request = EvaluationRequest(dataset=[{"prompt": "a"}], params=RunConfig(parallelism=1))
+        dataset = [{"prompt": "a"}]
+        params = RunConfig(parallelism=1)
         backend = LocalBackend()
         mock_sdk = mocker.patch(
             "nemo_evaluator_sdk.execution.backends.local.backend.sdk_evaluate_benchmark",
@@ -101,14 +98,15 @@ class TestLocalBackendEvaluateBenchmark:
         )
 
         with pytest.raises(RuntimeError, match="bad dataset"):
-            await backend.evaluate_benchmark(metrics=[DuplicateMetric()], request=request)
+            await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
         mock_sdk.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_uses_normalized_params_when_request_omits_them(self, mocker: MockerFixture) -> None:
-        """The backend should receive concrete default params when the request omits them."""
-        request = EvaluationRequest(dataset=[{"prompt": "a"}])
+    async def test_uses_explicit_default_params(self, mocker: MockerFixture) -> None:
+        """The backend should receive concrete default params from the evaluator."""
+        dataset = [{"prompt": "a"}]
+        params = RunConfig()
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -122,17 +120,16 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], request=request)
+        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], dataset=dataset, params=params)
 
-        assert request.params == RunConfig()
-        assert not hasattr(request, "fail_fast")
         assert mock_sdk.await_args is not None
-        assert mock_sdk.await_args.kwargs["params"] is request.params
+        assert mock_sdk.await_args.kwargs["params"] is params
 
     @pytest.mark.asyncio
     async def test_prepares_metrics_before_sdk_benchmark_execution(self, mocker: MockerFixture) -> None:
         """Local benchmark execution should prepare copied metrics before SDK delegation."""
-        request = EvaluationRequest(dataset=[{"prompt": "a"}], params=RunConfig(parallelism=3))
+        dataset = [{"prompt": "a"}]
+        params = RunConfig(parallelism=3)
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -147,7 +144,7 @@ class TestLocalBackendEvaluateBenchmark:
         )
         original = PreparedBenchmarkMetric()
 
-        await backend.evaluate_benchmark(metrics=[original], request=request)
+        await backend.evaluate_benchmark(metrics=[original], dataset=dataset, params=params)
 
         assert mock_sdk.await_args is not None
         prepared = mock_sdk.await_args.kwargs["metrics"][0][1]
@@ -164,13 +161,9 @@ class TestLocalBackendEvaluateBenchmark:
         """Online local benchmarks should preserve default generation hooks."""
         explicit_preprocess = IdentityPreprocessHook()
         explicit_postprocess = IdentityPostprocessHook()
-        request = EvaluationRequest(
-            dataset=[{"prompt": "a"}],
-            target=Model(url="http://example.test/v1", name="test-model"),
-            params=RunConfigOnlineModel(parallelism=1),
-            preprocess_hooks=(explicit_preprocess,),
-            postprocess_hooks=(explicit_postprocess,),
-        )
+        dataset = [{"prompt": "a"}]
+        target = Model(url="http://example.test/v1", name="test-model")
+        params = RunConfigOnlineModel(parallelism=1)
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -184,7 +177,14 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], request=request)
+        await backend.evaluate_benchmark(
+            metrics=[DuplicateMetric()],
+            dataset=dataset,
+            params=params,
+            target=target,
+            preprocess_hooks=(explicit_preprocess,),
+            postprocess_hooks=(explicit_postprocess,),
+        )
 
         assert mock_sdk.await_args is not None
         sdk_kwargs = mock_sdk.await_args.kwargs
@@ -200,12 +200,8 @@ class TestLocalBackendEvaluateBenchmark:
         """Offline local benchmarks should keep only explicitly supplied hooks."""
         explicit_preprocess = IdentityPreprocessHook()
         explicit_postprocess = IdentityPostprocessHook()
-        request = EvaluationRequest(
-            dataset=[{"prompt": "a"}],
-            params=RunConfig(parallelism=1),
-            preprocess_hooks=(explicit_preprocess,),
-            postprocess_hooks=(explicit_postprocess,),
-        )
+        dataset = [{"prompt": "a"}]
+        params = RunConfig(parallelism=1)
         backend = LocalBackend()
         expected_result = BenchmarkEvaluationResult(
             row_scores=[], aggregate_scores=AggregatedMetricResult(scores=[]), per_metric={}
@@ -219,7 +215,13 @@ class TestLocalBackendEvaluateBenchmark:
             new=AsyncMock(return_value=expected_result),
         )
 
-        await backend.evaluate_benchmark(metrics=[DuplicateMetric()], request=request)
+        await backend.evaluate_benchmark(
+            metrics=[DuplicateMetric()],
+            dataset=dataset,
+            params=params,
+            preprocess_hooks=(explicit_preprocess,),
+            postprocess_hooks=(explicit_postprocess,),
+        )
 
         assert mock_sdk.await_args is not None
         sdk_kwargs = mock_sdk.await_args.kwargs

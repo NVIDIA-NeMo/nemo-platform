@@ -19,6 +19,14 @@ from __future__ import annotations
 
 import httpx
 
+from .members import (
+    MembersResource,
+    AsyncMembersResource,
+    MembersResourceWithRawResponse,
+    AsyncMembersResourceWithRawResponse,
+    MembersResourceWithStreamingResponse,
+    AsyncMembersResourceWithStreamingResponse,
+)
 from ..._types import Body, Omit, Query, Headers, NotGiven, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
 from ..._compat import cached_property
@@ -41,6 +49,10 @@ __all__ = ["WorkspacesResource", "AsyncWorkspacesResource"]
 
 
 class WorkspacesResource(SyncAPIResource):
+    @cached_property
+    def members(self) -> MembersResource:
+        return MembersResource(self._client)
+
     @cached_property
     def with_raw_response(self) -> WorkspacesResourceWithRawResponse:
         """
@@ -345,6 +357,10 @@ class WorkspacesResource(SyncAPIResource):
 
 
 class AsyncWorkspacesResource(AsyncAPIResource):
+    @cached_property
+    def members(self) -> AsyncMembersResource:
+        return AsyncMembersResource(self._client)
+
     @cached_property
     def with_raw_response(self) -> AsyncWorkspacesResourceWithRawResponse:
         """
@@ -670,6 +686,10 @@ class WorkspacesResourceWithRawResponse:
             workspaces.delete,
         )
 
+    @cached_property
+    def members(self) -> MembersResourceWithRawResponse:
+        return MembersResourceWithRawResponse(self._workspaces.members)
+
 
 class AsyncWorkspacesResourceWithRawResponse:
     def __init__(self, workspaces: AsyncWorkspacesResource) -> None:
@@ -690,6 +710,10 @@ class AsyncWorkspacesResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             workspaces.delete,
         )
+
+    @cached_property
+    def members(self) -> AsyncMembersResourceWithRawResponse:
+        return AsyncMembersResourceWithRawResponse(self._workspaces.members)
 
 
 class WorkspacesResourceWithStreamingResponse:
@@ -712,6 +736,10 @@ class WorkspacesResourceWithStreamingResponse:
             workspaces.delete,
         )
 
+    @cached_property
+    def members(self) -> MembersResourceWithStreamingResponse:
+        return MembersResourceWithStreamingResponse(self._workspaces.members)
+
 
 class AsyncWorkspacesResourceWithStreamingResponse:
     def __init__(self, workspaces: AsyncWorkspacesResource) -> None:
@@ -732,3 +760,7 @@ class AsyncWorkspacesResourceWithStreamingResponse:
         self.delete = async_to_streamed_response_wrapper(
             workspaces.delete,
         )
+
+    @cached_property
+    def members(self) -> AsyncMembersResourceWithStreamingResponse:
+        return AsyncMembersResourceWithStreamingResponse(self._workspaces.members)

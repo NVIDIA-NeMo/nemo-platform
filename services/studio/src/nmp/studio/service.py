@@ -13,6 +13,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.responses import HTMLResponse
 from nmp.common.http_clients import shared_async_http_client
 from nmp.common.service import RouterConfig, Service
+from nmp.studio import coding_agents
 from nmp.studio.config import StudioConfig
 from nmp.studio.static_files import SPAStaticFiles
 from starlette.responses import Response
@@ -64,14 +65,21 @@ class StudioService(Service[StudioConfig]):
     @property
     def description(self) -> str:
         """Service description for OpenAPI docs."""
-        return "Serves the NeMo Studio web application"
+        return "Serves the NeMo Studio web application and local coding-agent bridge"
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the studio service.
 
-        The studio service doesn't expose API routers - it serves static files.
+        Studio exposes API routes for local-only UI integrations in addition to
+        serving static files.
         """
-        return []
+        return [
+            RouterConfig(
+                coding_agents.router,
+                tag="Studio Coding Agents",
+                description="Local coding-agent bridge endpoints",
+            )
+        ]
 
     def configure_app(self, app: FastAPI) -> None:
         """Configure the platform app with static file mounting.
@@ -83,7 +91,12 @@ class StudioService(Service[StudioConfig]):
             app: The platform's FastAPI application
         """
         self._mount_telemetry_proxy(app)
+        self._mount_coding_agent_mcp(app)
         self._mount_static_files(app)
+
+    def _mount_coding_agent_mcp(self, app: FastAPI) -> None:
+        """Mount the auth-bypassed MCP callback before the /studio static app."""
+        coding_agents.mount_public_mcp_route(app)
 
     def _get_config(self) -> StudioConfig:
         """Get the studio config, creating a default if none is set.
@@ -256,9 +269,10 @@ class StudioService(Service[StudioConfig]):
       <p>The platform is running, but Studio cannot be served because the built web assets were not found.</p>
       <p>Requested path: <code>{escape(route)}</code></p>
       <p>Expected assets at: <code>{escape(str(static_path))}</code></p>
-      <p>Install Node.js matching <code>web/package.json</code> with pnpm, and rebuild Studio:</p>
+      <p>Install Node.js matching <code>web/package.json</code> with pnpm, rebuild Studio, and restart services:</p>
       <pre>pnpm env use --global 22.18.0
-make bootstrap-studio</pre>
+make bootstrap-studio
+nemo services restart</pre>
     </main>
   </body>
 </html>

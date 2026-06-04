@@ -20,14 +20,14 @@ describe('InferenceParameters', () => {
 
   it('uses 1024 as the default for max tokens', () => {
     renderComponent();
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     // inputs: [temperature, max_tokens, top_p]
     expect(inputs[1]).toHaveValue(1024);
   });
 
   it('displays provided initial values', () => {
     renderComponent({ value: { temperature: 0.5, max_tokens: 512, top_p: 0.8 } });
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     expect(inputs[0]).toHaveValue(0.5);
     expect(inputs[1]).toHaveValue(512);
     expect(inputs[2]).toHaveValue(0.8);
@@ -35,7 +35,7 @@ describe('InferenceParameters', () => {
 
   it('calls onChange with updated temperature and preserves other fields', () => {
     const { onChange } = renderComponent({ value: { max_tokens: 512, top_p: 0.9 } });
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     fireEvent.change(inputs[0], { target: { value: '0.7' } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ temperature: 0.7, max_tokens: 512, top_p: 0.9 })
@@ -44,7 +44,7 @@ describe('InferenceParameters', () => {
 
   it('calls onChange with updated max_tokens only (not max_completion_tokens)', () => {
     const { onChange } = renderComponent({ value: { temperature: 0.5 } });
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     fireEvent.change(inputs[1], { target: { value: '256' } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ max_tokens: 256, temperature: 0.5 })
@@ -56,7 +56,7 @@ describe('InferenceParameters', () => {
 
   it('calls onChange with updated top_p and preserves other fields', () => {
     const { onChange } = renderComponent({ value: { temperature: 0.5, max_tokens: 256 } });
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     fireEvent.change(inputs[2], { target: { value: '0.9' } });
     expect(onChange).toHaveBeenCalledWith(
       expect.objectContaining({ top_p: 0.9, temperature: 0.5, max_tokens: 256 })
@@ -65,7 +65,7 @@ describe('InferenceParameters', () => {
 
   it('disables all inputs when disabled', () => {
     renderComponent({ disabled: true });
-    const inputs = screen.getAllByTestId('nv-text-input-element');
+    const inputs = screen.getAllByRole('spinbutton');
     inputs.forEach((input) => expect(input).toBeDisabled());
   });
 });

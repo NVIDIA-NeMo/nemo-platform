@@ -10,8 +10,6 @@ the FastAPI routes in :mod:`nemo_auditor.api.v2.configs`.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from nemo_auditor.api.v2.schemas import CreateAuditConfigRequest, UpdateAuditConfigRequest
 from nemo_auditor.entities import (
     AuditConfig,
@@ -20,9 +18,7 @@ from nemo_auditor.entities import (
     AuditRunData,
     AuditSystemData,
 )
-
-if TYPE_CHECKING:
-    from nemo_auditor.sdk import AsyncAuditorPluginResource, AuditorPluginResource
+from nemo_auditor.sdk_resources._parent import AsyncAuditorResourceParent, AuditorResourceParent
 
 
 def _build_create_body(
@@ -66,7 +62,7 @@ def _build_update_body(
 class _ConfigResource:
     """Sync ``configs`` sub-resource — five CRUD verbs."""
 
-    def __init__(self, parent: AuditorPluginResource) -> None:
+    def __init__(self, parent: AuditorResourceParent) -> None:
         self._parent = parent
 
     def create(
@@ -152,7 +148,7 @@ class _ConfigResource:
 class _AsyncConfigResource:
     """Async ``configs`` sub-resource — mirrors :class:`_ConfigResource`."""
 
-    def __init__(self, parent: AsyncAuditorPluginResource) -> None:
+    def __init__(self, parent: AsyncAuditorResourceParent) -> None:
         self._parent = parent
 
     async def create(

@@ -8,7 +8,6 @@ import inspect
 import json
 import logging
 import math
-from collections.abc import Awaitable, Callable
 from functools import cache
 from typing import TYPE_CHECKING, Any, cast
 
@@ -16,6 +15,7 @@ import httpx
 import nemo_platform.beta.evaluator.constants as constants
 from nemo_platform.beta.evaluator.enums import MetricType
 from nemo_platform.beta.evaluator.inference import get_logger, requests_log_var
+from nemo_platform.beta.evaluator.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 # Lazy imports for RAGAS - these are getter functions that defer the expensive
 # RAGAS/langchain imports (~20-30s) until first use, improving startup time.
@@ -26,12 +26,13 @@ from nemo_platform.beta.evaluator.metrics.ragas.imports import (
     get_langchain_llm_wrapper_class,
     get_run_config_class,
 )
+from nemo_platform.beta.evaluator.metrics.resolution import collect_model_refs, resolve_model_refs
+from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
 from nemo_platform.beta.evaluator.templates import render_request
 from nemo_platform.beta.evaluator.values import (
     MetricBase,
-    MetricResult,
-    MetricScore,
     Model,
+    ModelRef,
     SecretRef,
 )
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, ValidationError
@@ -51,6 +52,21 @@ DEFAULT_JUDGE_TIMEOUT = 120  # 2 minutes in seconds
 DEFAULT_JUDGE_MAX_RETRIES = 3
 DEFAULT_JUDGE_MAX_WORKER = 1
 log = logging.getLogger(__name__)
+
+RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
+    "agent_goal_accuracy": MetricType.AGENT_GOAL_ACCURACY.value,
+    "nv_accuracy": MetricType.ANSWER_ACCURACY.value,
+    "context_entity_recall": MetricType.CONTEXT_ENTITY_RECALL.value,
+    "context_precision": MetricType.CONTEXT_PRECISION.value,
+    "context_recall": MetricType.CONTEXT_RECALL.value,
+    "nv_context_relevance": MetricType.CONTEXT_RELEVANCE.value,
+    "faithfulness": MetricType.FAITHFULNESS.value,
+    "noise_sensitivity": MetricType.NOISE_SENSITIVITY.value,
+    "nv_response_groundedness": MetricType.RESPONSE_GROUNDEDNESS.value,
+    "answer_relevancy": MetricType.RESPONSE_RELEVANCY.value,
+    "tool_call_accuracy": MetricType.TOOL_CALL_ACCURACY.value,
+    "topic_adherence": MetricType.TOPIC_ADHERENCE.value,
+}
 
 
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
@@ -108,9 +124,10 @@ class BaseRAGASMetric(MetricBase):
     _secrets: dict[str, SecretRef] = PrivateAttr(default_factory=dict)
     _log: logging.Logger = logging.getLogger(__name__)
 
-    def score_names(self) -> list[str]:
+    def output_spec(self) -> list[MetricOutputSpec]:
+        """Return outputs emitted by this metric."""
         if isinstance(self.type, MetricType):
-            return [self.type.value]
+            return [MetricOutputSpec.continuous_score(self.type.value)]
         return []
 
     def __init__(self, logger: logging.Logger | None = None, **data):
@@ -118,15 +135,20 @@ class BaseRAGASMetric(MetricBase):
         if logger:
             self._log = logger
 
+        self._configure_models()
+
+    def _configure_models(self) -> None:
+        """Build provider client configuration from resolved inline model bindings."""
         self._inference_params = {}
+        self._llm_model = None
+        self._embed_params = None
+        self._secrets = {}
         inference = getattr(self, "inference", None)
         if isinstance(inference, BaseModel):
             self._inference_params = inference.model_dump(mode="json", exclude_none=True)
 
         judge_model = getattr(self, "judge_model", None)
-        if judge_model is not None:
-            assert isinstance(judge_model, Model)
-
+        if isinstance(judge_model, Model):
             # Determine initial API key:
             # - If api_key_secret is configured, resolve secret from env
             # - If no api_key_secret, use placeholder immediately (no secret resolution needed)
@@ -144,9 +166,7 @@ class BaseRAGASMetric(MetricBase):
             }
 
         embeddings_model = getattr(self, "embeddings_model", None)
-        if embeddings_model is not None:
-            assert isinstance(embeddings_model, Model)
-
+        if isinstance(embeddings_model, Model):
             # Determine initial API key:
             # - If api_key_secret is configured, resolve secret from env
             # - If no api_key_secret, use placeholder immediately (no secret resolution needed)
@@ -164,21 +184,34 @@ class BaseRAGASMetric(MetricBase):
                 "truncate": self._inference_params.get("truncate", "NONE"),
             }
 
-    async def resolve_secrets(self, secret_resolver: Callable[[str], Awaitable[str | None]]) -> None:
+    async def resolve_models(self, model_resolver: ModelResolver) -> None:
+        """Resolve RAGAS model references before the metric is used for evaluation."""
+        await resolve_model_refs(self, model_resolver)
+        self._configure_models()
+
+    def model_refs(self) -> dict[str, ModelRef]:
+        """Return RAGAS model references present on this metric."""
+        return collect_model_refs(self)
+
+    async def resolve_secrets(self, secret_resolver: SecretResolver) -> None:
         """Resolve API key secrets if configured. Must be called before using the metric.
 
         This follows the same pattern as LLMJudgeMetric.resolve_secrets().
 
         Args:
-            secret_resolver: Async callback to resolve secret names to values.
+            secret_resolver: Resolver used to look up configured secret references.
         """
         # Resolve judge API key (only if api_key_secret is configured)
         judge_model = getattr(self, "judge_model", None)
         if judge_model is not None:
-            assert isinstance(judge_model, Model)
+            if not isinstance(judge_model, Model):
+                raise ValueError(
+                    f"Model reference '{judge_model.root}' has not been resolved. "
+                    "Register it with LocalBackend.model_resolver.register_model() before local execution."
+                )
             if judge_model.api_key_secret:
                 secret_name = judge_model.api_key_secret.root
-                api_key = await secret_resolver(secret_name)
+                api_key = await secret_resolver.resolve_secret(judge_model.api_key_secret)
                 if not api_key:
                     raise ValueError(f"Missing secret '{secret_name}' for API key authentication with LLM judge.")
                 # Update the model config with resolved API key
@@ -188,10 +221,14 @@ class BaseRAGASMetric(MetricBase):
         # Resolve embeddings API key (only if api_key_secret is configured)
         embeddings_model = getattr(self, "embeddings_model", None)
         if embeddings_model is not None:
-            assert isinstance(embeddings_model, Model)
+            if not isinstance(embeddings_model, Model):
+                raise ValueError(
+                    f"Model reference '{embeddings_model.root}' has not been resolved. "
+                    "Register it with LocalBackend.model_resolver.register_model() before local execution."
+                )
             if embeddings_model.api_key_secret:
                 secret_name = embeddings_model.api_key_secret.root
-                api_key = await secret_resolver(secret_name)
+                api_key = await secret_resolver.resolve_secret(embeddings_model.api_key_secret)
                 if not api_key:
                     raise ValueError(
                         f"Missing secret '{secret_name}' for API key authentication with embeddings model."
@@ -212,17 +249,31 @@ class BaseRAGASMetric(MetricBase):
         return getattr(self, "ignore_request_failure", False)
 
     def _nan_scores_for_metrics(self, metrics: list) -> dict[str, float]:
-        """Build a NaN score mapping for the active RAGAS metric objects."""
-        metric_names: list[str] = []
-        for metric in metrics:
-            metric_name = getattr(metric, "name", None)
-            if isinstance(metric_name, str) and metric_name:
-                metric_names.append(metric_name)
-
+        """Build a NaN score mapping using declared output_spec names."""
+        metric_names = [output.name for output in self.output_spec()]
         if not metric_names:
-            metric_names = self.score_names()
+            for metric in metrics:
+                metric_name = getattr(metric, "name", None)
+                if isinstance(metric_name, str) and metric_name:
+                    metric_names.append(metric_name)
 
         return {metric_name: float("nan") for metric_name in metric_names}
+
+    def _align_scores_to_output_spec(self, scores: dict[str, float]) -> dict[str, float]:
+        """Map known RAGAS metric keys (e.g. ``nv_accuracy``) to declared output names."""
+        declared = [output.name for output in self.output_spec()]
+        if not declared or not scores:
+            return scores
+
+        translated_scores = {
+            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
+        }
+        aligned = {
+            name: scores[name] if name in scores else translated_scores[name]
+            for name in declared
+            if name in scores or name in translated_scores
+        }
+        return aligned if aligned else translated_scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
         """Get the LLM judge instance based on configuration."""
@@ -340,7 +391,7 @@ class BaseRAGASMetric(MetricBase):
             )
             return self._nan_scores_for_metrics(metrics)
 
-        return scores
+        return self._align_scores_to_output_spec(scores)
 
     def _create_evaluation_dataset(self, item: dict, sample: dict) -> EvaluationDataset:
         """Create an EvaluationDataset from the given item and sample."""
@@ -363,11 +414,15 @@ class BaseRAGASMetric(MetricBase):
             if response:
                 payload["response"] = response
 
-        return EvaluationDatasetCls.from_list([payload])
+        return cast(Any, EvaluationDatasetCls).from_list([payload])
 
-    async def compute_scores(self, item: dict, sample: dict) -> MetricResult:
+    async def compute_scores(self, input: MetricInput) -> MetricResult:
         """Compute the scores for the metric."""
-        return await _run_function_in_plain_loop(self.compute_scores_async, item, sample)
+        return await _run_function_in_plain_loop(
+            self.compute_scores_async,
+            input.row.data,
+            input.candidate.as_sample(),
+        )
 
     async def compute_scores_async(self, item: dict, sample: dict) -> MetricResult:
         """Compute the scores for the metric asynchronously."""
@@ -376,7 +431,9 @@ class BaseRAGASMetric(MetricBase):
             llm_judge = self._get_llm_judge(client)
             scores = self._metric(data, llm_judge)
             return MetricResult(
-                scores=[MetricScore(name=metric_name, value=score_value) for metric_name, score_value in scores.items()]
+                outputs=[
+                    MetricOutput(name=metric_name, value=score_value) for metric_name, score_value in scores.items()
+                ]
             )
 
     def _metric(self, data: EvaluationDataset, llm_judge: LangchainLLMWrapper | None) -> dict[str, float]:

@@ -13,10 +13,11 @@ import data_designer.config as dd
 from anyio.lowlevel import current_token
 from data_designer.config.utils.constants import DEFAULT_NUM_RECORDS
 from data_designer_nemo.context import create_data_designer_context
+from data_designer_nemo.errors import NDDInvalidConfigError, raise_if_errors
 from data_designer_nemo.fileset_file_seed_reader import workspace_cvar
-from data_designer_nemo.model_configs import get_model_configs
-from fastapi import HTTPException, status
+from data_designer_nemo.runnable import resolve_runnable_config
 from nemo_data_designer_plugin.config import get_config
+from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 from nemo_data_designer_plugin.functions._types import (
     LogFrame,
     PreviewSpec,
@@ -44,13 +45,12 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
         async_sdk: AsyncNeMoPlatform,
         is_local: bool = False,
     ) -> AsyncIterator[BaseModel]:
-        model_configs = get_model_configs(spec.config)
+        # Fail fast on request shape (``num_records``) before doing any config-validation work.
         num_records = _validate_and_get_num_records(spec.num_records, is_local)
 
         dd_ctx = create_data_designer_context(is_local, async_sdk, ctx.workspace)
-        await dd_ctx.validate(spec.config)
-
-        model_providers = await dd_ctx.get_model_providers(model_configs)
+        errors, model_configs, model_providers = await resolve_runnable_config(dd_ctx, spec.config)
+        raise_if_errors(errors)
 
         workspace_cvar.set(ctx.workspace)
 
@@ -64,8 +64,6 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
                 raise PreviewMessageDeliveryError(
                     "Caught an anyio resource error. Most likely the request was canceled."
                 ) from None
-
-        from nemo_data_designer_plugin.functions._preview_worker import make_preview_dataset
 
         config_builder = dd.DataDesignerConfigBuilder.from_config(spec.config.to_dict())
 
@@ -103,6 +101,11 @@ class PreviewFunction(NemoFunction[PreviewSpec]):
 
 
 def _validate_and_get_num_records(requested_num_records: int | None, is_local: bool) -> int:
+    """Resolve the effective ``num_records``, raising if the user asked for too many.
+
+    Local execution is unconstrained. Remote execution caps at the
+    ``preview_num_records.max`` configured by the operator.
+    """
     if is_local:
         return requested_num_records or DEFAULT_NUM_RECORDS
 
@@ -110,14 +113,7 @@ def _validate_and_get_num_records(requested_num_records: int | None, is_local: b
     num_records = config.preview_num_records.default
     if requested_num_records:
         if requested_num_records > config.preview_num_records.max:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail=_max_num_records_error_message(config.preview_num_records.max),
-            )
+            raise NDDInvalidConfigError(f"Max num records for preview requests is {config.preview_num_records.max}")
         num_records = requested_num_records
 
     return num_records
-
-
-def _max_num_records_error_message(max_num_records: int) -> str:
-    return f"Max num records for preview requests is {max_num_records}"

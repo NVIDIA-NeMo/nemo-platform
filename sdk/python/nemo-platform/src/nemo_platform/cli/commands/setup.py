@@ -123,7 +123,7 @@ _KNOWN_PROVIDERS_BY_NAME: dict[str, KnownProvider] = {p.name: p for p in KNOWN_P
 # ---------------------------------------------------------------------------
 
 
-_NEMO_DOCS_URL = "https://docs.nvidia.com/nemo/platform"
+_NEMO_DOCS_URL = "https://nvidia-nemo.github.io/nemo-platform/main/"
 
 
 @dataclass(frozen=True)
@@ -729,6 +729,12 @@ def _maybe_start_services(
         data_dir = _load_persisted_data_dir()
     else:
         data_dir = _prompt_data_dir()
+
+    if importlib.util.find_spec("pyleak") is None:
+        console.print(f"{CROSS} Local services require extra dependencies that aren't installed.")
+        console.print("  Install them with:")
+        console.print("    [cyan]pip install 'nemo-platform\\[all]'[/cyan]")
+        raise typer.Exit(1)
 
     if already_running:
         console.print("  Restarting platform services...")

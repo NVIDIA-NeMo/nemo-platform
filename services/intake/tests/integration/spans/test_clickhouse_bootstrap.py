@@ -22,12 +22,15 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         )
     )
     assert result.result_rows == [
+        ("ch_annotations_0001",),
         ("ch_evaluator_results_0001",),
+        ("ch_evaluator_results_0002",),
+        ("ch_experiment_sessions_0002",),
         ("ch_spans_0002",),
     ]
 
 
-def test_intake_service_defers_service_owned_clickhouse_bootstrap(client: TestClient, run_async):
+def test_intake_service_readiness_does_not_bootstrap_service_owned_clickhouse(client: TestClient, run_async):
     app = cast(FastAPI, client.app)
     service = cast(IntakeService, app.state.intake_service)
 
