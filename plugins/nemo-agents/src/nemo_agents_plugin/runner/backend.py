@@ -16,9 +16,36 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any
+from pathlib import Path
+from typing import Any, Literal
 
 from nemo_agents_plugin.entities import DeploymentStatus
+
+
+@dataclass(frozen=True)
+class LocalLog:
+    """Log file lives on this host."""
+
+    path: Path
+    kind: Literal["local"] = "local"
+
+
+@dataclass(frozen=True)
+class NotYetAvailable:
+    """Deployment exists; runtime hasn't produced log output yet."""
+
+    kind: Literal["not_yet_available"] = "not_yet_available"
+
+
+@dataclass(frozen=True)
+class ExternalLog:
+    """Logs fetched via a backend-specific channel (``docker logs``, ``kubectl logs``, ...)."""
+
+    kind: Literal["external"] = "external"
+    hint: str = ""
+
+
+LogLocation = LocalLog | NotYetAvailable | ExternalLog
 
 
 @dataclass
@@ -59,42 +86,34 @@ class RunnerBackend(ABC):
         return 0
 
     @abstractmethod
-    async def create_deployment(self, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
-        """Start an agent process from a NAT workflow config dict.
-
-        Args:
-            name: Deployment name (used for process tracking).
-            config: NAT workflow config with IGW URL already injected.
-            port: Port the agent process should listen on.
-
-        Returns:
-            :class:`DeploymentInfo` with ``status="starting"`` and ``pid`` populated.
-        """
+    async def create_deployment(self, workspace: str, name: str, config: dict[str, Any], port: int) -> DeploymentInfo:
+        """Start the agent process; returns status="starting"."""
         ...
 
     @abstractmethod
-    async def get_deployment_status(self, name: str) -> DeploymentInfo | None:
+    async def get_deployment_status(self, workspace: str, name: str) -> DeploymentInfo | None:
         """Return the current runtime state of a deployment, or ``None`` if unknown."""
         ...
 
     @abstractmethod
-    async def delete_deployment(self, name: str) -> bool:
-        """Stop and clean up a deployment.
-
-        Returns:
-            ``True`` if found and terminated, ``False`` if already cleaned up.
-        """
+    async def delete_deployment(self, workspace: str, name: str) -> bool:
+        """Stop + clean up; True if found, False if already gone."""
         ...
 
     @abstractmethod
-    async def list_deployments(self) -> list[DeploymentInfo]:
-        """Return a snapshot of all deployments managed by this backend."""
+    async def list_deployments(self, workspace: str | None = None) -> list[DeploymentInfo]:
+        """Snapshot of deployments; ``workspace=None`` returns every workspace."""
         ...
 
     @abstractmethod
     async def health_check(self, endpoint: str) -> bool:
         """Return ``True`` if the agent at *endpoint* passes ``GET /health``."""
         ...
+
+    def get_log_location(self, workspace: str, name: str) -> "LogLocation":
+        """Where to read logs for (workspace, name). Default: NotYetAvailable."""
+        del workspace, name
+        return NotYetAvailable()
 
     @abstractmethod
     async def shutdown(self) -> None:

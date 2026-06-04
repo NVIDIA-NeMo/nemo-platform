@@ -12,7 +12,7 @@ import { Flex, Button, useTheme } from '@nvidia/foundations-react-core';
 import { githubLight, githubDark } from '@uiw/codemirror-theme-github';
 import CodeMirror from '@uiw/react-codemirror';
 import { Copy } from 'lucide-react';
-import { type FC, type MouseEvent, useState, useMemo, useCallback } from 'react';
+import { type FC, type MouseEvent, type ReactNode, useState, useMemo, useCallback } from 'react';
 
 import '@nemo/common/src/components/CodeEditor/styles.css';
 
@@ -21,6 +21,9 @@ export interface CodeEditorProps {
   readOnly?: boolean;
   onChange?: (newContent: string) => void;
   contentType?: ContentType;
+  id?: string;
+  slotLabel?: ReactNode;
+  slotControls?: ReactNode;
   hideCopyButton?: boolean;
   hideLineNumbers?: boolean;
   hideFoldGutter?: boolean;
@@ -35,6 +38,9 @@ export const CodeEditor: FC<CodeEditorProps> = ({
   contentType = ContentType.JSON,
   onChange,
   className,
+  id,
+  slotLabel,
+  slotControls,
   hideCopyButton = false,
   hideLineNumbers = false,
   hideFoldGutter = false,
@@ -93,20 +99,41 @@ export const CodeEditor: FC<CodeEditorProps> = ({
 
   return (
     <Flex direction="col" gap="density-sm" className={className}>
-      {/* Controls inside the editor area */}
-      {!hideCopyButton && (
-        <Flex justify="end" align="center">
-          <Button
-            onClick={copyToClipboard}
-            kind="tertiary"
-            size="tiny"
-            aria-label="Copy to clipboard"
+      {(slotLabel || !hideCopyButton || slotControls) && (
+        <Flex justify="between" align="center" gap="density-sm">
+          <Flex
+            align="center"
+            gap="density-sm"
+            className="min-w-0"
+            role="button"
+            tabIndex={0}
+            onClick={() => view?.focus()}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                view?.focus();
+              }
+            }}
           >
-            <Copy />
-          </Button>
+            {slotLabel}
+          </Flex>
+          <Flex align="center" gap="density-sm">
+            {slotControls}
+            {!hideCopyButton && (
+              <Button
+                onClick={copyToClipboard}
+                kind="tertiary"
+                size="tiny"
+                aria-label="Copy to clipboard"
+              >
+                <Copy />
+              </Button>
+            )}
+          </Flex>
         </Flex>
       )}
       <CodeMirror
+        id={id}
         data-testid="nv-code-editor-root"
         value={content}
         basicSetup={BASIC_SETUP}

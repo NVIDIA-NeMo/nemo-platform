@@ -16,6 +16,7 @@ The descriptor is metadata used by ``status``, ``ls``, and ``restart``.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import hashlib
@@ -24,6 +25,7 @@ import logging
 import os
 import re
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,6 +43,9 @@ logger = logging.getLogger(__name__)
 LOCK_FILENAME = "services.lock"
 DESCRIPTOR_FILENAME = "instance.json"
 LOG_FILENAME = "services.log"
+
+DEFAULT_SERVICES_BIND_HOST = "127.0.0.1"
+SUGGESTED_ALT_PORT = 9090
 
 _SIGTERM_POLL_INTERVAL = 0.25
 _DEFAULT_STOP_TIMEOUT = 30.0
@@ -170,6 +175,103 @@ class ForegroundInstanceError(Exception):
             f"Instance '{scope}' (pid {pid}) is running in the foreground. "
             "Use Ctrl-C in its terminal to stop it, or pass --force."
         )
+
+
+# ---------------------------------------------------------------------------
+# Port availability (preflight before bind)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PortConflict:
+    """Structured port conflict for terminal rendering by CLI callers."""
+
+    kind: Literal["foreign", "nemo_instance"]
+    port: int
+    scope: str | None = None
+
+
+def _normalize_bind_host(host: str) -> str:
+    """Normalize bind hosts for descriptor comparison."""
+    if host == "localhost":
+        return "127.0.0.1"
+    return host
+
+
+def _instance_owns_listener(
+    scope: str,
+    host: str,
+    port: int,
+    *,
+    base_dir: Path | None = None,
+) -> bool:
+    """Return True when a live instance for *scope* is bound to *host*:*port*."""
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return False
+    desc = read_descriptor(scope, base_dir=base_dir)
+    if desc is None:
+        return False
+    return desc.port == port and _normalize_bind_host(desc.host) == _normalize_bind_host(host)
+
+
+def is_port_bindable(host: str, port: int) -> bool:
+    """Return True if *host*:*port* can be bound on at least one address family.
+
+    Uses ``getaddrinfo`` so IPv4 and IPv6 hosts (for example ``::``) are probed
+    with the correct socket family instead of always using ``AF_INET``.
+    """
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for family, socktype, proto, _, sockaddr in infos:
+        with contextlib.suppress(OSError):
+            with socket.socket(family, socktype, proto) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(sockaddr)  # noqa: S104  # nosec B104
+            return True
+    return False
+
+
+def check_port_available_for_start(
+    host: str,
+    port: int,
+    scope: str,
+    *,
+    base_dir: Path | None = None,
+) -> PortConflict | None:
+    """Return conflict info when *port* cannot be bound, else None.
+
+    Classifies conflicts as ``nemo_instance`` only when a live instance for
+    *scope* is recorded on the same host and port. Otherwise reports ``foreign``.
+    Does not log or print — callers render to the terminal.
+    """
+    if is_port_bindable(host, port):
+        return None
+    if _instance_owns_listener(scope, host, port, base_dir=base_dir):
+        return PortConflict(kind="nemo_instance", port=port, scope=scope)
+    return PortConflict(kind="foreign", port=port)
+
+
+def format_port_conflict(err: PortConflict) -> list[str]:
+    """Return actionable message lines for terminal display.
+
+    Message text depends on ``err.kind`` (foreign process vs NeMo instance).
+    """
+    if err.kind == "nemo_instance":
+        return [
+            f"Port {err.port} is in use by a NeMo Platform instance for this directory.",
+            "Stop it first with: nemo services stop",
+            "Or restart with:    nemo services restart",
+        ]
+    return [
+        f"Port {err.port} is already in use by another process.",
+        "Free the port or choose a different one:",
+        f"lsof -i :{err.port}          (see what's listening)",
+        f"nemo services run --port {SUGGESTED_ALT_PORT}",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +572,7 @@ def start_background(
     controller_group: str | None = None,
     sidecars: list[str] | None = None,
     config_path: str | None = None,
-    host: str = "127.0.0.1",
+    host: str = DEFAULT_SERVICES_BIND_HOST,
     port: int = 8080,
     base_dir: Path | None = None,
     data_dir: str | None = None,

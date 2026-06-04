@@ -82,5 +82,5 @@ asyncio_mode = "auto"
 # from the workspace — run `uv sync` at the repo root before running these tests.
 pythonpath = ["src"]
 
-# Opt this plugin into OpenAPI spec generation
+# Opt this plugin into OpenAPI spec generation.
 [tool.nemo.openapi]
