@@ -19,7 +19,7 @@ Data Designer separates **configuration** from **execution**.
 <Note>
 
 The code snippets below are for conceptual demonstration purposes only.
-For runnable examples, see the [tutorials](tutorials/index.md).
+For runnable examples, see the [tutorials](/documentation/design-synthetic-data/tutorials).
 
 </Note>
 ### 1. Build Configurations
@@ -60,7 +60,7 @@ The same configuration can run through different plugin surfaces:
 
 `run` versus `submit` primarily controls where the plugin workload execution happens. A local `run` can be fully local, but it is not an offline-only mode: it can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources.
 
-See [Execution Modes](execution-modes.md) for the full model.
+See [Execution Modes](/documentation/design-synthetic-data/execution-modes) for the full model.
 
 ## NeMo Services Integration
 
@@ -79,22 +79,22 @@ These integrations are required for `submit` and SDK execution. They are optiona
 
 <Cards>
 
-<Card title="Execution Modes" href="execution-modes.md">
+<Card title="Execution Modes" href="/documentation/design-synthetic-data/execution-modes">
 
 Understand local execution, NeMo Services execution, and NeMo resources.
 
 </Card>
-<Card title="CLI" href="cli.md">
+<Card title="CLI" href="/documentation/design-synthetic-data/cli">
 
 Run previews and create datasets with `nemo data-designer`.
 
 </Card>
-<Card title="Tutorials" href="tutorials/index.md">
+<Card title="Tutorials" href="/documentation/design-synthetic-data/tutorials">
 
 Learn through examples: basics, seeding, and more.
 
 </Card>
-<Card title="Migration Guide" href="migration.md">
+<Card title="Migration Guide" href="/documentation/design-synthetic-data/migrating-from-standalone-library">
 
 Move configurations between local CLI and NeMo Services execution.
 

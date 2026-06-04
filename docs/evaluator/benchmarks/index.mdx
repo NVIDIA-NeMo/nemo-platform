@@ -24,13 +24,13 @@ Custom benchmarks are valuable for domain-specific evaluation where standard ben
 
 | Type | Use Case | Dataset | Metrics |
 |------|----------|---------|---------|
-| [**Industry Benchmarks**](industry.md) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
-| [**Custom Benchmarks**](custom.md) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
+| [**Industry Benchmarks**](/documentation/evaluate-models/benchmarks/industry-benchmarks) | Compare against published baselines, regression testing, model selection | Canonical datasets (fixed) | Standardized metrics |
+| [**Custom Benchmarks**](/documentation/evaluate-models/benchmarks/custom-benchmarks) | Domain-specific evaluation, production monitoring, task-specific assessment | Your evaluation data | Your choice of metrics |
 
 <Markdown src="/snippets/evaluator/benchmarks/discover-industry-benchmarks.mdx" />
 ## Create Custom Benchmarks
 
-Create a custom benchmark by combining metrics with your dataset. Before creating a benchmark, you will need to [create the metrics](../metrics/index.md) that define how to score your model's outputs.
+Create a custom benchmark by combining metrics with your dataset. Before creating a benchmark, you will need to [create the metrics](/documentation/evaluate-models/metrics) that define how to score your model's outputs.
 
 ```python
 benchmark = client.evaluation.benchmarks.create(
@@ -103,21 +103,21 @@ After successfully creating a job, refer to [Benchmark Job Management](job-manag
 
 <Cards>
 
-<Card title="Custom Benchmarks" href="custom.md">
+<Card title="Custom Benchmarks" href="/documentation/evaluate-models/benchmarks/custom-benchmarks">
 
 Compose a custom benchmark with a collection of metrics to evaluate tasks bespoke to your needs.
 
 <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
 
 </Card>
-<Card title="Agentic Benchmarks" href="agentic.md">
+<Card title="Agentic Benchmarks" href="/documentation/evaluate-models/benchmarks/agentic-benchmarks">
 
 Evaluate agent workflows including tool calling, goal accuracy, topic adherence, and trajectory evaluation.
 
 <small><span class="md-tag">RAGAS</span> <span class="md-tag">BFCL</span></small>
 
 </Card>
-<Card title="Industry Benchmarks" href="industry.md">
+<Card title="Industry Benchmarks" href="/documentation/evaluate-models/benchmarks/industry-benchmarks">
 
 Ready-to-use benchmarks for reasoning, code generation, safety, and language understanding with published datasets.
 

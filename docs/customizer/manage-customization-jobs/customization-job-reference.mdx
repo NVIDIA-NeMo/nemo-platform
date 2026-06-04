@@ -5,7 +5,7 @@ description: ""
 <a id="ft-customization-job-reference"></a>
 Use this page when you need field-level details for customization job specifications, the complete API schema, or integration options.
 
-For concepts, see [Customization Job overview](index.md).
+For concepts, see [Customization Job overview](/documentation/fine-tune-models/manage-customization-jobs).
 
 ## Key Fields
 
@@ -86,7 +86,7 @@ nemo customization jobs create my-job \
 </Tabs>
 The `api_key_secret` field references a stored secret containing your `WANDB_API_KEY`.
 Use the secret name (e.g., `"my-wandb-key"`) to resolve it from the request workspace.
-To create the secret, see [Weights & Biases Keys](../../get-started/concepts/manage-secrets.md).
+To create the secret, see [Weights & Biases Keys](/documentation/get-started/core-concepts/manage-secrets).
 
 | Field | Description |
 |-------|-------------|
@@ -160,7 +160,7 @@ nemo customization jobs create my-job \
 
 ## Next Steps
 
-- [Create a customization job](create-job.md): Start a job with a model, dataset, training configuration, and optional integrations.
+- [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job): Start a job with a model, dataset, training configuration, and optional integrations.
 - [Monitor training metrics](../tutorials/metrics.md): View logs and metrics through MLflow or W&B.
-- [Manage secrets](../../get-started/concepts/manage-secrets.md): Store credentials such as W&B API keys and provider tokens.
-- [Troubleshooting MLflow integrations](../../troubleshooting/customizer.md): Diagnose failed or misconfigured customization jobs.
+- [Manage secrets](/documentation/get-started/core-concepts/manage-secrets): Store credentials such as W&B API keys and provider tokens.
+- [Troubleshooting MLflow integrations](/documentation/reference/troubleshooting/customizer): Diagnose failed or misconfigured customization jobs.

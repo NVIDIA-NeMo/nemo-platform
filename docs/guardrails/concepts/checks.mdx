@@ -12,7 +12,7 @@ Use the checks endpoint to evaluate messages against input and output rails with
 
 <Note>
 
-The checks endpoint is a standalone Guardrails API for evaluating messages against rails without running inference. For inference with guardrails applied automatically, use a [VirtualModel with guardrails middleware](inference.md).
+The checks endpoint is a standalone Guardrails API for evaluating messages against rails without running inference. For inference with guardrails applied automatically, use a [VirtualModel with guardrails middleware](/documentation/guardrail-models/core-concepts/running-inference).
 
 </Note>
 <Note>
@@ -139,7 +139,7 @@ print(check_result.model_dump_json(indent=2))
 ## Debug Results
 
 The checks endpoint supports the same `guardrails.options.log` diagnostics as
-guardrailed inference. Use these fields to debug scenarios where a check blocks or passes unexpectedly. For field descriptions, see [Log Options](inference.md#log-options).
+guardrailed inference. Use these fields to debug scenarios where a check blocks or passes unexpectedly. For field descriptions, see [Log Options](/documentation/guardrail-models/core-concepts/running-inference#log-options).
 
 ```bash
 curl -s $NMP_BASE_URL/apis/guardrails/v2/workspaces/default/checks \

@@ -23,7 +23,7 @@ Evaluates the quality of the agent's final output using:
 - **Agent Goal Accuracy**: Measures whether the agent successfully completed the requested task. Refer to [Agent Goal Accuracy](#agent-goal-accuracy).
 - **Topic Adherence**: Assesses how well the agent maintained focus on the assigned topic throughout the conversation. Refer to [Topic Adherence](#topic-adherence).
 - **Answer Accuracy**: Evaluates the factual correctness of agent answers. Refer to [Answer Accuracy](#answer-accuracy).
-- **Custom Metrics**: For domain-specific or custom evaluation criteria, use [LLM-as-a-Judge](llm-as-a-judge.md) with the `data` task type.
+- **Custom Metrics**: For domain-specific or custom evaluation criteria, use [LLM-as-a-Judge](/documentation/evaluate-models/metrics/llm-as-a-judge) with the `data` task type.
 
 **3. Trajectory Evaluation**
 Evaluates the agent's decision-making process by analyzing the entire sequence of actions taken to accomplish a goal. This includes assessing whether the agent chose appropriate tools in the correct order. Refer to [Trajectory Evaluation](#trajectory-evaluation) for the expected data format and current plugin SDK support.
@@ -82,7 +82,7 @@ Before running agentic evaluations:
 
 1. **Workspace**: Have a workspace created. All remote resources, including secrets and jobs, are scoped to a workspace.
 2. **Judge LLM endpoint** *(for most metrics)*: Have access to an LLM that will serve as your judge.
-3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](../../get-started/concepts/manage-secrets.md) to store the API key. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](/documentation/get-started/core-concepts/manage-secrets) to store the API key. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 4. **Initialize the SDK**:
 
 ```python
@@ -1236,9 +1236,9 @@ judge_model = Model(
 )
 ```
 
-For more details on secret management, refer to [Managing Secrets](../../get-started/concepts/manage-secrets.md).
+For more details on secret management, refer to [Managing Secrets](/documentation/get-started/core-concepts/manage-secrets).
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ---
 
@@ -1252,7 +1252,7 @@ result = job.get_result()
 print(result.aggregate_scores)
 ```
 
-Navigate to [Metrics Job Management](job-management.md) for more job lifecycle details.
+Navigate to [Metrics Job Management](/documentation/evaluate-models/metrics/job-management) for more job lifecycle details.
 
 ---
 
@@ -1277,14 +1277,14 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 4. **RAGAS Dependency**: These metrics are powered by RAGAS and may have version-specific behavior.
 
-5. **NaN troubleshooting for judge-based metrics**: If you see `nan_count > 0` with `mean = null`, check judge model authentication first (API key secret, endpoint access, and model permissions). See [Model API Authentication](model-configuration.md#model-api-authentication) for `api_key_secret` behavior. Some RAGAS metrics are known to convert auth failures into `NaN` scores instead of raising a hard error.
+5. **NaN troubleshooting for judge-based metrics**: If you see `nan_count > 0` with `mean = null`, check judge model authentication first (API key secret, endpoint access, and model permissions). See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication) for `api_key_secret` behavior. Some RAGAS metrics are known to convert auth failures into `NaN` scores instead of raising a hard error.
 
 <Note>
 
-- [Agent Configuration](agent-configuration.md) - Use agents (generic or NAT) as targets in online evaluation jobs
-- [Agentic Benchmarks](../benchmarks/agentic.md) - BFCL benchmark for tool-calling evaluation
-- [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
-- [Evaluation Results](results.md) - Understanding results
-- [RAG Metrics](rag.md) - RAGAS metrics for RAG pipelines
+- [Agent Configuration](/documentation/evaluate-models/metrics/agent-configuration) - Use agents (generic or NAT) as targets in online evaluation jobs
+- [Agentic Benchmarks](/documentation/evaluate-models/benchmarks/agentic-benchmarks) - BFCL benchmark for tool-calling evaluation
+- [LLM-as-a-Judge](/documentation/evaluate-models/metrics/llm-as-a-judge) - Custom judge-based evaluation
+- [Evaluation Results](/documentation/evaluate-models/metrics/metric-results) - Understanding results
+- [RAG Metrics](/documentation/evaluate-models/metrics/rag-metrics) - RAGAS metrics for RAG pipelines
 
 </Note>

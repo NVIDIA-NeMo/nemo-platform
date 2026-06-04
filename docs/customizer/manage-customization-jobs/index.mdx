@@ -3,7 +3,7 @@ title: "Manage Customization Jobs"
 description: ""
 ---
 <a id="ft-manage-customization-jobs"></a>
-Use customization jobs to fine-tune a [model](../models/index.md) using a [dataset](../../get-started/concepts/manage-files.md) and [hyperparameters](hyperparameters.md).
+Use customization jobs to fine-tune a [model](../models/index.md) using a [dataset](/documentation/get-started/core-concepts/manage-files) and [hyperparameters](hyperparameters.md).
 
 ## How It Works
 
@@ -16,7 +16,7 @@ This design keeps adapters organized with their parent models and simplifies dep
 
 ## Prerequisites
 
-Before you can customize a model using a customization job, make sure that you have `prepared and uploaded a dataset <../tutorials/format-training-dataset>` to the dataset repository. See also [format-training-dataset](../tutorials/format-training-dataset.md) for dataset formatting requirements.
+Before you can customize a model using a customization job, make sure that you have `prepared and uploaded a dataset <../tutorials/format-training-dataset>` to the dataset repository. See also [format-training-dataset](/documentation/fine-tune-models/tutorials/format-training-dataset) for dataset formatting requirements.
 
 ---
 
@@ -26,12 +26,12 @@ Perform common customization job tasks.
 
 <Tip>
 
-The value for `NMP_BASE_URL` will depend on your deployment. After the standard [Setup](../../get-started/setup.md) flow, the default local URL is `http://localhost:8080`. Otherwise, consult with your cluster administrator.
+The value for `NMP_BASE_URL` will depend on your deployment. After the standard [Setup](/documentation/get-started) flow, the default local URL is `http://localhost:8080`. Otherwise, consult with your cluster administrator.
 
 </Tip>
 <Cards>
 
-<Card title="Create a Customization Job" href="create-job.md">
+<Card title="Create a Customization Job" href="/documentation/fine-tune-models/manage-customization-jobs/create-a-customization-job">
 
 Create a customization job using SFT, DPO, or Knowledge Distillation.
 
@@ -65,7 +65,7 @@ Refer to the following pages for more information on customization jobs.
 Review the hyperparameters that you can use to customize a model.
 
 </Card>
-<Card title="Troubleshoot Failed Jobs" href="../../troubleshooting/customizer.md">
+<Card title="Troubleshoot Failed Jobs" href="/documentation/reference/troubleshooting/customizer">
 
 View troubleshooting tips for failed jobs.
 

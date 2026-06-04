@@ -6,14 +6,14 @@ Add users to workspaces, assign roles, and control who can access your resources
 
 <Note>
 
-The SDK examples on this page use `NeMoPlatform()` with no arguments so that the client reads your active CLI context (set by `nemo auth login`). That is the right pattern for authorization workflows: you act as your logged-in identity and pass the workspace explicitly in each API call. For the standard local initialization pattern, see [CLI and SDK initialization](../../get-started/setup.md#setup-init).
+The SDK examples on this page use `NeMoPlatform()` with no arguments so that the client reads your active CLI context (set by `nemo auth login`). That is the right pattern for authorization workflows: you act as your logged-in identity and pass the workspace explicitly in each API call. For the standard local initialization pattern, see [CLI and SDK initialization](/documentation/get-started#setup-init).
 
 </Note>
 ## Creating Workspaces
 
 Workspaces are the primary authorization boundary — all resources belong to a workspace, and access is controlled at the workspace level. When you create a workspace, you automatically become its Admin.
 
-Create separate workspaces to isolate teams (`ml-research`, `nlp-team`), environments (`dev`, `staging`, `prod`), or projects. For detailed workspace management, refer to [Workspaces](../../get-started/concepts/workspaces.md).
+Create separate workspaces to isolate teams (`ml-research`, `nlp-team`), environments (`dev`, `staging`, `prod`), or projects. For detailed workspace management, refer to [Workspaces](/documentation/get-started/core-concepts/workspaces).
 
 
 <Tabs>

@@ -10,7 +10,7 @@ For detection and replacement strategy details, see the [open-source library doc
 
 ## Prerequisites
 
-- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](../quickstart.md).
+- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](/documentation/anonymize-data/quickstart).
 - An inference provider configured (default examples use `nvidia-build`).
 - A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded (created in the Quick Start).
 
@@ -179,7 +179,7 @@ jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' \
   /tmp/anonymizer-preview.ndjson
 ```
 
-If `preview submit` returns 404 against the gateway, the plugin service isn't mounted. Confirm the plugin is installed and restart `nemo services run`; see [Quick Start — Step 1](../quickstart.md#step-1-install-the-plugin).
+If `preview submit` returns 404 against the gateway, the plugin service isn't mounted. Confirm the plugin is installed and restart `nemo services run`; see [Quick Start — Step 1](/documentation/anonymize-data/quickstart#step-1-install-the-plugin).
 
 ## Input Source Forms
 
@@ -222,6 +222,6 @@ nemo anonymizer validate --config /tmp/anonymizer-config.yaml
 
 ## Next Steps
 
-- Run a full job and inspect parquet output in the [run tutorial](run.md).
-- Refer to [SDK Resources](../sdk-resources.md) for `AnonymizerPreviewResult` and `AnonymizerResource.preview` details.
+- Run a full job and inspect parquet output in the [run tutorial](/documentation/anonymize-data/tutorials/run-an-anonymizer-job).
+- Refer to [SDK Resources](/documentation/anonymize-data/sdk-resources) for `AnonymizerPreviewResult` and `AnonymizerResource.preview` details.
 - Learn about rewrite and replacement strategy parameters in the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).

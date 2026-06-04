@@ -8,7 +8,7 @@ Route inference requests through the gateway using model entity routing, provide
 
 <Note>
 
-This tutorial assumes you have an external provider registered. The platform pre-configures a `system/nvidia-build` provider on startup, which most of the examples below use. To register your own provider, see [About Models and Inference](../about.md#model-providers).
+This tutorial assumes you have an external provider registered. The platform pre-configures a `system/nvidia-build` provider on startup, which most of the examples below use. To register your own provider, see [About Models and Inference](/documentation/models-and-inference#model-providers).
 
 </Note>
 <Markdown src="/snippets/_snippets/tutorials/cli-sdk-setup.mdx" />
@@ -247,7 +247,7 @@ response = client.inference.gateway.openai.post(
 
 ### Using OpenAI Python SDK
 
-Models service provides a convenient helper method `client.models.get_openai_client()` that can generate an OpenAI SDK client for the configured workspace. The SDK also offers helper methods for generating OpenAI-compatible URL strings for Inference Gateway. Refer to [SDK Helper Methods](../about.md#sdk-helper-methods) for more info.
+Models service provides a convenient helper method `client.models.get_openai_client()` that can generate an OpenAI SDK client for the configured workspace. The SDK also offers helper methods for generating OpenAI-compatible URL strings for Inference Gateway. Refer to [SDK Helper Methods](/documentation/models-and-inference#sdk-helper-methods) for more info.
 
 ```python
 # Get pre-configured OpenAI client

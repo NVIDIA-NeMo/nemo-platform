@@ -87,15 +87,15 @@ Online evaluation jobs can target either a **model** (an OpenAI-compatible chat 
 | **Model** | Standalone LLM endpoints using a standard chat completions API. |
 | **Agent** | Agentic systems, NeMo Agent Toolkit workflows, or custom HTTP endpoints with non-standard response formats. |
 
-See [Model Configuration](model-configuration.md) and [Agent Configuration](agent-configuration.md) for setup details.
+See [Model Configuration](/documentation/evaluate-models/metrics/model-configuration) and [Agent Configuration](/documentation/evaluate-models/metrics/agent-configuration) for setup details.
 
 ## Built-in vs. Custom Metrics
 
 - **Built-in metrics**: Ready-to-use metrics provided by NeMo Platform (for example `exact-match`, `bleu`, `rouge`).
 - **Custom metrics**: Metrics you define for domain-specific evaluation needs.
 
-To configure inline metric objects, see [Manage Metrics](manage-metrics.md).
-For custom metric creation guides, start with [Similarity Metrics](similarity.md), [LLM-as-a-Judge](llm-as-a-judge.md), or [Bring Your Own Metric](remote.md).
+To configure inline metric objects, see [Manage Metrics](/documentation/evaluate-models/metrics/manage-metrics).
+For custom metric creation guides, start with [Similarity Metrics](/documentation/evaluate-models/metrics/similarity-metrics), [LLM-as-a-Judge](/documentation/evaluate-models/metrics/llm-as-a-judge), or [Bring Your Own Metric](/documentation/evaluate-models/metrics/bring-your-own-metric).
 
 ## Datasets
 
@@ -104,7 +104,7 @@ Evaluation jobs need dataset input. You can provide data in two ways:
 | Dataset Source | Description | Best For |
 |------|-------------|----------|
 | **DatasetRows** | Inline rows sent directly in the request | Quick testing and live evaluation |
-| **FilesetRef** | Reference to a persisted [fileset](../../get-started/concepts/manage-files.md) (`workspace/fileset-name`) | Production jobs and reusable datasets |
+| **FilesetRef** | Reference to a persisted [fileset](/documentation/get-started/core-concepts/manage-files) (`workspace/fileset-name`) | Production jobs and reusable datasets |
 
 Example of providing a `FilesetRef` to reference specific files or globs:
 
@@ -131,42 +131,42 @@ Use the metric-type pages below to create and configure custom metrics.
 
 <Cards>
 
-<Card title="LLM-as-a-Judge" href="llm-as-a-judge.md">
+<Card title="LLM-as-a-Judge" href="/documentation/evaluate-models/metrics/llm-as-a-judge">
 
 Use another LLM to evaluate outputs with flexible scoring criteria. Define custom rubrics or numerical ranges.
 
 <small><span class="md-tag">custom-scoring</span> <span class="md-tag">rubrics</span></small>
 
 </Card>
-<Card title="Agentic Metrics" href="agentic.md">
+<Card title="Agentic Metrics" href="/documentation/evaluate-models/metrics/agentic-metrics">
 
 Evaluate agent workflows including tool calling accuracy, goal completion, and topic adherence.
 
 <small><span class="md-tag">RAGAS</span> <span class="md-tag">tool-calling</span></small>
 
 </Card>
-<Card title="RAG Metrics" href="rag.md">
+<Card title="RAG Metrics" href="/documentation/evaluate-models/metrics/rag-metrics">
 
 Evaluate RAG pipelines for retrieval quality and answer generation using RAGAS metrics.
 
 <small><span class="md-tag">faithfulness</span> <span class="md-tag">relevancy</span></small>
 
 </Card>
-<Card title="Similarity Metrics" href="similarity.md">
+<Card title="Similarity Metrics" href="/documentation/evaluate-models/metrics/similarity-metrics">
 
 Create metrics for text similarity, exact matching, and standard NLP evaluations using Jinja2 templating.
 
 <small><span class="md-tag">F1</span> <span class="md-tag">ROUGE</span> <span class="md-tag">BLEU</span></small>
 
 </Card>
-<Card title="Bring Your Own Metric" href="remote.md">
+<Card title="Bring Your Own Metric" href="/documentation/evaluate-models/metrics/bring-your-own-metric">
 
 Integrate custom evaluation endpoints for domain-specific scoring.
 
 <small><span class="md-tag">remote</span> <span class="md-tag">custom</span></small>
 
 </Card>
-<Card title="Agent Configuration" href="agent-configuration.md">
+<Card title="Agent Configuration" href="/documentation/evaluate-models/metrics/agent-configuration">
 
 Configure agent endpoints (generic or NeMo Agent Toolkit) as targets for online evaluation jobs.
 
@@ -187,4 +187,4 @@ Scores are the metric outputs produced during evaluation:
 
 ## Manage Metric Definitions
 
-Create inline metric objects that can be reused from Python helpers or modules. See [Manage Metrics](manage-metrics.md) for SDK patterns.
+Create inline metric objects that can be reused from Python helpers or modules. See [Manage Metrics](/documentation/evaluate-models/metrics/manage-metrics) for SDK patterns.

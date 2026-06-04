@@ -55,7 +55,7 @@ workflow:
   llm_name: llm
 ```
 
-The [Inference Gateway](../run-inference/about.md) is the local platform's
+The [Inference Gateway](/documentation/models-and-inference) is the local platform's
 model proxy. Agents send model requests to it instead of to provider APIs
 directly, so the platform can resolve model names, attach credentials, and
 route through middleware on the agent's behalf. Two conventions apply when a
@@ -92,7 +92,7 @@ Model traffic from inside the agent process routes back through the Inference Ga
 
 A virtual model is a platform-managed wrapper around one or more backend
 models. An agent can point at a virtual model entity while the virtual model
-handles routing, format translation, and [guardrails](../guardrails/index.md)
+handles routing, format translation, and [guardrails](/documentation/guardrail-models)
 behind the scenes — no changes to the agent's workflow YAML required.
 
 ### Applying Changes Through Candidate Agents
@@ -110,11 +110,11 @@ undeploying the candidate.
 
 ## Common Tasks
 
-- [Optimize Agents](optimization.md): analyze deployed agents for model routing,
+- [Optimize Agents](/documentation/agents/optimize-agents): analyze deployed agents for model routing,
   skill, prompt, and new-model opportunities.
-- [Secure Agents](security.md): check guardrail coverage and scan recent
+- [Secure Agents](/documentation/agents/secure-agents): check guardrail coverage and scan recent
   telemetry for sensitive data.
-- [Plugins and Skills](plugins.md): understand how agent, middleware, and
+- [Plugins and Skills](/documentation/agents/plugins-and-skills): understand how agent, middleware, and
   coding-agent integrations extend the local platform.
-- [Agentic Metrics](../evaluator/metrics/agentic.md): evaluate tool use, goal completion, topic adherence, answer accuracy, and trajectories.
-- [Agent Configuration](../evaluator/metrics/agent-configuration.md): use agents as online evaluation targets.
+- [Agentic Metrics](/documentation/evaluate-models/metrics/agentic-metrics): evaluate tool use, goal completion, topic adherence, answer accuracy, and trajectories.
+- [Agent Configuration](/documentation/evaluate-models/metrics/agent-configuration): use agents as online evaluation targets.

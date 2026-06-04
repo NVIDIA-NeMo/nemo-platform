@@ -10,7 +10,7 @@ For detection, rewrite, and replacement strategy details, see the [open-source l
 
 ## Prerequisites
 
-- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](../quickstart.md).
+- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](/documentation/anonymize-data/quickstart).
 - An inference provider configured (default examples use `nvidia-build`).
 - A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded (created in the Quick Start).
 
@@ -234,7 +234,7 @@ trace   = results.load_trace()
 failed  = results.load_failed_records()
 ```
 
-`AnonymizerJobResults` exposes `load_dataset()`, `load_trace()`, `load_failed_records()`, and `display_record()` over the same underlying files. See [SDK Resources](../sdk-resources.md#anonymizerjobresults).
+`AnonymizerJobResults` exposes `load_dataset()`, `load_trace()`, `load_failed_records()`, and `display_record()` over the same underlying files. See [SDK Resources](/documentation/anonymize-data/sdk-resources#anonymizerjobresults).
 
 ## Inspect the Schema Without Running
 
@@ -262,6 +262,6 @@ For `run submit`, provider endpoints are re-resolved at runtime so the job uses 
 
 ## Next Steps
 
-- Iterate faster with [preview](preview.md) before scaling to a full job.
-- Refer to [SDK Resources](../sdk-resources.md) for `AnonymizerJobResource` and `AnonymizerJobResults` details.
+- Iterate faster with [preview](/documentation/anonymize-data/tutorials/preview-a-config) before scaling to a full job.
+- Refer to [SDK Resources](/documentation/anonymize-data/sdk-resources) for `AnonymizerJobResource` and `AnonymizerJobResults` details.
 - Replacement strategy parameters and rewrite mode are documented in the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).

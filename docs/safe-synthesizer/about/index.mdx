@@ -14,14 +14,14 @@ NVIDIA NeMo Safe Synthesizer enables you to create private versions of sensitive
 
 NeMo Safe Synthesizer allows you to generate synthetic data that maintains the statistical properties of your original dataset without exposing sensitive information about individual records.
 
-NeMo Safe Synthesizer is best when you have the data you need, but because it is private or sensitive in nature you cannot use it as-is. NeMo Safe Synthesizer interpolates from existing data to generate a private, synthetic version, where new records have no one-to-one mapping to original records. If you do not have any data or want to extrapolate based on a very small set of examples, refer to [index](../../data-designer/index.md). NeMo Data Designer supports synthetic data creation from scratch or small seed for AI training and development use cases.
+NeMo Safe Synthesizer is best when you have the data you need, but because it is private or sensitive in nature you cannot use it as-is. NeMo Safe Synthesizer interpolates from existing data to generate a private, synthetic version, where new records have no one-to-one mapping to original records. If you do not have any data or want to extrapolate based on a very small set of examples, refer to [index](/documentation/design-synthetic-data). NeMo Data Designer supports synthetic data creation from scratch or small seed for AI training and development use cases.
 
 <a id="safe-synthesizer-job"></a>
 ## NeMo Safe Synthesizer Job
 
 A complete NeMo Safe Synthesizer job consists of the following steps:
 
-1. [Upload Data](../../get-started/concepts/manage-files.md): Add your tabular data to the Files API
+1. [Upload Data](/documentation/get-started/core-concepts/manage-files): Add your tabular data to the Files API
 2. Prepare Data:
  - [Configure PII Replacement](pii-replacement.md): Set up detection and replacement of sensitive information (recommended prior to the Synthesis step to ensure the model has no chance of learning the most sensitive information like names and addresses)
  - Configure training data organization and holdout splits

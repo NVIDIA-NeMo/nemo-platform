@@ -9,7 +9,7 @@ These tutorials demonstrate how to build Data Designer configurations and execut
 <Note>
 
 The code snippets on this page are for conceptual demonstration purposes only.
-For runnable examples, jump ahead to the [Basics](basics.md) or [Seeding](seeding.md) tutorial.
+For runnable examples, jump ahead to the [Basics](/documentation/design-synthetic-data/tutorials/the-basics) or [Seeding](/documentation/design-synthetic-data/tutorials/seeding-with-external-datasets) tutorial.
 
 </Note>
 ## Configuration and Execution
@@ -54,7 +54,7 @@ job = data_designer.create(config_builder, num_records=1000)
 
 <Tip>
 
-`run` versus `submit` primarily controls where the workload executes. Local `run` can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources. See [Execution Modes](../execution-modes.md) for details.
+`run` versus `submit` primarily controls where the workload executes. Local `run` can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources. See [Execution Modes](/documentation/design-synthetic-data/execution-modes) for details.
 
 </Tip>
 ## Execution-Specific Considerations
@@ -70,22 +70,22 @@ When running through the plugin, supported resources depend on the execution mod
 
 ## Prerequisites
 
-These tutorials use an [Inference Gateway](../../run-inference/about.md) provider for model calls, so a NeMo Services cluster must be running before you preview or create data — including with local CLI `run` (see [Execution Modes](../execution-modes.md#local-nemo-services-execution) for more about this distinction).
-Complete [Setup](../../get-started/setup.md) to ensure you have the NeMo Services running locally and an inference provider available.
+These tutorials use an [Inference Gateway](/documentation/models-and-inference) provider for model calls, so a NeMo Services cluster must be running before you preview or create data — including with local CLI `run` (see [Execution Modes](/documentation/design-synthetic-data/execution-modes#local-nemo-services-execution) for more about this distinction).
+Complete [Setup](/documentation/get-started) to ensure you have the NeMo Services running locally and an inference provider available.
 These tutorials reference the default NVIDIA Build model provider, which is created as `default/nvidia-build` during setup.
 
 ## Tutorials
 
 <Cards>
 
-<Card title="The Basics" href="basics.md">
+<Card title="The Basics" href="/documentation/design-synthetic-data/tutorials/the-basics">
 
 Generate a product review dataset using samplers and LLM-generated text. Learn the fundamentals of building configurations and executing jobs.
 
 <small><span class="md-tag">beginner</span> <span class="md-tag">data-designer</span></small>
 
 </Card>
-<Card title="Seeding" href="seeding.md">
+<Card title="Seeding" href="/documentation/design-synthetic-data/tutorials/seeding-with-external-datasets">
 
 Use external datasets to ground synthetic data generation. Generate realistic patient medical notes from symptom-to-diagnosis data.
 

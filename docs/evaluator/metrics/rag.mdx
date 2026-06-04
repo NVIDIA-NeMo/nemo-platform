@@ -78,7 +78,7 @@ client.secrets.create(
 )
 ```
 
-Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -93,7 +93,7 @@ judge_model = Model(
 RAGAS metrics accept inline model definitions for `judge_model` and, where required, `embeddings_model`.
 
 </Tip>
-    See [Model Configuration](model-configuration.md) for details.
+    See [Model Configuration](/documentation/evaluate-models/metrics/model-configuration) for details.
 
 ---
 
@@ -120,7 +120,7 @@ RAGAS metrics accept inline model definitions for `judge_model` and, where requi
 
 The metric examples below use these inline values:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -860,7 +860,7 @@ client.secrets.create(name="judge-api-key", value="<your-judge-key>")
 client.secrets.create(name="embedding-api-key", value="<your-embedding-key>")
 ```
 
-Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -893,8 +893,8 @@ print(f"Saved artifacts under {artifacts_dir}")
 |-------|-------|----------|
 | `judge_model` is required | Missing judge LLM config for metric | Add `judge_model` to metric configuration |
 | `embeddings_model` is required | Using `response_relevancy` without embeddings | Add `embeddings_model` to metric configuration |
-| Job stuck in "pending" | Model endpoint not accessible | Verify endpoint URLs and API key secrets. See [Model API Authentication](model-configuration.md#model-api-authentication) |
-| Authentication failed | Invalid or missing API key | Check `api_key_secret` for the execution mode. See [Model API Authentication](model-configuration.md#model-api-authentication) |
+| Job stuck in "pending" | Model endpoint not accessible | Verify endpoint URLs and API key secrets. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication) |
+| Authentication failed | Invalid or missing API key | Check `api_key_secret` for the execution mode. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication) |
 | `nan_count > 0` and `mean = null` | Judge/model call failures, such as auth, endpoint, quota, or timeout. Some RAGAS metrics are known to return `NaN` instead of raising on these failures. | Inspect row-level `error`; verify API key, endpoint, and model access |
 | Low faithfulness scores | Context doesn't support the response | Improve retrieval or response generation |
 
@@ -917,7 +917,7 @@ If you see `nan_count > 0` with `mean = null`, first validate judge model authen
 
 ## Important Notes
 
-1. **Secret Management**: API keys should be referenced through `api_key_secret`, with different local `run` and remote `submit` behavior. See [Model API Authentication](model-configuration.md#model-api-authentication). Never pass API keys directly in the request.
+1. **Secret Management**: API keys should be referenced through `api_key_secret`, with different local `run` and remote `submit` behavior. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication). Never pass API keys directly in the request.
 2. **Column Names**: RAGAS metrics use specific column names:
    - `user_input` (not `question`)
    - `response` (not `answer`)
@@ -933,7 +933,7 @@ If you see `nan_count > 0` with `mean = null`, first validate judge model authen
 
 <Note>
 
-- [LLM-as-a-Judge](llm-as-a-judge.md) - Custom judge-based evaluation
-- [Agentic Metrics](agentic.md) - Evaluate agent workflows
+- [LLM-as-a-Judge](/documentation/evaluate-models/metrics/llm-as-a-judge) - Custom judge-based evaluation
+- [Agentic Metrics](/documentation/evaluate-models/metrics/agentic-metrics) - Evaluate agent workflows
 
 </Note>

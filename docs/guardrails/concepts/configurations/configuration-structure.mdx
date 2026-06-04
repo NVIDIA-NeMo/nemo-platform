@@ -26,7 +26,7 @@ Under the IGW plugin architecture, the main model is owned by IGW and specified 
 
 Include a `type: "main"` entry only when you need to pin the engine or parameters used to talk to the main model — for example, a non-NIM `engine`, a custom `parameters.base_url`, or static `parameters.default_headers`. The `model` field on a main entry is treated as a template; the actual model name always comes from the inference request body.
 
-You can configure task-specific models for any task that occurs during the guardrail process. `type` is a free-form label — rails reference it via `$model=<type>` — so you can declare custom task types in addition to the common ones below (for example, a `vision_rails` model used in [Adding Safety Checks to Multimodal Data](../../tutorials/multimodal-data.md)):
+You can configure task-specific models for any task that occurs during the guardrail process. `type` is a free-form label — rails reference it via `$model=<type>` — so you can declare custom task types in addition to the common ones below (for example, a `vision_rails` model used in [Adding Safety Checks to Multimodal Data](/documentation/guardrail-models/tutorials/multimodal-data)):
 
 - **`content_safety`**: Content Safety check for detecting harmful content.
 - **`topic_control`**: Topic Control check for keeping conversations on-topic.
@@ -54,7 +54,7 @@ models = [
 Model Entities are automatically created when you:
 
 </Tip>
-    - Create a Model Provider pointing to an external API (refer to [Add External Providers](../../../run-inference/about.md#add-external-providers))
+    - Create a Model Provider pointing to an external API (refer to [Add External Providers](/documentation/models-and-inference#add-external-providers))
 
     Use `client.models.list()` to retrieve available Model Entities in your workspace.
 
@@ -269,4 +269,4 @@ Enabling `tracing.enable_content_capture` causes prompts and responses (includin
 
 ## Next Steps
 
-- Refer to [Manage Configurations](manage-configs.md) to create, update, and manage your guardrail configurations.
+- Refer to [Manage Configurations](/documentation/guardrail-models/core-concepts/configurations/manage-configurations) to create, update, and manage your guardrail configurations.

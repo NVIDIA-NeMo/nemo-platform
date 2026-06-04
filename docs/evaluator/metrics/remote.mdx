@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="eval-metrics-remote"></a>
 
-NeMo Platform offers [built-in metrics](index.md) that can be configured to evaluate on your custom data. Remote metrics let you bring your own metric logic into the NeMo Platform evaluation workflow by serving that logic from a REST API.
+NeMo Platform offers [built-in metrics](/documentation/evaluate-models/metrics) that can be configured to evaluate on your custom data. Remote metrics let you bring your own metric logic into the NeMo Platform evaluation workflow by serving that logic from a REST API.
 
 A remote metric gives you control over the evaluation logic, request payload, and reported scores while the Evaluator plugin SDK handles dataset iteration, result aggregation, retries, and job execution.
 
@@ -234,7 +234,7 @@ result = job.get_result()
 
 If your remote endpoint requires authentication, store the API key as a platform secret and reference it from your metric:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication).
 
 
 ```python
@@ -335,7 +335,7 @@ And must return:
 | `body` | dict | (Generic only) Jinja template for request payload |
 | `scores` | list | (Generic only) List of score configuration objects (refer to Score Configuration section) |
 | `evaluator_name` | string | (NAT only) Name of the NAT evaluator |
-| `api_key_secret` | `SecretRef` | Optional API key reference. See [Model API Authentication](model-configuration.md#model-api-authentication) |
+| `api_key_secret` | `SecretRef` | Optional API key reference. See [Model API Authentication](/documentation/evaluate-models/metrics/model-configuration#model-api-authentication) |
 | `timeout_seconds` | float | Request timeout (default: 30.0) |
 | `max_retries` | int | Max retry attempts (default: 3) |
 
@@ -384,8 +384,8 @@ RemoteScore(
 
 <Note>
 
-- [Evaluation Results](results.md) - Understanding and downloading results
-- [LLM-as-a-Judge](llm-as-a-judge.md) - Use an LLM to evaluate outputs
-- [Agentic Evaluation](agentic.md) - Evaluate agent workflows
+- [Evaluation Results](/documentation/evaluate-models/metrics/metric-results) - Understanding and downloading results
+- [LLM-as-a-Judge](/documentation/evaluate-models/metrics/llm-as-a-judge) - Use an LLM to evaluate outputs
+- [Agentic Evaluation](/documentation/evaluate-models/metrics/agentic-metrics) - Evaluate agent workflows
 
 </Note>

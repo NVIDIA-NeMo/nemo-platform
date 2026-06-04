@@ -4,7 +4,7 @@ description: ""
 ---
 <a id="anonymizer-cli"></a>
 
-This reference covers the `nemo anonymizer` commands exposed by the Anonymizer plugin. For end-to-end walkthroughs, see the [tutorials](tutorials/index.md).
+This reference covers the `nemo anonymizer` commands exposed by the Anonymizer plugin. For end-to-end walkthroughs, see the [tutorials](/documentation/anonymize-data/tutorials).
 
 ## Command Surface
 
@@ -73,7 +73,7 @@ nemo anonymizer preview run --spec-file /tmp/anonymizer-preview.yaml > /tmp/prev
 jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' /tmp/preview.ndjson
 ```
 
-Frame kinds: `log`, `preview_dataset`, `trace_dataset`, `failed_records`, `heartbeat`, `done`, `error`. See the [preview tutorial](tutorials/preview.md) for details.
+Frame kinds: `log`, `preview_dataset`, `trace_dataset`, `failed_records`, `heartbeat`, `done`, `error`. See the [preview tutorial](/documentation/anonymize-data/tutorials/preview-a-config) for details.
 
 ## `nemo anonymizer run`
 
@@ -140,7 +140,7 @@ results = job.download_artifacts()
 dataset = results.load_dataset()
 ```
 
-See [SDK Resources](sdk-resources.md) for the full `AnonymizerJobResource` / `AnonymizerJobResults` surface.
+See [SDK Resources](/documentation/anonymize-data/sdk-resources) for the full `AnonymizerJobResource` / `AnonymizerJobResults` surface.
 
 Compared to `run run`, `run submit` rejects local file paths in `data.source` (use a fileset reference or `http(s)` URL) and requires explicit `model_configs` because the job runs outside the CLI process.
 

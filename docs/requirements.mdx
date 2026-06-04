@@ -2,7 +2,7 @@
 title: "Hardware and Software Requirements for NeMo Platform"
 description: ""
 ---
-This page lists the requirements for the OSS local-install path for NeMo Platform 0.1.0. For the full compatibility table, see the [Support Matrix](support-matrix.md).
+This page lists the requirements for the OSS local-install path for NeMo Platform 0.1.0. For the full compatibility table, see the [Support Matrix](/documentation/reference/support-matrix).
 
 The OSS 0.1.0 documentation is scoped to local setup with the Python package and `nemo setup`. Docker Compose, Helm, Kubernetes, and OpenShift deployment guides are not part of this release scope.
 
@@ -12,7 +12,7 @@ The OSS 0.1.0 documentation is scoped to local setup with the Python package and
 |-----------|-------------|-------|
 | Python | 3.11, 3.12, or 3.13 (`>=3.11,<3.14`) | Use an isolated virtual environment. Python 3.14 and later are not part of the OSS local-install support range. |
 | Package installer | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically when needed. |
-| Operating system | Recent Linux or macOS release | See the [Support Matrix](support-matrix.md) for the supported OS list. |
+| Operating system | Recent Linux or macOS release | See the [Support Matrix](/documentation/reference/support-matrix) for the supported OS list. |
 | Memory | 8 GB RAM minimum | 16 GB or more is recommended for larger local workflows. |
 | Disk space | 16 GB free disk space minimum | Additional space is needed for datasets, job outputs, and local model artifacts. |
 | Network | Outbound HTTPS access | Required for package installation and hosted model-provider APIs. |
@@ -38,4 +38,4 @@ nemo --help
 curl -s http://localhost:8080/health/ready
 ```
 
-For setup instructions, see [Setup](get-started/setup.md).
+For setup instructions, see [Setup](/documentation/get-started).

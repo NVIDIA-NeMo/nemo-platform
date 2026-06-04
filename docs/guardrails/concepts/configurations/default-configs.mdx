@@ -27,9 +27,9 @@ Applies NemoGuard Content Safety checks to both user inputs and model outputs us
 
 The `content-safety` configuration requires the `system/nvidia-llama-3-1-nemotron-safety-guard-8b-v3` Model Entity to be deployed and accessible in the `system` workspace.
 
-The model is available on [build.nvidia.com](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) if you do not have access to GPUs. See [Setup](../../../get-started/setup.md) for instructions on creating a `ModelProvider` that routes requests to that endpoint.
+The model is available on [build.nvidia.com](https://build.nvidia.com/nvidia/llama-3_1-nemotron-safety-guard-8b-v3) if you do not have access to GPUs. See [Setup](/documentation/get-started) for instructions on creating a `ModelProvider` that routes requests to that endpoint.
 
-See [About Models and Inference](../../../run-inference/about.md) for how models are made available through the platform.
+See [About Models and Inference](/documentation/models-and-inference) for how models are made available through the platform.
 
 ---
 
@@ -131,7 +131,7 @@ client.inference.virtual_models.delete(name="guarded-with-defaults")
 
 ## Related
 
-- [Architecture](../architecture.md) — Understand the middleware pipeline and VirtualModel wiring
-- [Configuration Structure](configuration-structure.md) — Configuration schema reference
-- [Manage Configurations](manage-configs.md) — Create and manage your own configurations
-- [Run Inference](../../../run-inference/tutorials/run-inference.md) — Run inference with a guardrail configuration
+- [Architecture](/documentation/guardrail-models/core-concepts/architecture) — Understand the middleware pipeline and VirtualModel wiring
+- [Configuration Structure](/documentation/guardrail-models/core-concepts/configurations/configuration-structure) — Configuration schema reference
+- [Manage Configurations](/documentation/guardrail-models/core-concepts/configurations/manage-configurations) — Create and manage your own configurations
+- [Run Inference](/documentation/models-and-inference/tutorials/run-inference) — Run inference with a guardrail configuration

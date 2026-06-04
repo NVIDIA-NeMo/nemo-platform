@@ -21,9 +21,9 @@ This tutorial takes approximately **10 minutes** to complete, plus however long 
 </Tip>
 ## Prerequisites
 
-- Install and start NeMo Platform using the [Setup guide](../../get-started/setup.md).
+- Install and start NeMo Platform using the [Setup guide](/documentation/get-started).
 - Install garak in a Python virtual environment so the plugin can shell out to it. By default the plugin invokes `~/.auditor/.venv/bin/python -m garak`. Override the interpreter path with `NEMO_AUDITOR_GARAK_PYTHON` if your install lives elsewhere.
-- Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](../targets/inference-gateway.md) for details on the `nmp_uri_spec` block used below.
+- Configure at least one Inference Gateway provider — this tutorial uses a `build` provider named `build` that routes to NVIDIA-build models, but any chat-completion-compatible provider works. See [Inference Gateway](/documentation/vulnerability-scanning/targets/inference-gateway) for details on the `nmp_uri_spec` block used below.
 
 ---
 
@@ -55,7 +55,7 @@ print(auditor.plugin_status())
 # {'plugin': 'auditor', 'status': 'ok', ...}
 ```
 
-If `plugin_status()` raises a connection error, the platform is not running or `NMP_BASE_URL` is misconfigured. Refer back to [Setup](../../get-started/setup.md).
+If `plugin_status()` raises a connection error, the platform is not running or `NMP_BASE_URL` is misconfigured. Refer back to [Setup](/documentation/get-started).
 
 ---
 
@@ -84,7 +84,7 @@ config = auditor.configs.create(
 print(config.model_dump_json(indent=2))
 ```
 
-For the full set of options on each sub-block, see [Configuration Schema](../configs/schema.md). For probe selection syntax, see [Selecting Probes](../configs/probes.md).
+For the full set of options on each sub-block, see [Configuration Schema](/documentation/vulnerability-scanning/configurations/schema). For probe selection syntax, see [Selecting Probes](/documentation/vulnerability-scanning/configurations/selecting-probes).
 
 ---
 
@@ -113,7 +113,7 @@ target = auditor.targets.create(
 print(target.model_dump_json(indent=2))
 ```
 
-The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a concrete URI from the Inference Gateway provider at run time. See [Inference Gateway](../targets/inference-gateway.md) for the full conflict rules and resolution behavior.
+The `nmp_uri_spec` sentinel inside `options.nim` tells the plugin to resolve a concrete URI from the Inference Gateway provider at run time. See [Inference Gateway](/documentation/vulnerability-scanning/targets/inference-gateway) for the full conflict rules and resolution behavior.
 
 ---
 
@@ -221,6 +221,6 @@ Report artifacts are left in place under the scheduler's temporary directory; th
 
 You created an `AuditConfig` and `AuditTarget`, ran a single audit locally with `client.auditor.run(...)`, and loaded the resulting reports.
 
-- For the full SDK surface — including async variants — see [SDK Resources](../sdk-resources.md).
-- For more probe selection options, see [Selecting Probes](../configs/probes.md).
-- For other generator types (OpenAI-compatible endpoints, REST targets, test targets), see [Audit Targets](../targets/index.md).
+- For the full SDK surface — including async variants — see [SDK Resources](/documentation/vulnerability-scanning/sdk-resources).
+- For more probe selection options, see [Selecting Probes](/documentation/vulnerability-scanning/configurations/selecting-probes).
+- For other generator types (OpenAI-compatible endpoints, REST targets, test targets), see [Audit Targets](/documentation/vulnerability-scanning/targets).

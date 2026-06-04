@@ -31,7 +31,7 @@ Models service manages model entities and model providers.
 
 Model providers connect the platform to external inference APIs such as [NVIDIA Build](https://build.nvidia.com/) or OpenAI. The workflow is:
 
-1. **Store the API key** as a [secret](../get-started/concepts/manage-secrets.md) in the platform
+1. **Store the API key** as a [secret](/documentation/get-started/core-concepts/manage-secrets) in the platform
 2. **Create a model provider** pointing to the external API with the secret reference
 3. **Route inference** through the gateway using provider or model entity routing
 
@@ -294,4 +294,4 @@ working as designed — use `/health/ready` instead.
 
 ## API Reference
 
-For complete API details, refer to the [Inference Gateway API Reference](/documentation/reference/api-reference) and [SDK Reference](../pysdk/index.md).
+For complete API details, refer to the [Inference Gateway API Reference](/documentation/reference/api-reference) and [SDK Reference](/documentation/reference/python-sdk).

@@ -4,11 +4,11 @@ description: ""
 ---
 <a id="eval-metrics-similarity"></a>
 
-NeMo Platform offers [built-in metrics](index.md) that can be configured to evaluate on your custom data. Similarity metrics compare generated or precomputed text against references, labels, or numeric/string expectations. They support Jinja templates so you can map your dataset columns to the values each metric evaluates.
+NeMo Platform offers [built-in metrics](/documentation/evaluate-models/metrics) that can be configured to evaluate on your custom data. Similarity metrics compare generated or precomputed text against references, labels, or numeric/string expectations. They support Jinja templates so you can map your dataset columns to the values each metric evaluates.
 
 Template functionality provides maximum flexibility for evaluating your models on proprietary, domain-specific, or novel tasks. You can bring your own datasets, define your own prompts and templates using [Jinja](https://github.com/pallets/jinja), and select the metrics that matter most for your use case. This approach is ideal when:
 
-- You want to evaluate on tasks, data, or formats not covered by [industry benchmarks](../benchmarks/industry.md) or built-in metrics.
+- You want to evaluate on tasks, data, or formats not covered by [industry benchmarks](/documentation/evaluate-models/benchmarks/industry-benchmarks) or built-in metrics.
 - You need to measure model performance using custom or business-specific criteria.
 - You want to experiment with new evaluation methodologies, metrics, or workflows.
 - You need to create custom prompts and templates for specific use cases.
@@ -616,6 +616,6 @@ Keep field names consistent between the dataset rows and the templates you confi
 
 ## Related Topics
 
-- [Metric Overview](index.md)
-- [Model Configuration](model-configuration.md)
-- [RAG Evaluation Metrics](rag.md)
+- [Metric Overview](/documentation/evaluate-models/metrics)
+- [Model Configuration](/documentation/evaluate-models/metrics/model-configuration)
+- [RAG Evaluation Metrics](/documentation/evaluate-models/metrics/rag-metrics)

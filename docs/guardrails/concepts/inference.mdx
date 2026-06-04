@@ -9,16 +9,16 @@ description: ""
 
 NeMo Guardrails applies safety checks to inference requests through VirtualModels. When your application sends a request to a VirtualModel with guardrails middleware, the plugin runs input and output rails around the model call automatically. You use the standard IGW OpenAI-compatible endpoint — no separate guardrails endpoint is needed.
 
-Platform-managed agents are the canonical consumer: pointing an agent's `llms` block at a guarded VirtualModel entity is how you secure the agent's model path. See [Secure Agents](../../agents/security.md) for the agent-side wiring. The rest of this page applies to any client calling a guarded VirtualModel, agent or not.
+Platform-managed agents are the canonical consumer: pointing an agent's `llms` block at a guarded VirtualModel entity is how you secure the agent's model path. See [Secure Agents](/documentation/agents/secure-agents) for the agent-side wiring. The rest of this page applies to any client calling a guarded VirtualModel, agent or not.
 
 ## Prerequisites
 
-- A guardrail configuration exists in your workspace. See [Manage Configurations](configurations/manage-configs.md) to create one.
-- A VirtualModel is configured with `nemo-guardrails` middleware. See [Architecture](architecture.md) for wiring details.
+- A guardrail configuration exists in your workspace. See [Manage Configurations](/documentation/guardrail-models/core-concepts/configurations/manage-configurations) to create one.
+- A VirtualModel is configured with `nemo-guardrails` middleware. See [Architecture](/documentation/guardrail-models/core-concepts/architecture) for wiring details.
 
 <Tip>
 
-If you do not have access to GPUs, you can use NIMs hosted on `build.nvidia.com`. Refer to [Setup](../../get-started/setup.md) for instructions on configuring a `ModelProvider` that routes requests to an external endpoint.
+If you do not have access to GPUs, you can use NIMs hosted on `build.nvidia.com`. Refer to [Setup](/documentation/get-started) for instructions on configuring a `ModelProvider` that routes requests to an external endpoint.
 
 </Tip>
 For the examples below, create a guardrail configuration and VirtualModel:
@@ -200,7 +200,7 @@ The `model` field in your request must reference a **VirtualModel** entity (`wor
 
 Task models in your guardrail configuration (content safety, topic control, etc.) must reference **Model Entities** using the same `workspace/name` format. The plugin resolves their endpoints through IGW's route table.
 
-For VirtualModel wiring (`request_middleware`/`response_middleware`, entity-backed vs inline configs), refer to [Architecture](architecture.md). For an overview of how Model Entities and Model Providers fit together, refer to [About Models and Inference](../../run-inference/about.md).
+For VirtualModel wiring (`request_middleware`/`response_middleware`, entity-backed vs inline configs), refer to [Architecture](/documentation/guardrail-models/core-concepts/architecture). For an overview of how Model Entities and Model Providers fit together, refer to [About Models and Inference](/documentation/models-and-inference).
 
 ## Inline Configuration
 
@@ -255,7 +255,7 @@ client.inference.virtual_models.create(
 </Tab>
 
 </Tabs>
-The inline config shares the same `LLMRails` pool when its content hash matches an existing entry. The plugin warms inline configs on VirtualModel upsert too — it walks the VM's middleware entries, stabilizes each source, and dedups by content hash — so the first request after upsert finds a hot pool just like entity-backed configs do. See [Architecture](architecture.md#caching-and-performance) for the cache details.
+The inline config shares the same `LLMRails` pool when its content hash matches an existing entry. The plugin warms inline configs on VirtualModel upsert too — it walks the VM's middleware entries, stabilizes each source, and dedups by content hash — so the first request after upsert finds a hot pool just like entity-backed configs do. See [Architecture](/documentation/guardrail-models/core-concepts/architecture#caching-and-performance) for the cache details.
 
 The optional `name` field sets the diagnostic label in logs (appears as `<inline:my-inline-config>`).
 

@@ -11,14 +11,14 @@ Learn how to fine-tune models by making requests to NVIDIA NeMo Customizer throu
 At a high level, the fine-tuning workflow consists of the following steps:
 
 1. [Create a Model Entity](manage-model-entities/index.md) pointing to your base model checkpoint (stored as a FileSet).
-1. Format a compatible [dataset](tutorials/format-training-dataset.md).
-1. [Create a customization job](manage-customization-jobs/index.md) referencing the Model Entity.
+1. Format a compatible [dataset](/documentation/fine-tune-models/tutorials/format-training-dataset).
+1. [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs) referencing the Model Entity.
 1. Monitor the job until it completes.
 1. The customization job automatically creates either:
  - **LoRA jobs**: An adapter attached to the original Model Entity
  - **Full fine-tuning jobs**: A new Model Entity with the customized weights
-1. [Deploy the model](../run-inference/about.md) using the Deployment Management Service.
-1. Move on to [Evaluate the output model](../evaluator/index.md).
+1. [Deploy the model](/documentation/models-and-inference) using the Deployment Management Service.
+1. Move on to [Evaluate the output model](/documentation/evaluate-models).
 
 ---
 
@@ -49,7 +49,7 @@ View the available Phi models from Microsoft, designed for strong reasoning capa
 View the available GPT-OSS models supported for Full SFT customization.
 
 </Card>
-<Card title="Embedding Models" href="models/embedding.md">
+<Card title="Embedding Models" href="/documentation/fine-tune-models/models/embedding">
 
 View the available embedding models for question-answering and retrieval tasks.
 
@@ -63,7 +63,7 @@ Perform common fine-tuning tasks.
 
 <Cards>
 
-<Card title="Manage Customization Jobs" href="manage-customization-jobs/index.md">
+<Card title="Manage Customization Jobs" href="/documentation/fine-tune-models/manage-customization-jobs">
 
 Create, list, view, and cancel customization jobs.
 
@@ -73,7 +73,7 @@ Create, list, view, and cancel customization jobs.
 Create FileSets and Model Entities to prepare base models for customization.
 
 </Card>
-<Card title="Manage Datasets" href="../get-started/concepts/manage-files.md">
+<Card title="Manage Datasets" href="/documentation/get-started/core-concepts/manage-files">
 
 Upload and manage datasets for training.
 
@@ -89,7 +89,7 @@ Follow these tutorials to learn how to accomplish common fine-tuning tasks.
 
 <Cards>
 
-<Card title="Format Training Datasets" href="tutorials/format-training-dataset.md">
+<Card title="Format Training Datasets" href="/documentation/fine-tune-models/tutorials/format-training-dataset">
 
 Learn how to format datasets for different model types.
 
@@ -157,7 +157,7 @@ View the available hyperparameters and their valid options that you can set when
 View the OpenAPI specification for Customizer.
 
 </Card>
-<Card title="Troubleshoot Failed Jobs" href="../troubleshooting/customizer.md">
+<Card title="Troubleshoot Failed Jobs" href="/documentation/reference/troubleshooting/customizer">
 
 View troubleshooting tips for failed jobs.
 

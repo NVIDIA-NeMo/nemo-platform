@@ -49,7 +49,7 @@ with `nemo models list`):
 - `nvidia-llama-3-1-nemotron-safety-guard-8b-v3`
 
 For how to create the guardrail config that the virtual model references, see
-the [Guardrails documentation](../guardrails/index.md).
+the [Guardrails documentation](/documentation/guardrail-models).
 
 There are two steps: create the guarded VirtualModel, then update the agent's
 `llms` block to reference it.
@@ -80,7 +80,7 @@ Wire the same `<guardrail-config>` on both `--request-middleware` (for
 input rails) and `--response-middleware` (for output rails). Omit a side
 if the config defines no flows for it. For the full middleware schema,
 entity-backed vs inline configs, and caching behavior, refer to
-[Guardrails Architecture](../guardrails/concepts/architecture.md).
+[Guardrails Architecture](/documentation/guardrail-models/core-concepts/architecture).
 
 </Tab>
 <Tab title="Skill">
@@ -143,7 +143,7 @@ client.inference.virtual_models.create(
 
 In the agent's workflow YAML, set `model_name` on the relevant `llms` entry to
 the guarded VirtualModel's entity reference, with slashes converted to hyphens
-(per the [agent configuration conventions](index.md#agent-definition)):
+(per the [agent configuration conventions](/documentation/agents#agent-definition)):
 
 ```yaml
 llms:
@@ -158,7 +158,7 @@ unchanged and unaware of the rails.
 
 For the end-to-end request flow, streaming behavior, header forwarding, and
 the `guardrails` request options, refer to
-[Running Inference with Guardrails](../guardrails/concepts/inference.md).
+[Running Inference with Guardrails](/documentation/guardrail-models/core-concepts/running-inference).
 
 Redeploy the agent, re-run evaluation, and compare quality, cost, latency,
 and safety signals against the baseline before promoting.
@@ -255,9 +255,9 @@ nemo files download nemo-agent-security \
 
 ## Next Steps
 
-- [Optimize Agents](optimization.md): reduce cost and improve quality after
+- [Optimize Agents](/documentation/agents/optimize-agents): reduce cost and improve quality after
   security coverage is in place.
-- [Guardrails](../guardrails/index.md): create and manage guardrail
+- [Guardrails](/documentation/guardrail-models): create and manage guardrail
   configurations.
-- [Models and Inference](../run-inference/about.md): manage model providers,
+- [Models and Inference](/documentation/models-and-inference): manage model providers,
   model entities, and virtual models.

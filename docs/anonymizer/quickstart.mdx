@@ -13,7 +13,7 @@ This guide walks through previewing and running an Anonymizer job on NeMo Platfo
 
 ## Step 1: Install the Plugin
 
-Follow the [Setup guide](../get-started/setup.md) to install NeMo Platform and complete `nemo setup`. From a repo checkout, run `uv sync` at the repo root; the root workspace includes the Anonymizer plugin, so no separate editable plugin install step is needed. `nemo services run` then picks up the plugin automatically and mounts `/apis/anonymizer/...` on the gateway.
+Follow the [Setup guide](/documentation/get-started) to install NeMo Platform and complete `nemo setup`. From a repo checkout, run `uv sync` at the repo root; the root workspace includes the Anonymizer plugin, so no separate editable plugin install step is needed. `nemo services run` then picks up the plugin automatically and mounts `/apis/anonymizer/...` on the gateway.
 
 Verify the CLI is registered:
 
@@ -37,9 +37,9 @@ anonymizer = sdk.anonymizer
 
 ## Step 3: Configure Inference
 
-Anonymizer routes inference through the [Inference Gateway service](../run-inference/about.md). You need a model provider configured before running anything that uses `model_configs`.
+Anonymizer routes inference through the [Inference Gateway service](/documentation/models-and-inference). You need a model provider configured before running anything that uses `model_configs`.
 
-`nemo setup` walks you through creating a provider secret and registering an Inference Gateway provider as part of the install flow. If you skipped that step or want to add another provider, re-run `nemo setup` — see the [Setup guide](../get-started/setup.md) for details.
+`nemo setup` walks you through creating a provider secret and registering an Inference Gateway provider as part of the install flow. If you skipped that step or want to add another provider, re-run `nemo setup` — see the [Setup guide](/documentation/get-started) for details.
 
 <Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ## Step 4: Upload an Input Fileset
@@ -158,7 +158,7 @@ nemo anonymizer preview submit \
   --base-url "${NMP_BASE_URL:-http://localhost:8080}"
 ```
 
-The CLI streams newline-delimited JSON frames (`preview_dataset`, `trace_dataset`, `failed_records`, ...) to stdout. See the [preview tutorial](tutorials/preview.md) for the frame schema and `jq` recipes.
+The CLI streams newline-delimited JSON frames (`preview_dataset`, `trace_dataset`, `failed_records`, ...) to stdout. See the [preview tutorial](/documentation/anonymize-data/tutorials/preview-a-config) for the frame schema and `jq` recipes.
 
 </Accordion>
 <Note>
@@ -197,7 +197,7 @@ print(dataset.head())
 print(f"records={len(dataset)} failures={len(results.load_failed_records())}")
 ```
 
-`sdk.anonymizer.run()` returns an `AnonymizerJobResource`. `wait_until_done=True` blocks until the job reaches a terminal state; `download_artifacts()` fetches the job artifacts and returns an `AnonymizerJobResults` for in-memory access. See [SDK Resources](sdk-resources.md) for the full surface.
+`sdk.anonymizer.run()` returns an `AnonymizerJobResource`. `wait_until_done=True` blocks until the job reaches a terminal state; `download_artifacts()` fetches the job artifacts and returns an `AnonymizerJobResults` for in-memory access. See [SDK Resources](/documentation/anonymize-data/sdk-resources) for the full surface.
 
 The CLI equivalent submits the same spec. First write it to YAML:
 
@@ -281,7 +281,7 @@ The trace dataset (and the dataset itself for `annotate` / `substitute` strategi
 
 ## Next Steps
 
-- **Tutorials:** Walk through preview and run flows in detail in the [tutorials](tutorials/index.md).
-- **SDK reference:** See [SDK Resources](sdk-resources.md) for the `anonymizer` accessor, preview result, and job result types.
-- **CLI reference:** See [CLI Reference](cli.md) for spec-file fields and command flags.
+- **Tutorials:** Walk through preview and run flows in detail in the [tutorials](/documentation/anonymize-data/tutorials).
+- **SDK reference:** See [SDK Resources](/documentation/anonymize-data/sdk-resources) for the `anonymizer` accessor, preview result, and job result types.
+- **CLI reference:** See [CLI Reference](/documentation/anonymize-data/cli-reference) for spec-file fields and command flags.
 - **Library docs:** Detection, replacement strategy parameters, and rewrite mode are documented in the [open-source library](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs).

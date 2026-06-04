@@ -9,7 +9,7 @@ Evaluation is powered by NeMo Platform, a cloud-native platform for evaluating l
 
 NeMo Platform enables real-time evaluations of your LLM application through APIs, guiding you in refining and optimizing LLMs for enhanced performance and real-world applicability. The NeMo Evaluator APIs can be seamlessly automated within development pipelines, enabling faster iterations without the need for live data. It is cost-effective and suitable for pre-deployment checks and regression testing.
 
-<Button href="tutorials/index.md" variant="secondary">**Tutorials**</Button>
+<Button href="/documentation/evaluate-models/tutorials" variant="secondary">**Tutorials**</Button>
 <Button href="https://github.com/NVIDIA-NeMo/evaluator" variant="secondary">**Open Source SDK**</Button>
 
 ---
@@ -21,7 +21,7 @@ Evaluator separates **evaluation definition** from **execution**.
 <Note>
 
 The code snippets below are for conceptual demonstration purposes only.
-For runnable examples see the [tutorials](tutorials/index.md) and [SDK resources](sdk-resources.md).
+For runnable examples see the [tutorials](/documentation/evaluate-models/tutorials) and [SDK resources](/documentation/evaluate-models/sdk-resources).
 
 </Note>
 ### 1. Build RunConfig with the Library
@@ -84,7 +84,7 @@ When using Evaluator as a NeMo Platform plugin :
 |---------|-------------------|-------------|
 | **Execution** | Local Python process | Local plugin runs for local experimentation and durable platform jobs for production |
 | **Inference** | Direct model or agent endpoint calls | The same as standalone and can also route through NeMo Platform Inference Gateway and platform-managed endpoints |
-| **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](../get-started/concepts/manage-files.md) |
+| **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and NeMo Platform [Filesets](/documentation/get-started/core-concepts/manage-files) |
 | **Results Artifacts** | Results stored in memory  | NeMo Platform artifact storage with typed result download |
 | **Authentication** | Local environment variables | Local environment variables for local runs and NeMo Platform Secrets service for remote jobs |
 
@@ -104,17 +104,17 @@ There are two execution modes and two evaluation patterns:
 -   **Offline evaluation**: Score existing dataset rows (for example, model outputs already generated).
 -   **Online evaluation**: Generate outputs from a model as part of evaluation, then score them.
 
-For deeper details, see [Evaluation Metrics](metrics/index.md).
+For deeper details, see [Evaluation Metrics](/documentation/evaluate-models/metrics).
 
 ---
 
 ## Tutorials
 
-After [setting up a local instance of the platform](../get-started/setup.md), use the following tutorials to learn how to accomplish common evaluation tasks. These step-by-step guides help you evaluate models using different benchmarks and metrics.
+After [setting up a local instance of the platform](/documentation/get-started), use the following tutorials to learn how to accomplish common evaluation tasks. These step-by-step guides help you evaluate models using different benchmarks and metrics.
 
 <Cards>
 
-<Card title="Run an LLM Judge Eval" href="tutorials/run-llm-judge-evaluation.md">
+<Card title="Run an LLM Judge Eval" href="/documentation/evaluate-models/tutorials/run-llm-as-a-judge-evaluation">
 
 Learn how to evaluate a fine-tuned model using the LLM Judge metric with a custom dataset.
 
@@ -131,12 +131,12 @@ Learn how to evaluate a fine-tuned model using the LLM Judge metric with a custo
 Most teams get the best results by starting metric-first, then moving to benchmarks:
 
 1. **Develop and validate your metrics first**
- - Start with [Metrics](metrics/index.md) to define how quality should be scored for your use case.
+ - Start with [Metrics](/documentation/evaluate-models/metrics) to define how quality should be scored for your use case.
  - Use live evaluation (`POST /v2/workspaces/{workspace}/evaluation/metric-evaluate`) with small `DatasetRows` payloads to iterate quickly.
 
 1. **Scale metric evaluation to jobs**
  - When metrics are validated, run async metric jobs (`/evaluation/metric-jobs`) on larger datasets.
- - Use filesets for production-scale inputs. See [Manage Files](../get-started/concepts/manage-files.md).
+ - Use filesets for production-scale inputs. See [Manage Files](/documentation/get-started/core-concepts/manage-files).
 
 1. **Monitor and analyze results**
  - Track job status and progress with job management APIs.
@@ -146,7 +146,7 @@ Most teams get the best results by starting metric-first, then moving to benchma
 
 ## Where to Go Next
 
-- For metric workflows, see [Metric Jobs](metrics/index.md) and [Metric Results](metrics/results.md).
+- For metric workflows, see [Metric Jobs](/documentation/evaluate-models/metrics) and [Metric Results](/documentation/evaluate-models/metrics/metric-results).
 - For full endpoint details, see the [Evaluator API Reference](/documentation/reference/api-reference).
 
 ---

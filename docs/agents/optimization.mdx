@@ -29,7 +29,7 @@ Optimizer state is stored in the `nemo-agent-optimizer` fileset:
 - `optimizer_snapshot.json`: model and agent names from the latest run.
 
 Security-oriented suggestions such as missing guardrails, PII exposure, or
-leaked secrets are covered in [Secure Agents](security.md).
+leaked secrets are covered in [Secure Agents](/documentation/agents/secure-agents).
 
 ## Prerequisites
 
@@ -77,7 +77,7 @@ smaller compatible model.
 
 Switchyard is the inference middleware that lets a virtual model split traffic
 across multiple backend models. The common optimization pattern is to create a
-[virtual model](../run-inference/about.md) with a strong model and a weaker,
+[virtual model](/documentation/models-and-inference) with a strong model and a weaker,
 cheaper model, then evaluate whether the route split preserves application
 quality.
 
@@ -357,6 +357,6 @@ do not change the remote agent behavior.
 
 ## Next steps
 
-- [Agent overview](index.md): review how platform-managed agents are registered, deployed, invoked, evaluated, and optimized.
-- [Agent evaluation](../evaluator/metrics/agent-configuration.md): configure agents as online evaluation targets and choose the right agent response mapping.
-- [CLI reference](../cli/reference.md): look up complete command options and global CLI flags for scripted workflows.
+- [Agent overview](/documentation/agents): review how platform-managed agents are registered, deployed, invoked, evaluated, and optimized.
+- [Agent evaluation](/documentation/evaluate-models/metrics/agent-configuration): configure agents as online evaluation targets and choose the right agent response mapping.
+- [CLI reference](/documentation/reference/cli-reference/full-cli-reference): look up complete command options and global CLI flags for scripted workflows.

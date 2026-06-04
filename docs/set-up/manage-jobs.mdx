@@ -48,7 +48,7 @@ jobs:
  node-pool-name: h200-pool
 ```
 
-For full configuration details, see the [platform configuration reference](config-reference.md).
+For full configuration details, see the [platform configuration reference](/documentation/reference/configuration-reference).
 
 ### Default Execution Profiles
 
@@ -57,7 +57,7 @@ The NeMo Platform defines a default execution profile for each execution backend
 - Default CPU Execution Profile (`cpu`): The default execution profile for CPU based jobs.
 - Default GPU Execution Profile (`gpu`): The default execution profile for GPU based jobs.
 
-You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](config-reference.md). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
+You may configure the default execution profiles by updating the `executor_defaults` section of the `jobs` section of the [platform configuration](/documentation/reference/configuration-reference). The structure of the `executor_defaults` matches the configuration of the execution backend configuration.
 
 ```yaml
 jobs:
@@ -106,7 +106,7 @@ The NeMo Platform supports Docker as an execution backend for CPU and GPU based 
 
 <Tip>
 
-If you are running GPU jobs with Docker, see [GPU Configuration](../get-started/setup.md) for information on configuring the shared GPU pool. This configuration is shared between the jobs and models services to prevent GPU resource conflicts.
+If you are running GPU jobs with Docker, see [GPU Configuration](/documentation/get-started) for information on configuring the shared GPU pool. This configuration is shared between the jobs and models services to prevent GPU resource conflicts.
 
 </Tip>
 
