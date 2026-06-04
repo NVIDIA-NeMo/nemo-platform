@@ -130,7 +130,7 @@ class SafeSynthesizerJobConfig(SafeSynthesizerJobConfigInternal):
             return data
         config_data = data.get("config")
         training_data = config_data.get("training") if isinstance(config_data, dict) else None
-        if isinstance(training_data, dict) and "pretrained_model" in training_data:
+        if isinstance(training_data, dict) and training_data.get("pretrained_model") is not None:
             raise ValueError("Use either 'pretrained_model_job' or 'config.training.pretrained_model', not both.")
         return data
 
@@ -154,6 +154,15 @@ def parse_pretrained_model_job_ref(job_ref: str, workspace_fallback: str) -> tup
     return workspace, job_name
 
 
+def _runtime_job_config(job_config: SafeSynthesizerJobConfig) -> dict[str, Any]:
+    config = job_config.model_dump()
+    if job_config.pretrained_model_job:
+        training = config.get("config", {}).get("training")
+        if isinstance(training, dict):
+            training.pop("pretrained_model", None)
+    return config
+
+
 def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
     if config.job_mode == "subprocess-local":
         try:
@@ -168,7 +177,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
                 profile=config.job_executor_profile,
                 command=command,
             ),
-            config=job_config.model_dump(),
+            config=_runtime_job_config(job_config),
             environment=environment,
         )
 
@@ -196,7 +205,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
             ),
             resources=resources,
         ),
-        config=job_config.model_dump(),
+        config=_runtime_job_config(job_config),
         environment=environment,
     )
 

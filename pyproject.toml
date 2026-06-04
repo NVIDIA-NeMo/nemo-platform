@@ -168,6 +168,7 @@ enabled-plugins = [
   "nemo-evaluator-plugin",
   "nemo-guardrails-plugin",
   "nemo-auditor-plugin",
+  "nemo-safe-synthesizer-plugin",
   "nemo-switchyard",
   "nemo-agents-plugin",
 ]

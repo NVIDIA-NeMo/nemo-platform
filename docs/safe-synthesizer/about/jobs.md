@@ -120,7 +120,7 @@ import os
 import pandas as pd
 
 from nemo_platform import NeMoPlatform
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Placeholders
 df: pd.DataFrame = pd.DataFrame()

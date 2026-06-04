@@ -557,6 +557,7 @@ anonymizer = "nemo_anonymizer_plugin.sdk.resources:anonymizer_sdk_resources"
 auditor = "nemo_auditor.sdk:auditor_sdk_resources"
 data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resources"
 evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
+safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.seed"]

@@ -120,6 +120,27 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
 
 
 @pytest.mark.asyncio
+async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk):
+    mock_sdk.jobs.results.retrieve = AsyncMock(
+        return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
+    )
+    spec = PluginJobConfig.model_validate(
+        {
+            "data_source": DEFAULT_DATA_SOURCE,
+            "pretrained_model_job": "prior-safe-synth-job",
+            "config": {},
+        }
+    )
+
+    compiled = await _compile(spec, mock_sdk)
+    step = next(iter(compiled["steps"]))
+    reparsed = PluginJobConfig.model_validate(step["config"])
+
+    assert "pretrained_model" not in step["config"]["config"]["training"]
+    assert reparsed.pretrained_model_job == "prior-safe-synth-job"
+
+
+@pytest.mark.asyncio
 async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
     mock_sdk.jobs.results.retrieve = AsyncMock(
         side_effect=NotFoundError(message="not found", response=MagicMock(status_code=404), body=None)
