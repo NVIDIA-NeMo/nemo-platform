@@ -77,9 +77,11 @@ You can add labels to custom benchmarks when creating them, that can then be use
 
 ```python
 benchmarks = client.evaluation.benchmarks.list(
-    extra_query={"filter[data.labels.my-label]": "my-label-value"}
+    extra_query={"filter[labels.my-label]": "my-label-value"}
 )
 ```
+
+The fully-qualified `filter[data.labels.my-label]` form also works.
 
 ## Retrieve a Specific Benchmark
 
@@ -103,7 +105,7 @@ benchmark = client.evaluation.benchmarks.retrieve(
 
 ## Filter
 
-Filter benchmarks using the `filter` parameter. Filterable fields are `name`, `description`, `project`, `created_at`, and `updated_at`. Nested label fields (e.g., `data.labels.eval_category`) can be filtered via `extra_query` with bracket notation (see above).
+Filter benchmarks using the `filter` parameter. Filterable fields are `name`, `description`, `project`, `created_at`, and `updated_at`. Individual labels can be filtered via `extra_query` with bracket notation using the short `labels.<key>` path (e.g. `filter[labels.eval_category]`); the fully-qualified `data.labels.<key>` form also works (see above).
 Supports operators `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`, `$in`, `$nin`
 and logical operators `$and`, `$or`, `$not`.
 

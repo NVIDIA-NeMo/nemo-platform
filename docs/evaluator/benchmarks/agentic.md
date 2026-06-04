@@ -33,7 +33,7 @@ View all available BFCL benchmarks (`system/bfclv3-*`) with a label filter:
 
 ```python
 bfcl_system_benchmarks = client.evaluation.benchmarks.list(
-    workspace="system", extra_query={"filter[data.labels.eval_harness]": "bfcl"}
+    workspace="system", extra_query={"filter[labels.eval_harness]": "bfcl"}
 )
 print(bfcl_system_benchmarks)
 ```
