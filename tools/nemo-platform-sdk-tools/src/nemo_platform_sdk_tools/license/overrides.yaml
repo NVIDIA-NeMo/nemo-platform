@@ -144,6 +144,7 @@ overrides:
   xxhash: BSD-3-Clause # xxHash hashing algorithm
 
   # Async / Concurrency
+  cloudpickle: BSD-3-Clause # https://github.com/cloudpipe/cloudpickle/blob/master/LICENSE
   nest-asyncio: BSD-3-Clause # Patch asyncio to allow nested event loops
   nest-asyncio2: BSD-3-Clause # Forked nest-asyncio used by nvidia-nat-core
 

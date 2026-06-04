@@ -3,6 +3,7 @@
 
 """OTLP ingest helper tests."""
 
+import json
 from collections.abc import AsyncIterator
 from datetime import datetime, timezone
 from typing import Any, cast
@@ -119,11 +120,78 @@ def test_span_to_domain_does_not_duplicate_model_aliases():
     assert "gen_ai.response.model" not in domain_span.attributes_string
 
 
+def test_span_to_domain_promotes_pydantic_ai_model_messages():
+    input_messages = [{"role": "user", "parts": [{"type": "text", "content": "Analyze traces."}]}]
+    output_messages = [{"role": "assistant", "parts": [{"type": "text", "content": "Found a recurring issue."}]}]
+    span = _make_span(name="chat aws/anthropic/bedrock-claude-opus-4-8")
+    _add_string_attr(span, "gen_ai.input.messages", json.dumps(input_messages))
+    _add_string_attr(span, "gen_ai.output.messages", json.dumps(output_messages))
+    _add_string_attr(
+        span, "gen_ai.system_instructions", json.dumps([{"type": "text", "content": "You are an analyst."}])
+    )
+
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=span,
+        resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert json.loads(domain_span.input) == input_messages
+    assert json.loads(domain_span.output) == output_messages
+    assert domain_span.attributes_string["gen_ai.system_instructions"] == json.dumps(
+        [{"type": "text", "content": "You are an analyst."}]
+    )
+
+
+def test_span_to_domain_promotes_pydantic_ai_agent_run_result():
+    all_messages = [
+        {"role": "user", "parts": [{"type": "text", "content": "Analyze traces."}]},
+        {"role": "assistant", "parts": [{"type": "text", "content": "Summary."}]},
+    ]
+    final_result = {"summary": "Created one insight.", "new_insights": []}
+    span = _make_span(name="nemo-optimizer-analyst run")
+    _add_string_attr(span, "pydantic_ai.all_messages", json.dumps(all_messages))
+    _add_string_attr(span, "final_result", json.dumps(final_result))
+
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=span,
+        resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert domain_span.input == ""
+    assert json.loads(domain_span.output) == final_result
+    assert domain_span.attributes_string["pydantic_ai.all_messages"] == json.dumps(all_messages)
+
+
+def test_span_to_domain_promotes_pydantic_ai_tool_arguments_and_response():
+    span = _make_span(name="running tool")
+    _add_string_attr(span, "gen_ai.tool.name", "run_code")
+    _add_string_attr(span, "gen_ai.tool.call.arguments", '{"code":"await fetch_spans()"}')
+    _add_string_attr(span, "tool_response", '{"return_value":{"count":3}}')
+
+    domain_span = _span_to_domain(
+        workspace="default",
+        span=span,
+        resource_attributes={"gen_ai.agent.name": "nemo-optimizer-analyst"},
+        scope_data={},
+        ingested_at=datetime(2026, 1, 1, tzinfo=timezone.utc),
+    )
+
+    assert json.loads(domain_span.input) == {"code": "await fetch_spans()"}
+    assert json.loads(domain_span.output) == {"return_value": {"count": 3}}
+
+
 def _make_span(
     *,
     trace_id: bytes = DEFAULT_TRACE_ID,
     span_id: bytes = DEFAULT_SPAN_ID,
     parent_span_id: bytes = b"",
+    name: str = "test-span",
 ) -> Any:
     from opentelemetry.proto.trace.v1 import trace_pb2
 
@@ -131,7 +199,13 @@ def _make_span(
     span.trace_id = trace_id
     span.span_id = span_id
     span.parent_span_id = parent_span_id
-    span.name = "test-span"
+    span.name = name
     span.start_time_unix_nano = 1_700_000_000_000_000_000
     span.end_time_unix_nano = 1_700_000_000_001_000_000
     return span
+
+
+def _add_string_attr(span: Any, key: str, value: str) -> None:
+    attr = span.attributes.add()
+    attr.key = key
+    attr.value.string_value = value
