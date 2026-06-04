@@ -21,7 +21,7 @@ pytestmark = pytest.mark.integration
 
 
 def _write_local_first_config(tmp_path: Path) -> Path:
-    """Config that uses an IGW-only provider — must validate clean for local + remote."""
+    """Config that uses an IGW provider — must validate clean for service-backed execution."""
     return u.write_config_file(
         tmp_path,
         f"""
@@ -118,7 +118,7 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     )
 
 
-def test_validate_local_only_succeeds_with_igw_provider(tmp_path: Path) -> None:
+def test_validate_remote_only_succeeds_with_igw_provider(tmp_path: Path) -> None:
     config_path = _write_local_first_config(tmp_path)
 
     with (
@@ -126,16 +126,16 @@ def test_validate_local_only_succeeds_with_igw_provider(tmp_path: Path) -> None:
         u.setup_mock_providers(client_context),
     ):
         result = u.invoke_cli(
-            ["validate", str(config_path), "--execution-context", "local"],
+            ["validate", str(config_path), "--execution-context", "remote"],
             client_context,
         )
 
     assert result.exit_code == 0, result.output
-    assert "Local execution" in result.output
+    assert "Service-backed execution" in result.output
     assert "Configuration is valid" in result.output
 
 
-def test_validate_local_only_fails_for_unknown_alias(tmp_path: Path) -> None:
+def test_validate_remote_only_fails_for_unknown_alias(tmp_path: Path) -> None:
     config_path = _write_unknown_alias_config(tmp_path)
 
     with (
@@ -143,7 +143,7 @@ def test_validate_local_only_fails_for_unknown_alias(tmp_path: Path) -> None:
         u.setup_mock_providers(client_context),
     ):
         result = u.invoke_cli(
-            ["validate", str(config_path), "--execution-context", "local"],
+            ["validate", str(config_path), "--execution-context", "remote"],
             client_context,
         )
 
@@ -168,7 +168,7 @@ def test_validate_remote_only_aggregates_multiple_errors(tmp_path: Path) -> None
 
     assert result.exit_code == 1, result.output
     output = result.output
-    assert "Remote execution" in output
+    assert "Service-backed execution" in output
     assert "Tool configs" in output
     # Either the seed-type or DataFrame rejection message must surface alongside.
     assert ("seed" in output.lower()) or ("DataFrame" in output) or ("df" in output)
@@ -187,15 +187,12 @@ def test_validate_default_runs_every_context(tmp_path: Path) -> None:
         )
 
     assert result.exit_code == 0, result.output
-    assert "Local execution" in result.output
-    assert "Remote execution" in result.output
+    assert "Service-backed execution" in result.output
+    assert "Remote execution" not in result.output
 
 
 def test_validate_default_exits_nonzero_when_any_context_fails(tmp_path: Path) -> None:
-    """An IGW-unknown provider validates fine for local (after IGW lookup fails),
-    but explicit local-only success isn't the point here — we just want to see
-    that omitting the flag exits nonzero when *any* context fails.
-    """
+    """Omitting the flag exits nonzero when the service-backed context fails."""
     config_path = _write_unsupported_seed_with_tool_configs(tmp_path)
 
     with (
@@ -218,7 +215,7 @@ def test_validate_json_output_round_trips(tmp_path: Path) -> None:
         u.setup_mock_providers(client_context),
     ):
         result = u.invoke_cli(
-            ["validate", str(config_path), "--execution-context", "local", "--output", "json"],
+            ["validate", str(config_path), "--execution-context", "remote", "--output", "json"],
             client_context,
         )
 
@@ -226,11 +223,11 @@ def test_validate_json_output_round_trips(tmp_path: Path) -> None:
     payload = u.parse_cli_json_object(result.output)
     assert payload["ok"] is True
     assert isinstance(payload["results"], list)
-    assert payload["results"][0]["context"] == "local"
+    assert payload["results"][0]["context"] == "remote"
     assert payload["results"][0]["ok"] is True
     assert payload["results"][0]["errors"] == []
     # Confirm the surface is a JSON object, not the rich text rendering.
-    assert "Local execution" not in result.output
+    assert "Service-backed execution" not in result.output
 
 
 def test_validate_json_output_reports_failures(tmp_path: Path) -> None:

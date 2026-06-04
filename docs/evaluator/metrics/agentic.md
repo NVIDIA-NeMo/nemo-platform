@@ -67,7 +67,7 @@ Agentic metrics evaluate different aspects of agent behavior:
 | [**Trajectory Evaluation**](#trajectory-evaluation) | Evaluates decision-making across action sequence | Yes | Not exposed as a typed plugin SDK metric |
 
 !!! note
-    Use `evaluator.run(...)` for local in-process evaluation and `evaluator.submit(...)` for durable remote platform jobs. The examples below use inline dataset rows through `dataset=[...]`, but you can use a file Path or a FilesetRef instead.
+    Use `evaluator.run(...)` to submit, wait, and return an `EvaluationResult`; use `evaluator.submit(...)` when you want an explicit job handle. The examples below use inline dataset rows through `dataset=[...]`, but you can use a FilesetRef instead.
 
 ## Prerequisites
 
@@ -75,7 +75,7 @@ Before running agentic evaluations:
 
 1. **Workspace**: Have a workspace created. All remote resources, including secrets and jobs, are scoped to a workspace.
 2. **Judge LLM endpoint** *(for most metrics)*: Have access to an LLM that will serve as your judge.
-3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](../../get-started/concepts/manage-secrets.md) to store the API key. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+3. **API key secret** *(if judge requires auth)*: If your judge endpoint requires authentication, [create a secret](../../get-started/concepts/manage-secrets.md) to store the API key. See [Model API Authentication](model-configuration.md#model-api-authentication).
 4. **Initialize the SDK**:
 
 ```python
@@ -128,7 +128,7 @@ from nemo_evaluator_sdk import (
 )
 ```
 
-Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Use the same `dataset`, `config`, and `target` arguments for both `evaluator.run(...)` and `evaluator.submit(...)`; durable jobs follow the identical pattern as local runs and only differ in waiting for and fetching results.
+Use `dataset=[...]` for inline rows. For offline scoring options, use `config=RunConfig(parallelism=...)`. Whenever outputs must be generated before scoring, pass `target=Model(...)` or `target=Agent(...)` plus the corresponding online parameters. Use the same `dataset`, `config`, and `target` arguments for both `evaluator.run(...)` and `evaluator.submit(...)`; `run` waits and returns results, while `submit` returns the job handle.
 
 ---
 
@@ -1186,7 +1186,7 @@ judge_model = Model(
 
 For more details on secret management, refer to [Managing Secrets](../../get-started/concepts/manage-secrets.md).
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For `api_key_secret` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
 
 ---
 
@@ -1214,7 +1214,7 @@ Use `RunConfig(limit_samples=...)` when you want to test a small slice of a larg
 
 ## Important Notes
 
-1. **Execution choice**: Use `run` for local in-process evaluation and `submit` for durable remote jobs with `wait_until_done()` and `get_result()`.
+1. **Execution choice**: Use `run` to submit, wait, and return results; use `submit` for durable jobs with explicit `wait_until_done()` and `get_result()`.
 
 2. **Column Names**: RAGAS metrics use specific column names:
  - `user_input` (not `question`)

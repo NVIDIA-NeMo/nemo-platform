@@ -71,8 +71,8 @@ When using Anonymizer as a {{platform_name}} service:
 | Feature        | Difference                                              | Details                                                                                |
 |----------------|---------------------------------------------------------|----------------------------------------------------------------------------------------|
 | **Inference**  | Routes through the Inference Gateway                    | Configure providers once and reference them by name from `model_configs`.              |
-| **Input data** | Filesets and HTTP(S) URLs (local paths only in local CLI execution) | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
-| **Artifacts**  | Local or platform-managed                               | `run run` writes to `persistent/results/artifacts` locally; `run submit` stores artifacts in {{platform_name}} job storage. |
+| **Input data** | Filesets and HTTP(S) URLs                               | Use `sdk.files.filesets.create` / `sdk.files.upload`, then reference with `#<path>`. |
+| **Artifacts**  | Platform-managed                                        | `run submit` stores artifacts in {{platform_name}} job storage. |
 
 ## Prerequisites
 
@@ -90,7 +90,7 @@ Before starting these tutorials, complete the [Quick Start](../quickstart.md) to
 
     ---
 
-    Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview run` / `preview submit`, and the NDJSON frame stream.
+    Stream a small anonymized sample to iterate on `AnonymizerConfig` and `model_configs`. Covers `sdk.anonymizer.preview`, `nemo anonymizer preview submit`, and the NDJSON frame stream.
 
     <small><span class="md-tag">beginner</span> <span class="md-tag">anonymizer</span></small>
 
@@ -98,7 +98,7 @@ Before starting these tutorials, complete the [Quick Start](../quickstart.md) to
 
     ---
 
-    Run the full pipeline locally with `nemo anonymizer run run` or submit it to the Jobs worker with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
+    Run the full pipeline with `nemo anonymizer run submit`. Load `dataset.parquet`, `trace.parquet`, and `failed_records.json` artifacts.
 
     <small><span class="md-tag">intermediate</span> <span class="md-tag">anonymizer</span></small>
 

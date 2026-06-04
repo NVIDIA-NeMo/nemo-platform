@@ -89,7 +89,7 @@ def _resolve_run_dataset(
     sdk: NeMoPlatform | None = None,
     async_sdk: AsyncNeMoPlatform | None = None,
 ) -> InlineDataset | Path:
-    """Resolve an evaluator plugin dataset for local SDK execution."""
+    """Resolve an evaluator plugin dataset for task execution."""
     if not isinstance(dataset, FilesetRef):
         return dataset
 
@@ -108,7 +108,7 @@ def _resolve_run_dataset(
             dataset=dataset,
             destination=destination,
         )
-    raise ValueError("FilesetRef datasets require an SDK client for local evaluator job execution.")
+    raise ValueError("FilesetRef datasets require an SDK client for evaluator job execution.")
 
 
 class EvaluateInputSpec(BaseModel):
@@ -247,7 +247,7 @@ class EvaluateJob(NemoJob):
         sdk: NeMoPlatform | None = None,
         async_sdk: AsyncNeMoPlatform | None = None,
     ) -> dict:
-        """Run the evaluator job locally and persist its result artifact."""
+        """Run the evaluator job task and persist its result artifact."""
         spec = EvaluateSpec.model_validate(config)
         evaluator = Evaluator()
         params = resolve_params(spec.params, spec.target)

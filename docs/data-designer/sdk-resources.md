@@ -7,7 +7,7 @@ Once you are ready to execute that config through NeMo Services APIs, you use ob
 This page explains the SDK objects used for Data Designer API execution.
 
 !!! note
-    The SDK currently executes Data Designer workloads through the Data Designer API. Local SDK execution is planned, but not available yet. Use `nemo data-designer ... run` for local in-process execution today.
+    The SDK executes Data Designer workloads through the Data Designer API. For in-process execution without NeMo Services, use the Data Designer library directly.
 
 
 ## DataDesignerResource

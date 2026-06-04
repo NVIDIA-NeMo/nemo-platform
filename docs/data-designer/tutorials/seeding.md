@@ -7,18 +7,15 @@ This tutorial demonstrates how to use external datasets as seed data for synthet
 
 For more detail about seed dataset behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/seeding-with-an-external-dataset) of this tutorial.
 
-## Seed Sources by Execution Mode
+## Seed Sources
 
-Seed source support depends on where the workload executes:
+Plugin execution uses seed sources that NeMo Services can resolve:
 
-| Seed source | CLI `run` | CLI `submit` / SDK today | Use case |
-|-------------|-----------|--------------------------|----------|
-| **Local files or DataFrames** | Supported | Not supported | Fast local iteration with files available to the CLI process. |
-| **HuggingFace** | Supported | Supported | Publicly available datasets or private HuggingFace datasets. |
-| **Files API Filesets** | Supported when NeMo Services access is configured | Supported | Shared seed data stored through the Files API. |
-
-!!! note
-    `run` versus `submit` controls where the workload executes. A local `run` can still read Files API Filesets if the configuration references them and NeMo Services access is configured.
+| Seed source | CLI `submit` / SDK | Use case |
+|-------------|--------------------|----------|
+| **Local files or DataFrames** | Not supported | Upload to a Files API Fileset first. |
+| **HuggingFace** | Supported | Publicly available datasets or private HuggingFace datasets. |
+| **Files API Filesets** | Supported | Shared seed data stored through the Files API. |
 
 ### HuggingFace Datasets
 
@@ -39,7 +36,7 @@ dd.HuggingFaceSeedSource(
 
 ### Files API Filesets
 
-Use `FilesetFileSeedSource` to load data through the Files API. This works in CLI `run`, CLI `submit`, and SDK execution when NeMo Services access is configured:
+Use `FilesetFileSeedSource` to load data through the Files API. This works in CLI `submit` and SDK execution:
 
 ```python
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
@@ -55,11 +52,11 @@ FilesetFileSeedSource(
 
 ## Prerequisites
 
-Ensure you have completed the [tutorials prerequisites](index.md#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
+Ensure you have completed the [tutorials prerequisites](index.md#prerequisites). This tutorial uses an Inference Gateway provider, so NeMo Services must be running and configured.
 
 ## Example: Medical Notes from Symptom Data
 
-This example generates realistic patient medical notes by seeding with publicly available symptom-to-diagnosis data. It uploads the seed data to a Files API Fileset so the same configuration can run locally through CLI `run` or through NeMo Services execution.
+This example generates realistic patient medical notes by seeding with publicly available symptom-to-diagnosis data. It uploads the seed data to a Files API Fileset so the configuration can run through NeMo Services.
 
 ### Step 1: Upload Seed Data
 
@@ -247,8 +244,6 @@ Respond with only the notes, no other text.
 
 ### Step 5: Execute
 
-Because this example uses a Files API Fileset and an Inference Gateway provider, even local CLI execution communicates with NeMo Services APIs.
-
 For CLI execution, save the configuration in `medical_notes.py` and expose a `load_config_builder()` function that returns the `config_builder`.
 
 ```python
@@ -256,22 +251,15 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Preview locally:
-
-```bash
-nemo data-designer preview run medical_notes.py --num-records 5
-```
-
-Generate a larger dataset locally:
-
-```bash
-nemo data-designer create run medical_notes.py --num-records 30
-```
-
-Submit to NeMo Services:
+Submit a preview:
 
 ```bash
 nemo data-designer preview submit medical_notes.py --workspace default --num-records 5
+```
+
+Generate a larger dataset:
+
+```bash
 nemo data-designer create submit medical_notes.py --workspace default --profile default --num-records 30
 ```
 

@@ -25,7 +25,7 @@ sdk = NeMoPlatform(
 evaluator: Evaluator = sdk.evaluator  # this object is an Evaluator resource
 ```
 
-Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
+Use `evaluator.run(metric=metric, dataset=dataset)` to submit, wait, and return an `EvaluationResult`. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need the job handle:
 
 ```python
 job = evaluator.submit(metric=metric, dataset=dataset)

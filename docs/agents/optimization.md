@@ -212,6 +212,7 @@ and keeps the change only when the evaluation result improves.
 === "Python SDK"
 
     ```python
+    import os
     from nemo_agents_plugin.jobs.optimize_skills import OptimizeSkillsJob
     from nemo_platform_plugin.scheduler import NemoJobScheduler
 
@@ -219,9 +220,10 @@ and keeps the change only when the evaluation result improves.
     from pathlib import Path
 
     spec = yaml.safe_load(Path(".agent-improver.yml").read_text())
-    NemoJobScheduler().run_local(
+    NemoJobScheduler().submit_remote(
         OptimizeSkillsJob,
         spec,
+        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
         workspace="default",
     )
     ```
@@ -294,26 +296,20 @@ For the ReAct example:
     from pathlib import Path
 
     from nemo_agents_plugin.jobs.optimize_agent import OptimizeAgentJob
-    from nemo_platform import NeMoPlatform
     from nemo_platform_plugin.scheduler import NemoJobScheduler
 
     WORKSPACE = "default"
     optimize_config = Path("plugins/nemo-agents/examples/react-agent/react-optimize.yml")
 
-    client = NeMoPlatform(
-        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
-        workspace=WORKSPACE,
-    )
-
-    result = NemoJobScheduler().run_local(
+    result = NemoJobScheduler().submit_remote(
         OptimizeAgentJob,
         {
             "optimize_config": str(optimize_config),
             "agent": "react-agent",
             "workspace": WORKSPACE,
         },
+        base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
         workspace=WORKSPACE,
-        sdk=client,
     )
     print(result)
     ```

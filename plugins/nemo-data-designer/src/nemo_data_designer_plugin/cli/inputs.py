@@ -5,9 +5,9 @@
 
 Replace the auto-generated per-leaf flags with a single ``[CONFIG_SOURCE]``
 positional plus ``--num-records``, mirroring the upstream
-``data-designer preview`` / ``data-designer create`` CLIs. The wrappers
-delegate to the original auto-generated callbacks via ``--spec`` JSON, so
-spec validation and frame iteration stay framework-owned.
+``data-designer preview`` / ``data-designer create`` CLIs. The wrappers delegate
+to the original auto-generated service-backed ``submit`` callbacks via
+``--spec`` JSON, so spec validation and frame iteration stay framework-owned.
 """
 
 from __future__ import annotations
@@ -66,18 +66,16 @@ def _stash_builder(builder: DataDesignerConfigBuilder) -> Iterator[None]:
 
 
 def apply_preview_cli_overrides(group: typer.Typer) -> None:
-    """Replace ``preview run`` / ``preview submit`` with friendly wrappers."""
-    _replace_function_run(group)
+    """Replace ``preview submit`` with a friendly wrapper."""
     _replace_function_submit(group)
 
 
 def apply_create_cli_overrides(group: typer.Typer) -> None:
-    """Replace ``create run`` / ``create submit`` with friendly wrappers.
+    """Replace ``create submit`` with a friendly wrapper.
 
     Jobs also have an ``explain`` verb that prints schemas; it's not affected
     here because it doesn't take a config-source input.
     """
-    _replace_job_run(group)
     _replace_job_submit(group)
 
 
@@ -91,37 +89,6 @@ def _pluck_callback(group: typer.Typer, verb: str) -> Callable[..., None]:
     callback = next(c for c in group.registered_commands if c.name == verb).callback
     assert callback is not None, f"missing {verb!r} callback to override"
     return callback
-
-
-def _replace_function_run(group: typer.Typer) -> None:
-    original = _pluck_callback(group, "run")
-
-    @group.command("run")
-    def run(
-        typer_ctx: typer.Context,
-        config_source: str = typer.Argument(..., metavar="[CONFIG_SOURCE]", help=_CONFIG_SOURCE_HELP),
-        num_records: int = typer.Option(
-            DEFAULT_NUM_RECORDS, "--num-records", "-n", help="Number of records to generate.", min=1
-        ),
-        workspace: str = typer.Option(
-            "default", "--workspace", "-w", help="Workspace identity passed to the function as ctx.workspace."
-        ),
-        non_interactive: bool = typer.Option(False, "--non-interactive", help=_NON_INTERACTIVE_HELP),
-        save_results: bool = typer.Option(False, "--save-results", help=_SAVE_RESULTS_HELP),
-        artifact_path: str | None = typer.Option(None, "--artifact-path", "-o", help=_ARTIFACT_PATH_HELP),
-    ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
-            original(
-                typer_ctx,
-                spec=spec_json,
-                spec_file=None,
-                workspace=workspace,
-                non_interactive=non_interactive,
-                save_results=save_results,
-                artifact_path=artifact_path,
-            )
 
 
 def _replace_function_submit(group: typer.Typer) -> None:
@@ -157,23 +124,6 @@ def _replace_function_submit(group: typer.Typer) -> None:
             )
 
 
-def _replace_job_run(group: typer.Typer) -> None:
-    original = _pluck_callback(group, "run")
-
-    @group.command("run")
-    def run(
-        typer_ctx: typer.Context,
-        config_source: str = typer.Argument(..., metavar="[CONFIG_SOURCE]", help=_CONFIG_SOURCE_HELP),
-        num_records: int = typer.Option(
-            DEFAULT_NUM_RECORDS, "--num-records", "-n", help="Number of records to generate.", min=1
-        ),
-    ) -> None:
-        builder = load_config_builder(config_source)
-        spec_json = _build_spec_from_builder(builder, num_records)
-        with _stash_builder(builder):
-            original(typer_ctx, spec=spec_json, spec_file=None, config=None, config_file=None)
-
-
 def _replace_job_submit(group: typer.Typer) -> None:
     original = _pluck_callback(group, "submit")
 
@@ -206,6 +156,4 @@ def _replace_job_submit(group: typer.Typer) -> None:
                 cluster=cluster,
                 base_url=base_url,
                 workspace=workspace,
-                config=None,
-                config_file=None,
             )

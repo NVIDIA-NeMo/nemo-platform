@@ -71,11 +71,12 @@ class NemoCLI(_NamedPlugin):
 
     Plugins that contribute :class:`~nemo_platform_plugin.function.NemoFunction` or
     :class:`~nemo_platform_plugin.job.NemoJob` primitives get an auto-generated CLI
-    surface (``run`` / ``submit`` / ``explain`` verbs with one Typer flag per
-    spec leaf). Override :meth:`update_function_cli` or :meth:`update_job_cli`
-    to amend that surface — add a flag, drop a flag, replace the verb entirely,
-    or anything else Typer permits. Both hooks default to no-ops, so plugins
-    that don't override them get today's auto-generated surface unchanged.
+    surface (``submit`` for functions, ``submit`` / ``explain`` for jobs, with
+    one Typer flag per spec leaf). Override :meth:`update_function_cli` or
+    :meth:`update_job_cli` to amend that surface — add a flag, drop a flag,
+    replace a verb entirely, or anything else Typer permits. Both hooks default
+    to no-ops, so plugins that don't override them get the auto-generated
+    surface unchanged.
     """
 
     name: ClassVar[str]
@@ -89,9 +90,9 @@ class NemoCLI(_NamedPlugin):
         """Customize the auto-generated function sub-CLI for *fn_cls*.
 
         Called once per :class:`~nemo_platform_plugin.function.NemoFunction` the plugin
-        contributes, **after** the default ``run`` / ``submit`` verbs are
-        registered on *group* and **before** the group is mounted on the
-        plugin's CLI app. ``group.registered_commands`` carries one
+        contributes, **after** the default ``submit`` verb is registered on
+        *group* and **before** the group is mounted on the plugin's CLI app.
+        ``group.registered_commands`` carries one
         :class:`typer.models.CommandInfo` per verb, each with ``.name`` and
         ``.callback`` (the auto-generated function with its synthetic
         ``__signature__`` attached).
@@ -107,7 +108,7 @@ class NemoCLI(_NamedPlugin):
         """Customize the auto-generated job sub-CLI for *job_cls*.
 
         Same shape and override-by-replacement contract as
-        :meth:`update_function_cli`, but for jobs (with ``run`` / ``submit`` /
+        :meth:`update_function_cli`, but for jobs (with ``submit`` /
         ``explain`` verbs). The default is a no-op.
         """
 
@@ -115,7 +116,7 @@ class NemoCLI(_NamedPlugin):
         self,
         fn_cls: type[NemoFunction],
         *,
-        verb: Literal["run", "submit"],
+        verb: Literal["submit"],
     ) -> type[CLIRenderer] | None:
         """Return a :class:`~nemo_platform_plugin.cli_renderer.CLIRenderer` class for *fn_cls*'s *verb*.
 
@@ -127,8 +128,8 @@ class NemoCLI(_NamedPlugin):
         pair.
 
         Note the **delegate-to-use-the-renderer contract**: the renderer
-        driver lives inside the framework's default ``run`` / ``submit``
-        callback bodies, parameterized by this hook at invocation time. An
+        driver lives inside the framework's default ``submit`` callback body,
+        parameterized by this hook at invocation time. An
         :meth:`update_function_cli` wrapper that *delegates to the original
         callback* gets the renderer for free; a wrapper that takes over the
         verb body wholesale (does its own iteration without calling original)
@@ -140,7 +141,7 @@ class NemoCLI(_NamedPlugin):
         self,
         job_cls: type[NemoJob],
         *,
-        verb: Literal["run", "submit"],
+        verb: Literal["submit"],
     ) -> type[CLIRenderer] | None:
         """Return a :class:`~nemo_platform_plugin.cli_renderer.CLIRenderer` class for *job_cls*'s *verb*.
 

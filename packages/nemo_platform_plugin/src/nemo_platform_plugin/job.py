@@ -6,7 +6,8 @@
 Plugin authors subclass :class:`NemoJob` and register the class under the
 ``nemo.jobs`` entry-point group. The platform (or SDK) instantiates each class
 and invokes it through the :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler`
-for local execution, or POSTs it to the plugin service for remote submission.
+for service submission; the Jobs service later launches task processes that
+invoke :meth:`NemoJob.run`.
 
 Mental model — *Job = spec + profile + options*:
 
@@ -27,9 +28,9 @@ it executes — plugin authors never make a class-level sync/async choice:
   ``def``. They run in the task container, where there is no event loop
   and most work calls into sync library protocols.
 
-The scheduler runs the async lifecycle methods through a single
-``asyncio.run`` at the top of :meth:`NemoJobScheduler.run_local`; the
-sync ``run`` is invoked directly from the resulting canonical spec.
+The plugin service runs async lifecycle methods such as :meth:`to_spec` and
+:meth:`compile`; the submitted task process invokes sync ``run`` from the
+resulting canonical step config.
 
 Example::
 
@@ -60,8 +61,7 @@ Example::
 Entry-point key convention: ``<plugin-name>.<job-name>``, e.g.
 ``example.say-hello``. This lets
 :func:`~nemo_platform_plugin.discovery.discover_jobs` resolve jobs unambiguously
-across plugins; programmatic execution goes through
-:meth:`nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`.
+across plugins; platform job execution goes through the task dispatcher.
 """
 
 from __future__ import annotations
@@ -105,9 +105,9 @@ class NemoJob(_NamedPlugin):
     .. attribute:: container
         :type: str
 
-        Container image key for remote execution (e.g. ``"gpu-tasks"``,
+        Container image key for platform execution (e.g. ``"gpu-tasks"``,
         ``"cpu-tasks"``). Used by the Jobs service to pick the right
-        container image for each step. Ignored for local execution.
+        container image for each step.
 
     .. attribute:: execution_provider
         :type: str
@@ -124,10 +124,10 @@ class NemoJob(_NamedPlugin):
 
         Canonical Pydantic model for the job's inputs. ``run()`` and
         ``compile()`` always see a ``spec_schema`` instance. Declaring
-        this lets the scheduler validate incoming specs before
+        this lets the plugin service validate incoming specs before
         invocation and lets ``nemo <plugin> <job> explain`` surface the
-        schema over OpenAPI. ``None`` means the raw dict flows through
-        unchanged — prefer a concrete model for new jobs.
+        schema. ``None`` means the raw dict flows through unchanged —
+        prefer a concrete model for new jobs.
 
     .. attribute:: input_spec_schema
         :type: type[pydantic.BaseModel] | None
@@ -236,8 +236,7 @@ class NemoJob(_NamedPlugin):
         async I/O is the right default — and is a class-level
         transformation that doesn't depend on instance state.
 
-        Runs on the submitter side before local ``run`` and on the plugin
-        service before custom ``compile``. The default implementation is the
+        Runs in the plugin service before custom ``compile``. The default implementation is the
         identity function — valid only when :attr:`input_spec_schema` is
         ``None``, which means input and canonical shapes coincide.
 
@@ -255,9 +254,7 @@ class NemoJob(_NamedPlugin):
                 only offers the async client here — the parameter name
                 follows the codebase convention (``sdk`` is sync,
                 ``async_sdk`` is async).
-            is_local: Whether this transformation is running for local
-                scheduler execution. The plugin-service route adapter passes
-                ``False``.
+            is_local: Always ``False`` for service-backed submissions.
 
         Returns:
             A :attr:`spec_schema` instance.
@@ -324,10 +321,8 @@ class NemoJob(_NamedPlugin):
         """Report progress on the running job.
 
         The default implementation logs at INFO. Service-specific
-        subclasses override to publish to the Jobs service, a callback
-        URL, or another structured sink, and typically guard on injected
-        ``is_local`` to no-op when there's no platform job record to
-        report against.
+        subclasses override to publish to the Jobs service, a callback URL, or
+        another structured sink.
 
         The four fields cover both "samples processed" / "work-unit
         counter" reporting and "status transition + free-form details"

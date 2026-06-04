@@ -3,16 +3,16 @@
 
 """Audit job — runs garak against a target using inline config + target.
 
-Local-run only for now: ``nemo auditor audit run --spec-file spec.yaml`` shells
-out to a pre-installed garak interpreter (default ``~/.auditor/.venv/bin/python``,
-overridable via ``NEMO_AUDITOR_GARAK_PYTHON``), then registers the resulting
-JSONL / HTML / hitlog reports as job results via
+The Jobs service launches this task, which shells out to a pre-installed garak
+interpreter (default ``~/.auditor/.venv/bin/python``, overridable via
+``NEMO_AUDITOR_GARAK_PYTHON``), then registers the resulting JSONL / HTML /
+hitlog reports as job results via
 :meth:`~nemo_platform_plugin.job_results.JobResults.save`.
 
 The plugin uses a single garak invocation across the whole probe spec — there
 is no per-probe splitting and no pause/resume scaffolding (those exist in
-``services/auditor`` to support remote runs that the platform may interrupt
-and resume; local runs run to completion).
+``services/auditor`` to support jobs that the platform may interrupt and
+resume).
 """
 
 from __future__ import annotations
@@ -234,10 +234,9 @@ class AuditJob(NemoJob):
         Signature matches :meth:`NemoJob.to_spec` exactly so the override is
         Liskov-clean; we narrow types internally.
 
-        Local-run mode: the platform scheduler passes ``entity_client=None``,
-        so we build one on demand from ``async_sdk.entities`` (an
-        ``AsyncEntitiesResource``). API-mode submissions go through the same
-        path with whatever client the platform already constructed.
+        The platform may pass ``entity_client=None``, so we build one on demand
+        from ``async_sdk.entities`` (an ``AsyncEntitiesResource``) when name
+        references need resolution.
 
         ``workspace`` is used as the fallback for unqualified name strings;
         a string like ``"prod/my-cfg"`` overrides it via ``parse_qualified_name``.

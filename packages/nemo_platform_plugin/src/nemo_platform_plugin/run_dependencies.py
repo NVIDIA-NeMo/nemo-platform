@@ -3,10 +3,10 @@
 
 """Signature-based dependency helpers for ``NemoJob.run``.
 
-Both local scheduler execution and platform-launched task containers use
-these helpers to bind supported keyword-only parameters on job ``run``
-methods. Keeping this surface separate avoids making lightweight task
-entrypoints import scheduler submission machinery.
+Platform-launched task containers use these helpers to bind supported
+keyword-only parameters on job ``run`` methods. Keeping this surface separate
+avoids making lightweight task entrypoints import scheduler submission
+machinery.
 """
 
 from __future__ import annotations
@@ -22,9 +22,13 @@ _UNBOUND: Any = object()
 Python applies the run signature's own default."""
 
 
-class LocalRunError(RuntimeError):
+class RunDependencyError(RuntimeError):
     """Raised when a required ``sdk`` / ``async_sdk`` parameter on
     :meth:`NemoJob.run` has no handle to bind."""
+
+
+LocalRunError = RunDependencyError
+"""Backward-compatible alias for callers that imported the old local-run name."""
 
 
 def resolve_run_kwargs(
@@ -40,12 +44,12 @@ def resolve_run_kwargs(
 
     Recognises ``ctx``, ``sdk``, ``async_sdk``, and ``is_local`` on the
     keyword-only portion of *run*'s signature; everything else is left
-    unbound so Python's own default applies. ``is_local`` lets jobs adapt
-    behaviour to the execution context — ``True`` from the local scheduler,
-    ``False`` from the platform task dispatcher.
+    unbound so Python's own default applies. ``is_local`` is retained for
+    compatibility with existing job signatures and is ``False`` for the
+    platform task dispatcher.
 
     Raises:
-        LocalRunError: When *run* declares a required ``sdk`` /
+        RunDependencyError: When *run* declares a required ``sdk`` /
             ``async_sdk`` parameter with no default and the corresponding
             handle is not supplied.
     """
@@ -104,10 +108,9 @@ def _resolve_run_param(
         if sdk is not None:
             return sdk
         if required:
-            raise LocalRunError(
+            raise RunDependencyError(
                 f"{job_cls.__name__}.run requires a `sdk` argument; "
-                f"pass it via NemoJobScheduler.run_local(sdk=...) or "
-                f"nemo_platform_plugin.tasks.dispatcher.run_task(sdk=...)."
+                f"pass it via nemo_platform_plugin.tasks.dispatcher.run_task(sdk=...)."
             )
         return _UNBOUND
 
@@ -115,17 +118,15 @@ def _resolve_run_param(
         if async_sdk is not None:
             return async_sdk
         if required:
-            raise LocalRunError(
+            raise RunDependencyError(
                 f"{job_cls.__name__}.run requires an `async_sdk` "
-                f"argument; pass it via "
-                f"NemoJobScheduler.run_local(async_sdk=...) or "
-                f"nemo_platform_plugin.tasks.dispatcher.run_task(async_sdk=...)."
+                f"argument; pass it via nemo_platform_plugin.tasks.dispatcher.run_task(async_sdk=...)."
             )
         return _UNBOUND
 
     if required:
-        # Surface as LocalRunError instead of a downstream TypeError.
-        raise LocalRunError(
+        # Surface as RunDependencyError instead of a downstream TypeError.
+        raise RunDependencyError(
             f"{job_cls.__name__}.run declares unsupported required parameter "
             f"`{param.name}`; only `ctx`, `sdk`, `async_sdk`, and `is_local` "
             "are injected automatically."
@@ -134,4 +135,4 @@ def _resolve_run_param(
     return _UNBOUND
 
 
-__all__ = ["LocalRunError", "resolve_run_kwargs"]
+__all__ = ["RunDependencyError", "LocalRunError", "resolve_run_kwargs"]

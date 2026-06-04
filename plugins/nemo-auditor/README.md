@@ -44,15 +44,13 @@ nemo auditor targets get llama-31-8b -w default
 nemo auditor configs delete quick-scan -w default
 ```
 
-There is no CLI command for running an audit yet — the local-run path is
-exposed through the SDK (below). The platform jobs service can submit
-audits via the `auditor.audit` job entry point.
+There is no CLI command for running an audit yet. The SDK `run()` method
+submits audits via the `auditor.audit` job entry point.
 
 ## SDK quickstart
 
 Every CLI verb has a matching Python SDK method on `client.auditor`, plus
-`client.auditor.run(...)` for in-process execution that bypasses the jobs
-service.
+`client.auditor.run(...)` for audit job submission.
 
 ```python
 from nemo_platform import NeMoPlatform

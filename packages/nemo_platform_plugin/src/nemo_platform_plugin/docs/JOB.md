@@ -1,16 +1,14 @@
 # Job Surface (NemoJob)
 
-A `NemoJob` is a unit of work you can execute locally, submit to a cluster, or introspect — the same class drives all three. The platform auto-generates three CLI verbs per job: `run`, `submit`, `explain`.
+A `NemoJob` is a unit of work you can submit to the platform or introspect. The same class drives task execution inside the Jobs backend and the CLI/API submission surface. The platform auto-generates two CLI verbs per job: `submit` and `explain`.
 
 ```
-nemo <plugin> <job> run      [--spec '{...}' | --spec-file FILE]
 nemo <plugin> <job> submit   [--profile <p>] [--cluster <c>] \
                              [--spec '{...}' | --spec-file FILE] \
                              [-o <backend>.<key>=<value> ...] [--options-file FILE]
 nemo <plugin> <job> explain  [--profile <p>]
 ```
 
-- `run` — executes `job.run()` in-process. No platform needed.
 - `submit` — POSTs the job to the plugin service, which compiles it into a `PlatformJobSpec` and hands it off to the Jobs service for cluster execution.
 - `explain` — prints the job's schemas and submit route. Reads locally, no network.
 
@@ -44,7 +42,7 @@ class GenerateJob(NemoJob):
         ...
 ```
 
-Every job must declare `spec_schema`. Every job that participates in `submit` must override `compile()`. Running locally only requires `run()`.
+Every job must declare `spec_schema`. Every service-backed job must implement `run()` for task execution and override `compile()` for submission.
 
 ### Method colours
 
@@ -146,7 +144,7 @@ Storage env vars:
 - `NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH` — shared across job steps
 - `NEMO_JOB_STEP_CONFIG_STORAGE_PATH` — config files (read-only)
 
-Container image keys: `"cpu-tasks"` (default) or `"gpu-tasks"`. Ignored for local `run`.
+Container image keys: `"cpu-tasks"` (default) or `"gpu-tasks"`.
 
 ## `run()` contract
 
@@ -203,7 +201,7 @@ The platform calls `get_cli()` once at startup and mounts the result as `nemo <n
 def get_cli(self) -> typer.Typer:
     app = typer.Typer(help=self.description, no_args_is_help=True)
 
-    @app.command(rich_help_panel="Local (no platform required)")
+    @app.command(rich_help_panel="Utilities")
     def invoke(config_file: str = typer.Argument(...)) -> None:
         ...
 

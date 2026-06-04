@@ -3,11 +3,9 @@
 
 """Tests for :class:`~nemo_example_plugin.jobs.say_hello.SayHelloJob`.
 
-Pin the end-to-end wiring: running the job through
-:class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` with no clients writes
-the greeting to ``ctx.storage.persistent`` and registers it via the
-default :class:`~nemo_platform_plugin.job_results.LocalJobResults` with a
-``file://`` URL.
+Pin the job implementation: running it with an explicit
+:class:`~nemo_platform_plugin.job_context.JobContext` writes the greeting to
+``ctx.storage.persistent`` and registers it via the configured results sink.
 """
 
 from __future__ import annotations
@@ -19,7 +17,19 @@ from nemo_example_plugin.jobs.say_hello import (
     DEFAULT_RESULT_NAME,
     SayHelloJob,
 )
-from nemo_platform_plugin.scheduler import NemoJobScheduler
+from nemo_platform_plugin.job_context import JobContext, StoragePaths
+from nemo_platform_plugin.job_results import LocalJobResults
+
+
+def _ctx(tmp_path: Path) -> JobContext:
+    storage = StoragePaths(ephemeral=tmp_path / "e", persistent=tmp_path / "p")
+    storage.ephemeral.mkdir()
+    storage.persistent.mkdir()
+    return JobContext(
+        workspace="dev",
+        storage=storage,
+        results=LocalJobResults(root=storage.persistent / "results"),
+    )
 
 
 def test_say_hello_job_metadata() -> None:
@@ -27,13 +37,8 @@ def test_say_hello_job_metadata() -> None:
     assert SayHelloJob.description
 
 
-def test_say_hello_runs_locally_without_clients() -> None:
-    scheduler = NemoJobScheduler()
-    result = scheduler.run_local(
-        SayHelloJob,
-        {"name": "Razvan"},
-        workspace="dev",
-    )
+def test_say_hello_writes_artifact(tmp_path: Path) -> None:
+    result = SayHelloJob().run({"name": "Razvan"}, ctx=_ctx(tmp_path))
     assert result["result"] == "Hello, Razvan!"
     artefact = result["artifact"]
     assert artefact["name"] == DEFAULT_RESULT_NAME
@@ -42,27 +47,12 @@ def test_say_hello_runs_locally_without_clients() -> None:
     assert artifact_path.read_text() == "Hello, Razvan!"
 
 
-def test_defaults_name_to_world() -> None:
-    result = NemoJobScheduler().run_local(SayHelloJob, {}, workspace="dev")
+def test_defaults_name_to_world(tmp_path: Path) -> None:
+    result = SayHelloJob().run({}, ctx=_ctx(tmp_path))
     assert result["result"] == "Hello, world!"
 
 
 def test_greeting_text_lands_under_persistent(tmp_path: Path) -> None:
-    from nemo_platform_plugin.job_context import JobContext, StoragePaths
-    from nemo_platform_plugin.job_results import LocalJobResults
-
-    storage = StoragePaths(ephemeral=tmp_path / "e", persistent=tmp_path / "p")
-    storage.ephemeral.mkdir()
-    storage.persistent.mkdir()
-    ctx = JobContext(
-        workspace="dev",
-        storage=storage,
-        results=LocalJobResults(root=storage.persistent / "results"),
-    )
-    NemoJobScheduler().run_local(
-        SayHelloJob,
-        {"name": "Razvan"},
-        workspace="dev",
-        ctx=ctx,
-    )
-    assert (storage.persistent / DEFAULT_FILE_NAME).read_text() == "Hello, Razvan!"
+    ctx = _ctx(tmp_path)
+    SayHelloJob().run({"name": "Razvan"}, ctx=ctx)
+    assert (ctx.storage.persistent / DEFAULT_FILE_NAME).read_text() == "Hello, Razvan!"

@@ -335,12 +335,12 @@ class TestExitCodes:
         assert rc == 2
         assert "requires sdk=" in caplog.text
 
-    def test_local_run_error_propagates(self, monkeypatch, tmp_path: Path) -> None:
-        # ``LocalRunError`` from ``resolve_run_kwargs`` indicates a
+    def test_run_dependency_error_propagates(self, monkeypatch, tmp_path: Path) -> None:
+        # ``RunDependencyError`` from ``resolve_run_kwargs`` indicates a
         # plugin-author bug (run declares ``sdk`` as required but the
         # caller didn't pass one). Propagating beats collapsing it into
         # the same exit-2 bucket as a missing env var.
-        from nemo_platform_plugin.run_dependencies import LocalRunError
+        from nemo_platform_plugin.run_dependencies import RunDependencyError
 
         _setup_env(monkeypatch, tmp_path, step_config={})
         # Pass ``ctx`` explicitly so the dispatcher's own sdk-requirement
@@ -358,27 +358,27 @@ class TestExitCodes:
             def run(self, config: dict, *, sdk) -> dict:  # ty: ignore[invalid-method-override]
                 return {"status": "completed"}
 
-        with pytest.raises(LocalRunError, match="sdk"):
-            run_task(_Job, ctx=ctx)  # no sdk passed → LocalRunError
+        with pytest.raises(RunDependencyError, match="sdk"):
+            run_task(_Job, ctx=ctx)  # no sdk passed
 
-    def test_local_run_error_from_job_run_propagates(self, monkeypatch, tmp_path: Path) -> None:
-        # LocalRunError from job.run must propagate, not collapse to exit 1.
-        from nemo_platform_plugin.run_dependencies import LocalRunError
+    def test_run_dependency_error_from_job_run_propagates(self, monkeypatch, tmp_path: Path) -> None:
+        # RunDependencyError from job.run must propagate, not collapse to exit 1.
+        from nemo_platform_plugin.run_dependencies import RunDependencyError
 
         _setup_env(monkeypatch, tmp_path, step_config={})
 
         class _Job(NemoJob):
-            name = "raises-local-run-error"
+            name = "raises-run-dependency-error"
 
             def run(self, config: dict) -> dict:
-                raise LocalRunError("missing sdk for fileset upload")
+                raise RunDependencyError("missing sdk for fileset upload")
 
-        with pytest.raises(LocalRunError, match="fileset upload"):
+        with pytest.raises(RunDependencyError, match="fileset upload"):
             run_task(_Job, sdk=_DEFAULT_SDK)
 
-    def test_unsupported_required_run_param_raises_local_run_error(self, monkeypatch, tmp_path: Path) -> None:
-        # Unknown required run() param surfaces as LocalRunError, not TypeError.
-        from nemo_platform_plugin.run_dependencies import LocalRunError
+    def test_unsupported_required_run_param_raises_run_dependency_error(self, monkeypatch, tmp_path: Path) -> None:
+        # Unknown required run() param surfaces as RunDependencyError, not TypeError.
+        from nemo_platform_plugin.run_dependencies import RunDependencyError
 
         _setup_env(monkeypatch, tmp_path, step_config={})
 
@@ -388,7 +388,7 @@ class TestExitCodes:
             def run(self, config: dict, *, foo) -> dict:  # ty: ignore[invalid-method-override]
                 return {"status": "completed", "foo": foo}
 
-        with pytest.raises(LocalRunError, match="foo"):
+        with pytest.raises(RunDependencyError, match="foo"):
             run_task(_Job, sdk=_DEFAULT_SDK)
 
 

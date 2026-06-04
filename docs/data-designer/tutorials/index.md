@@ -25,10 +25,10 @@ config_builder.add_column(dd.LLMTextColumnConfig(...))
 
 **Part 2: Execute (Plugin)**
 
-Run the configuration locally with the CLI, submit it to NeMo Services, or call the Data Designer API from the SDK:
+Submit the configuration to NeMo Services with the CLI or call the Data Designer API from the SDK:
 
 ```bash
-nemo data-designer preview run product_reviews.py --num-records 5
+nemo data-designer preview submit product_reviews.py --workspace default --num-records 5
 nemo data-designer create submit product_reviews.py --workspace default --num-records 30
 ```
 
@@ -47,23 +47,20 @@ preview = data_designer.preview(config_builder)
 job = data_designer.create(config_builder, num_records=1000)
 ```
 
-!!! tip
-    `run` versus `submit` primarily controls where the workload executes. Local `run` can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources. See [Execution Modes](../execution-modes.md) for details.
-
 ## Execution-Specific Considerations
 
-When running through the plugin, supported resources depend on the execution mode:
+When running through the plugin, use resources that NeMo Services can resolve:
 
-| Feature | CLI `run` | CLI `submit` / SDK |
-|---------|-----------|--------------------------|
-| **Inference** | Local providers and/or Inference Gateway providers | Inference Gateway providers |
-| **Seed data** | Local sources, HuggingFace, or Files API Filesets | HuggingFace or Files API Filesets |
-| **Secrets** | Environment, plaintext, or Secrets API secrets | Secrets API secrets |
-| **Artifacts** | Local execution artifacts | Job artifact storage |
+| Feature | CLI `submit` / SDK |
+|---------|--------------------|
+| **Inference** | Inference Gateway providers |
+| **Seed data** | HuggingFace or Files API Filesets |
+| **Secrets** | Secrets API secrets |
+| **Artifacts** | Job artifact storage |
 
 ## Prerequisites
 
-These tutorials use an [Inference Gateway](../../run-inference/about.md) provider for model calls, so a NeMo Services cluster must be running before you preview or create data — including with local CLI `run` (see [Execution Modes](../execution-modes.md#local-nemo-services-execution) for more about this distinction).
+These tutorials use an [Inference Gateway](../../run-inference/about.md) provider for model calls, so a NeMo Services cluster must be running before you preview or create data.
 Complete [Setup](../../get-started/setup.md) to ensure you have the NeMo Services running locally and an inference provider available.
 These tutorials reference the default NVIDIA Build model provider, which is created as `default/nvidia-build` during setup.
 

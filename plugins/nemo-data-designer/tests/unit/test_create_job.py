@@ -46,7 +46,7 @@ def test_create_job_runs_step_config() -> None:
 
 
 @pytest.mark.asyncio
-async def test_to_spec_local_does_not_reject_tool_configs() -> None:
+async def test_to_spec_rejects_tool_configs() -> None:
     builder = dd.DataDesignerConfigBuilder(tool_configs=[dd.ToolConfig(tool_alias="hello", providers=["provider"])])
     builder.add_column(
         column_config=dd.SamplerColumnConfig(
@@ -57,16 +57,14 @@ async def test_to_spec_local_does_not_reject_tool_configs() -> None:
     )
     dd_job_config = DataDesignerJobConfig(num_records=42, config=builder.build())
 
-    step_config = await CreateJob.to_spec(
-        dd_job_config,
-        workspace="workspace",
-        entity_client=Mock(),
-        async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
-        is_local=True,
-    )
-
-    assert isinstance(step_config, DataDesignerStepConfig)
-    assert step_config.job_config == dd_job_config
+    with pytest.raises(NDDInvalidConfigError, match="Tool configs"):
+        await CreateJob.to_spec(
+            dd_job_config,
+            workspace="workspace",
+            entity_client=Mock(),
+            async_sdk=AsyncMock(spec=AsyncNeMoPlatform),
+            is_local=False,
+        )
 
 
 @pytest.mark.asyncio

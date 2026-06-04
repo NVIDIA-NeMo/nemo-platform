@@ -288,10 +288,8 @@ def discover_jobs() -> dict[str, type[NemoJob]]:
     """Typed wrapper: discover ``nemo.jobs`` → :class:`~nemo_platform_plugin.job.NemoJob` subclass.
 
     Entry-point key convention: ``<plugin-name>.<job-name>`` (e.g.
-    ``"example.say-hello"``).  The platform instantiates each class and calls
-    :meth:`~nemo_platform_plugin.job.NemoJob.run` with the job config dict — programmatic
-    callers drive that through
-    :meth:`nemo_platform_plugin.scheduler.NemoJobScheduler.run_local`.
+    ``"example.say-hello"``).  The platform uses these classes to register
+    service submission routes and task dispatch entry points.
 
     Validates that each class's ``name`` attribute matches the job-name suffix
     of its entry-point key (the part after the first ``"."``).
@@ -320,10 +318,9 @@ def discover_functions() -> dict[str, type[NemoFunction]]:
     """Typed wrapper: discover ``nemo.functions`` → :class:`~nemo_platform_plugin.function.NemoFunction` subclass.
 
     Entry-point key convention: ``<plugin-name>.<function-name>`` (e.g.
-    ``"example.greet"``). The platform instantiates each class and
-    invokes :meth:`~nemo_platform_plugin.function.NemoFunction.run` per request
-    (HTTP) or per CLI invocation (``nemo <plugin> <fn> run``); the
-    function adapter wires signature-based DI for ``ctx`` / ``sdk`` /
+    ``"example.greet"``). The platform instantiates each class and invokes
+    :meth:`~nemo_platform_plugin.function.NemoFunction.run` per service request;
+    the function adapter wires signature-based DI for ``ctx`` / ``sdk`` /
     ``async_sdk``.
 
     Validates that each class's ``name`` attribute matches the

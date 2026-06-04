@@ -365,24 +365,24 @@ class DataDesignerResource(_BaseDataDesignerResource[NeMoPlatform]):
         execution_context: ExecutionContext | None = None,
         workspace: str | None = None,
     ) -> ValidationReport:
-        """Validate a Data Designer config against one or every execution context.
+        """Validate a Data Designer config against service-backed execution constraints.
 
         This runs the same client-side checks ``preview`` / ``create`` perform
         internally, but never short-circuits — every detectable problem is
-        reported. The remote pass is a client-side simulation and does not
-        contact the data-designer service.
+        reported. The pass is a client-side simulation and does not contact the
+        data-designer service.
 
         Args:
             config_builder: Data Designer configuration builder.
-            execution_context: ``"local"``, ``"remote"``, or ``None``.
-                ``None`` (the default) runs every applicable context.
+            execution_context: ``"remote"`` or ``None``. ``None`` validates the
+                service-backed context.
             workspace: Workspace used to resolve provider references and seed
-                sources for the remote pass. Falls back to the platform
+                sources. Falls back to the platform
                 client's default workspace, then to ``"default"``.
 
         Returns:
             A :class:`ValidationReport` whose ``ok`` property is true iff
-            every requested context validated cleanly.
+            the requested context validated cleanly.
         """
         # Don't apply the eager ``_get_config_for_api_call`` rejection that
         # ``preview`` / ``create`` use — the validate pass is *meant* to
@@ -559,7 +559,7 @@ class AsyncDataDesignerResource(_BaseDataDesignerResource[AsyncNeMoPlatform]):
 
 
 def _get_config_for_api_call(config_builder: dd.DataDesignerConfigBuilder) -> dd.DataDesignerConfig:
-    """Build the config and reject unsupported local-only seed source types."""
+    """Build the config and reject seed source types unsupported by services."""
 
     if (seed_config := config_builder.get_seed_config()) is not None:
         try:

@@ -4,7 +4,7 @@
 
 The `nemo_evaluator_sdk` package provides context-agnostic objects for defining metrics, datasets, evaluation configuration, and result handling.
 When you want to execute those evaluations through the {{platform_name}} Evaluator plugin, use the Evaluator SDK resource mounted on the `nemo_platform` SDK.
-This page explains the {{platform_name}}-specific objects used to run local plugin jobs, submit durable platform jobs, and retrieve evaluator job results.
+This page explains the {{platform_name}}-specific objects used to submit evaluator jobs and retrieve evaluator job results.
 
 
 ## Evaluator
@@ -26,24 +26,24 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 ```
 
 The primary execution methods are `run` and `submit`.
-Use `run` when you want a local in-process plugin execution that returns a completed `EvaluationResult`.
-Use `submit` when you want to create a durable remote platform job and manage the job lifecycle separately.
+Use `run` when you want to submit a platform job, wait for completion, and receive a completed `EvaluationResult`.
+Use `submit` when you want to create a durable platform job and manage the job lifecycle separately.
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `run()` | Runs one metric locally through the Evaluator plugin job runtime. | `EvaluationResult` |
+| `run()` | Submits one metric evaluation, waits for completion, and returns the result. | `EvaluationResult` |
 | `submit()` | Submits one metric evaluation as a durable platform job. | `EvaluatorJobResource` |
 | `plugin_status()` | Returns Evaluator plugin health information from the service. | `dict[str, object]` |
 | `get_job_resource(job_name: str, workspace: str \| None = None)` | Returns a resource for an existing Evaluator plugin job. | `EvaluatorJobResource` |
 
-The `dataset` argument accepts inline rows, local dataset paths, local glob paths, and fileset references with optional fragment selectors. Use `config` for evaluator runtime settings, `aggregate_fields` on result-returning calls to shape aggregate scores, and `target` plus `prompt_template` when the evaluator should generate model or agent responses before scoring.
+The `dataset` argument accepts inline rows and fileset references with optional fragment selectors. Use `config` for evaluator runtime settings, `aggregate_fields` on result-returning calls to shape aggregate scores, and `target` plus `prompt_template` when the evaluator should generate model or agent responses before scoring.
 
 ### `run()` arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `metric` | `Metric` | Yes | Metric configuration used to score each row. |
-| `dataset` | `PluginDatasetInput` | Yes | Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors. |
+| `dataset` | `PluginDatasetInput` | Yes | Inline rows or fileset references with optional fragment selectors. |
 | `config` | `RunConfig \| RunConfigOnline \| RunConfigOnlineModel \| None` | No | Runtime settings such as sample limits, parallelism, timeouts, and retry behavior. |
 | `aggregate_fields` | `tuple[AggregateFieldName, ...] \| None` | No | Aggregate score fields to include in the returned result. |
 | `target` | `Model \| Agent \| None` | No | Model or agent target used when the evaluator should generate outputs before scoring. |
@@ -54,12 +54,12 @@ The `dataset` argument accepts inline rows, local dataset paths, local glob path
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
 | `metric` | `Metric` | Yes | Metric configuration serialized into the durable platform job. |
-| `dataset` | `PluginDatasetInput` | Yes | Inline rows, local dataset paths, local glob paths, or fileset references with optional fragment selectors. |
+| `dataset` | `PluginDatasetInput` | Yes | Inline rows or fileset references with optional fragment selectors. |
 | `config` | `RunConfig \| RunConfigOnline \| RunConfigOnlineModel \| None` | No | Runtime settings applied when the submitted job executes. |
 | `target` | `Model \| ModelRef \| Agent \| None` | No | Model, model reference, or agent target used when the submitted job should generate outputs before scoring. |
 | `prompt_template` | `str \| dict[str, Any] \| None` | No | Prompt template used with `target` for online model or agent evaluation. |
 
-### Run locally
+### Submit and wait
 
 {% raw %}
 
@@ -122,7 +122,7 @@ evaluator: AsyncEvaluator = client.evaluator
 
 | Method | Description | Returns |
 |--------|-------------|---------|
-| `run()` | Runs one metric locally through the Evaluator plugin job runtime. | `EvaluationResult` |
+| `run()` | Submits one metric evaluation, waits for completion, and returns the result. | `EvaluationResult` |
 | `submit()` | Submits one metric evaluation as a durable platform job. | `AsyncEvaluatorJobResource` |
 | `plugin_status()` | Returns Evaluator plugin health information from the service. | `dict[str, object]` |
 | `get_job_resource(job_name: str, workspace: str \| None = None)` | Returns a resource for an existing Evaluator plugin job. | `AsyncEvaluatorJobResource` |

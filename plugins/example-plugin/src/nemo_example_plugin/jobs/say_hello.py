@@ -3,11 +3,8 @@
 
 """say-hello job — registered under ``nemo.jobs``.
 
-Writes a greeting to persistent storage and registers it as a result
-via :attr:`~nemo_platform_plugin.job_context.JobContext.results`. Local runs use
-:class:`~nemo_platform_plugin.job_results.LocalJobResults` wired by
-:class:`~nemo_platform_plugin.scheduler.NemoJobScheduler`, so the artefact lands
-under ``<persistent>/results/greeting`` with no clients and no SDK.
+Writes a greeting to persistent storage and registers it as a result via
+:attr:`~nemo_platform_plugin.job_context.JobContext.results`.
 """
 
 from __future__ import annotations

@@ -600,7 +600,7 @@ metric = {
 
 If your judge model endpoint requires an API key, store it as a secret. The secret is automatically resolved from the same workspace as your evaluation.
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For `api_key_secret` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
 
 ### Create a Secret
 

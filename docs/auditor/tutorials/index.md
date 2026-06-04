@@ -9,13 +9,13 @@ Set up [a local instance of the platform](../../get-started/setup.md), install g
 
 <div class="grid cards" markdown>
 
--   **[Run an Audit Locally](run-audit-locally.md)**
+-   **[Submit an Audit Job](run-audit-locally.md)**
 
     ---
 
-    Persist a configuration and target, run a single audit in-process, and inspect the resulting JSONL, HTML, and hitlog report artifacts.
+    Persist a configuration and target, submit a single audit job, and inspect the resulting report artifacts.
 
-    <small><span class="md-tag">getting started</span> <span class="md-tag">local execution</span> <span class="md-tag">nemo-auditor</span></small>
+    <small><span class="md-tag">getting started</span> <span class="md-tag">nemo-auditor</span></small>
 
 </div>
 

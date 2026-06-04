@@ -64,7 +64,7 @@ from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
 from nemo_platform_plugin.refs import EndpointURL
-from nemo_platform_plugin.run_dependencies import LocalRunError
+from nemo_platform_plugin.run_dependencies import RunDependencyError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -141,20 +141,19 @@ class OptimizeAgentJob(NemoJob):
         Output paths in the config (``eval.general.output_dir`` and
         ``optimizer.output_path``) are rebased to write under
         ``ctx.storage.persistent / "results"`` instead of the source tree,
-        preventing unstaged git changes during local CLI runs.
+        preventing writes into the source tree.
 
         Args:
             config: Dict matching :class:`OptimizeAgentSpec`.
             ctx: Job execution context providing storage paths (persistent,
                 ephemeral) and metadata. Used to determine where optimization
                 artifacts should be written.
-            sdk: Platform SDK handle, injected by
-                :class:`~nemo_platform_plugin.scheduler.NemoJobScheduler` from the
-                ambient SDK handle.  Required only when ``cfg.agent`` is
+            sdk: Platform SDK handle injected by the task dispatcher from the
+                ambient SDK handle. Required only when ``cfg.agent`` is
                 a platform-managed :class:`AgentRef` (the agent-fetch
                 mode); URL and ``None`` modes don't need it.  When
                 missing in a mode that requires it, we raise
-                :class:`LocalRunError` early so the user gets an
+                :class:`RunDependencyError` early so the user gets an
                 actionable error before the subprocess runs.
 
         Returns:
@@ -243,7 +242,7 @@ class OptimizeAgentJob(NemoJob):
 
         :class:`AgentRef` agent → ``(<agent.config>, None)``: fetch the
         platform-stored agent and return its config dict for merging.
-        Requires *sdk*; raises :class:`LocalRunError` when missing.
+        Requires *sdk*; raises :class:`RunDependencyError` when missing.
         """
         if agent is None:
             return None, None
@@ -265,11 +264,11 @@ class OptimizeAgentJob(NemoJob):
             ws, name = workspace, ref
 
         if sdk is None:
-            raise LocalRunError(
+            raise RunDependencyError(
                 f"OptimizeAgentJob.run requires a 'sdk: NeMoPlatform' to fetch agent "
                 f"'{ref}' from the platform, but no platform SDK was available. "
-                "Set NMP_BASE_URL (so the local CLI can build a default SDK), pass an "
-                "explicit sdk via NemoJobScheduler.run_local(sdk=...), or pass a literal "
+                "Submit the job through NeMo Platform, pass sdk explicitly when invoking the task runner, "
+                "or pass a literal "
                 "HTTP endpoint URL via --agent http://... to use opaque-service mode."
             )
 

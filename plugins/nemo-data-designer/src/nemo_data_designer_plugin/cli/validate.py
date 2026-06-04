@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Execution context-aware CLI validation of config sources"""
+"""CLI validation of Data Designer config sources."""
 
 from __future__ import annotations
 
@@ -17,14 +17,11 @@ from nemo_data_designer_plugin.sdk.validation import (
     validate_config_sync,
 )
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
-from nemo_platform_plugin.cli_state import resolve_local_cli_sdks
+from nemo_platform_plugin.cli_state import resolve_cli_sdks
 
 OutputFormat = Literal["text", "json"]
 
-_CONTEXT_HEADINGS: dict[ExecutionContext, str] = {
-    "local": "Local execution",
-    "remote": "Remote execution",
-}
+_CONTEXT_HEADINGS: dict[ExecutionContext, str] = {"remote": "Service-backed execution"}
 
 
 def validate_command(
@@ -42,8 +39,9 @@ def validate_command(
         ExecutionContext | None,
         typer.Option(
             "--execution-context",
-            help=("Execution context to validate against. Omit to validate every applicable context (local + remote)."),
+            help="Execution context to validate against. Only 'remote' is supported.",
             case_sensitive=False,
+            hidden=True,
         ),
     ] = None,
     workspace: Annotated[
@@ -51,7 +49,7 @@ def validate_command(
         typer.Option(
             "--workspace",
             help=(
-                "Workspace used to resolve provider references and seed sources (remote pass). "
+                "Workspace used to resolve provider references and seed sources. "
                 "Defaults to the SDK's configured workspace, or 'default'."
             ),
         ),
@@ -66,10 +64,9 @@ def validate_command(
 ) -> None:
     """Validate a Data Designer configuration.
 
-    By default validates the config against every applicable execution context
-    (local and remote). Pass ``--execution-context`` to limit to one. The remote
-    pass is a client-side simulation of what ``nemo data-designer create submit``
-    accepts; it does not contact the service.
+    Validates the config against the service-backed execution path. This is a
+    client-side simulation of what ``nemo data-designer create submit`` accepts;
+    it does not contact the service.
     """
     try:
         config_builder = load_config_builder(config_source)
@@ -77,7 +74,7 @@ def validate_command(
         print_error(f"Could not load config: {e}")
         raise typer.Exit(code=1) from e
 
-    sdk, async_sdk = resolve_local_cli_sdks(typer_ctx)
+    sdk, async_sdk = resolve_cli_sdks(typer_ctx)
     sdk = cast("NeMoPlatform | None", sdk)
     async_sdk = cast("AsyncNeMoPlatform | None", async_sdk)
 
@@ -146,5 +143,5 @@ def _format_summary(report: ValidationReport) -> str:
     pieces: list[str] = []
     for result in report.results:
         verdict = "valid" if result.ok else "invalid"
-        pieces.append(f"{verdict} for {result.context} execution")
+        pieces.append(f"{verdict} for service-backed execution")
     return "Result: " + "; ".join(pieces)

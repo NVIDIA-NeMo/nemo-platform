@@ -5,7 +5,7 @@ from typing import Any
 
 import data_designer.config as dd
 from data_designer_nemo.unsupported_features import validate_seed_source_for_execution_context
-from pydantic import BaseModel, ValidationInfo, model_validator
+from pydantic import BaseModel, model_validator
 
 
 # This is the user-facing type expected in an API request to create a job
@@ -19,14 +19,9 @@ class DataDesignerJobConfig(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_seed_source_scope(cls, data: Any, info: ValidationInfo) -> Any:
-        validate_seed_source_for_execution_context(data, is_local=_is_local_context(info))
+    def validate_seed_source_scope(cls, data: Any) -> Any:
+        validate_seed_source_for_execution_context(data, is_local=False)
         return data
-
-
-def _is_local_context(info: ValidationInfo) -> bool:
-    context = info.context
-    return isinstance(context, dict) and context.get("is_local") is True
 
 
 # This is the internal object we store on the PlatformJobStep to pass to the task.

@@ -8,7 +8,7 @@ Every plugin capability is a "surface" — a typed contract registered via a Pyt
 |---|---|---|---|---|
 | **HTTP service** ★ | `nemo.services` | `NemoService` | `/apis/<name>/...` | wraps in `NemoServiceAdapter`, mounts FastAPI router |
 | **CLI** ★ | `nemo.cli` | `NemoCLI` | `nemo <name> <cmd>` | calls `get_cli()`, mounts as Typer subcommand |
-| **Job** ★ | `nemo.jobs` | `NemoJob` | key: `<plugin>.<job>` | auto-generates `run` / `submit` / `explain` CLI verbs; the scheduler drives local runs and remote submission |
+| **Job** ★ | `nemo.jobs` | `NemoJob` | key: `<plugin>.<job>` | auto-generates `submit` / `explain` CLI verbs; the scheduler drives service-backed submission and schema discovery |
 | **Controller** ★ | `nemo.controllers` | `NemoController` | (background) | wraps in `NemoControllerAdapter`, runs reconcile loop |
 | SDK | `nemo.sdk` | (any class) | `nemo.<name>` on hub | instantiated as attribute on the `NeMo` hub |
 | MCP | `nemo.mcp` | `() -> list[dict]` | (MCP tool list) | returns MCP tool definitions |
@@ -72,21 +72,20 @@ class SayHelloJob(NemoJob):
     name = "say-hello"   # suffix only
 ```
 
-Dispatch programmatically:
+Submit programmatically:
 
 ```python
 from nemo_platform_plugin.discovery import discover_jobs
 from nemo_platform_plugin.scheduler import NemoJobScheduler
 
 job_cls = discover_jobs()["example.say-hello"]
-NemoJobScheduler().run_local(job_cls, {"name": "Alice"})
+NemoJobScheduler().submit_remote(job_cls, {"name": "Alice"})
 ```
 
-## Auto-generated three-verb CLI for jobs
+## Auto-generated CLI for jobs
 
-At startup, for every plugin that registers both `nemo.cli` and `nemo.jobs`, the platform injects three CLI subcommands per job into the plugin's Typer group: `run`, `submit`, `explain`. Plugin authors write no CLI code for their jobs.
+At startup, for every plugin that registers both `nemo.cli` and `nemo.jobs`, the platform injects two CLI subcommands per job into the plugin's Typer group: `submit` and `explain`. Plugin authors write no CLI code for their jobs.
 
-- `run` delegates to `NemoJobScheduler.run_local` — in-process, no platform.
 - `submit` delegates to `NemoJobScheduler.submit_remote` — POSTs to the plugin service's per-job endpoint; the cluster executes.
 - `explain` delegates to `NemoJobScheduler.explain` — reads schemas locally from the `NemoJob` class.
 

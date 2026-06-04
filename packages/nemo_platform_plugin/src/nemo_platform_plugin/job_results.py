@@ -10,8 +10,8 @@ sync library protocols, so ``ctx.results.save(...)`` is sync.
 Concrete impls living in this codebase:
 
 - :class:`LocalJobResults` — copies the artefact under a local directory
-  rooted at ``<persistent>/results/``. Used for laptop ``run_local`` and
-  any context where no NeMo Platform Files / Jobs SDK is configured.
+  rooted at ``<persistent>/results/``. Useful for tests and plugin-authored
+  contexts where no NeMo Platform Files / Jobs SDK is configured.
 - :class:`PlatformJobResults` — thin adapter over
   :class:`nemo_platform_plugin.jobs.result_manager.ResultManager` that registers
   results as platform artefacts.

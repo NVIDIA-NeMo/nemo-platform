@@ -45,7 +45,7 @@ for score in result.aggregate_scores.scores:
 ```
 {% endraw %}
 
-Use `run` for fast local execution while developing a metric. Use `submit` for durable remote execution through the platform job service.
+Use `run` when you want the SDK to submit, wait, and return results in one call. Use `submit` when you want lifecycle control through the platform job service.
 
 ## Reuse a Metric Definition
 

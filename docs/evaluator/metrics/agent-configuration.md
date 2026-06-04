@@ -34,7 +34,7 @@ evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 
 If your agent endpoint requires authentication, configure `api_key_secret` on the `Agent`.
 
-For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For remote `evaluator.submit(...)` jobs, it must name a NeMo platform secret in the target workspace. See [Model API Authentication](model-configuration.md#model-api-authentication) for the local-versus-remote behavior.
+`api_key_secret` must name a NeMo platform secret in the target workspace. See [Model API Authentication](model-configuration.md#model-api-authentication).
 
 For remote `evaluator.submit(...)` jobs, create the secret in the platform workspace before submitting the job:
 
@@ -45,7 +45,7 @@ client.secrets.create(
 )
 ```
 
-The secret name may be a workspace-local name such as `"my-agent-api-key"` or a full reference such as `"my-workspace/my-agent-api-key"` for remote jobs.
+The secret name may be a workspace-local name such as `"my-agent-api-key"` or a full reference such as `"my-workspace/my-agent-api-key"`.
 
 ## Generic Agent
 

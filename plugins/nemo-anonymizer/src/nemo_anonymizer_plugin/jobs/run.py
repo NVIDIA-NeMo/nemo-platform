@@ -56,8 +56,9 @@ class RunJob(NemoJob):
         async_sdk: AsyncNeMoPlatform,
         is_local: bool,
     ) -> BaseModel:  # AnonymizerStepConfig
+        del is_local
         input_spec = cast(AnonymizerRequest, input_spec)
-        anon_ctx = create_anonymizer_context(is_local, async_sdk, workspace)
+        anon_ctx = create_anonymizer_context(async_sdk, workspace)
 
         try:
             cls._validate_anonymizer_config(input_spec.config)
@@ -69,7 +70,7 @@ class RunJob(NemoJob):
 
             dd_providers = await anon_ctx.make_model_providers(
                 input_spec.model_configs,
-                require_model_configs=not is_local,
+                require_model_configs=True,
             )
             if input_spec.model_configs:
                 yaml_body = build_model_configs_yaml(
@@ -135,10 +136,9 @@ class RunJob(NemoJob):
         *,
         ctx: JobContext,
         sdk: NeMoPlatform,
-        is_local: bool = False,
     ) -> dict:
         step_config = AnonymizerStepConfig.model_validate(config)
-        return {"exit_code": run_step_config(step_config, ctx=ctx, sdk=sdk, is_local=is_local)}
+        return {"exit_code": run_step_config(step_config, ctx=ctx, sdk=sdk)}
 
 
 def _make_env_vars() -> list[EnvironmentVariable]:

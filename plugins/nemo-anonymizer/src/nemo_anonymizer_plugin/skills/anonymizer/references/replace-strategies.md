@@ -6,7 +6,7 @@ Plugin notes:
 
 - When specifying `config`, choose either `config.replace` or `config.rewrite`, not both.
 - Hand-written YAML specs must include a `kind` discriminator inside `replace`.
-- Plugin-service / Jobs execution requires `model_configs`; local `preview run` / `run run` can omit it and use Anonymizer library defaults.
+- Plugin-service / Jobs execution requires `model_configs`.
 
 Minimal YAML shape:
 

@@ -76,11 +76,11 @@ When using Evaluator as a {{platform_name}} plugin :
 
 | Feature | Standalone Library | {{platform_name}} Plugin |
 |---------|-------------------|-------------|
-| **Execution** | Local Python process | Local plugin runs for local experimentation and durable platform jobs for production |
+| **Execution** | Local Python process | Platform jobs; `run()` waits for completion and `submit()` returns a job handle |
 | **Inference** | Direct model or agent endpoint calls | The same as standalone and can also route through {{platform_name}} Inference Gateway and platform-managed endpoints |
-| **Datasets** | Inline rows and local files | Inline rows, local paths resolved at submission time, and {{platform_name}} [Filesets](../get-started/concepts/manage-files.md) |
+| **Datasets** | Inline rows and local files | Inline rows and {{platform_name}} [Filesets](../get-started/concepts/manage-files.md) |
 | **Results Artifacts** | Results stored in memory  | {{platform_name}} artifact storage with typed result download |
-| **Authentication** | Local environment variables | Local environment variables for local runs and {{platform_name}} Secrets service for remote jobs |
+| **Authentication** | Local environment variables | {{platform_name}} Secrets service |
 
 ---
 

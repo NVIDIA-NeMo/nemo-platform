@@ -55,7 +55,7 @@ client = NeMoPlatform(
 evaluator: Evaluator = client.evaluator  # this object is an Evaluator resource
 ```
 
-Use `evaluator.run(metric=metric, dataset=dataset)` for a local synchronous evaluation. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need a durable remote job:
+Use `evaluator.run(metric=metric, dataset=dataset)` to submit, wait, and return an `EvaluationResult`. Use `evaluator.submit(metric=metric, dataset=dataset)` when you need the job handle:
 
 ```python
 job = evaluator.submit(metric=metric, dataset=dataset)
@@ -75,7 +75,7 @@ client.secrets.create(
 )
 ```
 
-Reference secrets by name in your model configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your model configuration. See [Model API Authentication](model-configuration.md#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -113,7 +113,7 @@ judge_model = Model(
 
 The metric examples below use these inline values:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For `api_key_secret` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -798,7 +798,7 @@ client.secrets.create(name="judge-api-key", value="<your-judge-key>")
 client.secrets.create(name="embedding-api-key", value="<your-embedding-key>")
 ```
 
-Reference secrets by name in your metric configuration. For local `run` versus remote `submit` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
+Reference secrets by name in your metric configuration. See [Model API Authentication](model-configuration.md#model-api-authentication).
 
 ```python
 judge_model = Model(
@@ -851,7 +851,7 @@ print(f"Saved artifacts under {artifacts_dir}")
 
 ## Important Notes
 
-1. **Secret Management**: API keys should be referenced through `api_key_secret`, with different local `run` and remote `submit` behavior. See [Model API Authentication](model-configuration.md#model-api-authentication). Never pass API keys directly in the request.
+1. **Secret Management**: API keys should be referenced through `api_key_secret` platform secrets. See [Model API Authentication](model-configuration.md#model-api-authentication). Never pass API keys directly in the request.
 2. **Column Names**: RAGAS metrics use specific column names:
    - `user_input` (not `question`)
    - `response` (not `answer`)

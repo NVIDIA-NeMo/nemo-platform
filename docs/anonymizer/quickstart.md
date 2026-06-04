@@ -82,7 +82,6 @@ sdk.files.upload(
 
 The plugin accepts three input source forms:
 
-- Local path (local execution only): `/tmp/anonymizer-input.csv`
 - HTTP(S) URL: `https://.../input.csv`
 - Fileset reference: `anonymizer-inputs#anonymizer-input.csv`, `default/anonymizer-inputs#anonymizer-input.csv`, or `fileset://default/anonymizer-inputs#anonymizer-input.csv`
 
@@ -142,13 +141,9 @@ preview.display_record(0)         # render a record with entity highlights
     preview_spec_path.write_text(yaml.safe_dump(request.model_dump(mode="json", exclude_none=True)))
     ```
 
-    Then run either of:
+    Then submit it:
 
     ```bash
-    nemo anonymizer preview run \
-      --spec-file /tmp/anonymizer-preview.yaml \
-      --workspace "${NMP_WORKSPACE:-default}"
-
     nemo anonymizer preview submit \
       --spec-file /tmp/anonymizer-preview.yaml \
       --workspace "${NMP_WORKSPACE:-default}" \
@@ -162,7 +157,7 @@ preview.display_record(0)         # render a record with entity highlights
 
 ## Step 6: Run a Full Job
 
-When the preview looks correct, run the full pipeline. The `anonymizer.run` job can execute either locally in the CLI process (`run run`) or on the {{platform_name}} Jobs worker (`run submit` / `sdk.anonymizer.run()`).
+When the preview looks correct, run the full pipeline. The `anonymizer.run` job executes on the {{platform_name}} Jobs worker (`run submit` / `sdk.anonymizer.run()`).
 
 Build an `AnonymizerRequest`:
 
@@ -179,8 +174,6 @@ run_request = AnonymizerRequest(
     model_configs=model_configs,
 )
 ```
-
-**Option A — submit to the Jobs worker:**
 
 ```python
 job = sdk.anonymizer.run(run_request, wait_until_done=True)
@@ -214,48 +207,9 @@ nemo anonymizer run submit \
 
 Track the submitted job with `nemo jobs get-status <job-name> --workspace "${NMP_WORKSPACE:-default}"` and `nemo jobs get-logs <job-name> --workspace "${NMP_WORKSPACE:-default}"`.
 
-**Option B — run locally in the CLI process:**
-
-```python
-import yaml
-from pathlib import Path
-
-spec_path = Path("/tmp/anonymizer-run.yaml")
-spec_path.write_text(yaml.safe_dump(run_request.model_dump(mode="json", exclude_none=True)))
-```
-
-```bash
-nemo anonymizer run run --spec-file /tmp/anonymizer-run.yaml
-```
-
-The CLI prints `{"exit_code": 0}` on success and logs the artifact directory (`file://.../persistent/results/artifacts`) to stderr. The directory contains:
-
-- `dataset.parquet`: anonymized output.
-- `trace.parquet`: detection trace.
-- `metadata.json`: run metadata.
-- `failed_records.json`: per-record failures, only when there were failures.
-
-!!! note "Differences between `run run` and `run submit`"
-    `run submit` rejects local file paths in `data.source` (use a fileset reference or `http(s)` URL) and requires explicit `model_configs` referencing Inference Gateway providers. `run run` accepts local paths and can run without `model_configs` when the library defaults suffice.
-
 ## Step 7: Inspect Artifacts
 
-For Option A (`run submit`), the `AnonymizerJobResults` returned by `download_artifacts()` already loads parquet files lazily — `results.load_dataset()`, `results.load_trace()`, and `results.load_failed_records()` return pandas DataFrames / lists.
-
-For Option B (`run run`), load the parquet files directly from the local artifact directory:
-
-```python
-from pathlib import Path
-
-import pandas as pd
-
-ARTIFACTS_DIR = Path("/path/to/persistent/results/artifacts")  # from the stderr log
-
-dataset = pd.read_parquet(ARTIFACTS_DIR / "dataset.parquet", dtype_backend="pyarrow")
-trace   = pd.read_parquet(ARTIFACTS_DIR / "trace.parquet",   dtype_backend="pyarrow")
-
-print(dataset.head())
-```
+The `AnonymizerJobResults` returned by `download_artifacts()` loads parquet files lazily — `results.load_dataset()`, `results.load_trace()`, and `results.load_failed_records()` return pandas DataFrames / lists.
 
 The trace dataset (and the dataset itself for `annotate` / `substitute` strategies) contains pyarrow-backed `struct<entities: list<...>>` columns. Use `pyarrow.parquet.read_table(...).to_pylist()` if you need plain Python `dict`/`list` values for JSON output.
 
@@ -264,7 +218,7 @@ The trace dataset (and the dataset itself for `annotate` / `substitute` strategi
 | Problem                                            | Cause                                                       | Solution                                                                                                |
 |----------------------------------------------------|-------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
 | `nemo anonymizer preview submit` returns 404       | The `anonymizer` plugin service isn't mounted on the gateway | Confirm `uv sync` ran successfully at the repo root and re-run `nemo services run` so the plugin is discovered. See [Step 1](#step-1-install-the-plugin). |
-| `model_configs are required for remote execution`  | `anonymizer.preview` / `preview submit` requires explicit `model_configs` | Add `model_configs` referencing an Inference Gateway provider.                                |
+| `model_configs are required for anonymizer execution` | `anonymizer.preview` / `preview submit` requires explicit `model_configs` | Add `model_configs` referencing an Inference Gateway provider.                                |
 | `Input source ... is a local path`                 | Plugin-service execution rejects local paths                 | Use an `http(s)` URL or a fileset reference.                                                            |
 | `Fileset input ... must resolve to a .csv or .parquet file` | Fileset path is a directory or wrong extension      | Point the `#<path>` fragment at a single `.csv` or `.parquet` file.                                     |
 | `provider not found`                               | Inference provider missing                                   | Inspect or create the provider using the inference/model-provider docs, then reference it in `model_configs`. |

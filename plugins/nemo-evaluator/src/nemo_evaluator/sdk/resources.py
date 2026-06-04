@@ -195,7 +195,7 @@ class Evaluator:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
+        """Run one metric by submitting a service-backed job and waiting for results."""
         return self._executor.evaluate(
             metric=metric,
             dataset=dataset,
@@ -297,7 +297,7 @@ class AsyncEvaluator:
         prompt_template: str | dict[str, Any] | None = None,
         aggregate_fields: tuple[AggregateFieldName, ...] | None = None,
     ) -> EvaluationResult:
-        """Run one metric through the evaluator plugin executor's local execution path."""
+        """Run one metric by submitting a service-backed job and waiting for results."""
         return await self._executor.evaluate(
             metric=metric,
             dataset=dataset,

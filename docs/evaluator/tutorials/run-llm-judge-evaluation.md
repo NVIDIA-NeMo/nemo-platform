@@ -57,12 +57,12 @@ This tutorial shows you how to build, validate, and iterate on LLM judge metrics
 
 Before you begin, here is a quick overview of the resources you will use:
 
-- **Evaluator resource**: The plugin SDK resource mounted at `client.evaluator`. Use it to run metrics locally or submit durable platform jobs.
+- **Evaluator resource**: The plugin SDK resource mounted at `client.evaluator`. Use `run()` to submit, wait, and return results, or `submit()` for durable platform job lifecycle control.
 - **Metric**: An inline Python object that defines how to score model outputs. In this tutorial, we create LLM judge metrics that prompt a model to rate responses.
 - **Fileset**: A dataset registered with {{platform_name}}. The evaluator plugin SDK accepts fileset references directly, so this tutorial passes the registered HelpSteer2 split to evaluations as a `FilesetRef`.
 - **Workspace**: A workspace that isolates your resources. Secrets, filesets, and jobs belong to a workspace.
 - **Job**: A durable remote platform task created with `evaluator.submit(...)`.
-- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` for local in-process execution, `evaluator.submit(...)` for durable jobs
+- **Evaluation**: The process of scoring model outputs using one or more metrics. Use `evaluator.run(...)` to submit and wait, or `evaluator.submit(...)` for durable jobs.
 
 ---
 
@@ -102,7 +102,7 @@ print(evaluator.plugin_status())
 
 ## 2. Create Secrets
 
-Create a platform secret for remote jobs and keep the same API key available in your local environment for local runs.
+Create a platform secret for evaluator jobs.
 
 Get your `NVIDIA_API_KEY` to access the models on NVIDIA Build:
 
@@ -139,14 +139,11 @@ print(
 )
 ```
 
-!!! note
-    Local runs resolve `Model(api_key_secret="NVIDIA_API_KEY")` from your local environment. Remote jobs run in the platform job runtime, so they use the platform secret name created above.
-
 ---
 
 ## 3. Configure the Judge Models
 
-Import the evaluator SDK types and configure judge models for local and remote execution. The judge is the LLM that evaluates responses.
+Import the evaluator SDK types and configure judge models. The judge is the LLM that evaluates responses.
 
 This tutorial uses `nvidia/nemotron-3-nano-30b-a3b` from NVIDIA Build.
 
@@ -299,9 +296,9 @@ metric_v1_remote = create_helpfulness_metric(PROMPT_V1, REMOTE_JUDGE_MODEL)
 
 ---
 
-## 6. Test with Local Evaluation
+## 6. Test with a Small Evaluation
 
-Before running a durable job, test your metric with a few examples using `evaluator.run(...)`. This runs locally in-process and returns results immediately, which is useful for prompt iteration.
+Before running a larger job, test your metric with a few examples using `evaluator.run(...)`. This submits the evaluation, waits for completion, and returns results in one call.
 
 ```python
 {% raw %}

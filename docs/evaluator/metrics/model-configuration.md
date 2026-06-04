@@ -50,9 +50,7 @@ model = Model(
 
 `api_key_secret` is an optional property on the `Model` object. Omit it when the endpoint does not require API-key authentication.
 
-For local `evaluator.run(...)` calls, `api_key_secret` must name an environment variable available to the local Python process. For example, `api_key_secret="NVIDIA_API_KEY"` reads `os.environ["NVIDIA_API_KEY"]`.
-
-For remote `evaluator.submit(...)` jobs, `api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
+`api_key_secret` must name a NeMo platform secret in the target workspace. Create the secret before submitting the job:
 
 ```python
 client.secrets.create(

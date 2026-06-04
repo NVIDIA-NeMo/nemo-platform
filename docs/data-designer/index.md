@@ -45,21 +45,20 @@ Configuration code describes the dataset schema, columns, dependencies, constrai
 
 ### 2. Choose Where to Execute
 
-The same configuration can run through different plugin surfaces:
+The same configuration can run through different service-backed plugin surfaces:
 
 | Interface | Execution location | NeMo Services required? | Best for |
 |-----------|--------------------|-------------------------|----------|
-| `nemo data-designer ... run` | Local CLI process | Optional | Fast local iteration, local files, library-equivalent workload behavior. |
 | `nemo data-designer ... submit` | Data Designer API or Jobs worker | Yes | Service-managed execution, logs, artifacts, and shared resources. |
 | `client.data_designer.preview/create` | Data Designer API or Jobs worker | Yes | Application code that calls Data Designer programmatically. |
 
-`run` versus `submit` primarily controls where the plugin workload execution happens. A local `run` can be fully local, but it is not an offline-only mode: it can still use the Files API, Secrets API, and Inference Gateway API from a running NeMo Services cluster when the configuration references the corresponding resources.
+For direct in-process execution without NeMo Services, use the Data Designer library directly.
 
 See [Execution Modes](execution-modes.md) for the full model.
 
 ## NeMo Services Integration
 
-When you use CLI `submit`, SDK execution, or NeMo resources from a local `run`, the plugin integrates with these NeMo Services APIs:
+When you use CLI `submit` or SDK execution, the plugin integrates with these NeMo Services APIs:
 
 | Integration | What it provides |
 |-------------|------------------|
@@ -68,7 +67,7 @@ When you use CLI `submit`, SDK execution, or NeMo resources from a local `run`, 
 | **Secrets API** | API keys and tokens referenced from Data Designer configurations. |
 | **Jobs API** | Service-managed create workloads, logs, status, and artifacts. |
 
-These integrations are required for `submit` and SDK execution. They are optional for CLI `run` execution, depending on the resources your configuration references.
+These integrations are required for CLI `submit` and SDK execution.
 
 ## Next Steps
 
@@ -78,7 +77,7 @@ These integrations are required for `submit` and SDK execution. They are optiona
 
     ---
 
-    Understand local execution, NeMo Services execution, and NeMo resources.
+    Understand service-backed execution and NeMo resources.
 
 -   **[CLI](cli.md)**
 

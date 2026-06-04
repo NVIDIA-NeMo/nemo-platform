@@ -8,9 +8,7 @@ This reference covers the `nemo anonymizer` commands exposed by the Anonymizer p
 | Command                          | Source                          | Description                                                  |
 |----------------------------------|---------------------------------|--------------------------------------------------------------|
 | `nemo anonymizer validate`       | Manual Typer command            | Validate an `AnonymizerConfig` (and optional `model_configs`).|
-| `nemo anonymizer preview run`    | Generated from `NemoFunction`   | Local streaming preview.                                     |
-| `nemo anonymizer preview submit` | Generated from `NemoFunction`   | Remote streaming preview against the plugin service.         |
-| `nemo anonymizer run run`        | Generated from `NemoJob`        | Local job execution in the CLI process.                      |
+| `nemo anonymizer preview submit` | Generated from `NemoFunction`   | Streaming preview against the plugin service.                |
 | `nemo anonymizer run submit`     | Generated from `NemoJob`        | Submit an `anonymizer.run` job to the {{platform_name}} Jobs worker. |
 | `nemo anonymizer run explain`    | Generated from `NemoJob`        | Print the job key, submit endpoint, and JSON schemas.        |
 
@@ -33,13 +31,9 @@ The command does not accept `data.source`. Input-source validation happens durin
 
 ## `nemo anonymizer preview`
 
-Both `preview run` and `preview submit` take a spec file matching `PreviewRequest`.
+`preview submit` takes a spec file matching `PreviewRequest`.
 
 ```bash
-nemo anonymizer preview run \
-  --spec-file /tmp/anonymizer-preview.yaml \
-  --workspace "${NMP_WORKSPACE:-default}"
-
 nemo anonymizer preview submit \
   --spec-file /tmp/anonymizer-preview.yaml \
   --workspace "${NMP_WORKSPACE:-default}" \
@@ -54,18 +48,18 @@ nemo anonymizer preview submit \
 
 ### Preview source kinds
 
-| Form                                  | `preview run` | `preview submit` |
-|---------------------------------------|---------------|------------------|
-| Local path (`/tmp/input.csv`)         | yes           | no               |
-| HTTP(S) URL (`https://.../input.csv`) | yes           | yes              |
-| Fileset reference (`fs#path`)         | yes           | yes              |
+| Form                                  | `preview submit` |
+|---------------------------------------|------------------|
+| Local path (`/tmp/input.csv`)         | no               |
+| HTTP(S) URL (`https://.../input.csv`) | yes              |
+| Fileset reference (`fs#path`)         | yes              |
 
 ### Preview output
 
 `preview` streams newline-delimited JSON frames to stdout. Filter with `jq`:
 
 ```bash
-nemo anonymizer preview run --spec-file /tmp/anonymizer-preview.yaml > /tmp/preview.ndjson
+nemo anonymizer preview submit --spec-file /tmp/anonymizer-preview.yaml > /tmp/preview.ndjson
 
 jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' /tmp/preview.ndjson
 ```
@@ -75,8 +69,6 @@ Frame kinds: `log`, `preview_dataset`, `trace_dataset`, `failed_records`, `heart
 ## `nemo anonymizer run`
 
 ```bash
-nemo anonymizer run run --spec-file /tmp/anonymizer-run.yaml
-
 nemo anonymizer run submit \
   --spec-file /tmp/anonymizer-run.yaml \
   --workspace "${NMP_WORKSPACE:-default}" \
@@ -92,28 +84,13 @@ nemo anonymizer run explain
 
 ### Run source kinds
 
-| Form                                  | `run run` | `run submit` |
-|---------------------------------------|-----------|--------------|
-| Local path (`/tmp/input.csv`)         | yes       | no           |
-| HTTP(S) URL (`https://.../input.csv`) | yes       | yes          |
-| Fileset reference (`fs#path`)         | yes       | yes          |
+| Form                                  | `run submit` |
+|---------------------------------------|--------------|
+| Local path (`/tmp/input.csv`)         | no           |
+| HTTP(S) URL (`https://.../input.csv`) | yes          |
+| Fileset reference (`fs#path`)         | yes          |
 
 ### Run output
-
-`run run` prints `{"exit_code": 0}` on success. The local job results manager logs the artifact directory to stderr:
-
-```text
-Saved result 'artifacts' to file:///.../persistent/results/artifacts
-```
-
-The artifact directory contains:
-
-| File                  | Description                                                  |
-|-----------------------|--------------------------------------------------------------|
-| `dataset.parquet`     | Anonymized output.                                           |
-| `trace.parquet`       | Detection trace.                                             |
-| `metadata.json`       | Run metadata (includes original text column).                |
-| `failed_records.json` | Per-record failures. Only written when records failed.       |
 
 `run submit` submits an `anonymizer.run` job to the Jobs service and prints the assigned job name and submit endpoint:
 
@@ -122,6 +99,15 @@ The artifact directory contains:
   |-- submit endpoint: /apis/anonymizer/v2/workspaces/default/jobs/run
 {"name": "anonymizer-run-2026-05-12-abc123", ...}
 ```
+
+Job artifacts contain:
+
+| File                  | Description                                                  |
+|-----------------------|--------------------------------------------------------------|
+| `dataset.parquet`     | Anonymized output.                                           |
+| `trace.parquet`       | Detection trace.                                             |
+| `metadata.json`       | Run metadata (includes original text column).                |
+| `failed_records.json` | Per-record failures. Only written when records failed.       |
 
 Track and pull artifacts using either the standard `nemo jobs ...` commands or the Python SDK:
 
@@ -139,7 +125,7 @@ dataset = results.load_dataset()
 
 See [SDK Resources](sdk-resources.md) for the full `AnonymizerJobResource` / `AnonymizerJobResults` surface.
 
-Compared to `run run`, `run submit` rejects local file paths in `data.source` (use a fileset reference or `http(s)` URL) and requires explicit `model_configs` because the job runs outside the CLI process.
+`run submit` rejects local file paths in `data.source` (use a fileset reference or `http(s)` URL) and requires explicit `model_configs`.
 
 ## Spec File Reference
 
@@ -148,11 +134,11 @@ Both preview and run specs use the shared `AnonymizerRequest` shape:
 | Field             | Type                                            | Required | Notes                                                                  |
 |-------------------|-------------------------------------------------|----------|------------------------------------------------------------------------|
 | `config`          | `AnonymizerConfig`                              | yes      | Library config. See the [library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs). |
-| `data.source`     | string                                          | yes      | Local path, `http(s)` URL, or fileset reference.                       |
+| `data.source`     | string                                          | yes      | `http(s)` URL or fileset reference.                                    |
 | `data.text_column`| string                                          | no       | Defaults to `text`.                                                    |
 | `data.id_column`  | string                                          | no       | Optional record identifier column.                                     |
 | `data.data_summary` | string                                        | no       | Optional short description of the data.                                |
-| `model_configs`   | list of Data Designer `ModelConfig`             | depends  | Required for `preview submit` and `run submit`; optional for `preview run` and `run run`. |
+| `model_configs`   | list of Data Designer `ModelConfig`             | yes      | Required for `preview submit` and `run submit`.                        |
 | `selected_models` | object with `detection` / `replace` / `rewrite` | no       | Role overrides on top of bundled defaults. Requires `model_configs`.   |
 
 Preview-only:

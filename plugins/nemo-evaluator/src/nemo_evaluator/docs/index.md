@@ -9,7 +9,7 @@ The evaluator plugin is a first-party for evaluator functionality. It keeps the 
 | CLI | `nemo.cli:evaluator` | Adds `nemo evaluator info` and hosts evaluator job commands. |
 | Service | `nemo.services:evaluator` | `jobs`, `healthz` paths. |
 | SDK | `nemo.sdk:evaluator` | Adds `client.evaluator.plugin_status() and run(), submit() interfaces`. |
-| Job | `nemo.jobs:evaluator.evaluate` | Backs local `run` through in-process execution and `submit` through durable platform job submission. |
+| Job | `nemo.jobs:evaluator.evaluate` | Backs durable platform job submission. |
 | Docs | `nemo.docs:evaluator` | Publishes this reference page. |
 | Skills | `nemo.skills:evaluator` | Publishes the evaluator plugin development skill. |
 
@@ -50,22 +50,22 @@ Inspect the generated job metadata:
 nemo evaluator evaluate explain
 ```
 
-Run an inline exact-match metric:
+Submit an inline exact-match metric:
 
 ```bash
-nemo evaluator evaluate run --spec '{"metric":{"type":"exact-match","reference":"{{item.expected}}","candidate":"{{item.model_output}}"},"dataset":[{"expected":"blue","model_output":"Blue"},{"expected":"Jupiter","model_output":"Saturn"}],"params":{"parallelism":2}}'
+nemo evaluator evaluate submit --spec '{"metric":{"type":"exact-match","reference":"{{item.expected}}","candidate":"{{item.model_output}}"},"dataset":[{"expected":"blue","model_output":"Blue"},{"expected":"Jupiter","model_output":"Saturn"}],"params":{"parallelism":2}}'
 ```
 
-Run an online llm-as-judge metric from a spec file (requires `NVIDIA_API_KEY`, see the [prerequisite](#prerequisite-for-online-evaluation-and-model-backed-metrics) above):
+Submit an online llm-as-judge metric from a spec file:
 
 ```bash
-nemo evaluator evaluate run --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/llm_as_judge.json
+nemo evaluator evaluate submit --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/llm_as_judge.json
 ```
 
-Run a benchmark metric from spec file example:
+Submit a benchmark metric from spec file example:
 
 ```bash
-nemo evaluator evaluate run --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/exact_match_benchmark.json
+nemo evaluator evaluate submit --spec-file plugins/nemo-evaluator/src/nemo_evaluator/docs/data/exact_match_benchmark.json
 ```
 
 ## Python Examples
@@ -79,15 +79,14 @@ client = NeMoPlatform(base_url="http://localhost:8080")
 status = client.evaluator.plugin_status()
 ```
 
-Use the evaluator SDK directly, matching the job's current execution path:
+Use the mounted platform SDK resource:
 
 ```python
-from nemo_evaluator_sdk import Evaluator
 from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 
 metric = ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")
-result = Evaluator().run_sync(
-    metrics=metric,
+result = client.evaluator.run(
+    metric=metric,
     dataset=[{"expected": "blue", "model_output": "Blue"}],
 )
 ```

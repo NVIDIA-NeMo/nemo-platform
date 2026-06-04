@@ -9,7 +9,7 @@ maps onto an existing ``NEMO_JOB_*`` environment variable that the
 in-container runtime sets:
 
 - ``workspace``         ← ``NEMO_JOB_WORKSPACE``
-- ``job_id``            ← ``NEMO_JOB_ID`` (``None`` for local runs)
+- ``job_id``            ← ``NEMO_JOB_ID`` (``None`` when not provided)
 - ``storage.ephemeral``  ← ``NEMO_JOB_EPHEMERAL_TASK_STORAGE_PATH``
 - ``storage.persistent`` ← ``NEMO_JOB_PERSISTENT_JOB_STORAGE_PATH``
 
@@ -27,13 +27,12 @@ shape.
 
 Example::
 
-    def run(self, config: dict, *, ctx: JobContext, is_local: bool) -> dict:
+    def run(self, config: dict, *, ctx: JobContext) -> dict:
         spec = MySpec.model_validate(config)
         out_path = ctx.storage.ephemeral / "rows.jsonl"
         ...
         ref = ctx.results.save("rows.jsonl", out_path)
-        if not is_local:
-            self.report_progress(ctx, status="done")
+        self.report_progress(ctx, status="done")
         return {"status": "completed", "result": ref.model_dump()}
 """
 
@@ -69,9 +68,8 @@ class JobContext:
     Attributes:
         workspace: Workspace scope the job runs in.
         storage: Scratch and persistent filesystem paths.
-        results: Sink for publishing results (local directory for
-            laptop runs, NeMo Platform fileset on the platform).
-        job_id: Platform job UUID, or ``None`` for a local run.
+        results: Sink for publishing results.
+        job_id: Platform job UUID, or ``None`` when not provided.
     """
 
     workspace: str

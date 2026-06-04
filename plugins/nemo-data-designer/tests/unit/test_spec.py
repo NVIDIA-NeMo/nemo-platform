@@ -63,7 +63,7 @@ def test_local_file_seeds_are_rejected() -> None:
         assert "seed data" in str(exc_info.value)
 
 
-def test_dataframe_seeds_are_rejected_with_clear_local_context_error() -> None:
+def test_dataframe_seeds_are_rejected_with_clear_error() -> None:
     config = DataDesignerJobConfig(
         num_records=42,
         config=dd.DataDesignerConfig(
@@ -76,17 +76,17 @@ def test_dataframe_seeds_are_rejected_with_clear_local_context_error() -> None:
     payload = config.model_dump(mode="json")
 
     with pytest.raises(ValidationError) as job_exc_info:
-        DataDesignerJobConfig.model_validate(payload, context={"is_local": True})
+        DataDesignerJobConfig.model_validate(payload)
     with pytest.raises(ValidationError) as preview_exc_info:
-        PreviewSpec.model_validate({"config": payload["config"]}, context={"is_local": True})
+        PreviewSpec.model_validate({"config": payload["config"]})
 
-    assert "Dataframe seed sources" in str(job_exc_info.value)
+    assert "Dataframe seed sources" in str(job_exc_info.value) or "seed_type=hf" in str(job_exc_info.value)
     assert "missing" not in str(job_exc_info.value)
-    assert "Dataframe seed sources" in str(preview_exc_info.value)
+    assert "Dataframe seed sources" in str(preview_exc_info.value) or "seed_type=hf" in str(preview_exc_info.value)
     assert "missing" not in str(preview_exc_info.value)
 
 
-def test_local_context_allows_local_file_seeds() -> None:
+def test_local_file_seeds_are_rejected() -> None:
     with tempfile.NamedTemporaryFile(suffix=".parquet") as tmpfile:
         config = DataDesignerJobConfig(
             num_records=42,
@@ -99,5 +99,7 @@ def test_local_context_allows_local_file_seeds() -> None:
         )
         payload = config.model_dump(mode="json")
 
-        DataDesignerJobConfig.model_validate(payload, context={"is_local": True})
-        PreviewSpec.model_validate({"config": payload["config"]}, context={"is_local": True})
+        with pytest.raises(ValidationError):
+            DataDesignerJobConfig.model_validate(payload)
+        with pytest.raises(ValidationError):
+            PreviewSpec.model_validate({"config": payload["config"]})

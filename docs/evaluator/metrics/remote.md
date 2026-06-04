@@ -229,7 +229,7 @@ For production workloads, submit the same metric and dataset as a durable platfo
 
 If your remote endpoint requires authentication, store the API key as a platform secret and reference it from your metric:
 
-For local `run` versus remote `submit` behavior of `api_key_secret`, see [Model API Authentication](model-configuration.md#model-api-authentication).
+For `api_key_secret` behavior, see [Model API Authentication](model-configuration.md#model-api-authentication).
 
 {% raw %}
 ```python
@@ -246,7 +246,7 @@ result = evaluator.run(metric=metric, dataset=[{"input": "test"}])
 ```
 {% endraw %}
 
-The API key is sent in the `Authorization: Bearer <key>` header. For local execution, the SDK resolves the key according to the local `api_key_secret` behavior. For durable remote jobs, the job runtime receives the secret securely.
+The API key is sent in the `Authorization: Bearer <key>` header. The platform job runtime receives the referenced secret securely.
 
 ---
 

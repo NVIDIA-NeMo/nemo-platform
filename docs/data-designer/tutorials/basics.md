@@ -9,14 +9,14 @@ For more detail about column behavior, see the [open-source library's version](h
 
 ## Prerequisites
 
-Ensure you have completed the [tutorials prerequisites](index.md#prerequisites). This tutorial uses an Inference Gateway provider, so local CLI `run` and NeMo Services execution both need access to the Inference Gateway API in a running NeMo Services cluster.
+Ensure you have completed the [tutorials prerequisites](index.md#prerequisites). This tutorial uses an Inference Gateway provider, so NeMo Services must be running and configured.
 
 ## Part 1: Build the Configuration
 
 Use the `data_designer.config` package to define your dataset schema. This configuration code is the same across the plugin execution modes.
 
 !!! tip
-    Build the configuration once, then choose whether to execute with CLI `run`, CLI `submit`, or the SDK.
+    Build the configuration once, then execute with CLI `submit` or the SDK.
 
 ### Define Models
 
@@ -199,27 +199,16 @@ def load_config_builder() -> dd.DataDesignerConfigBuilder:
     return config_builder
 ```
 
-Preview locally:
-
-```bash
-nemo data-designer preview run product_reviews.py --num-records 5
-```
-
-Generate a larger dataset locally:
-
-```bash
-nemo data-designer create run product_reviews.py --num-records 30
-```
-
-This workload runs in the local CLI process, but because the configuration references `default/nvidia-build`, it still communicates with the Inference Gateway API.
-
-### NeMo Services CLI Execution
-
-Submit the same configuration to NeMo Services when you want service-managed execution:
+Submit a preview:
 
 ```bash
 nemo data-designer preview submit product_reviews.py --workspace default --num-records 5
-nemo data-designer create submit product_reviews.py --workspace default --profile default --num-records 30
+```
+
+Generate a larger dataset:
+
+```bash
+nemo data-designer create submit product_reviews.py --workspace default --num-records 30
 ```
 
 ### SDK Data Designer API Execution
@@ -286,13 +275,7 @@ analysis.to_report()
 
 ## What Happens Under the Hood
 
-When you use CLI `run`:
-
-1. **Local Execution:** The Data Designer workload runs in the CLI process.
-2. **Resource Resolution:** The workload can use local resources, NeMo resources, or both.
-3. **Generation:** Data Designer resolves dependencies and generates records in the local environment.
-
-When you use CLI `submit` or the SDK today:
+When you use CLI `submit` or the SDK:
 
 1. **Configuration Validation:** The service validates your configuration and resolves column dependencies
 2. **NeMo Services Execution:** Preview runs through the Data Designer API; create runs as a service-managed job
@@ -303,6 +286,6 @@ When you use CLI `submit` or the SDK today:
 ## Next Steps
 
 - **Seed data:** Learn how to use external datasets in the [seeding tutorial](seeding.md)
-- **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](../execution-modes.md)
+- **Execution modes:** Learn more about service-backed execution in [Execution Modes](../execution-modes.md)
 - **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/columns)
 - **Advanced features:** Learn about [processors](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/processors) and [validation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/validators)

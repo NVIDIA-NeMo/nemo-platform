@@ -53,11 +53,11 @@ Before you can run audits, you need a working {{platform_name}} install with the
 
     Choose probes, detectors, and reporting settings for the audit.
 
--   **[Run an Audit Locally](tutorials/run-audit-locally.md)**
+-   **[Submit an Audit Job](tutorials/run-audit-locally.md)**
 
     ---
 
-    End-to-end walkthrough: create entities, run the audit in-process, read the report artifacts.
+    End-to-end walkthrough: create entities, submit an audit job, read the report artifacts.
 
 -   **[SDK Resources](sdk-resources.md)**
 

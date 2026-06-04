@@ -23,9 +23,8 @@ def run_step_config(
     step_config: DataDesignerStepConfig,
     ctx: JobContext,
     sdk: NeMoPlatform,
-    is_local: bool,
 ) -> int:
-    result = run_step_config_result(step_config, ctx, sdk, is_local)
+    result = run_step_config_result(step_config, ctx, sdk)
     exit_code = result.get("exit_code")
     return exit_code if isinstance(exit_code, int) else 1
 
@@ -34,10 +33,9 @@ def run_step_config_result(
     step_config: DataDesignerStepConfig,
     ctx: JobContext,
     sdk: NeMoPlatform,
-    is_local: bool,
 ) -> dict[str, object]:
     try:
-        return _run_step_config(step_config, ctx, sdk, is_local)
+        return _run_step_config(step_config, ctx, sdk)
     except Exception as exc:
         logger.exception("Data Designer job failed: %s", exc)
         return {
@@ -52,24 +50,16 @@ def _run_step_config(
     step_config: DataDesignerStepConfig,
     ctx: JobContext,
     sdk: NeMoPlatform,
-    is_local: bool,
 ) -> dict[str, object]:
-    if not is_local:
-        # In dispatched-container mode the root logger has no handler;
-        # attach our JSON-formatted stderr handler so the container's
-        # stdout carries machine-parseable lines for log aggregation.
-        #
-        # Skip in local mode: the scheduler's _ensure_local_logging_configured
-        # already attached a plain stderr handler to the root logger at
-        # INFO. Adding a data_designer-scoped handler on top would
-        # double-emit every log line (one JSON, one plain) because
-        # records propagate up the logger hierarchy by default.
-        _configure_logging()
+    # In dispatched task mode the root logger has no handler; attach our
+    # JSON-formatted stderr handler so stdout carries machine-parseable lines
+    # for log aggregation.
+    _configure_logging()
 
     workspace = ctx.workspace
     workspace_cvar.set(workspace)
 
-    dd_ctx = create_data_designer_context(is_local, sdk, workspace)
+    dd_ctx = create_data_designer_context(False, sdk, workspace)
 
     config_builder = dd.DataDesignerConfigBuilder.from_config(step_config.job_config.config.to_dict())
 

@@ -166,7 +166,7 @@ class SayHelloJob(NemoJob):
         ...
 ```
 
-Entry-point key uses dot: `"my-plugin.say-hello"` under the `nemo.jobs` group. The platform auto-generates `nemo my-plugin say-hello run / submit / explain`. Mount server routes with `add_job_routes(SayHelloJob)` from `nemo_platform_plugin.jobs.routes`. See the `plugin-job` skill for the full pattern.
+Entry-point key uses dot: `"my-plugin.say-hello"` under the `nemo.jobs` group. The platform auto-generates `nemo my-plugin say-hello submit / explain`. Mount server routes with `add_job_routes(SayHelloJob)` from `nemo_platform_plugin.jobs.routes`. See the `plugin-job` skill for the full pattern.
 
 **Add a function:**
 
@@ -194,7 +194,7 @@ class GreetFunction(NemoFunction[GreetSpec]):
         return GreetResponse(message=f"Hello, {spec.name}!")
 ```
 
-Entry-point key uses dot: `"my-plugin.greet"` under the `nemo.functions` group. The platform auto-generates `nemo my-plugin greet run / submit` (two verbs — no `explain`). Mount the HTTP route inside your `NemoService` with `add_function_routes(GreetFunction)` from `nemo_platform_plugin.functions.routes`. Streaming functions return an `AsyncIterator` (one NDJSON frame per line); non-streaming ones return a value. `run` **must be `async def`** — sync work goes through `await asyncio.to_thread(...)`. See the `plugin-function` skill for the full pattern.
+Entry-point key uses dot: `"my-plugin.greet"` under the `nemo.functions` group. The platform auto-generates `nemo my-plugin greet submit` (no `explain`). Mount the HTTP route inside your `NemoService` with `add_function_routes(GreetFunction)` from `nemo_platform_plugin.functions.routes`. Streaming functions return an `AsyncIterator` (one NDJSON frame per line); non-streaming ones return a value. `run` **must be `async def`** — sync work goes through `await asyncio.to_thread(...)`. See the `plugin-function` skill for the full pattern.
 
 **Add a controller:**
 
@@ -241,7 +241,7 @@ Hatchling requires `packages = ["src/nemo_my_plugin"]` — this is critical for 
 | Jobs | `"my-plugin.job-name"` | dot separator |
 | Functions | `"my-plugin.fn-name"` | dot separator |
 
-Jobs and functions use a dot separator so `discover_jobs()["my-plugin.job-name"]` and `discover_functions()["my-plugin.fn-name"]` resolve unambiguously across plugins. Programmatic job execution goes through `NemoJobScheduler.run_local(job_cls, config)`; functions are the runtime themselves — `await fn_cls().run(spec, ...)`.
+Jobs and functions use a dot separator so `discover_jobs()["my-plugin.job-name"]` and `discover_functions()["my-plugin.fn-name"]` resolve unambiguously across plugins. Programmatic job submission goes through `NemoJobScheduler.submit_remote(job_cls, config)`; functions are the runtime themselves — `await fn_cls().run(spec, ...)`.
 
 ## Discovery & Fault Isolation
 
