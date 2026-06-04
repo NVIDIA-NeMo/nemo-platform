@@ -9,12 +9,16 @@ type DatasetFileDropzoneProps = {
   children: (openFileDialog: () => void) => ReactNode;
   onUpload?: (files: File[]) => void;
   datasetName: string;
+  /** When true, drag-drop intake and the picker are no-ops. Use for read-only
+   *  filesets where uploads would be rejected by the backend anyway. */
+  disabled?: boolean;
 };
 
 export const DatasetFileDropzone: FC<DatasetFileDropzoneProps> = ({
   children,
   onUpload,
   datasetName,
+  disabled = false,
 }) => {
   const handleDropAccepted = useCallback(
     (acceptedFiles: File[]) => {
@@ -45,6 +49,7 @@ export const DatasetFileDropzone: FC<DatasetFileDropzoneProps> = ({
     useFsAccessApi: false, // Fixes issue with react-dropzone and playwright.
     noClick: true, // Prevent clicking on the dropzone from opening file dialog
     noKeyboard: true, // Prevent keyboard events from opening file dialog
+    disabled,
   });
 
   return (

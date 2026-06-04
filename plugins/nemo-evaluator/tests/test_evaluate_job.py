@@ -10,9 +10,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
 
+import nemo_evaluator.cli as evaluator_cli
 import pytest
 from nemo_evaluator.cli import EvaluatorPluginCLI
 from nemo_evaluator.filesets import FilesetRef
+from nemo_evaluator.jobs.compiler import compile_evaluate_job
 from nemo_evaluator.jobs.evaluate import (
     AGGREGATE_SCORES_RESULT_NAME,
     ARTIFACTS_RESULT_NAME,
@@ -246,6 +248,32 @@ def _llm_judge_ref_metric() -> LLMJudgeMetric:
     )
 
 
+@pytest.mark.parametrize(
+    "spec_path",
+    [
+        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"),
+        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"),
+        Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"),
+    ],
+)
+def test_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    payload = json.loads((repo_root / spec_path).read_text(encoding="utf-8"))
+
+    spec = EvaluateSpec.model_validate(payload)
+    compiled = compile_evaluate_job(spec)
+
+    assert "metric" not in payload
+    assert len(spec.metrics) >= 1
+    assert PlatformJobSpec.model_validate(compiled).steps[0].config is not None
+    for metric_payload in payload["metrics"]:
+        bundle = MetricBundle.model_validate(metric_payload)
+        # Static cloudpickle fixtures are Python-minor-version specific, so
+        # this test validates the checked-in bundle envelope without hydrating.
+        assert bundle.payload.kind == "cloudpickle"
+        assert bundle.metric_type == metric_payload["metric_type"]
+
+
 def test_evaluate_job_runs_inline_exact_match_metric() -> None:
     result = NemoJobScheduler().run_local(EvaluateJob, _exact_match_spec())
 
@@ -293,6 +321,88 @@ def test_cli_info_reports_registered_evaluator_job_key() -> None:
     assert result.exit_code == 0
     payload = json.loads(result.output)
     assert payload["jobs"] == ["evaluator.evaluate"]
+
+
+def test_cli_metric_types_reports_sdk_metric_union_types() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    entries = payload["metric_types"]
+    metric_names = [entry["name"] for entry in entries]
+    metrics = {entry["name"]: entry["description"] for entry in entries}
+    assert metrics["exact-match"].startswith("Exact-match metric runtime for evaluator-driven execution.")
+    assert metrics["llm-judge"].startswith("Runtime metric implementation for LLM-as-a-judge scoring.")
+    assert metrics["remote"].startswith("A metric that computes scores via a remote endpoint.")
+    assert metrics["topic_adherence"] == "Metric for measuring topic adherence."
+    assert "system" not in metrics
+    assert "system-retriever" not in metrics
+
+    ragas_metric_types = {
+        "agent_goal_accuracy",
+        "answer_accuracy",
+        "context_entity_recall",
+        "context_precision",
+        "context_recall",
+        "context_relevance",
+        "faithfulness",
+        "noise_sensitivity",
+        "response_groundedness",
+        "response_relevancy",
+        "tool_call_accuracy",
+        "topic_adherence",
+    }
+    first_ragas_index = min(metric_names.index(metric_type) for metric_type in ragas_metric_types)
+    non_ragas_metric_types = metric_names[:first_ragas_index]
+    trailing_ragas_metric_types = metric_names[first_ragas_index:]
+    assert not ragas_metric_types.intersection(non_ragas_metric_types)
+    assert set(trailing_ragas_metric_types) == ragas_metric_types
+    assert non_ragas_metric_types == sorted(non_ragas_metric_types)
+    assert trailing_ragas_metric_types == sorted(trailing_ragas_metric_types)
+
+
+def test_cli_metric_types_rejects_duplicate_metric_type_keys(mocker: MockerFixture) -> None:
+    class FirstMetric(BaseModel):
+        type: Literal["duplicate-metric"] = "duplicate-metric"
+
+    class SecondMetric(BaseModel):
+        type: Literal["duplicate-metric"] = "duplicate-metric"
+
+    mocker.patch.object(
+        evaluator_cli,
+        "_unwrap_metric_model_classes",
+        return_value=[FirstMetric, SecondMetric],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Duplicate metric type 'duplicate-metric' mapped to both FirstMetric and SecondMetric",
+    ):
+        evaluator_cli._metric_type_models()
+
+
+def test_cli_metric_types_reports_json_schema_for_named_metric_types() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types", "exact-match"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["title"] == "ExactMatchMetric"
+    assert payload["properties"]["type"]["const"] == "exact-match"
+    assert "workspace" not in payload["properties"]
+
+
+def test_cli_metric_types_rejects_unknown_metric_types_name() -> None:
+    app = EvaluatorPluginCLI().get_cli()
+
+    result = CliRunner().invoke(app, ["metric-types", "missing-metric"])
+
+    assert result.exit_code != 0
+    assert "Unknown metric name 'missing-metric'" in result.output
+    assert "nemo evaluator metric-types" in result.output
 
 
 def test_cli_run_executes_evaluator_job() -> None:
@@ -516,6 +626,30 @@ async def test_evaluate_job_compile_produces_online_model_job() -> None:
     _assert_metric_step_entrypoint(job_spec)
     assert config["target"]["name"] == "test-model"
     assert config["prompt_template"] == "Question: {{item.question}}"
+    assert config["params"]["parallelism"] == 3
+
+
+async def test_evaluate_job_compile_normalizes_generic_online_model_params() -> None:
+    spec = EvaluateSpec.model_validate(
+        {
+            **_exact_match_spec(),
+            "target": Model(url="http://model.test/v1/chat/completions", name="test-model"),
+            "params": RunConfigOnline(parallelism=3),
+            "prompt_template": "Question: {{item.question}}",
+        }
+    )
+
+    compiled = await EvaluateJob.compile(
+        workspace="default",
+        spec=spec,
+        entity_client=object(),
+        job_name=None,
+        async_sdk=object(),
+    )
+
+    job_spec = PlatformJobSpec.model_validate(compiled)
+    config = cast(dict[str, Any], job_spec.steps[0].config)
+    assert isinstance(spec.params, RunConfigOnlineModel)
     assert config["params"]["parallelism"] == 3
 
 

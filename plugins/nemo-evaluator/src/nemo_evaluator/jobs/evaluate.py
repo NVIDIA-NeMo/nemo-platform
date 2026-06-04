@@ -177,6 +177,7 @@ class EvaluateJob(NemoJob):
         from nemo_evaluator.jobs.compiler import compile_evaluate_job
 
         canonical_spec = spec if isinstance(spec, EvaluateSpec) else EvaluateSpec.model_validate(spec.model_dump())
+        canonical_spec.params = resolve_params(canonical_spec.params, canonical_spec.target)
         return compile_evaluate_job(canonical_spec, profile=profile)
 
     @staticmethod
@@ -220,7 +221,7 @@ class EvaluateJob(NemoJob):
             else EvaluateInputSpec.model_validate(input_spec.model_dump())
         )
         metrics = [unbundle_metric(bundle) for bundle in submit_spec.metrics]
-        resolve_params(submit_spec.params, submit_spec.target)
+        submit_spec.params = resolve_params(submit_spec.params, submit_spec.target)
         unresolved_refs = _unresolved_model_refs(metrics)
         if unresolved_refs:
             if async_sdk is None:

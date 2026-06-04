@@ -7,6 +7,9 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { FC, useMemo } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
+// Breadcrumb links navigate "up" the hierarchy, so query/hash from the current detail context is irrelevant at the parent level and only leaks state.
+const pathnameOnly = (href: string) => href.split(/[?#]/)[0];
+
 export const Breadcrumbs: FC = () => {
   const { breadcrumbs } = useBreadcrumbs();
   const { workspace } = useParams();
@@ -18,7 +21,7 @@ export const Breadcrumbs: FC = () => {
     }
     return allItems.concat(
       breadcrumbs.map(({ href = '#', slotLabel }) => ({
-        children: <Link to={href}>{slotLabel}</Link>,
+        children: <Link to={pathnameOnly(href)}>{slotLabel}</Link>,
       }))
     );
   }, [breadcrumbs, workspace]);

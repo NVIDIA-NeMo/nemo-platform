@@ -20,14 +20,21 @@ import {
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
 import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
+import type { ComponentProps, ReactNode } from 'react';
 
 import { ChatEmptyState } from '../Chat/ChatEmptyState';
 import { MessageContent } from '../Chat/MessageContent';
+
+export interface AssistantChatThreadAttributes {
+  ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
+}
 
 interface AssistantChatThreadProps {
   disabled?: boolean;
   placeholder: string;
   onReset: () => void;
+  showRunningIndicator?: boolean;
+  attributes?: AssistantChatThreadAttributes;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;
@@ -35,6 +42,7 @@ interface AssistantChatThreadProps {
   contentClassName?: string;
   composerContainerClassName?: string;
   viewportClassName?: string;
+  composerOverride?: ReactNode;
 }
 
 const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
@@ -68,34 +76,36 @@ const CopyAction = () => (
   </Tooltip>
 );
 
-const AssistantMessage = () => (
+const AssistantMessage = ({ showRunningIndicator = true }: { showRunningIndicator?: boolean }) => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="assistant"
     className="group/message self-stretch whitespace-pre-wrap"
   >
     <AssistantChatMessageContent />
-    <div className="mt-density-sm flex h-8 items-center">
-      <MessagePrimitive.If last>
-        <ThreadPrimitive.If running>
-          <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
-        </ThreadPrimitive.If>
-      </MessagePrimitive.If>
-      <ActionBarPrimitive.Root
-        hideWhenRunning
-        className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
-      >
-        <Tooltip slotContent="Regenerate response">
-          <ActionBarPrimitive.Reload
-            aria-label="Regenerate response"
-            className={ACTION_BUTTON_CLASS}
-          >
-            <RefreshCw size={16} />
-          </ActionBarPrimitive.Reload>
-        </Tooltip>
-        <CopyAction />
-      </ActionBarPrimitive.Root>
-    </div>
+    {showRunningIndicator ? (
+      <div className="mt-density-sm flex h-8 items-center">
+        <MessagePrimitive.If last>
+          <ThreadPrimitive.If running>
+            <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
+          </ThreadPrimitive.If>
+        </MessagePrimitive.If>
+        <ActionBarPrimitive.Root
+          hideWhenRunning
+          className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
+        >
+          <Tooltip slotContent="Regenerate response">
+            <ActionBarPrimitive.Reload
+              aria-label="Regenerate response"
+              className={ACTION_BUTTON_CLASS}
+            >
+              <RefreshCw size={16} />
+            </ActionBarPrimitive.Reload>
+          </Tooltip>
+          <CopyAction />
+        </ActionBarPrimitive.Root>
+      </div>
+    ) : null}
   </MessagePrimitive.Root>
 );
 
@@ -230,38 +240,56 @@ export const AssistantChatThread = ({
   disabled,
   placeholder,
   onReset,
+  showRunningIndicator = true,
+  attributes,
   emptyState,
   contentClassName,
   composerContainerClassName,
   viewportClassName,
-}: AssistantChatThreadProps) => (
-  <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
-    <ThreadPrimitive.Viewport
-      className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
-    >
-      <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
-        <ThreadPrimitive.Empty>
-          <ChatEmptyState
-            className="h-full min-h-[250px] w-full"
-            slotHeading={emptyState?.slotHeading}
-            slotSubheading={emptyState?.slotSubheading}
+  composerOverride,
+}: AssistantChatThreadProps) => {
+  const { className: threadViewportClassName, ...threadViewportAttributes } =
+    attributes?.ThreadViewport ?? {};
+  const AssistantMessageComponent = () => (
+    <AssistantMessage showRunningIndicator={showRunningIndicator} />
+  );
+
+  return (
+    <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
+      <ThreadPrimitive.Viewport
+        {...threadViewportAttributes}
+        className={cn(
+          'relative flex min-h-0 flex-1 flex-col overflow-y-auto',
+          viewportClassName,
+          threadViewportClassName
+        )}
+      >
+        <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
+          <ThreadPrimitive.Empty>
+            <ChatEmptyState
+              className="h-full min-h-[250px] w-full"
+              slotHeading={emptyState?.slotHeading}
+              slotSubheading={emptyState?.slotSubheading}
+            />
+          </ThreadPrimitive.Empty>
+          <ThreadPrimitive.Messages
+            components={{
+              AssistantMessage: AssistantMessageComponent,
+              UserMessage,
+              UserEditComposer,
+              SystemMessage: AssistantMessageComponent,
+            }}
           />
-        </ThreadPrimitive.Empty>
-        <ThreadPrimitive.Messages
-          components={{
-            AssistantMessage,
-            UserMessage,
-            UserEditComposer,
-            SystemMessage: AssistantMessage,
-          }}
-        />
-      </Stack>
-      <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
-        Scroll to bottom
-      </ThreadPrimitive.ScrollToBottom>
-    </ThreadPrimitive.Viewport>
-    <Flex className={cn('w-full', composerContainerClassName)}>
-      <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
-    </Flex>
-  </ThreadPrimitive.Root>
-);
+        </Stack>
+        <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
+          Scroll to bottom
+        </ThreadPrimitive.ScrollToBottom>
+      </ThreadPrimitive.Viewport>
+      <Flex className={cn('w-full', composerContainerClassName)}>
+        {composerOverride ?? (
+          <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
+        )}
+      </Flex>
+    </ThreadPrimitive.Root>
+  );
+};

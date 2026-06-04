@@ -55,7 +55,7 @@ describe('FileQuickActions', () => {
     await openMenu();
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.getByText('Copy Path')).toBeInTheDocument();
-    expect(screen.getByText('Delete')).toBeInTheDocument();
+    expect(screen.queryByText('Delete')).not.toBeInTheDocument();
     expect(screen.queryByText('Move')).not.toBeInTheDocument();
     expect(screen.queryByText('Rename')).not.toBeInTheDocument();
   });
@@ -148,7 +148,6 @@ describe('FileQuickActions', () => {
 
     expect(screen.getByText('Download')).toBeInTheDocument();
     expect(screen.getByText('Copy Path')).toBeInTheDocument();
-    expect(screen.getByText('Delete')).toBeInTheDocument();
   });
 
   it('opens the rename file modal for read/write dataset', async () => {
@@ -160,8 +159,8 @@ describe('FileQuickActions', () => {
     expect(screen.getByText('Edit File')).toBeInTheDocument();
   });
 
-  it('opens the delete file modal', async () => {
-    renderComponent();
+  it('opens the delete file modal for read/write dataset', async () => {
+    renderComponent({ isReadWriteDataset: true });
     await openMenu();
     const deleteButton = screen.getByText('Delete');
     await user.click(deleteButton);
