@@ -119,7 +119,7 @@ const getSubtleToolActions = (
 };
 
 const isEmptyAssistantTextPart = (part: ThreadAssistantMessagePart): boolean =>
-  (part.type === 'reasoning' || part.type === 'text') && part.text.trim().length === 0;
+  part.type === 'text' && part.text.trim().length === 0;
 
 const isClaudeCodeSubtleToolCallPart = (part: ThreadAssistantMessagePart): boolean =>
   getSubtleToolActions(part) !== undefined;

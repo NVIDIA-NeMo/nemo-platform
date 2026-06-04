@@ -30,7 +30,6 @@ describe('Claude Code utilities', () => {
         {
           kind: 'assistant',
           parts: [
-            { type: 'thinking', thinking: 'checking' },
             { type: 'text', text: 'I found the route.' },
             { type: 'tool_use', name: 'AskUserQuestion', input: { question: 'Continue?' } },
             { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
@@ -52,7 +51,6 @@ describe('Claude Code utilities', () => {
         {
           kind: 'assistant',
           parts: [
-            { type: 'thinking', thinking: 'checking again' },
             { type: 'text', text: 'I found another route.' },
             { type: 'tool_use', name: 'AskUserQuestion', input: { question: 'Continue?' } },
             { type: 'tool_use', name: 'Bash', input: { command: 'pwd' } },
@@ -75,7 +73,6 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1',
       role: 'assistant',
       content: [
-        { type: 'reasoning', text: 'checking' },
         { type: 'text', text: 'I found the route.' },
         {
           type: 'tool-call',
@@ -117,7 +114,6 @@ describe('Claude Code utilities', () => {
       id: '2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3',
       role: 'assistant',
       content: [
-        { type: 'reasoning', text: 'checking again' },
         { type: 'text', text: 'I found another route.' },
         {
           type: 'tool-call',

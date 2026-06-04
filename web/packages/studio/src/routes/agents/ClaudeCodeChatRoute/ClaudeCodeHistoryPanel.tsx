@@ -91,7 +91,7 @@ const HistorySessionButton = ({
     aria-current={active ? 'page' : undefined}
     title={new Date(session.mtime * 1000).toLocaleString()}
     className={cn(
-      'w-full border-b border-base px-density-md py-density-sm text-left transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
+      'w-full cursor-pointer border-b border-base px-density-md py-density-sm text-left transition-colors hover:bg-surface-sunken focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent',
       active && 'bg-surface-sunken'
     )}
     onClick={onSelect}

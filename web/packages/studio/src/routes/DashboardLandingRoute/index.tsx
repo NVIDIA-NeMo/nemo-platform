@@ -97,8 +97,9 @@ const LandingComposer = ({
 
   return (
     <form
+      data-testid="dashboard-landing-composer"
       onSubmit={handleSubmit}
-      className="w-full rounded-2xl border border-base bg-surface-base p-2 shadow-xl"
+      className="w-full rounded-lg border border-base bg-surface-base p-2 shadow-xl"
     >
       <TextArea
         aria-label="Message Claude"
@@ -107,11 +108,11 @@ const LandingComposer = ({
         placeholder="Message Claude"
         rows={3}
         resizeable="auto"
-        className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:border-accent [&:has(:focus-visible)]:outline-accent"
+        className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
         attributes={{
           TextAreaElement: {
             className:
-              '[&&]:focus-visible:outline [&&]:focus-visible:outline-2 [&&]:focus-visible:outline-offset-2 [&&]:focus-visible:outline-accent',
+              '[&&]:focus:outline-none [&&]:focus:ring-0 [&&]:focus-visible:outline-none [&&]:focus-visible:ring-0',
             onKeyDown: handleKeyDown,
           },
         }}

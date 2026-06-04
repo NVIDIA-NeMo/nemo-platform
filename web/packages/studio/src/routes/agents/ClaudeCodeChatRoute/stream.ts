@@ -23,7 +23,6 @@ interface ClaudeCodeContentPart {
   input?: unknown;
   type?: unknown;
   text?: unknown;
-  thinking?: unknown;
   name?: unknown;
 }
 
@@ -84,10 +83,6 @@ export const getAssistantPartsFromClaudeEvent = (
     isRecord(message) && typeof message.id === 'string' && message.id ? message.id : 'message';
   const assistantParts = parts
     .map((part, index): ThreadAssistantMessagePart | undefined => {
-      if (part.type === 'thinking' && typeof part.thinking === 'string') {
-        const text = part.thinking.trim();
-        return text ? { type: 'reasoning', text } : undefined;
-      }
       if (part.type === 'text' && typeof part.text === 'string') {
         return part.text ? { type: 'text', text: part.text } : undefined;
       }
@@ -115,7 +110,7 @@ export const getAssistantTextFromClaudeEvent = (event: unknown): string => {
   const parts = getAssistantPartsFromClaudeEvent(event);
   return parts
     .map((part) => {
-      if (part.type === 'reasoning' || part.type === 'text') return part.text;
+      if (part.type === 'text') return part.text;
       return '';
     })
     .join('');

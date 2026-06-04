@@ -33,7 +33,6 @@ const getAssistantMessagePart = (
   index: number,
   assistantMessageId: string
 ): ThreadAssistantMessagePart | undefined => {
-  if (part.type === 'thinking') return { type: 'reasoning', text: part.thinking };
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'tool_use') {
     const toolName = part.name || 'tool';

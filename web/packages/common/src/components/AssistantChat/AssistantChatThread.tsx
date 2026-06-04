@@ -6,7 +6,6 @@ import {
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
-  type ReasoningMessagePartComponent,
   type TextMessagePartComponent,
   type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
@@ -42,7 +41,6 @@ interface AssistantChatThreadProps {
   };
   contentClassName?: string;
   composerContainerClassName?: string;
-  reasoningPartComponent?: ReasoningMessagePartComponent;
   hideAssistantMessageActions?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
@@ -54,16 +52,13 @@ const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
 );
 
 const AssistantChatMessageContent = ({
-  reasoningPartComponent,
   toolCallPartComponent,
 }: {
-  reasoningPartComponent?: ReasoningMessagePartComponent;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
   <>
     <MessagePrimitive.Parts
       components={{
-        Reasoning: reasoningPartComponent,
         Text: AssistantChatTextPart,
         tools: { Fallback: toolCallPartComponent },
       }}
@@ -105,12 +100,10 @@ const CopyAction = () => (
 
 const AssistantMessage = ({
   hideAssistantMessageActions,
-  reasoningPartComponent,
   showRunningIndicator = true,
   toolCallPartComponent,
 }: {
   hideAssistantMessageActions?: boolean;
-  reasoningPartComponent?: ReasoningMessagePartComponent;
   showRunningIndicator?: boolean;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
@@ -119,10 +112,7 @@ const AssistantMessage = ({
     data-testspeaker="assistant"
     className="group/message self-stretch whitespace-normal"
   >
-    <AssistantChatMessageContent
-      reasoningPartComponent={reasoningPartComponent}
-      toolCallPartComponent={toolCallPartComponent}
-    />
+    <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
     {showRunningIndicator ? (
       <MessagePrimitive.If last>
         <ThreadPrimitive.If running>
@@ -160,10 +150,8 @@ const AssistantMessage = ({
 );
 
 const UserMessage = ({
-  reasoningPartComponent,
   toolCallPartComponent,
 }: {
-  reasoningPartComponent?: ReasoningMessagePartComponent;
   toolCallPartComponent?: ToolCallMessagePartComponent;
 }) => (
   <MessagePrimitive.Root
@@ -172,10 +160,7 @@ const UserMessage = ({
     className="group/message flex w-full flex-col items-end gap-density-xs whitespace-normal"
   >
     <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
-      <AssistantChatMessageContent
-        reasoningPartComponent={reasoningPartComponent}
-        toolCallPartComponent={toolCallPartComponent}
-      />
+      <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
     </div>
     <div className="flex h-8 shrink-0 items-center">
       <ActionBarPrimitive.Root
@@ -255,7 +240,7 @@ const AssistantComposer = ({
   <ComposerPrimitive.Root
     data-testid="assistant-chat-composer"
     className={cn(
-      'flex w-full items-end gap-density-xs rounded-2xl border border-base bg-surface-base p-1',
+      'flex w-full items-end gap-density-xs rounded-lg border border-base bg-surface-base p-1',
       className
     )}
   >
@@ -306,46 +291,34 @@ export const AssistantChatThread = ({
   contentClassName,
   composerContainerClassName,
   hideAssistantMessageActions,
-  reasoningPartComponent,
   toolCallPartComponent,
   viewportClassName,
   composerOverride,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
-  const AssistantMessageWithReasoningPart = useCallback(
+  const AssistantMessageWithToolCallPart = useCallback(
     () => (
       <AssistantMessage
         hideAssistantMessageActions={hideAssistantMessageActions}
-        reasoningPartComponent={reasoningPartComponent}
         showRunningIndicator={showRunningIndicator}
         toolCallPartComponent={toolCallPartComponent}
       />
     ),
-    [
-      hideAssistantMessageActions,
-      reasoningPartComponent,
-      showRunningIndicator,
-      toolCallPartComponent,
-    ]
+    [hideAssistantMessageActions, showRunningIndicator, toolCallPartComponent]
   );
-  const UserMessageWithReasoningPart = useCallback(
-    () => (
-      <UserMessage
-        reasoningPartComponent={reasoningPartComponent}
-        toolCallPartComponent={toolCallPartComponent}
-      />
-    ),
-    [reasoningPartComponent, toolCallPartComponent]
+  const UserMessageWithToolCallPart = useCallback(
+    () => <UserMessage toolCallPartComponent={toolCallPartComponent} />,
+    [toolCallPartComponent]
   );
   const messageComponents = useMemo(
     () => ({
-      AssistantMessage: AssistantMessageWithReasoningPart,
-      UserMessage: UserMessageWithReasoningPart,
+      AssistantMessage: AssistantMessageWithToolCallPart,
+      UserMessage: UserMessageWithToolCallPart,
       UserEditComposer,
-      SystemMessage: AssistantMessageWithReasoningPart,
+      SystemMessage: AssistantMessageWithToolCallPart,
     }),
-    [AssistantMessageWithReasoningPart, UserMessageWithReasoningPart]
+    [AssistantMessageWithToolCallPart, UserMessageWithToolCallPart]
   );
 
   return (

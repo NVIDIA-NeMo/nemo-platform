@@ -30,12 +30,11 @@ describe('Claude Code stream utilities', () => {
     expect(parsed.rest).toBe('event: don');
   });
 
-  it('extracts assistant reasoning, text, and tool-call parts from Claude Code events', () => {
+  it('extracts assistant text and tool-call parts from Claude Code events', () => {
     const event = {
       type: 'assistant',
       message: {
         content: [
-          { type: 'thinking', thinking: 'checking the repo\nthen reading the route' },
           { type: 'text', text: 'I can check that.' },
           {
             type: 'tool_use',
@@ -52,7 +51,6 @@ describe('Claude Code stream utilities', () => {
     };
 
     expect(getAssistantPartsFromClaudeEvent(event)).toEqual([
-      { type: 'reasoning', text: 'checking the repo\nthen reading the route' },
       { type: 'text', text: 'I can check that.' },
       {
         type: 'tool-call',
@@ -75,9 +73,7 @@ describe('Claude Code stream utilities', () => {
           '{"actions":[{"args":{"question":"Continue?"},"toolCallId":"toolu_question","toolName":"AskUserQuestion"},{"args":{"status":"done"},"toolCallId":"toolu_hidden","toolName":"TaskUpdate"},{"args":{"command":"pwd"},"toolCallId":"toolu_1","toolName":"Bash"},{"args":{"pattern":"TODO"},"toolCallId":"toolu_grep","toolName":"Grep"},{"args":{"file_path":"README.md"},"toolCallId":"toolu_2","toolName":"Read"}]}',
       },
     ]);
-    expect(getAssistantTextFromClaudeEvent(event)).toBe(
-      'checking the repo\nthen reading the routeI can check that.'
-    );
+    expect(getAssistantTextFromClaudeEvent(event)).toBe('I can check that.');
   });
 
   it('preserves subtle Claude Code tool calls from streamed parts', () => {

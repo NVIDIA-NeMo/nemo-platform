@@ -284,7 +284,7 @@ describe('AssistantChat', () => {
     );
     expect(screen.getByTestId('assistant-chat-composer')).toHaveClass(
       'gap-density-xs',
-      'rounded-2xl'
+      'rounded-lg'
     );
     expect(screen.getByRole('textbox', { name: /Task prompt/i })).toHaveClass(
       'min-h-20',

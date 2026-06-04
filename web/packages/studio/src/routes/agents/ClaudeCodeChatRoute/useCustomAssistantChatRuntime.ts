@@ -53,7 +53,7 @@ const mergeAssistantParts = (
   const merged = [...currentParts];
 
   for (const part of nextParts) {
-    if (part.type !== 'reasoning' && part.type !== 'text') {
+    if (part.type !== 'text') {
       merged.push(part);
       continue;
     }
@@ -76,7 +76,7 @@ const mergeAssistantParts = (
 const getAssistantPartsText = (parts: readonly ThreadAssistantMessagePart[]): string =>
   parts
     .map((part) => {
-      if (part.type === 'reasoning' || part.type === 'text') return part.text;
+      if (part.type === 'text') return part.text;
       return '';
     })
     .join('');
@@ -85,7 +85,7 @@ const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): bool
   if (typeof content === 'string') return content.trim().length > 0;
 
   return content.some((part) => {
-    if (part.type === 'reasoning' || part.type === 'text') return part.text.trim().length > 0;
+    if (part.type === 'text') return part.text.trim().length > 0;
     return true;
   });
 };

@@ -56,7 +56,16 @@ describe('DashboardLandingRoute', () => {
     renderRoute();
 
     expect(await screen.findByText('What would you like to do?')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Claude' })).toBeInTheDocument();
+    const composer = screen.getByRole('textbox', { name: 'Message Claude' });
+    expect(composer).toBeInTheDocument();
+    expect(screen.getByTestId('dashboard-landing-composer')).toHaveClass('rounded-lg');
+    expect(screen.getByTestId('dashboard-landing-composer')).not.toHaveClass('rounded-2xl');
+    expect(composer).toHaveClass(
+      '[&&]:focus:outline-none',
+      '[&&]:focus-visible:outline-none',
+      '[&&]:focus-visible:ring-0'
+    );
+    expect(composer).not.toHaveClass('[&&]:focus-visible:outline-accent');
     expect(screen.getByRole('button', { name: /Explore repo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Draft a change/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Review recent work/ })).toBeInTheDocument();
