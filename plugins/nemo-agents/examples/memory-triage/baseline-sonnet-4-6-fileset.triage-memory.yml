@@ -6,8 +6,11 @@
 # directory you then have to scp back. Typical workflow:
 #
 #   # 1. From the laptop: upload the corpus once.
-#   nemo files upload --fileset user-memory-corpus \
-#       ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+#   #    Args are positional: LOCAL_PATH [FILESET]. The fileset is
+#   #    auto-created if it doesn't already exist.
+#   nemo files upload \
+#       ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md \
+#       user-memory-corpus
 #
 #   # 2. Run the job (anywhere). The corpus fileset is downloaded, the
 #   #    job runs, and the artifacts are uploaded to the output fileset.

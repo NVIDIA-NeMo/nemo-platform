@@ -71,12 +71,14 @@ nemo agents triage-memory run \
 ## Quickstart: omnistation, filesets on both ends
 
 Avoids needing to know the omnistation's filesystem layout entirely.
-From your laptop, upload the corpus to a fileset (auto-creates the
-fileset on first upload):
+From your laptop, upload the corpus to a fileset. The CLI takes
+positional args (`LOCAL_PATH [FILESET]`) and auto-creates the fileset
+if it doesn't already exist:
 
 ```bash
-nemo files upload --fileset user-memory-corpus \
-    ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md
+nemo files upload \
+    ~/.pi/agent/claude-session-replays/CONSOLIDATED/USER.md \
+    user-memory-corpus
 ```
 
 Then on the omnistation (inside your tssh session):
@@ -171,12 +173,13 @@ uv run --frozen python plugins/nemo-agents/examples/memory-triage/eval_triage.py
 
 ### Quickstart: omnistation, filesets on both ends
 
-Upload the laptop baseline to omnistation as a separate fileset once:
+Upload the laptop baseline to omnistation as a separate fileset once.
+Positional args, fileset auto-created on first upload:
 
 ```bash
 nemo --context omnistation files upload \
-    --fileset memory-triage-laptop-baseline \
-    plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/baseline-sonnet-4-6-user.json
+    plugins/nemo-agents/src/nemo_agents_plugin/improvement/memory/phase1-smoke/baselines/baseline-sonnet-4-6-user.json \
+    memory-triage-laptop-baseline
 ```
 
 Then on omnistation:
