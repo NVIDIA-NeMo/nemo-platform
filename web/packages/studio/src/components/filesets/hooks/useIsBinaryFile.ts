@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { BINARY_FILE_EXTENSIONS } from '@studio/api/datasets/constants';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { isBinaryExtension } from '@studio/util/binaryFile';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from 'react-oidc-context';
 
@@ -26,8 +26,7 @@ export function useIsBinaryFile(
 ): { isBinary: boolean; isLoading: boolean } {
   const auth = useAuth();
 
-  const ext = filePath?.split('.').at(-1)?.toLowerCase();
-  const blocklisted = ext !== undefined && BINARY_FILE_EXTENSIONS.has(ext);
+  const blocklisted = filePath !== undefined && isBinaryExtension(filePath);
 
   const { data: headBinary, isPending } = useQuery({
     queryKey: ['file-content-type', workspace, filesetName, filePath],

@@ -3,9 +3,9 @@
 
 import { filesDownloadFile, filesHeadFile } from '@nemo/sdk/generated/platform/api';
 import { EntityIdentifier } from '@studio/api/common/types';
-import { BINARY_FILE_EXTENSIONS } from '@studio/api/datasets/constants';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
 import { useAuth } from 'react-oidc-context';
@@ -37,8 +37,7 @@ export const datasetFileContentQueryOptions = ({
       ...(range ? range.map((bound) => String(bound)) : []),
     ],
     queryFn: async () => {
-      const ext = path.split('.').at(-1)?.toLowerCase();
-      if (ext && BINARY_FILE_EXTENSIONS.has(ext)) {
+      if (isBinaryExtension(path)) {
         throw new Error('Text preview not available for binary files.');
       }
 

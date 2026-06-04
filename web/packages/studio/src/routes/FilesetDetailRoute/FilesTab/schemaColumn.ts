@@ -12,7 +12,7 @@ import type { DatasetMetadataContent } from '@nemo/sdk/generated/platform/schema
  *
  *   Mapping precedence:
  *     1. `schemas_by_path[path]` is a string ref      -> show that key
- *     2. `schemas_by_path[path]` is an inline object  -> "(inline)"
+ *     2. `schemas_by_path[path]` is an inline object  -> null (no label)
  *     3. No per-file mapping + root schema is a ref   -> show that key
  *     4. No per-file mapping + root schema is inline  -> "default"
  *     5. Otherwise                                    -> null (blank cell)
@@ -24,9 +24,9 @@ export function getSchemaCellLabel(
   if (!isSchemaAssignableFile(filePath)) return null;
   const mapped = metadata?.schemas_by_path?.[filePath];
   if (typeof mapped === 'string') return mapped;
-  // Inline objects in schemas_by_path are only produced by hand-editing the
-  // raw JSON via the advanced "Show All" view — not by normal inference/save
-  // flows. No useful label to show; fall through to the root-schema default.
+  // Inline objects in schemas_by_path have no $ref key to display — they are
+  // anonymous, hand-crafted schemas from the "Show All" JSON editor. Return
+  // null (blank cell) because there is no meaningful label to show.
   if (mapped && typeof mapped === 'object') return null;
   const rootSchema = metadata?.schema;
   if (typeof rootSchema === 'string') return rootSchema;
