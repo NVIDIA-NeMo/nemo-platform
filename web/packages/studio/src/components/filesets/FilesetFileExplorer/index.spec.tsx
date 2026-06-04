@@ -1,11 +1,15 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
 import { FilesetFileExplorer } from '@studio/components/filesets/FilesetFileExplorer';
 import { GITKEEP_FILENAME } from '@studio/components/FilesTable/utils';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { server } from '@studio/mocks/node';
 import { render } from '@studio/tests/util/render';
 import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 
 vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({
@@ -107,6 +111,88 @@ describe('FilesetFileExplorer', () => {
     });
 
     expect(await screen.findByText('No Files')).toBeInTheDocument();
+  });
+
+  describe('read-only gating by storage.type', () => {
+    const stubFileset = (storageType: FilesetOutput['storage']['type']): FilesetOutput =>
+      ({
+        id: 'default/test-dataset',
+        name: 'test-dataset',
+        workspace: 'default',
+        description: '',
+        purpose: 'dataset',
+        storage: { type: storageType } as FilesetOutput['storage'],
+        metadata: {},
+        custom_fields: {},
+        project: 'default',
+        created_at: '2026-01-01T00:00:00Z',
+        updated_at: '2026-01-01T00:00:00Z',
+      }) as FilesetOutput;
+
+    const stubRetrieve = (storageType: FilesetOutput['storage']['type']) => {
+      server.use(
+        http.get(`${PLATFORM_BASE_URL}/apis/files/v2/workspaces/:workspace/filesets/:name`, () =>
+          HttpResponse.json(stubFileset(storageType))
+        )
+      );
+    };
+
+    it('shows New Directory + Upload File toolbar buttons for local fileset', async () => {
+      stubRetrieve('local');
+      renderComponent({
+        filesList: [
+          { path: 'file1.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file1.txt') },
+        ],
+      });
+      expect(await screen.findByTestId('dataset-details-new-directory-button')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Upload File' })).toBeInTheDocument();
+    });
+
+    it.each<FilesetOutput['storage']['type']>(['huggingface', 'ngc', 's3'])(
+      'hides New Directory + Upload File toolbar buttons for %s fileset',
+      async (storageType) => {
+        stubRetrieve(storageType);
+        renderComponent({
+          filesList: [
+            { path: 'file1.txt', size: 100, file_ref: 'oid1', file_url: filesetUrl('file1.txt') },
+          ],
+        });
+        // Wait for the fileset query to resolve; assert via a stable surface
+        // (search input is always present) before checking absence.
+        await screen.findByTestId('dataset-details-search-input');
+        await waitFor(() => {
+          expect(
+            screen.queryByTestId('dataset-details-new-directory-button')
+          ).not.toBeInTheDocument();
+        });
+        expect(screen.queryByRole('button', { name: 'Upload File' })).not.toBeInTheDocument();
+      }
+    );
+
+    it('shows empty-state action buttons for local fileset', async () => {
+      stubRetrieve('local');
+      renderComponent({ filesList: [] });
+      await screen.findByText('No Files');
+      // Toolbar + empty-state both expose these buttons; wait for at least
+      // one of each since they only mount after the fileset query resolves.
+      expect(
+        (await screen.findAllByRole('button', { name: 'New Directory' })).length
+      ).toBeGreaterThan(0);
+      expect(
+        (await screen.findAllByRole('button', { name: 'Upload File' })).length
+      ).toBeGreaterThan(0);
+    });
+
+    it('hides empty-state action buttons and shows read-only copy for external fileset', async () => {
+      stubRetrieve('huggingface');
+      renderComponent({ filesList: [] });
+      await screen.findByText('No Files');
+      await waitFor(() => {
+        expect(screen.getByText('This fileset is read-only.')).toBeInTheDocument();
+      });
+      expect(screen.queryByRole('button', { name: 'New Directory' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: 'Upload File' })).not.toBeInTheDocument();
+    });
   });
 
   it('renders extraColumns: header in the table head + cell-per-file in rows', async () => {
