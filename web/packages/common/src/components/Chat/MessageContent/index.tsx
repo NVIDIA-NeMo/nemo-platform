@@ -15,6 +15,9 @@ export interface MessageContentProps {
   renderAsMarkdown?: boolean;
 }
 
+const INLINE_CODE_CLASS =
+  'rounded bg-gray-050 px-1 py-0.5 font-mono text-[0.95em] dark:bg-gray-900';
+
 /**
  * This component takes a content string from a chat response and converts into a user readable
  * list of snippets using content-specific render types. Currently supports plaintext and code.
@@ -38,6 +41,7 @@ export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
               components={{
                 // We don't want links embedded in markdown responses to be clickable
                 a: ({ ...props }) => <span>{props.children}</span>,
+                code: ({ children }) => <code className={INLINE_CODE_CLASS}>{children}</code>,
               }}
             >
               {decode(descriptor.value)}

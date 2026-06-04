@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
-import { createClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  createClaudeCodeToolCallPart,
+  isClaudeCodeToolCallOmitted,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { websiteLogger } from '@studio/util/logger';
 
 interface ServerSentEvent {
@@ -69,9 +72,7 @@ const getContentParts = (event: ClaudeCodeStreamEvent): ClaudeCodeContentPart[] 
   return content.filter(isRecord);
 };
 
-export const getAssistantPartsFromClaudeEvent = (
-  event: unknown
-): ThreadAssistantMessagePart[] => {
+export const getAssistantPartsFromClaudeEvent = (event: unknown): ThreadAssistantMessagePart[] => {
   if (!isRecord(event) || event.type !== 'assistant') return [];
 
   const parts = getContentParts(event);
@@ -86,6 +87,8 @@ export const getAssistantPartsFromClaudeEvent = (
       }
       if (part.type === 'tool_use') {
         const toolName = typeof part.name === 'string' ? part.name : 'tool';
+        if (isClaudeCodeToolCallOmitted(toolName)) return undefined;
+
         const toolCallId =
           typeof part.id === 'string' && part.id
             ? part.id

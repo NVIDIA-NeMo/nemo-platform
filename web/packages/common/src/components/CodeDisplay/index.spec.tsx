@@ -33,4 +33,13 @@ describe('CodeDisplay', () => {
     expect(codeContent.textContent).toContain("console.log('Testing')");
     expect(codeContent.textContent).toContain("console.log('Testing Next Line')");
   });
+
+  it('uses the chat code block light and dark grey backgrounds', () => {
+    render(<CodeDisplay>{multiLineString}</CodeDisplay>);
+
+    expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
+      '[&&]:bg-gray-050',
+      'dark:[&&]:bg-gray-900'
+    );
+  });
 });

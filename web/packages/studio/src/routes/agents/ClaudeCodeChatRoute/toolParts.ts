@@ -7,6 +7,19 @@ type ClaudeCodeToolCallPart = Extract<ThreadAssistantMessagePart, { type: 'tool-
 export type ClaudeCodeToolArgs = ClaudeCodeToolCallPart['args'];
 type ClaudeCodeToolArgValue = ClaudeCodeToolArgs[string];
 
+const OMITTED_TOOL_CALL_NAMES = new Set([
+  'AskUserQuestion',
+  'Bash',
+  'FindFiles',
+  'Grep',
+  'TaskCreate',
+  'TaskUpdate',
+  'ToolSearch',
+]);
+
+export const isClaudeCodeToolCallOmitted = (toolName: string): boolean =>
+  OMITTED_TOOL_CALL_NAMES.has(toolName);
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 

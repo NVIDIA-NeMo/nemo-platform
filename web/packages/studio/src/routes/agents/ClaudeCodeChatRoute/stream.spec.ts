@@ -36,7 +36,16 @@ describe('Claude Code stream utilities', () => {
         content: [
           { type: 'thinking', thinking: 'checking the repo\nthen reading the route' },
           { type: 'text', text: 'I can check that.' },
+          {
+            type: 'tool_use',
+            id: 'toolu_question',
+            name: 'AskUserQuestion',
+            input: { question: 'Continue?' },
+          },
+          { type: 'tool_use', id: 'toolu_hidden', name: 'TaskUpdate', input: { status: 'done' } },
           { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'pwd' } },
+          { type: 'tool_use', id: 'toolu_grep', name: 'Grep', input: { pattern: 'TODO' } },
+          { type: 'tool_use', id: 'toolu_2', name: 'Read', input: { file_path: 'README.md' } },
         ],
       },
     };
@@ -46,15 +55,39 @@ describe('Claude Code stream utilities', () => {
       { type: 'text', text: 'I can check that.' },
       {
         type: 'tool-call',
-        toolCallId: 'toolu_1',
-        toolName: 'Bash',
-        args: { command: 'pwd' },
-        argsText: '{"command":"pwd"}',
+        toolCallId: 'toolu_2',
+        toolName: 'Read',
+        args: { file_path: 'README.md' },
+        argsText: '{"file_path":"README.md"}',
       },
     ]);
     expect(getAssistantTextFromClaudeEvent(event)).toBe(
       'checking the repo\nthen reading the routeI can check that.'
     );
+  });
+
+  it('omits hidden Claude Code tool calls from streamed parts', () => {
+    const event = {
+      type: 'assistant',
+      message: {
+        content: [
+          { type: 'tool_use', id: 'toolu_1', name: 'Bash', input: { command: 'pwd' } },
+          { type: 'tool_use', id: 'toolu_2', name: 'TaskUpdate', input: { status: 'done' } },
+          { type: 'tool_use', id: 'toolu_3', name: 'Grep', input: { pattern: 'TODO' } },
+          { type: 'tool_use', id: 'toolu_find', name: 'FindFiles', input: { query: 'TODO' } },
+          { type: 'tool_use', id: 'toolu_task', name: 'TaskCreate', input: { task: 'check' } },
+          { type: 'tool_use', id: 'toolu_search', name: 'ToolSearch', input: { query: 'read' } },
+          {
+            type: 'tool_use',
+            id: 'toolu_4',
+            name: 'AskUserQuestion',
+            input: { question: 'Continue?' },
+          },
+        ],
+      },
+    };
+
+    expect(getAssistantPartsFromClaudeEvent(event)).toEqual([]);
   });
 
   it('returns undefined and logs when JSON parsing fails', () => {

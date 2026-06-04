@@ -11,6 +11,8 @@ export interface CodeDisplayProps {
   children?: string;
 }
 
+const CODE_BLOCK_SURFACE_CLASS = '[&&]:bg-gray-050 dark:[&&]:bg-gray-900';
+
 export const CodeDisplay: FC<CodeDisplayProps> = ({ children, containerClassName }) => {
   const detectedLang = languageInCode(children || '');
   const code = detectedLang ? children?.slice(detectedLang.length).trim() || '' : children || '';
@@ -21,6 +23,11 @@ export const CodeDisplay: FC<CodeDisplayProps> = ({ children, containerClassName
         value={code || ''}
         language={detectedLang || 'markdown'}
         kind="block"
+        attributes={{
+          CodeSnippetCode: {
+            className: CODE_BLOCK_SURFACE_CLASS,
+          },
+        }}
         slotActions={
           detectedLang && (
             <Text kind="mono/md" className="w-full">

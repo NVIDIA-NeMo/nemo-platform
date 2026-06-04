@@ -3,7 +3,10 @@
 
 import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { COMPLETE_STATUS } from '@nemo/common/src/components/AssistantChat/constants';
-import { createClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
+import {
+  createClaudeCodeToolCallPart,
+  isClaudeCodeToolCallOmitted,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeSessionHistory,
@@ -32,6 +35,8 @@ const getAssistantMessagePart = (
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'tool_use') {
     const toolName = part.name || 'tool';
+    if (isClaudeCodeToolCallOmitted(toolName)) return undefined;
+
     return createClaudeCodeToolCallPart({
       input: part.input,
       toolCallId: `claude-history-tool-${toolName}-${index}`,

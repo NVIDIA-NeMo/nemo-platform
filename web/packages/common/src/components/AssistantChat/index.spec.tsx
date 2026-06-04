@@ -148,6 +148,31 @@ describe('AssistantChat', () => {
     interactionTimeoutMs
   );
 
+  it('omits copy and regenerate message actions', () => {
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        initialMessages={[
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'Existing prompt' }],
+          },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Existing response' }],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+      />
+    );
+
+    expect(screen.getByText('Existing prompt')).toBeInTheDocument();
+    expect(screen.getByText('Existing response')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copy message/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Regenerate response/i })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
   it(
     'edits a user message and re-runs inference with the edited prompt',
     async () => {

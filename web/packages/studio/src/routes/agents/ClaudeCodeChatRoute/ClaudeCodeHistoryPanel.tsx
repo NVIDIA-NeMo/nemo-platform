@@ -100,11 +100,11 @@ const HistorySessionButton = ({
       <Flex align="center" gap="density-sm">
         <span
           className={cn(
-            'flex size-7 shrink-0 items-center justify-center rounded border border-base bg-surface-raised text-secondary',
-            active && 'border-accent text-accent'
+            'flex size-6 shrink-0 items-center justify-center text-secondary',
+            active && 'text-accent'
           )}
         >
-          <MessageSquare size={14} />
+          <MessageSquare size={12} className="fill-current" />
         </span>
         <Flex align="center" justify="between" gap="density-sm" className="min-w-0 flex-1">
           <Text kind="label/bold/sm" className="min-w-0 flex-1 line-clamp-2">
@@ -116,7 +116,7 @@ const HistorySessionButton = ({
         </Flex>
       </Flex>
       {session.tool_calls.length > 0 && (
-        <div className="pl-10">
+        <div className="pl-8">
           <ToolCallSummary toolCalls={session.tool_calls} />
         </div>
       )}
@@ -187,7 +187,14 @@ const HistoryPanelContents = ({
         </Flex>
       </Flex>
       <div className="border-b border-base px-density-md py-density-sm">
-        <Button color="brand" size="small" type="button" className="w-full" onClick={onNewChat}>
+        <Button
+          color="neutral"
+          kind="secondary"
+          size="small"
+          type="button"
+          className="w-full"
+          onClick={onNewChat}
+        >
           <MessageSquarePlus size={16} />
           <Text kind="label/bold/md">New chat</Text>
         </Button>
