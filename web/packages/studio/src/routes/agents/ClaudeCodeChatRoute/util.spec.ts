@@ -76,8 +76,7 @@ describe('Claude Code utilities', () => {
           { type: 'text', text: 'I found the route.' },
           {
             type: 'tool-call',
-            toolCallId:
-              'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1-Read-5',
+            toolCallId: 'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-1-Read-5',
             toolName: 'Read',
             args: { file_path: 'README.md' },
             argsText: '{"file_path":"README.md"}',
@@ -93,8 +92,7 @@ describe('Claude Code utilities', () => {
           { type: 'text', text: 'I found another route.' },
           {
             type: 'tool-call',
-            toolCallId:
-              'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3-Read-5',
+            toolCallId: 'claude-history-tool-2dc6e5a6-acd7-43bf-b128-c9fd5cf6eb9a-3-Read-5',
             toolName: 'Read',
             args: { file_path: 'package.json' },
             argsText: '{"file_path":"package.json"}',
