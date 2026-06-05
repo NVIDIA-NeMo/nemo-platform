@@ -85,6 +85,8 @@ class SnowflakeEmbed:
         logger.info("Embedder ready (device=%s).", device)
 
     def __call__(self, text: str) -> np.ndarray:
+        import torch
+
         tokens = self.tokenizer(
             [text],
             padding=True,
@@ -93,7 +95,8 @@ class SnowflakeEmbed:
             max_length=_MAX_TOKENS,
         )
         tokens = tokens.to(self.device)
-        embeddings = self.model(**tokens)[0][:, 0]
+        with torch.inference_mode():
+            embeddings = self.model(**tokens)[0][:, 0]
         return embeddings.detach().cpu().squeeze(0).numpy()
 
 
