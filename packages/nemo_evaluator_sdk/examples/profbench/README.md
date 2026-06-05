@@ -32,6 +32,22 @@ env/profbench-results/
 
 Live paths are enabled by default and require API access through the configured model settings. Pass `--no-run-live-judge` or `--no-run-live-candidate` to skip either live path.
 
+## Domain Model
+
+| Concept | Meaning |
+| :---- | :---- |
+| Task | The unit of work being evaluated. It contains intent, inputs, metrics, and optional views. |
+| Benchmark | An immutable collection of agent evaluation tasks. |
+| Run | One agent evaluated against one benchmark. |
+| Attempt | One agent execution or imported trace-derived attempt for one task. |
+| Evidence | Final output, final state, traces, logs, measurements, labels, and review artifacts captured for an attempt. |
+| Metric | An SDK `Metric` implementation that consumes `MetricInput` and emits outputs declared by `output_spec()`. |
+| Result | Metric outputs and diagnostics produced for one attempt and one metric. |
+
+The key relationship is simple: benchmarks list tasks, tasks declare metrics, runs contain attempts, attempts have evidence, and results score attempts with metrics. Ordered task refs can live on benchmarks. Ordered metric refs can live on tasks.
+
+Use case → user inputs and expected outputs →(mapped to) tasks → metrics
+
 ## Runner Types
 
 `run_examples` always runs the **baseline** path; the other two run by default and can be disabled with `--no-run-live-judge` and `--no-run-live-candidate`. They differ along two axes: **whose answers are scored** and **how rubrics are decided**.
