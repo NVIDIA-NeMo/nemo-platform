@@ -335,7 +335,7 @@ def test_not_found_hint_fallback_when_no_ctx(capsys):
 
 
 def test_handle_invalid_search_pattern_error(capsys):
-    """InvalidSearchPatternError (bare value) shows format hint and examples."""
+    """InvalidSearchPatternError (bare value) shows the --filter formats and examples."""
     error = InvalidSearchPatternError("nemo")
 
     with pytest.raises(typer.Exit) as exc_info:
@@ -343,12 +343,15 @@ def test_handle_invalid_search_pattern_error(capsys):
 
     assert exc_info.value.exit_code == 2
     captured = capsys.readouterr()
-    assert "Invalid search pattern" in captured.err
+    assert "Invalid filter value" in captured.err
     assert "nemo" in captured.err
-    assert "field=value" in captured.err
     assert "Examples:" in captured.err
-    assert "--search.name='my name'" in captured.err
+    assert "--filter" in captured.err
+    assert "--filter.name" in captured.err
     assert "--help" in captured.err
+    # Regression: the old message referenced a nonexistent option and stale format.
+    assert "--search" not in captured.err
+    assert "field=value" not in captured.err
 
 
 def test_handle_invalid_search_pattern_error_with_json(capsys):
@@ -363,12 +366,13 @@ def test_handle_invalid_search_pattern_error_with_json(capsys):
 
     assert exc_info.value.exit_code == 2
     captured = capsys.readouterr()
-    assert "Invalid search JSON" in captured.err
+    assert "Invalid filter JSON" in captured.err
     assert "Unterminated string" in captured.err
     assert "Your input:" in captured.err
     assert "djs]}" in captured.err
-    assert "--search.name=" in captured.err
+    assert "--filter" in captured.err
     assert "--help" in captured.err
+    assert "--search" not in captured.err
 
 
 def test_decorator_passes_through_success():

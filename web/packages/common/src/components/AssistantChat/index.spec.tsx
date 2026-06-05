@@ -2,14 +2,20 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
+  AssistantRuntimeProvider,
+  type ThreadMessageLike,
+  useExternalStoreRuntime,
+} from '@assistant-ui/react';
+import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/AssistantChatThread';
+import {
   ThemeProvider as KaizenThemeProvider,
   TooltipProvider,
 } from '@nvidia/foundations-react-core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ChatCompletion, ChatCompletionChunk } from 'openai/resources/index.mjs';
 import type { Stream } from 'openai/streaming.mjs';
-import type { ReactElement } from 'react';
+import { type ReactElement, useState } from 'react';
 
 import { AssistantChat } from './index';
 
@@ -92,6 +98,47 @@ const renderAssistantChat = (element: ReactElement) =>
     </KaizenThemeProvider>
   );
 
+const StaticAssistantChatThread = ({
+  hideAssistantMessageActions,
+}: {
+  hideAssistantMessageActions?: boolean;
+}) => {
+  const [messages, setMessages] = useState<readonly ThreadMessageLike[]>([
+    {
+      role: 'user',
+      content: [{ type: 'text', text: 'Existing prompt' }],
+    },
+    {
+      role: 'assistant',
+      content: [{ type: 'text', text: 'Existing response' }],
+      status: { type: 'complete', reason: 'stop' },
+    },
+  ]);
+  const runtime = useExternalStoreRuntime<ThreadMessageLike>({
+    messages,
+    setMessages,
+    isRunning: false,
+    onNew: async () => undefined,
+    onEdit: async () => undefined,
+    onReload: async () => undefined,
+    onCancel: async () => undefined,
+    convertMessage: (message) => message,
+    unstable_capabilities: {
+      copy: true,
+    },
+  });
+
+  return (
+    <AssistantRuntimeProvider runtime={runtime}>
+      <AssistantChatThread
+        hideAssistantMessageActions={hideAssistantMessageActions}
+        placeholder="Task prompt"
+        onReset={() => undefined}
+      />
+    </AssistantRuntimeProvider>
+  );
+};
+
 describe('AssistantChat', () => {
   beforeEach(() => {
     mocks.createChatCompletion.mockReset();
@@ -148,6 +195,67 @@ describe('AssistantChat', () => {
     interactionTimeoutMs
   );
 
+  it('shows copy and regenerate message actions by default', () => {
+    renderAssistantChat(
+      <AssistantChat
+        model="test-model"
+        initialMessages={[
+          {
+            role: 'user',
+            content: [{ type: 'text', text: 'Existing prompt' }],
+          },
+          {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Existing response' }],
+            status: { type: 'complete', reason: 'stop' },
+          },
+        ]}
+      />
+    );
+
+    const assistantMessage = screen
+      .getAllByTestId('assistant-chat-message')
+      .find((message) => message.getAttribute('data-testspeaker') === 'assistant');
+    if (!assistantMessage) throw new Error('Expected assistant message');
+
+    expect(screen.getByText('Existing prompt')).toBeInTheDocument();
+    expect(screen.getByText('Existing response')).toBeInTheDocument();
+    expect(assistantMessage).toHaveClass('whitespace-normal');
+    expect(assistantMessage).not.toHaveClass('whitespace-pre-wrap');
+    expect(
+      within(assistantMessage).getByRole('button', { name: /Copy message/i })
+    ).toBeInTheDocument();
+    expect(
+      within(assistantMessage).getByRole('button', { name: /Regenerate response/i })
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
+  it('can hide assistant copy and regenerate message actions', () => {
+    renderAssistantChat(<StaticAssistantChatThread hideAssistantMessageActions />);
+
+    const assistantMessage = screen
+      .getAllByTestId('assistant-chat-message')
+      .find((message) => message.getAttribute('data-testspeaker') === 'assistant');
+    if (!assistantMessage) throw new Error('Expected assistant message');
+
+    expect(screen.getByText('Existing prompt')).toBeInTheDocument();
+    expect(screen.getByText('Existing response')).toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByRole('button', { name: /Copy message/i })
+    ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByRole('button', { name: /Regenerate response/i })
+    ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-message-actions')
+    ).not.toBeInTheDocument();
+    expect(
+      within(assistantMessage).queryByTestId('assistant-chat-running-indicator')
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Edit message/i })).toBeInTheDocument();
+  });
+
   it('renders composer override content in place of the prompt input', () => {
     renderAssistantChat(
       <AssistantChat
@@ -158,7 +266,36 @@ describe('AssistantChat', () => {
     );
 
     expect(screen.getByText('Approval required')).toBeInTheDocument();
+    expect(screen.getByTestId('assistant-chat-composer-container')).toHaveClass('pt-density-xl');
     expect(screen.queryByRole('textbox', { name: /Task prompt/i })).not.toBeInTheDocument();
+  });
+
+  it('renders the composer with a rounded input shell and circular submit action', () => {
+    renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
+
+    expect(screen.getByTestId('assistant-chat-viewport')).toHaveClass(
+      '[scrollbar-width:thin]',
+      '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
+      '[&::-webkit-scrollbar]:w-2',
+      '[&::-webkit-scrollbar-track]:bg-transparent',
+      '[&::-webkit-scrollbar-thumb]:rounded-full',
+      '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
+      '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]'
+    );
+    expect(screen.getByTestId('assistant-chat-composer')).toHaveClass(
+      'gap-density-xs',
+      'rounded-lg'
+    );
+    expect(screen.getByRole('textbox', { name: /Task prompt/i })).toHaveClass(
+      'min-h-20',
+      'px-density-md',
+      'py-density-md'
+    );
+    expect(screen.getByRole('button', { name: /Submit/i })).toHaveClass(
+      'size-8',
+      'rounded-full',
+      'p-0'
+    );
   });
 
   it(
@@ -218,9 +355,11 @@ describe('AssistantChat', () => {
       await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
 
       expect(await screen.findByText('0 this is an example response')).toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /Stop/i })).toBeEnabled();
+      const stopButton = screen.getByRole('button', { name: /Stop/i });
+      expect(stopButton).toBeEnabled();
+      expect(stopButton).toHaveClass('size-8', 'rounded-full', 'p-0');
 
-      await userEvent.click(screen.getByRole('button', { name: /Stop/i }));
+      await userEvent.click(stopButton);
 
       await waitFor(() => expect(abortSpy).toHaveBeenCalledTimes(1));
       await waitFor(() =>

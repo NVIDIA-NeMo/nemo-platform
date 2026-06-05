@@ -34,6 +34,8 @@ export interface SelectItemOption {
   label: string;
   /** Optional custom render for the option */
   render?: ReactNode;
+  /** Optional group key — options sharing one render under a single section header. */
+  group?: string;
 }
 
 export interface ControlledSearchableSelectProps
@@ -42,6 +44,8 @@ export interface ControlledSearchableSelectProps
     UseControllerComponentProps {
   /** Array of options to display */
   options: SelectItemOption[];
+  /** Display labels for option groups, keyed by ``SelectItemOption.group``. Groups in this map render in the order they appear here. */
+  groupLabels?: Record<string, string>;
   /** Callback fired when search input changes (for server-side search) */
   onSearchChange?: (searchValue: string) => void;
   /** Callback to load more items when scrolling to bottom */
@@ -89,6 +93,7 @@ export interface ControlledSearchableSelectProps
 
 export const ControlledSearchableSelect = ({
   options,
+  groupLabels,
   onSearchChange,
   onLoadMore,
   hasMore = false,
@@ -268,11 +273,49 @@ export const ControlledSearchableSelect = ({
                     <Spinner aria-label="Refreshing options" size="small" />
                   </Flex>
                 )}
-                {filteredOptions.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.render ?? option.label}
-                  </SelectItem>
-                ))}
+                {(() => {
+                  const groupKeys = groupLabels ? Object.keys(groupLabels) : [];
+                  if (groupKeys.length === 0) {
+                    return filteredOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.render ?? option.label}
+                      </SelectItem>
+                    ));
+                  }
+                  const buckets = new Map<string | undefined, SelectItemOption[]>();
+                  for (const option of filteredOptions) {
+                    const key = option.group;
+                    const existing = buckets.get(key);
+                    if (existing) existing.push(option);
+                    else buckets.set(key, [option]);
+                  }
+                  const orderedKeys = [
+                    ...groupKeys.filter((k) => buckets.has(k)),
+                    ...Array.from(buckets.keys()).filter(
+                      (k): k is string | undefined => !k || !groupKeys.includes(k)
+                    ),
+                  ];
+                  return orderedKeys.flatMap((key) => {
+                    const items = buckets.get(key) ?? [];
+                    if (items.length === 0) return [];
+                    const heading = key ? groupLabels?.[key] : undefined;
+                    return [
+                      heading ? (
+                        <Block
+                          key={`__heading-${key}`}
+                          className="px-2 pt-2 pb-1 text-xs uppercase tracking-wide text-subtle"
+                        >
+                          {heading}
+                        </Block>
+                      ) : null,
+                      ...items.map((option) => (
+                        <SelectItem key={`${key ?? ''}:${option.value}`} value={option.value}>
+                          {option.render ?? option.label}
+                        </SelectItem>
+                      )),
+                    ].filter(Boolean);
+                  });
+                })()}
                 {/* Infinite scroll sentinel; collapsed to 1px when idle with more pages (no empty min-height) */}
                 {showLoadMoreFooter ? (
                   <Flex

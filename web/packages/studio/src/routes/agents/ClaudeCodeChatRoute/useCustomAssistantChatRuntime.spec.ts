@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ThreadMessageLike } from '@assistant-ui/react';
+import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { getMessageText } from '@nemo/common/src/components/AssistantChat/messageUtils';
+import { CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import {
   type CustomAssistantRunContext,
   useCustomAssistantChatRuntime,
@@ -28,6 +29,12 @@ const getMockRuntime = (runtime: unknown): MockRuntime => {
   }
 
   return runtime as MockRuntime;
+};
+
+const getAssistantContent = (messages: readonly ThreadMessageLike[]) => {
+  const content = messages[1]?.content;
+  if (!Array.isArray(content)) throw new Error('Expected assistant content parts');
+  return content;
 };
 
 describe('useCustomAssistantChatRuntime', () => {
@@ -88,6 +95,72 @@ describe('useCustomAssistantChatRuntime', () => {
         'Use rg instead',
         'Using rg instead.',
       ]);
+    });
+
+    await act(async () => {
+      await getMockRuntime(result.current.runtime).onCancel();
+    });
+  });
+
+  it('combines consecutive subtle tool calls across streamed appends', async () => {
+    let runContext: CustomAssistantRunContext | undefined;
+    const onRun = vi.fn(async (context: CustomAssistantRunContext) => {
+      runContext = context;
+      await new Promise<void>((resolve) => {
+        context.signal.addEventListener('abort', () => resolve(), { once: true });
+      });
+    });
+    const { result } = renderHook(() => useCustomAssistantChatRuntime({ onRun }));
+
+    act(() => {
+      void result.current.submitPrompt('Check files');
+    });
+
+    await waitFor(() => {
+      expect(getMockRuntime(result.current.runtime).messages).toHaveLength(2);
+    });
+
+    const bashPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_bash',
+      toolName: 'Bash',
+      args: { command: 'pwd' },
+      argsText: '{"command":"pwd"}',
+    };
+    const readPart: ThreadAssistantMessagePart = {
+      type: 'tool-call',
+      toolCallId: 'toolu_read',
+      toolName: 'Read',
+      args: { file_path: 'README.md' },
+      argsText: '{"file_path":"README.md"}',
+    };
+
+    act(() => {
+      runContext?.appendAssistantParts([bashPart]);
+    });
+
+    await waitFor(() => {
+      const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
+      expect(content).toEqual([bashPart]);
+    });
+
+    act(() => {
+      runContext?.appendAssistantParts([readPart]);
+    });
+
+    await waitFor(() => {
+      const content = getAssistantContent(getMockRuntime(result.current.runtime).messages);
+      expect(content).toHaveLength(1);
+      expect(content[0]).toMatchObject({
+        type: 'tool-call',
+        toolName: CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+        args: {
+          actions: [
+            { args: { command: 'pwd' }, toolCallId: 'toolu_bash', toolName: 'Bash' },
+            { args: { file_path: 'README.md' }, toolCallId: 'toolu_read', toolName: 'Read' },
+          ],
+        },
+      });
     });
 
     await act(async () => {

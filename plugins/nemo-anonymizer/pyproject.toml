@@ -8,8 +8,8 @@ authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform-plugin",
     "nemo-platform",
-    "nemo-anonymizer>=0.2.0",
-    "data-designer==0.6.0",
+    "nemo-anonymizer>=0.2.1",
+    "data-designer==0.6.1",
     "data-designer-nemo",
     "nmp-common",
     "httpx>=0.27",

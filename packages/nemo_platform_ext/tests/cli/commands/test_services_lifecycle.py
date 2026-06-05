@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import os
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -27,8 +28,13 @@ from pathlib import Path
 import pytest
 from nemo_platform_ext.cli.commands.services._process import (
     InstanceDescriptor,
+    PortConflict,
+    acquire_lock,
+    check_port_available_for_start,
+    format_port_conflict,
     instance_dir,
     is_instance_alive,
+    is_port_bindable,
     list_instances,
     read_descriptor,
     stop_instance,
@@ -521,3 +527,124 @@ class TestEndToEndHealthPolling:
             if proc.poll() is None:
                 proc.kill()
                 proc.wait(timeout=5)
+
+
+class TestPortAvailability:
+    """Unit tests for port bind preflight helpers."""
+
+    def test_is_port_bindable_false_when_port_in_use(self) -> None:
+        port = _find_free_port()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", port))
+            sock.listen(1)
+            assert is_port_bindable("127.0.0.1", port) is False
+
+    def test_check_port_returns_foreign_when_blocked_without_nemo_instance(self, tmp_path: Path) -> None:
+        base_dir = tmp_path / "state"
+        port = _find_free_port()
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", port))
+            sock.listen(1)
+            conflict = check_port_available_for_start(
+                "127.0.0.1",
+                port,
+                f"scope-{port}",
+                base_dir=base_dir,
+            )
+        assert conflict is not None
+        assert conflict.kind == "foreign"
+        assert conflict.port == port
+
+    def test_check_port_returns_nemo_instance_when_lock_held_and_port_blocked(self, tmp_path: Path) -> None:
+        """Held flock + occupied port → NeMo instance message, not foreign process."""
+        base_dir = tmp_path / "state"
+        scope = "nemo-lock-port-test"
+        port = _find_free_port()
+        fd = acquire_lock(scope, base_dir=base_dir)
+        try:
+            write_descriptor(
+                InstanceDescriptor(
+                    pid=os.getpid(),
+                    scope=scope,
+                    host="127.0.0.1",
+                    port=port,
+                    mode="background",
+                    create_time=1.0,
+                ),
+                base_dir=base_dir,
+            )
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("127.0.0.1", port))
+                sock.listen(1)
+                conflict = check_port_available_for_start(
+                    "127.0.0.1",
+                    port,
+                    scope,
+                    base_dir=base_dir,
+                )
+            assert conflict is not None
+            assert conflict.kind == "nemo_instance"
+            assert conflict.scope == scope
+            assert conflict.port == port
+        finally:
+            os.close(fd)
+
+    def test_check_port_returns_foreign_when_alive_instance_uses_different_port(self, tmp_path: Path) -> None:
+        """Live instance on another port must not claim a foreign listener as NeMo-owned."""
+        base_dir = tmp_path / "state"
+        scope = "explicit-instance"
+        nemo_port = _find_free_port()
+        foreign_port = _find_free_port()
+        fd = acquire_lock(scope, base_dir=base_dir)
+        try:
+            write_descriptor(
+                InstanceDescriptor(
+                    pid=os.getpid(),
+                    scope=scope,
+                    host="127.0.0.1",
+                    port=nemo_port,
+                    mode="background",
+                    create_time=1.0,
+                ),
+                base_dir=base_dir,
+            )
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(("127.0.0.1", foreign_port))
+                sock.listen(1)
+                conflict = check_port_available_for_start(
+                    "127.0.0.1",
+                    foreign_port,
+                    scope,
+                    base_dir=base_dir,
+                )
+            assert conflict is not None
+            assert conflict.kind == "foreign"
+            assert conflict.port == foreign_port
+        finally:
+            os.close(fd)
+
+    @pytest.mark.parametrize(
+        ("conflict", "expected_substrings"),
+        [
+            (
+                PortConflict(kind="foreign", port=8080),
+                ("already in use", "lsof -i :8080"),
+            ),
+            (
+                PortConflict(kind="nemo_instance", port=8080, scope="abc-8080"),
+                ("NeMo Platform instance", "nemo services stop"),
+            ),
+        ],
+    )
+    def test_format_port_conflict(
+        self,
+        conflict: PortConflict,
+        expected_substrings: tuple[str, ...],
+    ) -> None:
+        lines = format_port_conflict(conflict)
+        for substring in expected_substrings:
+            assert any(substring in line for line in lines)

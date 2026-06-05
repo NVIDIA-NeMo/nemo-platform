@@ -9,7 +9,7 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useListTraces } from '@nemo/sdk/generated/platform/api';
 import type { Trace, TraceFilter, TraceSortField } from '@nemo/sdk/generated/platform/schema';
-import { Anchor, Badge, Button } from '@nvidia/foundations-react-core';
+import { Badge, Button } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { IntakeTelemetryDataView } from '@studio/components/IntakeTelemetryDataView';
 import { useWorkspaceFromPathIfExists } from '@studio/hooks/useWorkspaceFromPath';
@@ -22,7 +22,7 @@ import {
 } from '@studio/util/intakeTelemetry';
 import { keepPreviousData } from '@tanstack/react-query';
 import type { ComponentProps, FC, ReactNode } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 
 export interface IntakeTracesTableProps {
   workspace?: string;
@@ -92,17 +92,7 @@ export const IntakeTracesTable: FC<IntakeTracesTableProps> = ({
       cell: ({ row }) => {
         const trace = row.original;
         const label = getTraceDisplayName(trace);
-        return (
-          <Anchor asChild>
-            <Link
-              to={getIntakeTraceRoute(requestWorkspace, trace.id)}
-              className="truncate"
-              title={label}
-            >
-              {label}
-            </Link>
-          </Anchor>
-        );
+        return label;
       },
     }),
     {

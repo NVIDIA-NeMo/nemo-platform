@@ -314,9 +314,31 @@ class TestStaticFilesPath:
 
         assert response.status_code == 503
         assert "make bootstrap-studio" in response.text
+        assert "source ~/.nvm/nvm.sh" in response.text
+        assert "nvm install 22" in response.text
         assert "pnpm env use --global 22.18.0" in response.text
+        assert "Node.js and pnpm engines" in response.text
         assert "web/package.json" in response.text
+        assert "nemo services restart" in response.text
         assert str(missing_static) in response.text
+
+    def test_missing_static_files_route_handles_main_studio_path(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+        """Test that the main Studio path returns build tips when assets are missing."""
+        missing_static = tmp_path / "missing-static"
+        service = StudioService()
+        monkeypatch.setattr(service, "_get_static_files_path", lambda: missing_static)
+        app = FastAPI()
+
+        service.configure_app(app)
+
+        client = TestClient(app)
+        response = client.get("/studio")
+
+        assert response.status_code == 503
+        assert "Requested path: <code>/studio</code>" in response.text
+        assert "Build tips" in response.text
+        assert "make bootstrap-studio" in response.text
+        assert "nemo services restart" in response.text
 
     def test_static_dir_without_index_route_explains_recovery(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         """Test that an incomplete Studio build also returns recovery instructions."""

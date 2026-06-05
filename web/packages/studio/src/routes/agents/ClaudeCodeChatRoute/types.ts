@@ -45,11 +45,6 @@ export interface ClaudeCodeAssistantTextPart {
   text: string;
 }
 
-export interface ClaudeCodeAssistantThinkingPart {
-  type: 'thinking';
-  thinking: string;
-}
-
 export interface ClaudeCodeAssistantToolUsePart {
   type: 'tool_use';
   name: string;
@@ -58,7 +53,6 @@ export interface ClaudeCodeAssistantToolUsePart {
 
 export type ClaudeCodeAssistantHistoryPart =
   | ClaudeCodeAssistantTextPart
-  | ClaudeCodeAssistantThinkingPart
   | ClaudeCodeAssistantToolUsePart;
 
 export interface ClaudeCodeAssistantHistoryItem {

@@ -14,6 +14,7 @@ import {
   type ChangeEvent,
   type FC,
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   useCallback,
   useState,
@@ -75,18 +76,30 @@ const LandingComposer = ({
   onChange: (value: string) => void;
   onSubmit: (prompt: string) => void;
 }) => {
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const submitInput = () => {
     const prompt = input.trim();
     if (!prompt) return;
 
     onSubmit(prompt);
   };
 
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    submitInput();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+
+    event.preventDefault();
+    submitInput();
+  };
+
   return (
     <form
+      data-testid="dashboard-landing-composer"
       onSubmit={handleSubmit}
-      className="w-full rounded-2xl border border-base bg-surface-base p-2 shadow-xl"
+      className="w-full rounded-lg border border-base bg-surface-base p-2 shadow-xl"
     >
       <TextArea
         aria-label="Message Claude"
@@ -95,7 +108,14 @@ const LandingComposer = ({
         placeholder="Message Claude"
         rows={3}
         resizeable="auto"
-        className="max-h-56 w-full border-0 bg-transparent"
+        className="max-h-56 w-full border-0 bg-transparent shadow-none focus-within:outline-none focus-within:ring-0 [&:has(:focus-visible)]:outline-none [&:has(:focus-visible)]:ring-0"
+        attributes={{
+          TextAreaElement: {
+            className:
+              '[&&]:focus:outline-none [&&]:focus:ring-0 [&&]:focus-visible:outline-none [&&]:focus-visible:ring-0',
+            onKeyDown: handleKeyDown,
+          },
+        }}
       />
       <Flex className="flex items-center justify-between gap-3 px-1 pt-2">
         <Flex className="flex items-center gap-2 text-secondary">
