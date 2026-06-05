@@ -1,0 +1,60 @@
+# Creates the docker-build check and triggers the image build for a PR commit.
+name: Docker build dispatch
+
+on:
+  workflow_run:
+    workflows: ["Docker build trigger"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-build-dispatch-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch:
+    name: Post check + dispatch build
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mint GitHub App token
+        id: app
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.DOCKER_GATE_APP_ID }}
+          private-key: ${{ secrets.DOCKER_GATE_APP_PRIVATE_KEY }}
+
+      - name: Create docker-build check (queued)
+        id: check
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          set -euo pipefail
+          id=$(gh api -X POST "/repos/${REPO}/check-runs" \
+            -f name='docker-build' \
+            -f head_sha="${HEAD_SHA}" \
+            -f status='queued' \
+            -f 'output[title]=Docker build' \
+            -f 'output[summary]=Queued — waiting for the Docker build.' \
+            --jq '.id')
+          echo "check_run_id=${id}" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch build
+        env:
+          GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
+          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+          REF: ${{ github.event.workflow_run.head_sha }}
+          CHECK_RUN_ID: ${{ steps.check.outputs.check_run_id }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg ref "${REF}" \
+            --argjson check_run_id "${CHECK_RUN_ID}" \
+            '{event_type: "docker-pr-build", client_payload: {ref: $ref, check_run_id: $check_run_id}}' \
+          | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -
