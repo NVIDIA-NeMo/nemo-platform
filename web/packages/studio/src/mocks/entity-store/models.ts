@@ -112,6 +112,20 @@ export const entityStoreCustomizedModel1: ModelEntity = {
   model_providers: ['default/classify-llm-tutorial-1771886621'],
 };
 
+export const entityStoreModelWithFileset: ModelEntity = {
+  id: 'model-fileset-1',
+  created_at: '2025-03-15T10:00:00.000000',
+  updated_at: '2025-03-15T10:00:00.000000',
+  name: 'llama-3.1-8b-finetuned',
+  workspace: 'default',
+  description: 'Fine-tuned Llama 3.1 8B for code generation',
+  base_model: 'meta-llama/Llama-3.1-8B',
+  fileset: 'default/llama-3.1-8b-finetuned',
+  finetuning_type: 'lora',
+  custom_fields: {},
+  model_providers: ['default/llama-3.1-8b-finetuned-nim'],
+};
+
 export const emptyModelEntitysPage: ModelEntitysPage = {
   data: [],
 };

@@ -1,10 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { Anchor } from '@nvidia/foundations-react-core';
 import { TagList } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/TagList';
 import { getModelSource } from '@studio/routes/ModelDetailRoute/utils';
+import { getWorkspaceDeploymentsRoute } from '@studio/routes/utils';
 import { formatStorageBackendLabel } from '@studio/util/storageBackend';
 import { type ReactNode } from 'react';
 
@@ -21,7 +22,8 @@ interface MetadataSection {
 
 export const getMetadataSections = (
   fileset: FilesetOutput,
-  readmeMetadata: Record<string, unknown> | undefined
+  readmeMetadata: Record<string, unknown> | undefined,
+  modelEntities: ModelEntity[]
 ): MetadataSection[] => {
   const sections: MetadataSection[] = [
     { value: 'source', title: 'Source', rows: getSourceRows(fileset) },
@@ -31,6 +33,11 @@ export const getMetadataSections = (
   if (detailsRows.length > 0) {
     sections.push({ value: 'details', title: 'Details', rows: detailsRows });
   }
+
+  modelEntities.forEach((entity, index) => {
+    const entitySection = getModelEntitySection(entity, index);
+    if (entitySection) sections.push(entitySection);
+  });
 
   return sections;
 };
@@ -165,4 +172,52 @@ const isSafeHttpUrl = (value: string): boolean => {
   } catch {
     return false;
   }
+};
+
+const formatFinetuningType = (type: string): string => {
+  switch (type.toLowerCase()) {
+    case 'lora':
+      return 'LoRA';
+    case 'p_tuning':
+      return 'P-Tuning';
+    case 'sft':
+      return 'SFT';
+    default:
+      return type;
+  }
+};
+
+const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSection | null => {
+  const rows: MetadataRow[] = [];
+
+  if (entity.description) {
+    rows.push({ label: 'Description', value: entity.description });
+  }
+
+  if (entity.base_model) {
+    rows.push({ label: 'Base model', value: entity.base_model });
+  }
+
+  if (entity.finetuning_type) {
+    rows.push({ label: 'Fine-tuning', value: formatFinetuningType(entity.finetuning_type) });
+  }
+
+  const isDeployed = (entity.model_providers?.length ?? 0) > 0;
+  rows.push({
+    label: 'Deployment',
+    value: isDeployed ? (
+      <Anchor href={getWorkspaceDeploymentsRoute(entity.workspace)} target="_self">
+        Deployed
+      </Anchor>
+    ) : (
+      'Not deployed'
+    ),
+  });
+
+  return {
+    value: `model-entity-${index}`,
+    title:
+      index === 0 ? `Model Entity: ${entity.name}` : `Model Entity ${index + 1}: ${entity.name}`,
+    rows,
+  };
 };

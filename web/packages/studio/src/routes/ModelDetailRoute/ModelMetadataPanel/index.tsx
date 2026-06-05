@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { KVPair } from '@nemo/common/src/components/KVPair';
-import type { FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import type { FilesetOutput, ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { Divider, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { getMetadataSections } from '@studio/routes/ModelDetailRoute/ModelMetadataPanel/utils';
 import { type FC } from 'react';
@@ -10,10 +10,15 @@ import { type FC } from 'react';
 export interface ModelMetadataPanelProps {
   fileset: FilesetOutput;
   readmeMetadata?: Record<string, unknown>;
+  modelEntities?: ModelEntity[];
 }
 
-export const ModelMetadataPanel: FC<ModelMetadataPanelProps> = ({ fileset, readmeMetadata }) => {
-  const sections = getMetadataSections(fileset, readmeMetadata);
+export const ModelMetadataPanel: FC<ModelMetadataPanelProps> = ({
+  fileset,
+  readmeMetadata,
+  modelEntities = [],
+}) => {
+  const sections = getMetadataSections(fileset, readmeMetadata, modelEntities);
 
   return (
     <Panel elevation="high" density="compact" className="w-full" data-testid="model-metadata-panel">
