@@ -71,6 +71,36 @@ def test_run_from_env_reports_missing_config_path(monkeypatch):
         task_main.run_from_env()
 
 
+def test_setup_classify_endpoint_sets_upstream_safe_synthesizer_env(monkeypatch):
+    task_main = import_task_main_without_heavy_runtime(monkeypatch)
+    monkeypatch.setenv(
+        "CLASSIFY_LLM_ENDPOINT_PATH", "/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+    )
+    monkeypatch.setenv("NMP_MODELS_URL", "http://models.test")
+    monkeypatch.delenv("NSS_INFERENCE_ENDPOINT", raising=False)
+    monkeypatch.delenv("NSS_INFERENCE_KEY", raising=False)
+
+    task_main._setup_classify_endpoint()
+
+    assert (
+        task_main.os.environ["NSS_INFERENCE_ENDPOINT"]
+        == "http://models.test/apis/inference-gateway/v2/workspaces/default/provider/my-nim/-/v1"
+    )
+    assert task_main.os.environ["NSS_INFERENCE_KEY"] == "not-needed"
+
+
+def test_setup_classify_endpoint_preserves_existing_inference_key(monkeypatch):
+    task_main = import_task_main_without_heavy_runtime(monkeypatch)
+    monkeypatch.setenv("CLASSIFY_LLM_ENDPOINT_PATH", "/route")
+    monkeypatch.setenv("NMP_MODELS_URL", "http://models.test/")
+    monkeypatch.setenv("NSS_INFERENCE_KEY", "real-key")
+
+    task_main._setup_classify_endpoint()
+
+    assert task_main.os.environ["NSS_INFERENCE_ENDPOINT"] == "http://models.test/route"
+    assert task_main.os.environ["NSS_INFERENCE_KEY"] == "real-key"
+
+
 def test_run_local_resolves_pretrained_model_job_before_run(tmp_path, monkeypatch):
     task_main = import_task_main_without_heavy_runtime(monkeypatch)
     spec_file = tmp_path / "spec.json"

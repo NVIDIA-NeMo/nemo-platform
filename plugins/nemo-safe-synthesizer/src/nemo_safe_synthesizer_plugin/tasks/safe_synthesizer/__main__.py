@@ -264,7 +264,7 @@ def _resolve_pretrained_model(
 
 
 def _setup_classify_endpoint():
-    """Set up the NIM_ENDPOINT_URL for column classification from platform env vars."""
+    """Set up upstream Safe Synthesizer PII classification env vars from platform env vars."""
     endpoint_path = os.environ.get("CLASSIFY_LLM_ENDPOINT_PATH")
     if endpoint_path:
         models_url = os.environ.get("NMP_MODELS_URL")
@@ -275,7 +275,8 @@ def _setup_classify_endpoint():
             )
             return
         full_url = models_url.rstrip("/") + endpoint_path
-        os.environ["NIM_ENDPOINT_URL"] = full_url
+        os.environ["NSS_INFERENCE_ENDPOINT"] = full_url
+        os.environ.setdefault("NSS_INFERENCE_KEY", "not-needed")
         logger.info("Configured column classification endpoint: %s", full_url)
 
 

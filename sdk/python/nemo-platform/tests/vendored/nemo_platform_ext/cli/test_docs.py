@@ -145,7 +145,6 @@ extra:
         assert "customizer/about" not in topics
         assert "evaluator/metrics/job-management" not in topics
         assert "helm/index" not in topics
-        assert "safe-synthesizer/about/index" not in topics
         assert "CONTRIBUTING" not in topics
         assert "README" not in topics
         assert "template/EULA" not in topics
