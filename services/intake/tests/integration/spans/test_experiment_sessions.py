@@ -127,6 +127,60 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
     assert body["data"][0]["test_case_id"] == "alpha"
 
 
+def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
+    # ATIF ingest doesn't expose explicit per-span status, so all seeded sessions land with the
+    # default root-span status. This test verifies the filter is wired through (no SQL break and
+    # mismatched filters return zero) rather than per-status seeding.
+    experiment_name = "sessions-status-exp"
+    created = client.post(
+        EXPERIMENTS,
+        json={
+            "name": experiment_name,
+            "agent_name": "sample-agent",
+            "agent_version": "1.0.0",
+            "dataset_name": "sessions-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    response = client.post(
+        ATIF_INGEST,
+        json=_atif_body(
+            started_at=datetime.now(timezone.utc).replace(microsecond=0),
+            experiment_name=experiment_name,
+            test_case_id="case-1",
+            score=1.0,
+            cost_usd=0.01,
+            latency_ms=100,
+            prompt_tokens=50,
+            completion_tokens=5,
+            offset_seconds=0,
+            run_id="run-1",
+        ),
+    )
+    assert response.status_code == 201, response.text
+
+    listed = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions")
+    assert listed.status_code == 200, listed.text
+    seeded_status = listed.json()["data"][0]["status"]
+
+    matching = client.get(
+        f"{EXPERIMENTS}/{experiment_name}/sessions",
+        params={"status": seeded_status},
+    )
+    assert matching.status_code == 200, matching.text
+    assert matching.json()["pagination"]["total_results"] == 1
+
+    other_status = "error" if seeded_status != "error" else "cancelled"
+    mismatched = client.get(
+        f"{EXPERIMENTS}/{experiment_name}/sessions",
+        params={"status": other_status},
+    )
+    assert mismatched.status_code == 200, mismatched.text
+    assert mismatched.json()["pagination"]["total_results"] == 0
+
+
 def test_list_experiment_sessions_returns_404_for_unknown_experiment(client: TestClient) -> None:
     response = client.get(f"{EXPERIMENTS}/does-not-exist/sessions")
     assert response.status_code == 404, response.text

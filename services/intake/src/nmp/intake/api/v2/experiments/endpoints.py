@@ -429,14 +429,24 @@ async def list_experiment_sessions(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
         )
-    result = await session_repository.list_sessions(
-        workspace=workspace,
-        experiment_name=name,
-        status=status_filter,
-        test_case_id=test_case_id,
-        page=page,
-        page_size=page_size,
-    )
+    try:
+        result = await session_repository.list_sessions(
+            workspace=workspace,
+            experiment_name=name,
+            status=status_filter,
+            test_case_id=test_case_id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        # Sessions are the response payload (not enrichment), so we can't silently degrade like
+        # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
+        # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
+        logger.exception("Per-session read failed for workspace=%s experiment=%s", workspace, name)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telemetry store unavailable.",
+        ) from exc
     data = [ExperimentSessionResponse.from_row(row) for row in result.rows]
     return Page(
         data=data,
