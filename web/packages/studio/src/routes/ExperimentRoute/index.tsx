@@ -1,16 +1,25 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
+import { useRelativeTimeSince } from '@nemo/common/src/components/RelativeTime';
 import { useListExperimentGroups, useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
-import { PageHeader, Panel, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
+import {
+  Divider,
+  PageHeader,
+  Skeleton,
+  Stack,
+  StatusMessage,
+  Tag,
+  Text,
+} from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { keepPreviousData } from '@tanstack/react-query';
-import { CircleAlert } from 'lucide-react';
+import { CircleAlert, MessageSquareText } from 'lucide-react';
 import { type FC } from 'react';
 
 export const ExperimentRoute: FC = () => {
@@ -66,6 +75,19 @@ export const ExperimentRoute: FC = () => {
   );
 };
 
+interface UpdatedAtProps {
+  datetime: string;
+}
+
+const UpdatedAt: FC<UpdatedAtProps> = ({ datetime }) => {
+  const relative = useRelativeTimeSince(datetime);
+  return (
+    <Text kind="label/regular/xs" className="text-tertiary">
+      Updated {relative}
+    </Text>
+  );
+};
+
 interface ExperimentGroupCardProps {
   group: ExperimentGroupResponse;
   workspace: string;
@@ -79,53 +101,57 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
 
   const experiments = experimentsData?.data ?? [];
   const experimentCount = experimentsData?.pagination?.total_results ?? experiments.length;
-  const datasetNames = [...new Set(experiments.map((e) => e.dataset_name).filter(Boolean))];
-  const agentNames = [...new Set(experiments.map((e) => e.agent_name).filter(Boolean))];
+
+  // Collect evaluator names and average their means across experiments in this group
+  const evaluatorNames = [
+    ...new Set(experiments.flatMap((e) => Object.keys(e.aggregate_scores ?? {}))),
+  ];
+  const scoreEntries = evaluatorNames
+    .map((name) => {
+      const means = experiments
+        .map((e) => e.aggregate_scores?.[name]?.mean)
+        .filter((v): v is number => v !== undefined && v !== null);
+      const avg = means.length > 0 ? means.reduce((a, b) => a + b, 0) / means.length : null;
+      return { name, avg };
+    })
+    .filter((entry): entry is { name: string; avg: number } => entry.avg !== null);
 
   return (
-    <Panel elevation="low">
-      <Stack gap="density-sm">
+    <div className="flex items-center gap-6 rounded bg-surface px-5 py-[18px]">
+      {/* Slot 1: Status — no backend field yet, skeleton holds the space */}
+      <Skeleton className="h-6 w-20 shrink-0" />
+
+      {/* Slot 2: Main info */}
+      <div className="flex flex-col items-start gap-[7px] flex-1">
         <Text kind="title/sm">{group.name}</Text>
         {group.description && (
           <Text kind="body/regular/sm" className="text-secondary">
             {group.description}
           </Text>
         )}
-        <Stack direction="row" gap="density-xl">
-          <Stack gap="density-xxs">
-            <Text kind="label/bold/xs" className="text-tertiary uppercase">
-              Experiments
-            </Text>
-            <Text kind="body/regular/sm">{experimentCount}</Text>
-          </Stack>
-          {agentNames.length > 0 && (
-            <Stack gap="density-xxs">
-              <Text kind="label/bold/xs" className="text-tertiary uppercase">
-                Agent
-              </Text>
-              <Text kind="body/regular/sm">{agentNames.join(', ')}</Text>
-            </Stack>
-          )}
-          {datasetNames.length > 0 && (
-            <Stack gap="density-xxs">
-              <Text kind="label/bold/xs" className="text-tertiary uppercase">
-                Dataset
-              </Text>
-              <Text kind="body/regular/sm">{datasetNames.join(', ')}</Text>
-            </Stack>
-          )}
-          {group.updated_at && (
-            <Stack gap="density-xxs">
-              <Text kind="label/bold/xs" className="text-tertiary uppercase">
-                Updated
-              </Text>
-              <Text kind="body/regular/sm">
-                <RelativeTime datetime={group.updated_at} />
-              </Text>
-            </Stack>
-          )}
-        </Stack>
-      </Stack>
-    </Panel>
+        <div className="flex items-center gap-4">
+          <Tag kind="outline" color="gray" readOnly>
+            {experimentCount} Experiments
+          </Tag>
+          {/* UserPill: no author field on ExperimentGroupResponse yet */}
+          <Skeleton className="h-6 w-24 rounded-full" />
+          {group.updated_at && <UpdatedAt datetime={group.updated_at} />}
+        </div>
+      </div>
+
+      {/* Slot 3: Stats */}
+      <div className="flex shrink-0 items-center gap-6">
+        {/* Variable evaluator score metrics */}
+        {scoreEntries.map(({ name, avg }) => (
+          <Metric key={name} title={name} value={`${(avg * 100).toFixed(1)}%`} />
+        ))}
+
+        {/* Pipe — only shown when there are scores to separate */}
+        {scoreEntries.length > 0 && <Divider orientation="vertical" />}
+
+        <Metric title="Experiments" value={String(experimentCount)} />
+        <Metric title="Feedback" icon={<MessageSquareText />} value="—" />
+      </div>
+    </div>
   );
 };
