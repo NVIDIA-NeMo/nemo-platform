@@ -85,10 +85,11 @@ def health_live() -> dict[str, str]:
 def health_ready(response: Response) -> dict[str, str]:
     """Readiness: only ready once the classifier is loaded.
 
-    With ``--preload`` (default) the model loads before uvicorn binds, so this is
-    ready immediately. With ``--no-preload`` it reports 503 until the first request
-    triggers a lazy load, so an orchestrator's readiness probe reflects reality
-    instead of routing traffic into a cold first request.
+    ``start`` loads the model before uvicorn accepts traffic, so in normal operation
+    this returns ready as soon as the server is reachable. The 503 branch is a
+    defensive guard for the unusual case of running the ASGI app without preloading
+    (e.g. ``uvicorn server:app`` directly), so a readiness probe never reports ready
+    before the model is actually loaded.
     """
     if _classifier is None:
         response.status_code = 503
@@ -133,18 +134,22 @@ def _main() -> None:
 def start(
     port: int = typer.Option(default=8000, help="Port to listen on."),
     host: str = typer.Option(default="0.0.0.0", help="Host/IP to bind."),
-    preload: bool = typer.Option(default=True, help="Load the model before serving."),
 ) -> None:
-    """Start the model server."""
+    """Start the model server.
+
+    The model always loads before the server accepts traffic. There is deliberately no
+    lazy "load on first request" mode: a readiness-gated orchestrator never routes that
+    first request to an unready pod, so a lazy server would never flip to ready
+    (deadlock). Loading up front also fail-fasts on a bad model or download instead of
+    on the first request.
+    """
     # Surface our INFO startup logs (model download/load progress) on the console
     # before uvicorn configures its own logging.
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    if preload:
-        # Surface model/download failures at boot instead of on first request,
-        # so the controller's readiness probe reflects reality.
-        logger.info("Preloading model before serving (this is the slow first-run step)...")
-        get_classifier()
-        logger.info("Model preloaded.")
+    # Weights are HF-cache-aware, so after the first run this is just a load into memory.
+    logger.info("Loading model before serving (slow on first run: downloads weights)...")
+    get_classifier()
+    logger.info("Model loaded.")
     logger.info("Starting HTTP server on %s:%s", host, port)
     uvicorn.run(app, host=host, port=port)
 
