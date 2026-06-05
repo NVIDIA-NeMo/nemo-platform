@@ -22,14 +22,15 @@ ENV JAILBREAK_CHECK_DEVICE=cpu \
 WORKDIR /app
 
 COPY pyproject.toml uv.lock ./
-RUN uv sync --frozen --no-dev
+# Cache mount keeps uv's ~5 GB wheel download cache out of the image layer
+# (it's build-time only, not committed) while still speeding up rebuilds.
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 COPY model/classifier.py model/server.py ./
 
-
 RUN useradd --create-home --uid 1000 jbd && \
     mkdir -p "$HF_HOME" && \
-    chown -R 1000:0 /app /opt/jailbreak-detect && \
+    chown -R 1000:0 /opt/jailbreak-detect && \
     chmod -R g+rwX /opt/jailbreak-detect
 
 ENV PATH="/app/.venv/bin:$PATH"
