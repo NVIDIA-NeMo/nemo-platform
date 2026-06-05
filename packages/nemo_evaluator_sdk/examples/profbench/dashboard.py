@@ -26,7 +26,7 @@ def write_profbench_dashboard(result: AgentEvalRunResult, output_path: str | Pat
     """Write the ProfBench-specific HTML report for an example run."""
     path = Path(output_path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_profbench_dashboard(result), encoding="utf-8")
+    path.write_text(render_profbench_dashboard(result, evidence_base_dir=path.parent), encoding="utf-8")
     return path
 
 
@@ -38,7 +38,7 @@ def write_example_dashboards(result: AgentEvalRunResult, output_dir: str | Path)
     return sdk_dashboard_path, dashboard_path
 
 
-def render_profbench_dashboard(result: AgentEvalRunResult) -> str:
+def render_profbench_dashboard(result: AgentEvalRunResult, *, evidence_base_dir: str | Path | None = None) -> str:
     """Render a ProfBench-aware HTML report from generic agent-eval results."""
     rows = _profbench_result_rows(result.results)
     data_json = json.dumps(result.model_dump(mode="json"), sort_keys=True)
@@ -117,12 +117,12 @@ def render_profbench_dashboard(result: AgentEvalRunResult) -> str:
     </div>
     <table id="deductions">
       <thead><tr><th>Task</th><th>Model</th><th>Lost</th><th>Criterion</th><th>Reason</th><th>Evidence</th></tr></thead>
-      <tbody>{_deduction_rows(top_deductions)}</tbody>
+      <tbody>{_deduction_rows(top_deductions, evidence_base_dir=evidence_base_dir)}</tbody>
     </table>
   </section>
   <section>
     <h2>Task Details</h2>
-    {_task_details(rows)}
+    {_task_details(rows, evidence_base_dir=evidence_base_dir)}
   </section>
 </main>
 <script id="run-data" type="application/json">{html.escape(data_json)}</script>
@@ -211,6 +211,8 @@ def _model_options(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]
 
 def _deduction_rows(
     rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails, ScoreDeduction]],
+    *,
+    evidence_base_dir: str | Path | None,
 ) -> str:
     rendered = []
     for task_result, details, deduction in rows:
@@ -222,13 +224,17 @@ def _deduction_rows(
             f'<td class="deduction">{deduction.raw_points:g}</td>'
             f"<td>{_e(deduction.criterion_id)}</td>"
             f"<td>{_e(deduction.reason)}</td>"
-            f"<td>{_evidence_links(deduction.evidence)}</td>"
+            f"<td>{_evidence_links(deduction.evidence, evidence_base_dir=evidence_base_dir)}</td>"
             "</tr>"
         )
     return "".join(rendered)
 
 
-def _task_details(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]) -> str:
+def _task_details(
+    rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]],
+    *,
+    evidence_base_dir: str | Path | None,
+) -> str:
     rendered = []
     for task_result, details in rows:
         criterion_rows = "".join(
@@ -241,7 +247,7 @@ def _task_details(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]
             f"<td>{_e(criterion.description)}</td>"
             f"<td>{_e(criterion.metadata.get('score_source', ''))}</td>"
             f"<td>{_e(criterion.judge_reason or '')}</td>"
-            f"<td>{_evidence_links(criterion.evidence)}</td>"
+            f"<td>{_evidence_links(criterion.evidence, evidence_base_dir=evidence_base_dir)}</td>"
             "</tr>"
             for criterion in details.criterion_scores
         )
@@ -256,19 +262,23 @@ def _task_details(rows: list[tuple[AgentEvalTaskResult, ProfBenchRubricDetails]]
     return "".join(rendered)
 
 
-def _evidence_links(locators: list[EvidenceLocator]) -> str:
+def _evidence_links(locators: list[EvidenceLocator], *, evidence_base_dir: str | Path | None) -> str:
     if not locators:
         return ""
-    return '<div class="chips">' + "".join(_evidence_link(locator) for locator in locators) + "</div>"
+    return (
+        '<div class="chips">'
+        + "".join(_evidence_link(locator, evidence_base_dir=evidence_base_dir) for locator in locators)
+        + "</div>"
+    )
 
 
-def _evidence_link(locator: EvidenceLocator) -> str:
+def _evidence_link(locator: EvidenceLocator, *, evidence_base_dir: str | Path | None) -> str:
     label = locator.label or locator.kind
     if locator.line is not None:
         label = f"{label}:L{locator.line}"
     if locator.json_path:
         label = f"{label} {locator.json_path}"
-    return f'<a class="chip" href="{_e(locator.href())}">{_e(label)}</a>'
+    return f'<a class="chip" href="{_e(locator.href(base_dir=evidence_base_dir))}">{_e(label)}</a>'
 
 
 def _mean_by_key(values: dict[str, list[float]]) -> dict[str, float]:

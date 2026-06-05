@@ -9,6 +9,8 @@ from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalAttempt,
+    AgentEvalDiagnostic,
+    AgentEvalMetricOutputCoverage,
     AgentEvalRunConfig,
     AgentEvalRunResult,
     AgentEvalSummary,
@@ -19,10 +21,12 @@ from nemo_evaluator_sdk.agent_eval.types import (
     SemanticView,
     ViewSignal,
 )
-from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor, LocalFilesystemEvidence
 
 __all__ = [
     "AgentEvalAttempt",
+    "AgentEvalDiagnostic",
+    "AgentEvalMetricOutputCoverage",
     "AgentEvalRunConfig",
     "AgentEvalRunResult",
     "AgentEvalSummary",
@@ -34,6 +38,7 @@ __all__ = [
     "AgentOutput",
     "CandidateEvidence",
     "EvidenceDescriptor",
+    "LocalFilesystemEvidence",
     "SemanticView",
     "ViewSignal",
     "persist_run",

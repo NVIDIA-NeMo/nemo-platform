@@ -6,11 +6,12 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections.abc import Awaitable
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 import nemo_evaluator_sdk.inference as inference
@@ -72,19 +73,37 @@ class EvidenceLocator(BaseModel):
             raise ValueError("ATIF evidence locators require a line number")
         return self
 
-    def href(self) -> str:
+    def href(self, *, base_dir: str | Path | None = None) -> str:
         """Return a browser-usable evidence link."""
-        if self.uri.startswith(("http://", "https://", "atif://")):
-            href = self.uri
-        elif self.uri.startswith("/"):
-            href = Path(self.uri).as_uri()
-        else:
-            href = quote(self.uri)
-
-        if self.line is None:
+        href, supports_line_fragment = self._href_base(base_dir=base_dir)
+        if self.line is None or not supports_line_fragment:
             return href
         separator = "&" if "#" in href else "#"
         return f"{href}{separator}L{self.line}"
+
+    def _href_base(self, *, base_dir: str | Path | None) -> tuple[str, bool]:
+        if self.uri.startswith(("http://", "https://", "atif://")):
+            href = self.uri
+            return href, True
+
+        local_path = _local_evidence_path(self.uri)
+        if local_path is not None:
+            if base_dir is not None:
+                base_path = Path(base_dir).expanduser().resolve()
+                resolved_path = local_path if local_path.is_absolute() else (base_path / local_path).resolve()
+                return quote(Path(os.path.relpath(resolved_path, base_path)).as_posix(), safe="/"), False
+            return local_path.expanduser().resolve().as_uri(), False
+
+        return quote(self.uri), False
+
+
+def _local_evidence_path(uri: str) -> Path | None:
+    parsed = urlparse(uri)
+    if parsed.scheme == "file":
+        return Path(parsed.path)
+    if parsed.scheme:
+        return None
+    return Path(uri)
 
 
 class ScoreDeduction(BaseModel):

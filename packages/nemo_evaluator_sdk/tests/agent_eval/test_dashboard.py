@@ -19,6 +19,8 @@ def test_dashboard_contains_metric_rollups_and_outputs() -> None:
         attempts=[],
         results=[
             AgentEvalTaskResult(
+                id="run-1:task-1:attempt-1:example_metric",
+                run_id="run-1",
                 task_id="task-1",
                 attempt_id="attempt-1",
                 metric_type="example_metric",

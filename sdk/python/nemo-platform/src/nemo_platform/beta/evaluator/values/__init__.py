@@ -10,7 +10,7 @@ from nemo_platform.beta.evaluator.values.dataset_schemas import (
     InputSchema,
 )
 from nemo_platform.beta.evaluator.values.datasets import DatasetInput, DatasetRows
-from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor, LocalFilesystemEvidence
 from nemo_platform.beta.evaluator.values.metrics import (
     BLEU,
     F1,
@@ -112,6 +112,7 @@ __all__ = [
     "InferenceParams",
     "JSONScoreParser",
     "Label",
+    "LocalFilesystemEvidence",
     "MetricDescriptor",
     "MetricInput",
     "MetricOutput",

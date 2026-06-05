@@ -10,7 +10,9 @@ import asyncio
 import logging
 import os
 import uuid
+from collections.abc import Mapping
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 
 if __package__ in {None, ""}:
@@ -19,7 +21,17 @@ if __package__ in {None, ""}:
         "  python -m packages.nemo_evaluator_sdk.examples.profbench.runner"
     )
 
-from nemo_evaluator_sdk.agent_eval import AgentEvalRunConfig, AgentEvaluator
+from nemo_evaluator_sdk.agent_eval import (
+    AgentEvalRunConfig,
+    AgentEvalTarget,
+    AgentEvaluator,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import (
+    EffectiveCodexRuntime,
+    RuntimeChoice,
+    print_codex_agent_models,
+    resolve_codex_target,
+)
 from nemo_evaluator_sdk.values import InferenceParams, Model, RunConfigOnlineModel, SecretRef
 
 from .dashboard import write_example_dashboards
@@ -31,6 +43,11 @@ DEFAULT_EVALUATED_MODEL_NAME = "nvidia/nemotron-3-nano-30b-a3b"
 DEFAULT_JUDGE_MODEL_URL = DEFAULT_EVALUATED_MODEL_URL
 DEFAULT_JUDGE_MODEL_NAME = DEFAULT_EVALUATED_MODEL_NAME
 DEFAULT_API_KEY_SECRET = os.getenv("NMP_EVALUATOR_DEFAULT_API_KEY_SECRET", "NVIDIA_API_KEY")
+
+
+class AgentChoice(StrEnum):
+    MODEL = "model"
+    CODEX = "codex"
 
 
 def configure_example_logging() -> None:
@@ -118,19 +135,25 @@ async def run_profbench_live_candidate_example(
     limit: int | None,
     output_root: str | Path | None = None,
     run_instance_id: str | None = None,
+    agent: AgentChoice = AgentChoice.MODEL,
+    agent_model: str | None = None,
+    runtime: RuntimeChoice = RuntimeChoice.DOCKER,
 ) -> None:
     """Generate fresh ProfBench responses from a model and score them with a judge."""
     _print_example_separator(run_profbench_live_candidate_example.__name__)
 
-    evaluated_model = _evaluated_model()
     judge_model = _judge_model()
     output_root = _resolve_profbench_output_root(output_root)
     run_instance_id = run_instance_id or _new_profbench_run_instance_id()
     output_dir = _profbench_output_dir(output_root, run_instance_id, "live-candidate")
-    params = RunConfigOnlineModel(
-        parallelism=2,
-        inference=InferenceParams(temperature=0.0, max_tokens=4096),
+    target, params, score_source, effective_codex_runtime = _live_candidate_target(
+        agent=agent,
+        agent_model=agent_model,
+        runtime=runtime,
+        output_dir=output_dir,
     )
+    if effective_codex_runtime is not None:
+        print(f"Codex runtime: {effective_codex_runtime}")
     benchmark = load_profbench(
         _profbench_source(),
         limit=limit,
@@ -141,12 +164,12 @@ async def run_profbench_live_candidate_example(
 
     result = await AgentEvaluator().run(
         tasks=benchmark.tasks,
-        target=evaluated_model,
+        target=target,
         config=AgentEvalRunConfig(
             output_dir=output_dir,
             run_id=f"{run_instance_id}-live-candidate",
             params=params,
-            benchmark={**benchmark.metadata, "score_source": "fresh_candidate_and_live_judge"},
+            benchmark={**benchmark.metadata, "score_source": score_source},
             write_dashboard=False,
         ),
     )
@@ -165,6 +188,9 @@ async def run_examples(
     run_live_candidate: bool,
     output_root: str | Path | None = None,
     run_instance_id: str | None = None,
+    agent: AgentChoice = AgentChoice.MODEL,
+    agent_model: str | None = None,
+    runtime: RuntimeChoice = RuntimeChoice.DOCKER,
 ) -> None:
     """Execute the ProfBench agent-eval examples."""
     output_root = _resolve_profbench_output_root(output_root)
@@ -188,16 +214,19 @@ async def run_examples(
             run_instance_id=run_instance_id,
         )
     else:
-        print("Skipping live ProfBench judge example. Pass --run-live-judge to run it.")
+        print("Skipping live ProfBench judge example. Remove --no-run-live-judge to run it.")
 
     if run_live_candidate:
         await run_profbench_live_candidate_example(
             limit=limit,
             output_root=output_root,
             run_instance_id=run_instance_id,
+            agent=agent,
+            agent_model=agent_model,
+            runtime=runtime,
         )
     else:
-        print("Skipping live ProfBench candidate example. Pass --run-live-candidate to run it.")
+        print("Skipping live ProfBench candidate example. Remove --no-run-live-candidate to run it.")
 
 
 def _profbench_source() -> str:
@@ -226,14 +255,15 @@ def _profbench_output_dir(output_root: str | Path, run_instance_id: str, mode: s
     return Path(output_root).expanduser() / run_instance_id / mode
 
 
-def _evaluated_model() -> Model:
+def _evaluated_model(model_name: str | None = None) -> Model:
     return Model(
         url=_model_env(
             "NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL",
             DEFAULT_EVALUATED_MODEL_URL,
             legacy_key="NEMO_EVALUATOR_PROFBENCH_MODEL_URL",
         ),
-        name=_model_env(
+        name=model_name
+        or _model_env(
             "NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL",
             DEFAULT_EVALUATED_MODEL_NAME,
             legacy_key="NEMO_EVALUATOR_PROFBENCH_MODEL",
@@ -260,6 +290,40 @@ def _judge_model() -> Model:
 
 def _model_env(key: str, default: str, *, legacy_key: str) -> str:
     return os.getenv(key) or os.getenv(legacy_key) or default
+
+
+def _live_candidate_target(
+    *,
+    agent: AgentChoice,
+    agent_model: str | None,
+    runtime: RuntimeChoice,
+    output_dir: Path,
+    env: Mapping[str, str] = os.environ,
+) -> tuple[
+    AgentEvalTarget,
+    RunConfigOnlineModel | None,
+    str,
+    EffectiveCodexRuntime | None,
+]:
+    if agent == AgentChoice.MODEL:
+        return (
+            _evaluated_model(agent_model),
+            RunConfigOnlineModel(
+                parallelism=2,
+                inference=InferenceParams(temperature=0.0, max_tokens=4096),
+            ),
+            "fresh_candidate_and_live_judge",
+            None,
+        )
+    if agent == AgentChoice.CODEX:
+        target, score_source, effective_runtime = resolve_codex_target(
+            runtime=runtime,
+            model=agent_model,
+            output_dir=output_dir,
+            env=env,
+        )
+        return target, None, score_source, effective_runtime
+    raise ValueError(f"unsupported ProfBench agent {agent!r}")
 
 
 def _print_example_separator(name: str) -> None:
@@ -298,7 +362,43 @@ if __name__ == "__main__":
         default=True,
         help="Generate fresh candidate responses from the configured model, then score them with a live LLM judge.",
     )
+    parser.add_argument(
+        "--agent",
+        type=AgentChoice,
+        choices=list(AgentChoice),
+        default=AgentChoice.MODEL,
+        help="Candidate agent for live-candidate mode. Use 'codex' for Codex-backed candidate generation.",
+    )
+    parser.add_argument(
+        "--runtime",
+        type=RuntimeChoice,
+        choices=list(RuntimeChoice),
+        default=RuntimeChoice.DOCKER,
+        help=(
+            "Runtime for --agent codex. Default: docker. Docker uses SDK Docker when OPENAI_API_KEY is an "
+            "OpenAI secret key and runs Codex CLI inside Docker otherwise. Use local to force the host Codex CLI."
+        ),
+    )
+    parser.add_argument(
+        "--agent-model",
+        default=None,
+        help=(
+            "Model name for the selected candidate agent. With --agent codex --runtime local this "
+            "is passed to `codex exec --model`; with --agent codex --runtime docker this is passed "
+            "to the effective Codex runtime; with --agent model it overrides the evaluated model name."
+        ),
+    )
+    parser.add_argument(
+        "--list-agent-models",
+        action="store_true",
+        help="List locally visible Codex model slugs for --agent codex and exit.",
+    )
     args = parser.parse_args()
+    if args.list_agent_models:
+        if args.agent != AgentChoice.CODEX:
+            parser.error("--list-agent-models is only supported with --agent codex")
+        print_codex_agent_models()
+        raise SystemExit(0)
     configure_example_logging()
 
     asyncio.run(
@@ -307,5 +407,8 @@ if __name__ == "__main__":
             run_live_judge=bool(args.run_live_judge),
             run_live_candidate=bool(args.run_live_candidate),
             output_root=args.output_dir,
+            agent=args.agent,
+            agent_model=args.agent_model,
+            runtime=args.runtime,
         )
     )

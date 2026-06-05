@@ -13,14 +13,13 @@ from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
 
-from pydantic import BaseModel
-
 import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.agent_eval.dashboard import write_dashboard
 from nemo_evaluator_sdk.agent_eval.persistence import persist_run
 from nemo_evaluator_sdk.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalAttempt,
+    AgentEvalDiagnostic,
     AgentEvalRunConfig,
     AgentEvalRunResult,
     AgentEvalSummary,
@@ -28,12 +27,11 @@ from nemo_evaluator_sdk.agent_eval.types import (
     AgentEvalTask,
     AgentEvalTaskResult,
     AgentOutput,
-    mean_numeric,
 )
 from nemo_evaluator_sdk.agent_inference import make_agent_inference_request, new_agent_inference_client
 from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample, run_sync
 from nemo_evaluator_sdk.execution.samples import build_metric_input
-from nemo_evaluator_sdk.metrics.protocol import Metric, MetricOutput, validate_metric_result
+from nemo_evaluator_sdk.metrics.protocol import Metric, validate_metric_result
 from nemo_evaluator_sdk.metrics.utils import metric_type_name
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
@@ -62,29 +60,35 @@ class AgentEvaluator:
             raise ValueError("at least one task is required")
 
         run_id = resolved_config.run_id or _new_run_id()
+        runtime_config = resolved_config.model_copy(update={"run_id": run_id})
         attempt_list = (
             list(attempts)
             if attempts is not None
             else await self._generate_attempts(
                 tasks=task_list,
                 target=cast(AgentEvalTarget, target),
-                config=resolved_config,
+                config=runtime_config,
             )
         )
-        results = await self._score_attempts(tasks=task_list, attempts=attempt_list, config=resolved_config)
-        benchmark = {"run_id": run_id, **_benchmark_metadata(task_list), **resolved_config.benchmark}
+        results = await self._score_attempts(
+            tasks=task_list,
+            attempts=attempt_list,
+            config=runtime_config,
+            run_id=run_id,
+        )
+        benchmark = {**_benchmark_metadata(task_list), **runtime_config.benchmark}
         result = AgentEvalRunResult(
             run_id=run_id,
             tasks=task_list,
             attempts=attempt_list,
             results=results,
-            summary=summarize_results(results),
+            summary=AgentEvalSummary.from_results(results, tasks=task_list),
             benchmark=benchmark,
         )
 
-        if resolved_config.output_dir is not None:
+        if runtime_config.output_dir is not None:
             result = _persist_with_optional_dashboard(
-                result, resolved_config.output_dir, resolved_config.write_dashboard
+                result, runtime_config.output_dir, runtime_config.write_dashboard
             )
         return result
 
@@ -105,6 +109,7 @@ class AgentEvaluator:
         tasks: list[AgentEvalTask],
         attempts: list[AgentEvalAttempt],
         config: AgentEvalRunConfig,
+        run_id: str,
     ) -> list[AgentEvalTaskResult]:
         tasks_by_id = {task.id: task for task in tasks}
         task_index_by_id = {task.id: index for index, task in enumerate(tasks)}
@@ -112,8 +117,6 @@ class AgentEvaluator:
         for attempt in attempts:
             if attempt.task_id not in tasks_by_id:
                 raise ValueError(f"attempt {attempt.id!r} references unknown task {attempt.task_id!r}")
-            if attempt.status == "failed":
-                raise ValueError(f"attempt {attempt.id!r} is failed")
             attempts_by_task[attempt.task_id].append(attempt)
 
         for task in tasks:
@@ -124,12 +127,39 @@ class AgentEvaluator:
 
         async def guarded_score(task: AgentEvalTask, attempt: AgentEvalAttempt, metric: Metric) -> AgentEvalTaskResult:
             async with semaphore:
-                return await _score_metric(
-                    task=task,
-                    attempt=attempt,
-                    metric=metric,
-                    row_index=task_index_by_id[task.id],
-                )
+                row_index = task_index_by_id[task.id]
+                if attempt.status == "failed":
+                    return _failed_metric_result(
+                        run_id=run_id,
+                        task=task,
+                        attempt=attempt,
+                        metric=metric,
+                        row_index=row_index,
+                        diagnostic=AgentEvalDiagnostic(
+                            message=f"attempt {attempt.id!r} is failed",
+                            source=metric_type_name(metric),
+                            details={"attempt_status": attempt.status},
+                        ),
+                    )
+                try:
+                    return await _score_metric(
+                        run_id=run_id,
+                        task=task,
+                        attempt=attempt,
+                        metric=metric,
+                        row_index=row_index,
+                    )
+                except Exception as exc:
+                    if config.fail_fast:
+                        raise
+                    return _failed_metric_result(
+                        run_id=run_id,
+                        task=task,
+                        attempt=attempt,
+                        metric=metric,
+                        row_index=row_index,
+                        diagnostic=_exception_diagnostic(exc, metric_type_name(metric)),
+                    )
 
         return await asyncio.gather(
             *[
@@ -252,6 +282,7 @@ def _attempt_from_sample(task: AgentEvalTask, target: Model | Agent, sample: dic
 
 async def _score_metric(
     *,
+    run_id: str,
     task: AgentEvalTask,
     attempt: AgentEvalAttempt,
     metric: Metric,
@@ -264,16 +295,58 @@ async def _score_metric(
         ),
         output_spec,
     )
+    metric_type = metric_type_name(metric)
     return AgentEvalTaskResult(
+        id=_result_id(run_id, task.id, attempt.id, metric_type),
+        run_id=run_id,
         task_id=task.id,
         attempt_id=attempt.id,
-        metric_type=metric_type_name(metric),
+        metric_type=metric_type,
+        status="completed",
         outputs=metric_result.outputs,
         metadata={
             "row_index": row_index,
             "attempt_metadata": attempt.metadata,
         },
     )
+
+
+def _failed_metric_result(
+    *,
+    run_id: str,
+    task: AgentEvalTask,
+    attempt: AgentEvalAttempt,
+    metric: Metric,
+    row_index: int,
+    diagnostic: AgentEvalDiagnostic,
+) -> AgentEvalTaskResult:
+    metric_type = metric_type_name(metric)
+    return AgentEvalTaskResult(
+        id=_result_id(run_id, task.id, attempt.id, metric_type),
+        run_id=run_id,
+        task_id=task.id,
+        attempt_id=attempt.id,
+        metric_type=metric_type,
+        status="failed",
+        outputs=[],
+        diagnostics=[diagnostic],
+        metadata={
+            "row_index": row_index,
+            "attempt_metadata": attempt.metadata,
+        },
+    )
+
+
+def _exception_diagnostic(exc: Exception, metric_type: str) -> AgentEvalDiagnostic:
+    return AgentEvalDiagnostic(
+        message=str(exc) or exc.__class__.__name__,
+        source=metric_type,
+        details={"exception_type": exc.__class__.__name__},
+    )
+
+
+def _result_id(run_id: str, task_id: str, attempt_id: str, metric_type: str) -> str:
+    return f"{run_id}:{task_id}:{attempt_id}:{metric_type}"
 
 
 def _attempt_sample(attempt: AgentEvalAttempt) -> dict[str, Any]:
@@ -331,7 +404,7 @@ def _task_row(task: AgentEvalTask) -> dict[str, Any]:
     return {
         **task.inputs,
         "task_id": task.id,
-        "prompt": task.inputs.get("prompt") or task.intent,
+        "prompt": task.inputs.get("prompt") or task.inputs.get("instruction") or task.intent,
     }
 
 
@@ -350,49 +423,6 @@ def _metric_row(task: AgentEvalTask, attempt: AgentEvalAttempt) -> dict[str, Any
             "metadata": attempt.metadata,
         },
     }
-
-
-def summarize_results(results: Sequence[AgentEvalTaskResult]) -> AgentEvalSummary:
-    metric_values: dict[str, dict[str, list[float]]] = defaultdict(lambda: defaultdict(list))
-    for result in results:
-        for output in result.outputs:
-            value = _numeric_value(output)
-            if value is not None:
-                metric_values[result.metric_type][output.name].append(value)
-
-    metric_scores: dict[str, dict[str, float]] = {}
-    for metric_type, outputs in sorted(metric_values.items()):
-        output_scores = {
-            output_name: score
-            for output_name, values in sorted(outputs.items())
-            if (score := mean_numeric(values)) is not None
-        }
-        if output_scores:
-            metric_scores[metric_type] = output_scores
-
-    rollup_values = [score for output_scores in metric_scores.values() for score in output_scores.values()]
-    return AgentEvalSummary(
-        overall_score=mean_numeric(rollup_values),
-        metric_scores=metric_scores,
-        task_count=len({result.task_id for result in results}),
-        attempt_count=len({result.attempt_id for result in results}),
-        result_count=len(results),
-    )
-
-
-def _numeric_value(output: MetricOutput) -> float | None:
-    value = output.value
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int | float):
-        return float(value)
-    if isinstance(value, BaseModel):
-        root = getattr(value, "root", None)
-        if isinstance(root, bool):
-            return None
-        if isinstance(root, int | float):
-            return float(root)
-    return None
 
 
 def _is_completions_endpoint(url: str) -> bool:

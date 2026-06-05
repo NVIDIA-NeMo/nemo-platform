@@ -9,7 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from nemo_platform.beta.evaluator.resolver_protocols import ModelResolver, SecretResolver
 from nemo_platform.beta.evaluator.values.common import SecretRef
-from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor
+from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence, EvidenceDescriptor, LocalFilesystemEvidence
 from nemo_platform.beta.evaluator.values.models import ModelRef
 from nemo_platform.beta.evaluator.values.protocol import (
     BooleanValue,
@@ -37,6 +37,7 @@ __all__ = [
     "DiscreteScore",
     "EvidenceDescriptor",
     "Label",
+    "LocalFilesystemEvidence",
     "Metric",
     "MetricDescriptor",
     "MetricInput",

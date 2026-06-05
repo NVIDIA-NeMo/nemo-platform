@@ -11,6 +11,7 @@ from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval import AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.runtimes.codex import runtime as codex_runtime
 from nemo_evaluator_sdk.values import Model
 
 profbench = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.profbench")
@@ -115,8 +116,19 @@ def test_profbench_baseline_scoring_creates_traceable_deductions(tmp_path: Path)
     assert deduction.evidence[0].line == 1
     assert deduction.evidence[0].json_path == "$.rubrics[1]"
     assert deduction.evidence[0].href().startswith("file://")
+    assert "#L1" not in deduction.evidence[0].href()
     assert all(criterion.judge_reason is None for criterion in details.criterion_scores)
     assert {criterion.metadata["score_source"] for criterion in details.criterion_scores} == {"dataset_label"}
+
+
+def test_evidence_locator_local_file_href_omits_dead_line_fragment(tmp_path: Path) -> None:
+    evidence_file = tmp_path / "profbench-dataset.jsonl"
+    evidence_file.write_text("{}\n", encoding="utf-8")
+
+    locator = profbench.EvidenceLocator(kind="profbench", uri=str(evidence_file), line=1, json_path="$.rubrics[0]")
+
+    assert locator.href() == evidence_file.as_uri()
+    assert locator.href(base_dir=tmp_path) == "profbench-dataset.jsonl"
 
 
 def test_profbench_live_judge_mode_scores_recorded_attempts_without_cached_labels(tmp_path: Path) -> None:
@@ -169,7 +181,7 @@ def test_profbench_dashboard_renders_rubric_report(tmp_path: Path) -> None:
     benchmark = profbench.load_profbench(_write_profbench_fixture(tmp_path / "profbench.jsonl"))
     result = AgentEvaluator().run_sync(tasks=benchmark.tasks, attempts=benchmark.attempts)
 
-    html = profbench_dashboard.render_profbench_dashboard(result)
+    html = profbench_dashboard.render_profbench_dashboard(result, evidence_base_dir=tmp_path)
 
     assert "ProfBench Agent Eval Report" in html
     assert "Highest-Impact Failures" in html
@@ -179,6 +191,8 @@ def test_profbench_dashboard_renders_rubric_report(tmp_path: Path) -> None:
     assert "Chemistry PhD" in html
     assert "Dataset fulfilment label" not in html
     assert "dataset_label" in html
+    assert 'href="profbench.jsonl"' in html
+    assert "profbench.jsonl#L1" not in html
 
     report_path = profbench_dashboard.write_profbench_dashboard(result, tmp_path / "report.html")
     assert report_path.read_text(encoding="utf-8") == html
@@ -291,6 +305,23 @@ def test_profbench_model_helpers_preserve_legacy_shared_model_env(monkeypatch: p
     assert judge_model.name == "legacy-model"
 
 
+def test_profbench_live_candidate_target_selects_codex_runtime(tmp_path: Path) -> None:
+    target, params, score_source, effective_runtime = profbench_runner._live_candidate_target(
+        agent=profbench_runner.AgentChoice.CODEX,
+        agent_model="gpt-5",
+        runtime=codex_runtime.RuntimeChoice.LOCAL,
+        output_dir=tmp_path / "live-candidate",
+        env={"OPENAI_API_KEY": "sk-test-key"},
+    )
+
+    assert isinstance(target, codex_runtime.CodexCliAgentRuntime)
+    assert target._model == "gpt-5"
+    assert target._work_root == tmp_path / "live-candidate" / "evidence" / "codex"
+    assert params is None
+    assert score_source == "codex_cli_candidate_and_live_judge"
+    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.LOCAL_CLI
+
+
 @pytest.mark.asyncio
 async def test_profbench_run_examples_reuses_one_run_folder_for_enabled_modes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -309,10 +340,19 @@ async def test_profbench_run_examples_reuses_one_run_folder_for_enabled_modes(
         calls.append(("live-judge", limit, Path(output_root), run_instance_id))
 
     async def fake_live_candidate(
-        *, limit: int | None, output_root: str | Path | None, run_instance_id: str | None
+        *,
+        limit: int | None,
+        output_root: str | Path | None,
+        run_instance_id: str | None,
+        agent: profbench_runner.AgentChoice,
+        agent_model: str | None,
+        runtime: codex_runtime.RuntimeChoice,
     ) -> None:
         assert output_root is not None
         assert run_instance_id is not None
+        assert agent == profbench_runner.AgentChoice.CODEX
+        assert agent_model == "gpt-5"
+        assert runtime == codex_runtime.RuntimeChoice.LOCAL
         calls.append(("live-candidate", limit, Path(output_root), run_instance_id))
 
     monkeypatch.setattr(profbench_runner, "run_profbench_baseline_example", fake_baseline)
@@ -325,6 +365,9 @@ async def test_profbench_run_examples_reuses_one_run_folder_for_enabled_modes(
         run_live_candidate=True,
         output_root=tmp_path,
         run_instance_id=run_instance_id,
+        agent=profbench_runner.AgentChoice.CODEX,
+        agent_model="gpt-5",
+        runtime=codex_runtime.RuntimeChoice.LOCAL,
     )
 
     assert calls == [
@@ -364,6 +407,7 @@ async def test_profbench_baseline_example_writes_run_then_mode_output(
     run_payload = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
     assert run_payload["run_id"] == f"{run_instance_id}-baseline"
     assert run_payload["output_dir"] == str(output_dir)
+    assert run_payload["artifacts"]["results"] == "results.jsonl"
 
 
 @pytest.mark.asyncio
@@ -400,10 +444,12 @@ async def test_profbench_live_judge_example_writes_mode_evidence_artifacts(
     assert judge_artifacts
     assert not list((tmp_path / run_instance_id / "evidence").glob("judge-*.json"))
 
-    run_payload = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
+    result_payloads = [
+        json.loads(line) for line in (output_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
     first_judge_uri = next(
         locator["uri"]
-        for result in run_payload["results"]
+        for result in result_payloads
         for output in result["outputs"]
         if output["name"] == profbench.PROFBENCH_DETAILS_OUTPUT
         for criterion in output["value"]["criterion_scores"]

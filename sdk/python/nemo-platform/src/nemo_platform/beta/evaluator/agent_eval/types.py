@@ -18,6 +18,8 @@ from nemo_platform.beta.evaluator.values import Agent, Model, RunConfig, RunConf
 from nemo_platform.beta.evaluator.values.evidence import CandidateEvidence
 
 AgentEvalAttemptStatus = Literal["completed", "failed", "partial"]
+AgentEvalResultStatus = Literal["completed", "failed", "partial"]
+AgentEvalDiagnosticSeverity = Literal["error", "warning", "info"]
 SemanticReducer = Literal["single", "all", "any", "mean", "weighted_mean"]
 
 
@@ -151,11 +153,37 @@ class AgentEvalTaskResult(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    id: str
+    run_id: str
     task_id: str
     attempt_id: str
     metric_type: str
-    outputs: list[MetricOutput]
+    status: AgentEvalResultStatus = "completed"
+    outputs: list[MetricOutput] = Field(default_factory=list)
+    diagnostics: list["AgentEvalDiagnostic"] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentEvalDiagnostic(BaseModel):
+    """Diagnostic emitted while scoring one attempt with one metric."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    severity: AgentEvalDiagnosticSeverity = "error"
+    message: str
+    source: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class AgentEvalMetricOutputCoverage(BaseModel):
+    """Coverage counts for one metric output across run results."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    total: int = 0
+    scored: int = 0
+    failed: int = 0
+    missing: int = 0
 
 
 class AgentEvalSummary(BaseModel):
@@ -165,9 +193,52 @@ class AgentEvalSummary(BaseModel):
 
     overall_score: float | None = None
     metric_scores: dict[str, dict[str, float]] = Field(default_factory=dict)
+    metric_coverage: dict[str, dict[str, AgentEvalMetricOutputCoverage]] = Field(default_factory=dict)
+    semantic_view_scores: dict[str, float] = Field(default_factory=dict)
     task_count: int = 0
     attempt_count: int = 0
     result_count: int = 0
+
+    @classmethod
+    def from_results(
+        cls,
+        results: Sequence[AgentEvalTaskResult],
+        *,
+        tasks: Sequence[AgentEvalTask] | None = None,
+    ) -> "AgentEvalSummary":
+        """Build summary rollups and coverage for a set of metric results."""
+        metric_values: dict[str, dict[str, list[float]]] = {}
+        for result in results:
+            if result.status != "completed":
+                continue
+            for output in result.outputs:
+                value = _numeric_value(output)
+                if value is None:
+                    continue
+                metric_values.setdefault(result.metric_type, {}).setdefault(output.name, []).append(value)
+
+        metric_scores: dict[str, dict[str, float]] = {}
+        for metric_type, outputs in sorted(metric_values.items()):
+            output_scores = {
+                output_name: score
+                for output_name, values in sorted(outputs.items())
+                if (score := mean_numeric(values)) is not None
+            }
+            if output_scores:
+                metric_scores[metric_type] = output_scores
+
+        rollup_values = [score for output_scores in metric_scores.values() for score in output_scores.values()]
+        overall_score = rollup_values[0] if len(rollup_values) == 1 else None
+        task_list = list(tasks) if tasks is not None else None
+        return cls(
+            overall_score=overall_score,
+            metric_scores=metric_scores,
+            metric_coverage=_metric_coverage(results, task_list),
+            semantic_view_scores=_semantic_view_scores(results, task_list),
+            task_count=len(task_list) if task_list is not None else len({result.task_id for result in results}),
+            attempt_count=len({result.attempt_id for result in results}),
+            result_count=len(results),
+        )
 
 
 class AgentEvalRunConfig(BaseModel):
@@ -187,6 +258,7 @@ class AgentEvalRunConfig(BaseModel):
     default_headers: dict[str, str] | None = None
     write_dashboard: bool = True
     benchmark: dict[str, Any] = Field(default_factory=dict)
+    fail_fast: bool = False
 
 
 class AgentEvalRunResult(BaseModel):
@@ -213,6 +285,152 @@ class AgentAttemptRuntime(Protocol):
         tasks: Sequence[AgentEvalTask],
         config: AgentEvalRunConfig | None = None,
     ) -> Sequence[AgentEvalAttempt]: ...
+
+
+def _metric_coverage(
+    results: Sequence[AgentEvalTaskResult],
+    tasks: Sequence[AgentEvalTask] | None,
+) -> dict[str, dict[str, AgentEvalMetricOutputCoverage]]:
+    output_names = _metric_output_names(results, tasks)
+    coverage: dict[str, dict[str, AgentEvalMetricOutputCoverage]] = {}
+    for metric_type, names in sorted(output_names.items()):
+        metric_results = [result for result in results if result.metric_type == metric_type]
+        metric_coverage: dict[str, AgentEvalMetricOutputCoverage] = {}
+        for output_name in names:
+            total = len(metric_results)
+            failed = sum(1 for result in metric_results if result.status == "failed")
+            scored = sum(
+                1
+                for result in metric_results
+                if result.status != "failed" and any(output.name == output_name for output in result.outputs)
+            )
+            metric_coverage[output_name] = AgentEvalMetricOutputCoverage(
+                total=total,
+                scored=scored,
+                failed=failed,
+                missing=max(total - scored - failed, 0),
+            )
+        coverage[metric_type] = metric_coverage
+    return coverage
+
+
+def _metric_output_names(
+    results: Sequence[AgentEvalTaskResult],
+    tasks: Sequence[AgentEvalTask] | None,
+) -> dict[str, list[str]]:
+    names: dict[str, set[str]] = {}
+    if tasks is not None:
+        for task in tasks:
+            for metric in task.metrics:
+                metric_type = metric_type_name(metric)
+                for output in metric.output_spec():
+                    names.setdefault(metric_type, set()).add(output.name)
+
+    for result in results:
+        for output in result.outputs:
+            names.setdefault(result.metric_type, set()).add(output.name)
+    return {metric_type: sorted(output_names) for metric_type, output_names in names.items()}
+
+
+def _semantic_view_scores(
+    results: Sequence[AgentEvalTaskResult],
+    tasks: Sequence[AgentEvalTask] | None,
+) -> dict[str, float]:
+    if tasks is None:
+        return {}
+
+    tasks_by_id = {task.id: task for task in tasks}
+    result_by_key = {
+        (result.task_id, result.attempt_id, result.metric_type): result
+        for result in results
+        if result.status == "completed"
+    }
+    attempts_by_task: dict[str, set[str]] = {}
+    for result in results:
+        attempts_by_task.setdefault(result.task_id, set()).add(result.attempt_id)
+
+    values_by_view: dict[str, list[float]] = {}
+    for task_id, attempt_ids in attempts_by_task.items():
+        task = tasks_by_id.get(task_id)
+        if task is None:
+            continue
+        for attempt_id in attempt_ids:
+            for view_name, view in task.views.items():
+                signal_values: list[float] = []
+                for signal in view.signals:
+                    result = result_by_key.get((task_id, attempt_id, signal.metric))
+                    output = _result_output(result, signal.output) if result is not None else None
+                    value = _semantic_value(output) if output is not None else None
+                    if value is None:
+                        signal_values = []
+                        break
+                    signal_values.append(value)
+                if not signal_values:
+                    continue
+                reduced = _reduce_semantic_view(view.reducer, signal_values, view.signals)
+                if reduced is not None:
+                    values_by_view.setdefault(view_name, []).append(reduced)
+
+    return {
+        view_name: score
+        for view_name, values in sorted(values_by_view.items())
+        if (score := mean_numeric(values)) is not None
+    }
+
+
+def _result_output(result: AgentEvalTaskResult | None, output_name: str) -> MetricOutput | None:
+    if result is None:
+        return None
+    for output in result.outputs:
+        if output.name == output_name:
+            return output
+    return None
+
+
+def _reduce_semantic_view(
+    reducer: SemanticReducer,
+    values: list[float],
+    signals: list[ViewSignal],
+) -> float | None:
+    if reducer == "single":
+        return values[0]
+    if reducer == "all":
+        return min(values)
+    if reducer == "any":
+        return max(values)
+    if reducer == "mean":
+        return mean_numeric(values)
+    weights = [signal.weight if signal.weight is not None else 1.0 for signal in signals]
+    denominator = sum(weights)
+    if denominator == 0:
+        return None
+    return sum(value * weight for value, weight in zip(values, weights, strict=True)) / denominator
+
+
+def _numeric_value(output: MetricOutput) -> float | None:
+    value = output.value
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, BaseModel):
+        root = getattr(value, "root", None)
+        if isinstance(root, bool):
+            return None
+        if isinstance(root, int | float):
+            return float(root)
+    return None
+
+
+def _semantic_value(output: MetricOutput) -> float | None:
+    value = output.value
+    if isinstance(value, bool):
+        return 1.0 if value else 0.0
+    if isinstance(value, BaseModel):
+        root = getattr(value, "root", None)
+        if isinstance(root, bool):
+            return 1.0 if root else 0.0
+    return _numeric_value(output)
 
 
 def mean_numeric(values: list[float]) -> float | None:

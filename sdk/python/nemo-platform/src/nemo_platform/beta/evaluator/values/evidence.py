@@ -5,9 +5,47 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
+
+
+class LocalFilesystemEvidence:
+    """Constrained local filesystem handle for metric evidence access."""
+
+    def __init__(self, root: str | Path) -> None:
+        self._root = Path(root).expanduser().resolve()
+
+    @property
+    def root(self) -> Path:
+        """Resolved root path for this local evidence handle."""
+        return self._root
+
+    def path(self, relative_path: str | Path = ".") -> Path:
+        """Return a path under the evidence root, rejecting traversal outside it."""
+        relative = Path(relative_path)
+        candidate = relative.resolve() if relative.is_absolute() else (self._root / relative).resolve()
+        if candidate != self._root and self._root not in candidate.parents:
+            raise ValueError(f"evidence path {relative_path!r} resolves outside evidence root")
+        return candidate
+
+    async def exists(self, relative_path: str | Path = ".") -> bool:
+        """Return whether a path exists under the evidence root."""
+        return self.path(relative_path).exists()
+
+    async def read_text(self, relative_path: str | Path, *, encoding: str = "utf-8") -> str:
+        """Read a text file under the evidence root."""
+        return self.path(relative_path).read_text(encoding=encoding)
+
+    async def iter_paths(self, relative_path: str | Path = ".", *, recursive: bool = False) -> list[str]:
+        """Return stable relative path names under the evidence root."""
+        base = self.path(relative_path)
+        if base.is_file():
+            return [base.relative_to(self._root).as_posix()]
+        iterator = base.rglob("*") if recursive else base.iterdir()
+        return sorted(path.relative_to(self._root).as_posix() for path in iterator)
 
 
 class EvidenceDescriptor(BaseModel):
@@ -35,6 +73,16 @@ class CandidateEvidence(BaseModel):
 
     descriptors: dict[str, EvidenceDescriptor] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    _filesystem_cache: dict[str, LocalFilesystemEvidence] = PrivateAttr(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _coerce_descriptor_mapping(cls, value: Any) -> Any:
+        if isinstance(value, cls):
+            return value
+        if isinstance(value, dict) and "descriptors" not in value and "metadata" not in value:
+            return {"descriptors": value}
+        return value
 
     def names(self, *, kind: str | None = None) -> list[str]:
         """Return evidence names, optionally filtered by descriptor kind."""
@@ -54,3 +102,29 @@ class CandidateEvidence(BaseModel):
         if kind is not None and descriptor.kind != kind:
             raise ValueError(f"evidence descriptor {name!r} has kind {descriptor.kind!r}, expected {kind!r}")
         return descriptor
+
+    async def filesystem(self, name: str) -> LocalFilesystemEvidence:
+        """Return a cached local filesystem handle for a named filesystem descriptor."""
+        cached = self._filesystem_cache.get(name)
+        if cached is not None:
+            return cached
+
+        descriptor = self.require(name, kind="filesystem")
+        if descriptor.ref is None:
+            raise ValueError(f"filesystem evidence descriptor {name!r} requires a local ref")
+
+        root = _local_filesystem_ref(descriptor.ref)
+        handle = LocalFilesystemEvidence(root)
+        self._filesystem_cache[name] = handle
+        return handle
+
+
+def _local_filesystem_ref(ref: str) -> Path:
+    parsed = urlparse(ref)
+    if parsed.scheme in {"http", "https", "s3", "gs"}:
+        raise ValueError("CandidateEvidence.filesystem only supports local filesystem refs")
+    if parsed.scheme == "file":
+        return Path(parsed.path)
+    if parsed.scheme:
+        raise ValueError(f"CandidateEvidence.filesystem does not support {parsed.scheme!r} refs")
+    return Path(ref)
