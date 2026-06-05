@@ -175,8 +175,12 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
       role="button"
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ')
+        if (e.key === 'Enter') {
           navigate(getExperimentGroupDetailRoute(workspace, group.id));
+        } else if (e.key === ' ') {
+          e.preventDefault();
+          navigate(getExperimentGroupDetailRoute(workspace, group.id));
+        }
       }}
     >
       {/* Main info */}
