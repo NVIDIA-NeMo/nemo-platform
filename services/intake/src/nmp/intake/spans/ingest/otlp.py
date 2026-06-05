@@ -22,6 +22,29 @@ from pydantic import BaseModel, Field
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
 
+# Ordered by precedence. Keep direct input.value/output.value first so existing
+# OpenInference/LangChain payloads continue to win over framework-specific fallbacks.
+OTLP_INPUT_PAYLOAD_ATTRIBUTE_KEYS = (
+    "input.value",
+    # Pydantic AI v2+ follows the newer OTel GenAI semantic conventions and
+    # emits model request content as JSON strings.
+    "gen_ai.input.messages",
+    # Tool spans use GenAI tool-call fields instead of input.value.
+    "gen_ai.tool.call.arguments",
+    "tool_arguments",
+)
+
+OTLP_OUTPUT_PAYLOAD_ATTRIBUTE_KEYS = (
+    "output.value",
+    "gen_ai.output.messages",
+    # Pydantic AI agent run spans store the typed/validated result here.
+    "final_result",
+    # Current Pydantic AI tool spans may use either the OTel semantic convention
+    # name or the older Pydantic-specific attribute.
+    "gen_ai.tool.call.result",
+    "tool_response",
+)
+
 
 class IngestResponse(BaseModel):
     errors: list[str] = Field(default_factory=list)
@@ -198,7 +221,10 @@ def _input_payload(attributes: dict[str, Any], events: list[dict[str, Any]], *, 
         messages_payload = _message_payload(attributes, prefix="llm.input_messages")
         if messages_payload is not None:
             return messages_payload
-    return _payload_value(attributes, events, direct_key="input.value", event_markers=("prompt", "input"))
+    return _first_payload_value(
+        attributes,
+        keys=OTLP_INPUT_PAYLOAD_ATTRIBUTE_KEYS,
+    )
 
 
 def _output_payload(attributes: dict[str, Any], events: list[dict[str, Any]], *, kind: str) -> str | None:
@@ -206,7 +232,10 @@ def _output_payload(attributes: dict[str, Any], events: list[dict[str, Any]], *,
         messages_payload = _message_payload(attributes, prefix="llm.output_messages")
         if messages_payload is not None:
             return messages_payload
-    return _payload_value(attributes, events, direct_key="output.value", event_markers=("completion", "output"))
+    return _first_payload_value(
+        attributes,
+        keys=OTLP_OUTPUT_PAYLOAD_ATTRIBUTE_KEYS,
+    )
 
 
 def _attributes_to_dict(attributes: Any) -> dict[str, Any]:
@@ -270,6 +299,18 @@ def _payload_value(
     matched_events = [event for event in events if any(marker in event["name"].lower() for marker in event_markers)]
     if matched_events:
         return json_dumps_preserve(matched_events)
+    return None
+
+
+def _first_payload_value(
+    attributes: dict[str, Any],
+    *,
+    keys: tuple[str, ...],
+) -> str | None:
+    for key in keys:
+        payload = _payload_value(attributes, [], direct_key=key, event_markers=())
+        if payload is not None:
+            return payload
     return None
 
 

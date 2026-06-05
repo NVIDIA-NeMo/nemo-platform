@@ -6,6 +6,8 @@ import { parseJsonObject, parseSseChunk } from '@studio/routes/agents/ClaudeCode
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeHistorySession,
+  ClaudeCodePermissionDecision,
+  ClaudeCodePermissionRequest,
   ClaudeCodeSessionHistory,
   ClaudeCodeSessionHistoryItem,
   ClaudeCodeStreamHandlers,
@@ -93,11 +95,6 @@ const parseAssistantPart = (value: unknown): ClaudeCodeAssistantHistoryPart | un
     return text ? { type: 'text', text } : undefined;
   }
 
-  if (value.type === 'thinking') {
-    const thinking = getString(value.thinking);
-    return thinking ? { type: 'thinking', thinking } : undefined;
-  }
-
   if (value.type === 'tool_use') {
     return {
       type: 'tool_use',
@@ -176,6 +173,19 @@ const getStreamErrorMessage = (payload: unknown): string => {
   return 'Claude Code stream failed';
 };
 
+const parsePermissionRequest = (payload: unknown): ClaudeCodePermissionRequest | undefined => {
+  if (!isRecord(payload) || typeof payload.request_id !== 'string') return undefined;
+  if (typeof payload.tool_name !== 'string' || !payload.tool_name) return undefined;
+  if (!isRecord(payload.input) || Array.isArray(payload.input)) return undefined;
+
+  return {
+    requestId: payload.request_id,
+    toolName: payload.tool_name,
+    input: payload.input,
+    toolUseId: typeof payload.tool_use_id === 'string' ? payload.tool_use_id : undefined,
+  };
+};
+
 const handleSseEvent = (
   event: { event?: string; data: string },
   handlers: ClaudeCodeStreamHandlers
@@ -190,8 +200,49 @@ const handleSseEvent = (
     return false;
   }
 
+  if (event.event === 'permission_request') {
+    const request = parsePermissionRequest(parseJsonObject(event.data));
+    if (!request) {
+      handlers.onError(new Error('Claude Code permission request was malformed'));
+      return false;
+    }
+    handlers.onPermissionRequest(request);
+    return true;
+  }
+
   handlers.onClaudeEvent(parseJsonObject(event.data));
   return true;
+};
+
+export const resolveClaudeCodePermission = async ({
+  sessionId,
+  requestId,
+  decision,
+}: {
+  sessionId: string;
+  requestId: string;
+  decision: ClaudeCodePermissionDecision;
+}): Promise<void> => {
+  const response = await fetch(
+    claudeCodeApiUrl(`/sessions/${sessionId}/permissions/${requestId}`),
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        approved: decision.approved,
+        reason: decision.reason,
+        updated_input: decision.updatedInput,
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(
+      await getResponseErrorMessage(response, 'Failed to resolve Claude Code permission')
+    );
+  }
 };
 
 export const streamClaudeCodeMessage = async ({

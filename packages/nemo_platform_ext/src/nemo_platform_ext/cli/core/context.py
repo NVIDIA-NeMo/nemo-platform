@@ -88,7 +88,9 @@ class CLIContext:
         if self._client is None:
             ctx = self.get_sdk_context()
             base_url = str(ctx.cluster.base_url)
-            logger.debug(f"Creating NeMoPlatform client with base_url={base_url}, timeout={timeout}")
+            logger.debug(
+                f"Creating NeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
+            )
 
             client_config = ctx.user.get_client_config()
             self._client = NeMoPlatform(
@@ -114,7 +116,9 @@ class CLIContext:
         if self._async_client is None:
             ctx = self.get_sdk_context()
             base_url = str(ctx.cluster.base_url)
-            logger.debug(f"Creating AsyncNeMoPlatform client with base_url={base_url}, timeout={timeout}")
+            logger.debug(
+                f"Creating AsyncNeMoPlatform client with base_url={base_url}, workspace={ctx.workspace}, timeout={timeout}"
+            )
 
             client_config = ctx.user.get_client_config()
             self._async_client = AsyncNeMoPlatform(

@@ -6,6 +6,7 @@ import { AssistantChatThread } from '@nemo/common/src/components/AssistantChat/A
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { Banner, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { AgentDecisionInput } from '@studio/components/agents/AgentDecisionInput';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import {
@@ -13,6 +14,7 @@ import {
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import {
@@ -21,7 +23,7 @@ import {
 } from '@studio/routes/agents/ClaudeCodeChatRoute/util';
 import { getClaudeCodeChatRoute, getWorkspaceDashboardRoute } from '@studio/routes/utils';
 import { useQuery } from '@tanstack/react-query';
-import { type FC, useCallback, useEffect, useMemo, useRef } from 'react';
+import { type FC, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 const getInitialPrompt = (state: unknown): string | undefined => {
@@ -85,7 +87,18 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   const navigate = useNavigate();
   const toast = useToast();
   const consumedInitialPromptRef = useRef<string | undefined>(undefined);
-  const { handleReset, runtime, sessionId, submitPrompt } = useClaudeCodeChatRuntime({
+  const chatViewportRef = useRef<HTMLDivElement>(null);
+  const {
+    decisionChoices,
+    decisionRequest,
+    decisionStatus,
+    handleReset,
+    resolveDecisionRequest,
+    runtime,
+    sessionId,
+    skipDecisionRequest,
+    submitPrompt,
+  } = useClaudeCodeChatRuntime({
     initialMessages,
     initialSessionId,
     onError: (error) => toast.error(error.message),
@@ -114,22 +127,55 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     void submitPrompt(initialPrompt);
   }, [initialPrompt, location.pathname, location.search, navigate, submitPrompt]);
 
+  useLayoutEffect(() => {
+    if (!decisionRequest) return undefined;
+
+    const viewport = chatViewportRef.current;
+    if (!viewport) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      viewport.scrollTop = viewport.scrollHeight;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [decisionRequest]);
+
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full w-full py-density-2xl">
+        <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">
             <AssistantRuntimeProvider runtime={runtime}>
               <AssistantChatThread
                 contentClassName="mx-auto w-full max-w-180 px-density-2xl"
                 composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
                 viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
+                hideAssistantMessageActions
+                toolCallPartComponent={ClaudeCodeToolCallPart}
+                attributes={{
+                  ThreadViewport: {
+                    ref: chatViewportRef,
+                  },
+                }}
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
+                showRunningIndicator={!decisionRequest}
                 emptyState={{
                   slotHeading: 'Start a Claude Code session',
                   slotSubheading: 'Ask Claude Code to work in this workspace.',
                 }}
+                composerOverride={
+                  decisionRequest ? (
+                    <AgentDecisionInput
+                      request={decisionRequest}
+                      choices={decisionChoices}
+                      defaultChoiceId={decisionChoices[0]?.id}
+                      status={decisionStatus}
+                      onSubmit={resolveDecisionRequest}
+                      onSkip={skipDecisionRequest}
+                    />
+                  ) : undefined
+                }
               />
             </AssistantRuntimeProvider>
           </Stack>

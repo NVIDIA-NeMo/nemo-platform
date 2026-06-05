@@ -3,8 +3,22 @@
 
 export interface ClaudeCodeStreamHandlers {
   onClaudeEvent: (event: unknown) => void;
+  onPermissionRequest: (request: ClaudeCodePermissionRequest) => void;
   onDone: () => void;
   onError: (error: Error) => void;
+}
+
+export interface ClaudeCodePermissionRequest {
+  requestId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  toolUseId?: string;
+}
+
+export interface ClaudeCodePermissionDecision {
+  approved: boolean;
+  reason?: string;
+  updatedInput?: Record<string, unknown>;
 }
 
 export interface ClaudeCodeChatRouteState {
@@ -31,11 +45,6 @@ export interface ClaudeCodeAssistantTextPart {
   text: string;
 }
 
-export interface ClaudeCodeAssistantThinkingPart {
-  type: 'thinking';
-  thinking: string;
-}
-
 export interface ClaudeCodeAssistantToolUsePart {
   type: 'tool_use';
   name: string;
@@ -44,7 +53,6 @@ export interface ClaudeCodeAssistantToolUsePart {
 
 export type ClaudeCodeAssistantHistoryPart =
   | ClaudeCodeAssistantTextPart
-  | ClaudeCodeAssistantThinkingPart
   | ClaudeCodeAssistantToolUsePart;
 
 export interface ClaudeCodeAssistantHistoryItem {

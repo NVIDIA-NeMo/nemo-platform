@@ -32,11 +32,12 @@ Lifecycle
 
 The framework manages the reconcile loop:
 
-1. ``on_startup()`` is called once before the first reconcile cycle.
-2. ``reconcile()`` is called repeatedly at ``interval_seconds`` intervals.
+1. Declared ``dependencies`` are polled via ``/status`` until each service is ready.
+2. ``on_startup()`` is called once before the first reconcile cycle.
+3. ``reconcile()`` is called repeatedly at ``interval_seconds`` intervals.
    The default implementation calls :meth:`list_objects` once per cycle and
    :meth:`reconcile_one` for each result with per-item error isolation.
-3. On SIGINT/SIGTERM the platform sets a stop signal, waits for the current
+4. On SIGINT/SIGTERM the platform sets a stop signal, waits for the current
    ``reconcile()`` call to complete, then calls ``on_shutdown()``.
 
 Plugin authors do **not** manage signals or threads — implement cleanup in

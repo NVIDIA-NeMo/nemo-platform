@@ -86,10 +86,14 @@ class AtifResource(SyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
-        """
-        Ingest Atif
+        """Ingest Atif
 
         Args:
+          evaluation_context: Deprecated.
+
+        Use experiment_context; when both are sent, experiment_context takes
+              precedence.
+
           experiment_context: Experiment context accepted by ingest endpoints.
 
           extra_headers: Send extra headers
@@ -172,10 +176,14 @@ class AsyncAtifResource(AsyncAPIResource):
         extra_body: Body | None = None,
         timeout: float | httpx.Timeout | None | NotGiven = not_given,
     ) -> None:
-        """
-        Ingest Atif
+        """Ingest Atif
 
         Args:
+          evaluation_context: Deprecated.
+
+        Use experiment_context; when both are sent, experiment_context takes
+              precedence.
+
           experiment_context: Experiment context accepted by ingest endpoints.
 
           extra_headers: Send extra headers

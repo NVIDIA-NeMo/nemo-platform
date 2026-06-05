@@ -10,6 +10,7 @@ fixture + ``_NMP_STATE_DIR`` env var ensure all state goes to a temp directory.
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import ANY, MagicMock, patch
@@ -224,6 +225,51 @@ def test_start_refuses_when_already_running(base_dir: Path):
         os.close(fd)
 
 
+def test_start_exits_early_when_port_occupied_by_foreign_process(base_dir: Path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.start_background") as mock_start,
+            patch(f"{_CLI_MODULE}.compute_scope", return_value=f"port-test-{port}"),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "start", "--port", str(port), "--instance", f"port-test-{port}"],
+            )
+
+    assert result.exit_code == 1
+    assert "already in use" in result.stderr
+    assert "lsof" in result.stderr
+    assert "services.log" not in result.stderr
+    mock_start.assert_not_called()
+
+
+def test_run_exits_early_when_port_occupied_by_foreign_process(base_dir: Path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.compute_scope", return_value=f"run-port-test-{port}"),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "run", "--port", str(port), "--instance", f"run-port-test-{port}"],
+            )
+
+    assert result.exit_code == 1
+    assert "already in use" in result.stderr
+    assert "lsof" in result.stderr
+
+
 def test_start_reports_failure(base_dir: Path):
     mock_proc = MagicMock()
     mock_proc.pid = 88888
@@ -364,13 +410,48 @@ class TestServicesRestart:
         assert result.exit_code == 0
         assert "restarted" in result.stdout.lower()
 
+    def test_restart_exits_early_when_port_occupied_by_foreign_process(self, base_dir: Path):
+        scope = "restart-foreign-port"
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            sock.listen(1)
+
+            desc = InstanceDescriptor(
+                pid=99999,
+                scope=scope,
+                host="127.0.0.1",
+                port=port,
+                mode="background",
+                create_time=1.0,
+            )
+            write_descriptor(desc, base_dir=base_dir)
+
+            with (
+                patch(f"{_CLI_MODULE}._require_services_extra"),
+                patch(f"{_CLI_MODULE}.stop_instance", return_value=StopResult(stopped_pids=[99999])),
+                patch(f"{_CLI_MODULE}.start_background") as mock_start,
+                patch(f"{_CLI_MODULE}.compute_scope", return_value=scope),
+            ):
+                result = runner.invoke(
+                    app,
+                    ["services", "restart", "--instance", scope, "--port", str(port)],
+                )
+
+        assert result.exit_code == 1
+        assert "already in use" in result.stderr
+        assert "lsof" in result.stderr
+        assert "services.log" not in result.stderr
+        mock_start.assert_not_called()
+
     def test_restart_preserves_previous_args(self, base_dir: Path):
         scope = "preserve-test"
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
             scope=scope,
-            host="10.0.0.1",
+            host="127.0.0.1",
             port=9000,
             mode="background",
             create_time=1.0,
@@ -401,7 +482,7 @@ class TestServicesRestart:
         _, kwargs = mock_start.call_args
         assert kwargs["services"] == ["entities", "models"]
         assert kwargs["controllers"] == ["jobs"]
-        assert kwargs["host"] == "10.0.0.1"
+        assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 9000
 
 

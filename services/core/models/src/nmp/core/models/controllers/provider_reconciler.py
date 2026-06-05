@@ -25,6 +25,7 @@ from nmp.core.models.app import (
     normalize_model_entity_name,
     parse_model_name_revision,
 )
+from nmp.core.models.config import ControllerConfig
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.schemas import BackendFormat, ModelProviderStatus
 
@@ -277,13 +278,18 @@ class ModelProviderReconciler:
     Model Entities are created and linked appropriately.
     """
 
-    def __init__(self, models_sdk: AsyncNeMoPlatform) -> None:
+    def __init__(self, models_sdk: AsyncNeMoPlatform, controller_config: ControllerConfig) -> None:
         """Initialize the provider reconciler.
 
         Args:
             models_sdk: SDK client for Models API interactions
+            controller_config: Models controller configuration (discovery timeout/retry policy)
         """
         self._models_sdk = models_sdk
+        self._controller_config = controller_config
+        self._discovery_sdk = models_sdk.with_options(
+            max_retries=controller_config.provider_discovery_max_retries,
+        )
 
     # -------------------------------------------------------------------------
     # Public entry point
@@ -580,10 +586,11 @@ class ModelProviderReconciler:
             # This intentionally uses the controller's service principal to perform
             # infrastructure reconciliation. User-level secret access remains guarded
             # at provider create/upsert validation and by IGW when proxying requests.
-            models_response = await self._models_sdk.inference.gateway.provider.get(
+            models_response = await self._discovery_sdk.inference.gateway.provider.get(
                 "v1/models",
                 workspace=provider.workspace,
                 name=provider.name,
+                timeout=self._controller_config.provider_discovery_timeout_seconds,
             )
 
             if not isinstance(models_response, dict) or "data" not in models_response:
@@ -625,11 +632,17 @@ class ModelProviderReconciler:
                 )
                 return DiscoveryNonCompliant()
             # Other 4xx/5xx (e.g. 502 with other detail, 429, 5xx) — treat as transient
-            logger.warning(f"Failed to get models from {provider_id} via gateway: {e}")
+            logger.debug(
+                "Failed to get models from provider via gateway",
+                extra={"provider": provider_id, "error": str(e), "status_code": e.status_code},
+            )
             return DiscoveryTransientError(f"Gateway error (HTTP {e.status_code})")
         except Exception as e:
             # Network errors, timeouts, etc. — do NOT clear served_models
-            logger.warning(f"Failed to get models from {provider_id} via gateway: {e}")
+            logger.debug(
+                "Failed to get models from provider via gateway",
+                extra={"provider": provider_id, "error": str(e)},
+            )
             return DiscoveryTransientError(f"Network error: {e}")
 
     # -------------------------------------------------------------------------

@@ -27,6 +27,10 @@ from nemo_agents_plugin.runner.backend import DeploymentInfo
 from nemo_agents_plugin.runner.controller import AgentDeploymentController
 
 
+def test_agent_deployment_controller_declares_entities_dependency() -> None:
+    assert AgentDeploymentController.dependencies == ["entities"]
+
+
 def _make_controller() -> tuple[AgentDeploymentController, Any]:
     """Build a controller with stubbed backend / entities / save.
 
@@ -82,6 +86,10 @@ async def test_start_deployment_writes_runtime_fields_to_entity() -> None:
     assert dep.error == ""
     # The entity must remain free of host-bound fields.
     assert not hasattr(dep, "log_path") or getattr(dep, "log_path", "") == ""
+    # Startup timer is keyed by ``(workspace, name)``; ``_check_health``
+    # reads from the same tuple. Asserting the key shape here catches the
+    # silent string-vs-tuple drift that the prior pass surfaced.
+    assert ("default", "dep-1") in ctrl._starting_since
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +122,7 @@ async def test_check_health_marks_failed_when_subprocess_exited() -> None:
         status="starting",
         endpoint="http://127.0.0.1:49200",
     )
-    ctrl._starting_since["dep-1"] = time.monotonic()
+    ctrl._starting_since[("default", "dep-1")] = time.monotonic()
 
     await ctrl._check_health(dep)
 
@@ -138,7 +146,7 @@ async def test_check_health_marks_running_when_healthy() -> None:
         status="starting",
         endpoint="http://127.0.0.1:49200",
     )
-    ctrl._starting_since["dep-1"] = time.monotonic()
+    ctrl._starting_since[("default", "dep-1")] = time.monotonic()
 
     await ctrl._check_health(dep)
 
