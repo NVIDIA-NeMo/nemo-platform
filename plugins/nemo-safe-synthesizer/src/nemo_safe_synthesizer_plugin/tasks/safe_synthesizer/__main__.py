@@ -30,7 +30,7 @@ from nemo_platform.filesets import parse_fileset_ref
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import (
+from nemo_safe_synthesizer_plugin.job_config import (
     SafeSynthesizerJobConfig,
     parse_pretrained_model_job_ref,
 )

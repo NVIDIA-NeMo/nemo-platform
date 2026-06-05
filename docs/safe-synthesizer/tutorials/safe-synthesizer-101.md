@@ -175,6 +175,7 @@ builder = (
     SafeSynthesizerJobBuilder(client)
     .with_data_source(df)
     .with_classify_model_provider(provider_name)  # Enable column classification
+    .with_replace_pii()  # Enable PII detection and replacement
     .synthesize()  # Enable synthesis
 )
 

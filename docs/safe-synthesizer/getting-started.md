@@ -41,5 +41,6 @@ Create your first synthetic dataset:
 
 - [Safe Synthesizer 101 Tutorial](tutorials/safe-synthesizer-101.md) - a beginner-friendly introduction
 - [Local and Subprocess Execution](about/host-local-development.md) - local CLI and runtime task details
+- [SDK Resources](sdk-resources.md) - Python SDK methods for jobs, builders, logs, and results
 
 ---

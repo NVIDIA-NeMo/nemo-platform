@@ -27,5 +27,5 @@ try:
         "TimeSeriesParameters",
         "TrainingHyperparams",
     ]
-except ImportError:
-    __all__ = []
+except ImportError as e:
+    raise ImportError("Install nemo-safe-synthesizer to use SDK config types.") from e

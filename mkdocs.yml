@@ -219,14 +219,6 @@ extra:
       - get-started/quickstart.md
       - helm/**
       - run-inference/tutorials/deploy-models.md
-      - safe-synthesizer/about/data-synthesis.md
-      - safe-synthesizer/about/evaluation.md
-      - safe-synthesizer/about/index.md
-      - safe-synthesizer/about/jobs.md
-      - safe-synthesizer/about/pii-replacement.md
-      - safe-synthesizer/about/reference.md
-      - safe-synthesizer/tutorials/differential-privacy.md
-      - safe-synthesizer/tutorials/index.md
       - set-up/**
       - troubleshooting/cluster-setup.md
       - troubleshooting/customizer.md
@@ -327,8 +319,19 @@ nav:
     - Migrating from Standalone Library: data-designer/migration.md
   - Synthesize Safe Data:
     - Getting Started: safe-synthesizer/getting-started.md
-    - Local and Subprocess Execution: safe-synthesizer/about/host-local-development.md
-    - Safe Synthesizer 101: safe-synthesizer/tutorials/safe-synthesizer-101.md
+    - About:
+      - Overview: safe-synthesizer/about/index.md
+      - Data Synthesis: safe-synthesizer/about/data-synthesis.md
+      - PII Replacement: safe-synthesizer/about/pii-replacement.md
+      - Evaluation: safe-synthesizer/about/evaluation.md
+      - Jobs: safe-synthesizer/about/jobs.md
+      - Local and Subprocess Execution: safe-synthesizer/about/host-local-development.md
+      - Parameters Reference: safe-synthesizer/about/reference.md
+    - Tutorials:
+      - Overview: safe-synthesizer/tutorials/index.md
+      - Safe Synthesizer 101: safe-synthesizer/tutorials/safe-synthesizer-101.md
+      - Differential Privacy: safe-synthesizer/tutorials/differential-privacy.md
+    - SDK Resources: safe-synthesizer/sdk-resources.md
   - Anonymize Data:
     - About: anonymizer/index.md
     - Quickstart: anonymizer/quickstart.md

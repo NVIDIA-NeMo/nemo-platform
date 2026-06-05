@@ -17,7 +17,7 @@ Top-level fields on the Safe Synthesizer job spec (alongside `config`):
 | `pretrained_model_job` | Prior completed job whose **`adapter`** result in Files is reused for **generation-only** synthesis. Format: `<job>` or `<workspace>/<job>`. Mutually exclusive with `config.training.pretrained_model`. |
 | `hf_token_secret` | Platform secret name for Hugging Face token during model initialization |
 
-For host-local runs, see [Host-Local Development and Testing](host-local-development.md). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
+For host-local runs, see [Local and Subprocess Execution](host-local-development.md). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
 
 ## Top-Level Configuration
 

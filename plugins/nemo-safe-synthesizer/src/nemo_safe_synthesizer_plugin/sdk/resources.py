@@ -163,9 +163,9 @@ class AsyncSafeSynthesizerJobsResource:
         """Retrieve Safe Synthesizer job status."""
         return await self._platform.jobs.get_status(name, workspace=workspace)
 
-    def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
+    async def get_logs(self, name: str, *, workspace: str | None = None, **kwargs: Any) -> Any:
         """Retrieve paginated Safe Synthesizer job logs from the Jobs service."""
-        return self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
+        return await self._platform.jobs.get_logs(name, workspace=workspace, **kwargs)
 
 
 class AsyncSafeSynthesizerResource:

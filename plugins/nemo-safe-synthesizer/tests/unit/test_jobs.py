@@ -140,6 +140,47 @@ async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock
     assert reparsed.pretrained_model_job == "prior-safe-synth-job"
 
 
+def test_runtime_job_config_allows_pretrained_model_job_with_missing_training():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = "prior-safe-synth-job"
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "pretrained_model_job": "prior-safe-synth-job",
+        "config": {"generation": {"num_records": 25}},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"] == {"generation": {"num_records": 25}}
+
+
+def test_runtime_job_config_allows_pretrained_model_job_with_non_dict_training():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = "prior-safe-synth-job"
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "pretrained_model_job": "prior-safe-synth-job",
+        "config": {"training": "local-adapter"},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"]["training"] == "local-adapter"
+
+
+def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_job():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = None
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"]["training"]["pretrained_model"] == "HuggingFaceTB/SmolLM3-3B"
+
+
 @pytest.mark.asyncio
 async def test_job_config_compiler_pretrained_model_job_not_found(mock_sdk):
     mock_sdk.jobs.results.retrieve = AsyncMock(

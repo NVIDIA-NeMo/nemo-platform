@@ -113,7 +113,11 @@ class SafeSynthesizerJobBuilder:
         return self
 
     def with_classify_model_provider(self, provider_name: str) -> Self:
-        """Configure column classification with an Inference Gateway model provider."""
+        """Configure the model provider used by PII replacement column classification.
+
+        The provider is included in the job spec only when PII replacement is enabled with
+        ``with_replace_pii()``.
+        """
         if "/" in provider_name:
             self._classify_model_provider = provider_name
         else:

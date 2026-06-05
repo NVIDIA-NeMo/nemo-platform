@@ -1,5 +1,5 @@
 !!! note
-    The platform pre-configures a `default/nvidia-build` model provider during startup.
+    `nemo setup` pre-configures a `default/nvidia-build` model provider during local startup.
     This provider routes inference requests to models hosted on `build.nvidia.com` using the API base URL `https://integrate.api.nvidia.com`
     and the NGC API key with `Public API Endpoints` permissions provided during deployment.
 

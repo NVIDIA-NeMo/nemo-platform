@@ -13,6 +13,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Iterator
 
+import httpx
 import pandas as pd
 from nemo_platform import NeMoPlatform
 from nemo_platform._types import Omit, omit
@@ -89,8 +90,8 @@ class SafeSynthesizerJob:
                         if log_key not in seen_log_keys:
                             print(new_log.message.strip())
                             seen_log_keys.add(log_key)
-                except Exception:
-                    logger.exception("Error fetching logs")
+                except httpx.HTTPError as e:
+                    logger.warning("Error fetching logs while waiting for job completion: %s", e)
                 finally:
                     if logging_level is not None:
                         logging.getLogger("httpx").setLevel(logging_level)
