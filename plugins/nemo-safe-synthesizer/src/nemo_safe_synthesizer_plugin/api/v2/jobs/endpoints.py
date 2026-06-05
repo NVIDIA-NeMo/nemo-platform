@@ -34,7 +34,6 @@ from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
 from nemo_safe_synthesizer_plugin.config import config
 from nemo_safe_synthesizer_plugin.job_config import (
     SafeSynthesizerJobConfig,
-    SafeSynthesizerParameters,
     parse_pretrained_model_job_ref,
 )
 from nemo_safe_synthesizer_plugin.runtime import runtime_task_command
