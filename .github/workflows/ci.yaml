@@ -142,6 +142,7 @@ jobs:
         run: make test-unit-ci
         env:
           EXTRA: cpu
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           PYTEST_WORKERS: "2"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
@@ -189,6 +190,7 @@ jobs:
         run: make test-integration-ci
         env:
           EXTRA: cpu
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           PYTEST_WORKERS: "2"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
