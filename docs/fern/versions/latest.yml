@@ -129,6 +129,8 @@ navigation:
       contents:
       - page: Run LLM-as-a-Judge Evaluation
         path: ../../evaluator/tutorials/run-llm-judge-evaluation.mdx
+      - page: Define and Run Custom Python Metrics
+        path: ../../evaluator/tutorials/define-run-custom-python-metrics.mdx
     - page: SDK Resources
       path: ../../evaluator/sdk-resources.mdx
     - section: Metrics
