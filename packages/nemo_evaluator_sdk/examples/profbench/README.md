@@ -2,8 +2,25 @@
 
 Run the example from the repository root:
 
+
+- Local
 ```bash
-python -m packages.nemo_evaluator_sdk.examples.profbench.runner --output-dir env/profbench-results --limit=1
+python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
+  --output-dir env/profbench-results \
+  --limit=1 \
+  --agent codex \
+  --runtime local \
+  --agent-model gpt-5.5
+```
+
+- Docker
+```bash
+python -m packages.nemo_evaluator_sdk.examples.profbench.runner \
+  --output-dir env/profbench-results \
+  --limit=1 \
+  --agent codex \
+  --runtime docker \
+  --agent-model gpt-5.5
 ```
 
 Each invocation creates one run directory under `--output-dir`, then writes each enabled runner mode under that run:
