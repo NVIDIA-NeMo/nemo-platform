@@ -3,10 +3,14 @@
 
 import { datasetFileContentQueryOptions } from '@studio/api/datasets/useDatasetFileContent';
 
-vi.mock('@nemo/sdk/generated/platform/api', () => ({
-  filesHeadFile: vi.fn().mockResolvedValue(undefined),
-  filesDownloadFile: vi.fn().mockResolvedValue(new Blob(['# heading'])),
-}));
+vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@nemo/sdk/generated/platform/api')>();
+  return {
+    ...actual,
+    filesHeadFile: vi.fn().mockResolvedValue(undefined),
+    filesDownloadFile: vi.fn().mockResolvedValue(new Blob(['# heading'])),
+  };
+});
 
 // customFetch now handles Range requests for text files. Return a Blob that
 // resolves to the expected text so the .text() call in the queryFn succeeds.

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
+import { getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
 
@@ -33,12 +34,17 @@ export function useDownloadFileHead() {
       bytes = 65536,
     }: DownloadFileHeadArgs): Promise<ArrayBuffer | null> => {
       try {
+        const sdkQueryKey = getFilesDownloadFileQueryKey(
+          encodeURIComponent(workspace),
+          encodeURIComponent(datasetName),
+          encodeURIComponent(path)
+        );
         const blob = await queryClient.fetchQuery({
-          queryKey: ['file-range', workspace, datasetName, path, bytes],
+          queryKey: [...sdkQueryKey, 'range', bytes],
           staleTime: Infinity,
           queryFn: () =>
             customFetch<Blob>({
-              url: `/apis/files/v2/workspaces/${encodeURIComponent(workspace)}/filesets/${encodeURIComponent(datasetName)}/-/${encodeURIComponent(path)}`,
+              url: sdkQueryKey[0],
               method: 'GET',
               responseType: 'blob',
               headers: { Range: `bytes=0-${bytes - 1}` },

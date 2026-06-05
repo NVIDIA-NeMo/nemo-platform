@@ -2,8 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
-import { filesDownloadFile, filesHeadFile } from '@nemo/sdk/generated/platform/api';
-import { EntityIdentifier } from '@studio/api/common/types';
+import {
+  filesDownloadFile,
+  filesHeadFile,
+  getFilesDownloadFileQueryKey,
+} from '@nemo/sdk/generated/platform/api';
+import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
@@ -71,8 +75,13 @@ export const datasetFileContentQueryOptions = ({
       } else {
         const start = range ? range[0] : 0;
         const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
+        const [fileUrl] = getFilesDownloadFileQueryKey(
+          encodeURIComponent(workspace!),
+          encodeURIComponent(name),
+          encodeURIComponent(path)
+        );
         const blob = await customFetch<Blob>({
-          url: `/apis/files/v2/workspaces/${encodeURIComponent(workspace!)}/filesets/${encodeURIComponent(name)}/-/${encodeURIComponent(path)}`,
+          url: fileUrl,
           method: 'GET',
           responseType: 'blob',
           headers: { Range: `bytes=${start}-${end}` },

@@ -4,6 +4,7 @@
 // Importing from the SDK fetchers module activates the Axios interceptor that
 // injects the OIDC Bearer token, so axios.head() calls below are auth-aware.
 import '@nemo/sdk/generated/fetchers/platform';
+import { getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
 import { isBinaryExtension } from '@studio/util/binaryFile';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -35,9 +36,12 @@ export function useIsBinaryFile(
       try {
         // axios.head() is auth-aware via the interceptor registered when
         // '@nemo/sdk/generated/fetchers/platform' is imported above.
-        const res = await axios.head(
-          `/apis/files/v2/workspaces/${encodeURIComponent(workspace)}/filesets/${encodeURIComponent(filesetName)}/-/${encodeURIComponent(filePath)}`
+        const [fileUrl] = getFilesDownloadFileQueryKey(
+          encodeURIComponent(workspace),
+          encodeURIComponent(filesetName),
+          encodeURIComponent(filePath)
         );
+        const res = await axios.head(fileUrl);
         const ct = String(res.headers['content-type'] ?? '');
         return !isTextContentType(ct);
       } catch {
