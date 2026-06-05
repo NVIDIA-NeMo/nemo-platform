@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+// Importing from the SDK fetchers module activates the Axios interceptor that
+// injects the OIDC Bearer token, so axios.head() calls below are auth-aware.
+import '@nemo/sdk/generated/fetchers/platform';
 import { isBinaryExtension } from '@studio/util/binaryFile';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from 'react-oidc-context';
+import axios from 'axios';
 
 /**
  * Determine whether a fileset file should be treated as binary (no text preview).
@@ -24,31 +26,19 @@ export function useIsBinaryFile(
   filesetName: string,
   filePath: string | undefined
 ): { isBinary: boolean; isLoading: boolean } {
-  const auth = useAuth();
-
   const blocklisted = filePath !== undefined && isBinaryExtension(filePath);
 
   const { data: headBinary, isPending } = useQuery({
     queryKey: ['file-content-type', workspace, filesetName, filePath],
     queryFn: async (): Promise<boolean> => {
       if (!filePath) return false;
-      const url = [
-        PLATFORM_BASE_URL,
-        '/apis/files/v2/workspaces/',
-        encodeURIComponent(workspace),
-        '/filesets/',
-        encodeURIComponent(filesetName),
-        '/-/',
-        encodeURIComponent(filePath),
-      ].join('');
       try {
-        const res = await fetch(url, {
-          method: 'HEAD',
-          headers: auth.user?.access_token
-            ? { Authorization: `Bearer ${auth.user.access_token}` }
-            : {},
-        });
-        const ct = res.headers.get('content-type') ?? '';
+        // axios.head() is auth-aware via the interceptor registered when
+        // '@nemo/sdk/generated/fetchers/platform' is imported above.
+        const res = await axios.head(
+          `/apis/files/v2/workspaces/${encodeURIComponent(workspace)}/filesets/${encodeURIComponent(filesetName)}/-/${encodeURIComponent(filePath)}`
+        );
+        const ct = String(res.headers['content-type'] ?? '');
         return !isTextContentType(ct);
       } catch {
         return false; // fail-open: assume text

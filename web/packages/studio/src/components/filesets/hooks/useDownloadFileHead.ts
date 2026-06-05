@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { PLATFORM_BASE_URL } from '@studio/constants/environment';
+import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback } from 'react';
-import { useAuth } from 'react-oidc-context';
 
 export interface DownloadFileHeadArgs {
   workspace: string;
@@ -15,13 +15,15 @@ export interface DownloadFileHeadArgs {
 
 /**
  * Returns a callback that fetches the first N bytes of a fileset file via an
- * HTTP Range request. Useful for schema inference or content sniffing without
- * downloading large files in full.
+ * HTTP Range request. Results are cached by TanStack Query so repeated calls
+ * for the same file (e.g. schema inference after a preview) return instantly.
+ *
+ * Auth is handled automatically by the Axios interceptor in customFetch.
  *
  * Resolves to `null` on any transport or HTTP error.
  */
 export function useDownloadFileHead() {
-  const auth = useAuth();
+  const queryClient = useQueryClient();
 
   return useCallback(
     async ({
@@ -30,32 +32,23 @@ export function useDownloadFileHead() {
       path,
       bytes = 65536,
     }: DownloadFileHeadArgs): Promise<ArrayBuffer | null> => {
-      const url = [
-        PLATFORM_BASE_URL,
-        '/apis/files/v2/workspaces/',
-        encodeURIComponent(workspace),
-        '/filesets/',
-        encodeURIComponent(datasetName),
-        '/-/',
-        encodeURIComponent(path),
-      ].join('');
-
-      const headers: Record<string, string> = {
-        Range: `bytes=0-${bytes - 1}`,
-      };
-      if (auth.user?.access_token) {
-        headers.Authorization = `Bearer ${auth.user.access_token}`;
-      }
-
       try {
-        const res = await fetch(url, { headers });
-        // 200 (server ignores range) and 206 (partial content) are both usable.
-        if (!res.ok && res.status !== 206) return null;
-        return res.arrayBuffer();
+        const blob = await queryClient.fetchQuery({
+          queryKey: ['file-range', workspace, datasetName, path, bytes],
+          staleTime: Infinity,
+          queryFn: () =>
+            customFetch<Blob>({
+              url: `/apis/files/v2/workspaces/${encodeURIComponent(workspace)}/filesets/${encodeURIComponent(datasetName)}/-/${encodeURIComponent(path)}`,
+              method: 'GET',
+              responseType: 'blob',
+              headers: { Range: `bytes=0-${bytes - 1}` },
+            }),
+        });
+        return blob.arrayBuffer();
       } catch {
         return null;
       }
     },
-    [auth.user?.access_token]
+    [queryClient]
   );
 }
