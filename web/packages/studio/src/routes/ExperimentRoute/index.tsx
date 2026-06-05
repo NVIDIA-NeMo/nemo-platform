@@ -6,6 +6,7 @@ import { useListExperimentGroups, useListExperiments } from '@nemo/sdk/generated
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
 import {
   Divider,
+  Panel,
   PageHeader,
   PaginationArrowButton,
   PaginationControlsGroup,
@@ -15,10 +16,8 @@ import {
   PaginationPageInput,
   PaginationPageSizeSelect,
   PaginationRoot,
-  Skeleton,
   Stack,
   StatusMessage,
-  Tag,
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -26,9 +25,11 @@ import { Loading } from '@studio/components/Layouts/Loading';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
+import { getExperimentGroupDetailRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
-import { CircleAlert, MessageSquareText } from 'lucide-react';
+import { CircleAlert } from 'lucide-react';
 import { type FC, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 const DEFAULT_PAGE_SIZE = 5;
 
@@ -65,12 +66,12 @@ export const ExperimentRoute: FC = () => {
   const totalResults = data?.pagination?.total_results ?? 0;
 
   return (
-    <AccessibleTitle title="Experiments">
+    <AccessibleTitle title="Experiment groups">
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
         <PageHeader
           className="p-0"
-          slotHeading="Experiments"
-          slotDescription="Result ledger for offline optimization. Review results down to the trace level."
+          slotHeading="Experiment groups"
+          slotDescription="Manage groups for online optimization. Review reports down to the frame level."
         />
         {groups.length === 0 ? (
           <Text kind="body/regular/md" className="text-secondary">
@@ -86,33 +87,35 @@ export const ExperimentRoute: FC = () => {
               </Stack>
             </div>
             {totalResults > 0 && (
-              <PaginationRoot
-                totalItems={totalResults}
-                page={page}
-                pageSize={pageSize}
-                pageSizeOptions={[5, 10, 20, 50]}
-                onPageChange={setPage}
-                onPageSizeChange={(size) => {
-                  setPageSize(size);
-                  setPage(1);
-                }}
-              >
-                <PaginationControlsGroup>
-                  <Text>Items per page</Text>
-                  <PaginationPageSizeSelect />
-                  <PaginationItemRangeText />
-                </PaginationControlsGroup>
-                <PaginationNavigationGroup className="gap-2">
-                  <PaginationArrowButton direction="first" />
-                  <PaginationArrowButton direction="previous" />
-                  <PaginationPageInput />
-                  <PaginationPageCountText
-                    pageCountTextFormatFn={(pageMeta) => `of ${pageMeta.total}`}
-                  />
-                  <PaginationArrowButton direction="next" />
-                  <PaginationArrowButton direction="last" />
-                </PaginationNavigationGroup>
-              </PaginationRoot>
+              <div className="flex justify-center">
+                <PaginationRoot
+                  totalItems={totalResults}
+                  page={page}
+                  pageSize={pageSize}
+                  pageSizeOptions={[5, 10, 20, 50]}
+                  onPageChange={setPage}
+                  onPageSizeChange={(size) => {
+                    setPageSize(size);
+                    setPage(1);
+                  }}
+                >
+                  <PaginationControlsGroup>
+                    <Text>Items per page</Text>
+                    <PaginationPageSizeSelect />
+                    <PaginationItemRangeText />
+                  </PaginationControlsGroup>
+                  <PaginationNavigationGroup className="gap-2">
+                    <PaginationArrowButton direction="first" />
+                    <PaginationArrowButton direction="previous" />
+                    <PaginationPageInput />
+                    <PaginationPageCountText
+                      pageCountTextFormatFn={(pageMeta) => `of ${pageMeta.total}`}
+                    />
+                    <PaginationArrowButton direction="next" />
+                    <PaginationArrowButton direction="last" />
+                  </PaginationNavigationGroup>
+                </PaginationRoot>
+              </div>
             )}
           </div>
         )}
@@ -140,6 +143,8 @@ interface ExperimentGroupCardProps {
 }
 
 const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace }) => {
+  const navigate = useNavigate();
+
   const { data: experimentsData } = useListExperiments(workspace, {
     filter: { experiment_group_id: group.id },
     page_size: 100,
@@ -163,11 +168,18 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
     .filter((entry): entry is { name: string; avg: number } => entry.avg !== null);
 
   return (
-    <div className="flex items-center gap-6 rounded bg-surface py-[18px]">
-      {/* Slot 1: Status — no backend field yet, skeleton holds the space */}
-      <Skeleton className="h-6 w-20 shrink-0" />
-
-      {/* Slot 2: Main info */}
+    <Panel
+      className="cursor-pointer hover:bg-surface-raised transition-colors"
+      attributes={{ PanelContent: { className: 'flex flex-row items-center gap-6' } }}
+      onClick={() => navigate(getExperimentGroupDetailRoute(workspace, group.id))}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ')
+          navigate(getExperimentGroupDetailRoute(workspace, group.id));
+      }}
+    >
+      {/* Main info */}
       <div className="flex flex-col items-start gap-[7px] flex-1">
         <Text kind="title/sm">{group.name}</Text>
         {group.description && (
@@ -176,28 +188,18 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
           </Text>
         )}
         <div className="flex items-center gap-4">
-          <Tag kind="outline" color="gray" readOnly>
-            {experimentCount} Experiments
-          </Tag>
-          {/* UserPill: no author field on ExperimentGroupResponse yet */}
-          <Skeleton className="h-6 w-24 rounded-full" />
           {group.updated_at && <UpdatedAt datetime={group.updated_at} />}
         </div>
       </div>
 
-      {/* Slot 3: Stats */}
+      {/* Stats */}
       <div className="flex shrink-0 items-center gap-6">
-        {/* Variable evaluator score metrics */}
         {scoreEntries.map(({ name, avg }) => (
           <Metric key={name} title={name} value={`${(avg * 100).toFixed(1)}%`} />
         ))}
-
-        {/* Pipe — only shown when there are scores to separate */}
         {scoreEntries.length > 0 && <Divider orientation="vertical" />}
-
         <Metric title="Experiments" value={String(experimentCount)} />
-        <Metric title="Feedback" icon={<MessageSquareText />} value="—" />
       </div>
-    </div>
+    </Panel>
   );
 };
