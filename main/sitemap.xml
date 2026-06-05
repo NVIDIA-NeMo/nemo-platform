@@ -221,6 +221,10 @@
          <lastmod>2026-06-05</lastmod>
     </url>
     <url>
+         <loc>https://nvidia-nemo.github.io/nemo-platform/latest/evaluator/tutorials/define-run-custom-python-metrics/</loc>
+         <lastmod>2026-06-05</lastmod>
+    </url>
+    <url>
          <loc>https://nvidia-nemo.github.io/nemo-platform/latest/evaluator/tutorials/run-llm-judge-evaluation/</loc>
          <lastmod>2026-06-05</lastmod>
     </url>
