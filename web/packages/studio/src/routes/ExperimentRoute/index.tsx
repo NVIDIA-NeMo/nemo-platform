@@ -7,6 +7,14 @@ import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schem
 import {
   Divider,
   PageHeader,
+  PaginationArrowButton,
+  PaginationControlsGroup,
+  PaginationItemRangeText,
+  PaginationNavigationGroup,
+  PaginationPageCountText,
+  PaginationPageInput,
+  PaginationPageSizeSelect,
+  PaginationRoot,
   Skeleton,
   Stack,
   StatusMessage,
@@ -20,16 +28,20 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { Metric } from '@studio/routes/ExperimentRoute/Metric';
 import { keepPreviousData } from '@tanstack/react-query';
 import { CircleAlert, MessageSquareText } from 'lucide-react';
-import { type FC } from 'react';
+import { type FC, useState } from 'react';
+
+const DEFAULT_PAGE_SIZE = 5;
 
 export const ExperimentRoute: FC = () => {
   useBreadcrumbs({ items: [{ slotLabel: 'Experiments' }] });
 
   const workspace = useWorkspaceFromPath();
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
 
   const { data, isLoading, error } = useListExperimentGroups(
     workspace,
-    { page: 1, page_size: 50 },
+    { page, page_size: pageSize },
     { query: { placeholderData: keepPreviousData } }
   );
 
@@ -50,6 +62,7 @@ export const ExperimentRoute: FC = () => {
   }
 
   const groups = data?.data ?? [];
+  const totalResults = data?.pagination?.total_results ?? 0;
 
   return (
     <AccessibleTitle title="Experiments">
@@ -64,11 +77,44 @@ export const ExperimentRoute: FC = () => {
             No experiment groups yet.
           </Text>
         ) : (
-          <Stack gap="density-md">
-            {groups.map((group: ExperimentGroupResponse) => (
-              <ExperimentGroupCard key={group.id} group={group} workspace={workspace} />
-            ))}
-          </Stack>
+          <div className="flex flex-col flex-1 min-w-0 min-h-0">
+            <div className="flex-1 overflow-auto">
+              <Stack gap="density-md">
+                {groups.map((group: ExperimentGroupResponse) => (
+                  <ExperimentGroupCard key={group.id} group={group} workspace={workspace} />
+                ))}
+              </Stack>
+            </div>
+            {totalResults > 0 && (
+              <PaginationRoot
+                totalItems={totalResults}
+                page={page}
+                pageSize={pageSize}
+                pageSizeOptions={[5, 10, 20, 50]}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+              >
+                <PaginationControlsGroup>
+                  <Text>Items per page</Text>
+                  <PaginationPageSizeSelect />
+                  <PaginationItemRangeText />
+                </PaginationControlsGroup>
+                <PaginationNavigationGroup className="gap-2">
+                  <PaginationArrowButton direction="first" />
+                  <PaginationArrowButton direction="previous" />
+                  <PaginationPageInput />
+                  <PaginationPageCountText
+                    pageCountTextFormatFn={(pageMeta) => `of ${pageMeta.total}`}
+                  />
+                  <PaginationArrowButton direction="next" />
+                  <PaginationArrowButton direction="last" />
+                </PaginationNavigationGroup>
+              </PaginationRoot>
+            )}
+          </div>
         )}
       </Stack>
     </AccessibleTitle>
@@ -117,7 +163,7 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
     .filter((entry): entry is { name: string; avg: number } => entry.avg !== null);
 
   return (
-    <div className="flex items-center gap-6 rounded bg-surface px-5 py-[18px]">
+    <div className="flex items-center gap-6 rounded bg-surface py-[18px]">
       {/* Slot 1: Status — no backend field yet, skeleton holds the space */}
       <Skeleton className="h-6 w-20 shrink-0" />
 
