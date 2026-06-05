@@ -25,11 +25,12 @@ allowed-tools: [Read, Glob, Grep, Bash]
 
 # NeMo Platform agent explore
 
-Capture what the agent should do before any code or YAML. The output of this
-skill is the data that `nemo-spec` writes into `agents/<name>-spec/AGENT-SPEC.md` — the
-durable contract that the analyst and experimentalist agents in the NeMo
-optimization loop read as their primary context. Underspecified input here
-directly degrades the quality of generated Insights and PRs downstream.
+Capture what the agent should do before any code or YAML. Product mission and
+user goals matter more than implementation inventory. The output of this skill
+is the data that `nemo-spec` writes into `agents/<name>-spec/AGENT-SPEC.md` —
+the durable contract that downstream optimization agents read as their primary
+context. Underspecified input here directly degrades the quality of generated
+Insights and PRs downstream.
 
 This skill is **explore-first, gap-fill second**. You do not interview the
 user from scratch. You scan the codebase and docs, infer what you can against
@@ -54,14 +55,14 @@ requirements: handoff to `nemo-spec` is blocked until both are resolved.
 | # | Section | Required | What "good" looks like |
 | :---- | :---- | :---- | :---- |
 | 1 | Role | **yes** | One concrete sentence describing the role this agent plays. Example: "answer IT helpdesk questions about VPN, password reset, and software access." Vague answers ("help with stuff") are rejected. |
-| 2 | Purpose | yes | One or two short paragraphs explaining why the agent exists, what user value it provides, and the decision, workflow, or business context it supports. |
+| 2 | Purpose | yes | One or two short paragraphs explaining the mission: why the agent exists, what user value it provides, which goal it advances, and the decision, workflow, or business context it supports. Do not merely restate implementation mechanics. |
 | 3 | Scope | yes | Audience, 3-6 task categories, expected in-scope work, and explicit out-of-scope work/non-goals. |
-| 4 | Tools | yes | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Capture purpose, credentials/scopes, side effects, freshness, and expected failures. |
+| 4 | Tools | yes | Tools, APIs, and knowledge sources the agent can use, or "Prompt-only." Group related helpers by capability or source. Capture only behaviorally important purpose, credentials/scopes, side effects, freshness, and expected failures. |
 | 5 | Model | yes | Mode (cloud vs local NIM) + model family/size. Example: "cloud, Nemotron Super 49B." `nemo-build-agent` resolves to a specific model entity ID later. |
-| 6 | Framework | **yes** | Temporary NeMo Platform compatibility field. Must resolve to one of: LangGraph + NAT (supported), or "needs NAT wrapper" with source-framework context. |
-| 7 | Harness | optional | Modern harness description: the extra-model layer around the agent — loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Use `_(none)_` if unknown. |
+| 6 | Framework | **yes** | Temporary NeMo Platform compatibility field. Keep it binary: `langgraph-nat` or `needs-wrapper`; include source-framework context only when a wrapper is needed. |
+| 7 | Harness | optional | Modern harness description: the extra-model layer around the agent — loop, tool dispatch, context/state, guardrails, observability, verification, and runtime. Summarize at useful granularity; omit low-level settings unless they affect behavior. Use `_(none)_` if unknown. |
 | 8 | Behavior | yes | Behavioral rules and boundaries: constraints, refusal/escalation policy, tone, safety/compliance requirements, accepted limitations, and known non-goals. |
-| 9 | Success Criteria | yes | What good production behavior looks like, independent of current evals: desired user outcomes, quality standards, escalation quality, accuracy expectations, latency/cost expectations if relevant, and examples of success. |
+| 9 | Success Criteria | yes | What good production behavior looks like, independent of current evals: mission-level outcomes, quality standards, escalation quality, accuracy expectations, latency/cost expectations if relevant, and examples of success. |
 | 10 | Evaluation Setup | yes | Current validation setup: how to run it, what datasets/checks it uses, what scorers/metrics measure, pass/fail thresholds, and known coverage gaps relative to the success criteria. If no eval suite exists, say so explicitly. |
 | 11 | Change Scope | yes | A permissions list — what the optimization loop is allowed to modify. Defaults: system prompt, tools, middleware, inference params, model swap within mode, skills. Fine-tuning is never on by default. The loop never edits the spec itself. |
 | 12 | Signals | optional | How analysts should interpret telemetry, user feedback, eval outcomes, and trace patterns. Include high-priority signals and anything to explicitly ignore (e.g., QA traffic). If user has nothing specific, write "defaults" and move on. |
@@ -97,8 +98,10 @@ the user the full set of unfilled fields.
    Then use `Glob` / `Grep` to find `langgraph`, `StateGraph`,
    `create_react_agent`, `system_prompt`, and tool definitions.
 
-2. **Find design context.** Look for `README.md`, `AGENTS.md`, `PRD*.md`,
-   `design*.md`, anything in `docs/`. Read the ones that look agent-relevant.
+2. **Find design context.** Look for `README.md`, `AGENTS.md`,
+   product/design/planning docs, launch notes, and anything in `docs/`. Read
+   docs that describe goals and user value before implementation details when
+   they look agent-relevant.
 
 3. **Map findings to schema fields.** As you scan, hold a running mental
    table of what you can fill from the code/docs. Be honest about confidence:
@@ -110,23 +113,28 @@ the user the full set of unfilled fields.
    - **Role** — first paragraph of README, system prompt preamble, or
      top-level docstring. Often partial; usually needs user confirmation.
    - **Purpose** — product docs, README motivation, system prompt preamble,
-     or workflow context.
+     or workflow context. Prefer explicit goal context over implementation-only
+     inference.
    - **Scope** — audience from docs or prompts; categories from enumerated
      capabilities or named tool clusters; in/out boundaries from prompt rules.
    - **Tools** — from `@tool` decorators, NAT tool registry,
      `create_react_agent(tools=[...])`, retrieval/corpus config, or API clients.
+     Group low-level helpers when they share credentials, side effects,
+     freshness, and failure modes.
    - **Model** — model id strings in workflow YAML, env vars, config files.
    - **Framework** — `langgraph` import + NAT workflow YAML → "LangGraph +
-     NAT." `crewai` / `autogen` / `pydantic_ai` imports → flag wrapper work.
-     Plain `langchain` without `langgraph` → flag wrapper work.
+     NAT." `crewai` / `autogen` / `pydantic_ai` imports → `needs-wrapper`
+     with source-framework context. Plain `langchain` without `langgraph` →
+     `needs-wrapper`. Do not turn this into a detailed implementation audit.
    - **Harness** — `langgraph` imports, NAT workflow YAML, `crewai` /
      `autogen` / `pydantic_ai` imports, service entrypoints, CLI commands,
      Dockerfiles, notebooks, or deployment configs. Capture what exists
      descriptively; platform-specific wrapper needs can go in notes.
    - **Behavior** — system prompt rules ("never give medical advice"),
      refusal/escalation policy, tone, accepted limitations, and non-goals.
-   - **Success Criteria** — desired production outcomes, quality standards,
-     escalation quality, accuracy expectations, and examples of successful behavior.
+   - **Success Criteria** — desired production outcomes, product goals,
+     quality standards, escalation quality, accuracy expectations, and examples
+     of successful behavior.
    - **Evaluation Setup** — Makefile targets, scripts, CI config, eval YAMLs,
      metric definitions, thresholds, and coverage notes.
    - **Change Scope** — not in the code; ask the user.
@@ -134,25 +142,50 @@ the user the full set of unfilled fields.
    - **Open Questions** — TODOs / FIXMEs in agent-adjacent code that
      affect safe use, evaluation, or modification.
 
+## Step 1.5 — Mission and outside-context check
+
+After the code/docs scan, check whether `Purpose`, `Scope`, and `Success
+Criteria` are grounded in product/design context or merely inferred from
+implementation details. Code can tell you what exists; it often cannot tell
+you the mission, customer goal, launch criteria, or success bar.
+
+If the mission is missing or weakly inferred, ask one context-forward question
+before handoff:
+
+> "I can draft this from the code, but the mission/goals are only inferred from
+> implementation. Is there any context outside the codebase that explains the
+> goals, users, success bar, or business/workflow motivation I should
+> incorporate? Paste/link it now, or say there isn't any and I'll proceed with
+> the implementation-grounded draft."
+
+Do this as one lightweight checkpoint, not a per-field interview. If the user
+provides outside context, read it and update the inferred spec before the
+review pass. If they say none, proceed and make the implementation-grounded
+assumption explicit in `Open Questions` only if it materially affects safe use,
+evaluation, or modification.
+
 ## Step 2 — One review pass, not a Q&A loop
 
-Keep onboarding lightweight. The codebase scan should have filled most fields
-already. Your goal here is **one round-trip with the user**, not a per-field
-interview.
+Keep onboarding lightweight. The codebase scan and mission/context checkpoint
+should have filled most fields already. Your goal here is **one review
+round-trip with the user**, not a per-field interview.
 
 Present the entire spec at once — every field, with inferred values shown
 inline and any required-but-missing fields called out. Pick a sensible
 default for every optional field rather than asking. Then ask the user a
 single question:
 
-> "Here's the full spec I'd write. Tell me what to change — and I need the
-> two missing required fields below before I can hand off to `nemo-spec`."
+> "Here's the full spec I'd write. Tell me what to change — especially if
+> there's outside context I missed — and I need the two missing required fields
+> below before I can hand off to `nemo-spec`."
 
 Show the rendered spec inline in markdown (one `##` section per field, same
 shape as the on-disk file). For fields you defaulted, note the default in
 parentheses so the user knows they can override:
 
 - `Tools: Prompt-only.` *(default — say so if the agent needs tools)*
+- `Purpose` / `Success Criteria` inferred from implementation *(say so if
+  there is outside context to incorporate)*
 - `Change Scope:` all defaults on, fine-tuning off *(default — call out
   anything you want to lock down)*
 - `Signals: defaults` *(default — replace if you have specific
@@ -162,6 +195,12 @@ parentheses so the user knows they can override:
 high-confidence inferences. **Do not** ask one question at a time. The whole
 point of this skill is that the codebase scan paid for the right to skip the
 interrogation.
+
+Do not use public-facing shorthand like `AUT` or "agent under test" in the
+rendered spec. Use "this agent" for the agent being specified. Use "target
+agent" only where the agent's purpose is explicitly to inspect or modify
+another agent, and name optimizer helper agents only when they are part of the
+actual product workflow.
 
 Allowed exceptions where a follow-up question is justified:
 
@@ -207,6 +246,14 @@ to Filesets") and trigger it.
 - **Tool over-spec is the most common error.** Users ask for a search tool
   when prompt-only would work. Probe: "Do you have evidence the model alone
   fails on these?" If no, drop the tool.
+- **Tool and harness inventory should be compressed.** Do not create one row
+  per helper method when several helpers share the same source, credential,
+  side effect, freshness, and failure mode. Group them and call out only the
+  differences an optimizer or evaluator needs to know.
+- **Mission before mechanics.** A spec that only says how the current code is
+  wired is not good enough. If goal context cannot be found in the codebase or
+  docs, say the mission is inferred from implementation and give the user one
+  chance to supply the missing outside context.
 - **"No behavior constraints" usually means "I haven't thought about it."** Probe
   once: "Anything that should never appear — names, phone numbers, competitor
   mentions?" One probe, then move on.

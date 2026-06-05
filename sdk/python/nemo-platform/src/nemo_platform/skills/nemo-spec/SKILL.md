@@ -24,7 +24,7 @@ allowed-tools: [Read, Write, Edit, Bash]
 
 Turn the answers from `nemo-explore` into a durable artifact. The spec is
 the contract `nemo-build-agent` reads to scaffold the NAT workflow YAML and
-the `AGENT-SPEC.md` that the analyst and experimentalist agents read as
+the `AGENT-SPEC.md` that downstream optimization agents read as
 their primary context. Without it, downstream skills have to re-ask
 everything and the optimization loop has no contract for what the agent is
 supposed to do or what may be changed.
@@ -34,10 +34,11 @@ supposed to do or what may be changed.
 Two copies of the spec exist intentionally:
 
 * **Canonical**: a NeMo Filesets fileset named `<agent-name>-spec` in the
-  active workspace, holding a single file `AGENT-SPEC.md`. The analyst
-  agent reads this copy server-side; the platform stores it durably.
+  active workspace, holding a single file `AGENT-SPEC.md`. Downstream
+  optimization services read this copy server-side; the platform stores it
+  durably.
 * **Local cache**: `agents/<name>-spec/AGENT-SPEC.md` in the developer's
-  working directory. Hand-editable, version-controlled with the AUT repo,
+  working directory. Hand-editable, version-controlled with the agent's repo,
   used by this skill and by `nemo-build-agent`.
 
 The Fileset wins on conflict. If a developer edits the local file, this
@@ -101,7 +102,26 @@ clear gap-question rather than a parser error.
      --local-path "agents/${NAME}-spec/AGENT-SPEC.md"
    ```
 
-4. **Render the spec.** Use the template at
+4. **Run a focus check before rendering.** The carried-over answers should be
+   mission-led and reviewable, not a raw inventory of implementation details:
+
+   - `Purpose` and `Success Criteria` must explain mission, goals, user value,
+     and success bar. If they only summarize the current code, route back to
+     `nemo-explore` to ask whether the user has outside context that is not in
+     the codebase. If no such context exists, say the section is inferred from
+     implementation.
+   - `Tools` and `Harness` should be concise. Group related helpers by
+     capability/source when they share credentials, side effects, freshness,
+     and failure modes. Keep only details that change how downstream agents
+     evaluate behavior.
+   - `Framework` should be binary: `langgraph-nat` or `needs-wrapper`, with
+     source-framework context only for `needs-wrapper`. Do not expand it into a
+     platform compatibility essay.
+   - Avoid public shorthand like `AUT` or "agent under test." Use "this agent"
+     for the agent being specified. Use "target agent" only when this agent's
+     job is explicitly to inspect or modify another agent.
+
+5. **Render the spec.** Use the template at
    `references/templates/agent-spec.md` as the starting point. Substitute
    every section from the `nemo-explore` answers. Set front matter as:
    `name` = the canonical agent name, `created_timestamp` = current UTC
@@ -113,12 +133,12 @@ clear gap-question rather than a parser error.
    and resolved framework status. Section bodies stay markdown for agents and
    humans to read directly.
 
-5. **Write the file.** Path: `agents/<name>-spec/AGENT-SPEC.md`. Create the
+6. **Write the file.** Path: `agents/<name>-spec/AGENT-SPEC.md`. Create the
    `agents/<name>-spec/` directory if it does not exist.
 
-6. **Validate before upload.** Load the file through the parser. A
+7. **Validate before upload.** Load the file through the parser. A
    parse failure here means the file is malformed; fix it before uploading,
-   because the analyst agent will reject the same content server-side.
+   because downstream consumers will reject the same content server-side.
 
    ```bash
    python -c "
@@ -129,7 +149,7 @@ clear gap-question rather than a parser error.
    " || { echo "spec_invalid"; exit 1; }
    ```
 
-7. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
+8. **Upload to Filesets (canonical copy).** Create the per-agent fileset if
    needed and upload `AGENT-SPEC.md`:
 
    ```bash
@@ -139,23 +159,23 @@ clear gap-question rather than a parser error.
    ```
 
    No ref to capture or pass downstream — the location is by convention.
-   `nemo-build-agent` and the analyst agent both call
+   `nemo-build-agent` and downstream optimization consumers both call
    `agent_spec_file_ref(workspace, name)` to compute
    `<workspace>/<name>-spec#AGENT-SPEC.md` when they need it.
 
-8. **Show the spec to the user.** Print the full file contents and ask:
+9. **Show the spec to the user.** Print the full file contents and ask:
    "Does this match what we agreed? Edit anything you want to change." If
-   the user edits, repeat steps 5–7.
+   the user edits, repeat steps 6–8.
 
-9. **Hand off.** Once confirmed, tell the user the next skill:
+10. **Hand off.** Once confirmed, tell the user the next skill:
 
     - `nemo-build-agent` will read `agents/<name>-spec/AGENT-SPEC.md`, produce the
       workflow YAML, and call `nemo agents create`. It does not need a
       `--spec-file-ref` flag — the spec's location is derivable.
     - The `eval-setup` skill (M2) will fill in the `Evaluation Setup`
       section when ready.
-    - The analyst agent (insights plugin, separate workstream) reads the
-      same canonical fileset server-side once traces exist.
+    - The insights plugin reads the same canonical fileset server-side once
+      traces exist.
 
 ## Verification
 
@@ -219,9 +239,16 @@ platform — that happens in `nemo-build-agent` via `nemo agents create`.
   `[a-z][a-z0-9-]*`.
 - **Role and Framework are hard requirements.** Do not write the spec with
   either missing. Route back to `nemo-explore` for the missing field only.
+- **Purpose cannot be implementation-only by accident.** If goal context was
+  not found in the codebase and the user did not provide outside context, make
+  that provenance clear instead of letting implementation details masquerade as
+  mission.
+- **Keep public terminology clean.** The generated spec is user-facing. Avoid
+  `AUT` and "agent under test"; reserve internal shorthand for test harnesses
+  and code comments.
 - **Do not duplicate Insights into the spec.** Known issues / recurring
   failure patterns live in the Insights plugin as first-class entities; the
   spec has no `Known Issues` section.
-- **This file is the `AGENT-SPEC.md`.** The experimentalist agent will
-  not edit it; only the developer and the developer's coding agent do.
-  Treat it as a long-lived contract, not a scratch pad.
+- **This file is the `AGENT-SPEC.md`.** Downstream optimization agents should
+  not edit it; only the developer and the developer's coding agent do. Treat it
+  as a long-lived contract, not a scratch pad.
