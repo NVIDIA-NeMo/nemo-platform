@@ -40,8 +40,8 @@ jobs:
             -f name='docker-build' \
             -f head_sha="${HEAD_SHA}" \
             -f status='queued' \
-            -f 'output[title]=Docker build' \
-            -f 'output[summary]=Queued — waiting for the Docker build.' \
+            -f 'output[title]=Waiting to build' \
+            -f 'output[summary]=The Docker build has been queued.' \
             --jq '.id')
           echo "check_run_id=${id}" >> "$GITHUB_OUTPUT"
 

@@ -58,7 +58,7 @@ jobs:
                   owner, repo, check_run_id: check.id,
                   status: 'completed', conclusion: 'failure',
                   output: {
-                    title: 'Docker build timed out',
+                    title: 'Build timed out',
                     summary: `${reason}\n\nTo retry, re-run the "Docker build trigger" workflow run.`,
                   },
                 });
