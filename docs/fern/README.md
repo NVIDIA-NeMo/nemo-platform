@@ -93,7 +93,18 @@ The gated `.mdx` files stay in the repo so they remain maintained. The gated tre
 
 Inbound links from visible pages into gated pages are **delinked to plain text** (not rewritten URLs), since the target is not built — otherwise they would be broken links.
 
-`gated-nav.yml` holds the ready-to-paste navigation blocks for the gated features (it is a reference only; Fern does not read it). **To publish a feature when it ships:** move its block from `gated-nav.yml` into `versions/latest.yml`, re-link the inbound references that were delinked (search the docs for the feature name), then run `npm run check` and `npx fern-api docs broken-links`.
+### Automated delinking
+
+The old MkDocs hook delinked those references automatically. Fern has no build hook, so `scripts/delink-gated.mjs` reproduces it. "Gated" is derived from the nav (any `.mdx` not in `versions/latest.yml`), so there is no second list to maintain.
+
+- `npm run check:gated-links` — fails if any **published** page links into a gated page (runs as part of `npm run check`, so CI enforces it).
+- `npm run fix:gated-links` — rewrites those links to plain text in place.
+
+So if someone links into a gated section, CI flags it and one command delinks it — no hunting for dead links by hand. `npm run broken-links` (also run in CI) is the broader backstop for any other dead link.
+
+One difference from the old MkDocs hook: that hook ran at build time and kept the link in the source, so re-publishing a page reactivated its inbound links automatically. This script delinks in the **source**, so the references become plain text. When you publish a feature, re-add the links you want from those plain-text references as part of the same step that moves the nav block (`check:gated-links` won't block you — it only flags live links that still point at gated pages). This keeps local `fern docs dev` honest (no build-time source rewriting) at the cost of re-linking on publish.
+
+`gated-nav.yml` holds the ready-to-paste navigation blocks for the gated features (it is a reference only; Fern does not read it). **To publish a feature when it ships:** move its block from `gated-nav.yml` into `versions/latest.yml`, re-add any inbound links you want, then run `npm run check` and `npm run broken-links`.
 
 ## CI and Publishing
 
