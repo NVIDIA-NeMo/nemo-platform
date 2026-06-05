@@ -3,9 +3,7 @@
 
 """NemoGuard JailbreakDetect model.
 
-A two-stage pipeline, reconstructed from the open artifacts so it can be served
-independently of the NVIDIA NIM. The recipe below was evaluated against the
-hosted NIM on build.nvidia.com:
+A two-stage pipeline built from the open-weights artifacts published on Hugging Face:
 
 Stage 1 — ``SnowflakeEmbed``: the ``Snowflake/snowflake-arctic-embed-m-long``
 transformer encoder, used as a frozen feature extractor; CLS token of the last
@@ -38,9 +36,8 @@ MODEL_REVISION = "cc8b97e2bd6c1667c31476eedaa9a75b4d7ed282"
 MODEL_FILENAME = "snowflake.pkl"  # sklearn RandomForest (predict_proba) — the default
 ONNX_FILENAME = "snowflake.onnx"  # used only by the doc-only JailbreakClassifierONNX (not served)
 
-# Token budget and pooling strategy must stay bit-compatible with upstream,
-# otherwise the random forest sees a different feature distribution and
-# accuracy silently degrades.
+# Token budget and pooling strategy must match what the random forest was trained on;
+# otherwise it sees a different feature distribution and accuracy silently degrades.
 _MAX_TOKENS = 2048
 
 
@@ -114,7 +111,7 @@ class JailbreakClassifier:
         logger.info("Initializing jailbreak classifier (sklearn pkl)...")
         # `embed` lets callers share one loaded embedder across classifier variants.
         self.embed = embed if embed is not None else SnowflakeEmbed(device=device)
-        # Mirror SnowflakeEmbed: fetch (and HF-cache) the random forest at a
+        # Like SnowflakeEmbed, fetch (and HF-cache) the random forest at a
         # pinned revision instead of requiring a caller-supplied path.
         logger.info("Loading random forest %s from %s...", MODEL_FILENAME, MODEL_REPO_ID)
         random_forest_path = hf_hub_download(
@@ -141,9 +138,9 @@ class JailbreakClassifierONNX:
     NOT used by the server and NOT production-ready: this ONNX export emits an
     uncalibrated decision function (not probabilities), which degrades accuracy and
     skews predictions toward false positives versus the ``snowflake.pkl`` random forest
-    served at ``/v1/classify``. It is kept here solely to document the upstream ONNX
-    path. ``onnxruntime`` is intentionally **not** a declared dependency — instantiating
-    this class will fail until you install it manually to experiment.
+    served at ``/v1/classify``. It is kept here solely as a reference for the ONNX path.
+    ``onnxruntime`` is intentionally **not** a declared dependency — instantiating this
+    class will fail until you install it manually to experiment.
     """
 
     @no_type_check

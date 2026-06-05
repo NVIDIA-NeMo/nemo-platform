@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for the standalone model server's NIM-compatible contract."""
+"""Tests for the standalone model server's HTTP contract."""
 
 from __future__ import annotations
 
@@ -73,7 +73,7 @@ def test_classify_safe(monkeypatch):
 
 
 def test_classify_empty_input_422(monkeypatch):
-    # min_length=1 mirrors the NIM: an empty prompt is rejected before inference.
+    # min_length=1: an empty prompt is rejected before inference.
     resp = _client(monkeypatch).post("/v1/classify", json={"input": ""})
     assert resp.status_code == 422
 

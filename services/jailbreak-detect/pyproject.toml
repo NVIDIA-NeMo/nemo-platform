@@ -1,7 +1,7 @@
 [project]
 name = "jailbreak-detect-model"
 version = "0.1.0"
-description = "Self-hosted NemoGuard JailbreakDetect model server (decoupled from NIM)."
+description = "Self-hosted NemoGuard JailbreakDetect model server."
 # Pinned to 3.11: the NemoGuard random forest (snowflake.pkl) was pickled with
 # scikit-learn 1.2.x, which only ships wheels through CPython 3.11.
 requires-python = ">=3.11,<3.12"

@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Standalone jailbreak-detection model server (NIM-compatible).
+"""Standalone jailbreak-detection model server.
 
 This is the deployable unit the platform controller manages. It exposes the
-same HTTP contract as the NVIDIA NemoGuard JailbreakDetect NIM, so the
-``nemoguardrails`` library needs **zero changes** — point
+HTTP contract the ``nemoguardrails`` jailbreak-detection rail expects, so the
+library needs **zero changes** — point
 ``rails.config.jailbreak_detection.nim_base_url`` at this server and set
 ``nim_server_endpoint`` to ``/v1/classify``.
 
@@ -51,12 +51,12 @@ _classifier: JailbreakClassifier | None = None
 
 
 class ClassifyRequest(BaseModel):
-    """Matches the NIM request shape.
+    """Request body for ``/v1/classify``.
 
-    Bounds mirror the NIM's ``constr(min_length=1, max_length=16777216)``: reject
-    empty input (the embedder would otherwise burn a forward pass on it) and
-    absurdly large bodies at the API layer (the tokenizer truncates to 2048 tokens
-    anyway). FastAPI returns 422 when these bounds are violated.
+    Bounds (``min_length=1``, ``max_length=16777216``) reject empty input (the embedder
+    would otherwise burn a forward pass on it) and absurdly large bodies at the API
+    layer (the tokenizer truncates to 2048 tokens anyway). FastAPI returns 422 when
+    these bounds are violated.
     """
 
     input: str = Field(min_length=1, max_length=16_777_216)
@@ -116,8 +116,8 @@ def classify(request: ClassifyRequest) -> ClassifyResponse:
     try:
         classification, score = get_classifier()(request.input)
     except ValueError as exc:
-        # Mirror the NIM: a malformed prompt that breaks tokenization/inference is
-        # a client error (400), not a server fault (500).
+        # A malformed prompt that breaks tokenization/inference is a client error
+        # (400), not a server fault (500).
         logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
         raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
     return ClassifyResponse(jailbreak=classification, score=score)

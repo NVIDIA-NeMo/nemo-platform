@@ -5,11 +5,11 @@
 
 # JailbreakDetect — self-hosted model server
 
-A self-hosted build of the **NemoGuard JailbreakDetect** model, decoupled from the
-NVIDIA NIM. This is **not** a NeMo Platform plugin — it's just a container image
-that exposes a NIM-compatible HTTP contract. Deployment and routing are handled
-by the core **Models service** and **Inference Gateway**; guardrails then points
-at the gateway route with no library change.
+A self-hosted build of the **NemoGuard JailbreakDetect** model. This is **not** a
+NeMo Platform plugin — it's just a container image that exposes the HTTP contract the
+guardrails jailbreak-detection rail expects. Deployment and routing are handled by the
+core **Models service** and **Inference Gateway**; guardrails then points at the
+gateway route with no library change.
 
 ## What it is
 
@@ -17,17 +17,14 @@ Two-stage pipeline (`model/classifier.py`):
 
 1. **Embedder** — `Snowflake/snowflake-arctic-embed-m-long`. Input is embedded as
    **raw text** (no Arctic query prefix) and the **CLS** token is taken (no L2
-   normalization). This matches the NIM's internal pipeline and, empirically, beats
-   the prefixed variant on a balanced 400-prompt JailbreakHub sample across every
-   metric incl. threshold-free ROC-AUC (0.916 vs 0.893). The Arctic query prefix is
+   normalization). Empirically this beats the prefixed variant on a balanced
+   400-prompt JailbreakHub sample across every metric incl. threshold-free ROC-AUC
+   (0.916 vs 0.893). The Arctic query prefix is
    an asymmetric *retrieval* device; this is a classifier head trained on unprefixed
    embeddings, so prefixing just shifts inputs off-distribution.
 2. **Classifier** — the scikit-learn **random forest** `snowflake.pkl` from
-   `nvidia/NemoGuard-JailbreakDetect`, via `predict_proba`. This file is
-   byte-for-byte identical (verified by SHA-256) to the NIM's NGC
-   `snowflake_classifier.pkl` — it's the same forest, just renamed, so using the
-   open HF copy needs no NGC auth and costs no fidelity. The verdict is
-   `p1 > 0.5`; the `score` is the NIM's signed max-probability (`-p0` when benign,
+   `nvidia/NemoGuard-JailbreakDetect`, via `predict_proba`. The verdict is
+   `p1 > 0.5`; the `score` is the signed max-probability (`-p0` when benign,
    `+p1` when jailbreak). The repo's `snowflake.onnx` emits an uncalibrated decision
    function rather than probabilities (degraded accuracy, skews to false positives), so
    we serve the `snowflake.pkl` path; the ONNX variant is kept only as a documented
@@ -37,7 +34,7 @@ Neither stage requires a GPU. Weights are downloaded at first start (not baked).
 Pinned to **Python 3.11** because `snowflake.pkl` was pickled with scikit-learn
 1.2.x (no 3.12+ wheels); the container base is already `python:3.11-slim`.
 
-## HTTP contract (NIM-compatible)
+## HTTP contract
 
 - `POST /v1/classify` — `{"input": "<prompt>"}` → `{"jailbreak": <bool>, "score": <float>}`
 - `GET  /v1/health/ready` → `{"object": "health-response", "message": "ready"}`
@@ -121,7 +118,7 @@ Tear down: `nemo inference deployments delete jbd`.
 
 ## Evaluating the model
 
-We use the same [JailbreakHub](https://huggingface.co/datasets/walledai/JailbreakHub) dataset the upstream `NemoGuard-JailbreakDetect` model used.
+We use the same [JailbreakHub](https://huggingface.co/datasets/walledai/JailbreakHub) dataset the `NemoGuard-JailbreakDetect` model used.
 
 ```bash
 cd services/jailbreak-detect

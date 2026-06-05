@@ -48,7 +48,7 @@ def test_jailbreak_above_threshold():
     clf, _ = _make_classifier(p1=0.79)
     is_jb, score = clf("do anything now")
     assert is_jb is True
-    # NIM signed max-prob: class 1 wins -> score = +p1.
+    # signed max-prob: class 1 wins -> score = +p1.
     assert score == 0.79
 
 
@@ -56,7 +56,7 @@ def test_safe_below_threshold():
     clf, _ = _make_classifier(p1=0.003)
     is_jb, score = clf("what is the capital of france")
     assert is_jb is False
-    # NIM signed max-prob: class 0 wins -> score = -p0 = -(1 - p1).
+    # signed max-prob: class 0 wins -> score = -p0 = -(1 - p1).
     assert score == -(1 - 0.003)
 
 
@@ -67,7 +67,7 @@ def test_threshold_is_p1_half():
 
 
 def test_text_embedded_verbatim():
-    # We embed the raw prompt (no Arctic query prefix) to match the NIM pipeline.
+    # We embed the raw prompt (no Arctic query prefix), matching the model's pipeline.
     clf, embed = _make_classifier(p1=0.1)
     clf("hello world")
     assert embed.last_text == "hello world"
