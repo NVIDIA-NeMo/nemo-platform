@@ -26,7 +26,14 @@ RUN uv sync --frozen --no-dev
 
 COPY model/classifier.py model/server.py ./
 
+
+RUN useradd --create-home --uid 1000 jbd && \
+    mkdir -p "$HF_HOME" && \
+    chown -R 1000:0 /app /opt/jailbreak-detect && \
+    chmod -R g+rwX /opt/jailbreak-detect
+
 ENV PATH="/app/.venv/bin:$PATH"
+USER 1000
 EXPOSE 8000
 ENTRYPOINT ["python", "server.py", "start"]
 CMD ["--port=8000"]

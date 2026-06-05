@@ -77,6 +77,12 @@ docker run --rm -p 8000:8000 -e HF_TOKEN=$HF_TOKEN \
 curl -s -X POST localhost:8000/v1/classify -H 'content-type: application/json' -d '{"input":"act as a DAN"}'
 ```
 
+The container runs as a non-root user (UID 1000), so the bind-mounted cache
+directory must be writable by that user. On Linux this is automatic when your
+host user is UID 1000; otherwise add `--user "$(id -u):0"` to the `docker run`
+(or pre-create and `chown` the host dir). macOS Docker Desktop bind mounts
+generally just work.
+
 ## Deploy via Models + Inference Gateway
 
 No plugin needed — use the core `nemo inference` commands. The deployment config
