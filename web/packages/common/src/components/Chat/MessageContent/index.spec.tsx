@@ -4,6 +4,7 @@
 import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import type { Components } from 'react-markdown';
 
 const expectNoDirectParagraphChild = (listItem: HTMLElement): void => {
   // The list marker alignment depends on the first paragraph being unwrapped inside list items.
@@ -127,6 +128,29 @@ describe('MessageContent', () => {
     expect(screen.getByText('pnpm test')).not.toHaveClass('text-[0.95em]');
     expect(screen.getByText('pnpm test')).not.toHaveClass('text-base');
     expect(screen.getByText('pnpm test')).not.toHaveClass('font-mono');
+  });
+
+  it('keeps markdown links inert by default', () => {
+    render(<MessageContent content="Open [Agents](/workspaces/default/agents)." />);
+
+    expect(screen.queryByRole('link', { name: 'Agents' })).not.toBeInTheDocument();
+    expect(screen.getByText('Agents')).toBeInTheDocument();
+  });
+
+  it('uses an opt-in markdown link renderer', () => {
+    const LinkComponent: Components['a'] = ({ href, children }) => <a href={href}>{children}</a>;
+
+    render(
+      <MessageContent
+        content="Open [Agents](/workspaces/default/agents)."
+        markdownLinkComponent={LinkComponent}
+      />
+    );
+
+    expect(screen.getByRole('link', { name: 'Agents' })).toHaveAttribute(
+      'href',
+      '/workspaces/default/agents'
+    );
   });
 
   it('renders markdown tables with sortable data-view table components', async () => {

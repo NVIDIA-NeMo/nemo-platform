@@ -70,10 +70,16 @@ def test_list_and_get_history_sessions(
     project_dir.mkdir(parents=True)
     session_id = str(uuid.uuid4())
     history = project_dir / f"{session_id}.jsonl"
+    first_prompt = coding_agents._build_claude_prompt(
+        "first prompt",
+        "default",
+        "https://studio.test/studio",
+        "/workspaces/default/dashboard/code-agent",
+    )
     history.write_text(
         "\n".join(
             [
-                json.dumps({"type": "user", "message": {"content": "first prompt"}}),
+                json.dumps({"type": "user", "message": {"content": first_prompt}}),
                 json.dumps(
                     {
                         "type": "assistant",
@@ -202,6 +208,122 @@ def test_mcp_initialize_and_tools_list(service_client: TestClient):
     assert initialize_response.json()["result"]["serverInfo"]["name"] == "nemo-studio-permissions"
     assert tools_response.status_code == 200
     assert tools_response.json()["result"]["tools"][0]["name"] == "approval_prompt"
+    assert {tool["name"] for tool in tools_response.json()["result"]["tools"]} == {
+        "approval_prompt",
+        "studio_link",
+    }
+
+
+def test_mcp_studio_link_returns_agents_page_markdown(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {"destination": "agents"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "agents",
+        "path": "/workspaces/default/agents",
+        "url": None,
+        "markdown": "[Agents](/workspaces/default/agents)",
+    }
+
+
+def test_mcp_studio_link_returns_custom_models_full_url(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {"destination": "custom_models"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "customizations",
+        "path": "/workspaces/default/customizations",
+        "url": "https://studio.test/studio/workspaces/default/customizations",
+        "markdown": "[Custom Models](/workspaces/default/customizations)",
+    }
+
+
+def test_mcp_studio_link_returns_jobs_page_markdown(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {"destination": "jobs", "label": "Open Jobs"},
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "jobs",
+        "path": "/workspaces/default/jobs",
+        "url": None,
+        "markdown": "[Open Jobs](/workspaces/default/jobs)",
+    }
+
+
+def test_mcp_studio_link_encodes_detail_route_parts(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default%20workspace",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {
+                    "destination": "agent",
+                    "name": "triage agent",
+                    "label": "Open agent",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default workspace",
+        "destination": "agent",
+        "path": "/workspaces/default%20workspace/agents/triage%20agent",
+        "url": None,
+        "markdown": "[Open agent](/workspaces/default%20workspace/agents/triage%20agent)",
+    }
 
 
 def test_mcp_rejects_malformed_json(service_client: TestClient):
@@ -314,17 +436,29 @@ def test_platform_route_stream_uses_public_mcp_callback(monkeypatch: pytest.Monk
 
     response = client.post(
         f"/apis/studio/v2/coding-agents/sessions/{session_id}/messages",
-        json={"message": "hello"},
+        json={
+            "message": "hello",
+            "workspace": "default",
+            "studio_base_url": "https://studio.test/studio",
+            "studio_pathname": "/workspaces/default/dashboard/code-agent",
+        },
     )
 
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/event-stream")
     assert "event: done" in response.text
-    assert captured == {
-        "session_id": session_id,
-        "message": "hello",
-        "mcp_url": f"http://testserver/studio/api/coding-agents/mcp/{session_id}",
-    }
+    assert captured["session_id"] == session_id
+    assert captured["mcp_url"] == (
+        f"http://testserver/studio/api/coding-agents/mcp/{session_id}"
+        "?workspace=default&studio_base_url=https%3A%2F%2Fstudio.test%2Fstudio"
+    )
+    assert captured["message"].startswith(coding_agents.STUDIO_CONTEXT_START)
+    assert "Current Studio workspace: default" in captured["message"]
+    assert "Studio UI base URL: https://studio.test/studio" in captured["message"]
+    assert "Current Studio route path: /workspaces/default/dashboard/code-agent" in captured["message"]
+    assert "After any successful Studio action, include a Studio link in the response." in captured["message"]
+    assert "For a newly started job, use studio_link with destination='job'" in captured["message"]
+    assert captured["message"].endswith("User request:\nhello")
 
 
 def test_public_mcp_route_is_mounted_before_static_fallback():

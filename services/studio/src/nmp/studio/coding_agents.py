@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from dataclasses import field as dataclass_field
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote, urlencode, urlparse
 
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
@@ -31,6 +32,9 @@ CLAUDE_MCP_SERVER_NAME = "nemo_studio"
 
 CLAUDE_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 SERVER_CWD = Path(os.getcwd()).resolve()
+STUDIO_CONTEXT_START = "<nemo_studio_context>"
+STUDIO_CONTEXT_END = "</nemo_studio_context>"
+STUDIO_CONTEXT_USER_REQUEST_PREFIX = "User request:"
 
 
 class NewSessionResponse(BaseModel):
@@ -43,6 +47,9 @@ class MessageRequest(BaseModel):
     """A user message to send to the local coding agent."""
 
     message: str = Field(min_length=1)
+    studio_base_url: str | None = Field(default=None, min_length=1)
+    studio_pathname: str | None = Field(default=None, min_length=1)
+    workspace: str | None = Field(default=None, min_length=1)
 
 
 class PermissionDecision(BaseModel):
@@ -88,6 +95,113 @@ class HistorySummary:
     tool_calls: list[str] = dataclass_field(default_factory=list)
 
 
+@dataclass(frozen=True)
+class StudioLinkDestination:
+    """Known Studio destination that Claude Code can link to."""
+
+    label: str
+    path_template: str
+    aliases: tuple[str, ...] = ()
+    requires_name: bool = False
+
+
+_STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
+    "dashboard": StudioLinkDestination("Workspace dashboard", "/workspaces/{workspace}/dashboard"),
+    "agents": StudioLinkDestination(
+        "Agents",
+        "/workspaces/{workspace}/agents",
+        aliases=("agent_list", "agents_page"),
+    ),
+    "agent": StudioLinkDestination(
+        "Agent {name}",
+        "/workspaces/{workspace}/agents/{name}",
+        aliases=("agent_detail",),
+        requires_name=True,
+    ),
+    "agent_deployments": StudioLinkDestination(
+        "Agent deployments",
+        "/workspaces/{workspace}/agent-deployments",
+        aliases=("agent_deployment_list",),
+    ),
+    "agent_deployment": StudioLinkDestination(
+        "Agent deployment {name}",
+        "/workspaces/{workspace}/agent-deployments/{name}",
+        aliases=("agent_deployment_detail",),
+        requires_name=True,
+    ),
+    "agent_evaluations": StudioLinkDestination(
+        "Agent evaluations",
+        "/workspaces/{workspace}/agents/evaluations",
+        aliases=("agent_evaluation_list",),
+    ),
+    "agent_evaluation": StudioLinkDestination(
+        "Agent evaluation {name}",
+        "/workspaces/{workspace}/agents/evaluations/{name}",
+        aliases=("agent_evaluation_detail",),
+        requires_name=True,
+    ),
+    "agent_monitor": StudioLinkDestination("Agent monitor", "/workspaces/{workspace}/agents/monitor"),
+    "agent_optimizations": StudioLinkDestination(
+        "Agent optimizations",
+        "/workspaces/{workspace}/agents/suggestions",
+        aliases=("agent_suggestions", "agent_suggestions_list"),
+    ),
+    "customizations": StudioLinkDestination(
+        "Custom Models",
+        "/workspaces/{workspace}/customizations",
+        aliases=("custom_models", "custom_models_page", "customization_jobs", "customizations_page"),
+    ),
+    "customization": StudioLinkDestination(
+        "Custom model {name}",
+        "/workspaces/{workspace}/customizations/{name}",
+        aliases=("custom_model", "customization_job", "customization_detail"),
+        requires_name=True,
+    ),
+    "jobs": StudioLinkDestination("Jobs", "/workspaces/{workspace}/jobs", aliases=("job_list",)),
+    "job": StudioLinkDestination(
+        "Job {name}",
+        "/workspaces/{workspace}/jobs/{name}",
+        aliases=("job_detail",),
+        requires_name=True,
+    ),
+    "filesets": StudioLinkDestination("Filesets", "/workspaces/{workspace}/filesets"),
+    "fileset": StudioLinkDestination(
+        "Fileset {name}",
+        "/workspaces/{workspace}/filesets/{name}/detail",
+        aliases=("fileset_detail", "dataset", "dataset_detail"),
+        requires_name=True,
+    ),
+    "deployments": StudioLinkDestination("Deployments", "/workspaces/{workspace}/deployments"),
+    "deployment": StudioLinkDestination(
+        "Deployment {name}",
+        "/workspaces/{workspace}/deployments/{name}/details",
+        aliases=("deployment_detail",),
+        requires_name=True,
+    ),
+    "inference_providers": StudioLinkDestination(
+        "Inference providers",
+        "/workspaces/{workspace}/inference-providers",
+        aliases=("model_providers", "providers"),
+    ),
+    "guardrails": StudioLinkDestination("Guardrails", "/workspaces/{workspace}/guardrails"),
+    "secrets": StudioLinkDestination("Secrets", "/workspaces/{workspace}/secrets"),
+    "data_designer": StudioLinkDestination(
+        "Data Designer",
+        "/workspaces/{workspace}/data-designer",
+        aliases=("data_designer_jobs",),
+    ),
+    "safe_synthesizer": StudioLinkDestination(
+        "Safe Synthesizer",
+        "/workspaces/{workspace}/safe-synthesizer",
+        aliases=("safe_synthesizer_jobs",),
+    ),
+}
+
+_STUDIO_LINK_DESTINATION_ALIASES = {
+    alias: destination for destination, config in _STUDIO_LINK_DESTINATIONS.items() for alias in config.aliases
+}
+
+
 _APPROVAL_TOOL = {
     "name": "approval_prompt",
     "description": "Ask the human operator whether a tool call should be allowed.",
@@ -101,6 +215,44 @@ _APPROVAL_TOOL = {
         "required": ["tool_name", "input"],
     },
 }
+
+_STUDIO_LINK_TOOL = {
+    "name": "studio_link",
+    "description": (
+        "Return a Markdown link to a NeMo Studio page in the current workspace. "
+        "Use this after every successful Studio action that creates, starts, deploys, evaluates, modifies, "
+        "or inspects a resource so the user can open the relevant Studio page. "
+        "Prefer the most specific destination when you know the resource name; otherwise link to the list page. "
+        "Examples: after starting a platform job, use destination='job' with name when available, or destination='jobs'; "
+        "after creating an agent, use destination='agent' with name when available, or destination='agents'. "
+        "Include the returned markdown link exactly in your final response."
+    ),
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "destination": {
+                "type": "string",
+                "description": (
+                    "Studio destination. Supported values: agents, agent, agent_deployments, "
+                    "agent_deployment, agent_evaluations, agent_evaluation, agent_monitor, "
+                    "agent_optimizations, customizations, customization, dashboard, jobs, job, filesets, fileset, deployments, "
+                    "deployment, inference_providers, guardrails, secrets, data_designer, safe_synthesizer."
+                ),
+            },
+            "name": {
+                "type": "string",
+                "description": "Resource name for detail destinations such as agent, job, fileset, or deployment.",
+            },
+            "label": {
+                "type": "string",
+                "description": "Optional markdown link label. Defaults to the destination label.",
+            },
+        },
+        "required": ["destination"],
+    },
+}
+
+_MCP_TOOLS = [_APPROVAL_TOOL, _STUDIO_LINK_TOOL]
 
 
 def mount_public_mcp_route(app: FastAPI) -> None:
@@ -119,6 +271,139 @@ def _validate_session_id(session_id: str) -> str:
         return str(uuid.UUID(session_id))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="session_id must be a UUID") from exc
+
+
+def _trimmed_string(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    trimmed = value.strip()
+    return trimmed or None
+
+
+def _normalize_studio_base_url(value: str | None) -> str | None:
+    base_url = _trimmed_string(value)
+    if not base_url:
+        return None
+
+    parsed = urlparse(base_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return None
+
+    return base_url.rstrip("/")
+
+
+def _build_studio_url(studio_base_url: str | None, path: str) -> str | None:
+    base_url = _normalize_studio_base_url(studio_base_url)
+    if not base_url:
+        return None
+    return f"{base_url}/{path.lstrip('/')}"
+
+
+def _strip_studio_context_from_prompt(content: str) -> str:
+    if not content.startswith(STUDIO_CONTEXT_START):
+        return content
+
+    _, prefix, request = content.partition(f"{STUDIO_CONTEXT_USER_REQUEST_PREFIX}\n")
+    if not prefix:
+        return content
+    return request.strip() or content
+
+
+def _build_claude_prompt(
+    message: str,
+    workspace: str | None,
+    studio_base_url: str | None,
+    studio_pathname: str | None,
+) -> str:
+    normalized_base_url = _normalize_studio_base_url(studio_base_url)
+    current_studio_route = _trimmed_string(studio_pathname) or "unknown"
+    return "\n".join(
+        [
+            STUDIO_CONTEXT_START,
+            "You are being invoked from inside NeMo Studio's Code Agent chat.",
+            f"Current Studio workspace: {workspace or 'unknown'}",
+            f"Studio UI base URL: {normalized_base_url or 'unknown'}",
+            f"Current Studio route path: {current_studio_route}",
+            "When the user asks for a Studio page link, do not ask them for the base URL.",
+            "Always use the current Studio workspace for Studio UI links unless the user explicitly names another workspace.",
+            "Do not infer the Studio workspace from the local username, account name, API response defaults, or filesystem paths.",
+            "Use the mcp__nemo_studio__studio_link tool for Studio UI links whenever possible.",
+            "Use the returned markdown from studio_link exactly; do not replace it with localhost, the API host, or the MCP server host.",
+            "The MCP server URL is an internal callback for tools, not the Studio UI base URL.",
+            "If you must construct a Studio UI link manually, prefer a relative Markdown link that starts with /workspaces/ or /models/.",
+            "After any successful Studio action, include a Studio link in the response.",
+            "For a newly started job, use studio_link with destination='job' and the job name when available; otherwise use destination='jobs'.",
+            "For a newly created or deployed agent, use destination='agent' or destination='agent_deployment' when the name is known; otherwise use destination='agents' or destination='agent_deployments'.",
+            "For generated filesets, custom models, deployments, evaluations, guardrails, secrets, Data Designer, or Safe Synthesizer work, choose the matching studio_link destination.",
+            "For Custom Models use destination='customizations'; for Agents use destination='agents'.",
+            "Return Studio links as Markdown links.",
+            STUDIO_CONTEXT_END,
+            "",
+            STUDIO_CONTEXT_USER_REQUEST_PREFIX,
+            message,
+        ]
+    )
+
+
+def _path_part(value: str) -> str:
+    return quote(value, safe="")
+
+
+def _normalize_studio_link_destination(destination: str) -> str | None:
+    normalized = destination.strip().lower().replace("-", "_").replace(" ", "_")
+    if normalized in _STUDIO_LINK_DESTINATIONS:
+        return normalized
+    return _STUDIO_LINK_DESTINATION_ALIASES.get(normalized)
+
+
+def _build_studio_link_result(
+    workspace: str | None,
+    studio_base_url: str | None,
+    args: dict[str, Any],
+) -> dict[str, Any]:
+    if not workspace:
+        return {
+            "error": "current Studio workspace is unavailable",
+            "available_destinations": sorted(_STUDIO_LINK_DESTINATIONS),
+        }
+
+    requested_destination = (
+        _trimmed_string(args.get("destination"))
+        or _trimmed_string(args.get("page"))
+        or _trimmed_string(args.get("resource_type"))
+    )
+    if requested_destination is None:
+        return {
+            "error": "destination is required",
+            "available_destinations": sorted(_STUDIO_LINK_DESTINATIONS),
+        }
+
+    destination = _normalize_studio_link_destination(requested_destination)
+    if destination is None:
+        return {
+            "error": f"unknown Studio destination: {requested_destination}",
+            "available_destinations": sorted(_STUDIO_LINK_DESTINATIONS),
+        }
+
+    config = _STUDIO_LINK_DESTINATIONS[destination]
+    name = _trimmed_string(args.get("name")) or _trimmed_string(args.get("resource_name"))
+    if config.requires_name and name is None:
+        return {"error": f"name is required for Studio destination: {destination}"}
+
+    path = config.path_template.format(
+        workspace=_path_part(workspace),
+        name=_path_part(name or ""),
+    )
+    label = _trimmed_string(args.get("label")) or config.label.format(name=name or "")
+    url = _build_studio_url(studio_base_url, path)
+
+    return {
+        "workspace": workspace,
+        "destination": destination,
+        "path": path,
+        "url": url,
+        "markdown": f"[{label}]({path})",
+    }
 
 
 def _project_history_dir() -> Path:
@@ -220,6 +505,7 @@ def _summarize_history_session(path: Path) -> HistorySummary:
                     content = message.get("content")
                     if not isinstance(content, str):
                         continue
+                    content = _strip_studio_context_from_prompt(content)
                     summary.message_count += 1
                     if summary.first_prompt is None:
                         summary.first_prompt = content
@@ -327,6 +613,7 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
                 if entry_type == "user" and isinstance(message, dict):
                     content = message.get("content")
                     if isinstance(content, str) and content:
+                        content = _strip_studio_context_from_prompt(content)
                         items.append({"kind": "user", "text": content})
                 elif entry_type == "assistant" and isinstance(message, dict):
                     parts = _extract_assistant_parts(message.get("content"))
@@ -339,10 +626,21 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
     return SessionHistoryResponse(session_id=sid, items=items)
 
 
-def _mcp_url(request: Request, session_id: str) -> str:
+def _mcp_url(
+    request: Request,
+    session_id: str,
+    workspace: str | None,
+    studio_base_url: str | None,
+) -> str:
     for route_name in (PUBLIC_MCP_ROUTE_NAME, MCP_ROUTE_NAME):
         try:
-            return str(request.url_for(route_name, session_id=session_id))
+            url = str(request.url_for(route_name, session_id=session_id))
+            query_params = {}
+            if workspace:
+                query_params["workspace"] = workspace
+            if studio_base_url:
+                query_params["studio_base_url"] = studio_base_url
+            return f"{url}?{urlencode(query_params)}" if query_params else url
         except NoMatchFound:
             continue
     raise RuntimeError("Studio coding-agent MCP route is not mounted")
@@ -544,8 +842,12 @@ async def _stream_claude(session_id: str, message: str, mcp_url: str) -> AsyncIt
 async def send_message(session_id: str, body: MessageRequest, request: Request) -> StreamingResponse:
     """Send a message to Claude and stream JSON events back to Studio."""
     sid = _validate_session_id(session_id)
+    workspace = _trimmed_string(body.workspace)
+    studio_base_url = _normalize_studio_base_url(body.studio_base_url)
+    studio_pathname = _trimmed_string(body.studio_pathname)
+    message = _build_claude_prompt(body.message, workspace, studio_base_url, studio_pathname)
     return StreamingResponse(
-        _stream_claude(sid, body.message, _mcp_url(request, sid)),
+        _stream_claude(sid, message, _mcp_url(request, sid, workspace, studio_base_url)),
         media_type="text/event-stream",
     )
 
@@ -605,30 +907,47 @@ async def mcp_endpoint(session_id: str, request: Request) -> Response:
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": {"tools": [_APPROVAL_TOOL]},
+                "result": {"tools": _MCP_TOOLS},
             }
         )
 
     if method == "tools/call":
         name = params.get("name")
         args = params.get("arguments") or {}
-        if name != "approval_prompt":
+        if not isinstance(args, dict):
+            return JSONResponse(status_code=400, content={"detail": "tool arguments must be an object"})
+
+        if name == "approval_prompt":
+            result = await _request_permission(sid, args)
             return JSONResponse(
                 {
                     "jsonrpc": "2.0",
                     "id": request_id,
-                    "error": {"code": -32601, "message": f"unknown tool: {name}"},
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
                 }
             )
 
-        result = await _request_permission(sid, args)
+        if name == "studio_link":
+            workspace = _trimmed_string(request.query_params.get("workspace"))
+            studio_base_url = _trimmed_string(request.query_params.get("studio_base_url"))
+            result = _build_studio_link_result(workspace, studio_base_url, args)
+            return JSONResponse(
+                {
+                    "jsonrpc": "2.0",
+                    "id": request_id,
+                    "result": {
+                        "content": [{"type": "text", "text": json.dumps(result)}],
+                    },
+                }
+            )
+
         return JSONResponse(
             {
                 "jsonrpc": "2.0",
                 "id": request_id,
-                "result": {
-                    "content": [{"type": "text", "text": json.dumps(result)}],
-                },
+                "error": {"code": -32601, "message": f"unknown tool: {name}"},
             }
         )
 

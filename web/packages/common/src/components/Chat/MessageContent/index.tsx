@@ -23,6 +23,7 @@ import remarkGfm from 'remark-gfm';
 
 export interface MessageContentProps {
   content?: string | null;
+  markdownLinkComponent?: Components['a'];
   renderAsMarkdown?: boolean;
 }
 
@@ -371,8 +372,9 @@ const messageMarkdownComponents: Components = {
     </blockquote>
   ),
   img: ({ src, alt }) => <img src={src} alt={alt ?? ''} className="max-w-full" />,
-  // We don't want links embedded in markdown responses to be clickable.
-  a: ({ ...props }) => <span>{props.children}</span>,
+  // Most chat surfaces keep model-supplied links inert. Consumers that know how
+  // to handle links can provide their own renderer.
+  a: ({ children }) => <span>{children}</span>,
   code: ({ children }) => <code className={INLINE_CODE_CLASS}>{children}</code>,
   table: ({ children }) => <MarkdownDataViewTable>{children}</MarkdownDataViewTable>,
 };
@@ -383,9 +385,18 @@ const messageMarkdownComponents: Components = {
  */
 export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
   content,
+  markdownLinkComponent,
   renderAsMarkdown = true,
 }) => {
   const snippets = useMemo(() => splitMessageWithLabels(content), [content]);
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      ...messageMarkdownComponents,
+      a: markdownLinkComponent ?? messageMarkdownComponents.a,
+    }),
+    [markdownLinkComponent]
+  );
+
   return snippets.map((descriptor) => {
     const contentHash = simpleHash(descriptor.value);
     if (descriptor.type === 'plaintext') {
@@ -398,7 +409,7 @@ export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
           {renderAsMarkdown ? (
             <Markdown
               remarkPlugins={[remarkGfm, remarkNormalizeEmptyOrderedListMarkers]}
-              components={messageMarkdownComponents}
+              components={markdownComponents}
             >
               {decode(descriptor.value)}
             </Markdown>

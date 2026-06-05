@@ -1,14 +1,54 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { BASE_URL } from '@studio/constants/environment';
 import {
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 
+const getExpectedStudioBaseUrl = (): string => {
+  const normalizedBaseUrl = BASE_URL.replace(/\/+$/, '');
+  const basePath = normalizedBaseUrl && normalizedBaseUrl !== '/' ? normalizedBaseUrl : '';
+  return `${window.location.origin}${basePath}`;
+};
+
 describe('Claude Code API helpers', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it('posts messages with the active workspace', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response('event: done\ndata: \n\n', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await streamClaudeCodeMessage({
+      sessionId: 'session-1',
+      message: 'list agents',
+      workspace: 'default',
+      signal: new AbortController().signal,
+      handlers: {
+        onClaudeEvent: vi.fn(),
+        onPermissionRequest: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+      },
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/sessions/session-1/messages'),
+      expect.objectContaining({
+        body: JSON.stringify({
+          message: 'list agents',
+          studio_base_url: getExpectedStudioBaseUrl(),
+          studio_pathname: window.location.pathname,
+          workspace: 'default',
+        }),
+        method: 'POST',
+      })
+    );
   });
 
   it('emits structured permission requests from SSE events', async () => {
