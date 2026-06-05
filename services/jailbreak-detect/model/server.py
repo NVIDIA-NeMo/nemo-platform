@@ -117,8 +117,9 @@ def classify(request: ClassifyRequest) -> ClassifyResponse:
         classification, score = get_classifier()(request.input)
     except ValueError as exc:
         # A malformed prompt that breaks tokenization/inference is a client error
-        # (400), not a server fault (500).
-        logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
+        # (400), not a server fault (500). Log only the exception type: the message can
+        # embed the raw prompt, which must not leak into server logs.
+        logger.info("%s (%s)", _MALFORMED_INPUT_DETAIL, type(exc).__name__)
         raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
     return ClassifyResponse(jailbreak=classification, score=score)
 
