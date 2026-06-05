@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import os
 import pickle  # noqa: S403  # trusted, revision-pinned artifact from nvidia/NemoGuard-JailbreakDetect
-from typing import Any
+from typing import Any, no_type_check
 
 import numpy as np
 
@@ -63,11 +63,14 @@ class SnowflakeEmbed:
             SNOWFLAKE_MODEL_ID,
             device,
         )
-        self.tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer = AutoTokenizer.from_pretrained(
             SNOWFLAKE_MODEL_ID,
             revision=SNOWFLAKE_MODEL_REVISION,
             trust_remote_code=True,
         )
+        if tokenizer is None:
+            raise RuntimeError(f"Failed to load tokenizer for {SNOWFLAKE_MODEL_ID}")
+        self.tokenizer = tokenizer
         logger.info("Tokenizer ready; loading embedder weights...")
         self.model = AutoModel.from_pretrained(
             SNOWFLAKE_MODEL_ID,
@@ -141,6 +144,7 @@ class JailbreakClassifierONNX:
     convert_decision_function docs the upstream code references).
     """
 
+    @no_type_check
     def __init__(self, device: str | None = None, embed: SnowflakeEmbed | None = None) -> None:
         from huggingface_hub import hf_hub_download
         from onnxruntime import InferenceSession
@@ -156,6 +160,7 @@ class JailbreakClassifierONNX:
         self.session = InferenceSession(onnx_path, providers=["CPUExecutionProvider"])
         logger.info("Jailbreak classifier (onnx) ready.")
 
+    @no_type_check
     def __call__(self, text: str) -> tuple[bool, float]:
         embedding = self.embed(text)
         features = np.asarray([embedding], dtype=np.float32)

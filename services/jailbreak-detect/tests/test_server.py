@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-import server
+import model.server as server
 from fastapi.testclient import TestClient
 
 

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from classifier import JailbreakClassifier, JailbreakClassifierONNX
+from model.classifier import JailbreakClassifier, JailbreakClassifierONNX
 
 
 class _FakeEmbed:

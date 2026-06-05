@@ -215,6 +215,8 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         if best is None or m["f1"] > best["f1"]:
             best_t, best = t, m
 
+    assert best is not None and best_t is not None
+
     print(f"\n=== sweep: {args.results}  (n={len(scored)}, ROC-AUC={auc:.4f}) ===")
     print(f"{'operating point':<22}{'F1':>8}{'recall':>9}{'precision':>11}{'FPR':>8}{'FNR':>8}")
     print("-" * 66)

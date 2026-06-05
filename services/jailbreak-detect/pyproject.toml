@@ -34,6 +34,7 @@ dev = [
     "httpx>=0.27",  # required by fastapi/starlette TestClient
     "datasets>=4.8.5",
     "tqdm>=4.67.3",
+    "ty==0.0.17",
 ]
 
 # torch comes from the default index (PyPI). On macOS this is the CPU/MPS wheel;
@@ -41,8 +42,11 @@ dev = [
 # For a lean CPU-only Linux image, add uv cpu/cuda conflicting extras later.
 
 [tool.pytest.ini_options]
-pythonpath = ["model"]
+pythonpath = ["."]
 testpaths = ["tests"]
 markers = [
     "integration: loads the real embedder + random forest (slow, needs deps + weights; opt-in via --run-integration)",
 ]
+
+[tool.ty.environment]
+python-version = "3.11"

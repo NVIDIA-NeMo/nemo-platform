@@ -36,7 +36,7 @@ from pydantic import BaseModel, Field
 try:  # package import (tests)
     from .classifier import JailbreakClassifier, JailbreakClassifierONNX
 except ImportError:  # flat import (container: `python server.py` from /app)
-    from classifier import JailbreakClassifier, JailbreakClassifierONNX  # type: ignore[no-redef]
+    from classifier import JailbreakClassifier, JailbreakClassifierONNX
 
 logger = logging.getLogger(__name__)
 
