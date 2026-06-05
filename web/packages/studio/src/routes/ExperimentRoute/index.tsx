@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
-import { useListExperimentGroups } from '@nemo/sdk/generated/platform/api';
+import { useListExperimentGroups, useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
 import { PageHeader, Panel, Stack, StatusMessage, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
@@ -57,7 +57,7 @@ export const ExperimentRoute: FC = () => {
         ) : (
           <Stack gap="density-md">
             {groups.map((group: ExperimentGroupResponse) => (
-              <ExperimentGroupCard key={group.id} group={group} />
+              <ExperimentGroupCard key={group.id} group={group} workspace={workspace} />
             ))}
           </Stack>
         )}
@@ -68,22 +68,64 @@ export const ExperimentRoute: FC = () => {
 
 interface ExperimentGroupCardProps {
   group: ExperimentGroupResponse;
+  workspace: string;
 }
 
-const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group }) => (
-  <Panel elevation="low">
-    <Stack gap="density-sm">
-      <Text kind="title/sm">{group.name}</Text>
-      {group.description && (
-        <Text kind="body/regular/sm" className="text-secondary">
-          {group.description}
-        </Text>
-      )}
-      {group.updated_at && (
-        <Text kind="body/regular/xs" className="text-tertiary">
-          Updated <RelativeTime datetime={group.updated_at} />
-        </Text>
-      )}
-    </Stack>
-  </Panel>
-);
+const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace }) => {
+  const { data: experimentsData } = useListExperiments(workspace, {
+    filter: { experiment_group_id: group.id },
+    page_size: 100,
+  });
+
+  const experiments = experimentsData?.data ?? [];
+  const experimentCount = experimentsData?.pagination?.total_results ?? experiments.length;
+  const datasetNames = [...new Set(experiments.map((e) => e.dataset_name).filter(Boolean))];
+  const agentNames = [...new Set(experiments.map((e) => e.agent_name).filter(Boolean))];
+
+  return (
+    <Panel elevation="low">
+      <Stack gap="density-sm">
+        <Text kind="title/sm">{group.name}</Text>
+        {group.description && (
+          <Text kind="body/regular/sm" className="text-secondary">
+            {group.description}
+          </Text>
+        )}
+        <Stack direction="row" gap="density-xl">
+          <Stack gap="density-xxs">
+            <Text kind="label/bold/xs" className="text-tertiary uppercase">
+              Experiments
+            </Text>
+            <Text kind="body/regular/sm">{experimentCount}</Text>
+          </Stack>
+          {agentNames.length > 0 && (
+            <Stack gap="density-xxs">
+              <Text kind="label/bold/xs" className="text-tertiary uppercase">
+                Agent
+              </Text>
+              <Text kind="body/regular/sm">{agentNames.join(', ')}</Text>
+            </Stack>
+          )}
+          {datasetNames.length > 0 && (
+            <Stack gap="density-xxs">
+              <Text kind="label/bold/xs" className="text-tertiary uppercase">
+                Dataset
+              </Text>
+              <Text kind="body/regular/sm">{datasetNames.join(', ')}</Text>
+            </Stack>
+          )}
+          {group.updated_at && (
+            <Stack gap="density-xxs">
+              <Text kind="label/bold/xs" className="text-tertiary uppercase">
+                Updated
+              </Text>
+              <Text kind="body/regular/sm">
+                <RelativeTime datetime={group.updated_at} />
+              </Text>
+            </Stack>
+          )}
+        </Stack>
+      </Stack>
+    </Panel>
+  );
+};
