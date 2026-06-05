@@ -1,55 +1,55 @@
 # NeMo Platform Fern Docs
 
-This directory holds the Fern MDX source for the NeMo Platform documentation site.
-
-All new published docs edits should land under `fern/`. Keep the legacy MkDocs tree under `../docs/` as migration source material and historical reference.
+This directory holds the Fern **configuration** for the NeMo Platform documentation site. The page content (`.mdx`) lives in the parent `docs/` tree (e.g. `docs/get-started/setup.mdx`); this `docs/fern/` directory holds the navigation, theme, components, snippets, and OpenAPI wiring. The nav references pages with relative paths (`../../<area>/<page>.mdx`).
 
 ## Quick Links
 
 | What | Where |
 | --- | --- |
 | Fern dashboard | https://dashboard.buildwithfern.com (NVIDIA org) |
-| Agent skill | [`../.claude/skills/nemo-platform-docs/SKILL.md`](../.claude/skills/nemo-platform-docs/SKILL.md) |
-| CI workflows | [`../.github/workflows/fern-docs-*.yml`](../.github/workflows/) |
-| Publish workflow | [`../.github/workflows/publish-fern-docs.yml`](../.github/workflows/publish-fern-docs.yml) |
+| Contributor/agent guide | [`../AGENTS.md`](../AGENTS.md) |
+| Make targets | `make docs`, `docs-check`, `docs-broken-links`, `docs-fix-links`, `docs-preview` (repo root) |
+| CI workflows | [`../../.github/workflows/`](../../.github/workflows/) (`fern-docs-*.yaml`) |
+| Publish workflow | [`../../.github/workflows/publish-fern-docs.yaml`](../../.github/workflows/publish-fern-docs.yaml) |
 
 ## Quickstart
 
-First time on this machine:
+From the repo root (these wrap `cd docs/fern && npm run …`):
 
 ```bash
-npx -y fern-api@latest login
+make docs-deps     # one-time: install docs/fern tooling (needed for MDX validation)
+make docs-login    # one-time per machine: Fern CLI auth for the nvidia org
+make docs-check    # validate: fern check + MDX validation + gated-link check (what CI runs)
+make docs          # start local preview (prints a localhost URL)
 ```
 
-Then run from `fern/`:
-
-```bash
-npm run check   # Validate docs.yml, navigation, and MDX
-npm run dev     # Start local preview at http://localhost:3000
-```
-
-`package.json` intentionally shells out to `npx -y fern-api@latest`, so there is no install step for local docs work.
+`package.json` shells out to `npx -y fern-api@latest` for the Fern CLI itself, but `make docs-deps` (`npm ci`) is required once because the MDX validator (`@mdx-js/mdx`) is a local dependency.
 
 ## Layout
 
 ```text
-fern/
-├── fern.config.json          # Fern organization + CLI version
-├── package.json              # npm run check|dev|generate|preview
-├── docs.yml                  # Site config, theme, assets, redirects, versions
-├── main.css                  # NVIDIA theme overrides
-├── assets/                   # Logos, shared SVGs, and page images
-├── components/               # Custom TSX components
-└── versions/
-    ├── latest.yml            # Navigation tree
-    └── latest/pages/         # MDX content and page-local assets
+docs/                          # page content (.mdx), one tree per product area
+├── get-started/ , agents/ , evaluator/ , ...   # published pages
+└── fern/                      # <- this directory: Fern site config
+    ├── fern.config.json       # Fern organization + CLI version
+    ├── package.json           # npm run check|dev|generate|preview|broken-links|*-gated-links
+    ├── docs.yml               # Site config, theme, css, redirects, versions
+    ├── generators.yml         # OpenAPI spec wiring for the API reference
+    ├── openapi/openapi.yaml    # symlink -> repo-root openapi/openapi.yaml (generated)
+    ├── styles/                # CSS (notebook-viewer.css, button.css)
+    ├── assets/                # logos, shared images
+    ├── components/            # custom TSX MDX components
+    ├── snippets/              # reusable <Markdown src> fragments
+    ├── scripts/               # validate-mdx.mjs, delink-gated.mjs, ipynb-to-fern-json.py
+    ├── gated-nav.yml          # reference nav blocks for gated (unready) features
+    └── versions/latest.yml    # navigation tree (defines what gets built)
 ```
 
-The site uses a single `Latest` version. `versions/latest.yml` defines the sidebar and maps each page file to its canonical route.
+The site uses a single `Latest` version. `versions/latest.yml` defines the sidebar and maps each page file to its canonical route — and, because Fern only builds pages listed there, it is also what gates unready content (see below).
 
 ## Authoring
 
-Add pages under `versions/latest/pages/` and wire them into `versions/latest.yml`.
+Add pages under the relevant `docs/<area>/` directory and wire them into `versions/latest.yml`.
 
 Use front matter for the rendered page title:
 
@@ -110,14 +110,14 @@ One difference from the old MkDocs hook: that hook ran at build time and kept th
 
 | Workflow | Trigger | Purpose |
 | --- | --- | --- |
-| `fern-docs-ci.yml` | trusted `pull-request/<n>` mirror branch | Run `npm run check` with `DOCS_FERN_TOKEN` available |
-| `fern-docs-preview-build.yml` | `pull_request` touching `fern/**` | Upload PR `fern/` sources with no secrets |
-| `fern-docs-preview-comment.yml` | successful preview build workflow run | Generate a Fern preview with `DOCS_FERN_TOKEN` and post/update the PR comment |
-| `publish-fern-docs.yml` | `main`, `docs/v*` tag, or manual dispatch | Publish the Fern docs site |
+| `fern-docs-ci.yaml` | `pull_request` touching `docs/**` | `npm run check` (fern check + MDX + gated-link check) and `npm run broken-links` |
+| `fern-docs-preview-build.yaml` | `pull_request` touching `docs/**` | Upload PR `docs/` sources as an artifact (no secrets — fork-safe) |
+| `fern-docs-preview-comment.yaml` | successful preview build (`workflow_run`) | Build a Fern preview with `DOCS_FERN_TOKEN` and post/update the PR comment |
+| `publish-fern-docs.yaml` | push to `main` touching `docs/**`, `docs/v*` tag, or manual dispatch | Publish the Fern docs site |
 
-Required secret: `DOCS_FERN_TOKEN`, generated with `fern token` from an account that can publish to the NVIDIA Fern organization.
+Required secret: `DOCS_FERN_TOKEN` (org-level), from `fern token` for an account that can publish to the NVIDIA Fern organization.
 
-PRs that touch `fern/**` get a shared preview URL posted as a comment after the two-part preview workflow finishes.
+PRs that touch `docs/**` get a shared preview URL posted as a comment after the two-part preview workflow finishes. Note: the `workflow_run`-triggered comment job only runs once these workflows are on the default branch (`main`), so the first preview appears after this PR merges.
 
 ## Troubleshooting
 
@@ -125,6 +125,6 @@ PRs that touch `fern/**` get a shared preview URL posted as a comment after the 
 | --- | --- |
 | `HTTP 403` or organization access error | Sign in at https://dashboard.buildwithfern.com, then run `npx -y fern-api@latest login` again |
 | `fern check` YAML error | Use 2-space indentation; make sure `path:` values are relative to `versions/latest.yml` |
-| Page 404 in preview | Check that `versions/latest.yml` lists the page and links by canonical route |
-| Broken internal link | Rewrite it to the nav-derived `/documentation/...` URL |
+| Page 404 in preview | Check that `versions/latest.yml` lists the page (gated pages are intentionally omitted and *will* 404) |
+| Broken internal link | Rewrite to the nav URL `/documentation/...`; if it targets a gated page, run `make docs-fix-links` to delink it. `make docs-broken-links` reports them all |
 | JSX or MDX parse error | Escape raw `{}`, `<`, or `>` in prose, and use Fern components instead of raw MkDocs syntax |
