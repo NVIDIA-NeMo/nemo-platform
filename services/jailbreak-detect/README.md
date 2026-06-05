@@ -60,7 +60,7 @@ One uv-managed image, built from this directory:
 
 ```bash
 cd services/jailbreak-detect
-docker build -t nemo/jailbreak-detect:0.1.0 .
+docker buildx build -t nemo/jailbreak-detect:0.1.0 --load .
 ```
 
 Runs on CPU by default; for GPU pods/DGX run the **same** image with `--gpus all`
@@ -134,7 +134,7 @@ uv run python scripts/eval.py run --subset subset.jsonl \
 
 ```bash
 cd services/jailbreak-detect
-uv run pytest                      # fast, mocked unit tests
+uv run pytest                     # fast, mocked unit tests
 uv run pytest --run-integration   # also loads the real model on CPU (slow; downloads weights)
 ```
 

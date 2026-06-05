@@ -8,8 +8,9 @@
 # `-e JAILBREAK_CHECK_DEVICE=cuda:0` — the Linux torch wheel bundles CUDA, so the
 # same image works on both. (For a lean CPU-only image, add uv cpu/cuda extras.)
 #
-# Build context is this directory (so pyproject.toml + uv.lock + model/ are present):
-#   docker build -t nemo/jailbreak-detect:0.1.0 .
+# Build context is this directory (so pyproject.toml + uv.lock + model/ are present).
+# Requires BuildKit/buildx (this file uses a `RUN --mount=type=cache` build mount):
+#   docker buildx build -t nemo/jailbreak-detect:0.1.0 --load .
 FROM python:3.11-slim
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/
