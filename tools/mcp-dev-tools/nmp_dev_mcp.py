@@ -790,7 +790,9 @@ def create_server(working_dir: str | None = None) -> FastMCP:
 
     # === DOCS MAKE TARGET OPERATIONS ===
 
-    @server.tool(description="Run a Fern docs Makefile target (docs-*) from the repo root")
+    @server.tool(
+        description="Run a Fern docs Makefile target (docs-*) from the repo root"
+    )
     async def make_docs(target: str) -> dict[str, Any]:
         """
         Run a Fern docs make target from the repo root (equivalent to `make <target>`).
