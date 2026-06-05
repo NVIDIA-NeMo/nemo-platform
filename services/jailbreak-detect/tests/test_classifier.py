@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
-from model.classifier import JailbreakClassifier, JailbreakClassifierONNX
+from model.classifier import JailbreakClassifier
 
 
 class _FakeEmbed:
@@ -69,51 +69,6 @@ def test_threshold_is_p1_half():
 def test_text_embedded_verbatim():
     # We embed the raw prompt (no Arctic query prefix) to match the NIM pipeline.
     clf, embed = _make_classifier(p1=0.1)
-    clf("hello world")
-    assert embed.last_text == "hello world"
-
-
-class _FakeOnnxSession:
-    """Mimics the snowflake.onnx outputs: [output_label, output_probability].
-
-    output_probability is a seq of per-class dicts holding *decision* values
-    (not probabilities), e.g. ``[{0: -d, 1: +d}]``.
-    """
-
-    def __init__(self, label: int, d: float) -> None:
-        self._label = label
-        self._d = d
-
-    def run(self, _outputs, _feeds):
-        return [np.array([self._label]), [{0: -self._d, 1: self._d}]]
-
-
-def _make_onnx_classifier(label: int, d: float) -> tuple[JailbreakClassifierONNX, _FakeEmbed]:
-    clf = object.__new__(JailbreakClassifierONNX)
-    embed = _FakeEmbed()
-    clf.embed = embed
-    clf.session = _FakeOnnxSession(label, d)
-    return clf, embed
-
-
-def test_onnx_jailbreak_label_uses_positive_decision():
-    clf, _ = _make_onnx_classifier(label=1, d=0.42)
-    is_jb, score = clf("do anything now")
-    assert is_jb is True
-    # Upstream: predicted class 1 -> score = +d (the class-1 decision value).
-    assert score == 0.42
-
-
-def test_onnx_benign_label_score_sign():
-    clf, _ = _make_onnx_classifier(label=0, d=0.42)
-    is_jb, score = clf("what is the capital of france")
-    assert is_jb is False
-    # Upstream: classification == 0 -> score = -prob, prob = dict[0] = -d -> +d.
-    assert score == 0.42
-
-
-def test_onnx_text_embedded_verbatim():
-    clf, embed = _make_onnx_classifier(label=1, d=0.1)
     clf("hello world")
     assert embed.last_text == "hello world"
 

@@ -330,7 +330,7 @@ def main() -> int:
     c.add_argument(
         "results",
         nargs="+",
-        help="Two or more results JSONL files (e.g. results_local.jsonl results_pkl.jsonl results_onnx.jsonl).",
+        help="Two or more results JSONL files (e.g. results_local.jsonl results_hosted.jsonl).",
     )
     c.set_defaults(func=cmd_compare)
 

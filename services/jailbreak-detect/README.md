@@ -28,8 +28,10 @@ Two-stage pipeline (`model/classifier.py`):
    `snowflake_classifier.pkl` — it's the same forest, just renamed, so using the
    open HF copy needs no NGC auth and costs no fidelity. The verdict is
    `p1 > 0.5`; the `score` is the NIM's signed max-probability (`-p0` when benign,
-   `+p1` when jailbreak). The repo's `snowflake.onnx` emits an
-   uncalibrated decision function rather than probabilities, so the pkl path is the default.
+   `+p1` when jailbreak). The repo's `snowflake.onnx` emits an uncalibrated decision
+   function rather than probabilities (degraded accuracy, skews to false positives), so
+   we serve the `snowflake.pkl` path; the ONNX variant is kept only as a documented
+   reference (`JailbreakClassifierONNX`), not wired into the server.
 
 Neither stage requires a GPU. Weights are downloaded at first start (not baked).
 Pinned to **Python 3.11** because `snowflake.pkl` was pickled with scikit-learn

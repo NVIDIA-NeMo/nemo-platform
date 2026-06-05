@@ -36,7 +36,7 @@ SNOWFLAKE_MODEL_REVISION = "92d97331f1f4b6a366c1f161354b9f3390cc219f"
 MODEL_REPO_ID = "nvidia/NemoGuard-JailbreakDetect"
 MODEL_REVISION = "cc8b97e2bd6c1667c31476eedaa9a75b4d7ed282"
 MODEL_FILENAME = "snowflake.pkl"  # sklearn RandomForest (predict_proba) — the default
-ONNX_FILENAME = "snowflake.onnx"  # ONNX export of the RF (decision function) — comparison only
+ONNX_FILENAME = "snowflake.onnx"  # used only by the doc-only JailbreakClassifierONNX (not served)
 
 # Token budget and pooling strategy must stay bit-compatible with upstream,
 # otherwise the random forest sees a different feature distribution and
@@ -136,15 +136,14 @@ class JailbreakClassifier:
 
 
 class JailbreakClassifierONNX:
-    """ONNX-runtime variant of the jailbreak classifier (for comparison).
+    """ONNX-runtime variant of the jailbreak classifier — **reference/documentation only**.
 
-    Mirrors the upstream nemoguardrails in-process path
-    (``library/jailbreak_detection/model_based/models.py``): the random forest
-    exported to ONNX (``snowflake.onnx``) is run via ``onnxruntime``; the verdict
-    is the ONNX ``output_label`` and ``score`` is the signed value of the predicted
-    class taken from ``output_probability`` — which for this export is a *decision
-    function*, not a calibrated probability (see the sklearn-onnx
-    convert_decision_function docs the upstream code references).
+    NOT used by the server and NOT production-ready: this ONNX export emits an
+    uncalibrated decision function (not probabilities), which degrades accuracy and
+    skews predictions toward false positives versus the ``snowflake.pkl`` random forest
+    served at ``/v1/classify``. It is kept here solely to document the upstream ONNX
+    path. ``onnxruntime`` is intentionally **not** a declared dependency — instantiating
+    this class will fail until you install it manually to experiment.
     """
 
     @no_type_check

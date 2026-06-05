@@ -34,9 +34,9 @@ from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
 try:  # package import (tests)
-    from .classifier import JailbreakClassifier, JailbreakClassifierONNX
+    from .classifier import JailbreakClassifier
 except ImportError:  # flat import (container: `python server.py` from /app)
-    from classifier import JailbreakClassifier, JailbreakClassifierONNX
+    from classifier import JailbreakClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -48,9 +48,6 @@ MODEL_ID = "nvidia/nemoguard-jailbreak-detect"
 
 # Loaded once at startup and reused across requests.
 _classifier: JailbreakClassifier | None = None
-# The onnxruntime comparison variant is loaded lazily on first /v1/classify-onnx
-# request and shares the (already loaded) embedder with the pkl classifier.
-_classifier_onnx: JailbreakClassifierONNX | None = None
 
 
 class ClassifyRequest(BaseModel):
@@ -76,18 +73,6 @@ def get_classifier() -> JailbreakClassifier:
     if _classifier is None:
         _classifier = JailbreakClassifier(device=os.environ.get("JAILBREAK_CHECK_DEVICE"))
     return _classifier
-
-
-def get_classifier_onnx() -> JailbreakClassifierONNX:
-    """Return the onnxruntime comparison variant, loading it on first use.
-
-    Reuses the pkl classifier's embedder so both run on identical embeddings and
-    we don't load the ~1GB Arctic model twice.
-    """
-    global _classifier_onnx
-    if _classifier_onnx is None:
-        _classifier_onnx = JailbreakClassifierONNX(embed=get_classifier().embed)
-    return _classifier_onnx
 
 
 @app.get("/v1/health/live")
@@ -132,21 +117,6 @@ def classify(request: ClassifyRequest) -> ClassifyResponse:
     except ValueError as exc:
         # Mirror the NIM: a malformed prompt that breaks tokenization/inference is
         # a client error (400), not a server fault (500).
-        logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
-        raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
-    return ClassifyResponse(jailbreak=classification, score=score)
-
-
-@app.post("/v1/classify-onnx", response_model=ClassifyResponse)
-def classify_onnx(request: ClassifyRequest) -> ClassifyResponse:
-    """Comparison endpoint: same embeddings, classified via snowflake.onnx.
-
-    Point the eval script's ``--endpoint`` here to benchmark the onnxruntime path
-    against the canonical pkl path served at ``/v1/classify``.
-    """
-    try:
-        classification, score = get_classifier_onnx()(request.input)
-    except ValueError as exc:
         logger.info("%s Error details: %s", _MALFORMED_INPUT_DETAIL, exc)
         raise HTTPException(status_code=400, detail=_MALFORMED_INPUT_DETAIL) from exc
     return ClassifyResponse(jailbreak=classification, score=score)
