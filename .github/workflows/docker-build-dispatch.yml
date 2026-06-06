@@ -1,4 +1,4 @@
-# Creates the docker-build check and triggers the image build for a PR commit.
+# Sets the docker-build commit status (pending) and triggers the image build for a PR commit.
 name: Docker build dispatch
 
 on:
@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 concurrency:
   group: docker-build-dispatch-${{ github.event.workflow_run.head_sha }}
@@ -15,46 +16,32 @@ concurrency:
 
 jobs:
   dispatch:
-    name: Post check + dispatch build
+    name: Post status + dispatch build
     if: >-
       github.event.workflow_run.conclusion == 'success' &&
       github.event.workflow_run.head_repository.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
-      - name: Mint GitHub App token
-        id: app
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.DOCKER_GATE_APP_ID }}
-          private-key: ${{ secrets.DOCKER_GATE_APP_PRIVATE_KEY }}
-
-      - name: Create docker-build check (queued)
-        id: check
+      - name: Set docker-build status (pending)
         env:
-          GH_TOKEN: ${{ steps.app.outputs.token }}
+          GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          id=$(gh api -X POST "/repos/${REPO}/check-runs" \
-            -f name='docker-build' \
-            -f head_sha="${HEAD_SHA}" \
-            -f status='queued' \
-            -f 'output[title]=Waiting to build' \
-            -f 'output[summary]=The Docker build has been queued.' \
-            --jq '.id')
-          echo "check_run_id=${id}" >> "$GITHUB_OUTPUT"
+          gh api -X POST "/repos/${REPO}/statuses/${HEAD_SHA}" \
+            -f state='pending' \
+            -f context='docker-build' \
+            -f description='Queued — waiting for build to start.'
 
       - name: Dispatch build
         env:
           GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           REF: ${{ github.event.workflow_run.head_sha }}
-          CHECK_RUN_ID: ${{ steps.check.outputs.check_run_id }}
         run: |
           set -euo pipefail
           jq -n \
             --arg ref "${REF}" \
-            --argjson check_run_id "${CHECK_RUN_ID}" \
-            '{event_type: "docker-pr-build", client_payload: {ref: $ref, check_run_id: $check_run_id}}' \
+            '{event_type: "docker-pr-build", client_payload: {ref: $ref}}' \
           | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -

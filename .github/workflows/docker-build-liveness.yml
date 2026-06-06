@@ -1,4 +1,4 @@
-# Fails docker-build checks that never completed.
+# Fails docker-build statuses that never completed.
 name: Docker build liveness
 
 on:
@@ -8,29 +8,21 @@ on:
 
 permissions:
   contents: read
+  statuses: write
 
 jobs:
   reap:
-    name: Fail stale docker-build checks
+    name: Fail stale docker-build statuses
     runs-on: ubuntu-latest
     steps:
-      - name: Mint GitHub App token
-        id: app
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.DOCKER_GATE_APP_ID }}
-          private-key: ${{ secrets.DOCKER_GATE_APP_PRIVATE_KEY }}
-
-      - name: Reap stale checks
+      - name: Reap stale statuses
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         env:
-          QUEUED_TIMEOUT_MIN: ${{ vars.DOCKER_BUILD_QUEUED_TIMEOUT_MIN || '20' }}
-          INPROGRESS_TIMEOUT_MIN: ${{ vars.DOCKER_BUILD_INPROGRESS_TIMEOUT_MIN || '60' }}
+          TIMEOUT_MIN: ${{ vars.DOCKER_BUILD_TIMEOUT_MIN || '90' }}
         with:
-          github-token: ${{ steps.app.outputs.token }}
+          github-token: ${{ github.token }}
           script: |
-            const queuedMin = Number(process.env.QUEUED_TIMEOUT_MIN);
-            const inProgressMin = Number(process.env.INPROGRESS_TIMEOUT_MIN);
+            const timeoutMin = Number(process.env.TIMEOUT_MIN);
             const now = Date.now();
             const { owner, repo } = context.repo;
 
@@ -40,30 +32,21 @@ jobs:
 
             let failed = 0;
             for (const pr of prs) {
-              const { data } = await github.rest.checks.listForRef({
-                owner, repo, ref: pr.head.sha, check_name: 'docker-build', per_page: 100,
+              const { data } = await github.rest.repos.getCombinedStatusForRef({
+                owner, repo, ref: pr.head.sha,
               });
-              for (const check of data.check_runs) {
-                if (check.status !== 'queued' && check.status !== 'in_progress') continue;
-                const startedAt = new Date(check.started_at || check.created_at).getTime();
-                const ageMin = (now - startedAt) / 60000;
-                const limit = check.status === 'queued' ? queuedMin : inProgressMin;
-                if (ageMin <= limit) continue;
+              const status = data.statuses.find((s) => s.context === 'docker-build');
+              if (!status || status.state !== 'pending') continue;
 
-                const reason = check.status === 'queued'
-                  ? `Build did not start within ${queuedMin} min.`
-                  : `Build did not report back within ${inProgressMin} min.`;
+              const ageMin = (now - new Date(status.created_at).getTime()) / 60000;
+              if (ageMin <= timeoutMin) continue;
 
-                await github.rest.checks.update({
-                  owner, repo, check_run_id: check.id,
-                  status: 'completed', conclusion: 'failure',
-                  output: {
-                    title: 'Build timed out',
-                    summary: `${reason}\n\nTo retry, re-run the "Docker build trigger" workflow run.`,
-                  },
-                });
-                failed++;
-                core.info(`Failed stale docker-build (${check.status}, ${ageMin.toFixed(1)}m) on PR #${pr.number} @ ${pr.head.sha}`);
-              }
+              await github.rest.repos.createCommitStatus({
+                owner, repo, sha: pr.head.sha,
+                state: 'failure', context: 'docker-build',
+                description: 'Build timed out — re-run the trigger workflow.',
+              });
+              failed++;
+              core.info(`Failed stale docker-build (pending, ${ageMin.toFixed(1)}m) on PR #${pr.number} @ ${pr.head.sha}`);
             }
-            core.info(`Reaped ${failed} stale docker-build check(s) across ${prs.length} open PR(s).`);
+            core.info(`Reaped ${failed} stale docker-build status(es) across ${prs.length} open PR(s).`);
