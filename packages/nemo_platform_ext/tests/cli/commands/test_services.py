@@ -571,7 +571,7 @@ class TestServicesLs:
         result = runner.invoke(app, ["services", "ls"])
         assert result.exit_code == 0
         assert "stopped-hidden" not in result.stdout
-        assert "1 stopped instance(s)" in result.stdout
+        assert "1 stopped instance directory" in result.stdout
         assert "ls --all" in result.stdout
 
     def test_all_shows_stopped_with_footer(self, base_dir: Path):
@@ -639,7 +639,7 @@ class TestServicesRm:
     def test_rm_not_found(self, base_dir: Path):
         result = runner.invoke(app, ["services", "rm", "missing-scope"])
         assert result.exit_code == 1
-        assert "No instance record found" in result.stderr
+        assert "No stopped instance directory found" in result.stderr
 
     def test_rm_refuses_running(self, base_dir: Path):
         fd = acquire_lock("running-rm-cli", base_dir=base_dir)
@@ -678,7 +678,7 @@ class TestServicesPrune:
     def test_prune_noop_when_clean(self, base_dir: Path):
         result = runner.invoke(app, ["services", "prune", "--force"])
         assert result.exit_code == 0
-        assert "No stopped instances" in result.stdout
+        assert "No stopped instance directories" in result.stdout
 
     def test_prune_cancelled(self, base_dir: Path):
         d = _seed_stopped_scope(base_dir, "keep-me")

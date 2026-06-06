@@ -105,7 +105,7 @@ Status is itself a verification: the commands together prove the platform is rea
 |---|---|---|
 | `PLATFORM_DOWN` from probe | Nothing bound to :8080 | Route to `nemo-setup`; do not run the other three commands |
 | `PLATFORM_WEDGED` from probe | Listener exists, but `/health/ready` is not returning 200 — likely a crashed, partially-started, or not-ready platform | Tail `.venv/bin/nemo services logs -n 100` and surface the error. Common cause is a stale instance lock; the user can clear it with `nemo services stop --force` then re-run `nemo services run`. |
-| `nemo services ls` shows stopped rows with `-` for PID/address | Stopped instance record on disk (logs may remain) | Run `nemo services ls --all` for the full list. Remove with `nemo services prune` or `nemo services rm <scope>`. Cross-check liveness with `lsof -iTCP:8080 -sTCP:LISTEN`. |
+| `.venv/bin/nemo services ls` shows stopped rows with `-` for PID/address | Stopped instance directory on disk (logs may remain) | Run `.venv/bin/nemo services ls --all` for the full list. Remove with `.venv/bin/nemo services prune` or `.venv/bin/nemo services rm <scope>`. Cross-check liveness with `lsof -iTCP:8080 -sTCP:LISTEN`. |
 | `agents deployments list` returns "no such command" | Agents plugin not installed | Note in the summary: "Agents: plugin not installed"; do not fail the dashboard |
 | `inference providers list` empty | Provider not registered | Route to `nemo-setup` Step 4 (configure) |
 | `models list` empty for more than 60s after setup | Model discovery still running | Re-run after 30s; report the wait time |
@@ -115,6 +115,6 @@ Status is itself a verification: the commands together prove the platform is rea
 
 - **Read-only means read-only.** Never run `create`, `delete`, `stop`, or any state-changing command from this skill, even if the dashboard suggests something is broken. Route to setup or teardown for state changes.
 - **`agents deployments list` requires the agents plugin.** If it returns "no such command", the user has not installed the agents plugin yet; note that explicitly rather than failing silently.
-- **`nemo services ls` defaults to running instances only.** Use `nemo services ls --all` to see stopped records that still have logs on disk. Remove them with `nemo services prune` or `nemo services rm <scope>`. For liveness, cross-check against `lsof -iTCP:8080 -sTCP:LISTEN`.
+- **`.venv/bin/nemo services ls` defaults to running instances only.** Use `.venv/bin/nemo services ls --all` to see stopped instance directories that still have logs on disk. Remove them with `.venv/bin/nemo services prune` or `.venv/bin/nemo services rm <scope>`. For liveness, cross-check against `lsof -iTCP:8080 -sTCP:LISTEN`.
 - **Status is a snapshot.** A model still discovering will show as missing. Re-run after 30 seconds if the user just finished setup.
 - **Use `.venv/bin/nemo`, not bare `nemo`.** Bash sessions do not carry venv activation across calls.

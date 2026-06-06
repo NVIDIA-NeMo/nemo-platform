@@ -442,7 +442,7 @@ def stop_services_cmd(
         noun = "process" if n == 1 else "processes"
         msg += f" and {n} child {noun}"
     typer.echo(msg)
-    typer.echo(f"Instance record kept (logs preserved). Remove with: nemo services rm {scope}")
+    typer.echo(f"Instance directory kept (logs preserved). Remove with: nemo services rm {scope}")
 
 
 # ---------------------------------------------------------------------------
@@ -662,9 +662,11 @@ def _print_instance_table(instances: list[InstanceInfo]) -> None:
     typer.echo(f"{'SCOPE':<25} {'STATUS':<10} {'PID':<10} {'ADDRESS':<25} {'MODE':<12}")
     for info in instances:
         status = "running" if info.alive else "stopped"
-        pid = str(info.descriptor.pid) if info.descriptor else "-"
-        addr = f"{info.descriptor.host}:{info.descriptor.port}" if info.descriptor else "-"
-        mode = info.descriptor.mode if info.descriptor else "-"
+        pid = addr = mode = "-"
+        if info.descriptor:
+            pid = str(info.descriptor.pid)
+            addr = f"{info.descriptor.host}:{info.descriptor.port}"
+            mode = info.descriptor.mode
         typer.echo(f"{info.scope:<25} {status:<10} {pid:<10} {addr:<25} {mode:<12}")
 
 
@@ -687,13 +689,13 @@ def _resolve_rm_scope(scope: str | None, instance: str | None) -> str:
 def ls_services(
     show_all: Annotated[
         bool,
-        typer.Option("--all", "-a", help="Include stopped instance records (like docker ps -a)."),
+        typer.Option("--all", "-a", help="Include stopped instance directories (like docker ps -a)."),
     ] = False,
 ) -> None:
     """List service instances on this host.
 
     By default shows running instances only.  Use ``--all`` to include stopped
-    records that still have logs on disk.
+    instance directories that still have logs on disk.
 
     Examples:
       nemo services ls
@@ -711,8 +713,9 @@ def ls_services(
         _print_instance_table(visible)
         stopped = [info for info in visible if not info.alive]
         if stopped:
+            noun = "stopped instance directory" if len(stopped) == 1 else "stopped instance directories"
             typer.echo(
-                f"\n{len(stopped)} stopped instance(s). "
+                f"\n{len(stopped)} {noun}. "
                 "Remove with: nemo services prune  (or: nemo services rm <scope>)"
             )
         return
@@ -722,8 +725,9 @@ def ls_services(
         stopped_count = sum(1 for info in instances if not info.alive)
         if stopped_count:
             typer.echo("No running instances.")
+            noun = "stopped instance directory" if stopped_count == 1 else "stopped instance directories"
             typer.echo(
-                f"{stopped_count} stopped instance(s) on disk. "
+                f"{stopped_count} {noun} on disk. "
                 "List with: nemo services ls --all  |  Remove with: nemo services prune"
             )
         else:
@@ -734,7 +738,7 @@ def ls_services(
 
 
 # ---------------------------------------------------------------------------
-# rm (remove stopped instance record)
+# rm (remove stopped instance directory)
 # ---------------------------------------------------------------------------
 
 
@@ -746,13 +750,19 @@ def rm_services(
     ] = None,
     instance: Annotated[
         str | None,
-        typer.Option("--instance", help="Instance scope (alternative to positional argument)."),
+        typer.Option(
+            "--instance",
+            help="Scope from 'nemo services ls --all' (same value as the SCOPE positional).",
+        ),
     ] = None,
 ) -> None:
-    """Remove a stopped instance record and its logs.
+    """Remove a stopped instance directory and its logs.
 
     The scope must match a row from ``nemo services ls --all``.  Running
     instances are refused; stop them first.
+
+    Unlike ``run``/``start``, ``--instance`` here does not derive a scope from
+    cwd and port — it is an alternate spelling for the ``SCOPE`` argument.
 
     Examples:
       nemo services rm abc12345-8080
@@ -772,13 +782,13 @@ def rm_services(
         raise typer.Exit(1) from None
 
     if not removed:
-        typer.echo(f"No instance record found for scope '{effective_scope}'.", err=True)
+        typer.echo(f"No stopped instance directory found for scope '{effective_scope}'.", err=True)
         raise typer.Exit(1)
     typer.echo(f"Removed instance '{effective_scope}'.")
 
 
 # ---------------------------------------------------------------------------
-# prune (remove all stopped instance records)
+# prune (remove all stopped instance directories)
 # ---------------------------------------------------------------------------
 
 
@@ -789,9 +799,9 @@ def prune_services(
         typer.Option("--force", help="Remove without confirmation."),
     ] = False,
 ) -> None:
-    """Remove all stopped instance records on this host.
+    """Remove all stopped instance directories on this host.
 
-    Stopped records may include service logs from prior runs.  Logs are
+    Stopped instance directories may include service logs from prior runs.  Logs are
     deleted with the instance directory.
 
     Examples:
@@ -803,10 +813,10 @@ def prune_services(
 
     stopped = [info for info in list_instances(base_dir=base_dir) if not info.alive]
     if not stopped:
-        typer.echo("No stopped instances to remove.")
+        typer.echo("No stopped instance directories to remove.")
         return
 
-    typer.echo("The following stopped instance(s) will be removed:")
+    typer.echo("The following stopped instance directories will be removed:")
     for info in stopped:
         log_bytes = instance_log_bytes(info.scope, base_dir=base_dir)
         if log_bytes:
@@ -814,19 +824,19 @@ def prune_services(
         else:
             typer.echo(f"  {info.scope}  (no logs)")
 
-    if not force and not typer.confirm("Remove stopped instances?", default=False):
+    if not force and not typer.confirm("Remove stopped instance directories?", default=False):
         typer.echo("Prune cancelled.")
         return
 
     removed = prune_instances(base_dir=base_dir)
     if not removed:
-        typer.echo("No stopped instances to remove.")
+        typer.echo("No stopped instance directories to remove.")
         return
     if len(removed) == 1:
-        typer.echo(f"Removed stopped instance: {removed[0]}")
+        typer.echo(f"Removed stopped instance directory: {removed[0]}")
     else:
         scopes = ", ".join(removed)
-        typer.echo(f"Removed {len(removed)} stopped instance(s): {scopes}")
+        typer.echo(f"Removed {len(removed)} stopped instance directories: {scopes}")
 
 
 # ---------------------------------------------------------------------------

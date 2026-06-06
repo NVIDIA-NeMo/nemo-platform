@@ -204,21 +204,21 @@ nemo services run
 
 ```bash
 nemo services ls              # running instances only
-nemo services ls --all        # include stopped records (with logs on disk)
-nemo services rm <scope>      # remove one stopped instance record
-nemo services prune           # remove all stopped instance records
+nemo services ls --all        # include stopped instance directories (with logs on disk)
+nemo services rm <scope>      # remove one stopped instance directory
+nemo services prune           # remove all stopped instance directories
 curl -s http://localhost:8080/health/ready   # check if running
 cat ~/.local/state/nmp/instances/<scope>/services.log   # view service output
 nemo services stop            # stop the running instance for this scope
 ```
 
-### Stopped instance records cluttering `ls --all`
+### Stopped instance directories cluttering `ls --all`
 
-After stopping or crashing local services, stopped scope directories can remain under `~/.local/state/nmp/instances/<scope>/`. Empty lock-only ghosts are cleaned automatically; records with service logs stay until you remove them:
+After stopping or crashing local services, stopped scope directories can remain under `~/.local/state/nmp/instances/<scope>/`. Empty lock-only ghosts are cleaned automatically; directories with service logs stay until you remove them:
 
 ```bash
 nemo services ls --all        # see stopped scopes
 nemo services logs --instance <scope>   # inspect logs before removing
-nemo services rm <scope>      # remove one stopped record
-nemo services prune           # remove all stopped records
+nemo services rm <scope>      # remove one stopped instance directory
+nemo services prune           # remove all stopped instance directories
 ```

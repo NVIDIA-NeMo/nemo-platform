@@ -109,8 +109,8 @@ nemo services [OPTIONS] COMMAND [ARGS]...
 * `restart`: Restart platform services.
 * `status`: Show status of the platform services instance for this...
 * `ls`: List service instances on this host.
-* `rm`: Remove a stopped instance record and its logs.
-* `prune`: Remove all stopped instance records on this host.
+* `rm`: Remove a stopped instance directory and its logs.
+* `prune`: Remove all stopped instance directories on this host.
 * `logs`: Show or locate the service log file.
 
 #### nemo services run
@@ -267,7 +267,7 @@ nemo services status [OPTIONS]
 List service instances on this host.
 
 By default shows running instances only.  Use ``--all`` to include stopped
-records that still have logs on disk.
+instance directories that still have logs on disk.
 
 **Examples:**
 
@@ -284,7 +284,7 @@ nemo services ls [OPTIONS]
 
 **Options:**
 
-* `--all, -a`: Include stopped instance records (like docker ps -a).
+* `--all, -a`: Include stopped instance directories (like docker ps -a).
 
 **Help:**
 
@@ -292,10 +292,14 @@ nemo services ls [OPTIONS]
 
 #### nemo services rm
 
-Remove a stopped instance record and its logs.
+Remove a stopped instance directory and its logs.
 
 The scope must match a row from ``nemo services ls --all``.  Running
 instances are refused; stop them first.
+
+Unlike ``run``/``start``, ``--instance`` on ``rm`` does not derive a scope
+from cwd and port — pass the exact scope string from ``ls --all``, either
+as the ``SCOPE`` positional or via ``--instance``.
 
 **Examples:**
 
@@ -316,7 +320,7 @@ nemo services rm [OPTIONS] [SCOPE]
 
 **Options:**
 
-* `--instance`: Instance scope (alternative to positional argument).
+* `--instance`: Scope from ``nemo services ls --all`` (same value as the ``SCOPE`` positional).
 
 **Help:**
 
@@ -324,9 +328,9 @@ nemo services rm [OPTIONS] [SCOPE]
 
 #### nemo services prune
 
-Remove all stopped instance records on this host.
+Remove all stopped instance directories on this host.
 
-Stopped records may include service logs from prior runs.  Logs are
+Stopped instance directories may include service logs from prior runs.  Logs are
 deleted with the instance directory.
 
 **Examples:**
