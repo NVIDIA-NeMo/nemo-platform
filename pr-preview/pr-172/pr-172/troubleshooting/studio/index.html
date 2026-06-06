@@ -1701,6 +1701,8 @@
       
         
       
+        
+      
     
     
     
@@ -1765,6 +1767,34 @@
     
   
     Run LLM-as-a-Judge Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluator/tutorials/define-run-custom-python-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Define and Run Custom Python Metrics
   
 
     
@@ -4181,10 +4211,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#datasets-or-jobs-not-appearing-in-studio" class="md-nav__link">
+  <a href="#filesets-or-jobs-not-appearing-in-studio" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Datasets or Jobs Not Appearing in Studio
+        Filesets or Jobs Not Appearing in Studio
       
     </span>
   </a>
@@ -4300,10 +4330,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#datasets-or-jobs-not-appearing-in-studio" class="md-nav__link">
+  <a href="#filesets-or-jobs-not-appearing-in-studio" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Datasets or Jobs Not Appearing in Studio
+        Filesets or Jobs Not Appearing in Studio
       
     </span>
   </a>
@@ -4408,10 +4438,10 @@
 <p><a id="troubleshoot-studio"></a></p>
 <h1 id="troubleshooting-studio">Troubleshooting Studio<a class="headerlink" href="#troubleshooting-studio" title="Permanent link">&para;</a></h1>
 <p>Learn how to troubleshoot common issues with NeMo Studio.</p>
-<h2 id="datasets-or-jobs-not-appearing-in-studio">Datasets or Jobs Not Appearing in Studio<a class="headerlink" href="#datasets-or-jobs-not-appearing-in-studio" title="Permanent link">&para;</a></h2>
-<p>If you do not see datasets or jobs that you created using the Python SDK or API, verify that you specified the <code>project</code> parameter in the creation or update API requests.</p>
-<p>Specify the <code>project</code> parameter when creating a dataset using the Python SDK or cURL:</p>
-<p><em>Creating a Dataset Using the Python SDK and Associating with a Project:</em></p>
+<h2 id="filesets-or-jobs-not-appearing-in-studio">Filesets or Jobs Not Appearing in Studio<a class="headerlink" href="#filesets-or-jobs-not-appearing-in-studio" title="Permanent link">&para;</a></h2>
+<p>If you do not see filesets or jobs that you created using the Python SDK or API, verify that you specified the <code>project</code> parameter in the creation or update API requests.</p>
+<p>Specify the <code>project</code> parameter when creating a fileset using the Python SDK or cURL:</p>
+<p><em>Creating a Fileset Using the Python SDK and Associating with a Project:</em></p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dataset</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">datasets</span><span class="o">.</span><span class="n">create</span><span class="p">(</span>
 </span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;sample-basic-test&quot;</span><span class="p">,</span>
 </span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;default&quot;</span><span class="p">,</span>

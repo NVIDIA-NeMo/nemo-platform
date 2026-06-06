@@ -1701,6 +1701,8 @@
       
         
       
+        
+      
     
     
     
@@ -1765,6 +1767,34 @@
     
   
     Run LLM-as-a-Judge Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluator/tutorials/define-run-custom-python-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Define and Run Custom Python Metrics
   
 
     
@@ -8532,8 +8562,8 @@ Override the default model with NEMO_DEFAULT_MODEL.</p>
 <li><code>restart</code>: Restart platform services.</li>
 <li><code>status</code>: Show status of the platform services instance for this...</li>
 <li><code>ls</code>: List service instances on this host.</li>
-<li><code>rm</code>: Remove a stopped instance record and its logs.</li>
-<li><code>prune</code>: Remove all stopped instance records on this host.</li>
+<li><code>rm</code>: Remove a stopped instance directory and its logs.</li>
+<li><code>prune</code>: Remove all stopped instance directories on this host.</li>
 <li><code>logs</code>: Show or locate the service log file.</li>
 </ul>
 <h4 id="nemo-services-run">nemo services run<a class="headerlink" href="#nemo-services-run" title="Permanent link">&para;</a></h4>
@@ -8651,7 +8681,7 @@ instance exists for the computed scope; does not start a fresh instance.</p>
 <h4 id="nemo-services-ls">nemo services ls<a class="headerlink" href="#nemo-services-ls" title="Permanent link">&para;</a></h4>
 <p>List service instances on this host.</p>
 <p>By default shows running instances only.  Use <code>--all</code> to include stopped
-records that still have logs on disk.</p>
+instance directories that still have logs on disk.</p>
 <p><strong>Examples:</strong></p>
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls<span class="w"> </span>--all
@@ -8661,16 +8691,19 @@ records that still have logs on disk.</p>
 </span></code></pre></div>
 <p><strong>Options:</strong></p>
 <ul>
-<li><code>--all, -a</code>: Include stopped instance records (like docker ps -a).</li>
+<li><code>--all, -a</code>: Include stopped instance directories (like docker ps -a).</li>
 </ul>
 <p><strong>Help:</strong></p>
 <ul>
 <li><code>--help, -h</code>: Show this message and exit.</li>
 </ul>
 <h4 id="nemo-services-rm">nemo services rm<a class="headerlink" href="#nemo-services-rm" title="Permanent link">&para;</a></h4>
-<p>Remove a stopped instance record and its logs.</p>
+<p>Remove a stopped instance directory and its logs.</p>
 <p>The scope must match a row from <code>nemo services ls --all</code>.  Running
 instances are refused; stop them first.</p>
+<p>Unlike <code>run</code>/<code>start</code>, <code>--instance</code> on <code>rm</code> does not derive a scope
+from cwd and port — pass the exact scope string from <code>ls --all</code>, either
+as the <code>SCOPE</code> positional or via <code>--instance</code>.</p>
 <p><strong>Examples:</strong></p>
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>abc12345-8080
 </span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>--instance<span class="w"> </span>abc12345-8080
@@ -8684,15 +8717,15 @@ instances are refused; stop them first.</p>
 </ul>
 <p><strong>Options:</strong></p>
 <ul>
-<li><code>--instance</code>: Instance scope (alternative to positional argument).</li>
+<li><code>--instance</code>: Scope from <code>nemo services ls --all</code> (same value as the <code>SCOPE</code> positional).</li>
 </ul>
 <p><strong>Help:</strong></p>
 <ul>
 <li><code>--help, -h</code>: Show this message and exit.</li>
 </ul>
 <h4 id="nemo-services-prune">nemo services prune<a class="headerlink" href="#nemo-services-prune" title="Permanent link">&para;</a></h4>
-<p>Remove all stopped instance records on this host.</p>
-<p>Stopped records may include service logs from prior runs.  Logs are
+<p>Remove all stopped instance directories on this host.</p>
+<p>Stopped instance directories may include service logs from prior runs.  Logs are
 deleted with the instance directory.</p>
 <p><strong>Examples:</strong></p>
 <div class="language-shell highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>nemo<span class="w"> </span>services<span class="w"> </span>prune

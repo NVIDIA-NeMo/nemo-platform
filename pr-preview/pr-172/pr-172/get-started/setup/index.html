@@ -626,10 +626,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stopped-instance-records-cluttering-ls-all" class="md-nav__link">
+  <a href="#stopped-instance-directories-cluttering-ls-all" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stopped instance records cluttering ls --all
+        Stopped instance directories cluttering ls --all
       
     </span>
   </a>
@@ -1979,6 +1979,8 @@
       
         
       
+        
+      
     
     
     
@@ -2043,6 +2045,34 @@
     
   
     Run LLM-as-a-Judge Evaluation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../evaluator/tutorials/define-run-custom-python-metrics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Define and Run Custom Python Metrics
   
 
     
@@ -4725,10 +4755,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#stopped-instance-records-cluttering-ls-all" class="md-nav__link">
+  <a href="#stopped-instance-directories-cluttering-ls-all" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Stopped instance records cluttering ls --all
+        Stopped instance directories cluttering ls --all
       
     </span>
   </a>
@@ -5038,19 +5068,19 @@
 <p><code>nemo setup</code> is idempotent. Existing secrets, providers, and agent deployments are detected and skipped. Run it again to add a second provider or re-attempt a stage that failed.</p>
 <h3 id="managing-services">Managing services<a class="headerlink" href="#managing-services" title="Permanent link">&para;</a></h3>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls<span class="w">              </span><span class="c1"># running instances only</span>
-</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls<span class="w"> </span>--all<span class="w">        </span><span class="c1"># include stopped records (with logs on disk)</span>
-</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>&lt;scope&gt;<span class="w">      </span><span class="c1"># remove one stopped instance record</span>
-</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>nemo<span class="w"> </span>services<span class="w"> </span>prune<span class="w">           </span><span class="c1"># remove all stopped instance records</span>
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls<span class="w"> </span>--all<span class="w">        </span><span class="c1"># include stopped instance directories (with logs on disk)</span>
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>&lt;scope&gt;<span class="w">      </span><span class="c1"># remove one stopped instance directory</span>
+</span><span id="__span-12-4"><a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>nemo<span class="w"> </span>services<span class="w"> </span>prune<span class="w">           </span><span class="c1"># remove all stopped instance directories</span>
 </span><span id="__span-12-5"><a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>curl<span class="w"> </span>-s<span class="w"> </span>http://localhost:8080/health/ready<span class="w">   </span><span class="c1"># check if running</span>
 </span><span id="__span-12-6"><a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>cat<span class="w"> </span>~/.local/state/nmp/instances/&lt;scope&gt;/services.log<span class="w">   </span><span class="c1"># view service output</span>
 </span><span id="__span-12-7"><a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>nemo<span class="w"> </span>services<span class="w"> </span>stop<span class="w">            </span><span class="c1"># stop the running instance for this scope</span>
 </span></code></pre></div>
-<h3 id="stopped-instance-records-cluttering-ls-all">Stopped instance records cluttering <code>ls --all</code><a class="headerlink" href="#stopped-instance-records-cluttering-ls-all" title="Permanent link">&para;</a></h3>
-<p>After stopping or crashing local services, stopped scope directories can remain under <code>~/.local/state/nmp/instances/&lt;scope&gt;/</code>. Empty lock-only ghosts are cleaned automatically; records with service logs stay until you remove them:</p>
+<h3 id="stopped-instance-directories-cluttering-ls-all">Stopped instance directories cluttering <code>ls --all</code><a class="headerlink" href="#stopped-instance-directories-cluttering-ls-all" title="Permanent link">&para;</a></h3>
+<p>After stopping or crashing local services, stopped scope directories can remain under <code>~/.local/state/nmp/instances/&lt;scope&gt;/</code>. Empty lock-only ghosts are cleaned automatically; directories with service logs stay until you remove them:</p>
 <div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>nemo<span class="w"> </span>services<span class="w"> </span>ls<span class="w"> </span>--all<span class="w">        </span><span class="c1"># see stopped scopes</span>
 </span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>nemo<span class="w"> </span>services<span class="w"> </span>logs<span class="w"> </span>--instance<span class="w"> </span>&lt;scope&gt;<span class="w">   </span><span class="c1"># inspect logs before removing</span>
-</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>&lt;scope&gt;<span class="w">      </span><span class="c1"># remove one stopped record</span>
-</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>nemo<span class="w"> </span>services<span class="w"> </span>prune<span class="w">           </span><span class="c1"># remove all stopped records</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>nemo<span class="w"> </span>services<span class="w"> </span>rm<span class="w"> </span>&lt;scope&gt;<span class="w">      </span><span class="c1"># remove one stopped instance directory</span>
+</span><span id="__span-13-4"><a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>nemo<span class="w"> </span>services<span class="w"> </span>prune<span class="w">           </span><span class="c1"># remove all stopped instance directories</span>
 </span></code></pre></div>
 
 
