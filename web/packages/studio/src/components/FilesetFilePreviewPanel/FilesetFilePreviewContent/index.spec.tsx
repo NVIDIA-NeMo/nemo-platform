@@ -9,6 +9,10 @@ vi.mock('@studio/providers/workers/useWorkers', () => ({
   useWorkers: () => ({ createWorker: vi.fn() }),
 }));
 
+vi.mock('@studio/components/filesets/hooks/useIsBinaryFile', () => ({
+  useIsBinaryFile: () => ({ isBinary: false, isLoading: false }),
+}));
+
 const baseProps = {
   workspace: 'default',
   filesetName: 'test-dataset',

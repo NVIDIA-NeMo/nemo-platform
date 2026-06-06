@@ -12,6 +12,10 @@ vi.mock('@studio/providers/workers/useWorkers', () => ({
   }),
 }));
 
+vi.mock('@studio/components/filesets/hooks/useIsBinaryFile', () => ({
+  useIsBinaryFile: () => ({ isBinary: false, isLoading: false }),
+}));
+
 describe('FilesetFilePreviewPanel', () => {
   const defaultProps = {
     open: true,
