@@ -1848,8 +1848,6 @@
       
         
       
-        
-      
     
     
     
@@ -1903,34 +1901,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../../quickstart/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quickstart
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1954,7 +1924,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_2" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -1976,14 +1946,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_7_3" id="__nav_7_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_7_2" id="__nav_7_2_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_7_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -5108,10 +5078,11 @@
 <p>This tutorial walks through the <code>anonymizer.preview</code> flow: defining a request, streaming a small anonymized sample, and inspecting the resulting frames.</p>
 <p>For detection and replacement strategy details, see the <a href="https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs">open-source library documentation</a>.</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>Complete the <a href="../#prerequisites">tutorials prerequisites</a>, which cover:</p>
 <ul>
-<li>The Anonymizer plugin installed and the <code>nemo anonymizer</code> CLI available. See the <a href="../../quickstart/">Quick Start</a>.</li>
+<li>A running NeMo Platform cluster with the <code>nemo anonymizer</code> CLI available (see <a href="../../../get-started/setup/">Setup</a>).</li>
 <li>An inference provider configured (default examples use <code>nvidia-build</code>).</li>
-<li>A fileset named <code>anonymizer-inputs</code> with <code>anonymizer-input.csv</code> uploaded (created in the Quick Start).</li>
+<li>A fileset named <code>anonymizer-inputs</code> with <code>anonymizer-input.csv</code> uploaded.</li>
 </ul>
 <h2 id="what-preview-does">What <code>preview</code> Does<a class="headerlink" href="#what-preview-does" title="Permanent link">&para;</a></h2>
 <p><code>preview</code> runs the Anonymizer pipeline on a small number of records and streams results back from the plugin service. Both surfaces (Python SDK and CLI) produce the same data; the SDK collects it into a <code>pandas</code> DataFrame while the CLI prints newline-delimited JSON frames.</p>
@@ -5329,7 +5300,7 @@
 </span><span id="__span-7-6"><a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>jq<span class="w"> </span>-R<span class="w"> </span><span class="s1">&#39;fromjson? | select(.kind == &quot;preview_dataset&quot;) | .records&#39;</span><span class="w"> </span><span class="se">\</span>
 </span><span id="__span-7-7"><a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="w">  </span>/tmp/anonymizer-preview.ndjson
 </span></code></pre></div>
-<p>If <code>preview submit</code> returns 404 against the gateway, the plugin service isn't mounted. Confirm the plugin is installed and restart <code>nemo services run</code>; see <a href="../../quickstart/#step-1-install-the-plugin">Quick Start — Step 1</a>.</p>
+<p>If <code>preview submit</code> returns 404 against the gateway, the plugin service isn't mounted. Restart <code>nemo services run</code> so the plugin is discovered and remounts <code>/apis/anonymizer/...</code>; see <a href="../../../get-started/setup/">Setup</a>.</p>
 <h2 id="input-source-forms">Input Source Forms<a class="headerlink" href="#input-source-forms" title="Permanent link">&para;</a></h2>
 <p>The plugin accepts three forms for <code>data.source</code>:</p>
 <table>
