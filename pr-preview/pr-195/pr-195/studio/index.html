@@ -4846,6 +4846,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#evaluations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Evaluations
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#jobs" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -4947,7 +4958,7 @@
 <p class="admonition-title">Note</p>
 <p>Studio is still in early development. Many features are missing or should be expected to change.</p>
 </div>
-<p>NeMo Studio is the web app for AI development with NVIDIA NeMo Platform. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with datasets, jobs, and secrets.</p>
+<p>NeMo Studio is the web app for AI development with NVIDIA NeMo Platform. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with filesets, jobs, and secrets.</p>
 <hr />
 <h2 id="getting-started">Getting Started<a class="headerlink" href="#getting-started" title="Permanent link">&para;</a></h2>
 <p>NeMo Studio is included with the platform. Follow the <a href="../get-started/setup/">Setup guide</a> to start NeMo Platform, then access Studio at <code>/studio</code> on your running server.</p>
@@ -5003,6 +5014,27 @@
 </tr>
 </tbody>
 </table>
+<h3 id="evaluations">Evaluations<a class="headerlink" href="#evaluations" title="Permanent link">&para;</a></h3>
+<p><strong>Evaluations</strong> appears in two separate sidebar groups because it covers two distinct scopes:</p>
+<table>
+<thead>
+<tr>
+<th>Location</th>
+<th>What it shows</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Agents &gt; Evaluations</strong></td>
+<td>Evaluation runs scoped to a specific agent — results tied to agent deployments and versions.</td>
+</tr>
+<tr>
+<td><strong>Evaluate &gt; Evaluations</strong></td>
+<td>All evaluation results across the workspace, regardless of which agent or model was evaluated.</td>
+</tr>
+</tbody>
+</table>
+<p>Use <strong>Agents &gt; Evaluations</strong> when reviewing how a specific agent performed. Use <strong>Evaluate &gt; Evaluations</strong> for a broader view of evaluation history across the workspace.</p>
 <h3 id="jobs">Jobs<a class="headerlink" href="#jobs" title="Permanent link">&para;</a></h3>
 <p>Track and manage all platform jobs from a single view. The Jobs page aggregates jobs across enabled capabilities, such as Data Designer, so you can monitor progress, view logs, download artifacts, and cancel jobs in one place.</p>
 <p>Navigate to <strong>Jobs</strong> in the workspace sidebar to see all jobs in the current workspace.</p>
