@@ -3121,7 +3121,7 @@ components:
         agent:
           type: string
           title: Agent
-          description: Agent root (required on submit).
+          description: Agent root.
         runner:
           type: string
           enum:
@@ -3153,7 +3153,7 @@ components:
         output:
           type: string
           title: Output
-          description: Output dir for batch artifacts (required on submit).
+          description: Output dir for batch artifacts.
         filter_glob:
           title: Filter Glob
           description: Glob filter on eval names.

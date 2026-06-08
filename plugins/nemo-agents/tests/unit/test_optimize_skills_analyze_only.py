@@ -225,7 +225,7 @@ def test_optimize_skills_job_analyze_only_requires_initial_batch() -> None:
         "initial_batch": None,
     }
     with pytest.raises(ValueError, match="initial_batch"):
-        OptimizeSkillsJob().run(cfg, ctx=MagicMock())
+        OptimizeSkillsJob().run(cfg, _ctx=MagicMock())
 
 
 def test_cli_analyze_only_requires_initial_batch_flag() -> None:
