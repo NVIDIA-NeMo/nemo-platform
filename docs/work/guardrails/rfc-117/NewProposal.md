@@ -169,6 +169,72 @@ In NMP mode, model references are resolved to IGW routes via `sdk.models.get_ope
 | `false` (default)       | `EntityStoreConfigStore` | `NmpIgwModelResolver`    |
 | `true`                  | `FilesystemConfigStore`  | `DirectUrlModelResolver` |
 
+The two-row table above is a starting point, not the full design intent. `ConfigStore` and `ModelResolver` are protocols — any conforming Python implementation can be wired at startup. This proposal ships two concrete backends for each, but the abstraction is explicitly designed for extension: a customer who wants to load configs from their own database, secrets manager, or S3 bucket can implement the protocol and inject it at startup without forking Guardrails. RFC-117's Phase 3 formalizes this as a registration mechanism (Python entry points), so third-party backends become installable via `pip install` with no changes to the core service.
+
+#### Interface definitions
+
+**Protocols** — `ChecksService` depends only on these interfaces, never on concrete implementations:
+
+```python
+class ConfigStore(Protocol):
+    def get(self, workspace: str | None, name: str) -> RailsConfig | None: ...
+    def list(self, workspace: str | None) -> list[RailsConfig]: ...
+
+class ModelResolver(Protocol):
+    def resolve(self, model_ref: str, workspace: str | None) -> str: ...  # returns base_url
+```
+
+**Adapters** — concrete implementations injected at startup:
+
+```python
+class FilesystemConfigStore:
+    # Loads flat .yaml files from CONFIG_STORE_PATH into memory at startup.
+    # workspace is unused — not a concept in standalone mode.
+    def get(self, workspace, name): return self._configs.get(name)
+    def list(self, workspace):      return list(self._configs.values())
+
+class EntityStoreConfigStore:
+    # Wraps EntityClient — preserves all existing NMP behavior, unchanged.
+    def get(self, workspace, name): return self._client.get(GuardrailConfig, workspace=workspace, name=name)
+    def list(self, workspace):      return self._client.list(GuardrailConfig, workspace=workspace)
+
+class DirectUrlModelResolver:
+    # Reads base_url directly from the config YAML; falls back to NIM_ENDPOINT_URL.
+    def resolve(self, model_ref, workspace): return config.base_url or os.environ["NIM_ENDPOINT_URL"]
+
+class NmpIgwModelResolver:
+    # Delegates to IGW VirtualModel resolution — preserves existing NMP behavior.
+    def resolve(self, model_ref, workspace): return sdk.models.get_openai_route_base_url(workspace)
+```
+
+**Startup wiring** — the only place `GUARDRAILS_STANDALONE` appears:
+
+```python
+if GUARDRAILS_STANDALONE:
+    config_store   = FilesystemConfigStore(path=CONFIG_STORE_PATH)
+    model_resolver = DirectUrlModelResolver()
+else:
+    config_store   = EntityStoreConfigStore(client=entity_client)
+    model_resolver = NmpIgwModelResolver(sdk=platform_sdk)
+
+checks_service = ChecksService(config_store=config_store, model_resolver=model_resolver)
+```
+
+**Extensibility** — any class with the right methods is a valid backend; no forking required:
+
+```python
+class PostgresConfigStore:
+    def get(self, workspace, name):
+        row = db.execute("SELECT config FROM guardrail_configs WHERE workspace=%s AND name=%s", workspace, name)
+        return RailsConfig.from_dict(row) if row else None
+
+    def list(self, workspace):
+        rows = db.execute("SELECT config FROM guardrail_configs WHERE workspace=%s", workspace)
+        return [RailsConfig.from_dict(r) for r in rows]
+```
+
+Wire it at startup the same way — `ChecksService(config_store=PostgresConfigStore(...), ...)` — and the rest of the service is unchanged.
+
 #### What changes in the codebase
 
 Four concerns need to be addressed to decouple Guardrails from NMP:
@@ -205,7 +271,7 @@ The question reviewers will ask: *does standalone mode regress on inference capa
 
 Detailed in the existing RFC-117 documents (`docs/work/guardrails/rfc-117/`). Summarized here for completeness.
 
-**Extended protocol layer**: Formalize additional protocols beyond `ConfigStore` and `ModelResolver` — `PrincipalProvider` (identity extraction), `AuthorizationPolicy` (access control), `SecretResolver` (credential resolution). Add implementations for S3, Postgres, OIDC, Vault, etc. to broaden standalone deployment options.
+**Extended protocol layer**: Formalize the extension mechanism for `ConfigStore`, `ModelResolver`, and additional protocols (`PrincipalProvider` for identity extraction, `AuthorizationPolicy` for access control, `SecretResolver` for credential resolution). Implementations register via Python entry points — a third-party backend is a `pip install` away, no forking required. Ships reference implementations for S3, Postgres, OIDC, Vault, and other common backends.
 
 **gRPC + Connect Checks API**: Promote `ChecksService` from an in-process Python interface to a network-exposed gRPC service. Enables Guardrails as a separately-deployed pod, integration with Envoy ext_proc, LiteLLM, and other gateways. The Phase 2 in-process interface becomes the gRPC service implementation — callers swap to a generated stub; `ChecksService` code itself does not change.
 
