@@ -1848,8 +1848,6 @@
       
         
       
-        
-      
     
     
     
@@ -1903,34 +1901,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../../quickstart/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Quickstart
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -1954,7 +1924,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_3" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7_2" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -1976,14 +1946,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_7_3" id="__nav_7_3_label" tabindex="0">
+              <label class="md-nav__link " for="__nav_7_2" id="__nav_7_2_label" tabindex="0">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_3_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_7_3">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_7_2_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7_2">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -5220,10 +5190,11 @@
 <p>This tutorial walks through the <code>anonymizer.run</code> job: defining a run spec, executing it locally or on the NeMo Platform Jobs worker, and loading the parquet artifacts it produces.</p>
 <p>For detection, rewrite, and replacement strategy details, see the <a href="https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs">open-source library documentation</a>.</p>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
+<p>Complete the <a href="../#prerequisites">tutorials prerequisites</a>, which cover:</p>
 <ul>
-<li>The Anonymizer plugin installed and the <code>nemo anonymizer</code> CLI available. See the <a href="../../quickstart/">Quick Start</a>.</li>
+<li>A running NeMo Platform cluster with the <code>nemo anonymizer</code> CLI available (see <a href="../../../get-started/setup/">Setup</a>).</li>
 <li>An inference provider configured (default examples use <code>nvidia-build</code>).</li>
-<li>A fileset named <code>anonymizer-inputs</code> with <code>anonymizer-input.csv</code> uploaded (created in the Quick Start).</li>
+<li>A fileset named <code>anonymizer-inputs</code> with <code>anonymizer-input.csv</code> uploaded.</li>
 </ul>
 <h2 id="what-run-does">What <code>run</code> Does<a class="headerlink" href="#what-run-does" title="Permanent link">&para;</a></h2>
 <p><code>anonymizer.run</code> executes the full Anonymizer pipeline on every record of an input file and writes the output as job artifacts.</p>
