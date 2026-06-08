@@ -53,6 +53,21 @@ DEFAULT_JUDGE_MAX_RETRIES = 3
 DEFAULT_JUDGE_MAX_WORKER = 1
 log = logging.getLogger(__name__)
 
+RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME: dict[str, str] = {
+    "agent_goal_accuracy": MetricType.AGENT_GOAL_ACCURACY.value,
+    "nv_accuracy": MetricType.ANSWER_ACCURACY.value,
+    "context_entity_recall": MetricType.CONTEXT_ENTITY_RECALL.value,
+    "context_precision": MetricType.CONTEXT_PRECISION.value,
+    "context_recall": MetricType.CONTEXT_RECALL.value,
+    "nv_context_relevance": MetricType.CONTEXT_RELEVANCE.value,
+    "faithfulness": MetricType.FAITHFULNESS.value,
+    "noise_sensitivity": MetricType.NOISE_SENSITIVITY.value,
+    "nv_response_groundedness": MetricType.RESPONSE_GROUNDEDNESS.value,
+    "answer_relevancy": MetricType.RESPONSE_RELEVANCY.value,
+    "tool_call_accuracy": MetricType.TOOL_CALL_ACCURACY.value,
+    "topic_adherence": MetricType.TOPIC_ADHERENCE.value,
+}
+
 
 # Lazy loaders for langchain classes (cached to avoid repeated imports)
 @cache
@@ -234,17 +249,31 @@ class BaseRAGASMetric(MetricBase):
         return getattr(self, "ignore_request_failure", False)
 
     def _nan_scores_for_metrics(self, metrics: list) -> dict[str, float]:
-        """Build a NaN score mapping for the active RAGAS metric objects."""
-        metric_names: list[str] = []
-        for metric in metrics:
-            metric_name = getattr(metric, "name", None)
-            if isinstance(metric_name, str) and metric_name:
-                metric_names.append(metric_name)
-
+        """Build a NaN score mapping using declared output_spec names."""
+        metric_names = [output.name for output in self.output_spec()]
         if not metric_names:
-            metric_names = [output.name for output in self.output_spec()]
+            for metric in metrics:
+                metric_name = getattr(metric, "name", None)
+                if isinstance(metric_name, str) and metric_name:
+                    metric_names.append(metric_name)
 
         return {metric_name: float("nan") for metric_name in metric_names}
+
+    def _align_scores_to_output_spec(self, scores: dict[str, float]) -> dict[str, float]:
+        """Map known RAGAS metric keys (e.g. ``nv_accuracy``) to declared output names."""
+        declared = [output.name for output in self.output_spec()]
+        if not declared or not scores:
+            return scores
+
+        translated_scores = {
+            RAGAS_OUTPUT_NAME_TO_SDK_OUTPUT_NAME.get(name, name): value for name, value in scores.items()
+        }
+        aligned = {
+            name: scores[name] if name in scores else translated_scores[name]
+            for name in declared
+            if name in scores or name in translated_scores
+        }
+        return aligned if aligned else translated_scores
 
     def _get_llm_judge(self, client: httpx.AsyncClient | None = None) -> LangchainLLMWrapper | None:
         """Get the LLM judge instance based on configuration."""
@@ -362,7 +391,7 @@ class BaseRAGASMetric(MetricBase):
             )
             return self._nan_scores_for_metrics(metrics)
 
-        return scores
+        return self._align_scores_to_output_spec(scores)
 
     def _create_evaluation_dataset(self, item: dict, sample: dict) -> EvaluationDataset:
         """Create an EvaluationDataset from the given item and sample."""

@@ -8,6 +8,7 @@ import threading
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from nmp.core.models.config import config as models_config
 from nmp.core.models.controllers.context import ModelContext
 from nmp.core.models.controllers.models_controller import NON_TERMINAL_STATES, ModelsController
 
@@ -35,6 +36,7 @@ def test_controller_initialization(mock_sdk_class_patch, mock_get_config_patch, 
     # Verify initialization
     assert_helpers.assert_controller_initialized(controller, mock_backend_registry)
     assert_helpers.assert_sdk_initialized_correctly(mock_sdk_class_patch)
+    assert controller._provider_reconciler._controller_config is models_config.controller
 
 
 def test_step_with_no_deployments(

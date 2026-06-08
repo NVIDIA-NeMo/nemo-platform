@@ -166,6 +166,17 @@ def test_span_attribute_catalog_predicates_include_existence_guard(operator: str
     assert params["cost_total_usd_value"] == 1_000_000
 
 
+def test_span_attribute_catalog_groups_legacy_alias_predicates():
+    sql, params = where_clause("evaluation_run_id", "$eq", "run-a", param_prefix="root_candidate_0")
+
+    assert sql.startswith("(")
+    assert sql.endswith(")")
+    assert " OR " in sql
+    assert params["root_candidate_0_key"] == "experiment.run_id"
+    assert params["root_candidate_0_key_1"] == "evaluation.run_id"
+    assert params["root_candidate_0_value"] == "run-a"
+
+
 def test_span_attribute_catalog_rejects_ordering_on_string_fields():
     with pytest.raises(ValueError, match="only supports equality"):
         where_clause("model", ">", "gpt-4")

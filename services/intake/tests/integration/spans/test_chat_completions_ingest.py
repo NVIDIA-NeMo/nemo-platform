@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 INGEST_URL = "/apis/intake/v2/workspaces/default/ingest/chat-completions"
 SPANS_URL = "/apis/intake/v2/workspaces/default/spans"
 TRACES_URL = "/apis/intake/v2/workspaces/default/traces"
-EVALUATION_CONTEXT = {
+EVALUATION_CONTEXT: dict[str, Any] = {
     "evaluation_id": "chat-eval",
     "evaluation_sha": "chat-eval-sha",
     "evaluation_run_id": "evalrun-chat-001",
@@ -23,6 +23,15 @@ EVALUATION_CONTEXT = {
     "dataset_version": "v1",
     "test_case_id": "chat-case-001",
     "metadata": {"source": "chat-completions-test"},
+}
+EXPERIMENT_CONTEXT: dict[str, Any] = {
+    "experiment_id": EVALUATION_CONTEXT["evaluation_id"],
+    "test_case_id": EVALUATION_CONTEXT["test_case_id"],
+}
+EXPECTED_CONTEXT_FROM_EXPERIMENT_CONTEXT: dict[str, Any] = {
+    "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
+    "test_case_id": EVALUATION_CONTEXT["test_case_id"],
+    "metadata": {},
 }
 
 
@@ -72,11 +81,12 @@ def _openai_response(**overrides: Any) -> dict[str, Any]:
 
 
 def test_chat_completions_ingest_happy_path(client: TestClient):
+    experiment_id = _create_experiment(client, EXPERIMENT_CONTEXT["experiment_id"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(),
         "session_id": "session-happy",
-        "evaluation_context": EVALUATION_CONTEXT,
+        "experiment_context": {**EXPERIMENT_CONTEXT, "experiment_id": experiment_id},
         "provider": "openai",
     }
     response = client.post(INGEST_URL, json=body)
@@ -99,7 +109,7 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
     assert span["name"] == "gpt-4o-mini-2024-08-06"
     assert span["model"] == "gpt-4o-mini-2024-08-06"
     assert span["provider"] == "openai"
-    assert span["evaluation_context"] == EVALUATION_CONTEXT
+    assert span["evaluation_context"] == EXPECTED_CONTEXT_FROM_EXPERIMENT_CONTEXT
     assert "evaluation_run_id" not in span
     assert "raw_attributes" not in span
     assert span["input_tokens"] == 24
@@ -112,12 +122,25 @@ def test_chat_completions_ingest_happy_path(client: TestClient):
 
     filtered = client.get(
         SPANS_URL,
-        params={"filter[evaluation_run_id]": EVALUATION_CONTEXT["evaluation_run_id"], "page_size": 10},
+        params={"filter[evaluation_id]": EVALUATION_CONTEXT["evaluation_id"], "page_size": 10},
     )
     assert filtered.status_code == 200, filtered.text
     filtered_spans = filtered.json()["data"]
     assert len(filtered_spans) == 1
     assert filtered_spans[0]["span_id"] == "chatcmpl-test-abc123"
+
+
+def test_chat_completions_ingest_rejects_unknown_experiment_context(client: TestClient):
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-missing-exp"),
+        "session_id": "session-missing-exp",
+        "experiment_context": {"experiment_id": "missing-exp", "test_case_id": "case-1"},
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 400, response.text
+    assert "must be created before it can be logged" in response.json()["detail"]
 
 
 def test_chat_completions_ingest_persists_cost_fields(client: TestClient):
@@ -220,12 +243,13 @@ def test_chat_completions_ingest_handles_missing_usage(client: TestClient):
     assert span["model"] == "gpt-4o-mini-2024-08-06"
 
 
-def test_chat_completions_ingest_accepts_run_id_only_evaluation_context(client: TestClient):
+def test_chat_completions_ingest_accepts_deprecated_evaluation_context(client: TestClient):
+    _create_experiment(client, EVALUATION_CONTEXT["evaluation_id"])
     body = {
         "request": _openai_request(),
         "response": _openai_response(id="chatcmpl-run-id-only"),
         "session_id": "session-run-id-only",
-        "evaluation_context": {"evaluation_run_id": "evalrun-chat-run-only"},
+        "evaluation_context": EVALUATION_CONTEXT,
     }
     response = client.post(INGEST_URL, json=body)
     assert response.status_code == 201, response.text
@@ -233,7 +257,45 @@ def test_chat_completions_ingest_accepts_run_id_only_evaluation_context(client: 
     listed = client.get(SPANS_URL, params={"filter[session_id]": "session-run-id-only"})
     assert listed.status_code == 200, listed.text
     span = listed.json()["data"][0]
-    assert span["evaluation_context"] == {"evaluation_run_id": "evalrun-chat-run-only", "metadata": {}}
+    assert span["evaluation_context"] == {
+        "evaluation_id": EVALUATION_CONTEXT["evaluation_id"],
+        "evaluation_sha": EVALUATION_CONTEXT["evaluation_sha"],
+        "evaluation_run_id": EVALUATION_CONTEXT["evaluation_run_id"],
+        "dataset_id": EVALUATION_CONTEXT["dataset_id"],
+        "dataset_name": EVALUATION_CONTEXT["dataset_name"],
+        "dataset_version": EVALUATION_CONTEXT["dataset_version"],
+        "test_case_id": EVALUATION_CONTEXT["test_case_id"],
+        "metadata": EVALUATION_CONTEXT["metadata"],
+    }
+
+
+def test_chat_completions_ingest_rejects_unknown_deprecated_evaluation_context(client: TestClient):
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-missing-deprecated-exp"),
+        "session_id": "session-missing-deprecated-exp",
+        "evaluation_context": {
+            "evaluation_id": "missing-exp",
+            "evaluation_run_id": "missing-run",
+            "test_case_id": "case-1",
+        },
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 400, response.text
+
+
+def test_chat_completions_ingest_accepts_partial_deprecated_evaluation_context(client: TestClient):
+    _create_experiment(client, "chat-eval")
+    body = {
+        "request": _openai_request(),
+        "response": _openai_response(id="chatcmpl-partial-deprecated-context"),
+        "session_id": "session-partial-deprecated-context",
+        "evaluation_context": {"evaluation_id": "chat-eval", "test_case_id": "case-1"},
+    }
+    response = client.post(INGEST_URL, json=body)
+
+    assert response.status_code == 201, response.text
 
 
 def test_chat_completions_ingest_falls_back_when_response_id_missing(client: TestClient):
@@ -365,12 +427,40 @@ def test_chat_completions_ingest_rejects_legacy_context_fields(client: TestClien
         assert response.status_code == 422, response.text
 
 
-def test_chat_completions_ingest_requires_run_id_when_evaluation_context_is_set(client: TestClient):
+def test_chat_completions_ingest_accepts_both_context_shapes_with_experiment_context_precedence(client: TestClient):
+    _create_experiment(client, "chat-eval")
     body = {
         "request": _openai_request(),
-        "response": _openai_response(id="chatcmpl-invalid-eval-context"),
-        "session_id": "session-invalid-eval-context",
-        "evaluation_context": {"evaluation_id": "chat-eval"},
+        "response": _openai_response(id="chatcmpl-both-contexts"),
+        "session_id": "session-both-contexts",
+        "experiment_context": {"experiment_id": "chat-eval", "test_case_id": "case-1"},
+        "evaluation_context": {"evaluation_id": "legacy-eval", "test_case_id": "legacy-case"},
     }
     response = client.post(INGEST_URL, json=body)
-    assert response.status_code == 422, response.text
+    assert response.status_code == 201, response.text
+
+    listed = client.get(SPANS_URL, params={"filter[session_id]": "session-both-contexts"})
+    assert listed.status_code == 200, listed.text
+    span = listed.json()["data"][0]
+    assert span["evaluation_context"]["evaluation_id"] == "chat-eval"
+    assert span["evaluation_context"]["test_case_id"] == "case-1"
+
+
+def _create_experiment(client: TestClient, name: str) -> str:
+    response = client.post(
+        "/apis/intake/v2/workspaces/default/experiments",
+        json={
+            "name": name,
+            "agent_name": "sample-agent",
+            "agent_version": "1.0.0",
+            "dataset_name": "chat-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert response.status_code in {201, 409}, response.text
+    if response.status_code == 201:
+        return response.json()["name"]
+
+    existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
+    assert existing.status_code == 200, existing.text
+    return existing.json()["name"]

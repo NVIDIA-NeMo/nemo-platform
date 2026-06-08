@@ -14,6 +14,7 @@ import pytest
 import typer
 from click.exceptions import Exit as ClickExit
 from nemo_platform.resources.inference.providers import ProvidersResource
+from nemo_platform.cli.commands.services._process import PortConflict
 from nemo_platform.cli.commands.setup import (
     _AGENT_API_READINESS_POLL_INTERVAL,
     _AGENT_DEPLOY_POLL_INTERVAL,
@@ -40,6 +41,7 @@ from nemo_platform.cli.commands.setup import (
     _create_provider,
     _deploy_demo_agent,
     _detect_coding_agents,
+    _ensure_port_available_for_start,
     _filter_agents_by_scope,
     _find_project_root,
     _kill_existing_services,
@@ -462,15 +464,26 @@ class TestKillExistingServices:
     """``_kill_existing_services`` delegates to ``_process.stop_instance``."""
 
     def test_delegates_to_stop_instance(self):
-        with patch(
-            "nemo_platform.cli.commands.services._process.stop_instance",
-        ) as mock_stop:
+        with patch(f"{SETUP_MOD}.stop_instance") as mock_stop:
             mock_stop.return_value = MagicMock(stopped_pids=[])
             _kill_existing_services("http://localhost:8080")
         mock_stop.assert_called_once()
         _, kwargs = mock_stop.call_args
         assert kwargs["timeout"] == 2.0
         assert kwargs["force"] is True
+
+
+@pytest.fixture
+def maybe_start_preflight_mocks():
+    """Shared mocks for ``_maybe_start_services`` preflight tests."""
+    with (
+        patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
+        patch(f"{SETUP_MOD}.importlib.util.find_spec", return_value=MagicMock()),
+        patch(f"{SETUP_MOD}._start_services_background") as mock_start,
+        patch(f"{SETUP_MOD}.prompt_choice", return_value="yes"),
+        patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/data"),
+    ):
+        yield mock_start
 
 
 class TestMaybeStartServices:
@@ -491,28 +504,72 @@ class TestMaybeStartServices:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data") as mock_db_prompt,
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._ensure_port_available_for_start", wraps=_ensure_port_available_for_start) as mock_port,
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
         mock_kill.assert_called_once()
+        mock_port.assert_called_once()
         mock_start.assert_called_once_with("http://localhost:8080", data_dir="/tmp/test-data")
         mock_db_prompt.assert_called_once()
 
-    def test_exits_early_when_services_extra_missing(self, capsys):
-        """Preflight aborts with install hint before spawning a subprocess."""
+    def test_restarts_exits_when_port_still_occupied_after_kill(self, capsys):
+        """Port preflight runs after kill/wait and blocks spawn when the port stays busy."""
+        reachable_calls = [True, True, False, True]
+        conflict = PortConflict(kind="foreign", port=8080)
+
         with (
-            patch(f"{SETUP_MOD}._check_platform_reachable", return_value=False),
-            patch(f"{SETUP_MOD}.importlib.util.find_spec", return_value=None),
+            patch(f"{SETUP_MOD}._check_platform_reachable", side_effect=reachable_calls),
+            patch(f"{SETUP_MOD}._kill_existing_services") as mock_kill,
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
-            patch(f"{SETUP_MOD}.prompt_choice", return_value="yes"),
-            patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/data"),
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
+            patch(f"{SETUP_MOD}._prompt_data_dir", return_value="/tmp/test-data"),
+            patch(f"{SETUP_MOD}._pause"),
             pytest.raises(ClickExit),
         ):
             _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        mock_kill.assert_called_once()
         mock_start.assert_not_called()
         captured = capsys.readouterr()
+        assert "already in use" in captured.err
+        assert "services.log" not in captured.err
+
+    def test_exits_early_when_services_extra_missing(self, maybe_start_preflight_mocks, capsys):
+        """Preflight aborts with install hint before spawning a subprocess."""
+        with (
+            patch(f"{SETUP_MOD}.importlib.util.find_spec", return_value=None),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        maybe_start_preflight_mocks.assert_not_called()
+        captured = capsys.readouterr()
         assert "nemo-platform[all]" in captured.err
+
+    def test_exits_early_when_port_occupied(self, maybe_start_preflight_mocks, capsys):
+        """Preflight aborts with port hint on stderr before spawning a subprocess."""
+        conflict = PortConflict(kind="foreign", port=8080)
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=conflict),
+            pytest.raises(ClickExit),
+        ):
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        maybe_start_preflight_mocks.assert_not_called()
+        captured = capsys.readouterr()
+        assert "already in use" in captured.err
+        assert "lsof" in captured.err
+        assert "services.log" not in captured.err
+
+    def test_allows_start_when_port_free(self, maybe_start_preflight_mocks):
+        with (
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
+            patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
+            patch(f"{SETUP_MOD}._pause"),
+        ):
+            maybe_start_preflight_mocks.return_value = MagicMock(pid=999)
+            _maybe_start_services("http://localhost:8080", auto=False, start_services=True)
+        maybe_start_preflight_mocks.assert_called_once()
 
 
 class TestLocalDataDirHelpers:
@@ -533,7 +590,7 @@ class TestLocalDataDirHelpers:
         process lifecycle module unchanged. The actual ``NMP_DATA_DIR``
         environment injection lives in ``services._process`` and is covered
         by its own tests."""
-        with patch("nemo_platform.cli.commands.services._process.start_background") as mock_start:
+        with patch(f"{SETUP_MOD}.start_background") as mock_start:
             mock_start.return_value = MagicMock(pid=42)
             _start_services_background("http://localhost:9090", data_dir="/chosen/data/dir")
         mock_start.assert_called_once()

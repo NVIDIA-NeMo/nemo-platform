@@ -33,86 +33,23 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from nemo_safe_synthesizer.config.external_results import SafeSynthesizerSummary
-from nemo_safe_synthesizer.config.job import SafeSynthesizerJobConfig as SafeSynthesizerJobConfigInternal
-from nemo_safe_synthesizer.config.job import SafeSynthesizerParameters as SafeSynthesizerParametersInternal
-from nemo_safe_synthesizer.config.replace_pii import PiiReplacerConfig
 from nemo_safe_synthesizer_plugin.config import config
+from nemo_safe_synthesizer_plugin.job_config import (
+    SafeSynthesizerJobConfig,
+    parse_pretrained_model_job_ref,
+)
 from nemo_safe_synthesizer_plugin.runtime import runtime_task_command
-from pydantic import Field, model_validator
-from pydantic.json_schema import SkipJsonSchema
 
 logger = logging.getLogger(__name__)
 
 
-class SafeSynthesizerParameters(SafeSynthesizerParametersInternal):
-    """NMP-facing Safe Synthesizer parameters with SDK convenience flags."""
-
-    enable_synthesis: bool = Field(
-        default=True,
-        exclude=True,
-        description="Whether to run LLM training and generation phases. "
-        "When false the task only performs PII replacement and returns the processed data.",
-    )
-    enable_replace_pii: bool = Field(
-        default=True,
-        exclude=True,
-        description="Whether to run the default PII replacement pipeline before synthesis.",
-    )
-
-
-class SafeSynthesizerJobConfig(SafeSynthesizerJobConfigInternal):
-    """NMP-facing Safe Synthesizer job config with SDK convenience flags."""
-
-    __doc__ = SafeSynthesizerJobConfigInternal.__doc__
-
-    config: SafeSynthesizerParameters = Field(
-        description="The Safe Synthesizer parameters configuration.",
-    )
-    enable_synthesis: SkipJsonSchema[bool] = Field(
-        default=True,
-        description="Whether to run LLM training and generation phases. "
-        "When False the task only performs PII replacement and returns the processed data.",
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_enable_flags(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        cfg = data.get("config")
-        if not isinstance(cfg, dict):
-            return data
-        enable_synthesis = cfg.pop("enable_synthesis", True)
-        enable_replace_pii = cfg.pop("enable_replace_pii", True)
-        data.setdefault("enable_synthesis", enable_synthesis)
-        if not enable_replace_pii:
-            cfg["replace_pii"] = None
-        return data
-
-    @model_validator(mode="before")
-    @classmethod
-    def _apply_pii_defaults(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        config_data = data.get("config")
-        if not isinstance(config_data, dict):
-            return data
-        replace_pii = config_data.get("replace_pii")
-        if not isinstance(replace_pii, dict) or "steps" in replace_pii:
-            return data
-
-        def deep_update(base: dict, override: dict) -> dict:
-            for k, v in override.items():
-                if isinstance(v, dict) and isinstance(base.get(k), dict):
-                    deep_update(base[k], v)
-                else:
-                    base[k] = v
-            return base
-
-        default = PiiReplacerConfig.get_default_config().model_dump()
-        deep_update(default, replace_pii)
-        config_data["replace_pii"] = default
-        return data
+def _runtime_job_config(job_config: SafeSynthesizerJobConfig) -> dict[str, Any]:
+    config = job_config.model_dump()
+    if job_config.pretrained_model_job:
+        training = config.get("config", {}).get("training")
+        if isinstance(training, dict):
+            training.pop("pretrained_model", None)
+    return config
 
 
 def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[EnvironmentVariable]) -> PlatformJobStep:
@@ -129,7 +66,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
                 profile=config.job_executor_profile,
                 command=command,
             ),
-            config=job_config.model_dump(),
+            config=_runtime_job_config(job_config),
             environment=environment,
         )
 
@@ -157,7 +94,7 @@ def _create_job_step(job_config: SafeSynthesizerJobConfig, environment: list[Env
             ),
             resources=resources,
         ),
-        config=job_config.model_dump(),
+        config=_runtime_job_config(job_config),
         environment=environment,
     )
 
@@ -223,6 +160,22 @@ async def job_config_compiler(
                 name="HF_TOKEN", from_secret=EnvironmentVariableFromSecret(name=transformed_spec.hf_token_secret)
             )
         )
+
+    if transformed_spec.pretrained_model_job:
+        model_workspace, model_job = parse_pretrained_model_job_ref(
+            transformed_spec.pretrained_model_job, workspace_fallback=workspace
+        )
+        try:
+            await sdk.jobs.results.retrieve(name="adapter", job=model_job, workspace=model_workspace)
+        except NotFoundError as e:
+            raise PlatformJobCompilationError(
+                f"Could not find adapter result for NSS job {model_workspace}/{model_job!r}"
+            ) from e
+        except PermissionDeniedError as e:
+            raise PlatformJobCompilationError(
+                f"Failed to retrieve adapter result for NSS job {model_workspace}/{model_job!r}: "
+                f"access denied to workspace {model_workspace!r}"
+            ) from e
 
     if transformed_spec.config:
         steps.append(_create_job_step(job_config=transformed_spec, environment=environment))

@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { CodeDisplay } from '@nemo/common/src/components/CodeDisplay';
 import { render, screen } from '@testing-library/react';
-
-import { CodeDisplay } from './index';
 
 const multiLineString = `
   typescript
@@ -32,5 +31,16 @@ describe('CodeDisplay', () => {
     const codeContent = screen.getByTestId('nv-code-snippet-code');
     expect(codeContent.textContent).toContain("console.log('Testing')");
     expect(codeContent.textContent).toContain("console.log('Testing Next Line')");
+  });
+
+  it('uses the chat code block light and dark grey backgrounds', () => {
+    render(<CodeDisplay>{multiLineString}</CodeDisplay>);
+
+    expect(screen.getByTestId('code-display')).toHaveClass('my-density-xs');
+    expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
+      '[&&]:bg-gray-050',
+      '[&&]:py-density-xs',
+      'dark:[&&]:bg-gray-900'
+    );
   });
 });

@@ -83,6 +83,9 @@ def normalize_dataset(
 
     path = Path(dataset)
     if not path.exists():
+        if pattern is None and is_glob_pattern(str(path)):
+            base_path, path_pattern = split_glob_path(path)
+            return load_dataset_as_dicts(base_path, path_pattern)
         raise FileNotFoundError(f"Dataset path does not exist: {path}")
 
     if path.is_dir():
@@ -128,6 +131,30 @@ def is_glob_pattern(pattern: str) -> bool:
     return any(c in pattern for c in glob_chars)
 
 
+def split_glob_path(path: Path) -> tuple[Path, str]:
+    """Split a glob path into a concrete base directory and relative glob pattern.
+
+    Args:
+        path: File path that contains at least one glob metacharacter.
+
+    Returns:
+        A base directory before the first glob segment and the remaining relative
+        glob pattern.
+
+    Raises:
+        ValueError: If ``path`` does not contain glob metacharacters.
+    """
+    parts = path.parts
+    for index, part in enumerate(parts):
+        if is_glob_pattern(part):
+            if index == 0:
+                base_path = Path(path.anchor) if path.is_absolute() else Path(".")
+            else:
+                base_path = Path(*parts[:index])
+            return base_path, str(Path(*parts[index:]))
+    raise ValueError(f"Path does not contain a glob pattern: {path}")
+
+
 def discover_files(base_path: Path, pattern: str | None) -> list[Path]:
     """Resolve dataset files under a base path.
 
@@ -150,18 +177,19 @@ def discover_files(base_path: Path, pattern: str | None) -> list[Path]:
             raise DatasetLoadError(f"No files found in {base_path}")
         return files
 
+    file_path = base_path / pattern
+    if file_path.exists():
+        if not file_path.is_file():
+            raise DatasetLoadError(f"Path is not a file: {file_path}")
+        return [file_path]
+
     if is_glob_pattern(pattern):
         files = list(base_path.glob(pattern))
         if not files:
             raise DatasetLoadError(f"No files found matching pattern '{pattern}' in {base_path}")
         return [f for f in files if f.is_file()]
 
-    file_path = base_path / pattern
-    if not file_path.exists():
-        raise DatasetLoadError(f"File not found: {file_path}")
-    if not file_path.is_file():
-        raise DatasetLoadError(f"Path is not a file: {file_path}")
-    return [file_path]
+    raise DatasetLoadError(f"File not found: {file_path}")
 
 
 def _discover_files(base_path: Path, pattern: str | None) -> list[Path]:

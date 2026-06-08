@@ -71,7 +71,7 @@ fi
 import os
 import pandas as pd
 from nemo_platform import NeMoPlatform
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Configure client
 client = NeMoPlatform(
@@ -262,7 +262,7 @@ for i, exp in enumerate(experiments):
 Configure differential privacy with custom parameters:
 
 ```python
-from nemo_platform.beta.safe_synthesizer.config import DifferentialPrivacyHyperparams
+from nemo_safe_synthesizer_plugin.sdk.config import DifferentialPrivacyHyperparams
 
 # Create custom privacy configuration
 privacy_config = DifferentialPrivacyHyperparams(

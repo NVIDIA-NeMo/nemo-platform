@@ -37,6 +37,28 @@ describe('MarkdownContent', () => {
     });
   });
 
+  describe('code blocks', () => {
+    it('uses light and dark grey backgrounds for fenced code', () => {
+      render(<MarkdownContent content={'```typescript\nconst value = 1;\n```'} />);
+
+      expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
+        '[&&]:bg-gray-050',
+        'dark:[&&]:bg-gray-900'
+      );
+    });
+
+    it('uses light and dark grey backgrounds with prose font for inline code', () => {
+      render(<MarkdownContent content="Use `const value = 1` inline." />);
+
+      expect(screen.getByTestId('nv-code-snippet-code')).toHaveClass(
+        '[&&]:bg-gray-050',
+        'dark:[&&]:bg-gray-900',
+        '[&&]:rounded',
+        '[&&]:font-sans'
+      );
+    });
+  });
+
   describe('blockquotes', () => {
     it('renders a plain blockquote when no callout marker is present', () => {
       render(<MarkdownContent content="> A regular quote." />);

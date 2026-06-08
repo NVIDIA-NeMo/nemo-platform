@@ -10,6 +10,7 @@ fixture + ``_NMP_STATE_DIR`` env var ensure all state goes to a temp directory.
 from __future__ import annotations
 
 import os
+import socket
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import ANY, MagicMock, patch
@@ -31,6 +32,13 @@ runner = CliRunner()
 
 _PROCESS_MODULE = "nemo_platform_ext.cli.commands.services._process"
 _CLI_MODULE = "nemo_platform_ext.cli.commands.services.cli"
+
+
+def _seed_stopped_scope(base_dir: Path, scope: str, *, log_content: str = "x\n") -> Path:
+    """Create a stopped instance directory with service logs."""
+    d = instance_dir(scope, base_dir=base_dir)
+    (d / "services.log").write_text(log_content)
+    return d
 
 
 _original_find_spec = __import__("importlib").util.find_spec
@@ -65,7 +73,7 @@ def test_services_group_is_registered():
 def test_services_help_lists_all_commands():
     result = runner.invoke(app, ["services", "--help"])
     assert result.exit_code == 0
-    for cmd in ("run", "start", "stop", "restart", "status", "ls", "logs"):
+    for cmd in ("run", "start", "stop", "restart", "status", "ls", "logs", "rm", "prune"):
         assert cmd in result.stdout, f"'{cmd}' not in help output"
 
 
@@ -224,6 +232,51 @@ def test_start_refuses_when_already_running(base_dir: Path):
         os.close(fd)
 
 
+def test_start_exits_early_when_port_occupied_by_foreign_process(base_dir: Path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.start_background") as mock_start,
+            patch(f"{_CLI_MODULE}.compute_scope", return_value=f"port-test-{port}"),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "start", "--port", str(port), "--instance", f"port-test-{port}"],
+            )
+
+    assert result.exit_code == 1
+    assert "already in use" in result.stderr
+    assert "lsof" in result.stderr
+    assert "services.log" not in result.stderr
+    mock_start.assert_not_called()
+
+
+def test_run_exits_early_when_port_occupied_by_foreign_process(base_dir: Path):
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", 0))
+        port = sock.getsockname()[1]
+        sock.listen(1)
+
+        with (
+            patch(f"{_CLI_MODULE}._require_services_extra"),
+            patch(f"{_CLI_MODULE}.compute_scope", return_value=f"run-port-test-{port}"),
+        ):
+            result = runner.invoke(
+                app,
+                ["services", "run", "--port", str(port), "--instance", f"run-port-test-{port}"],
+            )
+
+    assert result.exit_code == 1
+    assert "already in use" in result.stderr
+    assert "lsof" in result.stderr
+
+
 def test_start_reports_failure(base_dir: Path):
     mock_proc = MagicMock()
     mock_proc.pid = 88888
@@ -257,9 +310,11 @@ class TestServicesStop:
 
     def test_stops_running_services(self, base_dir: Path):
         with patch(f"{_CLI_MODULE}.stop_instance", return_value=StopResult(stopped_pids=[12345])):
-            result = runner.invoke(app, ["services", "stop", "--instance", "test"])
+            with patch(f"{_CLI_MODULE}.compute_scope", return_value="stop-scope"):
+                result = runner.invoke(app, ["services", "stop", "--instance", "stop-scope"])
         assert result.exit_code == 0
         assert "12345" in result.stdout
+        assert "nemo services rm stop-scope" in result.stdout
 
     def test_stop_timeout_option(self, base_dir: Path):
         with patch(f"{_CLI_MODULE}.stop_instance", return_value=StopResult(stopped_pids=[])) as mock_stop:
@@ -364,13 +419,48 @@ class TestServicesRestart:
         assert result.exit_code == 0
         assert "restarted" in result.stdout.lower()
 
+    def test_restart_exits_early_when_port_occupied_by_foreign_process(self, base_dir: Path):
+        scope = "restart-foreign-port"
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+            sock.listen(1)
+
+            desc = InstanceDescriptor(
+                pid=99999,
+                scope=scope,
+                host="127.0.0.1",
+                port=port,
+                mode="background",
+                create_time=1.0,
+            )
+            write_descriptor(desc, base_dir=base_dir)
+
+            with (
+                patch(f"{_CLI_MODULE}._require_services_extra"),
+                patch(f"{_CLI_MODULE}.stop_instance", return_value=StopResult(stopped_pids=[99999])),
+                patch(f"{_CLI_MODULE}.start_background") as mock_start,
+                patch(f"{_CLI_MODULE}.compute_scope", return_value=scope),
+            ):
+                result = runner.invoke(
+                    app,
+                    ["services", "restart", "--instance", scope, "--port", str(port)],
+                )
+
+        assert result.exit_code == 1
+        assert "already in use" in result.stderr
+        assert "lsof" in result.stderr
+        assert "services.log" not in result.stderr
+        mock_start.assert_not_called()
+
     def test_restart_preserves_previous_args(self, base_dir: Path):
         scope = "preserve-test"
         fd = acquire_lock(scope, base_dir=base_dir)
         desc = InstanceDescriptor(
             pid=os.getpid(),
             scope=scope,
-            host="10.0.0.1",
+            host="127.0.0.1",
             port=9000,
             mode="background",
             create_time=1.0,
@@ -401,7 +491,7 @@ class TestServicesRestart:
         _, kwargs = mock_start.call_args
         assert kwargs["services"] == ["entities", "models"]
         assert kwargs["controllers"] == ["jobs"]
-        assert kwargs["host"] == "10.0.0.1"
+        assert kwargs["host"] == "127.0.0.1"
         assert kwargs["port"] == 9000
 
 
@@ -451,7 +541,7 @@ class TestServicesLs:
     def test_no_instances(self, base_dir: Path):
         result = runner.invoke(app, ["services", "ls"])
         assert result.exit_code == 0
-        assert "No instances" in result.stdout
+        assert "No running instances" in result.stdout
 
     def test_lists_running_instance(self, base_dir: Path):
         scope = "ls-test"
@@ -474,6 +564,129 @@ class TestServicesLs:
         assert result.exit_code == 0
         assert scope in result.stdout
         assert "running" in result.stdout
+
+    def test_hides_stopped_by_default(self, base_dir: Path):
+        _seed_stopped_scope(base_dir, "stopped-hidden")
+
+        result = runner.invoke(app, ["services", "ls"])
+        assert result.exit_code == 0
+        assert "stopped-hidden" not in result.stdout
+        assert "1 stopped instance directory" in result.stdout
+        assert "ls --all" in result.stdout
+
+    def test_all_shows_stopped_with_footer(self, base_dir: Path):
+        _seed_stopped_scope(base_dir, "stopped-visible")
+
+        result = runner.invoke(app, ["services", "ls", "--all"])
+        assert result.exit_code == 0
+        assert "stopped-visible" in result.stdout
+        assert "stopped" in result.stdout
+        assert "nemo services prune" in result.stdout
+
+    def test_all_no_instances(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "ls", "--all"])
+        assert result.exit_code == 0
+        assert "No instances found" in result.stdout
+
+    def test_mixed_running_and_stopped(self, base_dir: Path):
+        running_scope = "running-mixed"
+        fd = acquire_lock(running_scope, base_dir=base_dir)
+        write_descriptor(
+            InstanceDescriptor(
+                pid=os.getpid(),
+                scope=running_scope,
+                host="127.0.0.1",
+                port=8080,
+                mode="background",
+                create_time=1.0,
+            ),
+            base_dir=base_dir,
+        )
+        _seed_stopped_scope(base_dir, "stopped-mixed")
+
+        try:
+            default = runner.invoke(app, ["services", "ls"])
+            all_rows = runner.invoke(app, ["services", "ls", "--all"])
+        finally:
+            os.close(fd)
+
+        assert default.exit_code == 0
+        assert running_scope in default.stdout
+        assert "stopped-mixed" not in default.stdout
+
+        assert all_rows.exit_code == 0
+        assert running_scope in all_rows.stdout
+        assert "stopped-mixed" in all_rows.stdout
+        assert "nemo services prune" in all_rows.stdout
+
+
+class TestServicesRm:
+    @pytest.mark.parametrize(
+        ("scope", "args"),
+        [
+            ("rm-cli", ["services", "rm", "rm-cli"]),
+            ("rm-flag", ["services", "rm", "--instance", "rm-flag"]),
+        ],
+    )
+    def test_rm_removes_stopped_scope(self, base_dir: Path, scope: str, args: list[str]) -> None:
+        d = _seed_stopped_scope(base_dir, scope)
+
+        result = runner.invoke(app, args)
+        assert result.exit_code == 0
+        assert f"Removed instance '{scope}'" in result.stdout
+        assert not d.exists()
+
+    def test_rm_not_found(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "rm", "missing-scope"])
+        assert result.exit_code == 1
+        assert "No stopped instance directory found" in result.stderr
+
+    def test_rm_refuses_running(self, base_dir: Path):
+        fd = acquire_lock("running-rm-cli", base_dir=base_dir)
+        try:
+            result = runner.invoke(app, ["services", "rm", "running-rm-cli"])
+        finally:
+            os.close(fd)
+        assert result.exit_code == 1
+        assert "still running" in result.stderr
+
+    def test_rm_requires_scope(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "rm"])
+        assert result.exit_code == 1
+        assert "Scope required" in result.stderr
+
+    def test_rm_rejects_invalid_scope(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "rm", "../escape"])
+        assert result.exit_code == 1
+        assert "Invalid instance scope" in result.stderr
+
+    def test_rm_rejects_conflicting_scope_args(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "rm", "scope-a", "--instance", "scope-b"])
+        assert result.exit_code != 0
+        assert "Cannot pass different values" in result.stderr
+
+
+class TestServicesPrune:
+    def test_prune_force_removes_stopped(self, base_dir: Path):
+        d = _seed_stopped_scope(base_dir, "prune-me")
+
+        result = runner.invoke(app, ["services", "prune", "--force"])
+        assert result.exit_code == 0
+        assert "prune-me" in result.stdout
+        assert not d.exists()
+
+    def test_prune_noop_when_clean(self, base_dir: Path):
+        result = runner.invoke(app, ["services", "prune", "--force"])
+        assert result.exit_code == 0
+        assert "No stopped instance directories" in result.stdout
+
+    def test_prune_cancelled(self, base_dir: Path):
+        d = _seed_stopped_scope(base_dir, "keep-me")
+
+        result = runner.invoke(app, ["services", "prune"], input="n\n")
+        assert result.exit_code == 0
+        assert "Prune cancelled" in result.stdout
+        assert d.exists()
 
 
 # ---------------------------------------------------------------------------

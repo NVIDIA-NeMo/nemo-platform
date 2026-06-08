@@ -41,31 +41,36 @@ Confirm the CLI is installed. If `.venv/bin/nemo` is missing, route to `nemo-set
 # Ground truth: anything listening on :8080?
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN (nothing on :8080)"; exit 1; }
 
-# Functional check: API answers?
-HTTP=$(curl -fsS http://localhost:8080/v1/models -o /dev/null -w "%{http_code}" 2>/dev/null || echo "no-response")
+# Functional check: platform readiness endpoint answers?
+HTTP=$(curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}" 2>/dev/null || echo "no-response")
 case "$HTTP" in
-  2[0-9][0-9]|4[0-9][0-9]) echo "PLATFORM_UP (HTTP $HTTP)" ;;
-  *)                       echo "PLATFORM_WEDGED (listener present, API returned $HTTP)"; exit 1 ;;
+  200) echo "PLATFORM_UP (HTTP $HTTP)" ;;
+  *)   echo "PLATFORM_WEDGED (listener present, /health/ready returned $HTTP)"; exit 1 ;;
 esac
 ```
 
 Do NOT use `nemo services status` or `nemo services ls` for this check. Both report stale "running" state from a held instance lock after the underlying process has died. `lsof` is ground truth.
 
-Only if both probes pass, run the remaining three to capture the other dashboard rows:
+Only if both probes pass, run the remaining commands to capture the other dashboard rows:
 
 ```bash
+curl -fsS --connect-timeout 2 --max-time 5 http://localhost:8080/status
 .venv/bin/nemo agents deployments list 2>/dev/null
 .venv/bin/nemo inference providers list
 .venv/bin/nemo models list | head -10
 ```
+
+The `/status` response is JSON; parse `services.ready`, `services.not_ready`, `controllers.healthy`, and `controllers.status` before rendering the summary block.
 
 2. **Present one summary block.** Illustrative format (adapt fields to whatever the CLI returns; do not invent ones the commands above did not produce):
 
 ```
 NeMo Platform status
 
-Platform:   running
-Agents:     <count>
+Platform:    running
+Services:    <ready_count> ready, <not_ready_count> not ready
+Controllers: healthy
+Agents:      <count>
   <name1> active
   <name2> stopped
 Providers:
@@ -92,15 +97,15 @@ For drill-downs:
 
 ## Verification
 
-Status is itself a verification: the four commands together prove the platform is reachable, the agents plugin is loaded (or not), the provider is registered, and at least one model has been discovered. If any of the four returns an error, surface it in the summary block rather than hiding it.
+Status is itself a verification: the commands together prove the platform is reachable, platform services/controllers are healthy, the agents plugin is loaded (or not), the provider is registered, and at least one model has been discovered. If any command returns an error, surface it in the summary block rather than hiding it.
 
 ## If verification fails
 
 | Symptom | Cause | Recovery |
 |---|---|---|
 | `PLATFORM_DOWN` from probe | Nothing bound to :8080 | Route to `nemo-setup`; do not run the other three commands |
-| `PLATFORM_WEDGED` from probe | Listener exists, API not answering — likely a crashed or partially-started platform | Tail `.venv/bin/nemo services logs -n 100` and surface the error. Common cause is a stale instance lock; the user can clear it with `nemo services stop --force` then re-run `nemo services run`. |
-| `nemo services ls` shows `running` with empty PID/address column | Held instance lock, no live process | Advisory only — trust the `lsof` probe above. Tell the user the lock is stale; offer `nemo services stop --force` to clear it. |
+| `PLATFORM_WEDGED` from probe | Listener exists, but `/health/ready` is not returning 200 — likely a crashed, partially-started, or not-ready platform | Tail `.venv/bin/nemo services logs -n 100` and surface the error. Common cause is a stale instance lock; the user can clear it with `nemo services stop --force` then re-run `nemo services run`. |
+| `.venv/bin/nemo services ls` shows stopped rows with `-` for PID/address | Stopped instance directory on disk (logs may remain) | Run `.venv/bin/nemo services ls --all` for the full list. Remove with `.venv/bin/nemo services prune` or `.venv/bin/nemo services rm <scope>`. Cross-check liveness with `lsof -iTCP:8080 -sTCP:LISTEN`. |
 | `agents deployments list` returns "no such command" | Agents plugin not installed | Note in the summary: "Agents: plugin not installed"; do not fail the dashboard |
 | `inference providers list` empty | Provider not registered | Route to `nemo-setup` Step 4 (configure) |
 | `models list` empty for more than 60s after setup | Model discovery still running | Re-run after 30s; report the wait time |
@@ -110,6 +115,6 @@ Status is itself a verification: the four commands together prove the platform i
 
 - **Read-only means read-only.** Never run `create`, `delete`, `stop`, or any state-changing command from this skill, even if the dashboard suggests something is broken. Route to setup or teardown for state changes.
 - **`agents deployments list` requires the agents plugin.** If it returns "no such command", the user has not installed the agents plugin yet; note that explicitly rather than failing silently.
-- **`nemo services status` and `nemo services ls` lie about liveness.** After a `nemo services run` process dies, the instance lock at `~/.local/state/nemo/instances/<scope>.lock` sticks around. Both commands keep reporting `running` against that stale lock with no PID and no address. Always cross-check against `lsof -iTCP:8080 -sTCP:LISTEN` before believing them.
+- **`.venv/bin/nemo services ls` defaults to running instances only.** Use `.venv/bin/nemo services ls --all` to see stopped instance directories that still have logs on disk. Remove them with `.venv/bin/nemo services prune` or `.venv/bin/nemo services rm <scope>`. For liveness, cross-check against `lsof -iTCP:8080 -sTCP:LISTEN`.
 - **Status is a snapshot.** A model still discovering will show as missing. Re-run after 30 seconds if the user just finished setup.
 - **Use `.venv/bin/nemo`, not bare `nemo`.** Bash sessions do not carry venv activation across calls.

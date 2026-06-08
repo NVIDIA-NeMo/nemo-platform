@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { useState, useEffect, useCallback, SetStateAction, Dispatch } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
@@ -210,8 +211,8 @@ export function useTableFilters<TFilterState extends BaseFilterState>({
     return '';
   });
 
-  const [debouncedFilterState] = useDebounce(filterState, 300);
-  const [debouncedTextSearch] = useDebounce(textSearch, 300);
+  const [debouncedFilterState] = useDebounce(filterState, DEFAULT_DEBOUNCE_MS);
+  const [debouncedTextSearch] = useDebounce(textSearch, DEFAULT_DEBOUNCE_MS);
 
   // Reset filters function
   const resetFilters = useCallback(() => {

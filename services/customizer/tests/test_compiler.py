@@ -13,12 +13,12 @@ import pytest
 from nemo_platform import AsyncNeMoPlatform, NotFoundError
 from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform_plugin.jobs.api_factory import _validate_and_resolve_job_output
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.client import EntityClient
 from nmp.common.entities.constants import NAME_PATTERN
 from nmp.common.entities.utils import get_random_id
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.image import get_qualified_image
 from nmp.customizer.api.v2.jobs.schemas import CustomizationJobInput, CustomizationJobOutput
 from nmp.customizer.app.constants import (
     DEFAULT_DATASET_PATH,

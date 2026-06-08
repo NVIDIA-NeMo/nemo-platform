@@ -2,7 +2,7 @@ openapi: 3.1.0
 info:
   title: Nemo Platform API
   description: API for Nemo Platform services
-  version: 0.1.1
+  version: 0.1.3
 paths:
   /apis/auth/discovery:
     get:
@@ -6180,7 +6180,8 @@ paths:
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
         description: Filter experiments by name, experiment_group_id, agent_name,
-          and dataset_name.
+          agent_version, dataset_name, dataset_version, created_by, created_at, or
+          updated_at.
       responses:
         '200':
           description: Successful Response
@@ -10628,6 +10629,14 @@ components:
       title: AtifImageSource
     AtifIngestRequest:
       properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         schema_version:
           type: string
           enum:
@@ -10643,8 +10652,6 @@ components:
         session_id:
           title: Session Id
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
         agent:
           $ref: '#/components/schemas/AtifAgent'
         final_metrics:
@@ -10675,7 +10682,7 @@ components:
 
         ATIF project scoping is intentionally not accepted here; use the workspace
 
-        route and ``evaluation_context`` for evaluation/run identity.'
+        route and ``experiment_context`` for experiment identity.'
     AtifMetrics:
       properties:
         prompt_tokens:
@@ -12225,6 +12232,14 @@ components:
       description: User message parameter for chat completion.
     ChatCompletionsIngestRequest:
       properties:
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
+        evaluation_context:
+          allOf:
+          - $ref: '#/components/schemas/EvaluationContext'
+          description: Deprecated. Use experiment_context; when both are sent, experiment_context
+            takes precedence.
+          deprecated: true
         request:
           $ref: '#/components/schemas/CapturedChatCompletionsRequest'
         response:
@@ -12240,8 +12255,6 @@ components:
             This is not a grouping mechanism for chat-completions calls; use session_id
             to group related calls.
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/EvaluationContext'
         provider:
           title: Provider
           type: string
@@ -14604,10 +14617,14 @@ components:
         p99:
           title: P99
           type: number
+        count:
+          type: integer
+          title: Count
+          default: 0
       type: object
       title: EvaluatorAggregate
-      description: Cross-run statistics for one evaluator. Populated by the rollup
-        path (later PR).
+      description: Aggregate statistics over evaluator scores or session-level metric
+        values.
     EvaluatorResult:
       properties:
         evaluator_result_id:
@@ -15035,6 +15052,22 @@ components:
       - action_name
       title: ExecutedAction
       description: Information about an action that was executed.
+    ExperimentContext:
+      properties:
+        experiment_id:
+          type: string
+          title: Experiment Id
+          description: Name of an existing Experiment entity.
+        test_case_id:
+          title: Test Case Id
+          description: Optional producer-supplied test case id.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - experiment_id
+      title: ExperimentContext
+      description: Experiment context accepted by ingest endpoints.
     ExperimentFilter:
       additionalProperties: false
       description: Filter for listing Experiments.
@@ -15051,10 +15084,32 @@ components:
           description: Filter experiments by agent name.
           title: Agent Name
           type: string
+        agent_version:
+          description: Filter experiments by agent version.
+          title: Agent Version
+          type: string
         dataset_name:
           description: Filter experiments by dataset name.
           title: Dataset Name
           type: string
+        dataset_version:
+          description: Filter experiments by dataset version.
+          title: Dataset Version
+          type: string
+        created_by:
+          description: Filter experiments by the principal that created them.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by creation timestamp; supports `$gte` and
+            `$lte` for ranges.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by last-updated timestamp; supports `$gte`
+            and `$lte` for ranges.
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -15251,7 +15306,10 @@ components:
           items:
             type: string
           type: array
+          uniqueItems: true
           title: Model Names
+          description: Distinct model names observed across ingested sessions for
+            this experiment.
         aggregate_scores:
           title: Aggregate Scores
           additionalProperties:
@@ -15260,7 +15318,13 @@ components:
         run_count:
           type: integer
           title: Run Count
+          description: Number of distinct ingested experiment sessions; one session
+            is treated as one run.
           default: 0
+        cost_usd:
+          $ref: '#/components/schemas/EvaluatorAggregate'
+        latency_ms:
+          $ref: '#/components/schemas/EvaluatorAggregate'
       type: object
       required:
       - id

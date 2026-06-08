@@ -50,9 +50,13 @@ app = typer.Typer(
 
 
 def _build_top_level_lazy_entries() -> tuple[TopLevelEntry, ...]:
+    plugin_entry_points = _installed_plugin_command_entry_points()
+    # Plugin `nemo.cli` entry points own their command name (e.g. safe-synthesizer).
+    # Drop generated API top-level groups with the same name so run-local/runtime stay available.
+    api_entries = tuple(entry for entry in API_TOP_LEVEL_ENTRIES if entry.name not in plugin_entry_points)
     return build_top_level_entries(
-        (*TOP_LEVEL_ENTRIES, *API_TOP_LEVEL_ENTRIES),
-        _installed_plugin_command_entry_points(),
+        (*TOP_LEVEL_ENTRIES, *api_entries),
+        plugin_entry_points,
         include_hidden=True,
     )
 
@@ -295,9 +299,6 @@ def main(
             raise typer.Exit(code=1)
         except Exception as e:
             typer.echo(f"Warning: Failed to check/refresh token: {e}", err=True)
-
-    if ctx.invoked_subcommand is None:
-        typer.echo(ctx.get_help())
 
 
 attach_lazy_entries(main, _build_top_level_lazy_entries())

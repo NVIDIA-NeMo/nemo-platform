@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import copy
 from collections.abc import Sequence
-from typing import cast
+from typing import TypeGuard, cast
 
 from nemo_platform.beta.evaluator.execution._protocols import JobParamsConfigurableMetric
 from nemo_platform.beta.evaluator.metrics.protocol import Metric, MetricWithModels, MetricWithPreflight, MetricWithSecrets
@@ -35,6 +35,20 @@ def unique_metric_keys(metrics: Sequence[Metric]) -> list[str]:
         suffix = seen[base]
         keys.append(base if suffix == 1 else f"{base}_{suffix}")
     return keys
+
+
+def is_metric(metrics: object) -> TypeGuard[Metric]:
+    """Return whether a value is the single-metric form."""
+    if isinstance(metrics, Metric):
+        return True
+    return False
+
+
+def is_metric_sequence(metrics: object) -> TypeGuard[Sequence[Metric]]:
+    """Return whether a value is the benchmark/multi-metric form."""
+    if not isinstance(metrics, Metric) and isinstance(metrics, Sequence) and not isinstance(metrics, (str, bytes)):
+        return all(isinstance(metric, Metric) for metric in metrics)
+    return False
 
 
 def copy_metric(metric: Metric) -> Metric:

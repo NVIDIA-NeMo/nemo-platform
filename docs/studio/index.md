@@ -4,7 +4,7 @@
 !!! note
     Studio is still in early development. Many features are missing or should be expected to change.
 
-{{studio_short_name}} is the web app for AI development with NVIDIA {{platform_name}}. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with datasets, jobs, and secrets.
+{{studio_short_name}} is the web app for AI development with NVIDIA {{platform_name}}. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with filesets, jobs, and secrets.
 
 ---
 
@@ -54,6 +54,17 @@ You can upload any file type into a fileset. However, each service supports spec
 | Service | Supported File Types |
 | --------------------------------------------------- | ------------------------------------- |
 | [Data Designer](../data-designer/index.md) | `.json`, `.jsonl`, `.csv`, `.parquet` |
+
+### Evaluations
+
+**Evaluations** appears in two separate sidebar groups because it covers two distinct scopes:
+
+| Location | What it shows |
+| -------- | ------------- |
+| **Agents > Evaluations** | Evaluation runs scoped to a specific agent — results tied to agent deployments and versions. |
+| **Evaluate > Evaluations** | All evaluation results across the workspace, regardless of which agent or model was evaluated. |
+
+Use **Agents > Evaluations** when reviewing how a specific agent performed. Use **Evaluate > Evaluations** for a broader view of evaluation history across the workspace.
 
 ### Jobs
 

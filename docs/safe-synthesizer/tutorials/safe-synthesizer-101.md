@@ -73,8 +73,11 @@ try:
     print("✅ Successfully connected to Safe Synthesizer service")
     print(f"Found {len(jobs.data)} existing jobs")
 except Exception as e:
-    print(f"❌ Cannot connect to service: {e}")
-    print("Please verify base_url and service status")
+    raise RuntimeError(
+        "Cannot connect to the {{nss_short_name}} service. Restart the platform after installing "
+        "the {{nss_plugin_slug}} plugin, then verify that /apis/{{nss_plugin_slug}}/v2/workspaces/default/jobs "
+        "appears in the platform OpenAPI schema."
+    ) from e
 ```
 
 ---
@@ -85,7 +88,7 @@ For this tutorial, we'll use a women's clothing reviews dataset from Kaggle that
 
 ```python
 import pandas as pd
-import kagglehub  # type: ignore[import-not-found]
+import kagglehub
 
 # Download the dataset
 path = kagglehub.dataset_download("nicapotato/womens-ecommerce-clothing-reviews")
@@ -116,7 +119,13 @@ Before running jobs, set up column classification for accurate PII detection.
 ```python
 # Use the pre-configured NVIDIA Build model provider
 # This provider is set up automatically during platform deployment
-provider_name = "system/nvidia-build"
+provider_name = os.environ.get("NSS_CLASSIFY_MODEL_PROVIDER", "default/nvidia-build")
+if "/" in provider_name:
+    provider_workspace, provider_id = provider_name.split("/", 1)
+    client.inference.providers.retrieve(provider_id, workspace=provider_workspace)
+else:
+    provider_id = provider_name
+    client.inference.providers.retrieve(provider_id)
 print(f"✅ Using model provider: {provider_name}")
 ```
 
@@ -141,6 +150,8 @@ if hf_token:
     # Store your HuggingFace token as a platform secret
     client.secrets.create(workspace="default", name=hf_secret_name, value=hf_token)
     print(f"✓ Created secret: {hf_secret_name}")
+else:
+    hf_secret_name = None
 ```
 
 ## Step 7: Create and Run a Safe Synthesizer Job
@@ -149,7 +160,7 @@ Use the `SafeSynthesizerJobBuilder` to configure and create a job:
 
 ```python
 import pandas as pd
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Create a project for our jobs (creates if it doesn't exist)
 project_name = "test-project"
@@ -164,7 +175,7 @@ builder = (
     SafeSynthesizerJobBuilder(client)
     .with_data_source(df)
     .with_classify_model_provider(provider_name)  # Enable column classification
-    .with_replace_pii()  # Enable PII replacement
+    .with_replace_pii()  # Enable PII detection and replacement
     .synthesize()  # Enable synthesis
 )
 
@@ -226,10 +237,10 @@ except RuntimeError as e:
 
 If the job fails with **"No GPUs available on this system"**, ensure your quickstart is configured with GPU access:
 
+<!-- @nemo-nb: cell markdown -->
+
 ```bash
-nemo quickstart configure
-# Select "host-gpu" when prompted
-nemo quickstart up
+nemo setup --start-services
 ```
 
 Verify GPU access with `nvidia-smi` on the host.
@@ -239,6 +250,8 @@ Verify GPU access with `nvidia-smi` on the host.
 ## Step 9: Retrieve Synthetic Data
 
 Once the job is complete, retrieve the generated synthetic data:
+
+<!-- @nemo-nb: cell python -->
 
 ```python
 synthetic_df = job.fetch_data()
@@ -301,25 +314,57 @@ job.display_report_in_notebook()
 
 ---
 
+## Step 11: Generate More Records from the Same Adapter
+
+The completed job stores its LoRA adapter as an `adapter` result in Files. You can submit a second job with `pretrained_model_job` to reuse that adapter and skip training. This is useful when you want more synthetic records from the same trained model.
+
+```python
+reuse_job_name = f"synthesis-reuse-{pd.Timestamp.now().strftime('%Y%m%d-%H%M%S')}"
+reuse_builder = (
+    SafeSynthesizerJobBuilder(client)
+    .with_data_source(df)
+    .with_pretrained_model_job(job.job_name)
+    .with_generate(num_records=100)
+)
+
+reuse_job = reuse_builder.create_job(name=reuse_job_name, project=project_name)
+print(f"✅ Adapter reuse job created: {reuse_job.job_name}")
+```
+
+Wait for the generation-only job and fetch the additional records:
+
+```python
+print("⏳ Waiting for adapter reuse job to complete...")
+try:
+    reuse_job.wait_for_completion()
+    print("✅ Adapter reuse job completed!")
+except RuntimeError as e:
+    print(f"❌ Adapter reuse job failed: {e}")
+    raise
+
+additional_synthetic_df = reuse_job.fetch_data()
+print(f"✅ Generated {len(additional_synthetic_df)} additional synthetic records")
+print(additional_synthetic_df.head())
+```
+
+`pretrained_model_job` accepts either a job in the current workspace (`job.job_name`) or a fully-qualified `<workspace>/<job>` reference. Do not set `config.training.pretrained_model` when using `pretrained_model_job`; that local path field is only for `run-local` workflows.
+
+---
+
 ## Understanding the Results
 
 ### Interpreting Scores
 
-The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](../about/evaluation.md).
+The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better.
 
 ---
 
 ## Next Steps
 
-Now that you've completed your first Safe Synthesizer job, explore more advanced features:
+Now that you've completed your first Safe Synthesizer job, try the local CLI path:
 
-### Advanced Tutorials
-
-- [Differential Privacy Tutorial](differential-privacy.md) - Apply mathematical privacy guarantees
-
-### Documentation
-
-- [index](../about/index.md) - Understand core concepts
+- [Local and Subprocess Execution](../about/host-local-development.md) - run Safe Synthesizer directly on a host GPU
+- [Getting Started](../getting-started.md) - review local runtime prerequisites
 
 ### Try These Next
 
@@ -368,7 +413,7 @@ print(f"Total jobs: {len(all_jobs.data)}")
 - Use smaller model (adjust `training.pretrained_model`)
 - Check GPU availability
 
-For more help, see [jobs](../about/jobs.md).
+For local CLI failures, see [Local and Subprocess Execution](../about/host-local-development.md).
 
 **Error: "Dataset must have at least 200 records to use holdout."**
 

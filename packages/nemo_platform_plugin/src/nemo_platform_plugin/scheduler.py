@@ -151,6 +151,7 @@ class NemoJobScheduler:
         options: dict | None = None,
         metadata: dict | None = None,
         http_client: httpx.Client | None = None,
+        headers: dict[str, str] | None = None,
         timeout: float = 30.0,
     ) -> dict:
         """POST the job to the plugin service's per-job submit route.
@@ -173,6 +174,8 @@ class NemoJobScheduler:
             http_client: Optional injected :class:`httpx.Client`. Defaults
                 to a short-lived client per call; tests supply a mock
                 transport.
+            headers: Optional per-request headers (e.g. ``Authorization`` from
+                the CLI). Merged on each POST; not inferred from *http_client*.
             timeout: Request timeout in seconds.
 
         Returns:
@@ -184,7 +187,7 @@ class NemoJobScheduler:
         """
         url = self._build_submit_url(job_cls, base_url=base_url, workspace=workspace)
         body = self._build_submit_body(spec, profile=profile, options=options, metadata=metadata)
-        return self._post_submit(url, body, http_client=http_client, timeout=timeout)
+        return self._post_submit(url, body, http_client=http_client, headers=headers, timeout=timeout)
 
     # ------------------------------------------------------------------ #
     # Schema discovery                                                   #
@@ -373,6 +376,7 @@ class NemoJobScheduler:
         body: dict[str, Any],
         *,
         http_client: httpx.Client | None,
+        headers: dict[str, str] | None,
         timeout: float,
     ) -> dict:
         """POST *body* to *url* and return the decoded JSON response.
@@ -380,12 +384,13 @@ class NemoJobScheduler:
         Uses *http_client* when provided; otherwise opens a short-lived
         client per call.
         """
+        request_headers = dict(headers) if headers else None
         logger.debug("submit_remote POST %s", url)
         if http_client is not None:
-            response = http_client.post(url, json=body, timeout=timeout)
+            response = http_client.post(url, json=body, headers=request_headers, timeout=timeout)
         else:
             with httpx.Client(timeout=timeout) as client:
-                response = client.post(url, json=body)
+                response = client.post(url, json=body, headers=request_headers)
         response.raise_for_status()
         return response.json()
 
@@ -430,25 +435,30 @@ def _local_runtime_env(ctx: JobContext):
     :class:`JobContext` with tempdir-backed storage and exposes the
     same envvars here so unmodified task code keeps working.
 
-    Caller-set values win — we only fill envvars that aren't already set,
-    and we restore the prior environment on exit so tests and back-to-back
+    Caller-set storage values win — we only fill storage envvars that aren't
+    already set. The workspace envvar always reflects the current local
+    context so a parent job's workspace does not leak into nested local runs.
+    Prior environment values are restored on exit so tests and back-to-back
     calls don't leak state.
     """
-    overrides: dict[str, str] = {
+    storage_overrides: dict[str, str] = {
         _PERSISTENT_STORAGE_ENVVAR: str(ctx.storage.persistent),
         _EPHEMERAL_STORAGE_ENVVAR: str(ctx.storage.ephemeral),
-        _WORKSPACE_ENVVAR: ctx.workspace,
     }
     # Scheduler-built local contexts leave job_id as ``None``. Explicit
     # caller-provided contexts may still mirror a job id for legacy code.
+    force_overrides: dict[str, str] = {_WORKSPACE_ENVVAR: ctx.workspace}
     if ctx.job_id is not None:
-        overrides[_JOB_ID_ENVVAR] = ctx.job_id
+        force_overrides[_JOB_ID_ENVVAR] = ctx.job_id
     saved: dict[str, str | None] = {}
     try:
-        for key, value in overrides.items():
+        for key, value in storage_overrides.items():
             if key in os.environ:
                 continue  # respect explicit caller setup
             saved[key] = None
+            os.environ[key] = value
+        for key, value in force_overrides.items():
+            saved[key] = os.environ.get(key)
             os.environ[key] = value
         yield
     finally:

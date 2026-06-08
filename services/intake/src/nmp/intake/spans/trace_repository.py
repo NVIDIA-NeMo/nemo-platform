@@ -211,7 +211,7 @@ def _trace_summary_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[
             nullIf({root_alias}.end_time, {_ZERO_DATETIME_SQL}) AS ended_at,
             {root_alias}.attributes_string AS root_attributes_string,
             {root_alias}.event_ts AS ingested_at
-        FROM {_current_spans_sql(table)} AS {root_alias}
+        FROM {current_spans_sql(table)} AS {root_alias}
         WHERE {base_where_sql}
         ORDER BY {root_alias}.start_time ASC, {root_alias}.id ASC
         LIMIT 1 BY {root_alias}.workspace, {root_alias}.source_format, {root_alias}.trace_id
@@ -228,7 +228,7 @@ def _trace_status_sql(table: str, filters: TraceListFilter) -> tuple[str, dict[s
             {source_alias}.source_format AS source_format,
             {source_alias}.trace_id AS trace_id,
             {_rolled_up_status_sql(source_alias)} AS status
-        FROM {_current_spans_sql(table)} AS {source_alias}
+        FROM {current_spans_sql(table)} AS {source_alias}
         WHERE {base_where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
@@ -265,7 +265,7 @@ def _trace_aggregates_sql(table: str, filters: TraceListFilter) -> tuple[str, di
             )) AS providers,
             count() AS span_count,
             countIf({source_alias}.status = 'error') AS error_count
-        FROM {_current_spans_sql(table)} AS {source_alias}
+        FROM {current_spans_sql(table)} AS {source_alias}
         WHERE {base_where_sql}
         GROUP BY {source_alias}.workspace, {source_alias}.source_format, {source_alias}.trace_id
     """
@@ -381,14 +381,14 @@ def _candidate_subquery(
     return (
         f"""
         SELECT workspace, source_format, trace_id
-        FROM {_current_spans_sql(table)} AS candidate_spans
+        FROM {current_spans_sql(table)} AS candidate_spans
         WHERE {" AND ".join(clauses)}
         """,
         parameters,
     )
 
 
-def _current_spans_sql(table: str) -> str:
+def current_spans_sql(table: str, *, extra_where_sql: str | None = None) -> str:
     source_alias = "span_versions"
     columns = [
         *[f"{source_alias}.{column} AS {column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS],
@@ -399,12 +399,15 @@ def _current_spans_sql(table: str) -> str:
     ]
     columns_sql = ",\n                ".join(columns)
     group_by_sql = ", ".join(f"{source_alias}.{column}" for column in _CURRENT_SPAN_IDENTITY_COLUMNS)
+    where_sql = f"{source_alias}.workspace = %(workspace)s"
+    if extra_where_sql is not None:
+        where_sql = f"{where_sql}\n                AND {extra_where_sql}"
     return f"""
         (
             SELECT
                 {columns_sql}
             FROM {table} AS {source_alias}
-            WHERE {source_alias}.workspace = %(workspace)s
+            WHERE {where_sql}
             GROUP BY {group_by_sql}
         )
     """

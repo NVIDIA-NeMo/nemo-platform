@@ -5,9 +5,11 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Response, status
+from nmp.common.entities.client import EntityClient
+from nmp.common.service.dependencies import get_entity_client
 from nmp.intake.spans.api.dependencies import SpansServiceDep, require_workspace_access
 from nmp.intake.spans.domain import TraceBatch
 from nmp.intake.spans.ingest.atif_domain import (
@@ -20,26 +22,27 @@ from nmp.intake.spans.ingest.atif_domain import (
     validate_atif_tool_call_references,
 )
 from nmp.intake.spans.ingest.atif_mapping import trajectory_to_evaluator_results, trajectory_to_spans
-from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
+from nmp.intake.spans.ingest.evaluation_context import ExperimentContextIngestModel
+from nmp.intake.spans.ingest.experiment_context_validation import validate_experiment_context
 from nmp.intake.spans.storage import utc_now
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 API_TAG = "Ingest"
+EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 
 
-class AtifIngestRequest(BaseModel):
+class AtifIngestRequest(ExperimentContextIngestModel):
     """Span-based ATIF ingest request.
 
     ATIF project scoping is intentionally not accepted here; use the workspace
-    route and ``evaluation_context`` for evaluation/run identity.
+    route and ``experiment_context`` for experiment identity.
     """
 
     model_config = ConfigDict(extra="forbid")
 
     schema_version: AtifSchemaVersion
     session_id: str | None = None
-    evaluation_context: EvaluationContext | None = None
     agent: AtifAgent
     final_metrics: AtifFinalMetrics | None = None
     continued_trajectory_ref: str | None = None
@@ -63,7 +66,7 @@ class AtifIngestRequest(BaseModel):
             continued_trajectory_ref=self.continued_trajectory_ref,
             notes=self.notes,
             extra=self.extra,
-            evaluation_context=self.evaluation_context,
+            evaluation_context=self.resolved_evaluation_context(),
             **kwargs,
         )
 
@@ -78,7 +81,13 @@ async def ingest_atif(
     workspace: str,
     body: AtifIngestRequest,
     service: SpansServiceDep,
+    entity_client: EntityClientDep,
 ) -> Response:
+    await validate_experiment_context(
+        workspace=workspace,
+        context=body.resolved_evaluation_context(),
+        entity_client=entity_client,
+    )
     ingested_at = utc_now()
     trajectory = body.to_trajectory()
     spans = trajectory_to_spans(

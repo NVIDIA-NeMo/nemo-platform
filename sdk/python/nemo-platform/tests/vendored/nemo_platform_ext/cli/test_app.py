@@ -75,6 +75,112 @@ def test_no_arg_help_exits_successfully(argv: list[str], expected_text: str):
     assert expected_text in result.stdout
 
 
+def test_root_no_arg_help_includes_active_context_and_workspace(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+current_context: production
+clusters:
+  - name: production
+    base_url: https://api.example.com
+users:
+  - name: production
+    type: no-auth
+contexts:
+  - name: production
+    cluster: production
+    user: production
+    workspace: prod-ns
+"""
+    )
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+
+    runner = CliRunner()
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Active context: production (workspace: prod-ns)" in result.stdout
+    assert result.stdout.count("Active context:") == 1
+    assert result.stdout.index("Active context:") < result.stdout.index("Usage:")
+
+
+def test_root_help_includes_active_context_and_workspace(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+current_context: production
+clusters:
+  - name: production
+    base_url: https://api.example.com
+users:
+  - name: production
+    type: no-auth
+contexts:
+  - name: production
+    cluster: production
+    user: production
+    workspace: prod-ns
+"""
+    )
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["--help"])
+
+    assert result.exit_code == 0
+    assert "Active context: production (workspace: prod-ns)" in result.stdout
+    assert result.stdout.count("Active context:") == 1
+    assert result.stdout.index("Active context:") < result.stdout.index("Usage:")
+
+
+def test_root_no_arg_help_honors_context_env_override(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        """
+current_context: production
+clusters:
+  - name: production
+    base_url: https://api.example.com
+  - name: staging
+    base_url: https://staging.example.com
+users:
+  - name: production
+    type: no-auth
+  - name: staging
+    type: no-auth
+contexts:
+  - name: production
+    cluster: production
+    user: production
+    workspace: prod-ns
+  - name: staging
+    cluster: staging
+    user: staging
+    workspace: staging-ns
+"""
+    )
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(config_path))
+    monkeypatch.setenv("NMP_CURRENT_CONTEXT", "staging")
+
+    runner = CliRunner()
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Active context: staging (workspace: staging-ns)" in result.stdout
+    assert "Active context: production" not in result.stdout
+
+
+def test_root_no_arg_help_skips_active_context_when_config_unavailable(tmp_path, monkeypatch):
+    monkeypatch.setenv("NMP_CONFIG_FILE", str(tmp_path / "missing.yaml"))
+
+    runner = CliRunner()
+    result = runner.invoke(app, [])
+
+    assert result.exit_code == 0
+    assert "Usage:" in result.stdout
+    assert "Active context:" not in result.stdout
+
+
 def test_generated_api_group_no_arg_help_exits_successfully():
     runner = CliRunner()
     qs_config = QuickstartConfig(auth_enabled=False)
@@ -264,6 +370,45 @@ def test_lazy_group_help_uses_loaded_group_help():
     assert "Read NeMo Platform documentation." in result.stdout
     assert "Read NeMo Platform documentation from the CLI." not in result.stdout
     assert "--list" in result.stdout
+
+
+def test_build_top_level_lazy_entries_prefers_plugin_over_api_name_collision():
+    from nemo_platform.cli.app import _build_top_level_lazy_entries
+
+    plugin_entry_points = {
+        "safe-synthesizer": SimpleNamespace(value="nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"),
+    }
+    api_entries = (
+        TopLevelEntry(
+            import_path="nemo_platform.cli.commands.api.safe_synthesizer:app",
+            name="safe-synthesizer",
+            help="Safe Synthesizer operations.",
+            panel="Functional plugins",
+            kind="group",
+        ),
+        TopLevelEntry(
+            import_path="nemo_platform.cli.commands.api.files:app",
+            name="files",
+            help="Manage files.",
+            panel="Core plugins",
+            kind="group",
+        ),
+    )
+
+    with (
+        patch("nemo_platform.cli.app.TOP_LEVEL_ENTRIES", ()),
+        patch("nemo_platform.cli.app.API_TOP_LEVEL_ENTRIES", api_entries),
+        patch(
+            "nemo_platform.cli.app._installed_plugin_command_entry_points",
+            return_value=plugin_entry_points,
+        ),
+    ):
+        entries = _build_top_level_lazy_entries()
+
+    by_name = {entry.name: entry for entry in entries}
+    assert set(by_name) == {"files", "safe-synthesizer"}
+    assert by_name["files"].source == "module"
+    assert by_name["safe-synthesizer"].source == "plugin"
 
 
 def test_plugin_entry_point_name_collision_is_skipped(caplog):

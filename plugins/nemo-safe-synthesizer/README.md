@@ -8,11 +8,11 @@ Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the 
 - The Safe Synthesizer plugin installed as a local editable plugin.
 - The separate Safe Synthesizer runtime venv created with the engine/CUDA dependencies.
 - A Safe Synthesizer job spec, such as `nss-job.json`.
-- A running Files API if the job references platform filesets.
+- A running platform only if you use platform filesets, Jobs APIs, or `pretrained_model_job`. Pure `run-local` with `--data-source` does not require it.
 
 ## Steps
 
-=== "CLI"
+=== "Managed local subprocess"
 
     1. Sync the workspace and install this plugin outside the root lock:
 
@@ -26,32 +26,40 @@ Use the Safe Synthesizer plugin to run a job on a host GPU while preserving the 
        uv run nemo safe-synthesizer runtime setup
        ```
 
-    3. Create the model filesets used for offline model cache initialization:
+    3. (Optional, platform jobs only) After `curl -s http://localhost:8080/health/ready`, register model filesets:
 
        ```bash
        uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
        ```
 
-    4. Run the job locally:
+    4. Run the job locally through the public plugin CLI:
 
        ```bash
-       uv run nemo safe-synthesizer run-local --workspace default --spec-file nss-job.json --output-dir ./nss-output
+       uv run nemo safe-synthesizer run-local \
+         --workspace default \
+         --spec-file nss-job.json \
+         --data-source ./input.csv \
+         --output-dir ./nss-output
        ```
 
-=== "Managed Runtime"
+=== "Direct local task"
 
     1. Sync the workspace, install this plugin outside the root lock, and create the runtime venv:
 
        ```bash
        BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
        uv run nemo safe-synthesizer runtime setup
-       uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
        ```
 
-    2. Run the same local job through the managed runtime:
+    2. Run the task module directly with the configured runtime Python:
 
        ```bash
-       uv run nemo safe-synthesizer run-local --workspace default --spec-file nss-job.json --output-dir ./nss-output
+       $(uv run nemo safe-synthesizer runtime info | awk -F': ' '/^python:/ {print $2}') \
+         -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer run-local \
+         --workspace default \
+         --spec-file nss-job.json \
+         --data-source ./input.csv \
+         --output-dir ./nss-output
        ```
 
 The command writes generated data, summaries, and any adapter output under `./nss-output`.
@@ -60,10 +68,11 @@ The command writes generated data, summaries, and any adapter output under `./ns
 
 - If model downloads fail, confirm the Files API URL is reachable and the model filesets exist in the selected workspace.
 - If CUDA initialization fails, run `uv run nemo safe-synthesizer runtime info` and verify the runtime package matches the installed driver/runtime.
-- If the job cannot load input data, pass a local data source or confirm the fileset reference in the job spec.
+- If the job cannot load input data, pass `--data-source` with a local file or confirm the fileset reference in the job spec.
 
 ## Related Links
 
+- `docs/safe-synthesizer/about/host-local-development.md` — host-local runs, adapter reuse, and tests
 - `docs/safe-synthesizer/about/reference.md`
 - `plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py`
 

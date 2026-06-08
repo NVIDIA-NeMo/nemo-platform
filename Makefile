@@ -440,3 +440,9 @@ test-e2e-kubernetes-gpu: ## Run GPU e2e tests against Kubernetes (requires GPU n
 test-e2e-kubernetes-gpu-customizer: ## Run GPU customizer e2e tests against Kubernetes (requires GPU nodes; set NMP_E2E_CLUSTER_URL)
 	@echo "Running GPU customizer e2e tests with Kubernetes..."
 	uv run --frozen pytest e2e/test_customizer.py --kubernetes --feature gpu --feature customizer --log-cli-level=INFO -v --junitxml=report-kubernetes-gpu-customizer.xml
+
+.PHONY: benchmark-guardrails
+benchmark-guardrails: ## Run nemo-guardrails IGW benchmark sweep (set BENCHMARK_ARGS for extra flags)
+	@echo "Running nemo-guardrails IGW benchmark..."
+	uv run --frozen --package nemo-guardrails-plugin --extra bench \
+		python -m nemo_guardrails_plugin.benchmarks.run $(BENCHMARK_ARGS)

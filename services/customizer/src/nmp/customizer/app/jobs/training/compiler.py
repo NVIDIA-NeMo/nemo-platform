@@ -16,7 +16,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesSpec,
     StepLifecycle,
 )
-from nmp.common.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.model_utils import is_embedding_model
 from nmp.customizer.api.v2.jobs.schemas import (
     AnyTraining,

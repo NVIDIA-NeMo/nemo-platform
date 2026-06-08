@@ -88,30 +88,37 @@ def test_workspace_dir_passed_directly_to_controller_config(tmp_path: Path) -> N
 
 
 def test_log_path_for_is_deterministic(tmp_path: Path) -> None:
-    """``log_path_for`` returns ``<system_dir>/<name>.log`` — no random suffix."""
+    """``log_path_for`` returns ``<system_dir>/<workspace>/<name>.log``."""
     backend = _backend(tmp_path)
-    assert backend.log_path_for("react-agent-abcd1234") == tmp_path / "system" / "react-agent-abcd1234.log"
+    assert backend.log_path_for("ws", "react-agent-abcd1234") == tmp_path / "system" / "ws" / "react-agent-abcd1234.log"
 
 
 def test_log_path_and_config_path_share_basename(tmp_path: Path) -> None:
     """Config and log files share a deterministic basename so they pair up."""
     backend = _backend(tmp_path)
     name = "calc-1"
-    assert backend.log_path_for(name).stem == backend.config_path_for(name).stem
-    assert backend.log_path_for(name).suffix == ".log"
-    assert backend.config_path_for(name).suffix == ".yaml"
+    assert backend.log_path_for("ws", name).stem == backend.config_path_for("ws", name).stem
+    assert backend.log_path_for("ws", name).suffix == ".log"
+    assert backend.config_path_for("ws", name).suffix == ".yaml"
+
+
+def test_log_path_separates_workspaces(tmp_path: Path) -> None:
+    """Same-named deployments in two workspaces resolve to distinct files."""
+    backend = _backend(tmp_path)
+    a = backend.log_path_for("ws-a", "foo")
+    b = backend.log_path_for("ws-b", "foo")
+    assert a != b
+    assert a.parent != b.parent
 
 
 def test_sanitize_name_strips_unsafe_chars(tmp_path: Path) -> None:
     """Pathological deployment names are coerced to a safe filename component."""
     backend = _backend(tmp_path)
-    log = backend.log_path_for("../oops/../escape")
-    # No path traversal: the result is a single child of system_dir.
-    assert log.parent == backend.system_dir
+    log = backend.log_path_for("ws", "../oops/../escape")
+    # No path traversal: the resolved path stays under system_dir.
+    assert backend.system_dir in log.resolve().parents
     # Slashes are replaced (so the path can't escape system_dir).
     assert "/" not in log.name
-    # And the resolved path is contained within system_dir.
-    assert backend.system_dir in log.resolve().parents
 
 
 def test_system_dir_is_under_workspace_dir(tmp_path: Path) -> None:
@@ -129,18 +136,19 @@ def test_write_config_uses_deterministic_path(tmp_path: Path) -> None:
     """Repeated writes target the same file (no random suffix)."""
     backend = _backend(tmp_path)
     config = {"workflow": {"_type": "react_agent"}}
-    p1 = backend._write_config("calc", config)
-    p2 = backend._write_config("calc", config)
+    p1 = backend._write_config("ws", "calc", config)
+    p2 = backend._write_config("ws", "calc", config)
     assert p1 == p2
-    assert p1 == backend.config_path_for("calc")
+    assert p1 == backend.config_path_for("ws", "calc")
     # Round-trip the YAML to confirm contents are correct.
     assert yaml.safe_load(p1.read_text()) == config
 
 
 def test_write_config_creates_system_dir(tmp_path: Path) -> None:
     backend = _backend(tmp_path / "fresh")
-    backend._write_config("calc", {"a": 1})
-    assert (tmp_path / "fresh" / "system").is_dir()
+    backend._write_config("ws", "calc", {"a": 1})
+    # The workspace-namespaced subdirectory exists; ``system/`` is its parent.
+    assert (tmp_path / "fresh" / "system" / "ws").is_dir()
 
 
 # ---------------------------------------------------------------------------
@@ -171,9 +179,9 @@ async def test_create_deployment_records_log_path(tmp_path: Path) -> None:
         return fake
 
     with patch.object(InMemoryRunnerBackend, "_spawn", _fake_spawn):
-        info = await backend.create_deployment("calc-1", {"workflow": {}}, port=49200)
+        info = await backend.create_deployment("ws", "calc-1", {"workflow": {}}, port=49200)
 
-    assert info.log_path == str(backend.log_path_for("calc-1"))
+    assert info.log_path == str(backend.log_path_for("ws", "calc-1"))
     assert Path(info.log_path).exists()
     assert info.pid == 4242
     assert info.status == "starting"
@@ -209,10 +217,10 @@ async def test_get_deployment_status_reports_dead_subprocess(tmp_path: Path) -> 
         return fake
 
     with patch.object(InMemoryRunnerBackend, "_spawn", _fake_spawn):
-        info = await backend.create_deployment("calc-1", {}, port=49201)
+        info = await backend.create_deployment("ws", "calc-1", {}, port=49201)
     assert info.status == "starting"
 
-    status = await backend.get_deployment_status("calc-1")
+    status = await backend.get_deployment_status("ws", "calc-1")
     assert status is not None
     assert status.status == "failed"
     assert "exited with code 1" in status.error
@@ -238,9 +246,9 @@ async def test_get_deployment_status_alive_subprocess_unchanged(tmp_path: Path) 
         return fake
 
     with patch.object(InMemoryRunnerBackend, "_spawn", _fake_spawn):
-        await backend.create_deployment("calc-1", {}, port=49202)
+        await backend.create_deployment("ws", "calc-1", {}, port=49202)
 
-    status = await backend.get_deployment_status("calc-1")
+    status = await backend.get_deployment_status("ws", "calc-1")
     assert status is not None
     assert status.status == "starting"
     assert status.error == ""
@@ -276,18 +284,18 @@ async def test_real_subprocess_exit_writes_log_at_recorded_path(tmp_path: Path) 
             log_file.close()
 
     with patch.object(InMemoryRunnerBackend, "_spawn", _spawn_python):
-        info = await backend.create_deployment("calc-1", {}, port=49203)
+        info = await backend.create_deployment("ws", "calc-1", {}, port=49203)
 
     # Wait briefly for the subprocess to exit.
-    proc = backend._processes["calc-1"]
+    proc = backend._processes[("ws", "calc-1")]
     proc.wait(timeout=10)
 
     log_path = Path(info.log_path)
-    assert log_path == backend.log_path_for("calc-1")
+    assert log_path == backend.log_path_for("ws", "calc-1")
     assert log_path.exists()
     assert "agent boot failed" in log_path.read_text()
 
-    status = await backend.get_deployment_status("calc-1")
+    status = await backend.get_deployment_status("ws", "calc-1")
     assert status is not None
     assert status.status == "failed"
     assert "exited with code 1" in status.error

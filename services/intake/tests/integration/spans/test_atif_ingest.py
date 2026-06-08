@@ -9,6 +9,8 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 
+_HISTORICAL_GTE = "2024-01-01T00:00:00Z"
+
 
 def test_atif_ingest_rejects_loose_steps_payload(client: TestClient):
     body = {
@@ -173,6 +175,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "test_case_id": "sample-test-case-a",
         "metadata": {"trial": "sample-test-case-a__trial-a"},
     }
+    _create_experiment(client, evaluation_context["evaluation_id"])
     tool_call = {
         "tool_call_id": "tooluse_tuIapjh62ZTI1pildiC9sg",
         "function_name": "Bash",
@@ -312,6 +315,7 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 10,
             "sort": "started_at",
         },
@@ -347,11 +351,21 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
     assert "cached_tokens" not in trajectory
     assert "total_tokens" not in trajectory
     assert "cost_total_usd" not in trajectory
-    assert trajectory["evaluation_context"] == evaluation_context
+    assert trajectory["evaluation_context"] == {
+        "evaluation_id": evaluation_context["evaluation_id"],
+        "evaluation_sha": evaluation_context["evaluation_sha"],
+        "evaluation_run_id": evaluation_context["evaluation_run_id"],
+        "dataset_id": evaluation_context["dataset_id"],
+        "dataset_name": evaluation_context["dataset_name"],
+        "dataset_version": evaluation_context["dataset_version"],
+        "test_case_id": evaluation_context["test_case_id"],
+        "metadata": evaluation_context["metadata"],
+    }
     assert "attributes_string" not in trajectory
     trajectory_raw = json.loads(trajectory["raw_attributes"])
     assert trajectory_raw["session_id"] == body["session_id"]
     assert "evaluation_context" not in trajectory_raw
+    assert "experiment.metadata" not in trajectory_raw
     assert "evaluation.metadata" not in trajectory_raw
     assert trajectory["started_at"] == "2026-05-04T18:57:59.943000"
     assert trajectory["ended_at"] == "2026-05-04T19:06:45.570079"
@@ -363,7 +377,11 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     evaluation_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_run_id]": evaluation_run_id, "page_size": 10},
+        params={
+            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert evaluation_response.status_code == 200, evaluation_response.text
     evaluation_spans = evaluation_response.json()["data"]
@@ -372,16 +390,15 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     for field, value in {
         "evaluation_id": evaluation_context["evaluation_id"],
-        "evaluation_sha": evaluation_context["evaluation_sha"],
-        "evaluation_run_id": evaluation_context["evaluation_run_id"],
-        "dataset_id": evaluation_context["dataset_id"],
-        "dataset_name": evaluation_context["dataset_name"],
-        "dataset_version": evaluation_context["dataset_version"],
         "test_case_id": evaluation_context["test_case_id"],
     }.items():
         filtered = client.get(
             "/apis/intake/v2/workspaces/default/spans",
-            params={f"filter[{field}]": value, "page_size": 10},
+            params={
+                f"filter[{field}]": value,
+                "filter[started_at][gte]": _HISTORICAL_GTE,
+                "page_size": 10,
+            },
         )
         assert filtered.status_code == 200, filtered.text
         filtered_spans = filtered.json()["data"]
@@ -484,13 +501,20 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     evaluation_roots_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_run_id]": evaluation_run_id, "page_size": 20, "sort": "started_at"},
+        params={
+            "filter[evaluation_id]": evaluation_context["evaluation_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 20,
+            "sort": "started_at",
+        },
     )
     assert evaluation_roots_response.status_code == 200, evaluation_roots_response.text
     evaluation_roots = evaluation_roots_response.json()["data"]
     assert len(evaluation_roots) == 2
     assert {span["name"] for span in evaluation_roots} == {"sample-agent"}
-    assert {span["evaluation_context"]["evaluation_run_id"] for span in evaluation_roots} == {evaluation_run_id}
+    assert {span["evaluation_context"]["evaluation_id"] for span in evaluation_roots} == {
+        evaluation_context["evaluation_id"]
+    }
     assert {span["session_id"] for span in evaluation_roots} == {
         "d074dfb7-3691-443c-b137-720d75e40afa",
         "441e9149-e4e6-41c0-82b0-a36802f83d3a",
@@ -510,17 +534,25 @@ def test_atif_ingest_accepts_example_trajectory_and_reconstructs_read_side_data(
 
     other_evaluation_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[evaluation_run_id]": other_evaluation_run_id, "page_size": 10},
+        params={
+            "filter[evaluation_run_id]": other_evaluation_run_id,
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert other_evaluation_response.status_code == 200, other_evaluation_response.text
-    other_spans = other_evaluation_response.json()["data"]
-    assert len(other_spans) == 1
-    assert other_spans[0]["name"] == "sample-agent"
-    assert other_spans[0]["span_id"] == trajectory["span_id"]
+    other_evaluation_spans = other_evaluation_response.json()["data"]
+    assert len(other_evaluation_spans) == 1
+    assert other_evaluation_spans[0]["name"] == "sample-agent"
+    assert other_evaluation_spans[0]["evaluation_context"]["evaluation_run_id"] == other_evaluation_run_id
 
     same_session_response = client.get(
         "/apis/intake/v2/workspaces/default/spans",
-        params={"filter[session_id]": body["session_id"], "page_size": 10},
+        params={
+            "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert same_session_response.status_code == 200, same_session_response.text
     same_session_spans_by_name = {span["name"]: span for span in same_session_response.json()["data"]}
@@ -595,6 +627,7 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
         "/apis/intake/v2/workspaces/default/spans",
         params={
             "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
             "page_size": 20,
             "sort": "started_at",
         },
@@ -628,7 +661,11 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     # Trace-level rollup equals the sum of per-step metrics, NOT 2x.
     traces_response = client.get(
         "/apis/intake/v2/workspaces/default/traces",
-        params={"filter[session_id]": body["session_id"], "page_size": 10},
+        params={
+            "filter[session_id]": body["session_id"],
+            "filter[started_at][gte]": _HISTORICAL_GTE,
+            "page_size": 10,
+        },
     )
     assert traces_response.status_code == 200, traces_response.text
     traces = traces_response.json()["data"]
@@ -640,3 +677,23 @@ def test_atif_trace_tokens_do_not_double_count_when_trajectory_and_steps_both_ca
     assert trace["output_tokens"] == 600
     assert trace["total_tokens"] == 30600
     assert trace["cost_usd"] == pytest.approx(0.45)
+
+
+def _create_experiment(client: TestClient, name: str) -> str:
+    response = client.post(
+        "/apis/intake/v2/workspaces/default/experiments",
+        json={
+            "name": name,
+            "agent_name": "sample-agent",
+            "agent_version": "1.0.0",
+            "dataset_name": "sample-dataset",
+            "dataset_version": "v1",
+        },
+    )
+    assert response.status_code in {201, 409}, response.text
+    if response.status_code == 201:
+        return response.json()["name"]
+
+    existing = client.get(f"/apis/intake/v2/workspaces/default/experiments/{name}")
+    assert existing.status_code == 200, existing.text
+    return existing.json()["name"]
