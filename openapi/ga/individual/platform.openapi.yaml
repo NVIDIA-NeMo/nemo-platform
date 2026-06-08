@@ -6180,7 +6180,8 @@ paths:
         schema:
           $ref: '#/components/schemas/ExperimentFilter'
         description: Filter experiments by name, experiment_group_id, agent_name,
-          and dataset_name.
+          agent_version, dataset_name, dataset_version, created_by, created_at, or
+          updated_at.
       responses:
         '200':
           description: Successful Response
@@ -15083,10 +15084,32 @@ components:
           description: Filter experiments by agent name.
           title: Agent Name
           type: string
+        agent_version:
+          description: Filter experiments by agent version.
+          title: Agent Version
+          type: string
         dataset_name:
           description: Filter experiments by dataset name.
           title: Dataset Name
           type: string
+        dataset_version:
+          description: Filter experiments by dataset version.
+          title: Dataset Version
+          type: string
+        created_by:
+          description: Filter experiments by the principal that created them.
+          title: Created By
+          type: string
+        created_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by creation timestamp; supports `$gte` and
+            `$lte` for ranges.
+        updated_at:
+          allOf:
+          - $ref: '#/components/schemas/DatetimeFilter'
+          description: Filter experiments by last-updated timestamp; supports `$gte`
+            and `$lte` for ranges.
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:

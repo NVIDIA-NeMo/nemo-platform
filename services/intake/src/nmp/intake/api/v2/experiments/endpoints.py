@@ -241,7 +241,10 @@ async def create_experiment(
     tags=[EXPERIMENTS_TAG],
     openapi_extra=generate_openapi_extra_params(
         filter_schema=ExperimentFilter,
-        filter_description="Filter experiments by name, experiment_group_id, agent_name, and dataset_name.",
+        filter_description=(
+            "Filter experiments by name, experiment_group_id, agent_name, agent_version, "
+            "dataset_name, dataset_version, created_by, created_at, or updated_at."
+        ),
     ),
 )
 async def list_experiments(
