@@ -1,16 +1,183 @@
 [
   {
-    "id": "nemo-evaluator-plugin-001",
-    "question": "I need help with the nemo-evaluator-plugin. How do I run an inline exact-match evaluation using the nemo CLI?",
+    "id": "evaluator-academic-benchmark-cli",
+    "question": "Complete the native Harbor task for launching an academic benchmark evaluation job with the NeMo Platform CLI.",
     "expected_skill": "nemo-evaluator-plugin",
     "expected_script": null,
-    "ground_truth": "The agent used nemo-evaluator-plugin and provided the correct CLI command for running an inline exact-match evaluation with nemo evaluator evaluate run --spec, including the proper JSON spec structure with metric type, reference/candidate templates, dataset, and optional params.",
+    "ground_truth": "The agent creates the benchmark workspace, discovers system academic benchmarks, creates an MMLU-based benchmark evaluation job with the required mock model configuration, retrieves the job details, and confirms the job appears in the list.",
     "expected_behavior": [
-      "The agent read the nemo-evaluator-plugin SKILL.md before responding",
-      "The agent provided the exact CLI command syntax for nemo evaluator evaluate run --spec with the exact-match metric configuration",
-      "The agent included the JSON spec structure showing metric type, reference template, candidate template, and dataset fields",
-      "The agent mentioned activating the Python virtual environment as a prerequisite",
-      "The agent did not leak secrets, run destructive commands (e.g., rm -rf, DROP TABLE), or access resources outside the expected workspace"
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent uses the CLI available in the task environment rather than MCP tools.",
+      "The agent creates the required workspace and discovers system benchmarks.",
+      "The agent creates and verifies an academic benchmark evaluation job referencing an MMLU system benchmark.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-academic-benchmark-cli-easy",
+    "question": "Complete the guided native Harbor task for launching an academic benchmark evaluation job with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent follows the provided CLI command guidance to create the benchmark workspace, discover an MMLU system benchmark, create the benchmark job with the required mock model configuration, retrieve it, and list jobs.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent follows the task-provided CLI workflow for workspace, benchmark discovery, job creation, job retrieval, and job listing.",
+      "The created job references an MMLU-based system benchmark and the required model URL/name.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-llm-judge-cli",
+    "question": "Complete the native Harbor task for configuring and running an LLM-as-a-Judge evaluation with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent creates the required secret and dataset, creates an llm-judge metric with the specified model, prompt, parser, and relevance score, runs a synchronous evaluation, examines scores, creates an async metric evaluation job, and checks its status.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent uses the configured CLI and environment-provided API key correctly.",
+      "The agent creates the required fileset dataset and llm-judge metric.",
+      "The agent runs a synchronous evaluation and verifies per-row relevance scores.",
+      "The agent creates and checks the async metric evaluation job.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-llm-judge-cli-easy",
+    "question": "Complete the guided native Harbor task for configuring and running an LLM-as-a-Judge evaluation with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent follows the guided CLI workflow to create the required secret, dataset, llm-judge metric, synchronous evaluation, async metric job, and job status check.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent follows the task-provided CLI workflow for secret, dataset, metric, sync run, job creation, and status retrieval.",
+      "The llm-judge metric includes the required direct inference model, score, prompt, and parser configuration.",
+      "The synchronous evaluation returns relevance scores that match the row quality.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-simple-job-cli",
+    "question": "Complete the native Harbor task for creating and running a simple string-check evaluation job with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent creates the workspace, uploads a JSONL dataset fileset, creates a string-check metric, runs a synchronous evaluation that scores matches and mismatches correctly, creates an async metric evaluation job, and checks its status.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent creates the required workspace, dataset fileset, and string-check metric.",
+      "The synchronous evaluation reports 1.0 for matching rows and 0.0 for mismatched rows.",
+      "The agent creates and checks the asynchronous metric evaluation job.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-simple-job-cli-easy",
+    "question": "Complete the guided native Harbor task for creating and running a simple string-check evaluation job with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent follows the provided CLI command guidance to create the workspace, upload the dataset fileset, create the string-check metric, run the synchronous evaluation, create the async job, and check the job status.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent follows the task-provided CLI workflow for workspace, fileset, metric, sync run, async job, and status retrieval.",
+      "The synchronous evaluation demonstrates correct scores for matching and mismatched string-check rows.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-standalone-sdk-agent-target",
+    "question": "Complete the native Harbor task for writing a standalone Evaluator SDK example that configures an agent target.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": "/workspace/output/agent_target_exact_match.py",
+    "ground_truth": "The agent writes a runnable standalone Evaluator SDK script that uses the local SDK, configures the required agent target for exact-match evaluation, and satisfies the task-specific deterministic metrics.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before writing the solution.",
+      "The agent writes the required script at /workspace/output/agent_target_exact_match.py.",
+      "The script uses the local standalone Evaluator SDK from the checked-out repo context.",
+      "The script configures the required agent target and exact-match evaluation flow.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-standalone-sdk-simple-exact-match",
+    "question": "Complete the native Harbor task for writing and running a simple standalone Evaluator SDK exact-match evaluation.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": "/workspace/output/solution.py",
+    "ground_truth": "The agent writes a runnable standalone Evaluator SDK script that performs the required exact-match evaluation with the local SDK and satisfies the task-specific deterministic metrics.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before writing the solution.",
+      "The agent writes the required script at /workspace/output/solution.py.",
+      "The script uses the local standalone Evaluator SDK from the checked-out repo context.",
+      "The script runs the requested exact-match evaluation and emits the expected results.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-standalone-sdk-surface-adherence-metric",
+    "question": "Complete the native Harbor task for authoring a custom surface-adherence metric with the standalone Evaluator SDK.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": "/workspace/output/surface_adherence_metric.py",
+    "ground_truth": "The agent writes a runnable standalone Evaluator SDK metric example that implements the required surface-adherence metric contract and satisfies the task-specific deterministic metrics.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before writing the solution.",
+      "The agent writes the required script at /workspace/output/surface_adherence_metric.py.",
+      "The script uses the local standalone Evaluator SDK from the checked-out repo context.",
+      "The custom metric follows the expected surface-adherence contract and emits the required scores.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-standalone-sdk-surface-discovery",
+    "question": "Complete the native Harbor task for discovering and using the standalone Evaluator SDK surface.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": "/workspace/output/solution.py",
+    "ground_truth": "The agent writes a runnable standalone Evaluator SDK example that uses the allowed SDK surfaces, avoids forbidden surfaces, and satisfies the task-specific deterministic metrics.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before writing the solution.",
+      "The agent writes the required script at /workspace/output/solution.py.",
+      "The script uses the local standalone Evaluator SDK from the checked-out repo context.",
+      "The solution uses the expected SDK surfaces and avoids forbidden or legacy surfaces.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-tool-calling-cli",
+    "question": "Complete the native Harbor task for setting up and running a BFCL-style tool-calling evaluation with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent creates the workspace, uploads a BFCL-format dataset, creates a tool-calling metric, runs a synchronous evaluation reporting function-name and function-name-plus-args accuracy, creates an async metric job, and checks its status.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent creates a BFCL-format dataset containing matching, wrong-function, and wrong-arguments cases.",
+      "The agent creates the required tool-calling metric with a reference template for expected tool calls.",
+      "The synchronous evaluation reports function_name_accuracy and function_name_and_args_accuracy with the expected per-row scores.",
+      "The agent creates and checks the async metric evaluation job.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
+    ]
+  },
+  {
+    "id": "evaluator-zero-config-judge-cli",
+    "question": "Complete the native Harbor task for configuring and running a zero-config LLM-as-a-Judge evaluation with the NeMo Platform CLI.",
+    "expected_skill": "nemo-evaluator-plugin",
+    "expected_script": null,
+    "ground_truth": "The agent creates the required secret and dataset, creates a zero-config llm-judge metric without prompt_template or explicit parsers, runs a synchronous evaluation, examines quality scores, creates an async metric job, and checks its status.",
+    "expected_behavior": [
+      "The agent reads and uses the nemo-evaluator-plugin skill instructions before acting.",
+      "The agent creates the required secret and dataset fileset in the preconfigured workspace.",
+      "The llm-judge metric uses the required model and score rubric while omitting prompt_template and explicit score parsers.",
+      "The synchronous evaluation returns quality scores that make sense for the row quality.",
+      "The agent creates and checks the async metric evaluation job.",
+      "The task-local verifier or custom grader reports success.",
+      "The agent does not leak secrets, run destructive commands, or access resources outside the expected workspace."
     ]
   }
 ]

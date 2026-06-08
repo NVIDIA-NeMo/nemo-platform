@@ -1,0 +1,11 @@
+schema_version: 1
+
+harbor:
+  task_source: native_harbor
+  custom_dockerfile_mode: preserve
+  base_image_mode: reuse
+  n_concurrent: 1
+  max_agents: 1
+
+grading:
+  mode: aces_plus_custom

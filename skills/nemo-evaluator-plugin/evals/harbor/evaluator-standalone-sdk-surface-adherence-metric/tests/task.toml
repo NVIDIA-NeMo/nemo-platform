@@ -1,0 +1,51 @@
+version = "1.0"
+
+[metadata]
+entry_id = "evaluator-standalone-sdk-surface-adherence-metric"
+author_name = "NMP Team"
+difficulty = "medium"
+category = "evaluator-agent-benchmark"
+suite_id = "evaluator_agent_benchmark"
+suite_version = "v0"
+tags = ["evaluator", "agent-benchmark", "sdk-metric-authoring", "standalone-sdk"]
+
+[verifier]
+timeout_sec = 60.0
+
+[agent]
+timeout_sec = 600.0
+
+[environment]
+skills_dir = "/workspace/skills"
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 2048
+storage_mb = 10240
+gpus = 0
+allow_internet = true
+
+[evaluator.surface]
+constraint = "standalone_sdk"
+allowed = ["standalone_sdk"]
+forbidden = ["cli", "plugin_sdk", "legacy_service"]
+
+[evaluator.expected]
+required_terms = [
+  "packages/nemo_evaluator_sdk",
+  "Metric",
+  "type",
+  "output_spec",
+  "compute_scores",
+  "MetricInput",
+  "MetricOutput",
+  "MetricOutputSpec",
+  "MetricResult",
+  "surface_adherence",
+  "surface_violation_count",
+  "observed_surfaces",
+  "allowed_surfaces",
+  "forbidden_surfaces",
+]
+
+[evaluator]
+forbidden_patterns = ["services/", "nemo evaluation", "plugin SDK"]

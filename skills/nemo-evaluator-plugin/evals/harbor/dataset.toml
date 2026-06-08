@@ -1,0 +1,35 @@
+[[task]]
+name = "evaluator-academic-benchmark-cli"
+
+[[task]]
+name = "evaluator-academic-benchmark-cli-easy"
+
+[[task]]
+name = "evaluator-llm-judge-cli"
+
+[[task]]
+name = "evaluator-llm-judge-cli-easy"
+
+[[task]]
+name = "evaluator-simple-job-cli"
+
+[[task]]
+name = "evaluator-simple-job-cli-easy"
+
+[[task]]
+name = "evaluator-standalone-sdk-agent-target"
+
+[[task]]
+name = "evaluator-standalone-sdk-simple-exact-match"
+
+[[task]]
+name = "evaluator-standalone-sdk-surface-adherence-metric"
+
+[[task]]
+name = "evaluator-standalone-sdk-surface-discovery"
+
+[[task]]
+name = "evaluator-tool-calling-cli"
+
+[[task]]
+name = "evaluator-zero-config-judge-cli"
