@@ -26,7 +26,7 @@ import textwrap
 
 from fastapi import APIRouter, HTTPException, Query, status
 from nmp.common.api.common import Page, PaginationData
-from nmp.core.entities.api.dependencies import AsyncSessionMaker, EntityRepository
+from nmp.core.entities.api.dependencies import EntityRepository
 from nmp.core.entities.api.v2.prompts.schemas import (
     Prompt,
     PromptCreate,
@@ -38,11 +38,14 @@ from nmp.core.entities.api.v2.prompts.schemas import (
 )
 from nmp.core.entities.api.v2.schemas import DeleteResponse
 from nmp.core.entities.api.v2.versioning import make_versioning_router
-from nmp.core.entities.app.repository.exceptions import EntityNotFoundError, EntityVersionConflictError
+from nmp.core.entities.app.repository.exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityVersionConflictError,
+)
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.filter import FilterDep
 from nmp.core.entities.utils.identifiers import generate_entity_name
-from sqlalchemy.exc import IntegrityError
 
 router = APIRouter()
 API_TAG = "Prompts"
@@ -169,59 +172,50 @@ async def create_prompt(
     workspace: str,
     prompt_in: PromptCreate,
     repository: EntityRepository,
-    session_maker: AsyncSessionMaker,
 ) -> Prompt:
     name = prompt_in.name or generate_entity_name(PROMPT_ENTITY_TYPE)
     variables = extract_variables(prompt_in.template)
     version_name = f"{name}-v1"
 
     try:
-        async with session_maker() as session:
-            async with session.begin():
-                prompt_data = {
-                    "description": prompt_in.description,
-                    "tags": prompt_in.tags,
-                    "version_count": 1,
-                    "current_version_name": version_name,
-                }
-                prompt_entity = await repository.create_entity(
-                    workspace=workspace,
-                    entity_type=PROMPT_ENTITY_TYPE,
-                    name=name,
-                    data=prompt_data,
-                    project=prompt_in.project,
-                    session=session,
-                )
+        async with repository.transaction() as session:
+            prompt_data = {
+                "description": prompt_in.description,
+                "tags": prompt_in.tags,
+                "version_count": 1,
+                "current_version_name": version_name,
+            }
+            prompt_entity = await repository.create_entity(
+                workspace=workspace,
+                entity_type=PROMPT_ENTITY_TYPE,
+                name=name,
+                data=prompt_data,
+                project=prompt_in.project,
+                session=session,
+            )
 
-                version_data = {
-                    "version_number": 1,
-                    "template": prompt_in.template,
-                    "variables": variables,
-                    "model_params": prompt_in.model_params.model_dump() if prompt_in.model_params else None,
-                    "change_note": prompt_in.change_note,
-                }
-                version_entity = await repository.create_entity(
-                    workspace=workspace,
-                    entity_type=PROMPT_VERSION_ENTITY_TYPE,
-                    name=version_name,
-                    data=version_data,
-                    parent=prompt_entity.id,
-                    session=session,
-                )
+            version_data = {
+                "version_number": 1,
+                "template": prompt_in.template,
+                "variables": variables,
+                "model_params": prompt_in.model_params.model_dump() if prompt_in.model_params else None,
+                "change_note": prompt_in.change_note,
+            }
+            version_entity = await repository.create_entity(
+                workspace=workspace,
+                entity_type=PROMPT_VERSION_ENTITY_TYPE,
+                name=version_name,
+                data=version_data,
+                parent=prompt_entity.id,
+                session=session,
+            )
 
         return _entity_to_prompt(prompt_entity, version_entity)
-    except IntegrityError as e:
-        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
-        if (
-            "duplicate key" in error_msg.lower()
-            or "unique constraint" in error_msg.lower()
-            or "unique constraint failed" in error_msg.lower()
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Prompt '{name}' already exists in workspace '{workspace}'.",
-            ) from e
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid data provided.") from e
+    except EntityAlreadyExistsError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Prompt '{name}' already exists in workspace '{workspace}'.",
+        ) from e
 
 
 @router.get(

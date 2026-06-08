@@ -10,14 +10,29 @@ from typing import Any, AsyncIterator, Dict, List, Optional
 from nmp.common.api.filter import FilterOperation
 from nmp.common.entities import ALL_WORKSPACES
 from nmp.core.entities.app.repository.entity import EntityRepositoryInterface
-from nmp.core.entities.app.repository.exceptions import EntityNotFoundError, EntityVersionConflictError
+from nmp.core.entities.app.repository.exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityVersionConflictError,
+)
 from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterRepository
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.identifiers import generate_entity_id
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm.exc import StaleDataError
+
+
+def _is_unique_violation(err: IntegrityError) -> bool:
+    """Return True if an IntegrityError was caused by a uniqueness constraint.
+
+    Centralises the driver-message sniffing so callers can rely on the typed
+    ``EntityAlreadyExistsError`` instead of matching strings themselves.
+    """
+    msg = str(getattr(err, "orig", err)).lower()
+    return "duplicate key" in msg or "unique constraint" in msg or "unique constraint failed" in msg
 
 
 class SQLAlchemyEntityRepository(EntityRepositoryInterface):
@@ -35,13 +50,15 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
     async def _get_session(
         self, session: AsyncSession | None, *, for_write: bool = False
     ) -> AsyncIterator[AsyncSession]:
-        """Get or create a database session."""
+        """Get or create a database session.
+
+        When the caller supplies a ``session`` it owns the session's lifecycle,
+        including the SQLite write lock (acquired once in :meth:`transaction`).
+        We therefore must not re-acquire the lock here — ``asyncio.Lock`` is not
+        reentrant, so doing so would deadlock nested writes within a transaction.
+        """
         if session is not None:
-            if for_write and self._is_sqlite(session):
-                async with self._write_lock:
-                    yield session
-            else:
-                yield session
+            yield session
         else:
             async with self.session_maker() as new_session:
                 if for_write and self._is_sqlite(new_session):
@@ -49,6 +66,19 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
                         yield new_session
                 else:
                     yield new_session
+
+    @asynccontextmanager
+    async def transaction(self) -> AsyncIterator[AsyncSession]:
+        """Begin a transaction and yield a session to thread through write calls.
+
+        Pass the yielded session into ``create_entity`` / ``update_entity_by_name``
+        / etc. to make several writes commit (or roll back) atomically. This keeps
+        transaction lifecycle ownership inside the repository so callers don't have
+        to reach for the session maker or know about ``session.begin()``.
+        """
+        async with self._get_session(None, for_write=True) as session:
+            async with session.begin():
+                yield session
 
     def _get_sort_key(self, sort: str) -> Any:
         reverse = sort.startswith("-")
@@ -94,11 +124,18 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             )
 
             sess.add(db_entity)
-            if session is not None:
-                await sess.flush()
-            else:
-                await sess.commit()
-                await sess.refresh(db_entity)
+            try:
+                if session is not None:
+                    await sess.flush()
+                else:
+                    await sess.commit()
+                    await sess.refresh(db_entity)
+            except IntegrityError as err:
+                if _is_unique_violation(err):
+                    raise EntityAlreadyExistsError(
+                        f"Entity '{name}' of type '{entity_type}' already exists in workspace '{workspace}'"
+                    ) from err
+                raise
 
             return db_entity.to_pydantic()
 

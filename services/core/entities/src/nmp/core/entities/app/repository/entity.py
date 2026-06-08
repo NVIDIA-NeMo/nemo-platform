@@ -4,6 +4,7 @@
 """Repository interface for Entity operations."""
 
 from abc import ABC, abstractmethod
+from contextlib import AbstractAsyncContextManager
 from typing import Any, Dict, List, Optional
 
 from nmp.common.api.filter import FilterOperation
@@ -16,6 +17,24 @@ class EntityRepositoryInterface(ABC):
 
     The entity repository is schema-agnostic - it treats entity data as opaque.
     """
+
+    @abstractmethod
+    def transaction(self) -> AbstractAsyncContextManager[AsyncSession]:
+        """Begin a transaction, yielding a session to thread through write calls.
+
+        Use as an async context manager and pass the yielded session into the
+        ``session`` parameter of ``create_entity`` / ``update_entity_by_name`` /
+        ``delete_entity`` so that multiple writes commit atomically, or roll back
+        together if an exception propagates out of the block::
+
+            async with repository.transaction() as session:
+                parent = await repository.create_entity(..., session=session)
+                await repository.create_entity(..., parent=parent.id, session=session)
+
+        This keeps transaction lifecycle ownership inside the repository so callers
+        need not depend on the session maker or backend-specific transaction APIs.
+        """
+        ...
 
     @abstractmethod
     async def create_entity(
@@ -43,6 +62,10 @@ class EntityRepositoryInterface(ABC):
 
         Returns:
             Created entity with ID and timestamps
+
+        Raises:
+            EntityAlreadyExistsError: If the create violates a uniqueness constraint
+                (e.g. an entity with the same name already exists in the scope).
         """
         pass
 

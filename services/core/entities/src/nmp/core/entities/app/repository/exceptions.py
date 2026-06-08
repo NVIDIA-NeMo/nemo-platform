@@ -20,3 +20,13 @@ class EntityVersionConflictError(EntityRepositoryError):
     """Raised when entity version doesn't match (optimistic locking conflict)."""
 
     pass
+
+
+class EntityAlreadyExistsError(EntityRepositoryError):
+    """Raised when creating an entity that violates a uniqueness constraint.
+
+    Translated from the backend's native integrity error so callers can map it
+    to a 409 without sniffing driver-specific error strings.
+    """
+
+    pass

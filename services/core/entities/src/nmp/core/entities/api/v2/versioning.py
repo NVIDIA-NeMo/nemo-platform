@@ -36,13 +36,12 @@ from collections.abc import Callable
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, status
-from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator
+from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.common import Page, PaginationData
-from nmp.core.entities.api.dependencies import AsyncSessionMaker, EntityRepository
-from nmp.core.entities.app.repository.exceptions import EntityVersionConflictError
+from nmp.core.entities.api.dependencies import EntityRepository
+from nmp.core.entities.app.repository.exceptions import EntityAlreadyExistsError, EntityVersionConflictError
 from nmp.core.entities.entities import Entity
 from pydantic import BaseModel
-from sqlalchemy.exc import IntegrityError
 
 
 def make_versioning_router(
@@ -82,7 +81,6 @@ def make_versioning_router(
         name: str,
         version_in,  # annotated below so FastAPI sees the concrete schema
         repository: EntityRepository,
-        session_maker: AsyncSessionMaker,
     ):
         parent = await _get_parent_or_404(repository, workspace, name)
         next_number: int = parent.data.get("version_count", 0) + 1
@@ -90,45 +88,35 @@ def make_versioning_router(
         version_data = build_version_data(version_in, next_number)
 
         try:
-            async with session_maker() as session:
-                async with session.begin():
-                    version_entity = await repository.create_entity(
-                        workspace=workspace,
-                        entity_type=version_entity_type,
-                        name=version_name,
-                        data=version_data,
-                        parent=parent.id,
-                        session=session,
-                    )
-                    updated_parent_data = dict(parent.data)
-                    updated_parent_data["version_count"] = next_number
-                    updated_parent_data["current_version_name"] = version_name
-                    parent = await repository.update_entity_by_name(
-                        workspace=workspace,
-                        entity_type=parent_entity_type,
-                        name=name,
-                        data=updated_parent_data,
-                        expected_db_version=parent.db_version,
-                        session=session,
-                    )
+            async with repository.transaction() as session:
+                version_entity = await repository.create_entity(
+                    workspace=workspace,
+                    entity_type=version_entity_type,
+                    name=version_name,
+                    data=version_data,
+                    parent=parent.id,
+                    session=session,
+                )
+                updated_parent_data = dict(parent.data)
+                updated_parent_data["version_count"] = next_number
+                updated_parent_data["current_version_name"] = version_name
+                parent = await repository.update_entity_by_name(
+                    workspace=workspace,
+                    entity_type=parent_entity_type,
+                    name=name,
+                    data=updated_parent_data,
+                    expected_db_version=parent.db_version,
+                    session=session,
+                )
             return to_version_response(version_entity, parent)
-        except EntityVersionConflictError as e:
+        # Both failure modes are losers of a concurrent create race for the same
+        # next version number: the parent's optimistic lock (db_version) or the
+        # child's unique (parent, name) constraint. Either way, retry resolves it.
+        except (EntityVersionConflictError, EntityAlreadyExistsError) as e:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Another version was created concurrently. Please retry.",
             ) from e
-        except IntegrityError as e:
-            error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
-            if (
-                "duplicate key" in error_msg.lower()
-                or "unique constraint" in error_msg.lower()
-                or "unique constraint failed" in error_msg.lower()
-            ):
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT,
-                    detail=f"Version '{version_name}' already exists for '{name}'.",
-                ) from e
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid data.") from e
 
     create_version.__annotations__["version_in"] = version_create_schema
     create_version.__annotations__["return"] = version_schema
@@ -180,11 +168,11 @@ def make_versioning_router(
             filter=None,
         )
 
-    list_versions.__annotations__["return"] = Page[version_schema]
+    list_versions.__annotations__["return"] = Page[version_schema]  # ty: ignore[invalid-type-form]
 
     router.get(
         f"{base}/versions",
-        response_model=Page[version_schema],
+        response_model=Page[version_schema],  # ty: ignore[invalid-type-form]
         tags=[api_tag],
         summary=f"List all {parent_entity_type} versions",
         description="Returns all versions sorted by creation time (oldest first).",
@@ -206,19 +194,29 @@ def make_versioning_router(
                 detail="version_number must be >= 1",
             )
         parent = await _get_parent_or_404(repository, workspace, name)
-        version_name = f"{name}-v{version_number}"
-        version_entity = await repository.get_entity_by_name(
+        # Resolve by (parent, version_number) rather than reconstructing the child
+        # name from the parent's name. The version_number is the stable identity;
+        # the parent (and therefore the embedded name) may be renamed over time.
+        version_filter = LogicalOperation(
+            operator=FilterOperator.AND,
+            operations=[
+                ComparisonOperation(operator=FilterOperator.EQ, field="parent", value=parent.id),
+                ComparisonOperation(operator=FilterOperator.EQ, field="data.version_number", value=version_number),
+            ],
+        )
+        entities, _ = await repository.list_entities(
             workspace=workspace,
             entity_type=version_entity_type,
-            name=version_name,
-            parent=parent.id,
+            page=1,
+            page_size=1,
+            filter_op=version_filter,
         )
-        if version_entity is None:
+        if not entities:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Version {version_number} not found for '{name}'",
             )
-        return to_version_response(version_entity, parent)
+        return to_version_response(entities[0], parent)
 
     get_version.__annotations__["return"] = version_schema
 

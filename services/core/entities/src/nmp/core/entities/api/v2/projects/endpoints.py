@@ -26,6 +26,7 @@ from nmp.core.entities.api.v2.projects.schemas import (
 )
 from nmp.core.entities.api.v2.schemas import DeleteResponse
 from nmp.core.entities.app.repository.exceptions import (
+    EntityAlreadyExistsError,
     EntityNotFoundError,
     EntityVersionConflictError,
 )
@@ -85,6 +86,11 @@ async def create_project(
             data={"description": project.description},
         )
         return _entity_to_project(new_entity)
+    except EntityAlreadyExistsError as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Project '{project.name}' already exists in workspace '{workspace}'.",
+        ) from e
     except IntegrityError as e:
         error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
         logger.warning(f"Integrity error creating project: {error_msg}")
@@ -100,15 +106,6 @@ async def create_project(
                     status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                     detail="Referenced resource does not exist.",
                 )
-        elif (
-            "duplicate key" in error_msg.lower()
-            or "unique constraint" in error_msg.lower()
-            or "unique constraint failed" in error_msg.lower()
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Project '{project.name}' already exists in workspace '{workspace}'.",
-            )
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

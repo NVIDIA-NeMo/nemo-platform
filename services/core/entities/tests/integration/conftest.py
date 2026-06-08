@@ -28,7 +28,6 @@ from nmp.core.entities.api.server import app
 from nmp.core.entities.app.repository import (
     SQLAlchemyEntityRepository,
     SQLAlchemyWorkspaceRepository,
-    get_async_session_maker,
 )
 from nmp.core.entities.app.repository.sqlalchemy.models import DBEntity, DBWorkspace  # noqa: F401
 from sqlalchemy import event
@@ -175,7 +174,7 @@ class _SetAuthContextMiddleware(BaseHTTPMiddleware):
 
 
 @pytest.fixture
-async def client_with_auth(repos, session_maker) -> AsyncGenerator[AsyncClient, None]:
+async def client_with_auth(repos) -> AsyncGenerator[AsyncClient, None]:
     """HTTP client with auth enabled and context set so get_accessible_workspaces applies.
 
     Use with role_binding rows for the test principal; contrast with ``client`` where
@@ -191,7 +190,6 @@ async def client_with_auth(repos, session_maker) -> AsyncGenerator[AsyncClient, 
     try:
         app.dependency_overrides[dep_workspace_repository_with_session] = lambda: workspace_repo
         app.dependency_overrides[dep_entity_repository_with_session] = lambda: entity_repo
-        app.dependency_overrides[get_async_session_maker] = lambda: session_maker
         app.dependency_overrides[get_auth_client] = lambda: auth_client
 
         wrapper = FastAPI(title="Entities integration test wrapper (auth on)")
@@ -206,7 +204,7 @@ async def client_with_auth(repos, session_maker) -> AsyncGenerator[AsyncClient, 
 
 
 @pytest.fixture
-async def client_with_auth_service_principal(repos, session_maker) -> AsyncGenerator[AsyncClient, None]:
+async def client_with_auth_service_principal(repos) -> AsyncGenerator[AsyncClient, None]:
     """HTTP client with auth enabled; principal is ``service:entities`` (no workspace scoping for EXISTS/child filters)."""
     from fastapi import FastAPI
 
@@ -218,7 +216,6 @@ async def client_with_auth_service_principal(repos, session_maker) -> AsyncGener
     try:
         app.dependency_overrides[dep_workspace_repository_with_session] = lambda: workspace_repo
         app.dependency_overrides[dep_entity_repository_with_session] = lambda: entity_repo
-        app.dependency_overrides[get_async_session_maker] = lambda: session_maker
         app.dependency_overrides[get_auth_client] = lambda: auth_client
 
         wrapper = FastAPI(title="Entities integration test wrapper (service principal)")
@@ -235,7 +232,6 @@ async def client_with_auth_service_principal(repos, session_maker) -> AsyncGener
 @pytest.fixture
 async def client_with_auth_service_on_behalf_of(
     repos,
-    session_maker,
 ) -> AsyncGenerator[AsyncClient, None]:
     """like ``client_with_auth`` but principal is ``service:entities`` with OBO to ``TEST_PRINCIPAL``."""
     from fastapi import FastAPI
@@ -247,7 +243,6 @@ async def client_with_auth_service_on_behalf_of(
     try:
         app.dependency_overrides[dep_workspace_repository_with_session] = lambda: workspace_repo
         app.dependency_overrides[dep_entity_repository_with_session] = lambda: entity_repo
-        app.dependency_overrides[get_async_session_maker] = lambda: session_maker
         app.dependency_overrides[get_auth_client] = lambda: auth_client
 
         wrapper = FastAPI(title="Entities integration test wrapper (service + on-behalf-of)")
@@ -262,7 +257,7 @@ async def client_with_auth_service_on_behalf_of(
 
 
 @pytest.fixture
-async def client(repos, session_maker) -> AsyncGenerator[AsyncClient, None]:
+async def client(repos) -> AsyncGenerator[AsyncClient, None]:
     """Create async HTTP client for testing v2 API.
 
     Mounts the entities app at /apis/entities so that request paths match the
@@ -274,7 +269,6 @@ async def client(repos, session_maker) -> AsyncGenerator[AsyncClient, None]:
     try:
         app.dependency_overrides[dep_workspace_repository_with_session] = lambda: workspace_repo
         app.dependency_overrides[dep_entity_repository_with_session] = lambda: entity_repo
-        app.dependency_overrides[get_async_session_maker] = lambda: session_maker
         app.dependency_overrides[get_auth_client] = _create_mock_auth_client
 
         # Mount entities app at /apis/entities so tests use full platform paths

@@ -41,7 +41,11 @@ from nmp.core.entities.api.v2.utils import (
     require_workspace_access,
 )
 from nmp.core.entities.app.repository import WorkspaceRepositoryInterface
-from nmp.core.entities.app.repository.exceptions import EntityNotFoundError, EntityVersionConflictError
+from nmp.core.entities.app.repository.exceptions import (
+    EntityAlreadyExistsError,
+    EntityNotFoundError,
+    EntityVersionConflictError,
+)
 from nmp.core.entities.entities import Entity
 from nmp.core.entities.utils.filter import FilterDep
 from nmp.core.entities.utils.identifiers import generate_entity_name
@@ -237,32 +241,25 @@ async def create_entity(
             created_by=auth_client.principal.effective_id,
         )
         return new_entity
-    except IntegrityError as e:
-        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
-        error_msg_lower = error_msg.lower()
-
-        is_unique_violation = (
-            "duplicate key" in error_msg_lower
-            or "unique constraint" in error_msg_lower
-            or "unique constraint failed" in error_msg_lower  # SQLite format
-        )
-
+    except EntityAlreadyExistsError as e:
         # Idempotent reconcilers (e.g. ModelProviderReconciler.ensure_passthrough_virtual_model)
         # rely on the 409 response and intentionally swallow ConflictError.  Logging those
         # at WARNING drowns the platform log in repetitive noise every reconcile cycle, so
-        # demote the expected case to DEBUG.  Genuine integrity errors stay at WARNING.
-        if is_unique_violation:
-            logger.debug(
-                "Entity %s/%s of type %s already exists (idempotent create): %s",
-                workspace,
-                name,
-                entity_type,
-                error_msg,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Entity '{name}' of type '{entity_type}' already exists in workspace '{workspace}'.",
-            ) from e
+        # demote the expected case to DEBUG.  Genuine integrity errors stay at WARNING below.
+        logger.debug(
+            "Entity %s/%s of type %s already exists (idempotent create): %s",
+            workspace,
+            name,
+            entity_type,
+            e,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Entity '{name}' of type '{entity_type}' already exists in workspace '{workspace}'.",
+        ) from e
+    except IntegrityError as e:
+        error_msg = str(e.orig) if hasattr(e, "orig") else str(e)
+        error_msg_lower = error_msg.lower()
 
         logger.warning(f"Integrity error creating entity: {error_msg}")
 
