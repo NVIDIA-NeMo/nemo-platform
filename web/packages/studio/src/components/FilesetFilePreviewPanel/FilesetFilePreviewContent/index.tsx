@@ -3,9 +3,10 @@
 
 import { FileContentPreview } from '@nemo/common/src/components/FileContentPreview';
 import { useFilesListFilesetFiles } from '@nemo/sdk/generated/platform/api';
-import { Stack } from '@nvidia/foundations-react-core';
+import { Flex, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { FilesetFilePreviewHeader } from '@studio/components/FilesetFilePreviewPanel/components/FilesetFilePreviewHeader';
+import { useIsBinaryFile } from '@studio/components/filesets/hooks/useIsBinaryFile';
 import type { FileSystemFile } from '@studio/components/FilesTable/utils';
 import { useMemo, type FC } from 'react';
 
@@ -62,6 +63,12 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
   hideHeader = false,
   enabled = true,
 }) => {
+  const { isBinary: binary, isLoading: isBinaryLoading } = useIsBinaryFile(
+    workspace,
+    filesetName,
+    filePath
+  );
+
   const {
     data: internalContent,
     isLoading: internalLoading,
@@ -70,7 +77,7 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
     workspace,
     name: filesetName,
     path: filePath,
-    enabled: !externalContent && enabled,
+    enabled: externalContent === undefined && enabled && !binary && !isBinaryLoading,
   });
 
   const { data: allFilesResponse } = useFilesListFilesetFiles(workspace, filesetName, undefined, {
@@ -85,15 +92,22 @@ export const FilesetFilePreviewContent: FC<FilesetFilePreviewContentProps> = ({
     externalFile ?? (allFiles?.find((f) => f.path === filePath) as FileSystemFile | undefined);
 
   const body = useMemo(
-    () => (
-      <FileContentPreview
-        file={{ path: filePath }}
-        content={fileContent}
-        isLoading={isLoading}
-        error={error ?? null}
-      />
-    ),
-    [filePath, fileContent, isLoading, error]
+    () =>
+      binary ? (
+        <Flex align="center" justify="center" className="h-full">
+          <Text kind="body/regular/md" className="text-fg-subdued">
+            Text preview not available for binary files.
+          </Text>
+        </Flex>
+      ) : (
+        <FileContentPreview
+          file={{ path: filePath }}
+          content={fileContent}
+          isLoading={isBinaryLoading || isLoading}
+          error={error ?? null}
+        />
+      ),
+    [binary, isBinaryLoading, filePath, fileContent, isLoading, error]
   );
 
   if (hideHeader) {

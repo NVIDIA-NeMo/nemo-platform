@@ -378,6 +378,7 @@ nav:
     - Tutorials:
       - Overview: evaluator/tutorials/index.md
       - Run LLM-as-a-Judge Evaluation: evaluator/tutorials/run-llm-judge-evaluation.md
+      - Define and Run Custom Python Metrics: evaluator/tutorials/define-run-custom-python-metrics.md
     - SDK Resources: evaluator/sdk-resources.md
     - Metrics:
       - Overview: evaluator/metrics/index.md

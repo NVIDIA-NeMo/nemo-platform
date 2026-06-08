@@ -1,12 +1,21 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { filesDownloadFile, filesHeadFile } from '@nemo/sdk/generated/platform/api';
-import { EntityIdentifier } from '@studio/api/common/types';
-import { PREVIEWABLE_FILE_TYPES } from '@studio/api/datasets/constants';
+import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
+import {
+  filesDownloadFile,
+  filesHeadFile,
+  getFilesDownloadFileQueryKey,
+} from '@nemo/sdk/generated/platform/api';
+import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
+import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
+
+// Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
+// while preventing OOM crashes on multi-GB external dataset shards.
+const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
 
 interface UseDatasetFileContentParams extends Required<EntityIdentifier> {
   path: string;
@@ -29,10 +38,8 @@ export const datasetFileContentQueryOptions = ({
       ...(range ? range.map((bound) => String(bound)) : []),
     ],
     queryFn: async () => {
-      if (!path.includes('.') || !PREVIEWABLE_FILE_TYPES.has(path.split('.').at(-1)!)) {
-        throw new Error(
-          `Unsupported file type. Currently supports: ${[...PREVIEWABLE_FILE_TYPES].join(', ')}`
-        );
+      if (isBinaryExtension(path)) {
+        throw new Error('Text preview not available for binary files.');
       }
 
       // Check if file exists
@@ -66,15 +73,19 @@ export const datasetFileContentQueryOptions = ({
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {
-        const blob = await filesDownloadFile(workspace!, name, path);
-        if (!blob) throw new Error('Invalid response while downloading file');
-
-        // Handle range requests for non-parquet files
-        if (range) {
-          const slicedBlob = blob.slice(range[0], range[1]);
-          return slicedBlob.text();
-        }
-
+        const start = range ? range[0] : 0;
+        const end = range ? range[1] : FILE_PREVIEW_MAX_BYTES - 1;
+        const [fileUrl] = getFilesDownloadFileQueryKey(
+          encodeURIComponent(workspace!),
+          encodeURIComponent(name),
+          encodeURIComponent(path)
+        );
+        const blob = await customFetch<Blob>({
+          url: fileUrl,
+          method: 'GET',
+          responseType: 'blob',
+          headers: { Range: `bytes=${start}-${end}` },
+        });
         return blob.text();
       }
     },
