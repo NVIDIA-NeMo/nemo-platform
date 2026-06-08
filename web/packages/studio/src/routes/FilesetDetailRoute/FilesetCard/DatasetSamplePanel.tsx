@@ -86,10 +86,10 @@ export const DatasetSamplePanel: FC<DatasetSamplePanelProps> = ({
   return (
     <Stack
       gap="density-md"
-      className="min-h-0 flex-1 rounded-lg border border-base bg-surface-raised p-density-xl"
+      className="rounded-lg border border-base bg-surface-raised p-density-xl"
       data-testid="dataset-sample-panel"
     >
-      <Flex justify="between" align="center" gap="density-md" wrap="wrap" className="shrink-0">
+      <Flex justify="between" align="center" gap="density-md" wrap="wrap">
         <Text kind="title/sm">Data sample</Text>
         <Flex gap="density-md" align="center" wrap="wrap">
           <Select
@@ -112,19 +112,15 @@ export const DatasetSamplePanel: FC<DatasetSamplePanelProps> = ({
         </Flex>
       </Flex>
 
-      <div className="min-h-0 flex-1">
-        <Flex className="h-full">
-          <FileSamplingSnippet
-            workspace={workspace}
-            filesetName={filesetName}
-            filePath={activeFilePath}
-            maxSampleRows={maxRows}
-            sampleMethod={sampleMethod}
-            onSampledContentChange={NOOP_ON_SAMPLED_CONTENT_CHANGE}
-            displayMode={displayMode}
-          />
-        </Flex>
-      </div>
+      <FileSamplingSnippet
+        workspace={workspace}
+        filesetName={filesetName}
+        filePath={activeFilePath}
+        maxSampleRows={maxRows}
+        sampleMethod={sampleMethod}
+        onSampledContentChange={NOOP_ON_SAMPLED_CONTENT_CHANGE}
+        displayMode={displayMode}
+      />
     </Stack>
   );
 };

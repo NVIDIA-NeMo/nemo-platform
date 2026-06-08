@@ -114,7 +114,7 @@ export const FilesetDetailRoute: FC = () => {
 
   return (
     <AccessibleTitle title={`${typeLabel} ${filesetName}`}>
-      <Stack className="w-full min-h-full overflow-y-auto p-density-2xl" gap="density-xl">
+      <Stack className="w-full min-h-full p-density-2xl" gap="density-xl">
         <PageHeader slotHeading={filesetName} slotDescription={description} />
         <TabsRoot className="flex flex-col" value={currentTab} onValueChange={handleTabChange}>
           <TabsList>

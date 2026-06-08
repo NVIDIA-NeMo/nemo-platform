@@ -8,7 +8,6 @@ import {
 } from '@nemo/sdk/generated/platform/schema';
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
-import { ResizeablePanel } from '@studio/components/common/ResizeablePanel';
 import { DatasetSamplePanel } from '@studio/routes/FilesetDetailRoute/FilesetCard/DatasetSamplePanel';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
 import { FilesetMetadataPanel } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel';
@@ -57,37 +56,34 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   const isDataset = fileset.purpose === FilesetPurpose.dataset;
 
   return (
-    <div className="h-[calc(100vh-12rem)] min-h-96 w-full" data-testid="fileset-card">
-      <ResizeablePanel
-        defaultLeftWidth={700}
-        minLeftWidth={280}
-        leftClassName="p-density-xl overflow-y-auto"
-        rightClassName="overflow-y-auto"
-        slotLeft={
-          <Stack gap="density-md">
-            {fileset.description && (
-              <Text kind="body/regular/md" data-testid="fileset-card-description">
-                {fileset.description}
-              </Text>
-            )}
-            <ReadmeBody
-              isFilesError={isFilesError}
-              readmePath={readmePath}
-              isContentLoading={isContentLoading}
-              isContentError={isContentError}
-              content={parsed?.content}
-            />
-          </Stack>
-        }
-        slotRight={
-          <Stack gap="density-xl" className="h-full p-density-xl">
-            <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
-            {isDataset && (
-              <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
-            )}
-          </Stack>
-        }
-      />
+    <div
+      className="grid w-full grid-cols-1 gap-density-xl pt-density-xl lg:grid-cols-3"
+      data-testid="fileset-card"
+    >
+      <div className="lg:col-span-2">
+        <Stack gap="density-md">
+          {fileset.description && (
+            <Text kind="body/regular/md" data-testid="fileset-card-description">
+              {fileset.description}
+            </Text>
+          )}
+          <ReadmeBody
+            isFilesError={isFilesError}
+            readmePath={readmePath}
+            isContentLoading={isContentLoading}
+            isContentError={isContentError}
+            content={parsed?.content}
+          />
+        </Stack>
+      </div>
+      <div className="lg:col-span-1">
+        <Stack gap="density-xl" className="h-full overflow-auto">
+          <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+          {isDataset && (
+            <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
+          )}
+        </Stack>
+      </div>
     </div>
   );
 };
