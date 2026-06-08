@@ -11,7 +11,7 @@ interface MetricProps {
 }
 
 export const Metric: FC<MetricProps> = ({ title, value, icon }) => (
-  <div className="flex flex-col items-center gap-[5px]">
+  <div className="flex flex-col items-center gap-1.5">
     <Text kind="label/semibold/sm" className="text-tertiary uppercase">
       {title}
     </Text>
