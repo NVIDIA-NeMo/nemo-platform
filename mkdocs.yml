@@ -120,6 +120,7 @@ plugins:
         get-started/quickstart.md: get-started/setup.md
         get-started/getting-started.md: index.md
         generate-synthetic-data/index.md: data-designer/index.md
+        anonymizer/quickstart.md: anonymizer/tutorials/index.md
 
   - swagger-ui-tag:
       docExpansion: list
@@ -334,7 +335,6 @@ nav:
     - SDK Resources: safe-synthesizer/sdk-resources.md
   - Anonymize Data:
     - About: anonymizer/index.md
-    - Quickstart: anonymizer/quickstart.md
     - Tutorials:
       - Overview: anonymizer/tutorials/index.md
       - Preview a Config: anonymizer/tutorials/preview.md

@@ -2,7 +2,7 @@
 
 The user has signaled they don't want to answer questions. Make defensible decisions and keep moving. Do **not** run the full `run` job autonomously — finalize with a one-line command the user can launch.
 
-Source of truth for defaults: `docs/anonymizer/quickstart.md`. If anything below conflicts with the docs, the docs win.
+Source of truth for defaults: `docs/anonymizer/tutorials/index.md` and `docs/anonymizer/tutorials/{preview,run}.md`. If anything below conflicts with the docs, the docs win.
 
 1. **Resolve CLI command** — Run `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
    - If the output is `CLI_NOT_FOUND`, STOP and follow the Troubleshooting section in SKILL.md.
