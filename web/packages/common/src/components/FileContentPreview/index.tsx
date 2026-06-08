@@ -106,7 +106,7 @@ export const FileContentPreview: FC<FileContentPreviewProps> = ({
   // Markdown files - rendered
   if (isMarkdown) {
     return (
-      <div className="h-full overflow-auto p-4">
+      <div className="h-full overflow-auto rounded-lg border border-base bg-surface-raised p-4">
         <MarkdownContent content={content} />
       </div>
     );

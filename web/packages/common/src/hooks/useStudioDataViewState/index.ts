@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { DEFAULT_DEBOUNCE_MS } from '@nemo/common/src/constants';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useDebounce } from 'use-debounce';
@@ -384,8 +385,11 @@ export const useStudioDataViewState = <FilterType = Record<string, unknown>>(
   }, [dataViewState.sorting, dataViewState.pagination, urlSorting, updateUrlParams]);
 
   // Debounced search bar and column filters for API queries
-  const [debouncedSearchBar] = useDebounce(dataViewState.searchBar.state, 300);
-  const [debouncedColumnFilters] = useDebounce(dataViewState.columnFiltering.state, 300);
+  const [debouncedSearchBar] = useDebounce(dataViewState.searchBar.state, DEFAULT_DEBOUNCE_MS);
+  const [debouncedColumnFilters] = useDebounce(
+    dataViewState.columnFiltering.state,
+    DEFAULT_DEBOUNCE_MS
+  );
 
   // Track previous debounced values to detect changes for pagination reset
   const prevDebouncedSearchRef = useRef(debouncedSearchBar);

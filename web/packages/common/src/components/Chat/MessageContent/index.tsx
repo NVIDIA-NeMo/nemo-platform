@@ -13,16 +13,24 @@ import {
   Children,
   type FC,
   isValidElement,
+  type MouseEvent,
   type PropsWithChildren,
   type ReactElement,
   type ReactNode,
+  useCallback,
   useMemo,
+  useState,
 } from 'react';
 import Markdown, { type Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
+export interface MarkdownTableOptions {
+  expandableCells?: boolean;
+}
+
 export interface MessageContentProps {
   content?: string | null;
+  markdownTableOptions?: MarkdownTableOptions;
   renderAsMarkdown?: boolean;
 }
 
@@ -31,13 +39,13 @@ const INLINE_CODE_CLASS = 'rounded bg-gray-050 px-1 py-0.5 font-sans text-sm dar
 interface MarkdownTableColumn {
   id: string;
   header: ReactNode;
-  headerText: string;
 }
 
 interface MarkdownTableRow {
   id: string;
   cells: readonly ReactNode[];
   cellValues: readonly string[];
+  expandedRowIds?: ReadonlySet<string>;
 }
 
 interface ElementWithChildrenProps {
@@ -78,6 +86,21 @@ const MarkdownParagraph: FC<PropsWithChildren> = ({ children }) => (
     <p className="mb-density-xl text-sm leading-[160%] last:mb-0">{children}</p>
   </Text>
 );
+
+interface MarkdownDataViewTableProps extends PropsWithChildren {
+  options?: MarkdownTableOptions;
+}
+
+interface MarkdownTableCellProps {
+  children: ReactNode;
+  expanded: boolean;
+  expandable: boolean;
+  onToggle: () => void;
+}
+
+const DEFAULT_MARKDOWN_TABLE_OPTIONS: Required<MarkdownTableOptions> = {
+  expandableCells: true,
+};
 
 const isElementWithChildren = (node: ReactNode): node is ReactElement<ElementWithChildrenProps> =>
   isValidElement<ElementWithChildrenProps>(node);
@@ -244,6 +267,48 @@ const remarkNormalizeEmptyOrderedListMarkers =
     normalizeMarkdownAstLists(tree);
   };
 
+const getMarkdownTableOptions = (
+  options: MarkdownTableOptions | undefined
+): Required<MarkdownTableOptions> => ({
+  ...DEFAULT_MARKDOWN_TABLE_OPTIONS,
+  ...options,
+});
+
+const MarkdownTableCell = ({
+  children,
+  expanded,
+  expandable,
+  onToggle,
+}: MarkdownTableCellProps) => {
+  if (!expandable) {
+    return <span className="block whitespace-normal break-words">{children}</span>;
+  }
+
+  const text = getNodeText(children);
+
+  return (
+    <button
+      aria-label={text || undefined}
+      aria-expanded={expanded}
+      className="block w-full min-w-0 max-w-full cursor-pointer appearance-none overflow-hidden border-0 bg-transparent p-0 text-left font-inherit text-inherit"
+      onClick={(event) => {
+        event.stopPropagation();
+        onToggle();
+      }}
+      type="button"
+    >
+      <span
+        className={`min-w-0 max-w-full whitespace-normal break-words [&_span]:whitespace-normal ${
+          expanded ? 'block' : 'line-clamp-2'
+        }`}
+        data-collapsed={!expanded || undefined}
+      >
+        {children}
+      </span>
+    </button>
+  );
+};
+
 const parseMarkdownTable = (children: ReactNode): MarkdownTableData => {
   const tableChildren = Children.toArray(children);
   const head = tableChildren.find((child) => isElementNamed(child, 'thead'));
@@ -258,7 +323,6 @@ const parseMarkdownTable = (children: ReactNode): MarkdownTableData => {
     columns: Array.from({ length: columnCount }, (_, index) => ({
       id: `column-${index}`,
       header: headerCells[index] ?? `Column ${index + 1}`,
-      headerText: getNodeText(headerCells[index] ?? `Column ${index + 1}`),
     })),
     rows: dataRows.map((cells, rowIndex) => ({
       id: `row-${rowIndex}`,
@@ -270,21 +334,60 @@ const parseMarkdownTable = (children: ReactNode): MarkdownTableData => {
   };
 };
 
-const MarkdownDataViewTable: FC<PropsWithChildren> = ({ children }) => {
+const MarkdownDataViewTable: FC<MarkdownDataViewTableProps> = ({ children, options }) => {
+  const tableOptions = useMemo(() => getMarkdownTableOptions(options), [options]);
   const { columns, rows } = useMemo(() => parseMarkdownTable(children), [children]);
   const dataViewState = DataView.useDataViewState();
+  const [expandedRowIds, setExpandedRowIds] = useState<ReadonlySet<string>>(() => new Set());
+  const data = useMemo(
+    () => rows.map((row) => ({ ...row, expandedRowIds })),
+    [expandedRowIds, rows]
+  );
+  const toggleExpandedRow = useCallback((rowId: string) => {
+    setExpandedRowIds((current) => {
+      const next = new Set(current);
+      if (next.has(rowId)) {
+        next.delete(rowId);
+      } else {
+        next.add(rowId);
+      }
+      return next;
+    });
+  }, []);
+  const handleTableClick = useCallback(
+    (event: MouseEvent<HTMLTableElement>) => {
+      if (!tableOptions.expandableCells || !(event.target instanceof Element)) return;
+
+      const rowElement = event.target.closest('tbody tr[data-row-id]');
+      const rowId = rowElement?.getAttribute('data-row-id');
+      if (!rowId) return;
+
+      toggleExpandedRow(rowId);
+    },
+    [tableOptions.expandableCells, toggleExpandedRow]
+  );
   const makeColumns = useMemo<DataView.MakeColumns<MarkdownTableRow>>(
     () => (columnHelper) =>
       columns.map((column, columnIndex) =>
         columnHelper.accessor((row) => row.cellValues[columnIndex] ?? '', {
           id: column.id,
           header: () => column.header,
-          cell: ({ row }) => row.original.cells[columnIndex] ?? '',
+          cell: ({ row }) => {
+            return (
+              <MarkdownTableCell
+                expanded={row.original.expandedRowIds?.has(row.original.id) ?? false}
+                expandable={tableOptions.expandableCells}
+                onToggle={() => toggleExpandedRow(row.original.id)}
+              >
+                {row.original.cells[columnIndex] ?? ''}
+              </MarkdownTableCell>
+            );
+          },
           enableResizing: false,
           enableSorting: true,
         })
       ),
-    [columns]
+    [columns, tableOptions, toggleExpandedRow]
   );
 
   if (!columns.length) return null;
@@ -293,7 +396,7 @@ const MarkdownDataViewTable: FC<PropsWithChildren> = ({ children }) => {
     <DataView.Root
       autoCellTooltips={false}
       className="my-density-md min-w-0 max-w-full overflow-hidden [&>div]:min-h-0"
-      data={[...rows]}
+      data={data}
       dataMode="sort-filter-only"
       makeColumns={makeColumns}
       state={dataViewState}
@@ -303,9 +406,10 @@ const MarkdownDataViewTable: FC<PropsWithChildren> = ({ children }) => {
         <DataView.SearchBar debounce={0} placeholder="Search table" />
       </DataView.Toolbar>
       <DataView.TableContent
-        className="min-h-0 border-0 [&_.nv-table-head]:border-b-0 [&_.nv-table-row]:border-b-0"
+        className={`min-h-0 border-0 [&_.nv-table-head]:border-b-0 [&_.nv-table-row]:border-b-0 [&_thead_th>.data-view-header-control]:!max-w-none [&_.data-view-header-control>span]:!overflow-visible [&_.data-view-header-control>span]:!text-clip ${tableOptions.expandableCells ? '[&_tbody_tr]:cursor-pointer' : ''}`}
         density="compact"
         layout="auto"
+        onClick={handleTableClick}
         stickyTableHeader={false}
       />
     </DataView.Root>
@@ -383,9 +487,20 @@ const messageMarkdownComponents: Components = {
  */
 export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
   content,
+  markdownTableOptions,
   renderAsMarkdown = true,
 }) => {
   const snippets = useMemo(() => splitMessageWithLabels(content), [content]);
+  const markdownComponents = useMemo<Components>(
+    () => ({
+      ...messageMarkdownComponents,
+      table: ({ children }) => (
+        <MarkdownDataViewTable options={markdownTableOptions}>{children}</MarkdownDataViewTable>
+      ),
+    }),
+    [markdownTableOptions]
+  );
+
   return snippets.map((descriptor) => {
     const contentHash = simpleHash(descriptor.value);
     if (descriptor.type === 'plaintext') {
@@ -398,7 +513,7 @@ export const MessageContent: FC<PropsWithChildren<MessageContentProps>> = ({
           {renderAsMarkdown ? (
             <Markdown
               remarkPlugins={[remarkGfm, remarkNormalizeEmptyOrderedListMarkers]}
-              components={messageMarkdownComponents}
+              components={markdownComponents}
             >
               {decode(descriptor.value)}
             </Markdown>
