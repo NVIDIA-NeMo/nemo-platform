@@ -14,7 +14,7 @@ from nemo_guardrails_plugin.llm_clients import (
     platform_headers_context,
     register_header_aware_nim_provider,
 )
-from nemo_platform_plugin.task_sdk import get_forwarding_headers
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from nemoguardrails.llm.models import langchain_initializer
 
 

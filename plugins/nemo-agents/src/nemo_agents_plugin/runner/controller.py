@@ -99,7 +99,7 @@ class AgentDeploymentController(NemoController):
         from nemo_agents_plugin.runner.registry import RunnerBackendRegistry
         from nemo_platform.resources.entities import AsyncEntitiesResource
         from nemo_platform_plugin.entities import EntityClient as _EntityClient
-        from nemo_platform_plugin.task_sdk import get_async_platform_sdk
+        from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 
         config = AgentsConfig.get()
         self._interval_seconds = float(config.controller.interval_seconds)

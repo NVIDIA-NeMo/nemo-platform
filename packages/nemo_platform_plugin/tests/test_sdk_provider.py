@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for :mod:`nemo_platform_plugin.task_sdk`."""
+"""Tests for :mod:`nemo_platform_plugin.sdk_provider`."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 from nemo_platform import NeMoPlatform
-from nemo_platform_plugin.task_sdk import (
+from nemo_platform_plugin.sdk_provider import (
     DefaultSDKProvider,
     SDKProvider,
     _on_behalf_of_headers,
@@ -176,7 +176,7 @@ class TestProviderResolution:
         monkeypatch.delenv("NMP_PRINCIPAL", raising=False)
 
         # No explicit provider, no entry-points → default
-        with patch("nemo_platform_plugin.task_sdk.entry_points", return_value=[]):
+        with patch("nemo_platform_plugin.sdk_provider.entry_points", return_value=[]):
             sdk = get_task_sdk("test")
         assert sdk.base_url == "http://fallback:8080"
 
@@ -189,7 +189,7 @@ class TestProviderResolution:
 
         # Clear the override
         set_sdk_provider(None)
-        with patch("nemo_platform_plugin.task_sdk.entry_points", return_value=[]):
+        with patch("nemo_platform_plugin.sdk_provider.entry_points", return_value=[]):
             sdk = get_task_sdk("x")
         assert sdk.base_url == "http://re-resolved:8080"
 

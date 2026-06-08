@@ -77,7 +77,7 @@ from nemo_platform_plugin.inference_middleware import (
     VirtualModel,
 )
 from nemo_platform_plugin.refs import parse_entity_ref
-from nemo_platform_plugin.task_sdk import get_async_platform_sdk
+from nemo_platform_plugin.sdk_provider import get_async_platform_sdk
 from nemoguardrails.rails.llm.llmrails import LLMRails
 from nemoguardrails.rails.llm.options import GenerationResponse
 

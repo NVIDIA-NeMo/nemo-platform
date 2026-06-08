@@ -25,7 +25,7 @@ from typing import Any, cast
 
 from langchain_core.language_models import BaseChatModel
 from nemo_platform import AsyncNeMoPlatform
-from nemo_platform_plugin.task_sdk import get_forwarding_headers
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from nemoguardrails.llm.models import langchain_initializer
 
 NIM_PROVIDER_NAME = "nim"

@@ -23,7 +23,7 @@ Lookup order for the provider
 
 Usage from a plugin ``__main__.py``::
 
-    from nemo_platform_plugin.task_sdk import get_task_sdk
+    from nemo_platform_plugin.sdk_provider import get_task_sdk
     from nemo_platform_plugin.tasks.dispatcher import run_task
 
     sdk = get_task_sdk("evaluator")
@@ -243,8 +243,7 @@ class DefaultSDKProvider:
 # Provider resolution
 # ---------------------------------------------------------------------------
 
-_provider: SDKProvider | None = None
-_resolved: bool = False
+_cached_provider: SDKProvider | None = None
 
 
 def set_sdk_provider(provider: SDKProvider | None) -> None:
@@ -253,17 +252,15 @@ def set_sdk_provider(provider: SDKProvider | None) -> None:
     Pass ``None`` to clear the override and fall back to entry-point
     discovery on the next call.
     """
-    global _provider, _resolved
-    _provider = provider
-    _resolved = provider is not None
+    global _cached_provider
+    _cached_provider = provider
 
 
 def _resolve_provider() -> SDKProvider:
-    """Resolve the provider once: entry-point → default."""
-    global _provider, _resolved
-    if _resolved:
-        assert _provider is not None
-        return _provider
+    """Resolve the provider once: explicit override → entry-point → default."""
+    global _cached_provider
+    if _cached_provider is not None:
+        return _cached_provider
 
     # Scan entry-points.  Only the platform (nmp-common) should register a
     # provider — multiple registrations indicate a packaging/config error.
@@ -281,18 +278,15 @@ def _resolve_provider() -> SDKProvider:
                 obj = obj()
             if isinstance(obj, SDKProvider):
                 logger.debug("Using SDK provider from entry-point %r", ep.name)
-                _provider = obj
-                _resolved = True
+                _cached_provider = obj
                 return obj
         except Exception:
             logger.warning("Failed to load SDK provider %r; skipping", ep.name, exc_info=True)
 
     # Fall back to the built-in default.
     logger.debug("No entry-point SDK provider found; using DefaultSDKProvider")
-    default = DefaultSDKProvider()
-    _provider = default
-    _resolved = True
-    return default
+    _cached_provider = DefaultSDKProvider()
+    return _cached_provider
 
 
 # ---------------------------------------------------------------------------

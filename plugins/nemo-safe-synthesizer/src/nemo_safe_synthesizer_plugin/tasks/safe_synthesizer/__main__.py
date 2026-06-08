@@ -36,7 +36,7 @@ from nemo_platform_plugin.jobs.constants import (
     NEMO_JOB_WORKSPACE_ENVVAR,
 )
 from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
-from nemo_platform_plugin.task_sdk import get_platform_sdk
+from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer

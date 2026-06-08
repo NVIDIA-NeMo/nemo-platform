@@ -324,12 +324,12 @@ def get_entity_parts(name: str, default_workspace: str | None = None) -> tuple[s
 
 
 # ---------------------------------------------------------------------------
-# Entry-point provider for nemo_platform_plugin.task_sdk
+# Entry-point provider for nemo_platform_plugin.sdk_provider
 # ---------------------------------------------------------------------------
 
 
 class PlatformSDKProvider:
-    """Rich :class:`~nemo_platform_plugin.task_sdk.SDKProvider` that uses
+    """Rich :class:`~nemo_platform_plugin.sdk_provider.SDKProvider` that uses
     platform internals (shared HTTP clients, URL routing, OTEL headers, auth
     context vars).
 
