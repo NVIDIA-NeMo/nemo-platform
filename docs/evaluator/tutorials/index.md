@@ -17,6 +17,14 @@ Set up [a local instance of the platform](../../get-started/setup.md) for the fo
 
     <small><span class="md-tag">intermediate</span> <span class="md-tag">custom evaluation</span> <span class="md-tag">llm judge</span> <span class="md-tag">nemo-evaluator</span></small>
 
+-   **[Define and Run Custom Python Metrics](define-run-custom-python-metrics.md)**
+
+    ---
+
+    Learn how to write a domain-specific Python metric, test it locally, and run it through the Evaluator service.
+
+    <small><span class="md-tag">intermediate</span> <span class="md-tag">custom metric</span> <span class="md-tag">remote execution</span> <span class="md-tag">nemo-evaluator</span></small>
+
 </div>
 
 ## How It Works

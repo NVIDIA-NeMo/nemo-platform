@@ -1,8 +1,13 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ThreadMessageLike } from '@assistant-ui/react';
+import type { ThreadAssistantMessagePart, ThreadMessageLike } from '@assistant-ui/react';
 import { COMPLETE_STATUS } from '@nemo/common/src/components/AssistantChat/constants';
+import {
+  createClaudeCodeToolCallPart,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
+  mergeConsecutiveClaudeCodeSubtleToolMessages,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import type {
   ClaudeCodeAssistantHistoryPart,
   ClaudeCodeSessionHistory,
@@ -23,10 +28,22 @@ export const getSelectedClaudeCodeSessionId = (search: string): string | undefin
   return sessionId || undefined;
 };
 
-const getAssistantPartText = (part: ClaudeCodeAssistantHistoryPart): string => {
-  if (part.type === 'text') return part.text;
-  if (part.type === 'tool_use') return `\n\nUsing ${part.name || 'tool'}...`;
-  return '';
+const getAssistantMessagePart = (
+  part: ClaudeCodeAssistantHistoryPart,
+  index: number,
+  assistantMessageId: string
+): ThreadAssistantMessagePart | undefined => {
+  if (part.type === 'text') return { type: 'text', text: part.text };
+  if (part.type === 'tool_use') {
+    const toolName = part.name || 'tool';
+
+    return createClaudeCodeToolCallPart({
+      input: part.input,
+      toolCallId: `claude-history-tool-${assistantMessageId}-${toolName}-${index}`,
+      toolName,
+    });
+  }
+  return undefined;
 };
 
 export const getClaudeCodeHistoryMessages = (
@@ -34,7 +51,7 @@ export const getClaudeCodeHistoryMessages = (
 ): readonly ThreadMessageLike[] => {
   if (!history) return [];
 
-  return history.items
+  const messages = history.items
     .map((item, index): ThreadMessageLike | undefined => {
       if (item.kind === 'user') {
         return {
@@ -44,15 +61,21 @@ export const getClaudeCodeHistoryMessages = (
         };
       }
 
-      const text = item.parts.map(getAssistantPartText).join('').trim();
-      if (!text) return undefined;
+      const messageId = `${history.session_id}-${index}`;
+      const content = item.parts
+        .map((part, partIndex) => getAssistantMessagePart(part, partIndex, messageId))
+        .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
+      const groupedContent = groupConsecutiveClaudeCodeSubtleToolCalls(content);
+      if (!groupedContent.length) return undefined;
 
       return {
-        id: `${history.session_id}-${index}`,
+        id: messageId,
         role: 'assistant',
-        content: [{ type: 'text', text }],
+        content: groupedContent,
         status: COMPLETE_STATUS,
       };
     })
     .filter((message): message is ThreadMessageLike => message !== undefined);
+
+  return mergeConsecutiveClaudeCodeSubtleToolMessages(messages);
 };

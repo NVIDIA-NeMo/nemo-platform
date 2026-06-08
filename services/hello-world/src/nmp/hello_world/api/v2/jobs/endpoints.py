@@ -13,7 +13,7 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobStep,
     job_route_factory,
 )
-from nmp.common.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.hello_world.api.v2.jobs.schemas import HelloWorldJobConfig
 
 

@@ -25,17 +25,10 @@ Platform jobs publish named results through the Jobs service:
 - `evaluation-report`
 - `adapter`
 
-Use the generated Safe Synthesizer jobs result commands when available:
-
-```bash
-nemo safe-synthesizer jobs results list <job-name> --workspace default
-nemo safe-synthesizer jobs results get <result-name> --job <job-name> --workspace default
-```
-
-If those generated commands differ in the installed CLI, run `nemo safe-synthesizer jobs results --help` and follow the current help text.
+Use the Jobs API or SDK to list and fetch result records for platform jobs. The plugin CLI does not expose `nemo safe-synthesizer jobs ...` result commands.
 
 ## Next Steps
 
 - Interpret artifact names and missing output cases with `workflows/artifacts.md`.
-- Check job status with `nemo safe-synthesizer jobs get <job-name> --workspace <workspace>`.
+- Check platform job status with the Jobs API or SDK.
 - Diagnose failures with `workflows/diagnose.md`.

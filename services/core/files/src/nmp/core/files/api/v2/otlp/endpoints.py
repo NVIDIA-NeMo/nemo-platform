@@ -196,9 +196,13 @@ async def upload_otlp_logs(
                         log_message = ""
                         if log_record.body:
                             log_message = extract_string_value(log_record.body)
-                        # Convert timestamp from nanoseconds to datetime
-                        # timeUnixNano is a string representation of nanoseconds since Unix epoch
+                        # Convert timestamp from nanoseconds to datetime.
+                        # timeUnixNano is a string representation of nanoseconds since Unix epoch.
+                        # Fall back to observedTimeUnixNano if timeUnixNano is missing or zero
+                        # (e.g. when the emitter omits the timestamp field).
                         timestamp_ns = int(log_record.timeUnixNano)
+                        if timestamp_ns == 0 and log_record.observedTimeUnixNano:
+                            timestamp_ns = int(log_record.observedTimeUnixNano)
                         timestamp = datetime.fromtimestamp(timestamp_ns / 1_000_000_000)
                         # Create log entry
                         log_entry = LogEntry(

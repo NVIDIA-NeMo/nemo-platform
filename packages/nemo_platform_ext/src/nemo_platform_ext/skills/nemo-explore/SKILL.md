@@ -13,6 +13,7 @@ not-for:
   - nemo-skill-selection (use to dispatch when intent is unclear)
   - nemo-spec (use to write the spec file once explore is done)
   - nemo-build-agent (use after spec exists)
+  - nemo-model-selection (use for the model question in step 5; explore delegates to it)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
 compatibility: nemo-platform >= 0.1.0; dialogue-driven with one read-only pre-flight (`ls agents/*.spec.md`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
 maturity: active
@@ -45,7 +46,7 @@ Ask in this order, one at a time. Wait for each answer.
 
 4. **The tools.** "Does it need to call anything (search, database, HTTP API), or can it answer from prompt and model alone?" Default: prompt-only with `current_datetime` as the only tool. Tools beyond that need a follow-up about credentials.
 
-5. **The model.** "Cloud (NVIDIA Build API) or a local NIM? Size preference?" Capture the family or size the user wants (e.g., "Nemotron Super 49B", "smallest open-weight that works"). `nemo-build-agent` resolves this to a specific model entity ID via `nemo models list`; this skill is not the place to pin the alias. Default: cloud, Nemotron-Super-49B family. Local NIMs require host-gpu mode.
+5. **The model.** Hand off to `nemo-model-selection` for this question. That skill profiles the agent on tool density, primary capability, and deployment, then recommends a specific NIM model with a plain-English explanation grounded in what the model is actually good at. Return here with the chosen model string captured for the spec. If the user wants to skip the conversation, the default is cloud, `nvidia/llama-3.3-nemotron-super-49b-v1` — announce that and move on. Local NIMs require host-gpu mode.
 
 6. **Constraints.** "Anything off-limits? e.g., cannot mention competitors, must redirect medical questions, response length cap?"
 
@@ -63,7 +64,7 @@ If the user says the summary is wrong, ask which bullet is wrong and re-ask only
 
 ## Gotchas
 
-- **"You decide" means commit to the default and announce it.** Example: "I'll go with cloud and Nemotron Super 49B. Tell me to change if not." Never silently fill in.
+- **"You decide" means commit to the default and announce it.** Example: "I'll go with cloud and `nvidia/llama-3.3-nemotron-super-49b-v1`. Tell me to change if not." Never silently fill in. Prefer routing through `nemo-model-selection` so the user gets a plain-English reason, not just a name.
 - **Tool over-spec is the most common error.** Users ask for a search tool when prompt-only would work. Probe: "Do you have evidence the model alone fails on these?" If no, drop the tool.
 - **"No constraints" usually means "I haven't thought about it."** Probe once: "Anything that should never appear: names, phone numbers, competitor mentions?" One probe, then move on.
 - **Do not propose a design before the user has answered.** Skipping ahead skips the value of the questions.

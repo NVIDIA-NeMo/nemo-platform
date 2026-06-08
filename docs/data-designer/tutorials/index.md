@@ -13,7 +13,7 @@ Data Designer separates **configuration** (building dataset schemas) from **exec
 
 **Part 1: Build Configs (Library)**
 
-Use `data_designer.config` to define your dataset. See the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome) for comprehensive guides on column types, constraints, and processors.
+Use `data_designer.config` to define your dataset. See the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/getting-started/welcome) for comprehensive guides on column types, constraints, and processors.
 
 ```python
 import data_designer.config as dd

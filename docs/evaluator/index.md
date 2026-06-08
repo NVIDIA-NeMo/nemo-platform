@@ -116,6 +116,14 @@ After [setting up a local instance of the platform](../get-started/setup.md), us
 
     <small><span class="md-tag">custom-dataset</span></small>
 
+-   **[Define and Run Custom Python Metrics](tutorials/define-run-custom-python-metrics.md)**
+
+    ---
+
+    Learn how to write a domain-specific Python metric, test it locally, and run it through the Evaluator service.
+
+    <small><span class="md-tag">custom-metric</span></small>
+
 </div>
 
 ---

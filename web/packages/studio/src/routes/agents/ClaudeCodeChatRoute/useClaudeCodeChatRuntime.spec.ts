@@ -34,6 +34,7 @@ vi.mock('@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime
       await onRun({
         prompt,
         signal: new AbortController().signal,
+        appendAssistantParts: vi.fn(),
         appendAssistantText: vi.fn(),
         prepareForUserInput: vi.fn(),
         isCurrentRun: () => true,

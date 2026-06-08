@@ -4,6 +4,7 @@
 import {
   type AppendMessage,
   type MessageStatus,
+  type ThreadAssistantMessagePart,
   type ThreadMessageLike,
   useExternalStoreRuntime,
 } from '@assistant-ui/react';
@@ -17,18 +18,21 @@ import {
   createTextMessage,
   getMessageText,
 } from '@nemo/common/src/components/AssistantChat/messageUtils';
+import { groupConsecutiveClaudeCodeSubtleToolCalls } from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { useCallback, useRef, useState } from 'react';
 
 export interface CustomAssistantRunContext {
   prompt: string;
   signal: AbortSignal;
   appendAssistantText: (text: string) => void;
+  appendAssistantParts: (parts: readonly ThreadAssistantMessagePart[]) => void;
   prepareForUserInput: () => void;
   setAssistantText: (text: string) => void;
   isCurrentRun: () => boolean;
 }
 
 export interface CustomAssistantRunResult {
+  content?: readonly ThreadAssistantMessagePart[];
   status?: MessageStatus;
   text?: string;
 }
@@ -41,6 +45,50 @@ interface UseCustomAssistantChatRuntimeOptions {
 
 const isAbortError = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
+
+const mergeAssistantParts = (
+  currentParts: readonly ThreadAssistantMessagePart[],
+  nextParts: readonly ThreadAssistantMessagePart[]
+): readonly ThreadAssistantMessagePart[] => {
+  const merged = [...currentParts];
+
+  for (const part of nextParts) {
+    if (part.type !== 'text') {
+      merged.push(part);
+      continue;
+    }
+
+    const previousPart = merged.at(-1);
+    if (previousPart?.type === part.type) {
+      merged[merged.length - 1] = {
+        ...previousPart,
+        text: previousPart.text + part.text,
+      };
+      continue;
+    }
+
+    merged.push(part);
+  }
+
+  return groupConsecutiveClaudeCodeSubtleToolCalls(merged);
+};
+
+const getAssistantPartsText = (parts: readonly ThreadAssistantMessagePart[]): string =>
+  parts
+    .map((part) => {
+      if (part.type === 'text') return part.text;
+      return '';
+    })
+    .join('');
+
+const hasVisibleAssistantContent = (content: ThreadMessageLike['content']): boolean => {
+  if (typeof content === 'string') return content.trim().length > 0;
+
+  return content.some((part) => {
+    if (part.type === 'text') return part.text.trim().length > 0;
+    return true;
+  });
+};
 
 export const useCustomAssistantChatRuntime = ({
   initialMessages = [],
@@ -57,14 +105,14 @@ export const useCustomAssistantChatRuntime = ({
     setMessages(nextMessages);
   }, []);
 
-  const updateAssistantMessage = useCallback(
-    (assistantMessageId: string, text: string, status: MessageStatus) => {
+  const updateAssistantMessageContent = useCallback(
+    (assistantMessageId: string, content: ThreadMessageLike['content'], status: MessageStatus) => {
       setThreadMessages(
         messagesRef.current.map((message) =>
           message.id === assistantMessageId
             ? {
                 ...message,
-                content: [{ type: 'text', text }],
+                content,
                 status,
               }
             : message
@@ -72,6 +120,27 @@ export const useCustomAssistantChatRuntime = ({
       );
     },
     [setThreadMessages]
+  );
+
+  const updateAssistantMessageText = useCallback(
+    (assistantMessageId: string, text: string, status: MessageStatus) => {
+      updateAssistantMessageContent(assistantMessageId, [{ type: 'text', text }], status);
+    },
+    [updateAssistantMessageContent]
+  );
+
+  const completeAssistantMessageContent = useCallback(
+    (assistantMessageId: string, content: ThreadMessageLike['content'], status: MessageStatus) => {
+      if (!hasVisibleAssistantContent(content)) {
+        setThreadMessages(
+          messagesRef.current.filter((message) => message.id !== assistantMessageId)
+        );
+        return;
+      }
+
+      updateAssistantMessageContent(assistantMessageId, content, status);
+    },
+    [setThreadMessages, updateAssistantMessageContent]
   );
 
   const runCompletion = useCallback(
@@ -87,11 +156,13 @@ export const useCustomAssistantChatRuntime = ({
 
       let assistantMessageId: string | null = null;
       let responseText = '';
+      let responseContent: readonly ThreadAssistantMessagePart[] | undefined;
 
       const createAssistantMessage = () => {
         const assistantMessage = createTextMessage('assistant', '', RUNNING_STATUS);
         assistantMessageId = assistantMessage.id!;
         responseText = '';
+        responseContent = undefined;
         setThreadMessages([...messagesRef.current, assistantMessage]);
       };
 
@@ -100,36 +171,50 @@ export const useCustomAssistantChatRuntime = ({
         createAssistantMessage();
       };
 
+      const getCurrentResponseContent = (): ThreadMessageLike['content'] =>
+        responseContent ?? [{ type: 'text', text: responseText }];
+
+      const completeActiveAssistantMessage = (
+        status: MessageStatus,
+        content: ThreadMessageLike['content'] = getCurrentResponseContent()
+      ) => {
+        if (!assistantMessageId) return;
+
+        const currentAssistantMessageId = assistantMessageId;
+        assistantMessageId = null;
+        responseText = '';
+        responseContent = undefined;
+        completeAssistantMessageContent(currentAssistantMessageId, content, status);
+      };
+
       createAssistantMessage();
       setIsRunning(true);
 
       const setAssistantText = (text: string) => {
         ensureAssistantMessage();
         responseText = text;
-        updateAssistantMessage(assistantMessageId!, responseText, RUNNING_STATUS);
+        responseContent = undefined;
+        updateAssistantMessageText(assistantMessageId!, responseText, RUNNING_STATUS);
       };
 
       const appendAssistantText = (text: string) => {
         ensureAssistantMessage();
         responseText += text;
-        updateAssistantMessage(assistantMessageId!, responseText, RUNNING_STATUS);
+        responseContent = undefined;
+        updateAssistantMessageText(assistantMessageId!, responseText, RUNNING_STATUS);
+      };
+
+      const appendAssistantParts = (parts: readonly ThreadAssistantMessagePart[]) => {
+        if (!parts.length) return;
+
+        ensureAssistantMessage();
+        responseContent = mergeAssistantParts(responseContent ?? [], parts);
+        responseText = getAssistantPartsText(responseContent);
+        updateAssistantMessageContent(assistantMessageId!, responseContent, RUNNING_STATUS);
       };
 
       const prepareForUserInput = () => {
-        if (!assistantMessageId) return;
-
-        const currentAssistantMessageId = assistantMessageId;
-        assistantMessageId = null;
-
-        if (!responseText) {
-          setThreadMessages(
-            messagesRef.current.filter((message) => message.id !== currentAssistantMessageId)
-          );
-          return;
-        }
-
-        updateAssistantMessage(currentAssistantMessageId, responseText, COMPLETE_STATUS);
-        responseText = '';
+        completeActiveAssistantMessage(COMPLETE_STATUS);
       };
 
       try {
@@ -137,36 +222,33 @@ export const useCustomAssistantChatRuntime = ({
           prompt,
           signal: runController.signal,
           appendAssistantText,
+          appendAssistantParts,
           prepareForUserInput,
           setAssistantText,
           isCurrentRun,
         });
 
         if (runController.signal.aborted || !isCurrentRun()) {
-          if (assistantMessageId) {
-            updateAssistantMessage(assistantMessageId, responseText, CANCELLED_STATUS);
-          }
+          completeActiveAssistantMessage(CANCELLED_STATUS);
           return;
         }
 
-        if (assistantMessageId) {
-          updateAssistantMessage(
-            assistantMessageId,
-            result?.text ?? responseText,
-            result?.status ?? COMPLETE_STATUS
-          );
-        }
+        completeActiveAssistantMessage(
+          result?.status ?? COMPLETE_STATUS,
+          result?.content ??
+            (result?.text !== undefined
+              ? [{ type: 'text', text: result.text }]
+              : getCurrentResponseContent())
+        );
       } catch (error: unknown) {
         if (runController.signal.aborted || isAbortError(error)) {
-          if (assistantMessageId) {
-            updateAssistantMessage(assistantMessageId, responseText, CANCELLED_STATUS);
-          }
+          completeActiveAssistantMessage(CANCELLED_STATUS);
           return;
         }
 
         const errorMessage = error instanceof Error ? error.message : 'Unknown Error';
         ensureAssistantMessage();
-        updateAssistantMessage(assistantMessageId!, errorMessage, {
+        updateAssistantMessageText(assistantMessageId!, errorMessage, {
           type: 'incomplete',
           reason: 'error',
           error: errorMessage,
@@ -179,7 +261,14 @@ export const useCustomAssistantChatRuntime = ({
         }
       }
     },
-    [onError, onRun, setThreadMessages, updateAssistantMessage]
+    [
+      completeAssistantMessageContent,
+      onError,
+      onRun,
+      setThreadMessages,
+      updateAssistantMessageContent,
+      updateAssistantMessageText,
+    ]
   );
 
   const handleNewMessage = useCallback(

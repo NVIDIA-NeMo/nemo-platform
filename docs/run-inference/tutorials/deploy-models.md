@@ -221,9 +221,9 @@ Deploy pre-built NIM containers from NGC.
     )
     ```
 
-### Deploy NeMo Guard Jailbreak Detection
+### Deploy NemoGuard JailbreakDetect
 
-Deploy classification NIMs like NeMoGuard for content safety. Uses the `/v1/classify` endpoint instead of chat completions.
+Deploy classification NIMs like NemoGuard for content safety. Uses the `/v1/classify` endpoint instead of chat completions.
 
 
 === "CLI"

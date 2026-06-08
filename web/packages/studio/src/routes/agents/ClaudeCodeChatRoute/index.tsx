@@ -14,6 +14,7 @@ import {
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
 import {
@@ -142,13 +143,15 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
   return (
     <ClaudeCodeLayout activeSessionId={activeSessionId}>
       <AccessibleTitle title={`Code Agent chat for ${workspace}`}>
-        <Stack className="h-full w-full py-density-2xl">
+        <Stack className="h-full w-full py-density-lg">
           <Stack className="min-h-0 w-full flex-1">
             <AssistantRuntimeProvider runtime={runtime}>
               <AssistantChatThread
                 contentClassName="mx-auto w-full max-w-180 px-density-2xl"
                 composerContainerClassName="mx-auto w-full max-w-180 px-density-2xl"
                 viewportClassName={CHAT_VIEWPORT_SCROLLBAR_CLASS}
+                hideAssistantMessageActions
+                toolCallPartComponent={ClaudeCodeToolCallPart}
                 attributes={{
                   ThreadViewport: {
                     ref: chatViewportRef,

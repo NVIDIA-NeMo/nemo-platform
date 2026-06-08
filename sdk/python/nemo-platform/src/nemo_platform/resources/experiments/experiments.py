@@ -302,7 +302,8 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
+              dataset_name, dataset_version, created_by, created_at, or updated_at.
 
           page: Page number.
 
@@ -639,7 +640,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
+              dataset_name, dataset_version, created_by, created_at, or updated_at.
 
           page: Page number.
 

@@ -3,6 +3,7 @@
 
 """Tests for Models service configuration."""
 
+import pytest
 from nmp.common.config import Runtime
 from nmp.core.models.config import (
     ControllerConfig,
@@ -16,6 +17,7 @@ from nmp.core.models.controllers.backends.registry import (
     K8sNimOperatorBackendConfigModel,
     NoneBackendConfigModel,
 )
+from pydantic import ValidationError
 
 
 def test_models_controller_config_defaults():
@@ -243,3 +245,44 @@ def test_error_deployment_ttl_in_module_config():
     assert hasattr(config.controller, "error_deployment_ttl_seconds")
     assert isinstance(config.controller.error_deployment_ttl_seconds, int)
     assert config.controller.error_deployment_ttl_seconds > 0
+
+
+# ============================================================================
+# Provider Discovery Config Tests
+# ============================================================================
+
+
+def test_provider_discovery_timeout_default():
+    """Provider discovery timeout defaults to 180 seconds for slow external catalogs."""
+    controller_config = ControllerConfig()
+    assert controller_config.provider_discovery_timeout_seconds == 180
+
+
+def test_provider_discovery_timeout_custom_override():
+    """Provider discovery timeout can be overridden."""
+    controller_config = ControllerConfig(provider_discovery_timeout_seconds=240)
+    assert controller_config.provider_discovery_timeout_seconds == 240
+
+
+def test_provider_discovery_max_retries_default():
+    """Provider discovery disables SDK retries by default."""
+    controller_config = ControllerConfig()
+    assert controller_config.provider_discovery_max_retries == 0
+
+
+def test_provider_discovery_config_in_module_config():
+    """Module-level config exposes provider discovery settings."""
+    assert config.controller.provider_discovery_timeout_seconds == 180
+    assert config.controller.provider_discovery_max_retries == 0
+
+
+def test_provider_discovery_timeout_rejects_zero():
+    """Provider discovery timeout must be at least one second."""
+    with pytest.raises(ValidationError):
+        ControllerConfig(provider_discovery_timeout_seconds=0)
+
+
+def test_provider_discovery_max_retries_rejects_negative():
+    """Provider discovery max retries must be non-negative."""
+    with pytest.raises(ValidationError):
+        ControllerConfig(provider_discovery_max_retries=-1)

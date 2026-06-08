@@ -18,7 +18,7 @@ import {
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
-import { getAssistantTextFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
+import { getAssistantPartsFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
 import type { ClaudeCodePermissionRequest } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useCustomAssistantChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
 import { useQueryClient } from '@tanstack/react-query';
@@ -274,7 +274,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   } = useCustomAssistantChatRuntime({
     initialMessages: options?.initialMessages,
     onError,
-    onRun: async ({ prompt, signal, appendAssistantText, prepareForUserInput, isCurrentRun }) => {
+    onRun: async ({ prompt, signal, appendAssistantParts, prepareForUserInput, isCurrentRun }) => {
       clearApprovalRequest();
       const activeSessionId = await ensureSessionId();
       let doneReceived = false;
@@ -288,8 +288,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
             onClaudeEvent: (event) => {
               if (signal.aborted || !isCurrentRun()) return;
 
-              const text = getAssistantTextFromClaudeEvent(event);
-              if (text) appendAssistantText(text);
+              appendAssistantParts(getAssistantPartsFromClaudeEvent(event));
             },
             onPermissionRequest: (request) => {
               if (signal.aborted || !isCurrentRun()) return;

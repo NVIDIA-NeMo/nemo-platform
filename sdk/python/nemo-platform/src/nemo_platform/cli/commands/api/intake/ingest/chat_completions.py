@@ -50,7 +50,13 @@ def create_chat_completions(
             help="Total estimated cost of this model call in USD. This matches ATIF step metrics; Intake stores it as semantic cost_total_usd on spans.",
         ),
     ] = None,
-    evaluation_context: Annotated[str | None, typer.Option("--evaluation-context", help="JSON string")] = None,
+    evaluation_context: Annotated[
+        str | None,
+        typer.Option(
+            "--evaluation-context",
+            help="Deprecated. Use experiment_context; when both are sent, experiment_context takes precedence. (JSON string)",
+        ),
+    ] = None,
     experiment_context: Annotated[
         str | None,
         typer.Option("--experiment-context", help="Experiment context accepted by ingest endpoints. (JSON string)"),

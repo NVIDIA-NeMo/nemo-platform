@@ -210,6 +210,7 @@ function InnerTableBody({
           <Fragment key={row?.id ?? (item as { index: number }).index}>
             <TableRow
               data-index={(item as { index?: number }).index}
+              data-row-id={row?.id}
               data-is-subrow={(row?.depth && row.depth > 0) || undefined}
               data-has-subrow={(row?.subRows.length && row.subRows.length > 0) || undefined}
               data-highlight={isSelected || undefined}
