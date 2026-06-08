@@ -210,7 +210,7 @@ class EvaluateSuiteJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, _ctx: JobContext | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.runners.detect import detect_runner, get_runner
 

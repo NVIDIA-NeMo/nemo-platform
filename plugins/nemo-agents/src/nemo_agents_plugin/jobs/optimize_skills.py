@@ -156,7 +156,7 @@ class OptimizeSkillsJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, _ctx: JobContext | None = None) -> dict:
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.coding_agents.claude import ClaudeCodingAgent
         from nemo_agents_plugin.improvement.loop import run_analyze_only, run_loop
