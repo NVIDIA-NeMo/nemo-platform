@@ -165,6 +165,11 @@ const ExperimentRoute = lazy(() =>
     default: module.ExperimentRoute,
   }))
 );
+const ExperimentGroupDetailRoute = lazy(() =>
+  import('@studio/routes/ExperimentGroupDetailRoute').then((module) => ({
+    default: module.ExperimentGroupDetailRoute,
+  }))
+);
 const NoMatchRoute = lazy(() =>
   import('@studio/routes/NoMatchRoute').then((module) => ({ default: module.NoMatchRoute }))
 );
@@ -603,6 +608,11 @@ export const routes: RouteObject[] = [
                   path: ROUTES.workspace.experiment,
                   element: <ExperimentRoute />,
                   errorElement: <ErrorPanel title="Experiment" />,
+                },
+                {
+                  path: ROUTES.workspace.experimentGroupDetail,
+                  element: <ExperimentGroupDetailRoute />,
+                  errorElement: <ErrorPanel title="Experiment Group" />,
                 },
               ]),
               ...gateCustomizationRoutes([
