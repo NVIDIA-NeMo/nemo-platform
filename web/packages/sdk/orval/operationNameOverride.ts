@@ -9,6 +9,8 @@
 // - list_jobs_apis_customization_v2_workspaces__workspace__jobs_get              -> customizationListJobs
 // - create_job_apis_data_designer_v2_workspaces__workspace__jobs_post         -> dataDesignerCreateJob
 // - list_workspaces_apis_entities_v2_workspaces_get                           -> entitiesListWorkspaces
+// - create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post        -> agentsCreateAnalyzeJob
+// - list_jobs_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite_get   -> agentsListEvaluateSuiteJobs
 //
 // Non-apis_ routes (unchanged):
 // - gateway_proxy_get                                                         -> gatewayProxyGet

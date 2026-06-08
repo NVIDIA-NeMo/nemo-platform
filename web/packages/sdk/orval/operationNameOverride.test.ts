@@ -225,6 +225,15 @@ describe('operationNameOverride', () => {
     ).toBe('agentsGetOptimizeSkillsJob');
   });
 
+  it('agents get optimize job logs (sub-resource)', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'get_job_logs_apis_agents_v2_workspaces__workspace__jobs_optimize__name__logs_get',
+      })
+    ).toBe('agentsGetOptimizeJobLogs');
+  });
+
   it('agents get evaluate-suite job result (sub-resource)', () => {
     expect(
       operationNameOverride({
