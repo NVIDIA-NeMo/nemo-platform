@@ -146,7 +146,7 @@ describe('MessageContent', () => {
 
     expect(screen.getByTestId('data-view-content')).toBeInTheDocument();
     expect(table).toHaveClass('nv-table-root');
-    expect(table).toHaveClass('min-h-0');
+    expect(table).toHaveClass('nv-table-root--layout-auto');
     expect(within(table).getByRole('columnheader', { name: 'Name' })).toBeInTheDocument();
     expect(within(table).getByRole('columnheader', { name: 'Status' })).toBeInTheDocument();
     expect(within(table).getByRole('cell', { name: 'Agent chat' })).toBeInTheDocument();
@@ -166,6 +166,43 @@ describe('MessageContent', () => {
     await waitFor(() => {
       expect(within(table).getByRole('cell', { name: 'Agent chat' })).toBeInTheDocument();
       expect(within(table).queryByRole('cell', { name: 'Code blocks' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('expands clamped markdown table cells on row click', async () => {
+    const longCellText =
+      'This cell intentionally contains enough detail to overflow two lines in the compact assistant table view.';
+
+    render(
+      <MessageContent
+        content={[
+          '| ID | Summary | Very Long Header |',
+          '| --- | --- | --- |',
+          `| 1 | ${longCellText} | OK |`,
+        ].join('\n')}
+      />
+    );
+
+    const table = screen.getByRole('table');
+    const user = userEvent.setup();
+    const dataRow = within(table).getAllByRole('row')[1];
+    const expandableCell = within(table).getByRole('button', { name: longCellText });
+
+    expect(dataRow).toHaveAttribute('data-row-id', 'row-0');
+    expect(expandableCell).toHaveClass('overflow-hidden');
+    expect(expandableCell).toHaveAttribute('aria-expanded', 'false');
+    const collapsedCellContent = within(expandableCell).getByText(longCellText);
+    expect(collapsedCellContent).toHaveAttribute('data-collapsed', 'true');
+    expect(collapsedCellContent).toHaveClass('line-clamp-2');
+
+    await user.click(dataRow);
+
+    await waitFor(() => {
+      const expandedCell = within(table).getByRole('button', { name: longCellText });
+      const expandedCellContent = within(expandedCell).getByText(longCellText);
+      expect(expandedCell).toHaveAttribute('aria-expanded', 'true');
+      expect(expandedCellContent).not.toHaveAttribute('data-collapsed');
+      expect(expandedCellContent).not.toHaveClass('line-clamp-2');
     });
   });
 });

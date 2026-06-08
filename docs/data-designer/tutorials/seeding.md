@@ -5,7 +5,7 @@
 
 This tutorial demonstrates how to use external datasets as seed data for synthetic data generation in Data Designer.
 
-For more detail about seed dataset behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/tutorials/seeding-with-an-external-dataset) of this tutorial.
+For more detail about seed dataset behavior, see the [open-source library's version](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/tutorials/seeding-with-an-external-dataset) of this tutorial.
 
 ## Seed Sources by Execution Mode
 
@@ -343,5 +343,5 @@ When you configure a seed dataset:
 ## Next Steps
 
 - **Execution modes:** Learn more about local and NeMo Services execution in [Execution Modes](../execution-modes.md)
-- **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/columns)
-- **Processors:** Transform your data with processors in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/concepts/processors)
+- **Column types:** Explore all available column types in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/columns)
+- **Processors:** Transform your data with processors in the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/concepts/processors)

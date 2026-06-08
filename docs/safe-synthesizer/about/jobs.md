@@ -109,7 +109,7 @@ When the job completes, access:
 
 For **platform jobs**, set `pretrained_model_job` in the job spec to a completed job that has an **`adapter`** result in Files. Reuse is generation-only (no retraining). Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.
 
-For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Host-Local Development and Testing](host-local-development.md).
+For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Local and Subprocess Execution](host-local-development.md).
 
 ## Job Builder API
 
@@ -120,7 +120,7 @@ import os
 import pandas as pd
 
 from nemo_platform import NeMoPlatform
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Placeholders
 df: pd.DataFrame = pd.DataFrame()
@@ -309,7 +309,7 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 ## Related Topics
 
-- [Host-Local Development and Testing](host-local-development.md): `run-local`, adapter reuse, and plugin tests
+- [Local and Subprocess Execution](host-local-development.md): `run-local`, adapter reuse, and plugin tests
 - [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with {{nss_short_name}} jobs
 - [index](../tutorials/index.md): More hands-on tutorials
 - [reference](reference.md): Full parameter reference

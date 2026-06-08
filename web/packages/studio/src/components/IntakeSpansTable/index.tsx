@@ -54,11 +54,10 @@ const HIERARCHY_SPACER_LIMIT = 12;
 interface SpanNameCellProps {
   span: SpanTableRow;
   depth: number;
-  workspace: string;
   showHierarchy: boolean;
 }
 
-const SpanNameCell: FC<SpanNameCellProps> = ({ span, depth, workspace, showHierarchy }) => {
+const SpanNameCell: FC<SpanNameCellProps> = ({ span, depth, showHierarchy }) => {
   const label = getSpanDisplayName(span);
   const hierarchyLabel =
     span.hierarchyStatus === 'parent_outside_page'
@@ -87,11 +86,7 @@ const SpanNameCell: FC<SpanNameCellProps> = ({ span, depth, workspace, showHiera
           )}
         </span>
       )}
-      <Anchor asChild>
-        <Link to={getIntakeSpanRoute(workspace, span.span_id)} className="truncate" title={label}>
-          {label}
-        </Link>
-      </Anchor>
+      {label}
       {hierarchyLabel && (
         <Text kind="body/regular/xs" className="shrink-0 text-secondary">
           {hierarchyLabel}
@@ -220,14 +215,7 @@ export const IntakeSpansTable: FC<IntakeSpansTableProps> = ({
         cell: ({ row }: { row: SpanRow }) => {
           const span = row.original;
           const depth = showHierarchy ? span.hierarchyDepth : 0;
-          return (
-            <SpanNameCell
-              span={span}
-              depth={depth}
-              workspace={requestWorkspace}
-              showHierarchy={showHierarchy}
-            />
-          );
+          return <SpanNameCell span={span} depth={depth} showHierarchy={showHierarchy} />;
         },
       }),
       {

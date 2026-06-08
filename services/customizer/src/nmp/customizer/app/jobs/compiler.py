@@ -18,11 +18,11 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesRequestsSpec,
     ResourcesSpec,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.auth import AuthClient, auth_client_context
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.image import get_qualified_image
 from nmp.customizer.api.v2.jobs.schemas import (
     CustomizationJobInput,
     CustomizationJobOutput,

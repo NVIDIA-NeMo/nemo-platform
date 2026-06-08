@@ -11,7 +11,7 @@
 ## First Checks
 
 1. Resolve the CLI with `command -v nemo 2>/dev/null || (test -x .venv/bin/nemo && realpath .venv/bin/nemo) || echo CLI_NOT_FOUND`.
-2. Confirm whether the user is running host-local (`nemo safe-synthesizer run-local`) or platform jobs (`nemo safe-synthesizer jobs create`).
+2. Confirm whether the user is running host-local (`nemo safe-synthesizer run-local`) or a platform job through the Jobs API or SDK.
 3. Inspect the spec file before changing commands.
 
 ## Common Failures
@@ -52,8 +52,8 @@ Then confirm the Files API URL is reachable and the target workspace contains th
 
 ### Job remains pending or results are missing
 
-- Check the platform job status with `nemo safe-synthesizer jobs get <job-name> --workspace <workspace>`.
-- If the command supports waiting, retry creation with `--wait --timeout <seconds>` for a synchronous status loop.
+- Check the platform job status with the Jobs API or SDK.
+- If the submission path supports waiting, retry creation with its documented wait or polling option.
 - Inspect job result names from the artifacts workflow.
 
 ## Source Files for Development Debugging
@@ -68,5 +68,5 @@ Only inspect these when the user asks to change or debug plugin code:
 
 - Re-run with the command shape in `workflows/run.md`.
 - Recreate model filesets with `plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py`.
-- Check job status with `nemo safe-synthesizer jobs get <job-name> --workspace <workspace>`.
+- Check platform job status with the Jobs API or SDK.
 - Retrieve result names with `workflows/results.md`, then inspect `summary` or `summary.json` first.

@@ -34,6 +34,7 @@ const pathParams = {
   [RP.agentEvalJobName]: 'test-agent-eval-job',
   [RP.jobName]: 'test-job',
   [RP.benchmarkName]: 'test-benchmark',
+  [RP.experimentGroupId]: 'test-experiment-group',
 };
 
 describe('AccessibleTitleE2E', () => {
