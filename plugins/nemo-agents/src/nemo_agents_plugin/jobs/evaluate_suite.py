@@ -210,16 +210,9 @@ class EvaluateSuiteJob(NemoJob):
             ],
         )
 
-    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
+    def run(self, config: dict, *, _ctx: JobContext | None = None) -> dict:
         from nemo_agents_plugin.improvement import preflight
         from nemo_agents_plugin.improvement.runners.detect import detect_runner, get_runner
-
-        # ``ctx`` is signature-typed so the framework's DI populates it on the
-        # submit path; the friendly CLI in ``cli.py`` calls ``run(spec)`` directly
-        # without one (and ``EvaluateSuiteJob`` is also constructed from tests
-        # and other in-process callers).  Today the body doesn't consume it —
-        # fileset-write helpers that need ``ctx.storage`` land in a follow-up.
-        del ctx
 
         cfg = EvaluateSuiteConfig.model_validate(config)
         evals_dir = Path(cfg.evals).resolve()
