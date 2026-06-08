@@ -134,179 +134,70 @@ The remainder of this section describes Option B in full.
 
 ### Option B — Implementation
 
-This is the core change. It unifies the two inference paths, addresses all four problems, and is the foundation for Phase 3.
+`ChecksService` is a Python class — not a network service (that is Phase 3 scope) — that owns the full inference core: config resolution, `LLMRails` lifecycle and caching, and request execution. Both the plugin and the service HTTP endpoint become thin adapters over it, each injecting their own `ConfigStore` and `ModelResolver` at construction time. See [ChecksService Technical Spec](ChecksService-TechnicalSpec.md) for the full interface and implementation detail.
 
-#### What is the ChecksService?
+#### Decision: Config loading in standalone
 
-A Python class (not a network service — that is Phase 3 scope) that owns:
+In NMP mode, `GuardrailConfig` entities are loaded from the Entity Store (Postgres) via `EntityClient`. Standalone deployments have no Entity Store.
 
-- **Config resolution**: load and cache `RailsConfig` objects from the injected `ConfigStore`
-- **LLMRails lifecycle**: build, cache, and pool `LLMRails` instances — using the plugin's `LLMRailsCache` as the reference implementation
-- **Request execution**: run input rails, optionally run inference, run output rails, return a structured result
+| Option | Pros | Cons |
+| ------ | ---- | ---- |
+| Require Entity Store (status quo) | No code changes | Standalone remains impossible; Cohesity still needs Postgres |
+| **Filesystem / ConfigMap YAML** (recommended) | No database dependency; K8s-native; matches Cohesity's existing ConfigMap approach | No dynamic updates; pod restart required for config changes; no config CRUD API |
+| Embedded SQLite | Config CRUD API without full Postgres; no external process | New dependency; overkill for single-tenant; doesn't match Cohesity's existing pattern |
 
-It accepts injected dependencies at construction time:
+**Recommendation**: Filesystem / ConfigMap YAML. A `FilesystemConfigStore` loads flat `.yaml` files from a mounted ConfigMap at startup. This matches exactly how Cohesity already manages configs and introduces no new dependencies. Dynamic config updates are a non-goal for this phase.
 
-- `ConfigStore` — where configs come from
-- `ModelResolver` — how model references are resolved
+#### Decision: Model routing in standalone
 
-Both the plugin and the service HTTP endpoint become thin adapters over this interface. The plugin's `LLMRailsCache`, `StabilizedRailsConfigCache`, and `rails.py` move into `ChecksService`. The service's `CompletionRequestHandler`, `RailsRegistry`, and `ConfigRegistry` are replaced.
+In NMP mode, model references are resolved to IGW routes via `sdk.models.get_openai_route_base_url()`. Standalone deployments have no IGW.
 
-#### `ChecksService.check()` interface
+| Option | Pros | Cons |
+| ------ | ---- | ---- |
+| Require IGW (status quo) | No code changes | Standalone remains impossible; Cohesity doesn't run IGW |
+| **`base_url` in config YAML** (recommended) | Self-contained config; per-model routing; no external dependency | URL baked into config file; changing endpoints requires a config update |
+| Global `NIM_ENDPOINT_URL` env var only | Easy override without editing config files; K8s-native | Single endpoint for all models; no per-model routing |
 
-`ChecksService` exposes a single `check()` method. Whether it runs input rails or output rails is determined by the presence of an optional `response` field on `CheckInput` — no response means input check, response present means output check. This mirrors the plugin's `process_request` / `process_response` split without requiring two separate methods.
-
-```python
-@dataclass
-class CheckInput:
-    request: ChatCompletionRequest   # the incoming messages and model context
-    config: ConfigRef                # which GuardrailConfig to apply; in standalone mode, identified by name only
-    response: ChatCompletionResponse | None  # absent → input check; present → output check
-    context: RequestContext          # credentials and headers to forward to guard models
-
-@dataclass
-class CheckOutput:
-    # oneof: either the check passed (with optional modifications) or it was blocked
-    status: Literal["allow", "block"]
-    messages: list[Message]          # modified messages if status=allow
-    triggered_rails: list[str]       # which rails fired
-    refusal: str | None              # populated if status=block
-```
-
-**Responsibilities of `check()`**:
-1. Resolve `config` to a `RailsConfig` via the `ConfigStore`
-2. Obtain a `Guardrails` instance for the resolved config (built on demand, cached by config content hash)
-3. Use the `ModelResolver` to inject concrete guard model endpoints into the config
-4. Run input or output rails via the `Guardrails` facade, which dispatches internally to `IORails` (optimized fast path for productized rails: content safety, topic safety, jailbreak detection) or `LLMRails` (for Colang-based custom flows) — the caller does not choose
-5. Return `CheckOutput` indicating pass, modification, or block
-
-**`ChecksService` does not call the main model.** The orchestration of a full chat request lives in the caller:
-
-```
-# Chat completions endpoint
-input_result  = await checks_service.check(CheckInput(request, config, response=None))
-if input_result.status == "block": return blocked_response
-model_response = await call_nim(request)
-output_result = await checks_service.check(CheckInput(request, config, response=model_response))
-if output_result.status == "block": return blocked_response
-return model_response
-
-# Plugin
-process_request()  → checks_service.check(CheckInput(request, config, response=None))
-process_response() → checks_service.check(CheckInput(request, config, response=igw_response))
-```
-
-**Phase 3 constraint**: all types in `CheckInput` and `CheckOutput` must be plain data — no FastAPI `Request` objects or raw HTTP constructs — so the interface can be promoted to a gRPC service boundary in Phase 3 without redesign. The field shapes above are intentionally close to what would become proto message definitions.
-
-#### Why the plugin's caching logic is the reference
-
-The plugin's `LLMRailsCache` is substantially better than the service's `RailsRegistry`:
-
-- Content-hash-keyed pooling: multiple `LLMRails` instances per config for safe concurrency
-- 3-stage pipeline: discriminated source → stabilization → pool
-- Proper instance lifecycle: lease, clear shared state, return
-- `StabilizedRailsConfigCache` memoizes by `(workspace, name, updated_at)` for coherent cache invalidation on config update
-
-The service's `RailsRegistry` is simpler and has known concurrency limitations. When extracting `ChecksService`, the plugin's caching logic becomes canonical.
-
-#### `ConfigStore` protocol
-
-```python
-class ConfigStore(Protocol):
-    def get(self, workspace: str, name: str) -> RailsConfig | None: ...
-    def list(self, workspace: str) -> list[RailsConfig]: ...
-```
-
-**Implementations:**
-
-- `FilesystemConfigStore` — at startup, scans `CONFIG_STORE_PATH` for flat `.yaml` / `.yml` files and loads each by filename (without extension) as the config name. There is no workspace directory structure — workspace is not a concept in standalone mode, and `FilesystemConfigStore` ignores the workspace parameter in `get()` and `list()`. Configs are loaded into memory at startup; no runtime database access. Config changes require a pod restart — consistent with the ConfigMap model Cohesity already uses.
-- `EntityStoreConfigStore` — wraps current `EntityClient` behavior; preserves all existing NMP functionality
-- `InMemoryConfigStore` — for tests
-
-**Schema compatibility**: the underlying `nemoguardrails.RailsConfig` schema has changed since 25.12 but is backwards compatible. Cohesity's existing ConfigMap YAML files load without modification. The Phase 3 schema redesign (which replaces the `nemoguardrails` mirror entirely) is a separate concern and must not break files written to the current schema.
-
-#### `ModelResolver` protocol
-
-```python
-class ModelResolver(Protocol):
-    def resolve(self, model_ref: str, workspace: str) -> str: ...  # returns base_url
-```
-
-**Implementations:**
-
-- `DirectUrlModelResolver` — reads `base_url` directly from the config YAML; falls back to `NIM_ENDPOINT_URL`. Also injects `NIM_API_KEY` from the environment as the `Authorization` header on guard model calls (see credential flow below). If `NIM_API_KEY` is unset, no auth header is added — works for NIMs behind network-level auth, which covers Cohesity's current setup.
-- `NmpIgwModelResolver` — current `model_routing.py` behavior; calls `sdk.models.get_openai_route_base_url()`. Auth to guard models is handled by IGW, not by this resolver.
-
-**Guard model credential flow (standalone)**: API keys for guard model NIM endpoints must not be embedded in the `GuardrailConfig` YAML — configs appear in ConfigMaps, API responses, and potentially version control. Instead, credentials are supplied via environment variables backed by Kubernetes Secrets in production. `DirectUrlModelResolver` reads `NIM_API_KEY` at call time and injects it as the bearer token. In Phase 3, a `SecretResolver` protocol replaces this env-var convention and can back to Vault, the K8s Secrets API, or other credential stores.
-
-#### Impact on the plugin
-
-The plugin's `middleware.py` is simplified to:
-
-1. On startup: construct `ChecksService(config_store=EntityStoreConfigStore(...), model_resolver=NmpIgwModelResolver(...))`
-2. On request: call `checks_service.check(input, config_ids, ...)`
-
-The plugin's own `LLMRailsCache`, `StabilizedRailsConfigCache`, and `rails.py` are removed — they live in `ChecksService`. The plugin becomes ~200 lines of translation code between IGW middleware hooks and `ChecksService`.
-
-**Extraction risk**: the plugin is production code on the NMP inference path today. Moving its caching and rail execution logic into `ChecksService` risks behavioral regression in that path, which is higher-stakes than anything on the standalone side. Two constraints follow from this:
-
-- **Atomic change**: the `ChecksService` extraction and the plugin's refactor to a thin adapter must ship as a single change, not sequential PRs. A window where the plugin is partially migrated is a fragile intermediate state on a production path.
-- **Plugin integration tests are the acceptance criteria for Phase 2**: if the plugin's existing integration tests pass after extraction, the core inference logic in `ChecksService` is correct. These tests should be treated as the primary validation bar, not a post-hoc check.
-
-#### Impact on the service
-
-The service's `CompletionRequestHandler`, `RailsRegistry`, and `ConfigRegistry` are replaced by:
-
-1. On startup: construct `ChecksService` with the appropriate backends based on configuration
-2. On request: call `checks_service.check(input, ...)`
-3. All three HTTP callers — `/v2/chat/completions` (standalone), `/v2/workspaces/{workspace}/chat/completions`, and `/v2/checks` — become thin adapters over the same `ChecksService` instance
+**Recommendation**: `base_url` in config YAML as primary, with `NIM_ENDPOINT_URL` as a global fallback for deployments where all models share one endpoint.
 
 #### Selecting backends at startup
 
-`GUARDRAILS_STANDALONE` selects implementations at service startup:
-
+`GUARDRAILS_STANDALONE` selects implementations at service startup. The service code has no `if standalone` branches — wiring is injected at construction time.
 
 | `GUARDRAILS_STANDALONE` | `ConfigStore`            | `ModelResolver`          |
 | ----------------------- | ------------------------ | ------------------------ |
 | `false` (default)       | `EntityStoreConfigStore` | `NmpIgwModelResolver`    |
 | `true`                  | `FilesystemConfigStore`  | `DirectUrlModelResolver` |
 
+#### What changes in the codebase
 
-The service code itself has no `if standalone` branches — wiring is injected at construction time.
+Four concerns need to be addressed to decouple Guardrails from NMP:
 
-#### Standalone decoupling: three distinct concerns
+1. **Inference path** — `ConfigStore` and `ModelResolver` protocols isolate all platform service calls. `ChecksService` itself makes no calls to `EntityClient` or IGW APIs. Platform-specific implementations are only instantiated in NMP mode.
+2. **Service startup** — `Service.__init__` already accepts `dependencies=[]`; passing it in standalone mode skips the platform dependency wait loop. One-line change.
+3. **Config CRUD endpoints** — not registered when `GUARDRAILS_STANDALONE=true`; config management in standalone is done via ConfigMap, not API.
+4. **Inference endpoint** — `/v2/chat/completions` registered only in standalone mode; the workspace-scoped endpoint is not registered (workspace is an NMP concept with no meaning in a single-tenant deployment).
 
-Inspecting the current import structure surfaces three concerns that need to be handled independently. All platform interactions go through `nmp.common` — there are no direct imports from other service packages — but the concerns are not all solved the same way.
+#### Validation: ensuring no regression
 
-**1. Inference path — handled by the protocol layer**
+The question reviewers will ask: *does standalone mode regress on inference capability?*
 
-`model_routing.py`, `config_store.py`, and `registry.py` all import `EntityClient` and `get_platform_sdk` from `nmp.common` at the module level. These imports succeed unconditionally since `nmp.common` is present in the image. The actual *calls* to platform services — `EntityClient.get()`, `sdk.models.get_openai_route_base_url()` — are what must not execute in standalone mode. The `ConfigStore` and `ModelResolver` protocols isolate these calls inside `EntityStoreConfigStore` and `NmpIgwModelResolver`, which are only instantiated in NMP mode. `ChecksService` itself makes no platform API calls.
+**Same code, both modes.** `ChecksService` contains the inference core. Standalone and NMP differ only in which `ConfigStore` and `ModelResolver` are injected at startup. The inference logic — caching, rail execution, `IORails`/`LLMRails` dispatch — is identical in both modes.
 
-**2. Service startup framework — conditional dependency list**
+**Acceptance criteria.** The plugin's existing integration tests must pass unchanged after the `ChecksService` extraction. These cover the full production inference path including caching, concurrency, and rail execution. Passing them is the primary validation bar. Additionally, the extraction and the plugin's refactor to a thin adapter must ship as a single PR — a partially migrated plugin is a fragile intermediate state on a production path.
 
-`service.py` extends `nmp.common.service.Service`, which enforces platform dependency declarations (`["entities", "auth", "secrets", "files", "models"]`) and waits for them to be ready at startup. In standalone mode, none of those services exist and the startup loop will hang.
+**Feature matrix.** Capabilities marked ✗ are all explicitly listed in Non-Goals — these are intentional exclusions, not regressions.
 
-`Service.__init__` already accepts a `dependencies` override; when `dependencies=[]` is passed, the wait loop is skipped entirely. No new entry point or parallel infrastructure is needed — we reuse the existing `Service` framework for app creation, router mounting, `on_startup()`, OpenAPI spec, and health routes unchanged.
-
-The change is a one-liner in `GuardrailsService.__init__`:
-
-```python
-def __init__(self) -> None:
-    standalone = os.getenv("GUARDRAILS_STANDALONE", "").lower() in ("1", "true")
-    super().__init__(
-        name="guardrails",
-        module_name="nmp.guardrails",
-        dependencies=[] if standalone else None,  # None → use class-level declaration
-    )
-    apply_langchain_patch()
-```
-
-**3. Config CRUD endpoints — not registered in standalone mode**
-
-`api/v2/configs/endpoints.py` imports `EntityClient` and `get_entity_client` from `nmp.common.service.dependencies` and uses them directly in the config CRUD handlers. These endpoints don't make sense in standalone mode — config management is done by editing YAML files in the ConfigMap, not via API. Write endpoints (`POST/PATCH/DELETE`) are not registered when `GUARDRAILS_STANDALONE=true`. Read endpoints (`GET`) can optionally be registered against `FilesystemConfigStore` for observability.
-
-**4. Inference endpoint — `/v2/chat/completions` registered in standalone mode only**
-
-The workspace-free `/v2/chat/completions` endpoint is registered only when `GUARDRAILS_STANDALONE=true`. Config lookup is by name only — `FilesystemConfigStore` ignores the workspace parameter entirely. The workspace-scoped `/v2/workspaces/{workspace}/chat/completions` endpoint is not registered in standalone mode; workspace is an NMP concept with no meaning in a single-tenant deployment.
+| Capability | NMP mode | Standalone |
+| ---------- | :------: | :--------: |
+| Input / output rails (content safety, jailbreak, topic) | ✓ | ✓ |
+| Colang custom flows | ✓ | ✓ |
+| All productized rail types | ✓ | ✓ |
+| Config CRUD API | ✓ | ✗ (managed via ConfigMap) |
+| Config hot-reload | ✓ | ✗ (pod restart required) |
+| Workspace management | ✓ | ✗ (single-tenant) |
+| Auth | ✓ | ✗ (operator responsibility at network layer) |
+| Multi-tenancy | ✓ | ✗ |
 
 ---
 
