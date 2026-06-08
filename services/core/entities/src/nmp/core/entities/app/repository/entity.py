@@ -136,6 +136,7 @@ class EntityRepositoryInterface(ABC):
         new_name: str | None = None,
         parent: Optional[str] = None,
         project: Optional[str] = None,
+        clear_project: bool = False,
         updated_by: str | None = None,
         expected_db_version: Optional[int] = None,
         session: AsyncSession | None = None,

@@ -200,6 +200,11 @@ def make_versioning_router(
         version_number: int,
         repository: EntityRepository,
     ):
+        if version_number < 1:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="version_number must be >= 1",
+            )
         parent = await _get_parent_or_404(repository, workspace, name)
         version_name = f"{name}-v{version_number}"
         version_entity = await repository.get_entity_by_name(

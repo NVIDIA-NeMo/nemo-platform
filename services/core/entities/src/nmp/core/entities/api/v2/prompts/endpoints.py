@@ -317,13 +317,17 @@ async def update_prompt(
     if prompt_update.tags is not None:
         existing_data["tags"] = prompt_update.tags
 
+    project_in_payload = "project" in prompt_update.model_fields_set
+    new_project = prompt_update.project if project_in_payload else prompt_entity.project
+
     try:
         updated_entity = await repository.update_entity_by_name(
             workspace=workspace,
             entity_type=PROMPT_ENTITY_TYPE,
             name=name,
             data=existing_data,
-            project=prompt_update.project if prompt_update.project is not None else prompt_entity.project,
+            project=new_project,
+            clear_project=project_in_payload and new_project is None,
         )
     except EntityNotFoundError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e)) from e

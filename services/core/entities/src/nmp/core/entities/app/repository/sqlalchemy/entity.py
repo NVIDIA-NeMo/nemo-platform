@@ -94,8 +94,11 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
             )
 
             sess.add(db_entity)
-            await sess.commit()
-            await sess.refresh(db_entity)
+            if session is not None:
+                await sess.flush()
+            else:
+                await sess.commit()
+                await sess.refresh(db_entity)
 
             return db_entity.to_pydantic()
 
@@ -241,11 +244,17 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
         new_name: str | None = None,
         parent: str | None = None,
         project: str | None = None,
+        clear_project: bool = False,
         updated_by: str | None = None,
         expected_db_version: int | None = None,
         session: AsyncSession | None = None,
     ) -> Entity:
-        """Update an entity by name, optionally changing its name."""
+        """Update an entity by name, optionally changing its name.
+
+        Pass ``clear_project=True`` alongside ``project=None`` to explicitly
+        disassociate the entity from its current project.  Without this flag,
+        ``project=None`` is treated as "no change" for backward-compatibility.
+        """
         async with self._get_session(session, for_write=True) as sess:
             query = select(DBEntity).where(
                 DBEntity.workspace == workspace,
@@ -276,15 +285,20 @@ class SQLAlchemyEntityRepository(EntityRepositoryInterface):
                 existing_entity.name = new_name
             if project is not None:
                 existing_entity.project = project
+            elif clear_project:
+                existing_entity.project = None
             if updated_by is not None:
                 existing_entity.updated_by = updated_by
             try:
-                await sess.commit()
+                if session is not None:
+                    await sess.flush()
+                else:
+                    await sess.commit()
+                    await sess.refresh(existing_entity)
             except StaleDataError as err:
                 raise EntityVersionConflictError(
                     f"Entity '{name}' of type '{entity_type}' in workspace '{workspace}' was modified by another request. Please refetch and retry."
                 ) from err
-            await sess.refresh(existing_entity)
 
             return existing_entity.to_pydantic()
 

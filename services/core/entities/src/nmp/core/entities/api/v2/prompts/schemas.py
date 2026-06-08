@@ -19,10 +19,10 @@ def extract_variables(template: str) -> list[str]:
 
 class PromptModelParams(BaseModel):
     temperature: float | None = Field(
-        default=None, description="Sampling temperature (0–2). Higher values produce more random output."
+        default=None, ge=0, le=2, description="Sampling temperature (0–2). Higher values produce more random output."
     )
     max_tokens: int | None = Field(default=None, description="Maximum number of tokens to generate.")
-    top_p: float | None = Field(default=None, description="Nucleus sampling probability mass (0–1).")
+    top_p: float | None = Field(default=None, ge=0, le=1, description="Nucleus sampling probability mass (0–1).")
 
     model_config = ConfigDict(extra="forbid")
 
@@ -42,7 +42,7 @@ class PromptCreate(BaseModel):
     )
     change_note: str | None = Field(default=None, description="Note describing the initial version.")
 
-    model_config = ConfigDict(regex_engine="python-re")
+    model_config = ConfigDict(regex_engine="python-re", extra="forbid")
 
 
 class PromptUpdate(BaseModel):
@@ -71,7 +71,7 @@ class PromptVersion(BaseModel):
     prompt_id: str = Field(..., description="ID of the parent prompt entity.")
     prompt_name: str = Field(..., description="Name of the parent prompt.")
     workspace: str = Field(..., description="Workspace that owns this prompt version.")
-    version_number: int = Field(..., description="Sequential version number, starting at 1.")
+    version_number: int = Field(..., ge=1, description="Sequential version number, starting at 1.")
     template: str = Field(..., description="Full prompt template text for this version.")
     variables: list[str] = Field(
         ..., description="Ordered list of unique {{variable}} placeholders extracted from the template."
