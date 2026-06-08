@@ -126,7 +126,7 @@ def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> Non
 
     filtered = client.get(
         f"{EXPERIMENTS}/{experiment_name}/sessions",
-        params={"test_case_id": "alpha"},
+        params={"filter[test_case_id]": "alpha"},
     )
     assert filtered.status_code == 200, filtered.text
     body = filtered.json()
@@ -175,7 +175,7 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
 
     matching = client.get(
         f"{EXPERIMENTS}/{experiment_name}/sessions",
-        params={"status": seeded_status},
+        params={"filter[status]": seeded_status},
     )
     assert matching.status_code == 200, matching.text
     assert matching.json()["pagination"]["total_results"] == 1
@@ -183,7 +183,7 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
     other_status = "error" if seeded_status != "error" else "cancelled"
     mismatched = client.get(
         f"{EXPERIMENTS}/{experiment_name}/sessions",
-        params={"status": other_status},
+        params={"filter[status]": other_status},
     )
     assert mismatched.status_code == 200, mismatched.text
     assert mismatched.json()["pagination"]["total_results"] == 0
