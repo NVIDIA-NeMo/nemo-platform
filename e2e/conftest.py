@@ -54,7 +54,26 @@ logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL_INTERVAL = 1.0
-_SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
+
+# Number of log lines to dump from the services log on test failure.
+_TAIL_LINES_ON_FAILURE = 100
+
+_services_log_key = pytest.StashKey[Path]()
+
+
+@pytest.fixture(scope="session")
+def services_log_path(request: pytest.FixtureRequest) -> Path:
+    """Return a unique services log path for this session.
+
+    Appends a UUID so parallel pytest processes never clobber each
+    other's logs.  The path is stashed on the session so the
+    ``pytest_runtest_makereport`` hook can read it without requesting
+    the fixture.
+    """
+    base = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
+    path = base.with_stem(f"{base.stem}-{uuid.uuid4().hex[:8]}")
+    request.session.stash[_services_log_key] = path
+    return path
 
 
 def _find_free_port() -> int:
@@ -99,8 +118,37 @@ def background_process(args: list[str], stdout: IO[Any] | None = None) -> Iterat
             proc.wait(timeout=5)
 
 
+# ---- Services log tail on failure ------------------------------------------
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa: ARG001
+    """Append the services log tail to the report when a test fails.
+
+    This hook is the pytest-sanctioned way to add extra sections to test
+    reports (``report.sections``).  Fixtures cannot do this because they
+    don't have access to the report object.
+    """
+    outcome = yield
+    report = outcome.get_result()
+
+    if not report.failed:
+        return
+
+    log_path = item.session.stash.get(_services_log_key, None)
+    if log_path and log_path.exists():
+        lines = log_path.read_text().splitlines(keepends=True)
+        tail = lines[-_TAIL_LINES_ON_FAILURE:]
+        if tail:
+            header = f"--- services log (last {len(tail)} lines) [{log_path}] ---"
+            report.sections.append(("Services Log", f"{header}\n{''.join(tail)}"))
+
+
+# ---- Fixtures --------------------------------------------------------------
+
+
 @pytest.fixture(scope="session")
-def _services() -> Iterator[str]:
+def _services(services_log_path: Path) -> Iterator[str]:
     """Spawn ``nemo services run`` and yield the base URL.
 
     Skipped when ``NMP_BASE_URL`` is already set (external services).
@@ -124,7 +172,7 @@ def _services() -> Iterator[str]:
 
     logger.info("Starting nemo services on port %d", port)
 
-    log_path = _SERVICES_LOG
+    log_path = services_log_path
     with open(log_path, "w") as log_file, background_process(args, stdout=log_file) as proc:
         if not _wait_for_healthy(url):
             pytest.fail(

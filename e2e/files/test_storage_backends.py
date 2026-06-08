@@ -15,7 +15,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from nemo_platform import NeMoPlatform
+from nemo_platform import BadRequestError, NeMoPlatform
 from nemo_platform.types.files import HuggingfaceStorageConfigParam, NGCStorageConfigParam
 
 # ---------------------------------------------------------------------------
@@ -23,9 +23,9 @@ from nemo_platform.types.files import HuggingfaceStorageConfigParam, NGCStorageC
 # ---------------------------------------------------------------------------
 NGC_API_KEY_ENV = "NGC_API_KEY"
 
-NGC_ORG = "nvidian"
-NGC_TEAM = "nemo-llm"
-NGC_TARGET = "nemo-platform-quickstart"
+NGC_ORG = "nvidia"
+NGC_TEAM = "nemo-microservices"
+NGC_TARGET = "nemo-microservices-quickstart"
 NGC_TARGET_TYPE = "resource"
 
 # ---------------------------------------------------------------------------
@@ -175,6 +175,76 @@ class TestNGCFileset:
             assert f.cache_status is not None
             assert f.cache_status != "not_cacheable"
 
+    # -- error cases --
+
+    @pytest.mark.parametrize(
+        ("secret_value", "storage_overrides", "match"),
+        [
+            pytest.param(
+                "not-a-real-key",
+                {},
+                "Invalid API key. Legacy NGC keys are not supported.",
+                id="invalid-key-prefix",
+            ),
+            pytest.param(
+                None,
+                {"org": "nvidian", "team": "nemo-llm", "target": "nemo-platform-quickstart"},
+                "Error creating NGC storage backend:",
+                id="wrong-org",
+            ),
+            pytest.param(
+                None,
+                {"target": "this-resource-does-not-exist-12345"},
+                "Failed to access NGC resource this-resource-does-not-exist-12345",
+                id="nonexistent-resource",
+            ),
+        ],
+    )
+    def test_create_error(
+        self,
+        sdk: NeMoPlatform,
+        workspace: str,
+        ngc_api_key: str,
+        secret_value: str | None,
+        storage_overrides: dict,
+        match: str,
+    ):
+        """Bad NGC configurations are rejected with 400."""
+        value = secret_value if secret_value is not None else ngc_api_key
+        secret_name = f"e2e-ngc-err-{uuid.uuid4().hex[:8]}"
+        sdk.secrets.create(workspace=workspace, name=secret_name, value=value)
+        try:
+            storage = NGCStorageConfigParam(
+                api_key_secret=secret_name,
+                org=storage_overrides.get("org", NGC_ORG),
+                team=storage_overrides.get("team", NGC_TEAM),
+                target=storage_overrides.get("target", NGC_TARGET),
+                target_type=NGC_TARGET_TYPE,
+            )
+            with pytest.raises(BadRequestError, match=match):
+                sdk.files.filesets.create(
+                    workspace=workspace,
+                    name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
+                    storage=storage,
+                )
+        finally:
+            sdk.secrets.delete(workspace=workspace, name=secret_name)
+
+    def test_create_error_nonexistent_secret(self, sdk: NeMoPlatform, workspace: str):
+        """Referencing a secret that doesn't exist is rejected with 400."""
+        with pytest.raises(BadRequestError, match="Secret not found:"):
+            sdk.files.filesets.create(
+                workspace=workspace,
+                name=f"e2e-ngc-err-{uuid.uuid4().hex[:8]}",
+                storage=NGCStorageConfigParam(
+                    api_key_secret="no-such-secret-99999",
+                    org=NGC_ORG,
+                    team=NGC_TEAM,
+                    target=NGC_TARGET,
+                    target_type=NGC_TARGET_TYPE,
+                ),
+            )
+
 
 # ===================================================================
 # Hugging Face tests
@@ -223,3 +293,17 @@ class TestHuggingFaceFileset:
         for f in files.data:
             assert f.cache_status is not None
             assert f.cache_status != "not_cacheable"
+
+    # -- error cases --
+
+    def test_error_nonexistent_repo(self, sdk: NeMoPlatform, workspace: str):
+        """Pointing at a repo that doesn't exist is rejected with 400."""
+        with pytest.raises(BadRequestError):
+            sdk.files.filesets.create(
+                workspace=workspace,
+                name=f"e2e-hf-err-{uuid.uuid4().hex[:8]}",
+                storage=HuggingfaceStorageConfigParam(
+                    repo_id="this-org-does-not-exist/this-repo-does-not-exist-12345",
+                    repo_type="model",
+                ),
+            )
