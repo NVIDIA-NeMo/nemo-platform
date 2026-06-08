@@ -40,6 +40,7 @@ export const DATASETS_ENABLED = featureFlags.datasetsEnabled !== false;
 export const DEPLOYMENTS_ENABLED = featureFlags.deploymentsEnabled !== false;
 export const EVALUATOR_ENABLED = featureFlags.evaluatorEnabled !== false;
 export const EVALUATOR_BENCHMARKS_ENABLED = featureFlags.evaluatorBenchmarksEnabled !== false;
+export const EXPERIMENT_ENABLED = featureFlags.experiment !== false;
 export const FILESET_DETAILS_ENABLED = featureFlags.filesetDetailsEnabled !== false;
 export const INFERENCE_PROVIDER_ENABLED = featureFlags.inferenceProviderEnabled !== false;
 export const INTAKE_ENABLED = featureFlags.intakeEnabled !== false;

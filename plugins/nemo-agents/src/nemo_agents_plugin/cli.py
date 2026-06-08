@@ -797,7 +797,7 @@ def _register_platform_commands(app: typer.Typer) -> None:
 
         # ``name`` is guaranteed non-None by the checks above; cast() narrows
         # the type without runtime overhead and survives ``python -O``.
-        log_path = _agent_log_path_for(cast(str, name))
+        log_path = _agent_log_path_for(workspace, cast(str, name))
         if path_only:
             typer.echo(str(log_path))
             return
@@ -987,17 +987,20 @@ def _wait_for_deployment(
 # ---------------------------------------------------------------------------
 
 
-def _agent_log_path_for(deployment_name: str) -> Path:
+def _agent_log_path_for(workspace: str, deployment_name: str) -> Path:
     """Return the absolute log-file path the runner backend uses for a deployment.
 
     Imports the convention from the runner module so the CLI and the running
     platform agree on layout without round-tripping a host-bound path
     through the public API surface.  Correct only for the in-memory backend
     on the same host as the CLI invoker.
+
+    The path is workspace-namespaced (``<system_dir>/<workspace>/<name>.log``)
+    so two workspaces with same-named deployments don't share a file.
     """
     from nemo_agents_plugin.runner.in_memory import log_path_for_deployment
 
-    return log_path_for_deployment(deployment_name)
+    return log_path_for_deployment(workspace, deployment_name)
 
 
 def _deployment_created_at_key(dep: dict[str, Any]) -> datetime:

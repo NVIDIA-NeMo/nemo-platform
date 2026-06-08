@@ -7,7 +7,7 @@ Data Designer on {{platform_name}} enables high-quality synthetic data generatio
 
 Data Designer is a framework for orchestrating complex synthetic data generation workflows. It coordinates LLM calls, manages dependencies between data fields, handles batching and parallelization, and validates generated data against specifications.
 
-The plugin is built on the open-source [NVIDIA NeMo Data Designer library](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome) ([GitHub](https://github.com/NVIDIA-NeMo/DataDesigner)). The library provides the configuration and generation engine; the plugin provides CLI, SDK, Data Designer API, Jobs, Files API, Secrets API, and Inference Gateway API integration.
+The plugin is built on the open-source [NVIDIA NeMo Data Designer library](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/getting-started/welcome) ([GitHub](https://github.com/NVIDIA-NeMo/DataDesigner)). The library provides the configuration and generation engine; the plugin provides CLI, SDK, Data Designer API, Jobs, Files API, Secrets API, and Inference Gateway API integration.
 
 ## How It Works
 
@@ -41,7 +41,7 @@ config_builder.add_column(dd.LLMTextColumnConfig(...))
 
 Configuration code describes the dataset schema, columns, dependencies, constraints, seed data, processors, profilers, and inference settings.
 
-**Learn more**: See the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome) for comprehensive guides on column types, samplers, constraints, and advanced features.
+**Learn more**: See the [library documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/getting-started/welcome) for comprehensive guides on column types, samplers, constraints, and advanced features.
 
 ### 2. Choose Where to Execute
 
@@ -98,7 +98,7 @@ These integrations are required for `submit` and SDK execution. They are optiona
 
     Move configurations between local CLI and NeMo Services execution.
 
--   **[Library Documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.0/getting-started/welcome)**
+-   **[Library Documentation](https://docs.nvidia.com/nemo/datadesigner/v0.6.1/getting-started/welcome)**
 
     ---
 

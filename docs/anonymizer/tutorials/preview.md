@@ -7,9 +7,11 @@ For detection and replacement strategy details, see the [open-source library doc
 
 ## Prerequisites
 
-- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](../quickstart.md).
+Complete the [tutorials prerequisites](index.md#prerequisites), which cover:
+
+- A running {{platform_name}} cluster with the `nemo anonymizer` CLI available (see [Setup](../../get-started/setup.md)).
 - An inference provider configured (default examples use `nvidia-build`).
-- A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded (created in the Quick Start).
+- A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded.
 
 ## What `preview` Does
 
@@ -172,7 +174,7 @@ jq -R 'fromjson? | select(.kind == "preview_dataset") | .records' \
   /tmp/anonymizer-preview.ndjson
 ```
 
-If `preview submit` returns 404 against the gateway, the plugin service isn't mounted. Confirm the plugin is installed and restart `nemo services run`; see [Quick Start — Step 1](../quickstart.md#step-1-install-the-plugin).
+If `preview submit` returns 404 against the gateway, the plugin service isn't mounted. Restart `nemo services run` so the plugin is discovered and remounts `/apis/anonymizer/...`; see [Setup](../../get-started/setup.md).
 
 ## Input Source Forms
 

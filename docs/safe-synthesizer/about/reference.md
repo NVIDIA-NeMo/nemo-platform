@@ -7,6 +7,18 @@ This page summarizes the main configuration groups available when creating
 {{nss_short_name}} jobs. For generated REST API schema details, see the
 [Safe Synthesizer API Reference](../../api/index.md#tag-safe-synthesizer).
 
+## Job Spec (Plugin / REST)
+
+Top-level fields on the Safe Synthesizer job spec (alongside `config`):
+
+| Field | Description |
+|-------|-------------|
+| `data_source` | Input data as a platform fileset URL (`workspace/fileset#path`). With `run-local`, override via `--data-source` and use any placeholder in the spec. |
+| `pretrained_model_job` | Prior completed job whose **`adapter`** result in Files is reused for **generation-only** synthesis. Format: `<job>` or `<workspace>/<job>`. Mutually exclusive with `config.training.pretrained_model`. |
+| `hf_token_secret` | Platform secret name for Hugging Face token during model initialization |
+
+For host-local runs, see [Local and Subprocess Execution](host-local-development.md). Reuse a local adapter with `config.training.pretrained_model`, not `pretrained_model_job`.
+
 ## Top-Level Configuration
 
 The `SafeSynthesizerParameters` schema defines the main configuration structure for Safe Synthesizer jobs.
@@ -83,7 +95,7 @@ import os
 import pandas as pd
 
 from nemo_platform import NeMoPlatform
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Placeholders
 df: pd.DataFrame = pd.DataFrame()

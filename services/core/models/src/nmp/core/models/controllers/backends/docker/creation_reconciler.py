@@ -28,10 +28,10 @@ from docker.models.volumes import Volume
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.config import get_auth_config, get_platform_config
 from nmp.common.config.base import LOOPBACK_ADDRESSES
 from nmp.common.docker.gpu_pool import DockerGPUPool, GPUAllocationError
-from nmp.common.jobs.image import get_qualified_image
 from nmp.common.sdk_factory import get_sdk_on_behalf_of
 from nmp.core.models.app import ModelWeightsType, get_model_weights_type, is_multi_llm_image, parse_model_name_revision
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER

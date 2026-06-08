@@ -239,11 +239,90 @@ def _add_evaluator_results_skip_indexes(client, settings: ClickHouseMigrationSet
     client.command(f"ALTER TABLE {table} MATERIALIZE INDEX idx_created_at")
 
 
+def _create_experiment_sessions_schema(client, settings: ClickHouseMigrationSettings) -> None:
+    """Create the root-span experiment membership table and insert-time projection."""
+
+    table = _table(settings, "experiment_sessions")
+    view = _table(settings, "experiment_sessions_mv")
+    client.command(f"DROP TABLE IF EXISTS {view}")
+    client.command(f"DROP TABLE IF EXISTS {table}")
+
+    # Note this is logically a single table. CH requires creating an underlying table and then a view that writes to that table.
+    client.command(
+        f"""
+        CREATE TABLE {table}
+        (
+            workspace LowCardinality(String),
+            experiment_id String,
+            session_id String,
+            test_case_id String DEFAULT '',
+
+            source_format LowCardinality(String),
+            trace_id String,
+            root_span_id String,
+
+            start_time DateTime64(6) CODEC(Delta(8), ZSTD(1)),
+            end_time Nullable(DateTime64(6)) CODEC(Delta(8), ZSTD(1)),
+            latency_ms Nullable(Float64),
+
+            event_ts DateTime64(6),
+            is_deleted UInt8 DEFAULT 0
+        )
+        ENGINE = ReplacingMergeTree(event_ts, is_deleted)
+        PARTITION BY toYYYYMM(start_time)
+        PRIMARY KEY (workspace, experiment_id, session_id)
+        ORDER BY (workspace, experiment_id, session_id, root_span_id)
+        TTL toDate(start_time) + INTERVAL 90 DAY
+        SETTINGS
+            index_granularity = 256,
+            ttl_only_drop_parts = 1
+        """
+    )
+    experiment_sessions_select_sql = f"""
+        SELECT
+            workspace,
+            attributes_string['experiment.id'] AS experiment_id,
+            session_id,
+            if(
+                has(mapKeys(attributes_string), 'test_case.id'),
+                attributes_string['test_case.id'],
+                ''
+            ) AS test_case_id,
+            source_format,
+            trace_id,
+            external_span_id AS root_span_id,
+            start_time,
+            nullIf(end_time, toDateTime64(0, 6)) AS end_time,
+            if(end_time = toDateTime64(0, 6), NULL, dateDiff('millisecond', start_time, end_time)) AS latency_ms,
+            event_ts,
+            is_deleted
+        FROM {_table(settings, "spans")}
+        WHERE external_parent_span_id = ''
+            AND has(mapKeys(attributes_string), 'experiment.id')
+            AND attributes_string['experiment.id'] != ''
+        """
+    client.command(
+        f"""
+        CREATE MATERIALIZED VIEW {view}
+        TO {table}
+        AS
+        {experiment_sessions_select_sql}
+        """
+    )
+    client.command(
+        f"""
+        INSERT INTO {table}
+        {experiment_sessions_select_sql}
+        """
+    )
+
+
 _MIGRATIONS: list[tuple[str, Callable[..., None]]] = [
     ("ch_spans_0002", _create_spans_schema),
     ("ch_evaluator_results_0001", _create_evaluator_results_schema),
     ("ch_annotations_0001", _create_annotations_schema),
     ("ch_evaluator_results_0002", _add_evaluator_results_skip_indexes),
+    ("ch_experiment_sessions_0002", _create_experiment_sessions_schema),
 ]
 CURRENT_SCHEMA_VERSION = _MIGRATIONS[-1][0]
 

@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ThreadAssistantMessagePart } from '@assistant-ui/react';
+import {
+  createClaudeCodeToolCallPart,
+  groupConsecutiveClaudeCodeSubtleToolCalls,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/toolParts';
 import { websiteLogger } from '@studio/util/logger';
 
 interface ServerSentEvent {
@@ -13,13 +18,16 @@ interface ParsedSseChunk {
   rest: string;
 }
 
-interface ClaudeCodeTextPart {
+interface ClaudeCodeContentPart {
+  id?: unknown;
+  input?: unknown;
   type?: unknown;
   text?: unknown;
   name?: unknown;
 }
 
 interface ClaudeCodeMessage {
+  id?: unknown;
   content?: unknown;
 }
 
@@ -58,29 +66,54 @@ export const parseSseChunk = (chunk: string): ParsedSseChunk => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const getContentParts = (event: ClaudeCodeStreamEvent): ClaudeCodeTextPart[] => {
+const getContentParts = (event: ClaudeCodeStreamEvent): ClaudeCodeContentPart[] => {
   const content = event.message?.content;
   if (!Array.isArray(content)) return [];
   return content.filter(isRecord);
 };
 
-export const getAssistantTextFromClaudeEvent = (event: unknown): string => {
-  if (!isRecord(event) || event.type !== 'assistant') return '';
+export const getAssistantPartsFromClaudeEvent = (
+  event: unknown
+): readonly ThreadAssistantMessagePart[] => {
+  if (!isRecord(event) || event.type !== 'assistant') return [];
 
   const parts = getContentParts(event);
-  const text = parts
-    .map((part) => {
-      if (part.type === 'text' && typeof part.text === 'string') return part.text;
+  const message = event.message;
+  const messageId =
+    isRecord(message) && typeof message.id === 'string' && message.id ? message.id : 'message';
+  const assistantParts = parts
+    .map((part, index): ThreadAssistantMessagePart | undefined => {
+      if (part.type === 'text' && typeof part.text === 'string') {
+        return part.text ? { type: 'text', text: part.text } : undefined;
+      }
       if (part.type === 'tool_use') {
         const toolName = typeof part.name === 'string' ? part.name : 'tool';
-        return `\n\nUsing ${toolName}...`;
+
+        const toolCallId =
+          typeof part.id === 'string' && part.id
+            ? part.id
+            : `claude-code-tool-${messageId}-${toolName}-${index}`;
+        return createClaudeCodeToolCallPart({
+          input: part.input,
+          toolCallId,
+          toolName,
+        });
       }
+      return undefined;
+    })
+    .filter((part): part is ThreadAssistantMessagePart => part !== undefined);
+
+  return groupConsecutiveClaudeCodeSubtleToolCalls(assistantParts);
+};
+
+export const getAssistantTextFromClaudeEvent = (event: unknown): string => {
+  const parts = getAssistantPartsFromClaudeEvent(event);
+  return parts
+    .map((part) => {
+      if (part.type === 'text') return part.text;
       return '';
     })
-    .filter(Boolean)
     .join('');
-
-  return text;
 };
 
 export const parseJsonObject = (value: string): unknown => {

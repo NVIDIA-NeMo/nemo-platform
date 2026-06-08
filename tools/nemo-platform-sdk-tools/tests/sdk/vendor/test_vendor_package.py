@@ -116,6 +116,7 @@ services = ["fastapi>=1"]
 nmp-auth = { source = "../../services/core/auth/src/nmp/core/auth", module = "nmp/core/auth", deps_group = "auth-service" }
 nmp-files = { source = "../../services/core/files/src/nmp/core/files", module = "nmp/core/files", deps_group = "files-service" }
 nmp-auditor = { source = "../../services/auditor/src/nmp/auditor", module = "nmp/auditor", deps_group = "auditor-service" }
+nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-safe-synthesizer = { source = "../../services/safe-synthesizer/src/nmp/safe_synthesizer", module = "nmp/safe_synthesizer", deps_group = "safe-synthesizer-service", include_in_services = false }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
 nemo-auditor-plugin = { source = "../../plugins/nemo-auditor/src/nemo_auditor", module = "nemo_auditor" }
@@ -146,6 +147,7 @@ switchyard = { source = "../../plugins/nemo-switchyard/vendor/switchyard/switchy
     ]
     assert list(wrapper_optional["services"]) == [
         "nemo-platform[core-service]",
+        "nemo-platform[platform-seed-service]",
         "nemo-platform[auditor-service]",
         "nemo-platform[plugins]",
         "fastapi>=1",
@@ -386,6 +388,81 @@ dependencies = ["rich>=14.1.0"]
         "pydantic>=2.10.6",
     ]
     assert list(optional["services"]) == ["rich>=14.1.0", "nemo-platform[core-service]"]
+
+
+def test_process_bundle_packages_rebuilds_platform_seed_service_group(tmp_path: Path, monkeypatch) -> None:
+    wrapper_path = tmp_path / "packages/nemo_platform"
+    seed_path = tmp_path / "services/platform-seed"
+    wrapper_path.mkdir(parents=True)
+    seed_path.mkdir(parents=True)
+
+    (tmp_path / "pyproject.toml").write_text(
+        """
+[tool.uv.workspace]
+members = [
+    "packages/nemo_platform",
+    "packages/nmp_common",
+    "services/core/auth",
+    "services/evaluator",
+    "services/guardrails",
+    "services/platform-seed",
+]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (wrapper_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nemo-platform"
+
+[project.optional-dependencies]
+
+[tool.bundle-package]
+nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
+nmp-auth = { source = "../../services/core/auth/src/nmp/core/auth", module = "nmp/core/auth", deps_group = "auth-service" }
+nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
+nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
+nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
+""".lstrip(),
+        encoding="utf-8",
+    )
+    (seed_path / "pyproject.toml").write_text(
+        """
+[project]
+name = "nmp-platform-seed"
+dependencies = ["nmp-common", "nmp-auth", "nmp-guardrails", "nmp-evaluator"]
+""".lstrip(),
+        encoding="utf-8",
+    )
+    for package_path, package_name in [
+        ("packages/nmp_common", "nmp-common"),
+        ("services/core/auth", "nmp-auth"),
+        ("services/evaluator", "nmp-evaluator"),
+        ("services/guardrails", "nmp-guardrails"),
+    ]:
+        pyproject_path = tmp_path / package_path / "pyproject.toml"
+        pyproject_path.parent.mkdir(parents=True)
+        pyproject_path.write_text(
+            f"""
+[project]
+name = "{package_name}"
+dependencies = []
+""".lstrip(),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(vendor_package, "NMP_ROOT_PATH", tmp_path)
+    vendor_package._process_bundle_packages()
+
+    wrapper_updated = tomlkit.parse((wrapper_path / "pyproject.toml").read_text(encoding="utf-8"))
+    optional = wrapper_updated["project"]["optional-dependencies"]
+
+    assert list(optional["platform-seed-service"]) == [
+        "nmp-common",
+        "nmp-auth",
+        "nmp-guardrails",
+        "nmp-evaluator",
+    ]
 
 
 def test_process_bundle_packages_inherits_requested_metadata(tmp_path: Path, monkeypatch) -> None:

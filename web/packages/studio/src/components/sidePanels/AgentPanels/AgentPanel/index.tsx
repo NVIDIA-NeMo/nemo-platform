@@ -30,19 +30,30 @@ import type { AgentConfig } from '@studio/components/dataViews/AgentsDataView';
 import { getAgentModelNames } from '@studio/components/dataViews/AgentsDataView/utils';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { ModelChat } from '@studio/components/ModelChat';
+import { Coachmark } from '@studio/components/sidePanels/AgentPanels/AgentPanel/Coachmark';
+import { DeploymentLogsView } from '@studio/components/sidePanels/AgentPanels/AgentPanel/DeploymentLogsView';
 import { NoHealthyDeploymentsBanner } from '@studio/components/sidePanels/AgentPanels/AgentPanel/NoHealthyDeploymentsBanner';
+import type { AgentPanelTab } from '@studio/components/sidePanels/AgentPanels/AgentPanel/types';
+import {
+  deriveWalkthroughStep,
+  WALKTHROUGH_COPY,
+} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthrough';
+import {
+  clearAgentWalkthroughPending,
+  isAgentWalkthroughPending,
+} from '@studio/components/sidePanels/AgentPanels/AgentPanel/walkthroughStorage';
 import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { CreateDeploymentModal } from '@studio/routes/agents/AgentDeploymentsListRoute/CreateDeploymentModal';
 import { fetchAgentEvalJobs } from '@studio/routes/agents/AgentEvaluationsRoute/api';
 import { SubmitEvaluationModal } from '@studio/routes/agents/AgentEvaluationsRoute/components/SubmitEvaluationModal';
 import { getAgentEvaluationDetailRoute, getAgentEvaluationsListRoute } from '@studio/routes/utils';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { type ComponentProps, type FC, useEffect, useMemo, useState } from 'react';
+import { type ComponentProps, type FC, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 const RECENT_EVAL_LIMIT = 5;
 
-export type AgentPanelTab = 'agent-details' | 'chat-playground';
+export type { AgentPanelTab };
 
 function deploymentStatusColor(status?: string): 'green' | 'red' | 'yellow' | undefined {
   if (status === 'running') return 'green';
@@ -82,11 +93,17 @@ export const AgentPanel: FC<AgentPanelProps> = ({
   );
   const [submitEvalOpen, setSubmitEvalOpen] = useState(false);
   const [createDeploymentOpen, setCreateDeploymentOpen] = useState(false);
+  const [walkthroughActive, setWalkthroughActive] = useState(false);
+  const [walkthroughDismissed, setWalkthroughDismissed] = useState(false);
+  const deployButtonRef = useRef<HTMLDivElement>(null);
+  const tabsRef = useRef<HTMLDivElement>(null);
+  const chatAreaRef = useRef<HTMLDivElement>(null);
 
   const tabItems = useMemo(
     () => [
       { value: 'agent-details', children: 'Details' },
       { value: 'chat-playground', children: 'Chat Playground' },
+      { value: 'deployment-logs', children: 'Logs' },
     ],
     []
   );
@@ -97,6 +114,9 @@ export const AgentPanel: FC<AgentPanelProps> = ({
 
   useEffect(() => {
     setSelectedDeploymentName(undefined);
+    setWalkthroughDismissed(false);
+    // Start the walkthrough only for the agent it was queued for (just created).
+    setWalkthroughActive(!!agentName && isAgentWalkthroughPending(agentName));
   }, [agentName]);
 
   const { data: agentsResponse } = useAgentsListAgents(workspace, undefined, {
@@ -180,6 +200,20 @@ export const AgentPanel: FC<AgentPanelProps> = ({
     [agentDeployments]
   );
 
+  const walkthroughStep = deriveWalkthroughStep({
+    active: walkthroughActive,
+    dismissed: walkthroughDismissed,
+    createDeploymentOpen,
+    selectedTab,
+    hasDeployment: agentDeployments.length > 0,
+    hasHealthyDeployment: healthyDeployments.length > 0,
+  });
+
+  const endWalkthrough = () => {
+    setWalkthroughDismissed(true);
+    if (agentName) clearAgentWalkthroughPending(agentName);
+  };
+
   const chatDeployment = useMemo(() => {
     if (selectedDeploymentName) {
       return healthyDeployments.find((d) => d.name === selectedDeploymentName);
@@ -195,14 +229,23 @@ export const AgentPanel: FC<AgentPanelProps> = ({
 
   let content: React.ReactNode;
 
-  if (selectedTab === 'chat-playground') {
+  if (selectedTab === 'deployment-logs') {
+    content = <DeploymentLogsView workspace={workspace} deployments={agentDeployments} />;
+  } else if (selectedTab === 'chat-playground') {
     const deploymentSelectItems = healthyDeployments.flatMap((d) =>
-      d.name ? [{ value: d.name, children: d.name }] : []
+      d.name
+        ? [
+            {
+              value: d.name,
+              children: d.status ? `${d.name} · ${d.status}` : d.name,
+            },
+          ]
+        : []
     );
     const noHealthyDeployments = !isDeploymentsLoading && healthyDeployments.length === 0;
 
     content = (
-      <Stack className="h-full min-h-0" gap="0">
+      <div ref={chatAreaRef} className="flex flex-col h-full min-h-0">
         {!noHealthyDeployments && healthyDeployments.length > 1 && (
           <Block padding="4" className="border-b border-base shrink-0">
             <Select
@@ -233,7 +276,7 @@ export const AgentPanel: FC<AgentPanelProps> = ({
             disabled={noHealthyDeployments}
           />
         </Block>
-      </Stack>
+      </div>
     );
   } else {
     content = (
@@ -249,12 +292,29 @@ export const AgentPanel: FC<AgentPanelProps> = ({
             <Flex gap="2" align="center">
               <Button
                 className="flex-1"
-                kind="secondary"
+                kind="primary"
                 onClick={() => setSubmitEvalOpen(true)}
                 disabled={!agentName}
               >
                 Evaluate this Agent
               </Button>
+              <div
+                ref={deployButtonRef}
+                className={`flex-1 rounded-md ${
+                  walkthroughStep === 'deploy'
+                    ? 'ring-2 ring-brand ring-offset-2 animate-pulse'
+                    : ''
+                }`}
+              >
+                <Button
+                  className="w-full"
+                  kind="secondary"
+                  onClick={() => setCreateDeploymentOpen(true)}
+                  disabled={!agentName || isDeploying}
+                >
+                  {isDeploying ? 'Deploying…' : 'Deploy this Agent'}
+                </Button>
+              </div>
             </Flex>
           </Stack>
         </Block>
@@ -409,23 +469,66 @@ export const AgentPanel: FC<AgentPanelProps> = ({
         slotHeading={agentName}
         bordered
         modal
-        className="[&.nv-side-panel-content]:w-[600px] [&_.nv-side-panel-main]:gap-4 [&_.nv-side-panel-main]:p-0"
+        className="[&.nv-side-panel-content]:w-full [&.nv-side-panel-content]:max-w-[50vw] [&_.nv-side-panel-main]:gap-4 [&_.nv-side-panel-main]:p-0"
         {...attributes?.SidePanel}
       >
-        <Block className="w-full px-4">
-          <SegmentedControl
-            className="[&.nv-segmented-control-root]:mt-4 w-full!"
-            value={selectedTab}
-            items={tabItems}
-            onValueChange={(v) => {
-              const tab = v as AgentPanelTab;
-              setSelectedTab(tab);
-              onTabChange?.(tab);
-            }}
-            {...attributes?.SegmentedControl}
-          />
-        </Block>
+        <div ref={tabsRef} className="w-full">
+          <Block className="w-full px-4">
+            <SegmentedControl
+              className="[&.nv-segmented-control-root]:mt-4 w-full!"
+              value={selectedTab}
+              items={tabItems}
+              onValueChange={(v) => {
+                const tab = v as AgentPanelTab;
+                setSelectedTab(tab);
+                onTabChange?.(tab);
+              }}
+              {...attributes?.SegmentedControl}
+            />
+          </Block>
+        </div>
         {content}
+        {walkthroughStep === 'deploy' && (
+          <Coachmark
+            targetRef={deployButtonRef}
+            placement="left"
+            stepLabel="Step 1 of 3"
+            title={WALKTHROUGH_COPY.deploy.title}
+            body={WALKTHROUGH_COPY.deploy.body}
+            onDismiss={endWalkthrough}
+          />
+        )}
+        {walkthroughStep === 'switch-to-chat' && (
+          <Coachmark
+            targetRef={tabsRef}
+            placement="left"
+            stepLabel="Step 2 of 3"
+            title={WALKTHROUGH_COPY['switch-to-chat'].title}
+            body={WALKTHROUGH_COPY['switch-to-chat'].body}
+            onDismiss={endWalkthrough}
+          />
+        )}
+        {walkthroughStep === 'wait' && (
+          <Coachmark
+            targetRef={chatAreaRef}
+            placement="left"
+            stepLabel="Step 3 of 3"
+            title={WALKTHROUGH_COPY.wait.title}
+            body={WALKTHROUGH_COPY.wait.body}
+            onDismiss={endWalkthrough}
+          />
+        )}
+        {walkthroughStep === 'chat' && (
+          <Coachmark
+            targetRef={chatAreaRef}
+            placement="left"
+            title={WALKTHROUGH_COPY.chat.title}
+            body={WALKTHROUGH_COPY.chat.body}
+            primaryLabel="Got it"
+            onPrimary={endWalkthrough}
+            onDismiss={endWalkthrough}
+          />
+        )}
       </SidePanel>
       {deleteDeploymentTarget && (
         <DeleteConfirmationModal

@@ -7,9 +7,11 @@ For detection, rewrite, and replacement strategy details, see the [open-source l
 
 ## Prerequisites
 
-- The Anonymizer plugin installed and the `nemo anonymizer` CLI available. See the [Quick Start](../quickstart.md).
+Complete the [tutorials prerequisites](index.md#prerequisites), which cover:
+
+- A running {{platform_name}} cluster with the `nemo anonymizer` CLI available (see [Setup](../../get-started/setup.md)).
 - An inference provider configured (default examples use `nvidia-build`).
-- A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded (created in the Quick Start).
+- A fileset named `anonymizer-inputs` with `anonymizer-input.csv` uploaded.
 
 ## What `run` Does
 

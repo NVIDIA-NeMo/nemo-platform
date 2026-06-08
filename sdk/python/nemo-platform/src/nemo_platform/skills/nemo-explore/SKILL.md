@@ -15,6 +15,7 @@ not-for:
   - nemo-skill-selection (use to dispatch when intent is unclear)
   - nemo-spec (use to write the spec file once explore is done)
   - nemo-build-agent (use after spec exists)
+  - nemo-model-selection (use for the model question in step 5; explore delegates to it)
   - superpowers:brainstorming (use for design work unrelated to NeMo Platform)
 compatibility: nemo-platform >= 0.1.0; dialogue-driven with read-only pre-flight (`ls`, `find`, `Read`); safe under any sandbox; works offline; output is a structured conversation handed to nemo-spec.
 maturity: active
@@ -106,6 +107,15 @@ the user the full set of unfilled fields.
 3. **Map findings to schema fields.** As you scan, hold a running mental
    table of what you can fill from the code/docs. Be honest about confidence:
    "inferred from system prompt" is different from "confirmed by the user."
+
+4. **Choose the model.** Hand off to `nemo-model-selection` after the
+   code/docs scan. That skill profiles the agent on tool density, primary
+   capability, and deployment, then recommends a specific NIM model with a
+   plain-English explanation grounded in what the model is actually good at.
+   Return here with the chosen model string captured for the spec. If the
+   user wants to skip the conversation, the default is cloud,
+   `nvidia/llama-3.3-nemotron-super-49b-v1` — announce that and move on.
+   Local NIMs require host-gpu mode.
 
    Typical inferences per field:
 
@@ -241,8 +251,10 @@ to Filesets") and trigger it.
 ## Gotchas
 
 - **"You decide" means commit to the default and announce it.** Example:
-  "I'll go with cloud and Nemotron Super 49B. Tell me to change if not."
-  Never silently fill in.
+  "I'll go with cloud and `nvidia/llama-3.3-nemotron-super-49b-v1`. Tell me
+  to change if not." Never silently fill in. Prefer routing through
+  `nemo-model-selection` so the user gets a plain-English reason, not just a
+  name.
 - **Tool over-spec is the most common error.** Users ask for a search tool
   when prompt-only would work. Probe: "Do you have evidence the model alone
   fails on these?" If no, drop the tool.

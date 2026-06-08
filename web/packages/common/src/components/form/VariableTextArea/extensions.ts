@@ -30,7 +30,7 @@ export const textareaLook = [
     '&': { fontSize: '14px', backgroundColor: 'transparent' },
     '&.cm-focused': { outline: 'none' },
     '.cm-content': {
-      fontFamily: 'var(--font-family-nvidia-sans, inherit)',
+      fontFamily: 'var(--font-sans, inherit)',
       padding: '0',
     },
     '.cm-scroller': { overflow: 'auto', fontFamily: 'inherit' },

@@ -19,7 +19,7 @@ from nmp.intake.spans.ingest.atif_domain import (
     AtifTrajectory,
 )
 from nmp.intake.spans.ingest.atif_mapping import trajectory_to_spans
-from nmp.intake.spans.ingest.evaluation_context import EvaluationContext
+from nmp.intake.spans.ingest.evaluation_context import EvaluationContext, ExperimentContext
 from pydantic import ValidationError
 
 EVALUATION_CONTEXT: dict[str, Any] = {
@@ -167,15 +167,19 @@ def test_atif_v17_subagent_ref_requires_resolution_key() -> None:
     assert AtifSubagentTrajectoryRef(trajectory_path="subagents/sub-trajectory.json").trajectory_path is not None
 
 
-def test_evaluation_context_requires_run_id_when_any_context_field_is_set() -> None:
+def test_experiment_context_maps_to_storage_context() -> None:
+    context = ExperimentContext(experiment_id="exp-1", test_case_id="case-1")
+    storage_context = context.to_evaluation_context()
+
+    assert storage_context.evaluation_id == "exp-1"
+    assert storage_context.evaluation_run_id is None
+    assert storage_context.test_case_id == "case-1"
+
+
+def test_deprecated_evaluation_context_accepts_missing_run_id() -> None:
     assert EvaluationContext() == EvaluationContext(metadata={})
     assert EvaluationContext(evaluation_run_id="evalrun-1").evaluation_run_id == "evalrun-1"
-
-    with pytest.raises(ValidationError, match="evaluation_run_id"):
-        EvaluationContext(evaluation_id="eval-1")
-
-    with pytest.raises(ValidationError, match="evaluation_run_id"):
-        EvaluationContext(metadata={"attempt": 1})
+    assert EvaluationContext(evaluation_id="eval-1").evaluation_id == "eval-1"
 
 
 def test_atif_ingest_request_rejects_legacy_top_level_project() -> None:
@@ -215,14 +219,15 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
 
     root = next(span for span in spans if span.name == "sample-agent")
     child = next(span for span in spans if span.name == "user-1")
-    assert root.attributes_string["evaluation.id"] == EVALUATION_CONTEXT["evaluation_id"]
-    assert root.attributes_string["evaluation.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
-    assert root.attributes_string["evaluation.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
+    assert root.attributes_string["experiment.id"] == EVALUATION_CONTEXT["evaluation_id"]
+    assert root.attributes_string["experiment.sha"] == EVALUATION_CONTEXT["evaluation_sha"]
+    assert root.attributes_string["experiment.run_id"] == EVALUATION_CONTEXT["evaluation_run_id"]
+    assert "evaluation.id" not in root.attributes_string
+    assert root.attributes_string["test_case.id"] == EVALUATION_CONTEXT["test_case_id"]
     assert root.attributes_string["dataset.id"] == EVALUATION_CONTEXT["dataset_id"]
     assert root.attributes_string["dataset.name"] == EVALUATION_CONTEXT["dataset_name"]
     assert root.attributes_string["dataset.version"] == EVALUATION_CONTEXT["dataset_version"]
-    assert root.attributes_string["dataset.test_case_id"] == EVALUATION_CONTEXT["test_case_id"]
-    assert json.loads(root.attributes_string["evaluation.metadata"]) == EVALUATION_CONTEXT["metadata"]
+    assert json.loads(root.attributes_string["experiment.metadata"]) == EVALUATION_CONTEXT["metadata"]
 
     root_response = Span.from_domain(root)
     assert root_response.evaluation_context is not None
@@ -238,11 +243,36 @@ def test_atif_mapping_writes_evaluation_context_only_on_root_span() -> None:
     root_raw = json.loads(root_response.raw_attributes)
     assert "evaluation_context" not in root_raw
     assert "evaluation.metadata" not in root_raw
+    assert "experiment.metadata" not in root_raw
 
     child_response = Span.from_domain(child)
     assert child_response.evaluation_context is None
-    assert "evaluation.run_id" not in child.attributes_string
-    assert "evaluation.metadata" not in child.attributes_string
+    assert "evaluation.id" not in child.attributes_string
+    assert "experiment.id" not in child.attributes_string
+    assert "test_case.id" not in child.attributes_string
+
+
+def test_atif_mapping_writes_experiment_context_to_experiment_attributes() -> None:
+    body = AtifIngestRequest.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "experiment_context": {"experiment_id": "exp-1", "test_case_id": "case-1"},
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [{"step_id": 1, "source": "user", "message": "solve"}],
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=body.to_trajectory(),
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    root = next(span for span in spans if span.name == "sample-agent")
+    assert root.attributes_string["experiment.id"] == "exp-1"
+    assert root.attributes_string["test_case.id"] == "case-1"
+    assert "evaluation.id" not in root.attributes_string
 
 
 def test_atif_mapping_populates_root_content_and_rolls_child_errors() -> None:

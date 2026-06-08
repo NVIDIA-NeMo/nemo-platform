@@ -51,9 +51,8 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import {
-  getDatasetDetailRoute,
+  getFilesetDetailRoute,
   getFilesetDetailsRoute,
-  getModelDetailRoute,
   getWorkspaceFilesetsRoute,
 } from '@studio/routes/utils';
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
@@ -411,12 +410,11 @@ export const FilesetNewRoute: FC = () => {
       }
 
       setIsSubmitPending(false);
-      if (FILESET_DETAILS_ENABLED && fileset.purpose === FilesetPurpose.dataset) {
-        navigate(getDatasetDetailRoute(workspace, fileset.name));
-        return;
-      }
-      if (FILESET_DETAILS_ENABLED && fileset.purpose === FilesetPurpose.model) {
-        navigate(getModelDetailRoute(workspace, fileset.name));
+      if (
+        FILESET_DETAILS_ENABLED &&
+        (fileset.purpose === FilesetPurpose.dataset || fileset.purpose === FilesetPurpose.model)
+      ) {
+        navigate(getFilesetDetailRoute(workspace, fileset.name));
         return;
       }
       navigate(

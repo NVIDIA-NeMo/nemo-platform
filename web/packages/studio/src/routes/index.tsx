@@ -29,6 +29,7 @@ import {
   gateDataDesignerRoutes,
   gateEvaluationBenchmarksRoutes,
   gateEvaluationRoutes,
+  gateExperimentRoutes,
   gateFilesetDetailsRoutes,
   gateGuardrailsRoutes,
   gateInferenceProviderRoutes,
@@ -99,14 +100,9 @@ const FilesetNewRoute = lazy(() =>
 const FilesetListRoute = lazy(() =>
   import('@studio/routes/FilesetListRoute').then((module) => ({ default: module.FilesetListRoute }))
 );
-const DatasetDetailRoute = lazy(() =>
-  import('@studio/routes/DatasetDetailRoute').then((module) => ({
-    default: module.DatasetDetailRoute,
-  }))
-);
-const ModelDetailRoute = lazy(() =>
-  import('@studio/routes/ModelDetailRoute').then((module) => ({
-    default: module.ModelDetailRoute,
+const FilesetDetailRoute = lazy(() =>
+  import('@studio/routes/FilesetDetailRoute').then((module) => ({
+    default: module.FilesetDetailRoute,
   }))
 );
 const SecretsListRoute = lazy(() =>
@@ -162,6 +158,16 @@ const NewEvaluationMetricRoute = lazy(() =>
 const EvaluationResultDetailsRoute = lazy(() =>
   import('@studio/routes/evaluation/EvaluationResultDetailsRoute').then((module) => ({
     default: module.EvaluationResultDetailsRoute,
+  }))
+);
+const ExperimentRoute = lazy(() =>
+  import('@studio/routes/ExperimentRoute').then((module) => ({
+    default: module.ExperimentRoute,
+  }))
+);
+const ExperimentGroupDetailRoute = lazy(() =>
+  import('@studio/routes/ExperimentGroupDetailRoute').then((module) => ({
+    default: module.ExperimentGroupDetailRoute,
   }))
 );
 const NoMatchRoute = lazy(() =>
@@ -464,22 +470,13 @@ export const routes: RouteObject[] = [
                 },
                 ...gateFilesetDetailsRoutes([
                   {
-                    path: ROUTES.workspace.datasetDetail,
+                    path: ROUTES.workspace.filesetDetail,
                     element: (
-                      <Suspense fallback={<Loading description="Loading Dataset..." />}>
-                        <DatasetDetailRoute />
+                      <Suspense fallback={<Loading description="Loading Fileset..." />}>
+                        <FilesetDetailRoute />
                       </Suspense>
                     ),
-                    errorElement: <ErrorPanel title="Dataset" />,
-                  },
-                  {
-                    path: ROUTES.workspace.modelDetail,
-                    element: (
-                      <Suspense fallback={<Loading description="Loading Model..." />}>
-                        <ModelDetailRoute />
-                      </Suspense>
-                    ),
-                    errorElement: <ErrorPanel title="Model" />,
+                    errorElement: <ErrorPanel title="Fileset" />,
                   },
                 ]),
               ]),
@@ -604,6 +601,18 @@ export const routes: RouteObject[] = [
                       element: <EvaluationResultsRoute />,
                     },
                   ],
+                },
+              ]),
+              ...gateExperimentRoutes([
+                {
+                  path: ROUTES.workspace.experiment,
+                  element: <ExperimentRoute />,
+                  errorElement: <ErrorPanel title="Experiment" />,
+                },
+                {
+                  path: ROUTES.workspace.experimentGroupDetail,
+                  element: <ExperimentGroupDetailRoute />,
+                  errorElement: <ErrorPanel title="Experiment Group" />,
                 },
               ]),
               ...gateCustomizationRoutes([

@@ -14,6 +14,7 @@ import {
   DEPLOYMENTS_ENABLED,
   EVALUATOR_BENCHMARKS_ENABLED,
   EVALUATOR_ENABLED,
+  EXPERIMENT_ENABLED,
   GUARDRAILS_ENABLED,
   INTAKE_ENABLED,
   JOBS_ENABLED,
@@ -33,8 +34,9 @@ import {
   getModelCompareRoute,
   getEvaluationMetricsRoute,
   getEvaluationResultsRoute,
+  getExperimentRoute,
   getGuardrailsRoute,
-  getIntakeTracesRoute,
+  getIntakeRoute,
   getWorkspaceBaseModelsRoute,
   getWorkspaceCustomizationJobListRoute,
   getWorkspaceDashboardRoute,
@@ -45,6 +47,7 @@ import {
   getWorkspaceSettingsRoute,
 } from '@studio/routes/utils';
 import {
+  Beaker,
   Boxes,
   ChartBar,
   Database,
@@ -134,7 +137,18 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
             id: 'annotation',
             slotIcon: <UserPen className={iconColorClass} />,
             slotLabel: 'Annotation',
-            href: getIntakeTracesRoute(workspace),
+            href: getIntakeRoute(workspace),
+          },
+        ]
+      : [];
+
+    const experimentNav = EXPERIMENT_ENABLED
+      ? [
+          {
+            id: 'experiment',
+            slotIcon: <Beaker className={iconColorClass} />,
+            slotLabel: 'Experiment',
+            href: getExperimentRoute(workspace),
           },
         ]
       : [];
@@ -216,7 +230,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
       ...safeSynthesizerNav,
       ...dataDesignerNav,
     ];
-    const evaluateItems = [...evalNav, ...intakeNav];
+    const evaluateItems = [...evalNav, ...intakeNav, ...experimentNav];
 
     const safetyItems = GUARDRAILS_ENABLED
       ? [

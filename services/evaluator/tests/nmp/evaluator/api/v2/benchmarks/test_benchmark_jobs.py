@@ -8,8 +8,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from nemo_platform_plugin.jobs.api_factory import _validate_and_resolve_job_output
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.entities.client import EntityClient
-from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.api.v2.benchmarks.endpoints import (
     get_benchmarks_manager,
     platform_job_config_compiler,

@@ -18,7 +18,7 @@ const pathParams = {
   [RP.modelNamespace]: entityStorePromptTunedModel1.workspace!,
   [RP.modelName]: entityStorePromptTunedModel1.name!,
   [RP.filesetId]: dataset1.id!,
-  [RP.datasetName]: dataset1.name!,
+  [RP.filesetName]: dataset1.name!,
   [RP.filePathEncoded]: '',
   [RP.folderPathEncoded]: '',
   [RP.evalConfigNamespace]: '',
@@ -34,6 +34,7 @@ const pathParams = {
   [RP.agentEvalJobName]: 'test-agent-eval-job',
   [RP.jobName]: 'test-job',
   [RP.benchmarkName]: 'test-benchmark',
+  [RP.experimentGroupId]: 'test-experiment-group',
 };
 
 describe('AccessibleTitleE2E', () => {

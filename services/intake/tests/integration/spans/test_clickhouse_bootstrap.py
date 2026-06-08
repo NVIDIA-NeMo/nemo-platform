@@ -25,6 +25,7 @@ def test_clickhouse_bootstrap_is_idempotent(clickhouse_client: ClickHouseSpanCli
         ("ch_annotations_0001",),
         ("ch_evaluator_results_0001",),
         ("ch_evaluator_results_0002",),
+        ("ch_experiment_sessions_0002",),
         ("ch_spans_0002",),
     ]
 

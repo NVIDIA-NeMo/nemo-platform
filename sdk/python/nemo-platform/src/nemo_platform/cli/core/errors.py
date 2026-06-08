@@ -35,15 +35,15 @@ class MissingRequiredFieldsError(Exception):
 
 
 class InvalidSearchPatternError(Exception):
-    """Raised when --search is given a bare value, or JSON that fails to parse."""
+    """Raised when --filter is given JSON that fails to parse or an otherwise unusable value."""
 
     def __init__(self, value: str, parse_error: str | None = None):
         self.value = value
         self.parse_error = parse_error
         if parse_error:
-            super().__init__(f"Invalid search JSON: {parse_error}. Input: {value!r}")
+            super().__init__(f"Invalid filter JSON: {parse_error}. Input: {value!r}")
         else:
-            super().__init__(f"Invalid search pattern: {value!r}")
+            super().__init__(f"Invalid filter value: {value!r}")
 
 
 def _build_list_cmd(ctx: click.Context | None, prog: str) -> str | None:
@@ -322,26 +322,20 @@ def handle_exception(error: Exception, ctx: click.Context | None = None) -> None
         raise typer.Exit(code=2)
     elif isinstance(error, InvalidSearchPatternError):
         if error.parse_error:
-            console.print(f"[bold red]Error:[/] Invalid search JSON: {error.parse_error}")
+            console.print(f"[bold red]Error:[/] Invalid filter JSON: {error.parse_error}")
             console.print(f"Your input: {error.value!r}")
-            console.print()
-            console.print("Examples:")
-            console.print("  [cyan]--search.name='my name'[/]")
-            console.print("  [cyan]--search.description='my description'[/]")
-            console.print('  [cyan]--search[/] [cyan]\'{"name": ["my name"]}\'[/]  (JSON version)')
-            console.print()
-            console.print("[yellow]Hint:[/] Use [cyan]--help[/] to see available search fields.")
         else:
-            console.print(f"[bold red]Error:[/] Invalid search pattern {error.value!r}.")
-            console.print()
-            console.print("Search patterns must be in the format: [cyan]field=value[/] or [cyan]field.nested=value[/].")
-            console.print()
-            console.print("Examples:")
-            console.print("  [cyan]--search.name='my name'[/]")
-            console.print("  [cyan]--search.description='my description'[/]")
-            console.print('  [cyan]--search[/] [cyan]\'{"name": {"$like": "my name"}}\'[/]  (JSON)')
-            console.print()
-            console.print("[yellow]Hint:[/] Use [cyan]--help[/] to see available search fields.")
+            console.print(f"[bold red]Error:[/] Invalid filter value {error.value!r}.")
+        console.print()
+        console.print("Provide [cyan]--filter[/] as a text expression or JSON, or use [cyan]--filter.FIELD[/] options.")
+        console.print()
+        console.print("Examples:")
+        console.print("  [cyan]--filter 'name~\"nemotron\"'[/]   (text: substring match)")
+        console.print("  [cyan]--filter 'status:\"active\" AND amount>500'[/]   (text: combined)")
+        console.print('  [cyan]--filter \'{"name": {"$like": "nemotron"}}\'[/]   (JSON)')
+        console.print("  [cyan]--filter.name='nemotron'[/]   (per-field option)")
+        console.print()
+        console.print("[yellow]Hint:[/] Use [cyan]--help[/] to see available filter fields.")
         raise typer.Exit(code=2)
     else:
         console.print(f"[bold red]Unexpected error:[/] {error}")

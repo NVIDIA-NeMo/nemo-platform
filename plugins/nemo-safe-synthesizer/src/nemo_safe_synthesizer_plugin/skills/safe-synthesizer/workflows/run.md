@@ -8,11 +8,14 @@
 - A job spec JSON file with `data_source` and `config`.
 - A local input file or directory when using `--data-source`.
 
-If model downloads are needed through platform filesets, run:
+If you submit **platform jobs** (not bare `run-local` with `--data-source`), start services first (`nemo setup --start-services` or `nemo services run`), then optionally register model filesets:
 
 ```bash
+curl -s http://localhost:8080/health/ready
 uv run python plugins/nemo-safe-synthesizer/scripts/setup_model_filesets.py --files-api-url http://localhost:8080
 ```
+
+See `docs/safe-synthesizer/about/host-local-development.md` for when the platform is required.
 
 ## Platform Job Prerequisites
 
@@ -41,14 +44,9 @@ uv run nemo safe-synthesizer run-local \
   --output-dir ./nss-output
 ```
 
-Use platform job submission when the user wants the NMP Jobs service to run Safe Synthesizer:
+Use the Jobs API or SDK when the user wants the NMP Jobs service to run Safe Synthesizer. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands.
 
-```bash
-nemo safe-synthesizer jobs create my-safe-synthesizer-job \
-  --workspace default \
-  --input-file platform-job.json \
-  --wait
-```
+For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.md`.
 
 ## Minimal Spec Shape
 
@@ -71,7 +69,7 @@ nemo safe-synthesizer jobs create my-safe-synthesizer-job \
 }
 ```
 
-For platform submission, pass this object as the `spec` field when using `--input-data`; with `--input-file`, the generated API command accepts the same create payload shape documented by CLI help.
+For platform submission, pass this object as the `spec` field in the Jobs API or SDK create payload.
 
 `platform-job.json` wraps the job spec:
 
@@ -90,6 +88,7 @@ For platform submission, pass this object as the `spec` field when using `--inpu
 ## Next Steps
 
 - Tune job parameters with `workflows/config.md` and `workflows/config-runs.md`.
+- Reuse a prior adapter or run plugin tests: `docs/safe-synthesizer/about/host-local-development.md`.
 - Retrieve job result files with `workflows/results.md`.
 - Interpret output files with `workflows/artifacts.md`.
 - Debug failed runs with `workflows/diagnose.md`.

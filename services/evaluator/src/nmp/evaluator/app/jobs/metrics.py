@@ -17,8 +17,8 @@ from nemo_platform_plugin.jobs.api_factory import (
     PlatformJobSpec,
     PlatformJobStep,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.jobs.constants import PERSISTENT_JOB_STORAGE_PATH_ENVVAR
-from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.app.evalfactory.system import get_system_metric_handler
 from nmp.evaluator.app.jobs.constants import (
     EVALFACTORY_EVALUATION_JOB_FILE_NAME,

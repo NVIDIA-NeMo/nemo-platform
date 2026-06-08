@@ -5,6 +5,8 @@ models:
     interval_seconds: 10
     model_deployment_garbage_collection_ttl_seconds: 30
     error_deployment_ttl_seconds: 10800
+    provider_discovery_timeout_seconds: 180
+    provider_discovery_max_retries: 0
     backends:
       docker:
         enabled: true

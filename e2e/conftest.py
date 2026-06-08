@@ -34,6 +34,22 @@ import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Enable mock inference provider for e2e tests.
+
+    Sets the env var and clears the Configuration cache so that
+    InferenceGatewayConfig picks up the new value. The cache must be
+    cleared because the config module evaluates ``get_service_config()``
+    at import time, which may run before this hook.
+    """
+    os.environ.setdefault("NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX", "igw-mock-")
+
+    from nemo_platform_plugin.config import Configuration
+
+    Configuration.clear_cache()
+
+
 logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
@@ -104,7 +120,7 @@ def _services() -> Iterator[str]:
     url = f"http://127.0.0.1:{port}"
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
-    args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
+    args = [nemo_bin, "services", "run", "--port", str(port)]
 
     logger.info("Starting nemo services on port %d", port)
 

@@ -428,7 +428,7 @@ def controller_with_docker(
     models_controller_container_cleanup,
 ):
     """Create controller with real Docker backend."""
-    from nmp.common.jobs.image import get_qualified_image as real_get_qualified_image
+    from nemo_platform_plugin.jobs.image import get_qualified_image as real_get_qualified_image
 
     def patched_get_qualified_image(name: str, tag=None, registry=None):
         if name in ["nmp-core", "nmp-api"]:

@@ -16,6 +16,7 @@ The descriptor is metadata used by ``status``, ``ls``, and ``restart``.
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import hashlib
@@ -23,7 +24,9 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -41,6 +44,9 @@ logger = logging.getLogger(__name__)
 LOCK_FILENAME = "services.lock"
 DESCRIPTOR_FILENAME = "instance.json"
 LOG_FILENAME = "services.log"
+
+DEFAULT_SERVICES_BIND_HOST = "127.0.0.1"
+SUGGESTED_ALT_PORT = 9090
 
 _SIGTERM_POLL_INTERVAL = 0.25
 _DEFAULT_STOP_TIMEOUT = 30.0
@@ -172,6 +178,113 @@ class ForegroundInstanceError(Exception):
         )
 
 
+class InstanceStillRunningError(Exception):
+    """Raised when ``rm`` targets a live instance."""
+
+    def __init__(self, scope: str) -> None:
+        self.scope = scope
+        super().__init__(
+            f"Instance '{scope}' is still running. Stop it first with: nemo services stop --instance {scope}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Port availability (preflight before bind)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class PortConflict:
+    """Structured port conflict for terminal rendering by CLI callers."""
+
+    kind: Literal["foreign", "nemo_instance"]
+    port: int
+    scope: str | None = None
+
+
+def _normalize_bind_host(host: str) -> str:
+    """Normalize bind hosts for descriptor comparison."""
+    if host == "localhost":
+        return "127.0.0.1"
+    return host
+
+
+def _instance_owns_listener(
+    scope: str,
+    host: str,
+    port: int,
+    *,
+    base_dir: Path | None = None,
+) -> bool:
+    """Return True when a live instance for *scope* is bound to *host*:*port*."""
+    if not is_instance_alive(scope, base_dir=base_dir):
+        return False
+    desc = read_descriptor(scope, base_dir=base_dir)
+    if desc is None:
+        return False
+    return desc.port == port and _normalize_bind_host(desc.host) == _normalize_bind_host(host)
+
+
+def is_port_bindable(host: str, port: int) -> bool:
+    """Return True if *host*:*port* can be bound on at least one address family.
+
+    Uses ``getaddrinfo`` so IPv4 and IPv6 hosts (for example ``::``) are probed
+    with the correct socket family instead of always using ``AF_INET``.
+    """
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE)
+    except OSError:
+        return False
+    if not infos:
+        return False
+    for family, socktype, proto, _, sockaddr in infos:
+        with contextlib.suppress(OSError):
+            with socket.socket(family, socktype, proto) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                sock.bind(sockaddr)  # noqa: S104  # nosec B104
+            return True
+    return False
+
+
+def check_port_available_for_start(
+    host: str,
+    port: int,
+    scope: str,
+    *,
+    base_dir: Path | None = None,
+) -> PortConflict | None:
+    """Return conflict info when *port* cannot be bound, else None.
+
+    Classifies conflicts as ``nemo_instance`` only when a live instance for
+    *scope* is recorded on the same host and port. Otherwise reports ``foreign``.
+    Does not log or print — callers render to the terminal.
+    """
+    if is_port_bindable(host, port):
+        return None
+    if _instance_owns_listener(scope, host, port, base_dir=base_dir):
+        return PortConflict(kind="nemo_instance", port=port, scope=scope)
+    return PortConflict(kind="foreign", port=port)
+
+
+def format_port_conflict(err: PortConflict) -> list[str]:
+    """Return actionable message lines for terminal display.
+
+    Message text depends on ``err.kind`` (foreign process vs NeMo instance).
+    """
+    if err.kind == "nemo_instance":
+        return [
+            f"Port {err.port} is in use by a NeMo Platform instance for this directory.",
+            "Stop it first with: nemo services stop",
+            "Or restart with:    nemo services restart",
+        ]
+    return [
+        f"Port {err.port} is already in use by another process.",
+        "Free the port or choose a different one:",
+        f"lsof -i :{err.port}          (see what's listening)",
+        f"nemo services run --port {SUGGESTED_ALT_PORT}",
+    ]
+
+
 # ---------------------------------------------------------------------------
 # Descriptor (instance.json)
 # ---------------------------------------------------------------------------
@@ -237,6 +350,46 @@ def remove_descriptor(scope: str, *, base_dir: Path | None = None) -> None:
         logger.debug("Could not remove descriptor %s", path, exc_info=True)
 
 
+def _scope_dir(scope: str, *, base_dir: Path | None = None) -> Path:
+    return _instances_dir(base_dir=base_dir) / _validate_scope(scope)
+
+
+def _is_log_file(path: Path) -> bool:
+    return path.name == LOG_FILENAME or path.name.startswith(f"{LOG_FILENAME}.")
+
+
+def _iter_log_files(scope_dir: Path):
+    if not scope_dir.is_dir():
+        return
+    for path in scope_dir.iterdir():
+        if path.is_file() and _is_log_file(path):
+            yield path
+
+
+def _has_preservable_logs(scope_dir: Path) -> bool:
+    """Return True if *scope_dir* contains non-empty service log files."""
+    return any(path.stat().st_size > 0 for path in _iter_log_files(scope_dir))
+
+
+def is_removable_ghost(
+    scope: str,
+    *,
+    base_dir: Path | None = None,
+    descriptor: InstanceDescriptor | None = None,
+) -> bool:
+    """True when a dead scope dir has no descriptor and no non-empty logs."""
+    if is_instance_alive(scope, base_dir=base_dir):
+        return False
+    if descriptor is not None:
+        return False
+    scope_dir = _scope_dir(scope, base_dir=base_dir)
+    if not scope_dir.is_dir():
+        return False
+    if (scope_dir / DESCRIPTOR_FILENAME).exists():
+        return False
+    return not _has_preservable_logs(scope_dir)
+
+
 # ---------------------------------------------------------------------------
 # PID validation via psutil
 # ---------------------------------------------------------------------------
@@ -274,8 +427,9 @@ class InstanceInfo:
 def list_instances(*, base_dir: Path | None = None) -> list[InstanceInfo]:
     """Scan all instance directories and return their status.
 
-    Side effect: removes stale descriptors for dead instances so that
-    subsequent calls (and ``ls`` output) don't show ghost entries.
+    Side effects:
+    - Removes stale descriptors for dead instances.
+    - Silently removes empty ghost directories (dead, no descriptor, no logs).
     """
     idir = _instances_dir(base_dir=base_dir)
     if not idir.exists():
@@ -290,8 +444,50 @@ def list_instances(*, base_dir: Path | None = None) -> list[InstanceInfo]:
         if not alive and desc is not None:
             remove_descriptor(scope, base_dir=base_dir)
             desc = None
+        if is_removable_ghost(scope, base_dir=base_dir, descriptor=desc):
+            try:
+                shutil.rmtree(child)
+            except OSError:
+                logger.debug("Could not remove ghost instance dir %s", child, exc_info=True)
+            else:
+                continue
         results.append(InstanceInfo(scope=scope, alive=alive, descriptor=desc))
     return results
+
+
+def remove_instance(scope: str, *, base_dir: Path | None = None) -> bool:
+    """Remove an instance scope directory.
+
+    Returns False if the scope did not exist or could not be removed.
+    """
+    scope = _validate_scope(scope)
+    if is_instance_alive(scope, base_dir=base_dir):
+        raise InstanceStillRunningError(scope)
+    scope_dir = _scope_dir(scope, base_dir=base_dir)
+    if not scope_dir.is_dir():
+        return False
+    with contextlib.suppress(OSError):
+        shutil.rmtree(scope_dir)
+    return not scope_dir.is_dir()
+
+
+def list_stopped_scopes(*, base_dir: Path | None = None) -> list[str]:
+    """Return scope names for instances that are not alive."""
+    return [info.scope for info in list_instances(base_dir=base_dir) if not info.alive]
+
+
+def prune_instances(*, base_dir: Path | None = None) -> list[str]:
+    """Remove all stopped instance directories.  Returns removed scope names."""
+    removed: list[str] = []
+    for scope in list_stopped_scopes(base_dir=base_dir):
+        if remove_instance(scope, base_dir=base_dir):
+            removed.append(scope)
+    return removed
+
+
+def instance_log_bytes(scope: str, *, base_dir: Path | None = None) -> int:
+    """Total bytes across ``services.log`` and rotated logs for *scope*."""
+    return sum(path.stat().st_size for path in _iter_log_files(_scope_dir(scope, base_dir=base_dir)))
 
 
 # ---------------------------------------------------------------------------
@@ -470,7 +666,7 @@ def start_background(
     controller_group: str | None = None,
     sidecars: list[str] | None = None,
     config_path: str | None = None,
-    host: str = "127.0.0.1",
+    host: str = DEFAULT_SERVICES_BIND_HOST,
     port: int = 8080,
     base_dir: Path | None = None,
     data_dir: str | None = None,

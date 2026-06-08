@@ -14,8 +14,11 @@ import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataView
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import {
+  agentsListDeployments,
   getAgentsListAgentsQueryKey,
+  getAgentsListDeploymentsQueryKey,
   useAgentsDeleteAgent,
+  useAgentsDeleteDeployment,
   useAgentsListAgents,
   useAgentsListDeployments,
 } from '@nemo/sdk/generated/agents/api';
@@ -34,9 +37,6 @@ import { ComponentProps, FC, useMemo, useState } from 'react';
 
 export type { Agent, AgentDeployment };
 
-// Structured shape used by the Agent Optimizer when inspecting NAT workflow
-// configs. The platform stores ``Agent.config`` as an arbitrary dict; only the
-// optimizer interprets these specific fields.
 export interface AgentConfig {
   functions?: Record<string, { _type: string }>;
   llms?: Record<
@@ -58,7 +58,6 @@ export interface AgentConfig {
   };
 }
 
-// Kept for backward compatibility with consumers (e.g. AgentDeploymentsListRoute)
 export type AgentItem = Agent & { id: string };
 export type AgentEntity = AgentDeployment & { id: string };
 
@@ -167,30 +166,50 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         void queryClient.refetchQueries({
           queryKey: getAgentsListAgentsQueryKey(workspace),
         });
+        void queryClient.invalidateQueries({
+          queryKey: getAgentsListDeploymentsQueryKey(workspace),
+        });
       },
       onError: (error) => {
-        if (error.response?.status === 409) {
-          toast.error(
-            'Agent has active deployments. Please delete all deployments before deleting agent.'
-          );
-          return;
-        }
         toast.error(getErrorMessage(error, 'Failed to delete agent.'));
       },
     },
   });
 
+  const deleteDeploymentMutation = useAgentsDeleteDeployment();
+
+  const fetchAgentDeploymentNames = async (agentName: string): Promise<string[]> => {
+    const PAGE_SIZE = 100;
+    const MAX_PAGES = 50;
+    const names: string[] = [];
+    for (let page = 1; page <= MAX_PAGES; page += 1) {
+      const resp = await agentsListDeployments(workspace, { page, page_size: PAGE_SIZE });
+      for (const d of resp.data ?? []) {
+        if (d.agent === agentName && d.name) names.push(d.name);
+      }
+      if (page >= (resp.pagination?.total_pages ?? 1)) break;
+    }
+    return names;
+  };
+
   const handleDelete = async () => {
     try {
       if (deleteState?.kind === 'agent') {
-        await deleteAgentMutation.mutateAsync({
-          workspace,
-          name: deleteState.item.name,
-        });
+        const agentName = deleteState.item.name;
+        const deploymentNames = await fetchAgentDeploymentNames(agentName);
+        await Promise.all(
+          deploymentNames.map((name) =>
+            deleteDeploymentMutation.mutateAsync({ workspace, name }).catch((err) => {
+              if ((err as { response?: { status?: number } })?.response?.status === 404) return;
+              toast.error(getErrorMessage(err as Error, `Failed to delete deployment "${name}".`));
+              throw err;
+            })
+          )
+        );
+        await deleteAgentMutation.mutateAsync({ workspace, name: agentName });
       }
       return true;
     } catch {
-      // Error already surfaced via onError toast
       return false;
     }
   };
@@ -286,6 +305,7 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
         <DeleteConfirmationModal
           open
           title="Delete Agent"
+          description="Are you sure you want to delete this agent and all its deployments?"
           onDelete={handleDelete}
           onClose={() => setDeleteState(null)}
           simpleConfirm

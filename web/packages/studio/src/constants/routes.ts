@@ -16,7 +16,7 @@ export const ROUTE_PARAMS = {
   customizationJobId: 'customizationJobId',
   customizationJobName: 'customizationJobName',
   filesetId: 'filesetId',
-  datasetName: 'datasetName',
+  filesetName: 'filesetName',
   filePathEncoded: 'filePathEncoded',
   folderPathEncoded: 'folderPathEncoded',
   workspace: 'workspace',
@@ -38,6 +38,7 @@ export const ROUTE_PARAMS = {
   jobName: 'jobName',
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
+  experimentGroupId: 'experimentGroupId',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -68,6 +69,9 @@ export const ROUTES = {
     evaluationBenchmarkDetails: `/workspaces/:${P.workspace}/evaluation/benchmarks/:${P.benchmarkName}`,
     evaluationResults: `/workspaces/:${P.workspace}/evaluation/results`,
     evaluationResultDetails: `/workspaces/:${P.workspace}/evaluation/results/:${P.evaluationJobId}`,
+    /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
+    experiment: `/workspaces/:${P.workspace}/experiment`,
+    experimentGroupDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupId}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
@@ -75,10 +79,12 @@ export const ROUTES = {
     filesetNew: `/workspaces/:${P.workspace}/filesets/new`,
     filesetDetails: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}`,
     filesetFile: `/workspaces/:${P.workspace}/filesets/:${P.filesetId}/file/:${P.filePathEncoded}`,
-    /** Dataset-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
-    datasetDetail: `/workspaces/:${P.workspace}/datasets/:${P.datasetName}`,
-    /** Model-only detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED) */
-    modelDetail: `/workspaces/:${P.workspace}/models/:${P.modelName}`,
+    /**
+     * Unified fileset detail page (gated by VITE_FF_FILESET_DETAILS_ENABLED).
+     * One route serves all purposes — the page branches on `fileset.purpose`
+     * to render Model/Dataset/Generic card content.
+     */
+    filesetDetail: `/workspaces/:${P.workspace}/filesets/:${P.filesetName}/detail`,
     inferenceProviders: `/workspaces/:${P.workspace}/inference-providers`,
     deploymentConfigs: `/workspaces/:${P.workspace}/deployment-configs`,
     deployments: `/workspaces/:${P.workspace}/deployments`,
