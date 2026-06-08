@@ -58,7 +58,7 @@ def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[
     try:
         sdk.secrets.delete(workspace=workspace, name=secret_name)
     except Exception:
-        pass
+        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 @pytest.fixture
@@ -81,7 +81,7 @@ def ngc_fileset(sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Iterator[
     try:
         sdk.files.filesets.delete(fileset_name, workspace=workspace)
     except Exception:
-        pass
+        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 @pytest.fixture
@@ -98,7 +98,7 @@ def hf_secret(sdk: NeMoPlatform, workspace: str) -> Iterator[str | None]:
     try:
         sdk.secrets.delete(workspace=workspace, name=secret_name)
     except Exception:
-        pass
+        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 @pytest.fixture
@@ -123,7 +123,7 @@ def hf_fileset(sdk: NeMoPlatform, workspace: str, hf_secret: str | None) -> Iter
     try:
         sdk.files.filesets.delete(fileset_name, workspace=workspace)
     except Exception:
-        pass
+        pass  # Best-effort cleanup; the workspace is deleted anyway
 
 
 # ===================================================================
