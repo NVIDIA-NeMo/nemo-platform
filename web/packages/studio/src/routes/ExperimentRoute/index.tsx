@@ -5,8 +5,8 @@ import { useRelativeTimeSince } from '@nemo/common/src/components/RelativeTime';
 import { useListExperimentGroups, useListExperiments } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentGroupResponse } from '@nemo/sdk/generated/platform/schema';
 import {
+  Card,
   Divider,
-  Panel,
   PageHeader,
   PaginationArrowButton,
   PaginationControlsGroup,
@@ -87,7 +87,7 @@ export const ExperimentRoute: FC = () => {
               </Stack>
             </div>
             {totalResults > 0 && (
-              <div className="flex justify-center">
+              <div className="mx-auto w-full max-w-[1200px]">
                 <PaginationRoot
                   totalItems={totalResults}
                   page={page}
@@ -168,9 +168,9 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
     .filter((entry): entry is { name: string; avg: number } => entry.avg !== null);
 
   return (
-    <Panel
-      className="cursor-pointer hover:bg-surface-raised transition-colors"
-      attributes={{ PanelContent: { className: 'flex flex-row items-center gap-6' } }}
+    <Card
+      interactive
+      attributes={{ CardContent: { className: 'flex flex-row items-center gap-6 p-6' } }}
       onClick={() => navigate(getExperimentGroupDetailRoute(workspace, group.id))}
       role="button"
       tabIndex={0}
@@ -204,6 +204,6 @@ const ExperimentGroupCard: FC<ExperimentGroupCardProps> = ({ group, workspace })
         {scoreEntries.length > 0 && <Divider orientation="vertical" />}
         <Metric title="Experiments" value={String(experimentCount)} />
       </div>
-    </Panel>
+    </Card>
   );
 };
