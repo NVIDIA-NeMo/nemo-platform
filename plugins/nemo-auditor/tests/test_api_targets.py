@@ -155,3 +155,72 @@ class TestDeleteTarget:
         mock_entity_client.delete = AsyncMock(side_effect=NemoEntityNotFoundError("nope"))
         resp = client.delete("/apis/auditor/v2/workspaces/default/targets/missing")
         assert resp.status_code == 404
+
+
+class TestListTargetsFiltering:
+    def test_filter_by_type_forwards_filter_obj(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a", type="nim")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[type]=nim")
+        assert resp.status_code == 200, resp.text
+        kwargs = mock_entity_client.list.await_args.kwargs
+        assert kwargs["filter_obj"] == {"type": "nim"}
+        body = resp.json()
+        assert body["filter"] == {"type": "nim"}
+        assert [t["name"] for t in body["data"]] == ["a"]
+
+    def test_filter_by_model_forwards_filter_obj(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[model]=meta/llama-3.1-8b-instruct")
+        assert resp.status_code == 200, resp.text
+        kwargs = mock_entity_client.list.await_args.kwargs
+        assert kwargs["filter_obj"] == {"model": "meta/llama-3.1-8b-instruct"}
+
+    def test_filter_by_description_forwards_filter_obj(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[description]=prod")
+        assert resp.status_code == 200, resp.text
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"description": "prod"}
+
+    def test_filter_by_project_narrows(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[project]=team-a")
+        assert resp.status_code == 200, resp.text
+        assert mock_entity_client.list.await_args.kwargs["filter_obj"] == {"project": "team-a"}
+
+    def test_filter_created_at_range_parses_gte_lte(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get(
+            "/apis/auditor/v2/workspaces/default/targets"
+            "?filter[created_at][$gte]=2024-01-01T00:00:00Z"
+            "&filter[created_at][$lte]=2024-12-31T00:00:00Z"
+        )
+        assert resp.status_code == 200, resp.text
+        filter_obj = mock_entity_client.list.await_args.kwargs["filter_obj"]
+        assert set(filter_obj["created_at"].keys()) == {"$gte", "$lte"}
+        assert filter_obj["created_at"]["$gte"].startswith("2024-01-01")
+        assert filter_obj["created_at"]["$lte"].startswith("2024-12-31")
+
+    def test_unknown_filter_key_returns_422(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[bogus]=x")
+        assert resp.status_code == 422
+
+    def test_empty_filter_forwards_none(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a"), _make_target("b")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets")
+        assert resp.status_code == 200, resp.text
+        kwargs = mock_entity_client.list.await_args.kwargs
+        assert kwargs["filter_obj"] is None
+        body = resp.json()
+        assert [t["name"] for t in body["data"]] == ["a", "b"]
+        assert body["filter"] is None
+
+    def test_response_still_has_data_pagination_sort(self, client, mock_entity_client) -> None:
+        mock_entity_client.list = AsyncMock(return_value=_list_response([_make_target("a")]))
+        resp = client.get("/apis/auditor/v2/workspaces/default/targets?filter[type]=nim&sort=name")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert "data" in body
+        assert "pagination" in body
+        assert body["sort"] == "name"
+        assert body["filter"] == {"type": "nim"}

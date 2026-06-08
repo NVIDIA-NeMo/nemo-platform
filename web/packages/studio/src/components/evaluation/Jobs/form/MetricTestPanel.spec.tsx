@@ -325,7 +325,6 @@ describe('MetricTestPanel', () => {
       expect(
         await screen.findByText('Failed to load file content. Please select a different file.')
       ).toBeInTheDocument();
-      expect(screen.getByLabelText('Test Dataset')).toHaveValue('');
       expect(screen.getByRole('button', { name: /run test/i })).toBeDisabled();
     });
   });

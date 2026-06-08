@@ -2509,6 +2509,16 @@
         },
         {
           "package": {
+            "name": "nemo-safe-synthesizer",
+            "version": "0.1.1",
+            "ecosystem": "PyPI"
+          },
+          "licenses": [
+            "Apache-2.0"
+          ]
+        },
+        {
+          "package": {
             "name": "nemoguardrails",
             "version": "0.21.0",
             "ecosystem": "PyPI"
@@ -5727,7 +5737,7 @@
     },
     {
       "name": "Apache-2.0",
-      "count": 79
+      "count": 80
     },
     {
       "name": "non-standard",

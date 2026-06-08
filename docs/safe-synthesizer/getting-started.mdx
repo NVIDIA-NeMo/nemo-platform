@@ -4,25 +4,25 @@ description: ""
 ---
 <a id="nss-getting-started"></a>
 
-Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets.
+Get started with NeMo Safe Synthesizer for generating private synthetic versions of sensitive tabular datasets on a host GPU.
 
 ## Prerequisites
 
-Before using NeMo Safe Synthesizer, complete the [NeMo Platform Quickstart](/documentation/get-started) to install the CLI/SDK and deploy the platform.
+Before using NeMo Safe Synthesizer, complete [Setup](/documentation/get-started) to install the CLI/SDK.
 
 NeMo Safe Synthesizer has the following additional requirements:
 
-- An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container — Safe Synthesizer training runs directly on the host.
+- An NVIDIA GPU **on the host machine** with 80GB+ VRAM (check with `nvidia-smi`). This is separate from any GPU inside a NIM container; Safe Synthesizer training runs directly on the host.
 - Sufficient disk space for generated datasets (50GB+ recommended)
 
-For general platform troubleshooting (port conflicts, health checks, and so on), refer to the [main quickstart guide](/documentation/get-started).
+For general platform troubleshooting (port conflicts, health checks, and so on), refer to [Setup](/documentation/get-started).
 
 <Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
 ---
 
 ## Host-local CLI
 
-For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Host-Local Development and Testing](/documentation/safe-synthesizer-reference/about/host-local-development)):
+For GPU development on your machine, install the Safe Synthesizer plugin from this repository and use `nemo safe-synthesizer run-local` (see [Local and Subprocess Execution](/documentation/safe-synthesizer-reference/about/host-local-development)):
 
 ```shell
 BOOTSTRAP_LOCAL_PLUGIN_DIRS=plugins/nemo-safe-synthesizer make bootstrap-python
@@ -33,15 +33,16 @@ uv run nemo safe-synthesizer run-local \
   --output-dir ./nss-output
 ```
 
-Platform job submission (Jobs API, Studio, tutorials) is documented separately in [Jobs](/documentation/safe-synthesizer-reference/about/jobs) and the [tutorials](/documentation/safe-synthesizer-reference/tutorials/overview). The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only.
+The `run-local` command launches the Safe Synthesizer task in a separate runtime Python subprocess. The `nemo safe-synthesizer` CLI today exposes **run-local** and **runtime** only; platform job submission uses the Jobs API or SDK.
 
 ---
 
 ## Next Steps
 
-Run one of the [tutorials](/documentation/safe-synthesizer-reference/tutorials/overview) to create your first synthetic dataset:
+Create your first synthetic dataset:
 
-- [Safe Synthesizer 101 Tutorial](/documentation/safe-synthesizer/tutorials/safe-synthesizer-101) - A beginner-friendly introduction
-- [Differential Privacy Tutorial](/documentation/safe-synthesizer-reference/tutorials/differential-privacy) - Generate differentially-private synthetic data
+- [Safe Synthesizer 101 Tutorial](/documentation/safe-synthesizer-reference/tutorials/safe-synthesizer-101) - a beginner-friendly introduction
+- [Local and Subprocess Execution](/documentation/safe-synthesizer-reference/about/host-local-development) - local CLI and runtime task details
+- [SDK Resources](/documentation/safe-synthesizer-reference/sdk-resources) - Python SDK methods for jobs, builders, logs, and results
 
 ---

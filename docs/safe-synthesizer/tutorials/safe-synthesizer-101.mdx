@@ -114,11 +114,17 @@ Before running jobs, set up column classification for accurate PII detection.
 Column classification uses an LLM to automatically detect column types and improve PII detection accuracy. Without this setup, you may see classification errors and reduced detection quality.
 
 </Tip>
-<Markdown src="/snippets/_snippets/nvidia-build-model-provider.mdx" />
+
 ```python
 # Use the pre-configured NVIDIA Build model provider
 # This provider is set up automatically during platform deployment
-provider_name = "system/nvidia-build"
+provider_name = os.environ.get("NSS_CLASSIFY_MODEL_PROVIDER", "default/nvidia-build")
+if "/" in provider_name:
+    provider_workspace, provider_id = provider_name.split("/", 1)
+    client.inference.providers.retrieve(provider_id, workspace=provider_workspace)
+else:
+    provider_id = provider_name
+    client.inference.providers.retrieve(provider_id)
 print(f"✅ Using model provider: {provider_name}")
 ```
 
@@ -127,6 +133,7 @@ print(f"✅ Using model provider: {provider_name}")
 If you prefer not to send column data to `build.nvidia.com`, you can [deploy your own LLM](/documentation/models-and-inference/tutorials/deploy-models) and create a custom model provider. Pass the fully-qualified provider name (`workspace/provider-name`) to `.with_classify_model_provider()` instead.
 
 </Note>
+
 ---
 
 ## Step 6: HuggingFace Token Usage (Optional)
@@ -145,6 +152,8 @@ if hf_token:
     # Store your HuggingFace token as a platform secret
     client.secrets.create(workspace="default", name=hf_secret_name, value=hf_token)
     print(f"✓ Created secret: {hf_secret_name}")
+else:
+    hf_secret_name = None
 ```
 
 ## Step 7: Create and Run a Safe Synthesizer Job
@@ -153,7 +162,7 @@ Use the `SafeSynthesizerJobBuilder` to configure and create a job:
 
 ```python
 import pandas as pd
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 # Create a project for our jobs (creates if it doesn't exist)
 project_name = "test-project"
@@ -168,7 +177,7 @@ builder = (
     SafeSynthesizerJobBuilder(client)
     .with_data_source(df)
     .with_classify_model_provider(provider_name)  # Enable column classification
-    .with_replace_pii()  # Enable PII replacement
+    .with_replace_pii()  # Enable PII detection and replacement
     .synthesize()  # Enable synthesis
 )
 
@@ -231,9 +240,7 @@ except RuntimeError as e:
 If the job fails with **"No GPUs available on this system"**, ensure your quickstart is configured with GPU access:
 
 ```bash
-nemo quickstart configure
-# Select "host-gpu" when prompted
-nemo quickstart up
+nemo setup --start-services
 ```
 
 Verify GPU access with `nvidia-smi` on the host.
@@ -309,21 +316,16 @@ job.display_report_in_notebook()
 
 ### Interpreting Scores
 
-The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better. To learn more about how to interpret the scores, refer to the [evaluation guide](/documentation/safe-synthesizer-reference/about/evaluation).
+The evaluation report contains two high-level scores: Synthetic Quality Score (SQS) and Data Privacy Score (DPS). Both are measured out of 10, and higher is better.
 
 ---
 
 ## Next Steps
 
-Now that you've completed your first Safe Synthesizer job, explore more advanced features:
+Now that you've completed your first Safe Synthesizer job, try the local CLI path:
 
-### Advanced Tutorials
-
-- [Differential Privacy Tutorial](/documentation/safe-synthesizer-reference/tutorials/differential-privacy) - Apply mathematical privacy guarantees
-
-### Documentation
-
-- [index](/documentation/safe-synthesizer-reference/about/overview) - Understand core concepts
+- [Local and Subprocess Execution](../about/host-local-development.md) - run Safe Synthesizer directly on a host GPU
+- [Getting Started](../getting-started.md) - review local runtime prerequisites
 
 ### Try These Next
 
@@ -372,7 +374,7 @@ print(f"Total jobs: {len(all_jobs.data)}")
 - Use smaller model (adjust `training.pretrained_model`)
 - Check GPU availability
 
-For more help, see [jobs](/documentation/safe-synthesizer-reference/about/jobs).
+For local CLI failures, see [Local and Subprocess Execution](../about/host-local-development.md).
 
 **Error: "Dataset must have at least 200 records to use holdout."**
 

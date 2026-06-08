@@ -26,7 +26,7 @@
 Jobs are created using `SafeSynthesizerJobBuilder` from the Python SDK:
 
 ```python
-from nemo_platform.beta.safe_synthesizer.job_builder import SafeSynthesizerJobBuilder
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
 
 builder = (
     SafeSynthesizerJobBuilder(client)

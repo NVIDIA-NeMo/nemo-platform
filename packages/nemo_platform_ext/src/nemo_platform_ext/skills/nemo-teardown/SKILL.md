@@ -32,10 +32,10 @@ Use `lsof` as ground truth. Do not trust `nemo services status` or `nemo service
 lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 && echo "RUNNING" || echo "ALREADY_STOPPED"
 ```
 
-If `ALREADY_STOPPED`: the platform is not serving. There may still be a stale lock under `~/.local/state/nemo/instances/` from a crashed previous run. Tell the user that, and offer:
+If `ALREADY_STOPPED`: the platform is not serving. Stopped instance directories may still exist under `~/.local/state/nmp/instances/`. Tell the user that, and offer:
 
 - Option 3 (full cleanup of venv + `agents/` + data dir) only if they explicitly want it.
-- Otherwise, just clear the stale lock with `nemo services stop --force` so the next `nemo services run` doesn't refuse to start.
+- Otherwise, list stopped instance directories with `.venv/bin/nemo services ls --all` and remove them with `.venv/bin/nemo services prune` (or `.venv/bin/nemo services rm <scope>` for one scope). Logs are preserved until removal.
 
 ## Step 1: Snapshot state (what's about to be affected)
 
@@ -43,6 +43,7 @@ Show the user EVERYTHING that's currently on this platform so they can decide wh
 
 ```bash
 .venv/bin/nemo services ls
+.venv/bin/nemo services ls --all
 .venv/bin/nemo agents deployments list 2>/dev/null
 .venv/bin/nemo files filesets list 2>/dev/null
 .venv/bin/nemo jobs list 2>/dev/null
@@ -171,12 +172,12 @@ Verification passes only when `lsof` reports nothing on :8080 and (for options 2
 | `services stop` errors with "no instance" but `lsof` shows a listener | Lock state and reality diverged (foreground process with no registered instance, or instance was started in a different working directory / port scope) | Run `nemo services ls` to see what scopes the CLI knows about; the listener may belong to a different scope. Identify the PID from `lsof -iTCP:8080 -sTCP:LISTEN` and ask the user before sending SIGTERM. |
 | `services stop` says "stopped" but `lsof` still shows a listener | Process didn't honor SIGTERM in time | Re-run `nemo services stop --timeout 60`; if still alive, surface the PID and ask the user. Do not silently SIGKILL. |
 | `rm -rf` data dir fails with permission denied | Data dir owned by a different user, or a process still has it open | Surface the error; do not retry with sudo. Confirm `lsof -iTCP:8080` is empty and `lsof +D "$DATA_DIR" 2>/dev/null` shows nothing before retrying. |
-| `nemo services ls` shows `running` with empty PID/address after teardown | Stale lock leftover from a crashed `services run` | `nemo services stop --force` clears the lock. Then re-verify with `lsof`. |
+| `nemo services ls --all` shows stopped rows after teardown | Stopped instance directories with logs remain on disk | `nemo services prune` removes them. Re-verify with `lsof`. |
 | User says "I changed my mind" mid-step | Confirmation came back ambiguous | Stop immediately; re-prompt. |
 
 ## Gotchas
 
-- **`lsof` is ground truth.** `nemo services status` and `nemo services ls` report stale "running" from held instance locks after the underlying process has died. Always cross-check against `lsof -iTCP:8080 -sTCP:LISTEN` before believing them.
+- **`lsof` is ground truth for whether the platform is serving.** `nemo services ls` defaults to running instances; use `nemo services ls --all` for stopped instance directories on disk. Cross-check against `lsof -iTCP:8080 -sTCP:LISTEN` before believing either command.
 - **Foreground vs background instances.** `nemo services run` runs in the foreground and is protected from `nemo services stop` (stop refuses unless `--force`). `nemo services start` runs in the background and is the right target for `stop`. If `stop` refuses, ask the user where they ran `services run` so they can Ctrl-C it themselves.
 - **Wipe AFTER stop, not before.** On macOS especially, running `rm -rf ~/.local/share/nemo` while a `nemo services run` process is still alive leaves the running process holding the old inode while a freshly-spawned platform sees the new (empty) inode. Always confirm `lsof -iTCP:8080` is empty before the wipe.
 - **No `pkill`.** Don't grep for "nemo-platform" or "nemo services" and send SIGTERM blindly — the kernel doesn't know which instance is the user's and which belongs to a coworker on the same box. Use `nemo services stop` (or, with user confirmation, kill a specific PID surfaced by `lsof`).

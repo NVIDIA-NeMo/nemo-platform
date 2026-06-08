@@ -1,9 +1,14 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
-import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
+import {
+  FilesetPurpose,
+  type FilesetFileOutput,
+  type FilesetOutput,
+} from '@nemo/sdk/generated/platform/schema';
+import { Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
+import { DatasetSamplePanel } from '@studio/routes/FilesetDetailRoute/FilesetCard/DatasetSamplePanel';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
 import { FilesetMetadataPanel } from '@studio/routes/FilesetDetailRoute/FilesetMetadataPanel';
 import { isRootReadme, parseReadme } from '@studio/routes/FilesetDetailRoute/utils';
@@ -48,17 +53,14 @@ export const FilesetCard: FC<FilesetCardProps> = ({
     [rawContent]
   );
 
+  const isDataset = fileset.purpose === FilesetPurpose.dataset;
+
   return (
-    <Grid
-      cols={{ base: 1, xl: 12 }}
-      gap="density-xl"
-      className="w-full items-start"
+    <div
+      className="grid w-full grid-cols-1 gap-density-xl pt-density-xl lg:grid-cols-3"
       data-testid="fileset-card"
     >
-      <GridItem
-        cols={{ lg: 8 }}
-        className="min-w-0 overflow-hidden rounded-lg border border-base bg-surface-raised p-density-xl"
-      >
+      <div className="lg:col-span-2">
         <Stack gap="density-md">
           {fileset.description && (
             <Text kind="body/regular/md" data-testid="fileset-card-description">
@@ -73,10 +75,15 @@ export const FilesetCard: FC<FilesetCardProps> = ({
             content={parsed?.content}
           />
         </Stack>
-      </GridItem>
-      <GridItem cols={{ lg: 4 }} className="min-w-0">
-        <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
-      </GridItem>
-    </Grid>
+      </div>
+      <div className="lg:col-span-1">
+        <Stack gap="density-xl" className="h-full overflow-auto">
+          <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+          {isDataset && (
+            <DatasetSamplePanel workspace={workspace} filesetName={filesetName} files={files} />
+          )}
+        </Stack>
+      </div>
+    </div>
   );
 };

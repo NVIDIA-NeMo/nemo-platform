@@ -2,6 +2,7 @@
 title: "About NVIDIA NeMo Studio"
 description: ""
 ---
+
 <a id="nemo-studio"></a>
 
 <Note>
@@ -9,7 +10,8 @@ description: ""
 Studio is still in early development. Many features are missing or should be expected to change.
 
 </Note>
-NeMo Studio is the web app for AI development with NVIDIA NeMo Platform. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with datasets, jobs, and secrets.
+
+NeMo Studio is the web app for AI development with NVIDIA NeMo Platform. It provides a workspace-oriented UI for managing local platform resources, reviewing agents, running agent optimization workflows, monitoring agent telemetry, and working with filesets, jobs, and secrets.
 
 ---
 
@@ -27,20 +29,19 @@ For the full workflow, see [Studio Agents](/documentation/studio/agents).
 
 ### Suggestions
 
-Use **Agents > Suggestions** to review optimizer suggestions for deployed agents. Studio groups suggestions by workspace or agent and lets you filter by type, priority, scope, and agent.
+Use **Agents \> Suggestions** to review optimizer suggestions for deployed agents. Studio groups suggestions by workspace or agent and lets you filter by type, priority, scope, and agent.
 
 For the full workflow, see [Studio Suggestions](/documentation/studio/suggestions).
 
 ### Monitor
 
-Use **Agents > Monitor** to inspect agent telemetry stored by the platform, including recent inference logs and token usage summaries.
+Use **Agents \> Monitor** to inspect agent telemetry stored by the platform, including recent inference logs and token usage summaries.
 
 For the full workflow, see [Studio Monitor](/documentation/studio/monitor).
 
 ### Workspaces
 
 Keep models and data organized in dedicated workspaces.
-
 
 ### Filesets
 
@@ -59,6 +60,17 @@ You can upload any file type into a fileset. However, each service supports spec
 | Service | Supported File Types |
 | --------------------------------------------------- | ------------------------------------- |
 | [Data Designer](/documentation/design-synthetic-data) | `.json`, `.jsonl`, `.csv`, `.parquet` |
+
+### Evaluations
+
+**Evaluations** appears in two separate sidebar groups because it covers two distinct scopes:
+
+| Location | What it shows |
+| -------- | ------------- |
+| **Agents \> Evaluations** | Evaluation runs scoped to a specific agent — results tied to agent deployments and versions. |
+| **Evaluate \> Evaluations** | All evaluation results across the workspace, regardless of which agent or model was evaluated. |
+
+Use **Agents \> Evaluations** when reviewing how a specific agent performed. Use **Evaluate \> Evaluations** for a broader view of evaluation history across the workspace.
 
 ### Jobs
 

@@ -1,0 +1,50 @@
+[project]
+name = "jailbreak-detect-model"
+version = "0.1.0"
+description = "Self-hosted NemoGuard JailbreakDetect model server."
+# Pinned to 3.11: the NemoGuard random forest (snowflake.pkl) was pickled with
+# scikit-learn 1.2.x, which only ships wheels through CPython 3.11.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "fastapi>=0.103.1",
+    "starlette>=0.50.0",
+    "uvicorn>=0.23.2",
+    "typer>=0.7.0",
+    "pydantic>=2.0.0",
+    "numpy==1.26.4",
+    "transformers>=5.3.0",
+    "torch>=2.9.0",
+    "einops>=0.8.2",
+    # snowflake.pkl was pickled with sklearn 1.2.x; >=1.3 fails to unpickle the
+    # tree nodes (missing_go_to_left dtype). Pin <1.3 to load it faithfully.
+    "scikit-learn>=1.2,<1.3",
+    "huggingface_hub>=1.0",
+]
+
+# Virtual (non-package) project: uv manages the env + lock, but this is an
+# application/container source, not an installable/importable package.
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.27",  # required by fastapi/starlette TestClient
+    "datasets>=4.8.5",
+    "tqdm>=4.67.3",
+    "ty==0.0.17",
+]
+
+# torch comes from the default index (PyPI). On macOS this is the CPU/MPS wheel;
+# on Linux it bundles CUDA, so one image runs on CPU and on GPU (with --gpus).
+# For a lean CPU-only Linux image, add uv cpu/cuda conflicting extras later.
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+markers = [
+    "integration: loads the real embedder + random forest (slow, needs deps + weights; opt-in via --run-integration)",
+]
+
+[tool.ty.environment]
+python-version = "3.11"

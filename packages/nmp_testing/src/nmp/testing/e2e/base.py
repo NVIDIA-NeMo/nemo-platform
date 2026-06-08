@@ -16,7 +16,7 @@ from types import TracebackType
 from typing import TYPE_CHECKING
 
 from nemo_platform import NeMoPlatform
-from nmp.common.jobs.image import image_builder
+from nemo_platform_plugin.jobs.image import image_builder
 
 if TYPE_CHECKING:
     from .config import E2EConfig
