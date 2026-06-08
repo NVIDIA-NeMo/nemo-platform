@@ -9,8 +9,10 @@ import tomllib
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalTask
+from nemo_evaluator_sdk.metrics.protocol import Metric
 
 from runtimes.shared.constants import AGENTIC_USE_DIR
+from runtimes.shared.metrics import AgentPhaseSuccessMetric
 
 
 def load_task_toml(task_dir: Path) -> dict[str, object]:
@@ -36,8 +38,20 @@ def task_agent_timeout_sec(task_dir: Path) -> int | None:
     return None
 
 
-def agentic_task_from_dir(task_dir: str | Path, *, tasks_root: Path | None = None) -> AgentEvalTask:
-    """Build an :class:`AgentEvalTask` from an agentic-use task directory."""
+def agentic_task_from_dir(
+    task_dir: str | Path,
+    *,
+    tasks_root: Path | None = None,
+    metrics: list[Metric] | None = None,
+) -> AgentEvalTask:
+    """Build an :class:`AgentEvalTask` from an agentic-use task directory.
+
+    ``inputs`` carries only agent-facing material (``instruction``) per the SDK
+    design doc; runtime materialization details such as ``task_dir`` live in
+    ``metadata`` so they cannot leak into metric scoring rows. Metrics are
+    authored *on the task* (defaulting to :class:`AgentPhaseSuccessMetric`); the
+    orchestrator only appends compatibility metrics, it does not own the set.
+    """
     root = Path(tasks_root or AGENTIC_USE_DIR)
     task_path = Path(task_dir)
     if not task_path.is_absolute():
@@ -54,13 +68,13 @@ def agentic_task_from_dir(task_dir: str | Path, *, tasks_root: Path | None = Non
         id=task_path.name,
         intent=instruction,
         inputs={
-            "prompt": instruction,
-            "task_dir": str(task_path),
+            "instruction": instruction,
         },
-        metrics=[],
+        metrics=metrics if metrics is not None else [AgentPhaseSuccessMetric()],
         metadata={
             "benchmark": "agentic-use",
             "task_toml": task_toml,
             "instruction_path": str(instruction_path),
+            "task_dir": str(task_path),
         },
     )

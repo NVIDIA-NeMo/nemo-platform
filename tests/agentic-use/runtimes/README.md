@@ -74,15 +74,30 @@ Design-doc implementation path (see [COMPLIANCE.md](./COMPLIANCE.md) for detail)
 | B3 | Standardize environment authoring | Implemented (minimal) |
 | B4 | Productize results + CI (persistence, gating, provenance) | Implemented |
 
-## B1 — `result.json` import
+## B1 — `result.json` import + stored-attempt scoring
 
 `shared/result_adapter.py` imports an existing `nat_runner` run as an attempt:
 
 - `attempt_from_result_dir(output_dir)` reads `<output_dir>/result.json`.
 - `attempt_from_result(result_dict, output_dir=...)` projects a parsed record.
 
-The verifier outcome is scored by `VerifierRewardMetric` (compatibility metric)
-rather than baked into the attempt status.
+Stored-attempt scoring is the SDK's first-class path. Score captured runs
+without re-executing the agent (no Docker) via the orchestrator:
+
+```python
+await orchestrator.score_captured_attempts("my-task", result_dirs=["runs/abc"])
+# or:  python run_agent_eval.py --task my-task --rescore-dir runs/abc
+```
+
+An agent that ran but failed maps to `status="partial"` (still scorable), not
+`"failed"` — the SDK excludes `failed` from scoring, and a failed agent must
+still count as a `0` for gating. The verifier outcome is scored by
+`VerifierRewardMetric` (compatibility metric) rather than baked into the status.
+
+Metrics are authored **on the task** (`agentic_task_from_dir` defaults to
+`AgentPhaseSuccessMetric`); the orchestrator only *appends* `VerifierRewardMetric`
+when `run_verify=True`. `inputs` holds only agent-facing `instruction`;
+`task_dir` lives in `task.metadata`.
 
 ## B2 — Environment boundary
 

@@ -55,7 +55,7 @@ class NatWorkflowAttemptRuntime:
                 verify_outcome = await maybe_run_verify(
                     handle,
                     enabled=shared.run_verify and result.ok,
-                    task_dir=Path(str(task.inputs["task_dir"])),
+                    task_dir=Path(str(task.metadata["task_dir"])),
                     layout=layout,
                     nmp_base_url=shared.nmp_base_url,
                     agent_backend=RUNTIME_NAME,
@@ -83,7 +83,7 @@ class NatWorkflowAttemptRuntime:
         return self.config.agent_model or "unknown"
 
     def _agent_run_spec(self, task: AgentEvalTask, layout: AgenticRunLayout) -> EnvRunSpec:
-        task_dir = Path(str(task.inputs["task_dir"]))
+        task_dir = Path(str(task.metadata["task_dir"]))
         workflow_path = task_dir / "workflow.yml"
         if not workflow_path.exists():
             raise FileNotFoundError(f"workflow.yml not found in {task_dir}")

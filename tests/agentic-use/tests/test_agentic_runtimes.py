@@ -48,7 +48,11 @@ def test_agentic_task_from_dir_loads_instruction() -> None:
     task = agentic_task_from_dir(WORKSPACE_BASIC, tasks_root=TASKS_DIR)
     assert task.id == "workspace-basic-cli-easy"
     assert "workspace" in task.intent.lower()
-    assert task.inputs["task_dir"] == str(WORKSPACE_BASIC.resolve())
+    # inputs stays agent-facing; runtime materialization (task_dir) lives in metadata.
+    assert task.inputs == {"instruction": task.intent}
+    assert task.metadata["task_dir"] == str(WORKSPACE_BASIC.resolve())
+    # metrics are authored on the task, not injected by the orchestrator.
+    assert [metric.type for metric in task.metrics] == ["agentic_use_agent_phase"]
 
 
 class _FakeEnvHandle:
@@ -213,7 +217,7 @@ def test_attempt_from_result_maps_status_and_measurements(tmp_path: Path) -> Non
     assert {"logs", "final_state", "state"} <= set(attempt.evidence.descriptors)
 
 
-def test_attempt_from_result_marks_failed_agent(tmp_path: Path) -> None:
+def test_attempt_from_result_marks_unsuccessful_agent_partial(tmp_path: Path) -> None:
     from runtimes.shared.result_adapter import attempt_from_result
 
     output_dir = tmp_path / "run"
@@ -221,9 +225,47 @@ def test_attempt_from_result_marks_failed_agent(tmp_path: Path) -> None:
     result = {"task": "demo", "agent_backend": "aut", "agent": "failed", "passed": False, "reward": 0}
 
     attempt = attempt_from_result(result, output_dir=output_dir)
-    assert attempt.status == "failed"
+    # An agent that ran but failed stays *scorable* ("partial"); the SDK excludes
+    # "failed" from scoring, so we reserve it for true production failures.
+    assert attempt.status == "partial"
     assert attempt.metadata["agent_ok"] is False
     assert attempt.output is not None
+
+
+@pytest.mark.asyncio
+async def test_score_captured_attempts_offline(tmp_path: Path) -> None:
+    import json
+
+    from runtimes.orchestrator import AgenticEvalOrchestrator
+    from runtimes.workflow.runtime import NatWorkflowAttemptRuntime
+
+    run_dir = tmp_path / "run"
+    (run_dir / "agent").mkdir(parents=True)
+    (run_dir / "workspace").mkdir()
+    (run_dir / "agent" / "nat_agent.log").write_text("done", encoding="utf-8")
+    (run_dir / "result.json").write_text(
+        json.dumps(
+            {
+                "task": WORKSPACE_BASIC.name,
+                "agent_backend": "workflow",
+                "agent": "ok",
+                "passed": True,
+                "reward": 1,
+                "metrics": {"total_tokens": 10},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    orchestrator = AgenticEvalOrchestrator(
+        NatWorkflowAttemptRuntime(WorkflowRuntimeConfig(shared=AgenticSharedConfig(jobs_dir=tmp_path))),
+    )
+    # Stored-attempt path: no Docker / agent execution, scores result.json directly.
+    result = await orchestrator.score_captured_attempts(WORKSPACE_BASIC.name, result_dirs=[run_dir])
+
+    assert [metric.type for metric in result.tasks[0].metrics] == ["agentic_use_agent_phase"]
+    assert result.attempts[0].status == "completed"
+    assert any(r.metric_type == "agentic_use_agent_phase" for r in result.results)
 
 
 @pytest.mark.asyncio

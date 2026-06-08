@@ -15,12 +15,32 @@ from evaluator_agent_eval.schemas import (
     AgentAttemptTrace,
     CapturedAgentAttempt,
 )
-from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalTask, AgentOutput
+from nemo_evaluator_sdk.agent_eval.types import (
+    AgentEvalAttempt,
+    AgentEvalAttemptStatus,
+    AgentEvalTask,
+    AgentOutput,
+)
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor
 
 from runtimes.shared.config import AgenticRuntimeName
 from runtimes.shared.layout import AgenticRunLayout
 from runtimes.shared.usage import extract_usage_metrics
+
+
+def resolve_attempt_status(agent_ok: bool) -> AgentEvalAttemptStatus:
+    """Map an agent-phase outcome to a *scorable* attempt status.
+
+    The SDK's :class:`AgentEvaluator` excludes ``status=="failed"`` from scoring
+    (it raises). An agent that ran but failed must still be scored — e.g. as a
+    ``0`` by :class:`AgentPhaseSuccessMetric` — so that pass-rate gating counts
+    it rather than dropping it. We therefore use ``"partial"`` for an
+    executed-but-unsuccessful agent and reserve ``"failed"`` for genuine
+    attempt-*production* failures (which a runtime surfaces by raising, not by
+    emitting an unscorable attempt). This keeps the live builder and the
+    ``result.json`` importer consistent.
+    """
+    return "completed" if agent_ok else "partial"
 
 
 def build_agent_eval_attempt(
@@ -48,7 +68,10 @@ def build_agent_eval_attempt(
 
     output_text = artifacts.final_answer.text if artifacts.final_answer.extracted else None
     raw_log_paths = _raw_log_paths(artifacts.agent_log_dir)
-    descriptors = _evidence_descriptors(layout, artifacts)
+    initial_state = task.inputs.get("filesystem")
+    descriptors = _evidence_descriptors(
+        layout, artifacts, initial_state_ref=str(initial_state) if initial_state else None
+    )
 
     metadata: dict[str, object] = {
         # Canonical CapturedAgentAttempt fields
@@ -76,7 +99,7 @@ def build_agent_eval_attempt(
         **usage,
     }
 
-    status = "completed"
+    status = resolve_attempt_status(agent_ok)
     if output_text:
         output = AgentOutput(text=output_text)
     elif agent_ok:
@@ -127,14 +150,31 @@ def to_captured_agent_attempt(task: AgentEvalTask, attempt: AgentEvalAttempt) ->
     )
 
 
-def _evidence_descriptors(layout: AgenticRunLayout, artifacts: AgentArtifacts) -> dict[str, EvidenceDescriptor]:
+def _evidence_descriptors(
+    layout: AgenticRunLayout,
+    artifacts: AgentArtifacts,
+    *,
+    initial_state_ref: str | None = None,
+) -> dict[str, EvidenceDescriptor]:
     """Build the evidence map specified by the agent-eval SDK design doc.
 
-    Keys follow the documented ``nat_runner`` → ``AgentEvalAttempt`` mapping:
+    Doc keys: ``initial_state`` (task input filesystem, when staged),
     ``final_state`` (workspace), ``trace`` (trajectory, ATIF-normalized),
     ``logs`` (agent log dir), and ``verifier_logs`` (verifier log dir).
+
+    ``state`` is a NeMo-Platform-specific *extension* (not a doc key): it carries
+    the preserved platform/database state across the agent + verifier phases.
     """
     descriptors: dict[str, EvidenceDescriptor] = {}
+
+    # task input filesystem → evidence["initial_state"] (only when a seed was staged).
+    if initial_state_ref:
+        descriptors["initial_state"] = EvidenceDescriptor(
+            kind="filesystem",
+            format="dir",
+            ref=initial_state_ref,
+            metadata={"role": "initial_state"},
+        )
 
     # agent/trajectory.json → evidence["trace"], preferably ATIF-normalized.
     if artifacts.atif_trajectory_path is not None:
@@ -160,12 +200,12 @@ def _evidence_descriptors(layout: AgenticRunLayout, artifacts: AgentArtifacts) -
         metadata={"role": "final_state"},
     )
 
-    # Preserved platform/database state across agent + verifier phases.
+    # Platform extension (non-doc key): preserved platform/db state across phases.
     descriptors["state"] = EvidenceDescriptor(
         kind="filesystem",
         format="dir",
         ref=str(layout.state_dir),
-        metadata={"role": "platform_state"},
+        metadata={"role": "platform_state", "extension": "nemo-platform"},
     )
 
     # verifier/ logs → evidence["verifier_logs"] (present once verify phase runs).

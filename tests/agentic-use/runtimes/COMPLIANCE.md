@@ -15,7 +15,18 @@ Design reference: internal agent-eval SDK doc
 | BUILD — task image | **No** | `AgenticEvalOrchestrator` via `shared/environment_spec.py` (env spec / Dockerfile) + `shared/docker.py` |
 | VERIFY — pytest `test_outputs.py`, `reward.txt` | **Through env boundary** | `shared/verify.py` via `AgentEnvironmentHandle.run_verifier` (runtimes call it after the agent when `shared.run_verify=True`) |
 | CLI — task globs, manifests, summaries | **No** | Still `nat_runner.main` (not migrated) |
-| `result.json` contract | **No** (still produced by `nat_runner`) | Importable as an attempt via `shared/result_adapter.py` |
+| `result.json` contract | **No** (still produced by `nat_runner`) | Importable as an attempt via `shared/result_adapter.py`; scored offline via `AgenticEvalOrchestrator.score_captured_attempts` |
+
+## Task metrics (authored on the task)
+
+Per the SDK doc, metrics are concrete `Metric` instances **on the task**, not an
+orchestrator concern. `agentic_task_from_dir` defaults a task's `metrics` to
+`[AgentPhaseSuccessMetric()]` (override via the `metrics=` arg). The orchestrator
+only *appends* `VerifierRewardMetric` (a compatibility shim for the legacy pytest
+reward) when `run_verify=True`, and never replaces the task's own metric set.
+`inputs` carries only agent-facing material (`instruction`); runtime
+materialization (`task_dir`) lives in `task.metadata` so it can't leak into a
+metric scoring row.
 
 ## Backend → runtime class (one class per backend)
 
@@ -66,8 +77,9 @@ expects the portable `CapturedAgentAttempt` type.
 
 | `nat_runner` output | `AgentEvalAttempt` mapping | Status |
 |---------------------|----------------------------|--------|
+| staged task input filesystem | `evidence["initial_state"]` (filesystem, `role=initial_state`) | Implemented (emitted only when `inputs["filesystem"]` is set) |
 | `workspace/` | `evidence["final_state"]` (filesystem, `role=final_state`) | Implemented |
-| preserved platform/db state | `evidence["state"]` (filesystem, `role=platform_state`) | Implemented |
+| preserved platform/db state | `evidence["state"]` (filesystem, `role=platform_state`) — **NeMo-Platform extension, not a doc key** | Implemented |
 | `agent/trajectory.json` | `evidence["trace"]` (ATIF when normalized, else json) | Implemented |
 | `agent/` logs | `evidence["logs"]` (dir, `primary_log=nat_agent.log`) | Implemented |
 | `verifier/` logs | `evidence["verifier_logs"]` (added once verify phase runs) | Implemented (conditional) |
@@ -76,7 +88,12 @@ expects the portable `CapturedAgentAttempt` type.
 
 `result.json` mapping detail (`attempt_from_result`):
 
-- `result["agent"]` → attempt `status` (`ok`/`skipped` → `completed`, else `failed`).
+- `result["agent"]` → attempt `status` via `resolve_attempt_status`: `ok`/`skipped`
+  → `completed`, else `partial`. `failed` is **reserved** for genuine
+  attempt-production failures because the SDK's `AgentEvaluator` excludes
+  `status=="failed"` from scoring (it raises); an agent that ran but failed must
+  stay scorable so pass-rate gating counts it as a `0`. The live builder
+  (`shared/artifacts.py`) and this importer share the same helper.
 - `result["reward"]`/`result["passed"]` → `metadata` measurements (verifier reward
   stays a *measurement*, scored by `VerifierRewardMetric`, not the attempt status).
 - `result["metrics"]` (token/cost) → flattened into `metadata`.
@@ -86,7 +103,7 @@ expects the portable `CapturedAgentAttempt` type.
 
 | Doc section | Status in this package |
 |-------------|------------------------|
-| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; 3 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/result_adapter.py`. Remaining: 3 CLI backends + converging `nat_runner.main` onto the orchestrator. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
+| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; 3 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/result_adapter.py`, exposed as the first-class **stored-attempt scoring** path via `AgenticEvalOrchestrator.score_captured_attempts` (and `run_agent_eval.py --rescore-dir`) — no Docker/agent execution. Remaining: 3 CLI backends + converging `nat_runner.main` onto the orchestrator. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
 | **B2** `EnvironmentProvider` boundary | **Implemented** — `shared/environment.py` defines `AgentEnvironmentProvider`/`AgentEnvironmentHandle` below `AgentAttemptRuntime`; `DockerEnvironmentProvider` wraps `shared/docker.py`. `workflow` + `aut` runtimes execute through the boundary (provider is injectable). NeMo Gym/local providers can now be added without touching runtimes. |
 | **B3** standardize environment authoring | **Implemented (minimal)** — `shared/environment_spec.py` adds a declarative `environment.yaml` (`image` + `profile` + python `dependencies` + `setup`) with a `dockerfile:` escape hatch and backward-compatible auto-detection of `environment/Dockerfile`. `plan_task_build` resolves a spec to a `BuildPlan` (image-based specs generate a tiny derived Dockerfile); the orchestrator BUILD step uses it. `setup` steps are carried as plan/label metadata, not executed (runtime concern). |
 | **B4** productize results + CI | **Implemented** — SDK `persist_run` writes `tasks/attempts/results.jsonl`, `summary.json`, `report.html`; `shared/reporting.py` adds candidate-vs-baseline gating (pass-rate, token/cost, runtime tie-breaker) + deterministic provenance checks, persisted as `gate.json` by the orchestrator. `result.json` → attempt adapter + `VerifierRewardMetric` compatibility metric also done. |

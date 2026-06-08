@@ -34,6 +34,13 @@ async def _main() -> int:
     parser.add_argument("--agent-model", default=os.environ.get("NAT_AGENT_MODEL"))
     parser.add_argument("--aut-agent-name", default=os.environ.get("AUT_AGENT_NAME", ""))
     parser.add_argument("--aut-agent-config", type=Path, default=None)
+    parser.add_argument(
+        "--rescore-dir",
+        type=Path,
+        action="append",
+        default=None,
+        help="Score existing result.json run dir(s) offline instead of running the agent (repeatable).",
+    )
     args = parser.parse_args()
 
     shared = AgenticSharedConfig(
@@ -50,7 +57,14 @@ async def _main() -> int:
         runtime,
         config=AgenticOrchestratorConfig(skip_build=args.skip_build),
     )
-    result = await orchestrator.run_agent_eval(args.task, output_dir=args.output_dir)
+    if args.rescore_dir:
+        result = await orchestrator.score_captured_attempts(
+            args.task,
+            result_dirs=args.rescore_dir,
+            output_dir=args.output_dir,
+        )
+    else:
+        result = await orchestrator.run_agent_eval(args.task, output_dir=args.output_dir)
 
     print(f"run_id: {result.run_id}")
     print(f"attempts: {len(result.attempts)}")

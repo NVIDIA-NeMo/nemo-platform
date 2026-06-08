@@ -20,7 +20,7 @@ from evaluator_agent_eval.artifacts import AgentArtifacts
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalTask, AgentOutput
 from nemo_evaluator_sdk.values.evidence import CandidateEvidence
 
-from runtimes.shared.artifacts import _evidence_descriptors  # reuse documented evidence map
+from runtimes.shared.artifacts import _evidence_descriptors, resolve_attempt_status  # reuse documented helpers
 from runtimes.shared.layout import AgenticRunLayout
 
 # Token/cost measurement keys carried in result.json["metrics"].
@@ -68,11 +68,12 @@ def attempt_from_result(
     layout = _layout_from_result_dir(resolved_dir)
 
     agent_phase = str(result.get("agent") or "")
-    status = "completed" if agent_phase in {"ok", "skipped"} else "failed"
+    agent_ok = agent_phase in {"ok", "skipped"}
+    status = resolve_attempt_status(agent_ok)
 
     output_text, final_extracted, final_source = _resolve_output_text(layout)
     if not output_text:
-        output_text = "(agent phase failed)" if status == "failed" else ""
+        output_text = "" if agent_ok else "(agent phase failed)"
 
     descriptors = _evidence_descriptors(
         layout, AgentArtifacts.from_dir(layout.agent_log_dir, workspace_dir=layout.workspace_dir)
@@ -84,10 +85,10 @@ def attempt_from_result(
         "agent_runtime": backend,
         "agent_model": result.get("agent_model"),
         "run_id": (result.get("provenance") or {}).get("run_id"),
-        "exit_code": 0 if agent_phase in {"ok", "skipped"} else 1,
+        "exit_code": 0 if agent_ok else 1,
         "duration_ms": metrics.get("duration_ms"),
         # Phase outcomes from result.json.
-        "agent_ok": agent_phase in {"ok", "skipped"},
+        "agent_ok": agent_ok,
         "build_status": result.get("build"),
         "agent_status": result.get("agent"),
         "verify_status": result.get("verify"),
