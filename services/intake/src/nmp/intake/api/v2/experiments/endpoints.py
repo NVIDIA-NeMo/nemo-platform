@@ -44,6 +44,12 @@ from nmp.intake.spans.experiment_session_repository import ExperimentSessionRepo
 from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_log(value: str) -> str:
+    return value.replace("\r", "").replace("\n", "")
+
+
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 
 GROUPS_TAG = "Experiment Groups"
@@ -445,7 +451,11 @@ async def list_experiment_sessions(
         # Sessions are the response payload (not enrichment), so we can't silently degrade like
         # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
         # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
-        logger.exception("Per-session read failed for workspace=%s experiment=%s", workspace, name)
+        logger.exception(
+            "Per-session read failed for workspace=%s experiment=%s",
+            _sanitize_for_log(workspace),
+            _sanitize_for_log(name),
+        )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Telemetry store unavailable.",
