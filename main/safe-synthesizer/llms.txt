@@ -1,0 +1,63 @@
+# NeMo Safe Synthesizer
+
+> NeMo Safe Synthesizer (NSS) generates privacy-preserving synthetic tabular data using LLM-based fine-tuning. It creates entirely synthetic records with no one-to-one mapping to original data, suitable for privacy compliance while maintaining data utility for AI tasks.
+
+## Key Capabilities
+
+- **Data Synthesis**: Fine-tunes LLMs on tabular data to generate synthetic records maintaining statistical properties
+- **Differential Privacy**: Optional DP-SGD training for mathematical privacy guarantees (epsilon, delta)
+- **PII Replacement**: Detects and replaces personally identifiable information before synthesis using GLiNER, LLM classification, or regex
+- **Evaluation**: Assesses quality (SQS) and privacy (DPS) through column correlation, distribution analysis, membership inference protection, and attribute inference protection
+
+## Documentation Structure
+
+- about/index: Overview of Safe Synthesizer components
+- about/data-synthesis: Data synthesis concepts and LLM fine-tuning
+- about/pii-replacement: PII detection methods and transformation rules
+- about/evaluation: Quality metrics (SQS) and privacy metrics (DPS)
+- about/jobs: Job lifecycle, states, and troubleshooting
+- about/reference: Complete API parameter reference (auto-generated from OpenAPI)
+- tutorials/safe-synthesizer-101: Getting started tutorial
+- tutorials/differential-privacy: Advanced DP tutorial
+- docker-compose: Docker deployment guide
+
+## Job Configuration
+
+Jobs are created using `SafeSynthesizerJobBuilder` from the Python SDK:
+
+```python
+from nemo_safe_synthesizer_plugin.sdk.job_builder import SafeSynthesizerJobBuilder
+
+builder = (
+    SafeSynthesizerJobBuilder(client)
+    .with_data_source(df)
+    .with_replace_pii()
+    .synthesize()
+)
+job = builder.create_job(name="my-job", project="my-project")
+```
+
+## Key Parameters
+
+- `enable_synthesis`: Enable/disable synthesis (default: true)
+- `enable_replace_pii`: Enable/disable PII replacement (default: true)
+- `training.num_input_records_to_sample`: Records for training (proxy for training time)
+- `generation.num_records`: Number of synthetic records to generate (max: 130,000)
+- `privacy.dp_enabled`: Enable differential privacy
+- `privacy.epsilon`: Privacy budget (lower = stronger privacy, default: 8.0)
+
+## API Endpoints
+
+- POST /v2/safe-synthesizer/jobs - Create job
+- GET /v2/safe-synthesizer/jobs - List jobs
+- GET /v2/safe-synthesizer/jobs/{id} - Get job status
+- GET /v2/safe-synthesizer/jobs/{id}/logs - Get job logs
+- GET /v2/safe-synthesizer/jobs/{id}/results - List results
+- GET /v2/safe-synthesizer/jobs/{id}/results/synthetic_data/download - Download synthetic data
+- GET /v2/safe-synthesizer/jobs/{id}/results/evaluation_report/download - Download evaluation report
+
+## Important Notes
+
+- Early access release - APIs may change
+- Requires GPU resources for training
+- Typical job duration: 15-60 minutes depending on data size
