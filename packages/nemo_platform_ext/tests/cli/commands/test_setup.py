@@ -38,6 +38,7 @@ from nemo_platform_ext.cli.commands.setup import (
     _check_ollama_running,
     _check_platform_reachable,
     _check_platform_reachable_with_retries,
+    _configure_nat_telemetry,
     _create_provider,
     _deploy_demo_agent,
     _detect_coding_agents,
@@ -52,8 +53,10 @@ from nemo_platform_ext.cli.commands.setup import (
     _maybe_install_skills,
     _maybe_start_services,
     _parse_csv_flag,
+    _persist_nat_telemetry_consent,
     _print_onboarding,
     _prompt_custom_provider,
+    _read_nat_telemetry_consent,
     _register_provider_interactive,
     _render_onboarding_card,
     _resolve_provider_for_url,
@@ -610,6 +613,7 @@ class TestLocalDataDirHelpers:
             patch(f"{SETUP_MOD}._start_services_background") as mock_start,
             patch(f"{SETUP_MOD}._wait_for_platform", return_value=True),
             patch(f"{SETUP_MOD}._prompt_data_dir") as mock_prompt,
+            patch(f"{SETUP_MOD}.check_port_available_for_start", return_value=None),
             patch(f"{SETUP_MOD}._pause"),
         ):
             mock_start.return_value = MagicMock(pid=999)
@@ -673,6 +677,100 @@ class TestLocalDataDirHelpers:
         after = Config.load(config_path=config_path).get_config_file()
         # Original cluster URL preserved (not overwritten by the second call).
         assert str(after.clusters[0].base_url).rstrip("/") == "http://localhost:8080"
+
+
+class TestNatTelemetrySetup:
+    def test_default_persists_enabled_without_prompt(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+        monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+
+        with (
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            _configure_nat_telemetry(None)
+
+        mock_prompt.assert_not_called()
+        assert _read_nat_telemetry_consent() == "enabled"
+        assert 'consent = "enabled"' in consent_file.read_text(encoding="utf-8")
+
+    def test_explicit_false_persists_disabled_without_prompt(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+        monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+
+        with (
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            _configure_nat_telemetry(False)
+
+        mock_prompt.assert_not_called()
+        assert _read_nat_telemetry_consent() == "disabled"
+        assert 'consent = "disabled"' in consent_file.read_text(encoding="utf-8")
+
+    def test_existing_persisted_disabled_decision_is_unchanged_by_default(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+        monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+        _persist_nat_telemetry_consent("disabled")
+        before = consent_file.read_text(encoding="utf-8")
+
+        with (
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            _configure_nat_telemetry(None)
+
+        mock_prompt.assert_not_called()
+        assert _read_nat_telemetry_consent() == "disabled"
+        assert consent_file.read_text(encoding="utf-8") == before
+
+    def test_explicit_true_overrides_existing_disabled_decision(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+        monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+        _persist_nat_telemetry_consent("disabled")
+
+        with (
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            _configure_nat_telemetry(True)
+
+        mock_prompt.assert_not_called()
+        assert _read_nat_telemetry_consent() == "enabled"
+
+    def test_existing_persisted_enabled_decision_is_unchanged(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+        monkeypatch.delenv("NAT_TELEMETRY_ENABLED", raising=False)
+        _persist_nat_telemetry_consent("enabled")
+        before = consent_file.read_text(encoding="utf-8")
+
+        with (
+            patch(f"{SETUP_MOD}.prompt_choice") as mock_prompt,
+            patch(f"{SETUP_MOD}.console"),
+        ):
+            _configure_nat_telemetry(None)
+
+        mock_prompt.assert_not_called()
+        assert _read_nat_telemetry_consent() == "enabled"
+        assert consent_file.read_text(encoding="utf-8") == before
+
+    def test_persistence_failure_exits_with_recovery_hint(self, tmp_path, monkeypatch):
+        consent_file = tmp_path / "telemetry.toml"
+        monkeypatch.setenv("NAT_TELEMETRY_CONSENT_FILE", str(consent_file))
+
+        with (
+            patch(f"{SETUP_MOD}.console"),
+            patch(f"{SETUP_MOD}._persist_nat_telemetry_consent", side_effect=RuntimeError("no write")),
+            pytest.raises(typer.Exit) as exc_info,
+        ):
+            _configure_nat_telemetry(None)
+
+        assert exc_info.value.exit_code == 1
 
 
 class TestMaybeDeployAgentPluginCheck:
@@ -2216,6 +2314,7 @@ class TestNonTtyEarlyExit:
     def test_proceeds_when_non_tty_with_auto(self):
         with (
             patch(f"{SETUP_MOD}.is_interactive", return_value=False),
+            patch(f"{SETUP_MOD}._configure_nat_telemetry"),
             patch(f"{SETUP_MOD}._maybe_start_services"),
             patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
             patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),
@@ -2226,6 +2325,7 @@ class TestNonTtyEarlyExit:
     def test_proceeds_when_tty_without_auto(self):
         with (
             patch(f"{SETUP_MOD}.is_interactive", return_value=True),
+            patch(f"{SETUP_MOD}._configure_nat_telemetry"),
             patch(f"{SETUP_MOD}._maybe_start_services"),
             patch(f"{SETUP_MOD}._check_platform_reachable_with_retries", return_value=True),
             patch(f"{SETUP_MOD}._bootstrap_config_if_missing"),

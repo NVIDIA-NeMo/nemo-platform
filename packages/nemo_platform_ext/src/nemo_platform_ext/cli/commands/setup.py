@@ -16,10 +16,11 @@ import os
 import subprocess
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from importlib.resources import files
 from importlib.resources.abc import Traversable
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -229,6 +230,15 @@ _POST_START_REACHABLE_DELAY = 2.0
 
 _DEMO_AGENT_NAME = "calculator-agent"
 
+_NAT_TELEMETRY_ENV_VAR = "NAT_TELEMETRY_ENABLED"
+_NAT_TELEMETRY_CONSENT_FILE_ENV_VAR = "NAT_TELEMETRY_CONSENT_FILE"
+_NAT_TELEMETRY_PROMPT_VERSION = "1.0"
+_NAT_TELEMETRY_CONSENT_ENABLED: Literal["enabled"] = "enabled"
+_NAT_TELEMETRY_CONSENT_DISABLED: Literal["disabled"] = "disabled"
+_NAT_TELEMETRY_CONSENT_NEVER_ASKED: Literal["never_asked"] = "never_asked"
+
+TelemetryConsent = Literal["enabled", "disabled", "never_asked"]
+
 
 def _pause(seconds: float) -> None:
     time.sleep(seconds)
@@ -371,6 +381,93 @@ def _verify_platform_health(base_url: str) -> bool:
         console.print("  Try: [cyan]nemo services run[/cyan]   (restart services)")
 
     return False
+
+
+# ---------------------------------------------------------------------------
+# NAT telemetry consent
+# ---------------------------------------------------------------------------
+
+
+def _nat_telemetry_consent_file_path() -> Path:
+    """Resolve the NAT telemetry consent file path.
+
+    Mirrors NAT's own ``NAT_TELEMETRY_CONSENT_FILE`` testing hook and
+    production default at ``~/.config/nat/telemetry.toml``.
+    """
+    override = os.getenv(_NAT_TELEMETRY_CONSENT_FILE_ENV_VAR)
+    if override:
+        return Path(override)
+    return Path.home() / ".config" / "nat" / "telemetry.toml"
+
+
+def _read_nat_telemetry_consent() -> TelemetryConsent:
+    """Read NAT's persisted telemetry consent decision, if present."""
+    path = _nat_telemetry_consent_file_path()
+    if not path.exists():
+        return _NAT_TELEMETRY_CONSENT_NEVER_ASKED
+    try:
+        import tomllib
+
+        with path.open("rb") as f:
+            data = tomllib.load(f)
+        telemetry = data.get("telemetry", {})
+        consent = telemetry.get("consent")
+        prompt_version = telemetry.get("prompt_version")
+    except Exception:
+        logger.debug("Failed to read NAT telemetry consent file at %s", path, exc_info=True)
+        return _NAT_TELEMETRY_CONSENT_NEVER_ASKED
+
+    if consent not in (_NAT_TELEMETRY_CONSENT_ENABLED, _NAT_TELEMETRY_CONSENT_DISABLED):
+        return _NAT_TELEMETRY_CONSENT_NEVER_ASKED
+    if prompt_version == _NAT_TELEMETRY_PROMPT_VERSION or consent == _NAT_TELEMETRY_CONSENT_DISABLED:
+        return cast(TelemetryConsent, consent)
+    return _NAT_TELEMETRY_CONSENT_NEVER_ASKED
+
+
+def _persist_nat_telemetry_consent(consent: TelemetryConsent) -> Path:
+    """Persist NAT telemetry consent and verify the decision was recorded."""
+    if consent == _NAT_TELEMETRY_CONSENT_NEVER_ASKED:
+        raise ValueError("Cannot persist never_asked telemetry consent")
+
+    path = _nat_telemetry_consent_file_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
+        path.write_text(
+            "# NeMo Agent Toolkit telemetry consent.\n"
+            "# To change, run `nat configure telemetry --enable | --disable`,\n"
+            f"# or set the {_NAT_TELEMETRY_ENV_VAR} environment variable.\n"
+            "[telemetry]\n"
+            f'consent = "{consent}"\n'
+            f'consented_at = "{timestamp}"\n'
+            f'prompt_version = "{_NAT_TELEMETRY_PROMPT_VERSION}"\n',
+            encoding="utf-8",
+        )
+    except OSError as exc:
+        raise RuntimeError(f"Failed to write NAT telemetry consent to {path}") from exc
+
+    actual = _read_nat_telemetry_consent()
+    if actual != consent:
+        raise RuntimeError(f"Failed to persist NAT telemetry consent to {path}. Expected {consent!r}, read {actual!r}.")
+    return path
+
+
+def _configure_nat_telemetry(nat_telemetry: bool | None) -> None:
+    """Persist NAT telemetry consent so later NAT commands do not prompt."""
+    if nat_telemetry is None and _read_nat_telemetry_consent() != _NAT_TELEMETRY_CONSENT_NEVER_ASKED:
+        return
+
+    consent = _NAT_TELEMETRY_CONSENT_ENABLED if nat_telemetry is not False else _NAT_TELEMETRY_CONSENT_DISABLED
+
+    try:
+        _persist_nat_telemetry_consent(consent)
+    except RuntimeError as exc:
+        console.print(f"\n{CROSS} {exc}")
+        console.print("  Run one of these commands, then re-run [cyan]nemo setup[/cyan]:")
+        console.print("    [cyan]nat configure telemetry --enable[/cyan]")
+        console.print("    [cyan]nat configure telemetry --disable[/cyan]")
+        console.print(f"    [cyan]export {_NAT_TELEMETRY_ENV_VAR}=true|false[/cyan]")
+        raise typer.Exit(1) from exc
 
 
 def _provider_exists(client: NeMoPlatform, name: str, workspace: str) -> bool:
@@ -1368,6 +1465,7 @@ def _register_provider_interactive(
     secret_name = f"{provider_name}-api-key" if api_key else None
 
     if secret_name:
+        assert api_key is not None
         if _secret_exists(client, secret_name, workspace):
             _update_secret(client, secret_name, api_key, workspace)
             console.print(f"  {CHECK} Updated secret '{secret_name}'")
@@ -1633,6 +1731,13 @@ def setup_command(
         bool | None,
         typer.Option("--deploy-agent/--no-deploy-agent", help="Deploy the demo calculator agent"),
     ] = None,
+    nat_telemetry: Annotated[
+        bool | None,
+        typer.Option(
+            "--nat-telemetry/--no-nat-telemetry",
+            help="Record NAT anonymous telemetry consent during setup. Default: enable when unset.",
+        ),
+    ] = None,
     ready_timeout: Annotated[
         int | None,
         typer.Option(
@@ -1663,6 +1768,7 @@ def setup_command(
       nemo setup --auto --start-services --ready-timeout 360
       nemo setup --workspace my-workspace
       nemo setup --no-install-skills --no-deploy-agent
+      nemo setup --no-nat-telemetry
     """
     cli_context: CLIContext = ctx.obj
     base_url = cli_context.get_base_url()
@@ -1676,6 +1782,7 @@ def setup_command(
     effective_timeout = _SERVICE_STARTUP_TIMEOUT_SECONDS if ready_timeout is None else ready_timeout
     if effective_timeout <= 0:
         raise typer.BadParameter("--ready-timeout must be greater than 0", param_hint="--ready-timeout")
+    _configure_nat_telemetry(nat_telemetry)
     _maybe_start_services(base_url, auto, start_services, timeout=effective_timeout)
 
     if not _check_platform_reachable_with_retries(base_url):

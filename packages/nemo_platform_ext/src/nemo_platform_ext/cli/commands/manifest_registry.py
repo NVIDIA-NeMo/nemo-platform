@@ -48,6 +48,8 @@ Use --auto for non-interactive setup from environment variables
 (NEMO_DEFAULT_INFERENCE_KEY, NVIDIA_API_KEY, OPENAI_API_KEY,
 ANTHROPIC_API_KEY, GEMINI_API_KEY).
 Override the default model with NEMO_DEFAULT_MODEL.
+NAT anonymous telemetry consent is recorded during setup; use
+--no-nat-telemetry to opt out.
 
 Examples:
   nemo setup
@@ -55,7 +57,8 @@ Examples:
   nemo setup --auto --start-services --install-skills --deploy-agent
   nemo setup --auto --start-services --ready-timeout 360
   nemo setup --workspace my-workspace
-  nemo setup --no-install-skills --no-deploy-agent""",
+  nemo setup --no-install-skills --no-deploy-agent
+  nemo setup --no-nat-telemetry""",
         name="setup",
         panel="Setup",
         kind="command",
