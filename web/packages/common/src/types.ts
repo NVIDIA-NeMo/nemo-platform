@@ -27,6 +27,7 @@ export enum FileFormat {
   JSON = 'json',
   JSONL = 'jsonl',
   CSV = 'csv',
+  PARQUET = 'parquet',
 }
 
 /**

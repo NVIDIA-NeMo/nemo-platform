@@ -40,6 +40,7 @@ const SUPPORTED_FORMAT_BY_EXTENSION: Record<string, FileFormatType> = {
   json: FileFormat.JSON,
   jsonl: FileFormat.JSONL,
   csv: FileFormat.CSV,
+  parquet: FileFormat.PARQUET,
 };
 
 function detectFormat(file: File): FileFormatType | null {
