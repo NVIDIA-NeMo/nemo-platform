@@ -114,19 +114,15 @@ export const FilesetDetailRoute: FC = () => {
 
   return (
     <AccessibleTitle title={`${typeLabel} ${filesetName}`}>
-      <Stack className="w-full h-full min-h-0 p-density-2xl" gap="density-xl">
+      <Stack className="w-full min-h-full p-density-2xl" gap="density-xl">
         <PageHeader slotHeading={filesetName} slotDescription={description} />
-        <TabsRoot
-          className="flex-1 min-h-0 flex flex-col"
-          value={currentTab}
-          onValueChange={handleTabChange}
-        >
+        <TabsRoot className="flex flex-col" value={currentTab} onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value={FilesetDetailTab.Card}>{cardLabel}</TabsTrigger>
             <TabsTrigger value={FilesetDetailTab.Files}>Files</TabsTrigger>
           </TabsList>
 
-          <TabsContent value={FilesetDetailTab.Card} className="p-0 flex-1 min-h-0 overflow-auto">
+          <TabsContent value={FilesetDetailTab.Card} className="p-0">
             <FilesetCard
               workspace={workspace}
               filesetName={filesetName}
@@ -136,7 +132,7 @@ export const FilesetDetailRoute: FC = () => {
             />
           </TabsContent>
 
-          <TabsContent value={FilesetDetailTab.Files} className="p-0 flex-1 min-h-0">
+          <TabsContent value={FilesetDetailTab.Files} className="p-0">
             <FilesTab
               workspace={workspace}
               filesetName={filesetName}

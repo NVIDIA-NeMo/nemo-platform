@@ -7,8 +7,9 @@ import pytest
 from nemo_platform import NotFoundError, PermissionDeniedError
 from nemo_safe_synthesizer.config.replace_pii import ClassifyConfig, Globals, PiiReplacerConfig, StepDefinition
 from nemo_safe_synthesizer_plugin.api.v2.jobs import endpoints
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerJobConfig as PluginJobConfig
-from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import SafeSynthesizerParameters, job_config_compiler
+from nemo_safe_synthesizer_plugin.api.v2.jobs.endpoints import job_config_compiler
+from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerJobConfig as PluginJobConfig
+from nemo_safe_synthesizer_plugin.job_config import SafeSynthesizerParameters
 from nemo_safe_synthesizer_plugin.runtime import TASK_MODULE
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
@@ -117,6 +118,68 @@ async def test_job_config_compiler_validates_pretrained_model_job(mock_sdk):
         job="prior-safe-synth-job",
         workspace=DEFAULT_WORKSPACE,
     )
+
+
+@pytest.mark.asyncio
+async def test_plugin_job_config_allows_pretrained_model_job_runtime_config(mock_sdk):
+    mock_sdk.jobs.results.retrieve = AsyncMock(
+        return_value=MagicMock(artifact_url="default/job-results-prior#results/attempt-1/adapter")
+    )
+    spec = PluginJobConfig.model_validate(
+        {
+            "data_source": DEFAULT_DATA_SOURCE,
+            "pretrained_model_job": "prior-safe-synth-job",
+            "config": {},
+        }
+    )
+
+    compiled = await _compile(spec, mock_sdk)
+    step = next(iter(compiled["steps"]))
+    reparsed = PluginJobConfig.model_validate(step["config"])
+
+    assert "pretrained_model" not in step["config"]["config"]["training"]
+    assert reparsed.pretrained_model_job == "prior-safe-synth-job"
+
+
+def test_runtime_job_config_allows_pretrained_model_job_with_missing_training():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = "prior-safe-synth-job"
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "pretrained_model_job": "prior-safe-synth-job",
+        "config": {"generation": {"num_records": 25}},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"] == {"generation": {"num_records": 25}}
+
+
+def test_runtime_job_config_allows_pretrained_model_job_with_non_dict_training():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = "prior-safe-synth-job"
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "pretrained_model_job": "prior-safe-synth-job",
+        "config": {"training": "local-adapter"},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"]["training"] == "local-adapter"
+
+
+def test_runtime_job_config_preserves_pretrained_model_without_pretrained_model_job():
+    job_config = MagicMock()
+    job_config.pretrained_model_job = None
+    job_config.model_dump.return_value = {
+        "data_source": DEFAULT_DATA_SOURCE,
+        "config": {"training": {"pretrained_model": "HuggingFaceTB/SmolLM3-3B"}},
+    }
+
+    runtime_config = endpoints._runtime_job_config(job_config)
+
+    assert runtime_config["config"]["training"]["pretrained_model"] == "HuggingFaceTB/SmolLM3-3B"
 
 
 @pytest.mark.asyncio

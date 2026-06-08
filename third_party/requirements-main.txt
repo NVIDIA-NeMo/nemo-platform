@@ -27,6 +27,7 @@
     #   nemo-auditor-plugin
     #   nemo-data-designer-plugin
     #   nemo-guardrails-plugin
+    #   nemo-safe-synthesizer-plugin
     #   nemoplatform
 -e ./packages/nemo_platform_ext ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemoplatform
@@ -41,6 +42,7 @@
     #   nemo-platform
     #   nemo-platform-ext
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer-plugin
     #   nemo-switchyard
     #   nmp-common
     #   nmp-inference-gateway
@@ -53,6 +55,7 @@
     #   nemo-data-designer-plugin
     #   nemo-evaluator-plugin
     #   nemo-platform
+    #   nemo-safe-synthesizer-plugin
     #   nemoplatform
     #   nmp-auth
     #   nmp-core-mcp
@@ -85,6 +88,7 @@
 -e ./plugins/nemo-data-designer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-evaluator ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-guardrails ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
+-e ./plugins/nemo-safe-synthesizer ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-switchyard ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
 -e ./plugins/nemo-switchyard/vendor/switchyard ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')
     # via nemo-switchyard
@@ -536,6 +540,7 @@ colorama==0.4.6 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via
+    #   nemo-safe-synthesizer
     #   nvidia-nat-core
     #   sacrebleu
     #   sqlfluff
@@ -716,7 +721,9 @@ expandvars==1.1.2 ; (platform_machine == 'arm64' and sys_platform == 'darwin') o
 faker==20.1.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:562a3a09c3ed3a1a7b20e13d79f904dfdfc5e740f72813ecf95e4cf71e5a2f52 \
     --hash=sha256:aeb3e26742863d1e387f9d156f1c36e14af63bf5e6f36fb39b8c27f6a903be38
-    # via data-designer-engine
+    # via
+    #   data-designer-engine
+    #   nemo-safe-synthesizer
 fastapi==0.129.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:61315cebd2e65df5f97ec298c888f9de30430dd0612d59d6480beafbc10655af \
     --hash=sha256:b4946880e48f462692b31c083be0432275cbfb6e2274566b1be91479cc1a84ec
@@ -724,6 +731,7 @@ fastapi==0.129.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nemo-anonymizer-plugin
     #   nemo-data-designer-plugin
     #   nemo-platform-plugin
+    #   nemo-safe-synthesizer-plugin
     #   nemoguardrails
     #   nemoplatform
     #   nmp-auth
@@ -901,6 +909,7 @@ fsspec==2025.3.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   filesets
     #   huggingface-hub
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer-plugin
     #   nmp-guardrails
 gitdb==4.0.12 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:5ef71f855d191a3326fcfbc0d5da835f26b13fbcba60c32c21091c349ffdb571 \
@@ -968,7 +977,9 @@ grpcio==1.80.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (
 gunicorn==25.3.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:cacea387dab08cd6776501621c295a904fe8e3b7aae9a1a3cbb26f4e7ed54660 \
     --hash=sha256:f74e1b2f9f76f6cd1ca01198968bd2dd65830edc24b6e8e4d78de8320e2fe889
-    # via nmp-guardrails
+    # via
+    #   nemo-safe-synthesizer-plugin
+    #   nmp-guardrails
 h11==0.16.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:4e35b956cf45792e4caa5885e69fba00bdbc6ffafbfa020300e549b208ee5ff1 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
@@ -1040,6 +1051,8 @@ httpx==0.28.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-auditor-plugin
     #   nemo-data-designer-plugin
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer
+    #   nemo-safe-synthesizer-plugin
     #   nemoguardrails
     #   nmp-auth
     #   nmp-guardrails
@@ -1065,6 +1078,7 @@ huggingface-hub==1.15.0 ; (platform_machine == 'arm64' and sys_platform == 'darw
     #   datasets
     #   fastembed
     #   langchain-huggingface
+    #   nemo-safe-synthesizer
     #   nmp-common
     #   nmp-evaluator
     #   tokenizers
@@ -1252,6 +1266,7 @@ jsonschema==4.23.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
     #   litellm
     #   mcp
     #   nemo-evaluator-sdk
+    #   nemo-safe-synthesizer
 jsonschema-path==0.3.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:8365356039f16cc65fddffafda5f58766e34bebab7d6d105616ab52bc4297001 \
     --hash=sha256:f502191fdc2b22050f9a81c9237be9d27145b9001c55842bece5e94e382e52f8
@@ -1298,6 +1313,7 @@ langchain-community==0.3.27 ; (platform_machine == 'arm64' and sys_platform == '
     --hash=sha256:e1037c3b9da0c6d10bf06e838b034eb741e016515c79ef8f3f16e53ead33d882
     # via
     #   nemoguardrails
+    #   nmp-evaluator
     #   nvidia-nat-langchain
     #   ragas
 langchain-core==1.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -1655,6 +1671,9 @@ mypy-extensions==1.0.0 ; (platform_machine == 'arm64' and sys_platform == 'darwi
 nemo-anonymizer==0.2.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:369ee9f717e3c346328bcef9767da3b596d5b927b5f9cc162ece95766b1d8aad
     # via nemo-anonymizer-plugin
+nemo-safe-synthesizer==0.1.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
+    --hash=sha256:e92564b8522ffc2360fb6daaca36e88a722206e165a4fe157e7ccf65b1cac260
+    # via nemo-safe-synthesizer-plugin
 nemoguardrails==0.21.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:b338453b371751f5b09637415702e2ee25f0885317b691cbb0d2f2f164eeea5d
     # via
@@ -2078,6 +2097,7 @@ pandas==2.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-anonymizer-plugin
     #   nemo-data-designer-plugin
     #   nemo-evaluator-sdk
+    #   nemo-safe-synthesizer
     #   nemoguardrails
     #   nmp-files
     #   nmp-jobs
@@ -2390,6 +2410,8 @@ pydantic==2.12.5 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer
+    #   nemo-safe-synthesizer-plugin
     #   nemoguardrails
     #   nemoplatform
     #   nmp-auth
@@ -2467,6 +2489,8 @@ pydantic-settings==2.8.1 ; (platform_machine == 'arm64' and sys_platform == 'dar
     #   langchain-community
     #   mcp
     #   nemo-platform-plugin
+    #   nemo-safe-synthesizer
+    #   nemo-safe-synthesizer-plugin
     #   nmp-auth
     #   nmp-common
     #   nmp-customizer
@@ -2564,6 +2588,7 @@ python-multipart==0.0.32 ; (platform_machine == 'arm64' and sys_platform == 'dar
     #   data-designer-engine
     #   fastapi
     #   mcp
+    #   nemo-safe-synthesizer-plugin
     #   nmp-guardrails
     #   nvidia-nat-core
 pytz==2026.1.post1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -2610,6 +2635,7 @@ pyyaml==6.0.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer
     #   nemoguardrails
     #   nemoplatform
     #   nmp-auth
@@ -2710,6 +2736,7 @@ requests==2.33.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or
     #   langsmith
     #   nemo-platform-ext
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer-plugin
     #   nemoplatform
     #   ngcsdk
     #   nmp-evaluator
@@ -2741,6 +2768,7 @@ rich==14.3.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     #   nemo-agents-plugin
     #   nemo-platform-ext
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer
     #   nemoguardrails
     #   ngcsdk
     #   nmp-platform
@@ -2934,7 +2962,9 @@ sentry-sdk==2.57.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') 
 setuptools==82.0.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:7d872682c5d01cfde07da7bccc7b65469d3dca203318515ada1de5eda35efbf9 \
     --hash=sha256:a59e362652f08dcd477c78bb6e7bd9d80a7995bc73ce773050228a348ce2e5bb
-    # via pymilvus
+    # via
+    #   nemo-safe-synthesizer
+    #   pymilvus
 shellingham==1.5.4 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:7ecfff8f2fd72616f7481040475a65b2bf8af90a56c89140852d1120324e8686 \
     --hash=sha256:8dbca0739d487e5bd35ab3ca4b36e11c4078f3a234bfce294b0a0291363404de
@@ -3045,7 +3075,9 @@ streaming-form-data==2.0.0 ; (platform_machine == 'arm64' and sys_platform == 'd
 structlog==25.5.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:098522a3bebed9153d4570c6d0288abf80a031dfdb2048d59a49e9dc2190fc98 \
     --hash=sha256:a8453e9b9e636ec59bd9e79bbd4a72f025981b3ba0f5837aebf48f02f37a7f9f
-    # via nmp-common
+    # via
+    #   nemo-safe-synthesizer
+    #   nmp-common
 sympy==1.14.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
     --hash=sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517 \
     --hash=sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5
@@ -3130,6 +3162,7 @@ tqdm==4.67.3 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (pl
     #   datasets
     #   fastembed
     #   huggingface-hub
+    #   nemo-safe-synthesizer
     #   nltk
     #   openai
     #   optuna
@@ -3149,6 +3182,7 @@ typer==0.24.1 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (p
     #   nemo-platform-ext
     #   nemo-platform-plugin
     #   nemo-platform-sdk
+    #   nemo-safe-synthesizer-plugin
     #   nemoguardrails
     #   ragas
 types-aioboto3==15.5.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') \
@@ -3274,6 +3308,7 @@ uvicorn==0.42.0 ; (platform_machine == 'arm64' and sys_platform == 'darwin') or 
     #   fastapi-cloud-cli
     #   fastmcp
     #   mcp
+    #   nemo-safe-synthesizer-plugin
     #   nemoguardrails
     #   nemoplatform
     #   nmp-auth

@@ -44,14 +44,9 @@ uv run nemo safe-synthesizer run-local \
   --output-dir ./nss-output
 ```
 
-Use platform job submission when the user wants the NMP Jobs service to run Safe Synthesizer:
+Use the Jobs API or SDK when the user wants the NMP Jobs service to run Safe Synthesizer. The plugin CLI does not expose `nemo safe-synthesizer jobs` commands.
 
-```bash
-nemo safe-synthesizer jobs create my-safe-synthesizer-job \
-  --workspace default \
-  --input-file platform-job.json \
-  --wait
-```
+For CLI users, point them to the generated Jobs/API surface available in their installed NeMo CLI, or to the Python SDK builder documented in `docs/safe-synthesizer/tutorials/safe-synthesizer-101.md`.
 
 ## Minimal Spec Shape
 
@@ -74,7 +69,7 @@ nemo safe-synthesizer jobs create my-safe-synthesizer-job \
 }
 ```
 
-For platform submission, pass this object as the `spec` field when using `--input-data`; with `--input-file`, the generated API command accepts the same create payload shape documented by CLI help.
+For platform submission, pass this object as the `spec` field in the Jobs API or SDK create payload.
 
 `platform-job.json` wraps the job spec:
 

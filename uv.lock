@@ -5946,6 +5946,7 @@ core-services = [
     { name = "nemo-guardrails-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", extra = ["services"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-safe-synthesizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-switchyard", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-auth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6038,6 +6039,7 @@ enabled-plugins = [
     { name = "nemo-data-designer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-evaluator-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-guardrails-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-safe-synthesizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-switchyard", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 functional-services = [
@@ -6049,6 +6051,7 @@ functional-services = [
     { name = "nemo-guardrails-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform", extra = ["services"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
+    { name = "nemo-safe-synthesizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-switchyard", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-auth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6140,6 +6143,7 @@ core-services = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform", extras = ["services"], editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
+    { name = "nemo-safe-synthesizer-plugin", editable = "plugins/nemo-safe-synthesizer" },
     { name = "nemo-switchyard", editable = "plugins/nemo-switchyard" },
     { name = "nmp-auth", editable = "services/core/auth" },
     { name = "nmp-common", editable = "packages/nmp_common" },
@@ -6234,6 +6238,7 @@ enabled-plugins = [
     { name = "nemo-data-designer-plugin", editable = "plugins/nemo-data-designer" },
     { name = "nemo-evaluator-plugin", editable = "plugins/nemo-evaluator" },
     { name = "nemo-guardrails-plugin", editable = "plugins/nemo-guardrails" },
+    { name = "nemo-safe-synthesizer-plugin", editable = "plugins/nemo-safe-synthesizer" },
     { name = "nemo-switchyard", editable = "plugins/nemo-switchyard" },
 ]
 functional-services = [
@@ -6246,6 +6251,7 @@ functional-services = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform", extras = ["services"], editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
+    { name = "nemo-safe-synthesizer-plugin", editable = "plugins/nemo-safe-synthesizer" },
     { name = "nemo-switchyard", editable = "plugins/nemo-switchyard" },
     { name = "nmp-auth", editable = "services/core/auth" },
     { name = "nmp-common", editable = "packages/nmp_common" },

@@ -18,16 +18,22 @@ from nemo_platform_ext.cli.commands.services._process import (
     ForegroundInstanceError,
     InstanceAlreadyRunningError,
     InstanceDescriptor,
+    InstanceStillRunningError,
     _pid_alive,
     _snapshot_children,
     _sweep_orphans,
     acquire_lock,
     compute_scope,
     instance_dir,
+    instance_log_bytes,
     is_instance_alive,
+    is_removable_ghost,
     list_instances,
+    list_stopped_scopes,
+    prune_instances,
     read_descriptor,
     remove_descriptor,
+    remove_instance,
     rotate_log,
     start_background,
     stop_instance,
@@ -268,10 +274,164 @@ class TestListInstances:
         write_descriptor(desc, base_dir=base_dir)
 
         instances = list_instances(base_dir=base_dir)
+        assert instances == []
+        assert not d.exists()
+
+    def test_stale_descriptor_with_logs_stays_listed(self, base_dir: Path) -> None:
+        d = instance_dir("dead-with-logs", base_dir=base_dir)
+        desc = InstanceDescriptor(
+            pid=999999,
+            scope="dead-with-logs",
+            host="127.0.0.1",
+            port=8080,
+            mode="background",
+            create_time=1.0,
+        )
+        write_descriptor(desc, base_dir=base_dir)
+        (d / "services.log").write_text("crash output\n")
+
+        instances = list_instances(base_dir=base_dir)
         assert len(instances) == 1
+        assert instances[0].scope == "dead-with-logs"
         assert instances[0].alive is False
         assert instances[0].descriptor is None
-        assert not (d / "instance.json").exists()
+        assert d.exists()
+
+    def test_auto_removes_lock_only_ghost(self, base_dir: Path) -> None:
+        d = instance_dir("ghost-lock", base_dir=base_dir)
+        (d / "services.lock").touch()
+
+        instances = list_instances(base_dir=base_dir)
+        assert instances == []
+        assert not d.exists()
+
+    def test_keeps_stopped_instance_with_logs(self, base_dir: Path) -> None:
+        d = instance_dir("stopped-logs", base_dir=base_dir)
+        (d / "services.lock").touch()
+        (d / "services.log").write_text("crash output\n")
+
+        instances = list_instances(base_dir=base_dir)
+        assert len(instances) == 1
+        assert instances[0].scope == "stopped-logs"
+        assert instances[0].alive is False
+        assert instances[0].descriptor is None
+        assert d.exists()
+
+    def test_keeps_stopped_instance_with_rotated_logs_only(self, base_dir: Path) -> None:
+        d = instance_dir("rotated-logs", base_dir=base_dir)
+        (d / "services.lock").touch()
+        (d / "services.log.20250101T000000Z").write_text("old boot\n")
+
+        instances = list_instances(base_dir=base_dir)
+        assert len(instances) == 1
+        assert instances[0].scope == "rotated-logs"
+
+    def test_empty_services_log_is_still_a_ghost(self, base_dir: Path) -> None:
+        d = instance_dir("empty-log", base_dir=base_dir)
+        (d / "services.lock").touch()
+        (d / "services.log").touch()
+
+        instances = list_instances(base_dir=base_dir)
+        assert instances == []
+        assert not d.exists()
+
+    def test_running_instance_not_auto_removed(self, base_dir: Path) -> None:
+        fd = acquire_lock("alive-ghost-check", base_dir=base_dir)
+        try:
+            instances = list_instances(base_dir=base_dir)
+            assert len(instances) == 1
+            assert instances[0].alive is True
+        finally:
+            os.close(fd)
+
+
+# ---------------------------------------------------------------------------
+# remove_instance / prune_instances
+# ---------------------------------------------------------------------------
+
+
+class TestRemoveInstance:
+    def test_removes_dead_scope_dir(self, base_dir: Path) -> None:
+        d = instance_dir("rm-me", base_dir=base_dir)
+        (d / "services.log").write_text("logs\n")
+
+        assert remove_instance("rm-me", base_dir=base_dir) is True
+        assert not d.exists()
+
+    def test_missing_scope_returns_false(self, base_dir: Path) -> None:
+        assert remove_instance("missing", base_dir=base_dir) is False
+
+    def test_refuses_running_instance(self, base_dir: Path) -> None:
+        fd = acquire_lock("running-rm", base_dir=base_dir)
+        try:
+            with pytest.raises(InstanceStillRunningError, match="running-rm"):
+                remove_instance("running-rm", base_dir=base_dir)
+        finally:
+            os.close(fd)
+
+    def test_rejects_invalid_scope(self, base_dir: Path) -> None:
+        with pytest.raises(ValueError, match="Invalid instance scope"):
+            remove_instance("../escape", base_dir=base_dir)
+
+    def test_returns_false_when_rmtree_fails(self, base_dir: Path) -> None:
+        d = instance_dir("rmtree-fail", base_dir=base_dir)
+        (d / "services.log").write_text("logs\n")
+
+        with patch(
+            "nemo_platform_ext.cli.commands.services._process.shutil.rmtree",
+            side_effect=OSError("permission denied"),
+        ):
+            assert remove_instance("rmtree-fail", base_dir=base_dir) is False
+        assert d.exists()
+
+
+class TestPruneInstances:
+    def test_removes_all_stopped_scopes(self, base_dir: Path) -> None:
+        alive_fd = acquire_lock("alive-prune", base_dir=base_dir)
+        stopped = instance_dir("stopped-prune", base_dir=base_dir)
+        (stopped / "services.log").write_text("x\n")
+        try:
+            removed = prune_instances(base_dir=base_dir)
+            assert removed == ["stopped-prune"]
+            assert not stopped.exists()
+            assert is_instance_alive("alive-prune", base_dir=base_dir)
+        finally:
+            os.close(alive_fd)
+
+    def test_noop_when_empty(self, base_dir: Path) -> None:
+        assert prune_instances(base_dir=base_dir) == []
+
+
+class TestInstanceLogBytes:
+    def test_sums_active_and_rotated_logs(self, base_dir: Path) -> None:
+        d = instance_dir("log-bytes", base_dir=base_dir)
+        (d / "services.log").write_text("abc")
+        (d / "services.log.old").write_text("de")
+
+        assert instance_log_bytes("log-bytes", base_dir=base_dir) == 5
+
+
+class TestIsRemovableGhost:
+    def test_true_for_lock_only(self, base_dir: Path) -> None:
+        d = instance_dir("ghost", base_dir=base_dir)
+        (d / "services.lock").touch()
+        assert is_removable_ghost("ghost", base_dir=base_dir) is True
+
+    def test_false_when_logs_present(self, base_dir: Path) -> None:
+        d = instance_dir("not-ghost", base_dir=base_dir)
+        (d / "services.log").write_text("data\n")
+        assert is_removable_ghost("not-ghost", base_dir=base_dir) is False
+
+
+class TestListStoppedScopes:
+    def test_lists_only_stopped(self, base_dir: Path) -> None:
+        fd = acquire_lock("up", base_dir=base_dir)
+        down = instance_dir("down", base_dir=base_dir)
+        (down / "services.log").write_text("x\n")
+        try:
+            assert list_stopped_scopes(base_dir=base_dir) == ["down"]
+        finally:
+            os.close(fd)
 
 
 # ---------------------------------------------------------------------------

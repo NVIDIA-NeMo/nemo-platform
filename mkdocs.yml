@@ -206,8 +206,6 @@ extra:
       - Platform
       - Fine-tune Models
       - Customizer
-      - Synthesize Safe Data
-      - Safe Synthesizer
       - Example Applications
     paths:
       - auth/**
@@ -221,7 +219,6 @@ extra:
       - get-started/quickstart.md
       - helm/**
       - run-inference/tutorials/deploy-models.md
-      - safe-synthesizer/**
       - set-up/**
       - troubleshooting/cluster-setup.md
       - troubleshooting/customizer.md
@@ -256,6 +253,7 @@ extra:
   nsm_short_name: "NeMo Studio"
   nss_long_name: "NVIDIA NeMo Safe Synthesizer"
   nss_short_name: "NeMo Safe Synthesizer"
+  nss_plugin_slug: "safe-synthesizer"
   nop_long_name: "NVIDIA NeMo Operator"
   nop_short_name: "NeMo Operator"
   studio_long_name: "NVIDIA NeMo Studio"
@@ -320,19 +318,20 @@ nav:
     - SDK Resources: data-designer/sdk-resources.md
     - Migrating from Standalone Library: data-designer/migration.md
   - Synthesize Safe Data:
+    - Getting Started: safe-synthesizer/getting-started.md
     - About:
       - Overview: safe-synthesizer/about/index.md
       - Data Synthesis: safe-synthesizer/about/data-synthesis.md
+      - PII Replacement: safe-synthesizer/about/pii-replacement.md
       - Evaluation: safe-synthesizer/about/evaluation.md
       - Jobs: safe-synthesizer/about/jobs.md
-      - Host-Local Development: safe-synthesizer/about/host-local-development.md
-      - PII Replacement: safe-synthesizer/about/pii-replacement.md
+      - Local and Subprocess Execution: safe-synthesizer/about/host-local-development.md
       - Parameters Reference: safe-synthesizer/about/reference.md
-    - Getting Started: safe-synthesizer/getting-started.md
     - Tutorials:
       - Overview: safe-synthesizer/tutorials/index.md
       - Safe Synthesizer 101: safe-synthesizer/tutorials/safe-synthesizer-101.md
       - Differential Privacy: safe-synthesizer/tutorials/differential-privacy.md
+    - SDK Resources: safe-synthesizer/sdk-resources.md
   - Anonymize Data:
     - About: anonymizer/index.md
     - Quickstart: anonymizer/quickstart.md

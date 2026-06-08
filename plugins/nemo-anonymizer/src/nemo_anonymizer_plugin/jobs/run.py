@@ -34,7 +34,7 @@ from nemo_platform_plugin.jobs.api_factory import (
 )
 from nemo_platform_plugin.jobs.constants import DEFAULT_JOB_STORAGE_PATH, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
 from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
-from nmp.common.jobs.image import get_qualified_image
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from pydantic import BaseModel
 
 

@@ -18,6 +18,14 @@ vi.mock('@nemo/sdk/generated/fetchers/platform', () => ({
   customFetch: vi.fn().mockResolvedValue(new Blob(['# heading'])),
 }));
 
+vi.mock('hyparquet', () => ({
+  parquetRead: vi.fn(
+    async (options: { onComplete?: (rows: Record<string, unknown>[]) => void }) => {
+      options.onComplete?.([{ id: 9007199254740993n, label: 'large-int' }]);
+    }
+  ),
+}));
+
 describe('useDatasetFileContent gate', () => {
   const baseParams = { workspace: 'ws', name: 'ds', path: 'README.md' };
 
@@ -39,5 +47,19 @@ describe('useDatasetFileContent gate', () => {
     // and fall through to the Range fetch — treat as text.
     const { queryFn } = datasetFileContentQueryOptions({ ...baseParams, path: 'noextension' });
     await expect((queryFn as () => Promise<string>)()).resolves.toBe('# heading');
+  });
+
+  it('serializes parquet rows with BigInt columns as JSONL text', async () => {
+    const { filesDownloadFile } = await import('@nemo/sdk/generated/platform/api');
+    vi.mocked(filesDownloadFile).mockResolvedValueOnce(new Blob(['parquet-bytes']));
+
+    const { queryFn } = datasetFileContentQueryOptions({
+      ...baseParams,
+      path: 'data/sample.parquet',
+    });
+
+    await expect((queryFn as () => Promise<string>)()).resolves.toBe(
+      '{"id":"9007199254740993","label":"large-int"}\n'
+    );
   });
 });
