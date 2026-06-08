@@ -101,8 +101,8 @@ class EvaluateSuiteSubmitConfig(EvaluateSuiteConfig):
     422 at submit time instead of a confusing dispatched-job failure.
     """
 
-    agent: str = Field(description="Agent root (required on submit).")
-    output: str = Field(description="Output dir for batch artifacts (required on submit).")
+    agent: str = Field(description="Agent root.")
+    output: str = Field(description="Output dir for batch artifacts.")
 
 
 class EvaluateSuiteJob(NemoJob):
