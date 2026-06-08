@@ -9,6 +9,8 @@
 // - list_jobs_apis_customization_v2_workspaces__workspace__jobs_get              -> customizationListJobs
 // - create_job_apis_data_designer_v2_workspaces__workspace__jobs_post         -> dataDesignerCreateJob
 // - list_workspaces_apis_entities_v2_workspaces_get                           -> entitiesListWorkspaces
+// - create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post        -> agentsCreateAnalyzeJob
+// - list_jobs_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite_get   -> agentsListEvaluateSuiteJobs
 //
 // Non-apis_ routes (unchanged):
 // - gateway_proxy_get                                                         -> gatewayProxyGet
@@ -85,6 +87,37 @@ const extractAllPathResources = (pathPart: string): string[] => {
 };
 
 /**
+ * Qualifies generic job actions using job subtype routes.
+ *
+ * e.g., actionResource="job", pathResource="jobs_analyze" -> "analyze_job"
+ * e.g., actionResource="jobs", pathResource="jobs_evaluate_suite" -> "evaluate_suite_jobs"
+ * e.g., actionResource="job_logs", pathResource="jobs_optimize" -> "optimize_job_logs"
+ */
+const qualifyJobSubtypeResource = (
+  service: string,
+  actionResource: string,
+  pathResource: string
+): string | undefined => {
+  if (service !== 'agents') {
+    return undefined;
+  }
+
+  const actionWords = actionResource.split('_');
+  const pathWords = pathResource.split('_');
+
+  if (pathWords.length < 2 || singularize(pathWords[0]) !== 'job') {
+    return undefined;
+  }
+
+  if (actionWords.length === 0 || singularize(actionWords[0]) !== 'job') {
+    return undefined;
+  }
+
+  const subtypeWords = pathWords.slice(1);
+  return [...subtypeWords, actionWords[0], ...actionWords.slice(1)].join('_');
+};
+
+/**
  * Qualifies the action resource using path information for disambiguation.
  * When the path is more specific than the action, the path qualifier is prepended.
  *
@@ -93,8 +126,11 @@ const extractAllPathResources = (pathPart: string): string[] => {
  * e.g., actionResource="job_result_aggregate_scores", pathResource="benchmark_jobs"
  *       -> "benchmark_job_result_aggregate_scores"
  */
-const qualifyResource = (actionResource: string, pathResource: string): string => {
+const qualifyResource = (service: string, actionResource: string, pathResource: string): string => {
   if (!actionResource || !pathResource) return actionResource;
+
+  const jobSubtypeResource = qualifyJobSubtypeResource(service, actionResource, pathResource);
+  if (jobSubtypeResource) return jobSubtypeResource;
 
   const actionWords = actionResource.split('_');
   const pathWords = pathResource.split('_');
@@ -177,7 +213,7 @@ export const operationNameOverride = (operation: { operationId?: string }) => {
   const pathResource = extractPrimaryResource(pathPart);
 
   // Qualify the action resource using path context
-  const qualifiedResource = qualifyResource(actionResource, pathResource);
+  const qualifiedResource = qualifyResource(service, actionResource, pathResource);
 
   // Build: {service}_{verb}_{qualifiedResource}
   let name = normalizeOperationName(service, buildOperationName(service, verb, qualifiedResource));
