@@ -28,10 +28,12 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentGroupResponse,
     ExperimentRequest,
     ExperimentResponse,
+    ExperimentSessionFilter,
     ExperimentSessionResponse,
 )
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_rollup_repository import (
     ExperimentRollup,
@@ -53,38 +55,29 @@ EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
 ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
+ExperimentSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentSessionFilter))]
+
+
+def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    if service is None:
+        return None
+    return getattr(service, "clickhouse_client", None)
 
 
 def get_experiment_rollup_repository(request: Request) -> ExperimentRollupRepository | None:
     # Rollups are enrichment only. Experiment entity reads should continue when
     # ClickHouse is disabled or temporarily unavailable.
-    service = getattr(request.app.state, "intake_service", None)
-    if service is None:
-        service = getattr(request.app.state, "service", None)
-    if service is None:
-        return None
-
-    service_client = getattr(service, "clickhouse_client", None)
-    if service_client is None:
-        return None
-    return ExperimentRollupRepository(service_client)
+    client = _get_clickhouse_client(request)
+    return ExperimentRollupRepository(client) if client is not None else None
 
 
 ExperimentRollupRepositoryDep = Annotated[ExperimentRollupRepository | None, Depends(get_experiment_rollup_repository)]
 
 
 def get_experiment_session_repository(request: Request) -> ExperimentSessionRepository | None:
-    # Mirrors get_experiment_rollup_repository: optional dependency that returns None when
-    # ClickHouse is unavailable so the calling endpoint can surface a 503 deterministically.
-    service = getattr(request.app.state, "intake_service", None)
-    if service is None:
-        service = getattr(request.app.state, "service", None)
-    if service is None:
-        return None
-    service_client = getattr(service, "clickhouse_client", None)
-    if service_client is None:
-        return None
-    return ExperimentSessionRepository(service_client)
+    client = _get_clickhouse_client(request)
+    return ExperimentSessionRepository(client) if client is not None else None
 
 
 ExperimentSessionRepositoryDep = Annotated[
@@ -402,24 +395,22 @@ async def delete_experiment(
         404: {"description": "Experiment not found"},
         503: {"description": "ClickHouse unavailable"},
     },
+    openapi_extra=generate_openapi_extra_params(
+        filter_schema=ExperimentSessionFilter,
+        filter_description="Filter sessions by test_case_id and status.",
+    ),
 )
 async def list_experiment_sessions(
     workspace: str,
     name: str,
+    request: Request,
     entity_client: EntityClientDep,
     session_repository: ExperimentSessionRepositoryDep,
-    status_filter: SpanStatus | None = Query(
-        default=None,
-        alias="status",
-        description="Filter by root-span status (success, error, cancelled, unknown).",
-    ),
-    test_case_id: str | None = Query(
-        default=None,
-        description="Filter by producer-supplied test case id.",
-    ),
+    parsed: ExperimentSessionFilterDep,
     page: int = Query(default=1, ge=1, description="Page number."),
     page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
 ) -> Page[ExperimentSessionResponse]:
+    validate_list_query_params(request)
     await _get_or_404(
         entity_client,
         Experiment,
@@ -431,6 +422,15 @@ async def list_experiment_sessions(
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
+        )
+    test_case_id: str | None = parsed.extract("test_case_id")
+    status_raw: str | None = parsed.extract("status")
+    try:
+        status_filter = SpanStatus(status_raw) if status_raw is not None else None
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{status_raw}'. Valid values: {[s.value for s in SpanStatus]}",
         )
     try:
         result = await session_repository.list_sessions(
@@ -459,6 +459,7 @@ async def list_experiment_sessions(
             current_page_size=len(data),
             total_results=result.total,
         ),
+        filter=parsed.to_response(),
     )
 
 

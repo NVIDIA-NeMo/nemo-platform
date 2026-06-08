@@ -163,6 +163,15 @@ class ExperimentFilter(Filter):
     )
 
 
+class ExperimentSessionFilter(Filter):
+    """Filter for listing ExperimentSessions."""
+
+    test_case_id: str | None = Field(default=None, description="Filter by producer-supplied test case id.")
+    status: str | None = Field(
+        default=None, description="Filter by root-span status (success, error, cancelled, unknown)."
+    )
+
+
 class ExperimentSessionResponse(BaseModel):
     """One ingested session of an Experiment — a single test case execution.
 

@@ -6318,23 +6318,6 @@ paths:
         schema:
           type: string
           title: Name
-      - name: status
-        in: query
-        required: false
-        schema:
-          allOf:
-          - $ref: '#/components/schemas/SpanStatus'
-          description: Filter by root-span status (success, error, cancelled, unknown).
-          title: Status
-        description: Filter by root-span status (success, error, cancelled, unknown).
-      - name: test_case_id
-        in: query
-        required: false
-        schema:
-          description: Filter by producer-supplied test case id.
-          title: Test Case Id
-          type: string
-        description: Filter by producer-supplied test case id.
       - name: page
         in: query
         required: false
@@ -6356,6 +6339,14 @@ paths:
           default: 100
           title: Page Size
         description: Page size.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentSessionFilter'
+        description: Filter sessions by test_case_id and status.
       responses:
         '200':
           description: Successful Response
@@ -15434,6 +15425,20 @@ components:
       required:
       - data
       title: ExperimentResponsesPage
+    ExperimentSessionFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentSessions.
+      properties:
+        test_case_id:
+          description: Filter by producer-supplied test case id.
+          title: Test Case Id
+          type: string
+        status:
+          description: Filter by root-span status (success, error, cancelled, unknown).
+          title: Status
+          type: string
+      title: ExperimentSessionFilter
+      type: object
     ExperimentSessionResponse:
       properties:
         workspace:

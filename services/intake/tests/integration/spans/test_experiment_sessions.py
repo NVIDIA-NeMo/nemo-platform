@@ -82,6 +82,14 @@ def test_list_experiment_sessions_returns_joined_session_rows(client: TestClient
     assert case_a["evaluator_scores"] == {"harbor.verifier": pytest.approx(1.0)}
     assert case_a["status"] in {"success", "unknown"}
 
+    paged = client.get(f"{EXPERIMENTS}/{experiment_name}/sessions", params={"page": 2, "page_size": 1})
+    assert paged.status_code == 200, paged.text
+    paged_body = paged.json()
+    assert paged_body["pagination"]["total_results"] == 3
+    assert len(paged_body["data"]) == 1
+    assert paged_body["data"][0]["test_case_id"] == "case-b"
+    assert paged_body["data"][0]["evaluator_scores"] == {"harbor.verifier": pytest.approx(0.5)}
+
 
 def test_list_experiment_sessions_filter_by_test_case(client: TestClient) -> None:
     experiment_name = "sessions-filter-exp"
@@ -184,6 +192,15 @@ def test_list_experiment_sessions_filter_by_status(client: TestClient) -> None:
 def test_list_experiment_sessions_returns_404_for_unknown_experiment(client: TestClient) -> None:
     response = client.get(f"{EXPERIMENTS}/does-not-exist/sessions")
     assert response.status_code == 404, response.text
+
+
+def test_list_experiment_sessions_rejects_unknown_query_param(client: TestClient) -> None:
+    response = client.get(
+        f"{EXPERIMENTS}/does-not-exist/sessions",
+        params={"test_caseid": "case-1"},
+    )
+    assert response.status_code == 400, response.text
+    assert response.json()["detail"] == "Unsupported query parameter(s): test_caseid"
 
 
 def _atif_body(

@@ -26,6 +26,7 @@ Types:
 
 ```python
 from nemo_platform.types.experiments import (
+    ExperimentSessionFilter,
     ExperimentSessionResponse,
     ExperimentSessionResponsesPage,
 )

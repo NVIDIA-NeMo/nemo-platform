@@ -48,10 +48,12 @@ class TestSessions:
         session = client.experiments.sessions.list(
             name="name",
             workspace="workspace",
+            filter={
+                "status": "status",
+                "test_case_id": "test_case_id",
+            },
             page=1,
             page_size=1,
-            status="success",
-            test_case_id="test_case_id",
         )
         assert_matches_type(SyncDefaultPagination[ExperimentSessionResponse], session, path=["response"])
 
@@ -119,10 +121,12 @@ class TestAsyncSessions:
         session = await async_client.experiments.sessions.list(
             name="name",
             workspace="workspace",
+            filter={
+                "status": "status",
+                "test_case_id": "test_case_id",
+            },
             page=1,
             page_size=1,
-            status="success",
-            test_case_id="test_case_id",
         )
         assert_matches_type(AsyncDefaultPagination[ExperimentSessionResponse], session, path=["response"])
 

@@ -19,19 +19,14 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .experiment_session_filter_param import ExperimentSessionFilterParam
-
-__all__ = ["SessionListParams"]
+__all__ = ["ExperimentSessionFilterParam"]
 
 
-class SessionListParams(TypedDict, total=False):
-    workspace: str
+class ExperimentSessionFilterParam(TypedDict, total=False):
+    """Filter for listing ExperimentSessions."""
 
-    filter: ExperimentSessionFilterParam
-    """Filter sessions by test_case_id and status."""
+    status: str
+    """Filter by root-span status (success, error, cancelled, unknown)."""
 
-    page: int
-    """Page number."""
-
-    page_size: int
-    """Page size."""
+    test_case_id: str
+    """Filter by producer-supplied test case id."""

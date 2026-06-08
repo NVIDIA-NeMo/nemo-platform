@@ -31,10 +31,9 @@ from ..._response import (
 )
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ..._base_client import AsyncPaginator, make_request_options
-from ...types.intake import SpanStatus
 from ...types.experiments import session_list_params
-from ...types.intake.span_status import SpanStatus
 from ...types.experiments.experiment_session_response import ExperimentSessionResponse
+from ...types.experiments.experiment_session_filter_param import ExperimentSessionFilterParam
 
 __all__ = ["SessionsResource", "AsyncSessionsResource"]
 
@@ -64,10 +63,9 @@ class SessionsResource(SyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        filter: ExperimentSessionFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        status: SpanStatus | Omit = omit,
-        test_case_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -79,13 +77,11 @@ class SessionsResource(SyncAPIResource):
         List Experiment Sessions
 
         Args:
+          filter: Filter sessions by test_case_id and status.
+
           page: Page number.
 
           page_size: Page size.
-
-          status: Filter by root-span status (success, error, cancelled, unknown).
-
-          test_case_id: Filter by producer-supplied test case id.
 
           extra_headers: Send extra headers
 
@@ -113,10 +109,9 @@ class SessionsResource(SyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "filter": filter,
                         "page": page,
                         "page_size": page_size,
-                        "status": status,
-                        "test_case_id": test_case_id,
                     },
                     session_list_params.SessionListParams,
                 ),
@@ -150,10 +145,9 @@ class AsyncSessionsResource(AsyncAPIResource):
         name: str,
         *,
         workspace: str | None = None,
+        filter: ExperimentSessionFilterParam | Omit = omit,
         page: int | Omit = omit,
         page_size: int | Omit = omit,
-        status: SpanStatus | Omit = omit,
-        test_case_id: str | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
         # The extra values given here take precedence over values defined on the client or passed to this method.
         extra_headers: Headers | None = None,
@@ -165,13 +159,11 @@ class AsyncSessionsResource(AsyncAPIResource):
         List Experiment Sessions
 
         Args:
+          filter: Filter sessions by test_case_id and status.
+
           page: Page number.
 
           page_size: Page size.
-
-          status: Filter by root-span status (success, error, cancelled, unknown).
-
-          test_case_id: Filter by producer-supplied test case id.
 
           extra_headers: Send extra headers
 
@@ -199,10 +191,9 @@ class AsyncSessionsResource(AsyncAPIResource):
                 timeout=timeout,
                 query=maybe_transform(
                     {
+                        "filter": filter,
                         "page": page,
                         "page_size": page_size,
-                        "status": status,
-                        "test_case_id": test_case_id,
                     },
                     session_list_params.SessionListParams,
                 ),
