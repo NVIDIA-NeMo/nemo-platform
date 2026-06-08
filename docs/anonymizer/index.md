@@ -12,7 +12,7 @@ The service wraps the open-source [NVIDIA NeMo Anonymizer library](https://githu
 The library defines **what** to anonymize and **how**. The platform decides **where the work runs** and **how models are reached**.
 
 !!! note
-    The code snippets below are for conceptual demonstration purposes only. For runnable examples, see the [quickstart](quickstart.md) and [tutorials](tutorials/index.md).
+    The code snippets below are for conceptual demonstration purposes only. For runnable examples, see the [tutorials](tutorials/index.md).
 
 ### 1. Build a config with the library
 
@@ -105,12 +105,6 @@ This package is a thin wrapper around the [NVIDIA NeMo Anonymizer library](https
 ## Next Steps
 
 <div class="grid cards" markdown>
-
--   **[Quick Start](quickstart.md)**
-
-    ---
-
-    Install the plugin, configure inference, and run your first preview and job.
 
 -   **[Tutorials](tutorials/index.md)**
 

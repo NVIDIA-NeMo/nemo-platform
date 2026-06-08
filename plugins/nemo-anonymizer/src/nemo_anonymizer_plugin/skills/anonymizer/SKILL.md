@@ -8,7 +8,7 @@ argument-hint: [describe the dataset and how PII should be handled]
 
 Do not explore the workspace first. The workflow's Learn step gives you everything you need.
 
-**Source of truth.** For anything you're unsure about, prefer the in-tree CLI docs over your memory: `docs/anonymizer/index.md`, `docs/anonymizer/quickstart.md`, `docs/anonymizer/cli.md`, and `docs/anonymizer/tutorials/{preview,run}.md`. The [NVIDIA NeMo Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) own detection, replacement strategy parameters, and rewrite-mode semantics.
+**Source of truth.** For anything you're unsure about, prefer the in-tree CLI docs over your memory: `docs/anonymizer/index.md`, `docs/anonymizer/cli.md`, and `docs/anonymizer/tutorials/{index,preview,run}.md`. The [NVIDIA NeMo Anonymizer library docs](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) own detection, replacement strategy parameters, and rewrite-mode semantics.
 
 # Goal
 
@@ -56,7 +56,7 @@ Read **only** the workflow file that matches the selected mode, then follow it:
 # Troubleshooting
 
 - **`nemo anonymizer` CLI not found:** The plugin isn't installed in this environment. From the repo root, run `uv sync`; the root workspace includes the Anonymizer plugin. Confirm with `nemo anonymizer --help`. Do not install anything without the user's permission.
-- **`nemo anonymizer preview submit` returns 404:** The plugin service isn't mounted on the gateway. `nemo setup` does not auto-mount it. Re-run `nemo services run` (no `--services` flag) and verify the routes show up under `/apis/anonymizer/` in the OpenAPI listing. See `docs/anonymizer/quickstart.md` Step 1.
+- **`nemo anonymizer preview submit` returns 404:** The plugin service isn't mounted on the gateway. `nemo setup` does not auto-mount it. Re-run `nemo services run` (no `--services` flag) and verify the routes show up under `/apis/anonymizer/` in the OpenAPI listing. See `docs/anonymizer/tutorials/index.md` Prerequisites.
 - **`model_configs are required for remote execution`:** `preview submit` and `run submit` go through plugin-service / Jobs paths. Add `model_configs` referencing an Inference Gateway provider; use the inference/model-provider docs or skill for provider discovery.
 - **`Input source ... is a local path`:** Plugin-service execution rejects local paths. Either upload the file to a fileset, use an `http(s)` URL, or switch to `preview run` / `run run` (local execution).
 - **`Fileset input ... must resolve to a .csv or .parquet file`:** The `#<path>` fragment points at a directory or a non-CSV/Parquet file. Point it at a single file.
