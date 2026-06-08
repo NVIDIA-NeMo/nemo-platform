@@ -66,11 +66,11 @@ async def list_targets(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     sort: str = Query(default="-created_at"),
-    filter: TargetFilter = Depends(_target_filter_dep),
+    parsed_filter: TargetFilter = Depends(_target_filter_dep),
     entity_client: NemoEntitiesClient = Depends(get_entity_client),
 ) -> dict:
     """List audit targets in the workspace with pagination and filter support."""
-    filter_dict = filter if isinstance(filter, dict) else filter.model_dump(exclude_none=True)
+    filter_dict = parsed_filter if isinstance(parsed_filter, dict) else parsed_filter.model_dump(exclude_none=True)
     try:
         result = await entity_client.list(
             AuditTarget,
@@ -87,7 +87,7 @@ async def list_targets(
         "data": [t.model_dump(mode="json") for t in result.data],
         "pagination": result.pagination.model_dump() if result.pagination else None,
         "sort": sort,
-        "filter": filter or None,
+        "filter": parsed_filter or None,
     }
 
 
