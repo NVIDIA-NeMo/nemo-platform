@@ -15,9 +15,9 @@ import { CJobCancellableStatuses } from '@nemo/common/src/constants/query';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParam } from '@nemo/common/src/utils/query';
 import {
-  getDataDesignerListJobsQueryKey,
-  useDataDesignerCancelJob,
-  useDataDesignerListJobs,
+  getDataDesignerListCreateJobsQueryKey,
+  useDataDesignerCancelCreateJob,
+  useDataDesignerListCreateJobs,
 } from '@nemo/sdk/generated/data-designer/api';
 import type {
   CreateJob as DataDesignerJob,
@@ -50,11 +50,11 @@ export const DataDesignerJobsDataView: FC = () => {
   const [deleteJobs, setDeleteJobs] = useState<DataDesignerJob[]>([]);
   const [cancelError, setCancelError] = useState<string | undefined>(undefined);
 
-  const cancelJobMutation = useDataDesignerCancelJob({
+  const cancelJobMutation = useDataDesignerCancelCreateJob({
     mutation: {
       onSuccess: () => {
         queryClient.resetQueries({
-          queryKey: getDataDesignerListJobsQueryKey(workspace),
+          queryKey: getDataDesignerListCreateJobsQueryKey(workspace),
         });
         setCancelError(undefined);
       },
@@ -78,7 +78,7 @@ export const DataDesignerJobsDataView: FC = () => {
     [cancelJobMutation]
   );
 
-  const { data: dataDesignerResponse, isLoading } = useDataDesignerListJobs(
+  const { data: dataDesignerResponse, isLoading } = useDataDesignerListCreateJobs(
     workspace,
     {
       sort: getSortParam(dataViewState.sorting.state) as DataDesignerJobsSortField,
