@@ -12,7 +12,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from nmp.common.entities.values import Filter
+from nmp.common.entities.values import DatetimeFilter, Filter
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from pydantic import AnyUrl, BaseModel, ConfigDict, Field
 
@@ -147,4 +147,15 @@ class ExperimentFilter(Filter):
     name: str | None = Field(default=None, description="Filter experiments by name.")
     experiment_group_id: str | None = Field(default=None, description="Filter experiments by owning group id.")
     agent_name: str | None = Field(default=None, description="Filter experiments by agent name.")
+    agent_version: str | None = Field(default=None, description="Filter experiments by agent version.")
     dataset_name: str | None = Field(default=None, description="Filter experiments by dataset name.")
+    dataset_version: str | None = Field(default=None, description="Filter experiments by dataset version.")
+    created_by: str | None = Field(default=None, description="Filter experiments by the principal that created them.")
+    created_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.",
+    )
+    updated_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for ranges.",
+    )

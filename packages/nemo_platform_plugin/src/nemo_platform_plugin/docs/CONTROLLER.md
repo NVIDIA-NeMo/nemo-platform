@@ -35,6 +35,8 @@ Platform startup
     ↓
 NemoControllerAdapter wraps NemoController instance
     ↓
+Wait for each name in dependencies (poll /status until services.ready)
+    ↓
 on_startup() — load config, build entity client, initialize backends
     ↓
 Loop begins (runs every interval_seconds):

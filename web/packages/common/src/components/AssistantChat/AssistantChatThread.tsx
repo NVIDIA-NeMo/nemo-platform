@@ -5,9 +5,12 @@ import {
   ActionBarPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
-  type TextMessagePartComponent,
   ThreadPrimitive,
+  type TextMessagePartComponent,
+  type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
+import { ChatEmptyState } from '@nemo/common/src/components/Chat/ChatEmptyState';
+import { MessageContent } from '@nemo/common/src/components/Chat/MessageContent';
 import {
   Banner,
   Button,
@@ -19,11 +22,8 @@ import {
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
-import type { ComponentProps, ReactNode } from 'react';
-
-import { ChatEmptyState } from '../Chat/ChatEmptyState';
-import { MessageContent } from '../Chat/MessageContent';
+import { ArrowUp, Check, Copy, Pencil, RefreshCw, RotateCcw, Square, X } from 'lucide-react';
+import { useCallback, useMemo, type ComponentProps, type ReactNode } from 'react';
 
 export interface AssistantChatThreadAttributes {
   ThreadViewport?: ComponentProps<typeof ThreadPrimitive.Viewport>;
@@ -41,6 +41,8 @@ interface AssistantChatThreadProps {
   };
   contentClassName?: string;
   composerContainerClassName?: string;
+  hideAssistantMessageActions?: boolean;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
   viewportClassName?: string;
   composerOverride?: ReactNode;
 }
@@ -49,9 +51,18 @@ const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
   <MessageContent content={text} />
 );
 
-const AssistantChatMessageContent = () => (
+const AssistantChatMessageContent = ({
+  toolCallPartComponent,
+}: {
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <>
-    <MessagePrimitive.Parts components={{ Text: AssistantChatTextPart }} />
+    <MessagePrimitive.Parts
+      components={{
+        Text: AssistantChatTextPart,
+        tools: { Fallback: toolCallPartComponent },
+      }}
+    />
     <MessagePrimitive.Error>
       <Banner kind="inline" status="error" className="mt-density-sm">
         There was an error generating a response.
@@ -62,6 +73,17 @@ const AssistantChatMessageContent = () => (
 
 const ACTION_BUTTON_CLASS =
   'flex cursor-pointer size-8 items-center justify-center rounded text-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50';
+
+const CHAT_VIEWPORT_SCROLLBAR_CLASS = [
+  '[scrollbar-width:thin]',
+  '[scrollbar-color:var(--border-color-interaction-base)_transparent]',
+  '[&::-webkit-scrollbar]:w-2',
+  '[&::-webkit-scrollbar-corner]:bg-transparent',
+  '[&::-webkit-scrollbar-track]:bg-transparent',
+  '[&::-webkit-scrollbar-thumb]:rounded-full',
+  '[&::-webkit-scrollbar-thumb]:bg-[var(--border-color-interaction-base)]',
+  '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]',
+].join(' ');
 
 const CopyAction = () => (
   <Tooltip slotContent="Copy message">
@@ -76,20 +98,38 @@ const CopyAction = () => (
   </Tooltip>
 );
 
-const AssistantMessage = ({ showRunningIndicator = true }: { showRunningIndicator?: boolean }) => (
+const AssistantMessage = ({
+  hideAssistantMessageActions,
+  showRunningIndicator = true,
+  toolCallPartComponent,
+}: {
+  hideAssistantMessageActions?: boolean;
+  showRunningIndicator?: boolean;
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="assistant"
-    className="group/message self-stretch whitespace-pre-wrap"
+    className="group/message self-stretch whitespace-normal"
   >
-    <AssistantChatMessageContent />
+    <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
     {showRunningIndicator ? (
-      <div className="mt-density-sm flex h-8 items-center">
-        <MessagePrimitive.If last>
-          <ThreadPrimitive.If running>
+      <MessagePrimitive.If last>
+        <ThreadPrimitive.If running>
+          <div
+            className="mt-density-xs flex h-6 items-center"
+            data-testid="assistant-chat-running-indicator"
+          >
             <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
-          </ThreadPrimitive.If>
-        </MessagePrimitive.If>
+          </div>
+        </ThreadPrimitive.If>
+      </MessagePrimitive.If>
+    ) : null}
+    {!hideAssistantMessageActions ? (
+      <div
+        className="mt-density-xs flex h-8 items-center"
+        data-testid="assistant-chat-message-actions"
+      >
         <ActionBarPrimitive.Root
           hideWhenRunning
           className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
@@ -109,14 +149,18 @@ const AssistantMessage = ({ showRunningIndicator = true }: { showRunningIndicato
   </MessagePrimitive.Root>
 );
 
-const UserMessage = () => (
+const UserMessage = ({
+  toolCallPartComponent,
+}: {
+  toolCallPartComponent?: ToolCallMessagePartComponent;
+}) => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="user"
-    className="group/message flex w-full flex-col items-end gap-density-xs whitespace-pre-wrap"
+    className="group/message flex w-full flex-col items-end gap-density-xs whitespace-normal"
   >
     <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
-      <AssistantChatMessageContent />
+      <AssistantChatMessageContent toolCallPartComponent={toolCallPartComponent} />
     </div>
     <div className="flex h-8 shrink-0 items-center">
       <ActionBarPrimitive.Root
@@ -194,8 +238,9 @@ const AssistantComposer = ({
   className,
 }: AssistantComposerProps) => (
   <ComposerPrimitive.Root
+    data-testid="assistant-chat-composer"
     className={cn(
-      'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
+      'flex w-full items-end gap-density-xs rounded-lg border border-base bg-surface-base p-1',
       className
     )}
   >
@@ -205,7 +250,7 @@ const AssistantComposer = ({
       disabled={disabled}
       placeholder={placeholder}
       submitMode="enter"
-      className="max-h-64 min-h-16 flex-1 resize-none border-0 bg-transparent p-density-sm text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
+      className="max-h-64 min-h-20 flex-1 resize-none border-0 bg-transparent px-density-md py-density-md text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
     />
     <Tooltip slotContent="Clear chat thread">
       <Button
@@ -221,15 +266,15 @@ const AssistantComposer = ({
     </Tooltip>
     <ThreadPrimitive.If running>
       <ComposerPrimitive.Cancel asChild>
-        <Button aria-label="Stop" color="danger" size="small">
-          <Square />
+        <Button aria-label="Stop" color="danger" size="small" className="size-8 rounded-full p-0">
+          <Square size={14} />
         </Button>
       </ComposerPrimitive.Cancel>
     </ThreadPrimitive.If>
     <ThreadPrimitive.If running={false}>
       <ComposerPrimitive.Send asChild>
-        <Button aria-label="Submit" color="brand" size="small">
-          <Send />
+        <Button aria-label="Submit" color="brand" size="small" className="size-8 rounded-full p-0">
+          <ArrowUp size={16} />
         </Button>
       </ComposerPrimitive.Send>
     </ThreadPrimitive.If>
@@ -245,13 +290,35 @@ export const AssistantChatThread = ({
   emptyState,
   contentClassName,
   composerContainerClassName,
+  hideAssistantMessageActions,
+  toolCallPartComponent,
   viewportClassName,
   composerOverride,
 }: AssistantChatThreadProps) => {
   const { className: threadViewportClassName, ...threadViewportAttributes } =
     attributes?.ThreadViewport ?? {};
-  const AssistantMessageComponent = () => (
-    <AssistantMessage showRunningIndicator={showRunningIndicator} />
+  const AssistantMessageWithToolCallPart = useCallback(
+    () => (
+      <AssistantMessage
+        hideAssistantMessageActions={hideAssistantMessageActions}
+        showRunningIndicator={showRunningIndicator}
+        toolCallPartComponent={toolCallPartComponent}
+      />
+    ),
+    [hideAssistantMessageActions, showRunningIndicator, toolCallPartComponent]
+  );
+  const UserMessageWithToolCallPart = useCallback(
+    () => <UserMessage toolCallPartComponent={toolCallPartComponent} />,
+    [toolCallPartComponent]
+  );
+  const messageComponents = useMemo(
+    () => ({
+      AssistantMessage: AssistantMessageWithToolCallPart,
+      UserMessage: UserMessageWithToolCallPart,
+      UserEditComposer,
+      SystemMessage: AssistantMessageWithToolCallPart,
+    }),
+    [AssistantMessageWithToolCallPart, UserMessageWithToolCallPart]
   );
 
   return (
@@ -259,13 +326,15 @@ export const AssistantChatThread = ({
       <div className="relative min-h-0 flex-1">
         <ThreadPrimitive.Viewport
           {...threadViewportAttributes}
+          data-testid="assistant-chat-viewport"
           className={cn(
             'flex h-full min-h-0 flex-col overflow-y-auto',
+            CHAT_VIEWPORT_SCROLLBAR_CLASS,
             viewportClassName,
             threadViewportClassName
           )}
         >
-          <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
+          <Stack gap="density-sm" className={cn('min-h-full w-full', contentClassName)}>
             <ThreadPrimitive.Empty>
               <ChatEmptyState
                 className="h-full min-h-[250px] w-full"
@@ -273,21 +342,17 @@ export const AssistantChatThread = ({
                 slotSubheading={emptyState?.slotSubheading}
               />
             </ThreadPrimitive.Empty>
-            <ThreadPrimitive.Messages
-              components={{
-                AssistantMessage: AssistantMessageComponent,
-                UserMessage,
-                UserEditComposer,
-                SystemMessage: AssistantMessageComponent,
-              }}
-            />
+            <ThreadPrimitive.Messages components={messageComponents} />
           </Stack>
         </ThreadPrimitive.Viewport>
         <ThreadPrimitive.ScrollToBottom className="absolute bottom-density-sm left-1/2 z-10 -translate-x-1/2 rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
           Scroll to bottom
         </ThreadPrimitive.ScrollToBottom>
       </div>
-      <Flex className={cn('w-full', composerContainerClassName)}>
+      <Flex
+        className={cn('w-full pt-density-xl', composerContainerClassName)}
+        data-testid="assistant-chat-composer-container"
+      >
         {composerOverride ?? (
           <AssistantComposer disabled={disabled} placeholder={placeholder} onReset={onReset} />
         )}

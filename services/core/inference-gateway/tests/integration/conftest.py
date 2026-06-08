@@ -282,7 +282,7 @@ def controller_with_docker_and_igw(
     Yields:
         Tuple of (controller, model_cache, sdk, mock_nim_image, docker_test_context, async_sdk)
     """
-    from nmp.common.jobs.image import get_qualified_image as real_get_qualified_image
+    from nemo_platform_plugin.jobs.image import get_qualified_image as real_get_qualified_image
 
     def patched_get_qualified_image(name: str, tag=None, registry=None):
         if name in ["nmp-core", "nmp-api"]:

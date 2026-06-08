@@ -3,13 +3,13 @@
 
 Learn how to troubleshoot common issues with {{studio_short_name}}.
 
-## Datasets or Jobs Not Appearing in Studio
+## Filesets or Jobs Not Appearing in Studio
 
-If you do not see datasets or jobs that you created using the Python SDK or API, verify that you specified the `project` parameter in the creation or update API requests.
+If you do not see filesets or jobs that you created using the Python SDK or API, verify that you specified the `project` parameter in the creation or update API requests.
 
-Specify the `project` parameter when creating a dataset using the Python SDK or cURL:
+Specify the `project` parameter when creating a fileset using the Python SDK or cURL:
 
-*Creating a Dataset Using the Python SDK and Associating with a Project:*
+*Creating a Fileset Using the Python SDK and Associating with a Project:*
 
 ```python
 dataset = client.datasets.create(

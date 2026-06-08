@@ -71,7 +71,10 @@ class ModelsController(Controller):
             backend_registry=backend_registry,
             controller_config=models_config.controller,
         )
-        self._provider_reconciler = ModelProviderReconciler(models_sdk=self._models_sdk)
+        self._provider_reconciler = ModelProviderReconciler(
+            models_sdk=self._models_sdk,
+            controller_config=models_config.controller,
+        )
 
         logger.info("Models Controller initialized")
         logger.info(f"Available backends: {', '.join(self._backend_registry.list_backends())}")

@@ -56,7 +56,16 @@ describe('DashboardLandingRoute', () => {
     renderRoute();
 
     expect(await screen.findByText('What would you like to do?')).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Message Claude' })).toBeInTheDocument();
+    const composer = screen.getByRole('textbox', { name: 'Message Claude' });
+    expect(composer).toBeInTheDocument();
+    expect(screen.getByTestId('dashboard-landing-composer')).toHaveClass('rounded-lg');
+    expect(screen.getByTestId('dashboard-landing-composer')).not.toHaveClass('rounded-2xl');
+    expect(composer).toHaveClass(
+      '[&&]:focus:outline-none',
+      '[&&]:focus-visible:outline-none',
+      '[&&]:focus-visible:ring-0'
+    );
+    expect(composer).not.toHaveClass('[&&]:focus-visible:outline-accent');
     expect(screen.getByRole('button', { name: /Explore repo/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Draft a change/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Review recent work/ })).toBeInTheDocument();
@@ -99,5 +108,31 @@ describe('DashboardLandingRoute', () => {
     expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
       `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
     );
+  });
+
+  it('submits the landing composer when Enter is pressed', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    await user.type(await screen.findByRole('textbox', { name: 'Message Claude' }), 'Check repo');
+    await user.keyboard('{Enter}');
+
+    expect(await screen.findByTestId(CHAT_ROUTE_TEST_ID)).toHaveTextContent(
+      `${generatePath(ROUTES.workspace.claudeCodeChat, { workspace })}|Check repo`
+    );
+  });
+
+  it('keeps Shift Enter as a new line in the landing composer', async () => {
+    const user = userEvent.setup();
+    renderRoute();
+
+    const composer = await screen.findByRole('textbox', { name: 'Message Claude' });
+
+    await user.type(composer, 'Line one');
+    await user.keyboard('{Shift>}{Enter}{/Shift}');
+    await user.type(composer, 'Line two');
+
+    expect(screen.queryByTestId(CHAT_ROUTE_TEST_ID)).not.toBeInTheDocument();
+    expect(composer).toHaveValue('Line one\nLine two');
   });
 });
