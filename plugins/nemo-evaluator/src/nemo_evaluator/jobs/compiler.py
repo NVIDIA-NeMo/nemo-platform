@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from nemo_evaluator.jobs.evaluate import EvaluateSpec
 from nemo_evaluator_sdk.values import Agent, Model, RunConfig, RunConfigOnline, RunConfigOnlineModel
-from nemo_platform_plugin.config import get_qualified_image
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
     CPUExecutionProviderSpec,

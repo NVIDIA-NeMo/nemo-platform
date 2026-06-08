@@ -654,49 +654,6 @@ def get_common_service_config() -> CommonServiceConfig:
     return Configuration.get_service_config(CommonServiceConfig)
 
 
-def get_qualified_image(name: str, tag: str | None = None, registry: str | None = None) -> str:
-    """Get a fully qualified Docker image name.
-
-    Builds an image reference in the format: ``{registry}/{name}:{tag}``.
-    Falls back to :attr:`NemoPlatformConfig.image_registry` /
-    :attr:`NemoPlatformConfig.image_tag` when overrides are not provided.
-
-    Args:
-        name: The image name (e.g., ``'nmp-api'``, ``'nmp-cpu-tasks'``).
-        tag: Optional tag override.
-        registry: Optional registry override.
-
-    Returns:
-        Fully qualified image name (e.g., ``'my-registry/nmp-api:local'``).
-    """
-    config = get_nemo_platform_config()
-    effective_registry = registry if registry is not None else config.image_registry
-    effective_tag = tag if tag is not None else config.image_tag
-    return f"{effective_registry}/{name}:{effective_tag}"
-
-
-def image_builder(registry: str | None = None, tag: str | None = None):
-    """Create a function that builds qualified image names with preset registry and tag.
-
-    Useful when you need to build multiple image names with the same registry/tag.
-
-    Args:
-        registry: Optional registry override.
-        tag: Optional tag override.
-
-    Returns:
-        A function that takes an image name and returns the fully qualified image.
-    """
-    config = get_nemo_platform_config()
-    effective_registry = registry if registry is not None else config.image_registry
-    effective_tag = tag if tag is not None else config.image_tag
-
-    def _build(name: str) -> str:
-        return f"{effective_registry}/{name}:{effective_tag}"
-
-    return _build
-
-
 __all__ = [
     "CommonServiceConfig",
     "Configuration",
@@ -715,10 +672,8 @@ __all__ = [
     "get_nemo_config",
     "get_nemo_platform_config",
     "get_platform_config",
-    "get_qualified_image",
     "get_service_config",
     "get_service_config_prefix",
-    "image_builder",
     "internal_field",
     "nmp_user_data_dir",
     "set_nemo_config_override",

@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nemo_platform.filesets import FilesetPathError, parse_fileset_ref
-from nemo_platform_plugin.config import get_qualified_image
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nemo_platform_plugin.entities import EntityClient
 from nemo_platform_plugin.jobs.api_factory import (
     ContainerSpec,
