@@ -2131,6 +2131,13 @@ paths:
               allOf:
               - $ref: '#/components/schemas/DatetimeFilter'
               description: Filter benchmarks by last update date range.
+            labels:
+              description: Filter by labels. Address an individual label as a sub-path,
+                e.g. filter[labels.eval_category]=agentic.
+              title: Labels
+              additionalProperties:
+                type: string
+              type: object
           title: BenchmarksListFilter
           type: object
         description: 'Filter benchmarks by name, description, dataset, project, and
@@ -3303,6 +3310,13 @@ paths:
               allOf:
               - $ref: '#/components/schemas/DatetimeFilter'
               description: Filter metrics by last update date range.
+            labels:
+              description: Filter by labels. Address an individual label as a sub-path,
+                e.g. filter[labels.team]=eval.
+              title: Labels
+              additionalProperties:
+                type: string
+              type: object
           title: MetricsListFilter
           type: object
         description: 'Filter metrics by name, description, type, project, and dates.
