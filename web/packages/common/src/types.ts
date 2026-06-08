@@ -26,6 +26,7 @@ export interface UseControllerComponentProps {
 export enum FileFormat {
   JSON = 'json',
   JSONL = 'jsonl',
+  CSV = 'csv',
 }
 
 /**

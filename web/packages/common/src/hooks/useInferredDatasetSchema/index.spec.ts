@@ -61,12 +61,35 @@ describe('useInferredDatasetSchema', () => {
 
   it('skips files with unsupported extensions', async () => {
     const supported = makeJsonlFile('data.jsonl', [{ a: 1 }]);
-    const csv = new File(['col\n1\n'], 'data.csv', { type: 'text/csv' });
-    const { result } = renderHook(() => useInferredDatasetSchema([supported, csv]));
+    const parquet = new File(['\x50\x41\x52\x31'], 'data.parquet', {
+      type: 'application/octet-stream',
+    });
+    const { result } = renderHook(() => useInferredDatasetSchema([supported, parquet]));
 
     await waitFor(() => expect(result.current.isInferring).toBe(false));
     const meta = result.current.metadata!;
     // Only the .jsonl was inferred -> single inline schema.
+    expect(meta.schema_defs).toEqual({});
+    expect(meta.schemas_by_path).toEqual({});
+  });
+
+  it('infers a JSON Schema from the first row of a CSV file', async () => {
+    const csvContent = 'name,score,active\nalice,42,true\nbob,7,false\n';
+    const file = new File([csvContent], 'data.csv', { type: 'text/csv' });
+    const { result } = renderHook(() => useInferredDatasetSchema([file]));
+
+    await waitFor(() => expect(result.current.isInferring).toBe(false));
+    expect(result.current.metadata).not.toBeNull();
+    const meta = result.current.metadata!;
+    // CSV columns all parse as strings via papaparse header mode.
+    expect(meta.schema).toMatchObject({
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        score: { type: 'string' },
+        active: { type: 'string' },
+      },
+    });
     expect(meta.schema_defs).toEqual({});
     expect(meta.schemas_by_path).toEqual({});
   });

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import Papa from 'papaparse';
+
 import { FileFormatType } from '../types';
 
 /**
@@ -109,6 +111,12 @@ export async function getFileRowCount(file: File, format: FileFormatType): Promi
         .split('\n')
         .filter((line) => line.length > 0);
       return lines.length;
+    } else if (format === 'csv') {
+      const result = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+      });
+      return result.data.length;
     } else {
       const data = JSON.parse(text);
       return Array.isArray(data) ? data.length : 1;
@@ -143,6 +151,12 @@ export async function getRowAtIndex(
         return JSON.parse(lines[index]);
       }
       return null;
+    } else if (format === 'csv') {
+      const result = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+      });
+      return (result.data[index] as Record<string, unknown>) ?? null;
     } else {
       const data = JSON.parse(text);
       if (Array.isArray(data)) {
