@@ -15,12 +15,12 @@ from nemo_platform_plugin.jobs.api_factory import (
     ResourcesRequestsSpec,
     ResourcesSpec,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.api.common import Page
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
 from nmp.common.api.utils import generate_openapi_extra_params
 from nmp.common.auth import AuthClient, get_auth_client
 from nmp.common.entities.client import EntityNotFoundError, EntityValidationError
-from nmp.common.jobs.image import get_qualified_image
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.service.dependencies import get_sdk_client
 from nmp.core.models.api.dependencies import get_adapter_entity_service, get_model_entity_service

@@ -15,9 +15,9 @@ from fastapi.testclient import TestClient
 from nemo_evaluator_sdk.values import AggregatedMetricResult
 from nemo_evaluator_sdk.values.metrics import default_judge_prompt_template_chat
 from nemo_platform_plugin.jobs.api_factory import _validate_and_resolve_job_output
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.entities import EntityClient
 from nmp.common.jobs.constants import EPHEMERAL_TASK_STORAGE_PATH_ENVVAR, PERSISTENT_JOB_STORAGE_PATH_ENVVAR
-from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.api.v2.common.query_params import AggregateFieldNameList
 from nmp.evaluator.api.v2.metrics.endpoints import (
     create_metric,
