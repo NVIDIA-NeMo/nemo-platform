@@ -297,9 +297,8 @@ Remove a stopped instance directory and its logs.
 The scope must match a row from ``nemo services ls --all``.  Running
 instances are refused; stop them first.
 
-Unlike ``run``/``start``, ``--instance`` on ``rm`` does not derive a scope
-from cwd and port — pass the exact scope string from ``ls --all``, either
-as the ``SCOPE`` positional or via ``--instance``.
+Unlike ``run``/``start``, ``--instance`` here does not derive a scope from
+cwd and port — it is an alternate spelling for the ``SCOPE`` argument.
 
 **Examples:**
 
@@ -320,7 +319,7 @@ nemo services rm [OPTIONS] [SCOPE]
 
 **Options:**
 
-* `--instance`: Scope from ``nemo services ls --all`` (same value as the ``SCOPE`` positional).
+* `--instance`: Scope from 'nemo services ls --all' (same value as the SCOPE positional).
 
 **Help:**
 

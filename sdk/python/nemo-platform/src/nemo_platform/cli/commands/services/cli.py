@@ -714,10 +714,7 @@ def ls_services(
         stopped = [info for info in visible if not info.alive]
         if stopped:
             noun = "stopped instance directory" if len(stopped) == 1 else "stopped instance directories"
-            typer.echo(
-                f"\n{len(stopped)} {noun}. "
-                "Remove with: nemo services prune  (or: nemo services rm <scope>)"
-            )
+            typer.echo(f"\n{len(stopped)} {noun}. Remove with: nemo services prune  (or: nemo services rm <scope>)")
         return
 
     running = [info for info in instances if info.alive]
