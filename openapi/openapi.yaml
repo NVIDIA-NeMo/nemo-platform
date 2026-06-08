@@ -1278,6 +1278,364 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/entities/v2/workspaces/{workspace}/prompts:
+    post:
+      tags:
+      - Prompts
+      summary: Create a prompt
+      description: "Create a new prompt with its first version.\n\nThe prompt entity\
+        \ stores metadata (description, tags, version_count).\nA `prompt_version`\
+        \ child entity is created atomically for the initial template.\n\nExample:\n\
+        ```\nPOST /apis/entities/v2/workspaces/default/prompts\n{\n    \"name\": \"\
+        rag-system-prompt\",\n    \"description\": \"System prompt for RAG pipeline\"\
+        ,\n    \"tags\": [\"rag\", \"system\"],\n    \"template\": \"Answer in {{language}}\
+        \ using: {{context}}\",\n    \"change_note\": \"Initial version\"\n}\n```"
+      operationId: create_prompt_apis_entities_v2_workspaces__workspace__prompts_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Prompts
+      summary: List prompts
+      description: "List prompts in a workspace with optional filtering and sorting.\n\
+        \n**Sort** \u2014 prefix field name with `-` for descending order:\n- `-created_at`\
+        \ (default), `created_at`, `-updated_at`, `updated_at`, `name`, `-name`\n\n\
+        **Filter** \u2014 supports three syntaxes:\n\nText: `?filter=name:\"rag\"\
+        ` or `?filter=name~\"rag\" AND project:\"my-project\"`\n\nJSON: `?filter={\"\
+        name\":{\"$like\":\"rag%\"},\"project\":\"my-project\"}`\n\nBracket: `?filter[name][$like]=rag&filter[project]=my-project`\n\
+        \nAvailable filter operators: `$eq`, `$like`, `$lt`, `$lte`, `$gt`, `$gte`,\
+        \ `$in`, `$nin`, `$and`, `$or`, `$not`"
+      operationId: list_prompts_apis_entities_v2_workspaces__workspace__prompts_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Page Size
+      - name: sort
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Sort field. Prefix with - for descending (e.g. -created_at,
+            name, -name).
+          default: -created_at
+          title: Sort
+        description: Sort field. Prefix with - for descending (e.g. -created_at, name,
+          -name).
+      - name: filter
+        in: query
+        required: false
+        schema:
+          description: 'Query filter expression. Supports text and JSON syntaxes:
+
+            - Text: name:"value" AND status>500 with operators : ~ > >= < <= IN NOT
+            IN AND OR and negation prefix -
+
+            - Object (JSON): {"name":{"$like":"value"}} with operators $eq, $like,
+            $lt, $lte, $gt, $gte, $in, $nin, $and, $or, $not
+
+            - Bracket notation: ?filter[name][$like]=value
+
+            - Relationship traversal: ?filter[relationship][$exists]=true or ?filter[relationship][field]=value'
+          title: Filter
+          type: string
+        description: 'Query filter expression. Supports text and JSON syntaxes:
+
+          - Text: name:"value" AND status>500 with operators : ~ > >= < <= IN NOT
+          IN AND OR and negation prefix -
+
+          - Object (JSON): {"name":{"$like":"value"}} with operators $eq, $like, $lt,
+          $lte, $gt, $gte, $in, $nin, $and, $or, $not
+
+          - Bracket notation: ?filter[name][$like]=value
+
+          - Relationship traversal: ?filter[relationship][$exists]=true or ?filter[relationship][field]=value'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/entities/v2/workspaces/{workspace}/prompts/{name}:
+    get:
+      tags:
+      - Prompts
+      summary: Get prompt by name
+      description: Returns the prompt with the current version inlined.
+      operationId: get_prompt_apis_entities_v2_workspaces__workspace__prompts__name__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    put:
+      tags:
+      - Prompts
+      summary: Update prompt metadata
+      description: Update a prompt's description, tags, or project. Does not create
+        a new version.
+      operationId: update_prompt_apis_entities_v2_workspaces__workspace__prompts__name__put
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptUpdate'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Prompt'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    delete:
+      tags:
+      - Prompts
+      summary: Delete prompt
+      description: Delete a prompt and all its versions. Child versions are removed
+        via CASCADE.
+      operationId: delete_prompt_apis_entities_v2_workspaces__workspace__prompts__name__delete
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeleteResponse'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/entities/v2/workspaces/{workspace}/prompts/{name}/versions:
+    post:
+      tags:
+      - Prompts
+      summary: Create a new prompt version
+      operationId: create_prompt_version_apis_entities_v2_workspaces__workspace__prompts__name__versions_post
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromptVersionCreate'
+      responses:
+        '201':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptVersion'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+    get:
+      tags:
+      - Prompts
+      summary: List all versions of a prompt
+      description: Returns all versions sorted by version_number ascending (v1 first).
+      operationId: list_prompt_versions_apis_entities_v2_workspaces__workspace__prompts__name__versions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+          title: Page
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          default: 100
+          title: Page Size
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptVersionsPage'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /apis/entities/v2/workspaces/{workspace}/prompts/{name}/versions/{version_number}:
+    get:
+      tags:
+      - Prompts
+      summary: Get a specific prompt version
+      operationId: get_prompt_version_apis_entities_v2_workspaces__workspace__prompts__name__versions__version_number__get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: version_number
+        in: path
+        required: true
+        schema:
+          type: integer
+          title: Version Number
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptVersion'
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/evaluation/v2/workspaces/{workspace}/benchmark-job-results:
     get:
       tags:
@@ -23463,6 +23821,112 @@ components:
       required:
       - data
       title: ProjectsPage
+    Prompt:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for the prompt entity.
+        name:
+          type: string
+          title: Name
+          description: Unique name of the prompt within its workspace.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace that owns this prompt.
+        project:
+          title: Project
+          description: Project associated with this prompt, if any.
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the prompt's purpose.
+          type: string
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Free-form string tags attached to this prompt.
+          default: []
+        version_count:
+          type: integer
+          title: Version Count
+          description: Total number of versions created for this prompt.
+        current_version:
+          allOf:
+          - $ref: '#/components/schemas/PromptVersion'
+          description: The most recently created version, or null if none exist.
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: ISO 8601 timestamp when the prompt was created.
+        created_by:
+          title: Created By
+          description: Identity that created the prompt.
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: ISO 8601 timestamp of the last metadata update.
+        updated_by:
+          title: Updated By
+          description: Identity that last updated the prompt metadata.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - workspace
+      - version_count
+      - created_at
+      - updated_at
+      title: Prompt
+    PromptCreate:
+      properties:
+        name:
+          title: Name
+          description: "Prompt name (optional \u2014 auto-generated if not provided).\
+            \ Name must start with a lowercase letter, be 2-63 characters, and contain\
+            \ only lowercase letters, digits, and hyphens (no consecutive hyphens,\
+            \ cannot end with a hyphen)."
+          type: string
+          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
+        project:
+          title: Project
+          description: Optional project to associate with this prompt.
+          type: string
+        description:
+          title: Description
+          description: Human-readable description of the prompt's purpose.
+          type: string
+        tags:
+          items:
+            type: string
+          type: array
+          title: Tags
+          description: Free-form string tags for filtering and organisation.
+          default: []
+        template:
+          type: string
+          title: Template
+          description: Prompt template text. Use {{variable}} for placeholders.
+        model_params:
+          allOf:
+          - $ref: '#/components/schemas/PromptModelParams'
+          description: Optional default model parameters for this prompt.
+        change_note:
+          title: Change Note
+          description: Note describing the initial version.
+          type: string
+      type: object
+      required:
+      - template
+      title: PromptCreate
     PromptData:
       properties:
         system_prompt:
@@ -23485,6 +23949,183 @@ components:
       type: object
       title: PromptData
       description: Configuration for prompt engineering.
+    PromptModelParams:
+      properties:
+        temperature:
+          title: Temperature
+          description: "Sampling temperature (0\u20132). Higher values produce more\
+            \ random output."
+          type: number
+        max_tokens:
+          title: Max Tokens
+          description: Maximum number of tokens to generate.
+          type: integer
+        top_p:
+          title: Top P
+          description: "Nucleus sampling probability mass (0\u20131)."
+          type: number
+      additionalProperties: false
+      type: object
+      title: PromptModelParams
+    PromptUpdate:
+      properties:
+        description:
+          title: Description
+          description: Updated description for the prompt.
+          type: string
+        tags:
+          title: Tags
+          description: Replacement tag list. Pass an empty list to clear all tags.
+          items:
+            type: string
+          type: array
+        project:
+          title: Project
+          description: Updated project association. Pass null to disassociate.
+          type: string
+      additionalProperties: false
+      type: object
+      title: PromptUpdate
+    PromptVersion:
+      properties:
+        id:
+          type: string
+          title: Id
+          description: Unique identifier for this prompt version entity.
+        name:
+          type: string
+          title: Name
+          description: Entity name of this version (e.g. my-prompt-v2).
+        prompt_id:
+          type: string
+          title: Prompt Id
+          description: ID of the parent prompt entity.
+        prompt_name:
+          type: string
+          title: Prompt Name
+          description: Name of the parent prompt.
+        workspace:
+          type: string
+          title: Workspace
+          description: Workspace that owns this prompt version.
+        version_number:
+          type: integer
+          title: Version Number
+          description: Sequential version number, starting at 1.
+        template:
+          type: string
+          title: Template
+          description: Full prompt template text for this version.
+        variables:
+          items:
+            type: string
+          type: array
+          title: Variables
+          description: Ordered list of unique {{variable}} placeholders extracted
+            from the template.
+        model_params:
+          allOf:
+          - $ref: '#/components/schemas/PromptModelParams'
+          description: Model parameter overrides for this version, if any.
+        change_note:
+          title: Change Note
+          description: Human-readable note describing what changed in this version.
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          title: Created At
+          description: ISO 8601 timestamp when this version was created.
+        created_by:
+          title: Created By
+          description: Identity that created this version.
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+          title: Updated At
+          description: ISO 8601 timestamp of the last update to this version entity.
+      additionalProperties: false
+      type: object
+      required:
+      - id
+      - name
+      - prompt_id
+      - prompt_name
+      - workspace
+      - version_number
+      - template
+      - variables
+      - created_at
+      - updated_at
+      title: PromptVersion
+    PromptVersionCreate:
+      properties:
+        template:
+          type: string
+          title: Template
+          description: Prompt template text. Use {{variable}} for placeholders.
+        model_params:
+          allOf:
+          - $ref: '#/components/schemas/PromptModelParams'
+          description: Optional model parameter overrides for this version.
+        change_note:
+          title: Change Note
+          description: What changed in this version.
+          type: string
+      additionalProperties: false
+      type: object
+      required:
+      - template
+      title: PromptVersionCreate
+    PromptVersionsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/PromptVersion'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: PromptVersionsPage
+    PromptsPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/Prompt'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: PromptsPage
     ROUGEMetric:
       properties:
         name:

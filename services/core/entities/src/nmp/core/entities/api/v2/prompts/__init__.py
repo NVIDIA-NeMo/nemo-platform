@@ -1,8 +1,8 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Entity Store API v2."""
+"""Prompt management API v2."""
 
-from . import entities, prompts, workspaces
+from .endpoints import router
 
-__all__ = ["entities", "prompts", "workspaces"]
+__all__ = ["router"]

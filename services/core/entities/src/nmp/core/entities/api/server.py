@@ -9,6 +9,7 @@ from fastapi.exceptions import RequestValidationError
 from nmp.common.version import platform_api_version
 from nmp.core.entities.api.v2.entities import router as entities_router
 from nmp.core.entities.api.v2.projects import router as projects_router
+from nmp.core.entities.api.v2.prompts import router as prompts_router
 from nmp.core.entities.api.v2.workspaces import router as workspaces_router
 from starlette import status
 from starlette.responses import JSONResponse
@@ -17,11 +18,13 @@ logger = logging.getLogger(__name__)
 
 ENTITIES_ROUTER_NAME = "Entities"
 PROJECTS_ROUTER_NAME = "Projects"
+PROMPTS_ROUTER_NAME = "Prompts"
 WORKSPACES_ROUTER_NAME = "Workspaces"
 
 tags_metadata = [
     {"name": ENTITIES_ROUTER_NAME, "description": "Operations related to entities."},
     {"name": PROJECTS_ROUTER_NAME, "description": "Operations related to projects."},
+    {"name": PROMPTS_ROUTER_NAME, "description": "Operations related to prompts and prompt versions."},
     {"name": WORKSPACES_ROUTER_NAME, "description": "Operations related to workspaces."},
 ]
 
@@ -53,4 +56,5 @@ async def validation_error_exception_handler(request: Request, ex: RequestValida
 
 app.include_router(entities_router, tags=[ENTITIES_ROUTER_NAME])
 app.include_router(projects_router, tags=[PROJECTS_ROUTER_NAME])
+app.include_router(prompts_router, tags=[PROMPTS_ROUTER_NAME])
 app.include_router(workspaces_router, tags=[WORKSPACES_ROUTER_NAME])

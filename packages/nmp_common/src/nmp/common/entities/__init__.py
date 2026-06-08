@@ -51,6 +51,11 @@ from nmp.common.entities.values import (
     Value,
     map_entity_field,
 )
+from nmp.common.entities.versioning import (
+    EntityVersionMeta,
+    EntityVersionRef,
+    VersionedEntityMeta,
+)
 
 __all__ = [
     # Unified client (recommended - primary implementation)
@@ -85,4 +90,8 @@ __all__ = [
     "map_entity_field",
     "normalize_filter_list",
     "normalize_search_list",
+    # Versioning
+    "EntityVersionMeta",
+    "EntityVersionRef",
+    "VersionedEntityMeta",
 ]

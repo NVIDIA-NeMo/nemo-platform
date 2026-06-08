@@ -38,6 +38,7 @@ class EntitiesService(Service[EntitiesConfig]):
         """Return routers for the entities service."""
         from nmp.core.entities.api.v2.entities import router as entities_router
         from nmp.core.entities.api.v2.projects import router as projects_router
+        from nmp.core.entities.api.v2.prompts import router as prompts_router
         from nmp.core.entities.api.v2.workspaces import router as workspaces_router
 
         return [
@@ -50,6 +51,11 @@ class EntitiesService(Service[EntitiesConfig]):
                 projects_router,
                 tag="Entity Store",
                 description="Operations related to projects",
+            ),
+            RouterConfig(
+                prompts_router,
+                tag="Prompts",
+                description="Operations related to prompts and prompt versions",
             ),
             RouterConfig(
                 workspaces_router,
