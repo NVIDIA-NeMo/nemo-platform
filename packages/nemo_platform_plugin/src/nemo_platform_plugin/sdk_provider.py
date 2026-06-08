@@ -262,16 +262,16 @@ def _resolve_provider() -> SDKProvider:
     if _cached_provider is not None:
         return _cached_provider
 
-    # Scan entry-points.  Only the platform (nmp-common) should register a
-    # provider — multiple registrations indicate a packaging/config error.
-    eps = list(entry_points(group="nemo.sdk_provider"))
+    # Scan entry-points.  nmp-common registers a provider; the nemo-platform
+    # bundle inherits the same entry-point, so deduplicate by name.
+    eps = {ep.name: ep for ep in entry_points(group="nemo.sdk_provider")}
     if len(eps) > 1:
-        names = ", ".join(ep.name for ep in eps)
+        names = ", ".join(eps)
         raise RuntimeError(
             f"Multiple SDK providers registered under 'nemo.sdk_provider': {names}. "
             "Only the platform (nmp-common) should register a provider."
         )
-    for ep in eps:
+    for ep in eps.values():
         try:
             obj = ep.load()
             if isinstance(obj, type):
