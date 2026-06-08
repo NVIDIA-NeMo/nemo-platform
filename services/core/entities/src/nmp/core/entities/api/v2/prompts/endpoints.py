@@ -311,8 +311,12 @@ async def update_prompt(
     if prompt_update.tags is not None:
         existing_data["tags"] = prompt_update.tags
 
+    # Distinguish "project omitted" (leave untouched — pass None so the repository
+    # treats it as no-change) from "project explicitly null" (disassociate via
+    # clear_project). Echoing the previously-read project back on omission would
+    # clobber a concurrent update with stale data.
     project_in_payload = "project" in prompt_update.model_fields_set
-    new_project = prompt_update.project if project_in_payload else prompt_entity.project
+    new_project = prompt_update.project if project_in_payload else None
 
     try:
         updated_entity = await repository.update_entity_by_name(

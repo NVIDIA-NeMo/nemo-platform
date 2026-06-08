@@ -246,13 +246,17 @@ async def create_entity(
         # rely on the 409 response and intentionally swallow ConflictError.  Logging those
         # at WARNING drowns the platform log in repetitive noise every reconcile cycle, so
         # demote the expected case to DEBUG.  Genuine integrity errors stay at WARNING below.
+        # Strip CR/LF from the user-controlled path segments before logging to
+        # prevent forged log entries (CodeQL log-injection). The exception text is
+        # omitted because it embeds these same values.
         safe_workspace = workspace.replace("\r", "").replace("\n", "")
+        safe_name = name.replace("\r", "").replace("\n", "")
+        safe_entity_type = entity_type.replace("\r", "").replace("\n", "")
         logger.debug(
-            "Entity %s/%s of type %s already exists (idempotent create): %s",
+            "Entity %s/%s of type %s already exists (idempotent create)",
             safe_workspace,
-            name,
-            entity_type,
-            e,
+            safe_name,
+            safe_entity_type,
         )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

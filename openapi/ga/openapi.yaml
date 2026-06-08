@@ -1516,7 +1516,7 @@ paths:
       tags:
       - Prompts
       summary: Create a new prompt version
-      operationId: create_prompt_version_apis_entities_v2_workspaces__workspace__prompts__name__versions_post
+      operationId: create_version_apis_entities_v2_workspaces__workspace__prompts__name__versions_post
       parameters:
       - name: workspace
         in: path
@@ -1552,9 +1552,9 @@ paths:
     get:
       tags:
       - Prompts
-      summary: List all versions of a prompt
-      description: Returns all versions sorted by version_number ascending (v1 first).
-      operationId: list_prompt_versions_apis_entities_v2_workspaces__workspace__prompts__name__versions_get
+      summary: List all prompt versions
+      description: Returns all versions sorted by creation time (oldest first).
+      operationId: list_versions_apis_entities_v2_workspaces__workspace__prompts__name__versions_get
       parameters:
       - name: workspace
         in: path
@@ -1603,7 +1603,7 @@ paths:
       tags:
       - Prompts
       summary: Get a specific prompt version
-      operationId: get_prompt_version_apis_entities_v2_workspaces__workspace__prompts__name__versions__version_number__get
+      operationId: get_version_apis_entities_v2_workspaces__workspace__prompts__name__versions__version_number__get
       parameters:
       - name: workspace
         in: path
@@ -1622,7 +1622,10 @@ paths:
         required: true
         schema:
           type: integer
+          minimum: 1
+          description: Sequential version number, starting at 1.
           title: Version Number
+        description: Sequential version number, starting at 1.
       responses:
         '200':
           description: Successful Response
@@ -23923,6 +23926,7 @@ components:
           title: Change Note
           description: Note describing the initial version.
           type: string
+      additionalProperties: false
       type: object
       required:
       - template
@@ -23956,6 +23960,8 @@ components:
           description: "Sampling temperature (0\u20132). Higher values produce more\
             \ random output."
           type: number
+          maximum: 2.0
+          minimum: 0.0
         max_tokens:
           title: Max Tokens
           description: Maximum number of tokens to generate.
@@ -23964,6 +23970,8 @@ components:
           title: Top P
           description: "Nucleus sampling probability mass (0\u20131)."
           type: number
+          maximum: 1.0
+          minimum: 0.0
       additionalProperties: false
       type: object
       title: PromptModelParams
@@ -24010,6 +24018,7 @@ components:
           description: Workspace that owns this prompt version.
         version_number:
           type: integer
+          minimum: 1.0
           title: Version Number
           description: Sequential version number, starting at 1.
         template:

@@ -35,7 +35,7 @@ Concurrent creation is protected by ``expected_db_version`` (optimistic lock).
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Path, Query, status
 from nemo_platform_plugin.filter_ops import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.common import Page, PaginationData
 from nmp.core.entities.api.dependencies import EntityRepository
@@ -185,14 +185,9 @@ def make_versioning_router(
     async def get_version(
         workspace: str,
         name: str,
-        version_number: int,
         repository: EntityRepository,
+        version_number: int = Path(..., ge=1, description="Sequential version number, starting at 1."),
     ):
-        if version_number < 1:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-                detail="version_number must be >= 1",
-            )
         parent = await _get_parent_or_404(repository, workspace, name)
         # Resolve by (parent, version_number) rather than reconstructing the child
         # name from the parent's name. The version_number is the stable identity;

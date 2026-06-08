@@ -35,7 +35,6 @@ class EntityRepositoryInterface(ABC):
         need not depend on the session maker or backend-specific transaction APIs.
         """
         raise NotImplementedError
-        ...
 
     @abstractmethod
     async def create_entity(
