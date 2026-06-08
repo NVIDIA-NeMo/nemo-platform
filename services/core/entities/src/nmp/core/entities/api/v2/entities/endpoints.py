@@ -246,9 +246,10 @@ async def create_entity(
         # rely on the 409 response and intentionally swallow ConflictError.  Logging those
         # at WARNING drowns the platform log in repetitive noise every reconcile cycle, so
         # demote the expected case to DEBUG.  Genuine integrity errors stay at WARNING below.
+        safe_workspace = workspace.replace("\r", "").replace("\n", "")
         logger.debug(
             "Entity %s/%s of type %s already exists (idempotent create): %s",
-            workspace,
+            safe_workspace,
             name,
             entity_type,
             e,
