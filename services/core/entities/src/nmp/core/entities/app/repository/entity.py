@@ -34,6 +34,7 @@ class EntityRepositoryInterface(ABC):
         This keeps transaction lifecycle ownership inside the repository so callers
         need not depend on the session maker or backend-specific transaction APIs.
         """
+        raise NotImplementedError
         ...
 
     @abstractmethod
