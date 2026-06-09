@@ -9,6 +9,7 @@ from typing import Protocol, runtime_checkable
 
 from nemo_evaluator_sdk.resolver_protocols import ModelResolver, SecretResolver
 from nemo_evaluator_sdk.values.common import SecretRef
+from nemo_evaluator_sdk.values.evidence import CandidateEvidence, EvidenceDescriptor, LocalFilesystemEvidence
 from nemo_evaluator_sdk.values.models import ModelRef
 from nemo_evaluator_sdk.values.protocol import (
     BooleanValue,
@@ -28,12 +29,15 @@ from nemo_evaluator_sdk.values.protocol import (
 
 __all__ = [
     "BooleanValue",
+    "CandidateEvidence",
     "CandidateOutput",
     "ContinuousScore",
     "CorpusMetric",
     "DatasetRow",
     "DiscreteScore",
+    "EvidenceDescriptor",
     "Label",
+    "LocalFilesystemEvidence",
     "Metric",
     "MetricDescriptor",
     "MetricInput",

@@ -285,7 +285,29 @@ def _process_online_response(
     for hook in postprocess_hooks or ():
         processed_response = hook.postprocess(processed_response, id=str(index))
     output_text = inference.process_output(processed_response, hooks=[], id=str(index))
+    if output_text is None:
+        output_text = _extract_reasoning_content(processed_response)
     return processed_response, output_text
+
+
+def _extract_reasoning_content(response: dict[str, Any]) -> str | None:
+    """Return reasoning text when a chat model emitted no final content."""
+    choices = response.get("choices")
+    if not isinstance(choices, list) or not choices:
+        return None
+    first_choice = choices[0]
+    if not isinstance(first_choice, dict):
+        return None
+    message = first_choice.get("message")
+    if not isinstance(message, dict):
+        return None
+    reasoning_content = message.get("reasoning_content")
+    if isinstance(reasoning_content, str):
+        return reasoning_content
+    reasoning = message.get("reasoning")
+    if isinstance(reasoning, str):
+        return reasoning
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -389,7 +411,7 @@ async def generate_online_sample(
     )
 
     sample: dict[str, Any] = {}
-    if output_text:
+    if output_text is not None:
         sample["output_text"] = output_text
     if processed_response:
         sample["response"] = processed_response
