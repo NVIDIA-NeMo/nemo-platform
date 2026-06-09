@@ -29,10 +29,7 @@ def test_automodel_image_registry_override(monkeypatch):
         AutomodelConfig(image_registry="my-registry/other-registry"),
     )
 
-    assert (
-        get_automodel_qualified_image(TASKS_IMAGE_NAME)
-        == "my-registry/other-registry/nmp-automodel-tasks:local"
-    )
+    assert get_automodel_qualified_image(TASKS_IMAGE_NAME) == "my-registry/other-registry/nmp-automodel-tasks:local"
 
 
 def test_automodel_full_image_override(monkeypatch):
