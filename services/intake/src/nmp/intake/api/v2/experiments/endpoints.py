@@ -28,16 +28,28 @@ from nmp.intake.api.v2.experiments.schemas import (
     ExperimentGroupResponse,
     ExperimentRequest,
     ExperimentResponse,
+    ExperimentSessionFilter,
+    ExperimentSessionResponse,
 )
 from nmp.intake.entities.experiments import Experiment, ExperimentGroup
 from nmp.intake.spans.api.dependencies import require_workspace_access, validate_list_query_params
+from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
+from nmp.intake.spans.domain import SpanStatus
 from nmp.intake.spans.experiment_rollup_repository import (
     ExperimentRollup,
     ExperimentRollupRepository,
     ScoreRollup,
 )
+from nmp.intake.spans.experiment_session_repository import ExperimentSessionRepository
+from nmp.intake.spans.storage import make_pagination
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_log(value: str) -> str:
+    return value.replace("\r", "").replace("\n", "")
+
+
 router = APIRouter(dependencies=[Depends(require_workspace_access)])
 
 GROUPS_TAG = "Experiment Groups"
@@ -49,24 +61,34 @@ EntityT = TypeVar("EntityT", Experiment, ExperimentGroup)
 EntityClientDep = Annotated[EntityClient, Depends(get_entity_client)]
 ExperimentGroupFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentGroupFilter))]
 ExperimentFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentFilter))]
+ExperimentSessionFilterDep = Annotated[ParsedFilter, Depends(make_filter_dep(ExperimentSessionFilter))]
+
+
+def _get_clickhouse_client(request: Request) -> ClickHouseSpanClient | None:
+    service = getattr(request.app.state, "intake_service", None) or getattr(request.app.state, "service", None)
+    if service is None:
+        return None
+    return getattr(service, "clickhouse_client", None)
 
 
 def get_experiment_rollup_repository(request: Request) -> ExperimentRollupRepository | None:
     # Rollups are enrichment only. Experiment entity reads should continue when
     # ClickHouse is disabled or temporarily unavailable.
-    service = getattr(request.app.state, "intake_service", None)
-    if service is None:
-        service = getattr(request.app.state, "service", None)
-    if service is None:
-        return None
-
-    service_client = getattr(service, "clickhouse_client", None)
-    if service_client is None:
-        return None
-    return ExperimentRollupRepository(service_client)
+    client = _get_clickhouse_client(request)
+    return ExperimentRollupRepository(client) if client is not None else None
 
 
 ExperimentRollupRepositoryDep = Annotated[ExperimentRollupRepository | None, Depends(get_experiment_rollup_repository)]
+
+
+def get_experiment_session_repository(request: Request) -> ExperimentSessionRepository | None:
+    client = _get_clickhouse_client(request)
+    return ExperimentSessionRepository(client) if client is not None else None
+
+
+ExperimentSessionRepositoryDep = Annotated[
+    ExperimentSessionRepository | None, Depends(get_experiment_session_repository)
+]
 
 
 @router.post(
@@ -368,6 +390,86 @@ async def delete_experiment(
         workspace=workspace,
         name=name,
         label="Experiment",
+    )
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/experiments/{name}/sessions",
+    response_model=Page[ExperimentSessionResponse],
+    tags=[EXPERIMENTS_TAG],
+    responses={
+        404: {"description": "Experiment not found"},
+        503: {"description": "ClickHouse unavailable"},
+    },
+    openapi_extra=generate_openapi_extra_params(
+        filter_schema=ExperimentSessionFilter,
+        filter_description="Filter sessions by test_case_id and status.",
+    ),
+)
+async def list_experiment_sessions(
+    workspace: str,
+    name: str,
+    request: Request,
+    entity_client: EntityClientDep,
+    session_repository: ExperimentSessionRepositoryDep,
+    parsed: ExperimentSessionFilterDep,
+    page: int = Query(default=1, ge=1, description="Page number."),
+    page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
+) -> Page[ExperimentSessionResponse]:
+    validate_list_query_params(request)
+    await _get_or_404(
+        entity_client,
+        Experiment,
+        workspace=workspace,
+        name=name,
+        label="Experiment",
+    )
+    if session_repository is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="ClickHouse is unavailable; per-session reads require telemetry storage.",
+        )
+    test_case_id: str | None = parsed.extract("test_case_id")
+    status_raw: str | None = parsed.extract("status")
+    try:
+        status_filter = SpanStatus(status_raw) if status_raw is not None else None
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid status '{status_raw}'. Valid values: {[s.value for s in SpanStatus]}",
+        )
+    try:
+        result = await session_repository.list_sessions(
+            workspace=workspace,
+            experiment_name=name,
+            status=status_filter,
+            test_case_id=test_case_id,
+            page=page,
+            page_size=page_size,
+        )
+    except Exception as exc:
+        # Sessions are the response payload (not enrichment), so we can't silently degrade like
+        # _hydrate_rollups does. Convert backend failures (ClickHouse connection drop, query
+        # timeout, etc.) to a deterministic 503 instead of letting them bubble as 500s.
+        logger.exception(
+            "Per-session read failed for workspace=%s experiment=%s",
+            _sanitize_for_log(workspace),
+            _sanitize_for_log(name),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Telemetry store unavailable.",
+        ) from exc
+    data = [ExperimentSessionResponse.from_row(row) for row in result.rows]
+    return Page(
+        data=data,
+        pagination=make_pagination(
+            page=page,
+            page_size=page_size,
+            current_page_size=len(data),
+            total_results=result.total,
+        ),
+        filter=parsed.to_response(),
     )
 
 

@@ -2,7 +2,8 @@ name: "Release: Nightly"
 
 on:
   schedule:
-    - cron: "0 20 * * *"
+    # Runs Monday through Friday at 8:00 PM America/Los_Angeles.
+    - cron: "0 20 * * 1-5"
       timezone: "America/Los_Angeles"
   workflow_dispatch:
     inputs:

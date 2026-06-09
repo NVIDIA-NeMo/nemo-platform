@@ -14,7 +14,7 @@ from nmp.intake.spans.domain import IntakeTrace, TraceEvaluationContext, TraceLi
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field, where_clause
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
-from nmp.intake.spans.storage import make_pagination, normalize_span_status, result_rows
+from nmp.intake.spans.storage import float_or_none, int_or_none, make_pagination, normalize_span_status, result_rows
 
 TRACE_SORT_COLUMNS = {
     "started_at": "started_at",
@@ -476,17 +476,17 @@ def _row_to_trace(row: dict[str, Any]) -> IntakeTrace:
         duration_ms=_duration_ms(row["started_at"], ended_at),
         ingested_at=row["ingested_at"],
         status=normalize_span_status(row.get("status")),
-        input_tokens=_int_or_none(row.get("input_tokens")),
-        output_tokens=_int_or_none(row.get("output_tokens")),
-        cached_tokens=_int_or_none(row.get("cached_tokens")),
-        total_tokens=_int_or_none(row.get("total_tokens")),
-        cost_usd=_float_or_none(row.get("cost_usd")),
-        cost_input_usd=_float_or_none(row.get("cost_input_usd")),
-        cost_output_usd=_float_or_none(row.get("cost_output_usd")),
+        input_tokens=int_or_none(row.get("input_tokens")),
+        output_tokens=int_or_none(row.get("output_tokens")),
+        cached_tokens=int_or_none(row.get("cached_tokens")),
+        total_tokens=int_or_none(row.get("total_tokens")),
+        cost_usd=float_or_none(row.get("cost_usd")),
+        cost_input_usd=float_or_none(row.get("cost_input_usd")),
+        cost_output_usd=float_or_none(row.get("cost_output_usd")),
         models=_string_list_or_none(row.get("models")),
         providers=_string_list_or_none(row.get("providers")),
-        span_count=_int_or_none(row.get("span_count")),
-        error_count=_int_or_none(row.get("error_count")),
+        span_count=int_or_none(row.get("span_count")),
+        error_count=int_or_none(row.get("error_count")),
     )
 
 
@@ -522,18 +522,6 @@ def _none_if_zero_datetime(value: Any) -> datetime | None:
     if value == _ZERO_DATETIME or value.timestamp() == 0:
         return None
     return value
-
-
-def _int_or_none(value: Any) -> int | None:
-    if value is None:
-        return None
-    return int(value)
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    return float(value)
 
 
 def _string_list_or_none(value: Any) -> list[str] | None:

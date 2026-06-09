@@ -20,6 +20,7 @@ import {
   Text,
 } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
+import { FilesetActionMenu } from '@studio/components/FilesetActionMenu';
 import { Loading } from '@studio/components/Layouts/Loading';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
@@ -32,9 +33,11 @@ import { getModelSource, isRootReadme } from '@studio/routes/FilesetDetailRoute/
 import { getWorkspaceFilesetsRoute } from '@studio/routes/utils';
 import { useRequiredPathParams } from '@studio/util/hooks/useRequiredPathParams';
 import type { FC } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export const FilesetDetailRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const { filesetName } = useRequiredPathParams([ROUTE_PARAMS.filesetName]);
   const filesetId = getEntityReference({ namespace: workspace, name: filesetName });
 
@@ -105,17 +108,36 @@ export const FilesetDetailRoute: FC = () => {
   // The source line (HF/NGC origin) is meaningful for model/generic filesets;
   // datasets don't surface it.
   const source = isDataset ? undefined : getModelSource(fileset);
-  const description = source ? (
-    <Flex gap="density-sm" align="center">
-      {creatorToIcon(source.creatorSlug, { className: 'w-4 h-4 flex-shrink-0' })}
-      <span>{source.path}</span>
-    </Flex>
+  const descriptionText = <Text kind="body/regular/md">{fileset.description}</Text>;
+  const description = isDataset ? (
+    descriptionText
+  ) : source ? (
+    <Stack gap="1">
+      <Flex gap="1" align="center">
+        {creatorToIcon(source.creatorSlug, { className: 'w-4 h-4 flex-shrink-0' })}
+        <span>{source.path}</span>
+      </Flex>
+      {descriptionText}
+    </Stack>
   ) : undefined;
 
   return (
     <AccessibleTitle title={`${typeLabel} ${filesetName}`}>
       <Stack className="w-full min-h-full p-density-2xl" gap="density-xl">
-        <PageHeader slotHeading={filesetName} slotDescription={description} />
+        <PageHeader
+          slotHeading={
+            <Stack gap="density-sm">
+              <Flex gap="density-sm" align="center" justify="between">
+                <span>{filesetName}</span>
+                <FilesetActionMenu
+                  fileset={fileset}
+                  onFilesetDeleted={() => navigate(getWorkspaceFilesetsRoute(workspace))}
+                />
+              </Flex>
+            </Stack>
+          }
+          slotDescription={description}
+        />
         <TabsRoot className="flex flex-col" value={currentTab} onValueChange={handleTabChange}>
           <TabsList>
             <TabsTrigger value={FilesetDetailTab.Card}>{cardLabel}</TabsTrigger>

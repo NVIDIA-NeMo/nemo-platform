@@ -60,7 +60,7 @@ The skills that drive the agent lifecycle are:
 |----------|---------|
 | `nemo-setup` | Verifies the platform is installed and running. Walks the user through `make bootstrap`, `nemo services run`, the local data directory (`NMP_DATA_DIR` / `XDG_DATA_HOME`), and DB reset. Use this when the user asks to set up the platform or hits a startup issue. |
 | `nemo-explore` | Design conversation that feeds into an agent spec. Use before scaffolding an agent. |
-| `nemo-spec` | Writes an agent spec at `agents/<name>.spec.md` from the explore output. |
+| `nemo-spec` | Writes an agent spec at `agents/<name>-spec/AGENT-SPEC.md` from the explore output. |
 | `nemo-build-agent` | Scaffolds a NAT workflow YAML from the spec and deploys it. |
 | `nemo-try-agent` | Sends a query to a deployed agent. |
 | `nemo-status` | Read-only platform health dashboard. |
