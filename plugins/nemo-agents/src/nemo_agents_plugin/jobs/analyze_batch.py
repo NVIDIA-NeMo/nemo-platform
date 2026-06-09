@@ -4,6 +4,14 @@
 """AnalyzeBatchJob — analyze a batch of eval-suite results.
 
 Registered under ``nemo.jobs`` as ``agents.analyze``.
+
+Two invocation paths share the same ``run(config)`` body:
+
+* ``nemo agents analyze run --spec '{...}'`` — local, in-process, no
+  platform job row.
+* ``nemo agents analyze submit --spec '{...}'`` — POSTs to the platform;
+  the jobs controller dispatches a subprocess on the same host and the
+  result lands in ``nemo jobs list`` / Studio's Jobs view.
 """
 
 from __future__ import annotations
@@ -13,7 +21,11 @@ import logging
 from pathlib import Path
 from typing import ClassVar, Literal
 
+from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
 from nemo_platform_plugin.job import NemoJob
+from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
+from nemo_platform_plugin.jobs.exceptions import PlatformJobCompilationError
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
@@ -23,6 +35,16 @@ class AnalyzeBatchConfig(BaseModel):
     batch: str = Field(description="Path to a batch directory produced by evaluate-suite.")
     format: Literal["md", "json"] = Field(default="md", description="Output format: md or json.")
     mechanical_only: bool = Field(default=False, description="Skip the LLM analysis pass.")
+    anthropic_api_key_secret: str | None = Field(
+        default=None,
+        description=(
+            "Name of a platform Secret holding the Anthropic API key.  When set on a submit, "
+            "the value is injected as ``ANTHROPIC_API_KEY`` into the dispatched subprocess "
+            "so the LLM gap-analysis pass can call Anthropic.  Ignored when "
+            "``mechanical_only=True``.  Local (in-process) runs read ``ANTHROPIC_API_KEY`` "
+            "from the calling shell as before."
+        ),
+    )
 
 
 class AnalyzeBatchJob(NemoJob):
@@ -31,8 +53,73 @@ class AnalyzeBatchJob(NemoJob):
     name: ClassVar[str] = "analyze"
     description: ClassVar[str] = "Analyze a batch of eval-suite results (clusters, regressions, hypotheses)."
     container: ClassVar[str] = "cpu-tasks"
+    spec_schema: ClassVar[type[BaseModel]] = AnalyzeBatchConfig
 
-    def run(self, config: dict) -> dict:
+    @classmethod
+    async def compile(  # type: ignore[override]
+        cls,
+        *,
+        workspace: str,
+        spec: AnalyzeBatchConfig,
+        entity_client: object,
+        job_name: str | None,
+        async_sdk: object,
+        profile: str | None = None,
+        options: dict | None = None,
+    ) -> PlatformJobSpec:
+        """Single-step PlatformJobSpec running ``nemo_agents_plugin.tasks.analyze``."""
+        from nemo_platform_plugin.jobs.api_factory import (
+            EnvironmentVariable,
+            EnvironmentVariableFromSecret,
+            PlatformJobStep,
+            SubprocessExecutionProviderSpec,
+        )
+        from nmp.common.jobs.constants import (
+            DEFAULT_JOB_STORAGE_PATH,
+            PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+        )
+
+        _require_absolute(spec.batch, "batch")
+        if not spec.mechanical_only and not spec.anthropic_api_key_secret:
+            raise PlatformJobCompilationError(
+                "'anthropic_api_key_secret' is required when submitting unless "
+                "'mechanical_only' is True (the LLM analysis pass calls Anthropic, "
+                "and the subprocess backend's sanitized env does not inherit "
+                "ANTHROPIC_API_KEY)."
+            )
+
+        spec_dict = spec.model_dump(mode="json")
+        spec_dict["workspace"] = workspace
+
+        environment: list[EnvironmentVariable] = [
+            EnvironmentVariable(name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR, value=DEFAULT_JOB_STORAGE_PATH),
+        ]
+        if spec.anthropic_api_key_secret:
+            environment.append(
+                EnvironmentVariable(
+                    name="ANTHROPIC_API_KEY",
+                    from_secret=EnvironmentVariableFromSecret(name=spec.anthropic_api_key_secret),
+                )
+            )
+
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="analyze",
+                    executor=SubprocessExecutionProviderSpec(
+                        provider="subprocess",
+                        command=["python", "-m", "nemo_agents_plugin.tasks.analyze"],
+                    ),
+                    config=spec_dict,
+                    environment=environment,
+                ),
+            ],
+        )
+
+    def run(self, config: dict, *, ctx: JobContext | None = None) -> dict:
+        # ``ctx`` is signature-typed so the framework's DI populates it on the
+        # submit path; the friendly CLI calls ``run(spec)`` directly without one.
+        del ctx
         from nemo_agents_plugin.improvement.analysis.llm import generate_gap_analysis
         from nemo_agents_plugin.improvement.analysis.mechanical import cluster_evals, mechanical_analysis
         from nemo_agents_plugin.improvement.baselines import load_baselines

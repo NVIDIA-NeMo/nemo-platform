@@ -7,6 +7,7 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
 import {
   filesUploadFile,
   getFilesListFilesetFilesQueryKey,
@@ -19,11 +20,7 @@ import {
   FilesetPurpose,
   CreateFilesetRequest,
 } from '@nemo/sdk/generated/platform/schema';
-import {
-  FilesCreateFilesetBody,
-  filesCreateFilesetBodyNameMax,
-  filesCreateFilesetBodyNameRegExp,
-} from '@nemo/sdk/generated/platform/zod/files';
+import { FilesCreateFilesetBody } from '@nemo/sdk/generated/platform/zod/files';
 import {
   Badge,
   Block,
@@ -68,11 +65,10 @@ import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 
-const DATASET_NAME_REQUIRED_MESSAGE =
-  'Name is required. Use lowercase letters, numbers, hyphens, underscores, and dots (for example my-fileset).';
+const DATASET_NAME_REQUIRED_MESSAGE = 'Name is required.';
 
 const DATASET_NAME_PATTERN_MESSAGE =
-  'Name may only contain letters, numbers, underscores, hyphens, and dots.';
+  'Name must start with a lowercase letter, be 2–63 characters, and contain only lowercase letters, digits, hyphens, dots, underscores, plus, and @ (no consecutive hyphens, cannot end with a hyphen).';
 
 /** Per-purpose copy shown in the purpose selector. Kept adjacent to the enum so each value has user-facing explanation. */
 const PURPOSE_OPTIONS: {
@@ -101,17 +97,18 @@ const PURPOSE_OPTIONS: {
 ];
 
 /**
- * Same as API schema with clearer validation messages for the name field (empty name otherwise
- * yields a generic regex error). `description` is intentionally not overridden — the base schema
- * already has it as `z.string().optional()` with no length cap, matching the server.
+ * Override the SDK-generated name validation. The generated zod uses the Files
+ * service DTO's loose pattern (`^[\w\-.]+$`, max 255); the entity store
+ * downstream enforces a stricter RFC-1035-ish pattern. Validate against the
+ * strict pattern here so the user sees a useful inline error instead of a 422.
  */
 const DatasetCreateFilesetFormSchema = FilesCreateFilesetBody.extend({
   name: z
     .string()
     .trim()
     .min(1, DATASET_NAME_REQUIRED_MESSAGE)
-    .max(filesCreateFilesetBodyNameMax)
-    .regex(filesCreateFilesetBodyNameRegExp, DATASET_NAME_PATTERN_MESSAGE),
+    .max(FILESET_NAME_MAX_LENGTH)
+    .regex(FILESET_NAME_REGEXP, DATASET_NAME_PATTERN_MESSAGE),
   purpose: z.nativeEnum(FilesetPurpose),
 });
 

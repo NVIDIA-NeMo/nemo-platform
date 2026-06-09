@@ -36,7 +36,6 @@ def config_enabled():
         enabled=True,
         auth_enabled=False,
         guardrails_enabled=False,
-        evaluator_enabled=False,
         model_provider_enabled=False,
         guardrails_config_store_path=Path("/tmp/config-store"),
     )
@@ -48,7 +47,6 @@ async def test_run_platform_seed_disabled(config_disabled, entity_client, sdk):
     result = await run_platform_seed(entity_client, sdk, config_disabled)
     assert result.auth_ok is False
     assert result.guardrails_ok is False
-    assert result.evaluator_ok is False
     assert result.models_ok is False
     assert result.plugin_results == {}
     assert result.errors == []
@@ -64,7 +62,6 @@ async def test_run_platform_seed_guardrails_only(config_enabled, entity_client, 
         mock_populate.assert_called_once_with(entity_client, config_enabled.guardrails_config_store_path)
         assert result.auth_ok is False
         assert result.guardrails_ok is True
-        assert result.evaluator_ok is False
         assert result.errors == []
 
 
@@ -72,49 +69,17 @@ async def test_run_platform_seed_guardrails_only(config_enabled, entity_client, 
 async def test_run_platform_seed_guardrails_failure(config_enabled, entity_client, sdk):
     """Guardrails seed failure is recorded and other steps still run."""
     config_enabled.guardrails_enabled = True
-    config_enabled.evaluator_enabled = True
 
     with patch(
         "nmp.guardrails.app.utils.config_store.populate_config_store",
         new_callable=AsyncMock,
         side_effect=RuntimeError("bad"),
     ):
-        with patch("nmp.evaluator.api.v2.metrics.manager.MetricsManager") as MockMM:
-            with patch("nmp.evaluator.api.v2.benchmarks.manager.BenchmarksManager") as MockBM:
-                mock_mm = MagicMock()
-                mock_mm.register_system_metrics = AsyncMock()
-                mock_bm = MagicMock()
-                mock_bm.register_system_benchmarks = AsyncMock()
-                MockMM.return_value = mock_mm
-                MockBM.return_value = mock_bm
-
-                result = await run_platform_seed(entity_client, sdk, config_enabled)
+        result = await run_platform_seed(entity_client, sdk, config_enabled)
 
     assert result.guardrails_ok is False
-    assert result.evaluator_ok is True
     assert len(result.errors) == 1
     assert "Guardrails" in result.errors[0]
-
-
-@pytest.mark.asyncio
-async def test_run_platform_seed_evaluator_called(config_enabled, entity_client, sdk):
-    """Evaluator seed is called when evaluator_enabled is True."""
-    config_enabled.evaluator_enabled = True
-
-    with patch("nmp.evaluator.api.v2.metrics.manager.MetricsManager") as MockMM:
-        with patch("nmp.evaluator.api.v2.benchmarks.manager.BenchmarksManager") as MockBM:
-            mock_mm = MagicMock()
-            mock_mm.register_system_metrics = AsyncMock()
-            mock_bm = MagicMock()
-            mock_bm.register_system_benchmarks = AsyncMock()
-            MockMM.return_value = mock_mm
-            MockBM.return_value = mock_bm
-
-            result = await run_platform_seed(entity_client, sdk, config_enabled)
-
-    assert result.evaluator_ok is True
-    mock_mm.register_system_metrics.assert_called_once()
-    mock_bm.register_system_benchmarks.assert_called_once()
 
 
 @pytest.mark.asyncio

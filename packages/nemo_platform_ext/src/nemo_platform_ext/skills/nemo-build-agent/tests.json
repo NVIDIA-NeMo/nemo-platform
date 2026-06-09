@@ -8,7 +8,7 @@
     },
     {
       "type": "explicit",
-      "prompt": "Run the nemo-build-agent skill. Spec is at agents/support-triage.spec.md.",
+      "prompt": "Run the nemo-build-agent skill. Spec is at agents/support-triage-spec/AGENT-SPEC.md.",
       "expected_skill": "nemo-build-agent"
     },
     {

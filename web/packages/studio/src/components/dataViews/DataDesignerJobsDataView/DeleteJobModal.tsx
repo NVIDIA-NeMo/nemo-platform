@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  getDataDesignerListJobsQueryKey,
-  useDataDesignerDeleteJob,
+  getDataDesignerListCreateJobsQueryKey,
+  useDataDesignerDeleteCreateJob,
 } from '@nemo/sdk/generated/data-designer/api';
 import type { CreateJob as DataDesignerJob } from '@nemo/sdk/generated/data-designer/schema';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
@@ -21,11 +21,11 @@ export const DeleteJobModal: FC<DeleteJobModalProps> = ({ jobs, onClose }) => {
   const workspace = useWorkspaceFromPath();
   const [deleteError, setDeleteError] = useState<string | undefined>(undefined);
 
-  const deleteJobMutation = useDataDesignerDeleteJob({
+  const deleteJobMutation = useDataDesignerDeleteCreateJob({
     mutation: {
       onSuccess: () =>
         queryClient.resetQueries({
-          queryKey: getDataDesignerListJobsQueryKey(workspace),
+          queryKey: getDataDesignerListCreateJobsQueryKey(workspace),
         }),
     },
   });
