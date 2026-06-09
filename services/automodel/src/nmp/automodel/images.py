@@ -5,11 +5,9 @@
 
 from __future__ import annotations
 
+from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.automodel.config import config
-
-# Default NGC dev registry for platform-built automodel images (flat repo names for NVCR).
-DEFAULT_AUTOMODEL_IMAGE_REGISTRY = "my-registry/nemo-platform-dev"
 
 BASE_IMAGE_NAME = "nmp-automodel-base"
 TASKS_IMAGE_NAME = "nmp-automodel-tasks"
@@ -33,7 +31,9 @@ def get_automodel_qualified_image(name: str, override: str | None = None) -> str
     """
     if override:
         return override
-    registry = config.image_registry or DEFAULT_AUTOMODEL_IMAGE_REGISTRY
+
+    platform_config = get_platform_config()
+    registry = config.image_registry or platform_config.image_registry
     return get_qualified_image(name, registry=registry)
 
 

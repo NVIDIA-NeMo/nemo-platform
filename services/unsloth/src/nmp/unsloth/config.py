@@ -16,20 +16,20 @@ from pydantic import Field
 class UnslothConfig(create_service_config_class("unsloth")):  # type: ignore[misc]
     """Environment variables use the ``NMP_UNSLOTH_`` prefix."""
 
-    image_registry: str = Field(
-        default="my-registry/nemo-platform-dev",
+    image_registry: str | None = Field(
+        default=None,
         description=(
             "Registry host/path prefix for nmp-unsloth-tasks and nmp-unsloth-training. "
-            "Override via NMP_UNSLOTH_IMAGE_REGISTRY for other environments."
+            "Override via NMP_UNSLOTH_IMAGE_REGISTRY for other environments, defaults to the platform's image registry."
         ),
     )
     training_image: str | None = Field(
         default=None,
-        description="Override GPU training image (default: nmp-unsloth-training under image_registry).",
+        description="Override entire GPU training image (registry/name:tag).",
     )
     tasks_image: str | None = Field(
         default=None,
-        description="Override CPU tasks image (default: nmp-unsloth-tasks under image_registry).",
+        description="Override entire CPU tasks image (registry/name:tag).",
     )
 
     default_job_resource_cpu_request: str = Field(default="1")

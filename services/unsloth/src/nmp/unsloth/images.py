@@ -15,10 +15,9 @@ want a leaner CPU image for file_io / model_entity can publish a separate
 
 from __future__ import annotations
 
+from nemo_platform_plugin.config import get_platform_config
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.unsloth.config import config
-
-DEFAULT_UNSLOTH_IMAGE_REGISTRY = "my-registry/nemo-platform-dev"
 
 BASE_IMAGE_NAME = "nmp-unsloth-base"
 TASKS_IMAGE_NAME = "nmp-unsloth-tasks"
@@ -43,7 +42,9 @@ def get_unsloth_qualified_image(name: str, override: str | None = None) -> str:
     """
     if override:
         return override
-    registry = config.image_registry or DEFAULT_UNSLOTH_IMAGE_REGISTRY
+
+    platform_config = get_platform_config()
+    registry = config.image_registry or platform_config.image_registry
     return get_qualified_image(name, registry=registry)
 
 

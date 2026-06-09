@@ -10,20 +10,20 @@ from pydantic import Field
 class AutomodelConfig(create_service_config_class("automodel")):  # type: ignore
     """Environment variables use the NMP_AUTOMODEL_ prefix."""
 
-    image_registry: str = Field(
-        default="my-registry/nemo-platform-dev",
+    image_registry: str | None = Field(
+        default=None,
         description=(
             "Registry host/path prefix for nmp-automodel-tasks and nmp-automodel-training. "
-            "Override via NMP_AUTOMODEL_IMAGE_REGISTRY for other environments."
+            "Override via NMP_AUTOMODEL_IMAGE_REGISTRY for other environments, defaults to the platform's image registry."
         ),
     )
     training_image: str | None = Field(
         default=None,
-        description="Override GPU training image (default: nmp-automodel-training under image_registry).",
+        description="Override entire GPU training image (registry/name:tag).",
     )
     tasks_image: str | None = Field(
         default=None,
-        description="Override CPU tasks image (default: nmp-automodel-tasks under image_registry).",
+        description="Override entire CPU tasks image (registry/name:tag).",
     )
 
     default_job_resource_cpu_request: str = Field(default="1")
