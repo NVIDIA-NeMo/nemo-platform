@@ -8,6 +8,8 @@ import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
+import { checkDatasetQuality } from '@nemo/common/src/utils/datasetQuality';
+import type { DatasetQualityReport } from '@nemo/common/src/utils/datasetQuality';
 import {
   filesUploadFile,
   getFilesListFilesetFilesQueryKey,
@@ -59,7 +61,7 @@ import {
   storageConfigFromUrl,
 } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
-import { FileCheck } from 'lucide-react';
+import { AlertTriangle, FileCheck, XCircle, CheckCircle2 } from 'lucide-react';
 import { FC, useCallback, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -168,6 +170,59 @@ function toFileList(value: unknown): File[] {
   );
 }
 
+interface DatasetQualityReportViewProps {
+  report: DatasetQualityReport;
+}
+
+const DatasetQualityReportView: FC<DatasetQualityReportViewProps> = ({ report }) => {
+  const partialScanNote = report.scannedLines < report.totalLines && (
+    <Text kind="body/regular/sm" color="secondary">
+      Scanned first {report.scannedLines.toLocaleString()} of{' '}
+      {report.totalLines.toLocaleString()} lines.
+    </Text>
+  );
+
+  if (!report.hasErrors && !report.hasWarnings) {
+    return (
+      <Stack gap="density-xs">
+        <Flex gap="density-sm" align="center">
+          <CheckCircle2 size={16} className="text-green-500 shrink-0" />
+          <Text kind="body/regular/sm">{report.fileName}: all quality checks passed.</Text>
+        </Flex>
+        {partialScanNote}
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack gap="density-sm">
+      <Text kind="label/bold/sm">{report.fileName}</Text>
+      {report.issues.map((issue, idx) => (
+        <Flex key={idx} gap="density-sm" align="start">
+          {issue.severity === 'error' ? (
+            <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          )}
+          <Stack gap="density-xs">
+            <Text kind="body/regular/sm">{issue.message}</Text>
+            {issue.affectedLines && issue.affectedLines.length > 0 && (
+              <Text kind="body/regular/sm" color="secondary">
+                {'Line' + (issue.affectedLines.length > 1 ? 's' : '') + ': '}
+                {issue.affectedLines.join(', ')}
+                {issue.count && issue.count > issue.affectedLines.length
+                  ? ` (+${issue.count - issue.affectedLines.length} more)`
+                  : ''}
+              </Text>
+            )}
+          </Stack>
+        </Flex>
+      ))}
+      {partialScanNote}
+    </Stack>
+  );
+};
+
 export const FilesetNewRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const [activeTab, setActiveTab] = useState<DatasetType>(DATASET_TYPE_CUSTOM);
@@ -175,6 +230,8 @@ export const FilesetNewRoute: FC = () => {
     SAMPLE_DATASETS[0]
   );
   const [isSubmitPending, setIsSubmitPending] = useState(false);
+  const [qualityReports, setQualityReports] = useState<DatasetQualityReport[]>([]);
+  const [isValidating, setIsValidating] = useState(false);
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -205,6 +262,7 @@ export const FilesetNewRoute: FC = () => {
   });
 
   const url = watch('url');
+  const purpose = watch('purpose');
   const selectedSecretName = watch('secretKey');
   const secretKeyLabel = useMemo(() => {
     if (!url?.trim()) return 'Secret Key';
@@ -272,6 +330,33 @@ export const FilesetNewRoute: FC = () => {
     []
   );
 
+  /**
+   * Runs dataset quality checks on newly selected JSONL files and updates the report state.
+   * Only runs when purpose is 'dataset'; clears reports for other purposes or non-JSONL files.
+   */
+  const handleFilesChange = useCallback(
+    async (files: File[]) => {
+      setValue('files', files, { shouldValidate: false });
+
+      if (purpose !== FilesetPurpose.dataset) {
+        setQualityReports([]);
+        return;
+      }
+
+      const jsonlFiles = files.filter((f) => f.name.endsWith('.jsonl'));
+      if (jsonlFiles.length === 0) {
+        setQualityReports([]);
+        return;
+      }
+
+      setIsValidating(true);
+      const reports = await Promise.all(jsonlFiles.map(checkDatasetQuality));
+      setQualityReports(reports);
+      setIsValidating(false);
+    },
+    [purpose, setValue]
+  );
+
   // Sync hidden name/description when a sample is selected (sample tab = simulated local form)
   const handleSelectSample = useCallback(
     (dataset: SampleDataset) => {
@@ -282,10 +367,11 @@ export const FilesetNewRoute: FC = () => {
     [workspace, setValue]
   );
 
-  // When switching tabs, reset the opposite tab’s form state so we don’t leak values
+  // When switching tabs, reset the opposite tab's form state so we don't leak values
   const handleTabChange = useCallback(
     (value: DatasetType) => {
       setActiveTab(value);
+      setQualityReports([]);
       if (value === DATASET_TYPE_CUSTOM) {
         setValue('name', '', { shouldValidate: false });
         setValue('description', '', { shouldValidate: false });
@@ -311,11 +397,18 @@ export const FilesetNewRoute: FC = () => {
     ]
   );
 
+  const hasValidationErrors = qualityReports.some((r) => r.hasErrors);
+
   const onSubmit = useCallback(
     async (data: DatasetFormFields) => {
       const { success, error } = DatasetCreateFilesetFormSchema.safeParse(data);
       if (!success) {
         toast.error(error.message);
+        return;
+      }
+
+      if (hasValidationErrors) {
+        toast.error('Fix dataset validation errors before creating this fileset.');
         return;
       }
 
@@ -427,6 +520,7 @@ export const FilesetNewRoute: FC = () => {
       activeTab,
       createFilesetStep,
       getValues,
+      hasValidationErrors,
       navigate,
       storageTab,
       toast,
@@ -464,7 +558,7 @@ export const FilesetNewRoute: FC = () => {
             <Button
               type="button"
               color="brand"
-              disabled={isSubmitPending}
+              disabled={isSubmitPending || hasValidationErrors}
               onClick={handleSubmit(
                 onSubmit,
                 handleFormErrorsGeneric({ title: 'Fileset New Form Errors' })
@@ -564,6 +658,8 @@ export const FilesetNewRoute: FC = () => {
                         if (next === 'local') {
                           setValue('url', '', { shouldValidate: false });
                           setValue('secretKey', '', { shouldValidate: false });
+                        } else {
+                          setQualityReports([]);
                         }
                       }}
                     >
@@ -572,16 +668,34 @@ export const FilesetNewRoute: FC = () => {
                         <TabsTrigger value="external">External</TabsTrigger>
                       </TabsList>
                       <TabsContent className="w-full min-w-0 p-0 items-stretch" value="local">
-                        <Upload
-                          accept="text/csv,text/json,.jsonl,.parquet"
-                          multiple
-                          onValueChange={(files) => {
-                            const list = Array.isArray(files) ? files : files ? [files] : undefined;
-                            setValue('files', toFileList(list), { shouldValidate: false });
-                          }}
-                        >
-                          Supports JSONL, CSV, and Parquet files up to 50 MB.
-                        </Upload>
+                        <Stack gap="density-md" className="w-full">
+                          <Upload
+                            accept="text/csv,text/json,.jsonl,.parquet"
+                            multiple
+                            onValueChange={(files) => {
+                              const list = Array.isArray(files)
+                                ? files
+                                : files
+                                  ? [files]
+                                  : undefined;
+                              void handleFilesChange(toFileList(list));
+                            }}
+                          >
+                            Supports JSONL, CSV, and Parquet files up to 50 MB.
+                          </Upload>
+                          {purpose === FilesetPurpose.dataset && (
+                            <Stack gap="density-sm">
+                              {isValidating && (
+                                <Text kind="body/regular/sm" color="secondary">
+                                  Checking file quality…
+                                </Text>
+                              )}
+                              {qualityReports.map((report) => (
+                                <DatasetQualityReportView key={report.fileName} report={report} />
+                              ))}
+                            </Stack>
+                          )}
+                        </Stack>
                       </TabsContent>
                       <TabsContent className="w-full min-w-0 p-0 items-stretch" value="external">
                         <Stack gap="density-lg" className="w-full min-w-0">
