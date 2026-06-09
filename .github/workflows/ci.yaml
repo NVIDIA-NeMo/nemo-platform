@@ -10,6 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
   pull-requests: read
 
@@ -27,24 +28,45 @@ jobs:
       deps: ${{ steps.changes.outputs.deps }}
       e2e: ${{ steps.changes.outputs.e2e }}
       docs: ${{ steps.changes.outputs.docs }}
-      web: ${{ steps.changes.outputs.web }}
+      web-studio: ${{ steps.changes.outputs.web-studio }}
       tools: ${{ steps.changes.outputs.tools }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
         id: changes
+
+  actionlint:
+    name: Run actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - name: Install actionlint
+        shell: bash
+        run: |
+          mkdir -p "${RUNNER_TEMP}/actionlint"
+          curl -fsSL \
+            -o "${RUNNER_TEMP}/actionlint.tar.gz" \
+            "https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz"
+          echo "8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8  ${RUNNER_TEMP}/actionlint.tar.gz" \
+            | sha256sum -c -
+          tar -xzf "${RUNNER_TEMP}/actionlint.tar.gz" -C "${RUNNER_TEMP}/actionlint"
+      - name: Lint GitHub workflows and actions
+        shell: bash
+        run: |
+          "${RUNNER_TEMP}/actionlint/actionlint"
 
   lint:
     name: Lint all
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22'
       - name: Install pnpm via corepack
@@ -62,7 +84,7 @@ jobs:
           CI_PROJECT_DIR: ${{ github.workspace }}
       - name: Upload lint artifacts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lint-artifacts
           retention-days: 7
@@ -81,10 +103,10 @@ jobs:
     name: Build OPA policy WASM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/build-policy-wasm
       - name: Upload policy WASM
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: policy-wasm
           retention-days: 1
@@ -103,9 +125,9 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
@@ -113,7 +135,7 @@ jobs:
         run: uv run pytest tools -v --junit-xml=report.xml
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-unit-test-tools-results
           retention-days: 30
@@ -127,14 +149,14 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
@@ -147,7 +169,7 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-unit-test-results
           retention-days: 30
@@ -163,21 +185,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Free disk space
         uses: ./.github/actions/free-disk-space
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
       - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           username: ${{ vars.AIRE_DOCKERHUB_USERNAME }}
           password: ${{ secrets.AIRE_DOCKERHUB_ACCESS_TOKEN }}
@@ -195,7 +217,7 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-integration-test-results
           retention-days: 30
@@ -221,10 +243,10 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
         if: matrix.package == 'nemo-platform'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
@@ -240,7 +262,7 @@ jobs:
           nightly-timestamp: "19700101000000"
           python-version: ${{ matrix.python-version }}
       - name: Upload wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
           path: ${{ steps.build.outputs.wheel-path }}
@@ -263,14 +285,14 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Download wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
           path: ${{ runner.temp }}/wheelcheck
@@ -284,7 +306,13 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
         run: |
           set -euo pipefail
-          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
+          shopt -s nullglob
+          wheels=("${RUNNER_TEMP}"/wheelcheck/*.whl)
+          if [[ "${#wheels[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one wheel, found ${#wheels[@]}"
+            exit 1
+          fi
+          WHEEL="${wheels[0]}"
           uv tool install --force --python "${PYTHON_VERSION}" "${WHEEL}[services]"
           cd "${RUNNER_TEMP}/wheelcheck"
           unset PYTHONPATH VIRTUAL_ENV
@@ -297,7 +325,13 @@ jobs:
           PYTHON_VERSION: ${{ matrix.python-version }}
         run: |
           set -euo pipefail
-          WHEEL="$(ls ${RUNNER_TEMP}/wheelcheck/*.whl)"
+          shopt -s nullglob
+          wheels=("${RUNNER_TEMP}"/wheelcheck/*.whl)
+          if [[ "${#wheels[@]}" -ne 1 ]]; then
+            echo "::error::Expected exactly one wheel, found ${#wheels[@]}"
+            exit 1
+          fi
+          WHEEL="${wheels[0]}"
           cd "${RUNNER_TEMP}/wheelcheck"
           uv venv .venv --python "${PYTHON_VERSION}"
           uv pip install --python .venv/bin/python "${WHEEL}"
@@ -322,14 +356,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.13"
           enable-cache: true
@@ -350,42 +384,13 @@ jobs:
           echo "::endgroup::"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-e2e-test-results
           retention-days: 30
           path: |
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
-
-  # Required-check pin: branch protection should reference this aggregator
-  # rather than the per-row matrix jobs, so the matrix can grow or shrink
-  # without admin intervention. Skipped counts as pass.
-  wheel-test-aggregate:
-    name: Wheel build + test
-    needs: [wheel-test]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Check matrix result
-        shell: bash
-        env:
-          MATRIX_RESULT: ${{ needs.wheel-test.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          case "${MATRIX_RESULT}" in
-            success|skipped)
-              echo "wheel-test matrix: ${MATRIX_RESULT}"
-              ;;
-            *)
-              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
-              echo "::error::see per-row results: ${RUN_URL}"
-              exit 1
-              ;;
-          esac
 
   benchmark-guardrails:
     name: Guardrails plugin benchmark
@@ -394,16 +399,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout nemo-platform
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: nemo-platform
       - name: Checkout NeMo-Guardrails
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: NVIDIA/NeMo-Guardrails
           path: NeMo-Guardrails
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           # Point setup-uv at the nemo-platform checkout so it picks up the
           # repo's `required-version` constraint from pyproject.toml. Other
@@ -424,7 +429,7 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-guardrails-results
           retention-days: 30
@@ -442,13 +447,13 @@ jobs:
     steps:
       - name: Download unit test coverage
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-unit-test-results
           path: unit-coverage
       - name: Download integration test coverage
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-integration-test-results
           path: integration-coverage
@@ -488,7 +493,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install OPA 1.8.0
         run: |
           curl -L -o opa https://github.com/open-policy-agent/opa/releases/download/v1.8.0/opa_linux_amd64_static
@@ -498,9 +503,101 @@ jobs:
         run: |
           ./opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
 
+  require-nvskills:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require trusted NVSkills signature for skills changes
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SIGNATURE_ACTOR: ${{ vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing' }}
+          SIGNATURE_TITLE: ${{ vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures' }}
+          ONBOARDING_DOC: https://nvidia.atlassian.net/wiki/spaces/GAIT/pages/3483240468/Github+First+-+Outbound+Repos+Onboarding+doc+-+NVCARPS#Review-Internal-Pipeline-Logs
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const touchedSkills = files.some((file) => file.filename.startsWith('skills/'));
+            if (!touchedSkills) {
+              core.info('No files under skills/ changed.');
+              return;
+            }
+
+            const commit = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+
+            const actor = commit.data.author?.login || '';
+            const title = commit.data.commit.message.split('\n')[0];
+
+            const okActor = actor === process.env.SIGNATURE_ACTOR;
+            const okTitle = title.startsWith(process.env.SIGNATURE_TITLE);
+
+            if (!okActor || !okTitle) {
+              core.setFailed(
+                'Files under skills/ changed in this PR, but HEAD is not the trusted NVSkills signature commit. ' +
+                'Ask a maintainer/admin to comment /nvskills-ci. If new skills/ content was pushed after signing, rerun /nvskills-ci. ' +
+                `Expected HEAD GitHub author "${process.env.SIGNATURE_ACTOR}" and commit title prefix "${process.env.SIGNATURE_TITLE}". ` +
+                `See ${process.env.ONBOARDING_DOC}.`
+              );
+            }
+
+  # Required-check pin: branch protection should require this final aggregate.
+  # Skipped jobs count as pass so conditional jobs can remain optional.
+  ci-status:
+    name: CI status
+    needs:
+      - changes
+      - actionlint
+      - lint
+      - policy-wasm
+      - python-unit-test-tools
+      - python-unit-test
+      # Enable if you want this required
+      # - python-integration-test
+      - require-nvskills
+      - wheel-build
+      - wheel-test
+      - python-e2e-test
+      - benchmark-guardrails
+      - opa-policy-test
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check all dependent jobs
+        shell: bash
+        env:
+          NEEDS_JSON: ${{ toJson(needs) }}
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## CI status"
+            echo
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            printf '%s\n' "${NEEDS_JSON}" \
+              | jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          printf '%s\n' "${NEEDS_JSON}" \
+            | jq -e 'to_entries | map(.value.result) | all(. as $result | ["success", "skipped"] | any($result == .))'
+
   notify-ci-consumer:
     name: Notify CI consumer
-    needs: [lint, python-unit-test, opa-policy-test, wheel-test-aggregate]
+    needs: [ci-status]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
