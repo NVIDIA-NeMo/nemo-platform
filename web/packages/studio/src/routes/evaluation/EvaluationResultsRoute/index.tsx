@@ -11,7 +11,7 @@ import { JOB_POLLING_INTERVAL_MS } from '@nemo/common/src/constants';
 import { useTableFilters } from '@nemo/common/src/hooks/useTableFilters';
 import { getAriaSort } from '@nemo/common/src/utils/a11y';
 import { tablePaginationSort } from '@nemo/common/src/utils/tablePaginationSort';
-import { useEvaluationListMetricJobs } from '@nemo/sdk/generated/platform/api';
+import { useEvaluatorListEvaluateJobs } from '@nemo/sdk/generated/evaluator/api';
 import { Button, Stack, TableRowDefinition } from '@nvidia/foundations-react-core';
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
@@ -36,7 +36,7 @@ export const EvaluationResultsRoute: FC = () => {
     isLoading,
     refetch,
     error,
-  } = useEvaluationListMetricJobs(
+  } = useEvaluatorListEvaluateJobs(
     workspace,
     {
       ...tablePaginationSort(filterState),
