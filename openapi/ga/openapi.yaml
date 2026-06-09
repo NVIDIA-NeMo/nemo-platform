@@ -8433,6 +8433,77 @@ components:
       type: object
       title: ComputeResources
       description: Resource requirements matching k8s ResourceRequirements format.
+    ContainerExecutorConfig:
+      properties:
+        gpu:
+          type: integer
+          minimum: 0.0
+          title: Gpu
+          description: Number of GPUs required for the deployment. 0 = CPU-only.
+        disk_size:
+          type: string
+          title: Disk Size
+          description: Disk size for the deployment
+          default: 50Gi
+        image_name:
+          title: Image Name
+          description: Container image name. If not specified, defaults to the engine's
+            configured image (e.g. default_vllm_image / default_nimservice_image).
+            Required for engine='generic'.
+          type: string
+          maxLength: 255
+        image_tag:
+          title: Image Tag
+          description: Container image tag. If not specified, defaults to the engine's
+            configured image tag.
+          type: string
+          maxLength: 255
+        health_check_path:
+          title: Health Check Path
+          description: HTTP path used for the container readiness probe. If not specified,
+            defaults to the engine's standard health endpoint (e.g. '/v1/health/ready'
+            for NIM, '/health' for vLLM). Set this for engine='generic' containers
+            that expose a non-standard health endpoint.
+          type: string
+          maxLength: 255
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment
+          additionalProperties:
+            type: string
+          type: object
+        additional_args:
+          items:
+            type: string
+          type: array
+          title: Additional Args
+          description: Raw container/`serve` args appended verbatim to the container's
+            arg vector.
+        k8s_nim_operator_config:
+          allOf:
+          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
+          description: Typed Kubernetes configuration for common NIMService Spec fields
+            (NIM engine on k8s). Applied after defaults but before override_config.
+            Ignored by non-NIM engines.
+        override_config:
+          title: Override Config
+          description: Raw NIMService spec configuration that takes precedence over
+            generated config (NIM engine on k8s). Allows advanced configuration options
+            directly. Ignored by non-NIM engines.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - gpu
+      title: ContainerExecutorConfig
+      description: 'Compute + container settings shared by the docker and k8s executors.
+
+
+        Both the docker and k8s executors run containers and share this shape.
+
+        A future non-container executor (e.g. subprocess) would warrant turning
+
+        ``executor_config`` into a discriminated union.'
     ContainerSpec:
       properties:
         image:
@@ -8641,10 +8712,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -8653,7 +8734,9 @@ components:
       type: object
       required:
       - name
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: CreateModelDeploymentConfigRequest
       description: Request model for creating a ModelDeploymentConfig.
     CreateModelDeploymentRequest:
@@ -9296,6 +9379,21 @@ components:
         This backend auto-completes jobs without actually running containers,
 
         making tests fast and deterministic.'
+    Engine:
+      type: string
+      enum:
+      - nim
+      - vllm
+      - generic
+      title: Engine
+      description: 'Inference engine selecting the compiler path for a deployment.
+
+
+        The engine determines what command, image, and env a deployment compiles to.
+
+        The fields a compiler consumes are not engine-specific; engines take the same
+
+        inputs (model_spec + executor_config) and differ in what they do with them.'
     EntitiesPage:
       properties:
         data:
@@ -12567,10 +12665,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -12583,7 +12691,9 @@ components:
       - created_at
       - updated_at
       - entity_version
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: ModelDeploymentConfig
       description: 'ModelDeploymentConfig stores the configuration details for deploying
         a model.
@@ -12626,6 +12736,55 @@ components:
           description: Filter by update date.
       title: ModelDeploymentConfigFilter
       type: object
+    ModelDeploymentConfigModelSpec:
+      properties:
+        model_type:
+          allOf:
+          - $ref: '#/components/schemas/ModelType'
+          description: Type of model being deployed
+        model_namespace:
+          title: Model Namespace
+          description: Model repository namespace - organization/user namespace as
+            it exists in repo_id.
+          type: string
+          maxLength: 255
+        model_name:
+          title: Model Name
+          description: Model name - model repository name for model weights.
+          type: string
+          maxLength: 255
+        model_revision:
+          title: Model Revision
+          description: Model revision (branch, tag, or commit). If not specified,
+            parsed from model_name @revision suffix or defaults to 'main'
+          type: string
+          maxLength: 255
+        chat_template:
+          title: Chat Template
+          description: Jinja2 chat template string for the model. Overrides the chat_template
+            from ModelEntity.spec if both are set. Used by the engine to format chat
+            completions.
+          type: string
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/ToolCallConfig'
+          description: Tool calling configuration for the deployment. Overrides tool_call_config
+            from ModelEntity.spec if both are set. Controls how the model handles
+            function/tool calling.
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: Whether to enable LoRA support
+          default: false
+      type: object
+      title: ModelDeploymentConfigModelSpec
+      description: 'What model to serve and how -- independent of the executor it
+        runs on.
+
+
+        Executor-invariant facts about the model. The compiler resolves the weight
+
+        source per engine; serving fields override the model entity spec when set.'
     ModelDeploymentConfigsPage:
       properties:
         data:
@@ -13445,94 +13604,6 @@ components:
       - target
       - api_key_secret
       title: NGCStorageConfig
-    NIMDeployment:
-      properties:
-        model_type:
-          allOf:
-          - $ref: '#/components/schemas/ModelType'
-          description: Type of model being deployed
-        lora_enabled:
-          type: boolean
-          title: Lora Enabled
-          description: Whether to enable LoRA support
-          default: false
-        gpu:
-          type: integer
-          minimum: 0.0
-          title: Gpu
-          description: Number of GPUs required for the deployment
-        disk_size:
-          type: string
-          title: Disk Size
-          description: Disk size for the deployment
-          default: 50Gi
-        image_name:
-          title: Image Name
-          description: Container image name from NGC. If not specified, defaults to
-            multi-llm
-          type: string
-          maxLength: 255
-        image_tag:
-          title: Image Tag
-          description: Container image tag from NGC
-          type: string
-          maxLength: 255
-        model_namespace:
-          title: Model Namespace
-          description: Model repository namespace - organization/user namespace as
-            it exists in repo_id.
-          type: string
-          maxLength: 255
-        model_name:
-          title: Model Name
-          description: Model name - model repository name for model weights.
-          type: string
-          maxLength: 255
-        model_revision:
-          title: Model Revision
-          description: Model revision (branch, tag, or commit). If not specified,
-            parsed from model_name @revision suffix or defaults to 'main'
-          type: string
-          maxLength: 255
-        model_provider:
-          title: Model Provider
-          description: 'Model provider: ''hf'' for HuggingFace or ''nmp'' for NeMo
-            Platform'
-          type: string
-          maxLength: 255
-        chat_template:
-          title: Chat Template
-          description: Jinja2 chat template string for the model. Overrides the chat_template
-            from ModelEntity.spec if both are set. Used by NIM to format chat completions.
-          type: string
-        tool_call_config:
-          allOf:
-          - $ref: '#/components/schemas/ToolCallConfig'
-          description: Tool calling configuration for NIM deployments. Overrides tool_call_config
-            from ModelEntity.spec if both are set. Controls how the model handles
-            function/tool calling.
-        additional_envs:
-          title: Additional Envs
-          description: Additional environment variables for the deployment
-          additionalProperties: true
-          type: object
-        k8s_nim_operator_config:
-          allOf:
-          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
-          description: Typed Kubernetes configuration for common NIMService Spec fields.
-            Applied after defaults but before override_config.
-        override_config:
-          title: Override Config
-          description: Raw NIMService spec configuration that takes precedence over
-            generated config. Allows end users to provide advanced configuration options
-            directly.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - gpu
-      title: NIMDeployment
-      description: Configuration for NIM-based model deployment.
     NoteAnnotation:
       properties:
         annotation_id:
@@ -16714,10 +16785,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -16725,7 +16806,9 @@ components:
           maxLength: 255
       type: object
       required:
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: UpdateModelDeploymentConfigRequest
       description: Request model for updating a ModelDeploymentConfig (creates new
         version).

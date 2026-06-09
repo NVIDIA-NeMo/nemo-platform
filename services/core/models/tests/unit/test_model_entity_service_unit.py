@@ -1357,15 +1357,18 @@ def _make_deployment_config(
     nim_deployment_present: bool = True,
 ) -> ModelDeploymentConfig:
     """Helper to create a ModelDeploymentConfig entity for testing."""
-    from nmp.core.models.schemas import NIMDeployment
+    from nmp.core.models.schemas import ContainerExecutorConfig, ModelDeploymentConfigModelSpec
 
-    nim = NIMDeployment(lora_enabled=lora_enabled, gpu=1) if nim_deployment_present else None
+    model_spec = ModelDeploymentConfigModelSpec(lora_enabled=lora_enabled) if nim_deployment_present else None
+    executor_config = ContainerExecutorConfig(gpu=1) if nim_deployment_present else None
     cfg = ModelDeploymentConfig(
         workspace="default",
         name=f"{base_name}-v{entity_version}",
         base_name=base_name,
         entity_version=entity_version,
-        nim_deployment=nim,
+        engine="nim" if nim_deployment_present else None,
+        model_spec=model_spec,
+        executor_config=executor_config,
         model_entity_id=model_entity_id,
     )
     cfg._id = f"cfg-{base_name}-v{entity_version}"
@@ -1443,7 +1446,7 @@ async def test_resolve_lora_filter_latest_version_enables_lora(model_entity_serv
 
 @pytest.mark.asyncio
 async def test_resolve_lora_filter_skips_none_nim_deployment(model_entity_service, mock_entity_client):
-    """_resolve_lora_filter skips configs where nim_deployment is None."""
+    """_resolve_lora_filter skips configs where model_spec is None."""
     configs = [
         _make_deployment_config(
             "cfg-a", lora_enabled=False, model_entity_id="default/model-a", nim_deployment_present=False

@@ -810,8 +810,8 @@ class TestModelEntityRunner:
 
         model_entity_runner_mocks.sdk.inference.deployment_configs.create.assert_called_once()
         create_kwargs = model_entity_runner_mocks.sdk.inference.deployment_configs.create.call_args[1]
-        assert create_kwargs["nim_deployment"]["gpu"] == 2
-        assert create_kwargs["nim_deployment"]["lora_enabled"] is True
+        assert create_kwargs["executor_config"]["gpu"] == 2
+        assert create_kwargs["model_spec"]["lora_enabled"] is True
 
         model_entity_runner_mocks.sdk.inference.deployments.create.assert_called_once()
 
@@ -918,8 +918,8 @@ class TestModelEntityRunner:
 
         model_entity_runner_mocks.sdk.inference.deployment_configs.create.assert_called_once()
         create_kwargs = model_entity_runner_mocks.sdk.inference.deployment_configs.create.call_args[1]
-        assert create_kwargs["nim_deployment"]["gpu"] == 4
-        assert create_kwargs["nim_deployment"]["lora_enabled"] is False
+        assert create_kwargs["executor_config"]["gpu"] == 4
+        assert create_kwargs["model_spec"]["lora_enabled"] is False
 
         model_entity_runner_mocks.sdk.inference.deployments.create.assert_called_once()
         model_entity_runner_mocks.sdk.inference.deployment_configs.list.assert_not_called()
@@ -1220,7 +1220,7 @@ class TestModelEntityRunner:
         model_entity_runner_mocks.sdk.inference.deployment_configs.create.assert_called_once()
         model_entity_runner_mocks.sdk.inference.deployment_configs.update.assert_called_once()
         update_kwargs = model_entity_runner_mocks.sdk.inference.deployment_configs.update.call_args[1]
-        assert update_kwargs["nim_deployment"]["gpu"] == 2
+        assert update_kwargs["executor_config"]["gpu"] == 2
 
         model_entity_runner_mocks.sdk.inference.deployments.create.assert_called_once()
         deploy_kwargs = model_entity_runner_mocks.sdk.inference.deployments.create.call_args[1]

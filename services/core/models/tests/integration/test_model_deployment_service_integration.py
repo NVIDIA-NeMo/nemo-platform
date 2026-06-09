@@ -10,11 +10,12 @@ from nmp.common.api.common import Page
 from nmp.core.models.api.service.model_deployment_config_service import ModelDeploymentConfigService
 from nmp.core.models.api.service.model_deployment_service import ModelDeploymentService
 from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
     CreateModelDeploymentConfigRequest,
     CreateModelDeploymentRequest,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     ModelType,
-    NIMDeployment,
     UpdateModelDeploymentRequest,
     UpdateModelDeploymentStatusRequest,
 )
@@ -48,28 +49,37 @@ def deployment_service(client_context):
 
 
 @pytest.fixture
-def sample_nim_deployment():
-    """Create a sample NIMDeployment for testing."""
-    return NIMDeployment(
+def sample_model_spec():
+    """Create a sample ModelDeploymentConfigModelSpec for testing."""
+    return ModelDeploymentConfigModelSpec(
         model_type=ModelType.LLM,
         lora_enabled=False,
-        gpu=1,
-        disk_size="50Gi",
-        image_name="nvcr.io/nvidia/nim/llm",
-        image_tag="latest",
         model_namespace="nvidia",
         model_name="llama-3-8b",
     )
 
 
+@pytest.fixture
+def sample_executor_config():
+    """Create a sample ContainerExecutorConfig for testing."""
+    return ContainerExecutorConfig(
+        gpu=1,
+        disk_size="50Gi",
+        image_name="nvcr.io/nvidia/nim/llm",
+        image_tag="latest",
+    )
+
+
 @pytest_asyncio.fixture
-async def sample_deployment_config(deployment_config_service, sample_nim_deployment):
+async def sample_deployment_config(deployment_config_service, sample_model_spec, sample_executor_config):
     """Create a sample deployment config for testing."""
     create_request = CreateModelDeploymentConfigRequest(
         name="test-config",
         project="test-project",
         description="A test deployment configuration",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         model_entity_id="model-entity-123",
     )
     return await deployment_config_service.create_deployment_config(create_request, "default")
@@ -204,13 +214,15 @@ async def test_list_deployments_with_data_integration(
 
 @pytest.mark.asyncio
 async def test_versioning_workflow_integration(
-    client_context, deployment_service, deployment_config_service, sample_nim_deployment
+    client_context, deployment_service, deployment_config_service, sample_model_spec, sample_executor_config
 ):
     """Test the complete versioning workflow."""
     # Arrange - Create deployment config
     config_request = CreateModelDeploymentConfigRequest(
         name="versioning-config",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
     )
     await deployment_config_service.create_deployment_config(config_request, "default")
 
@@ -248,13 +260,15 @@ async def test_versioning_workflow_integration(
 
 @pytest.mark.asyncio
 async def test_list_deployments_returns_latest_only_integration(
-    deployment_service, deployment_config_service, sample_nim_deployment
+    deployment_service, deployment_config_service, sample_model_spec, sample_executor_config
 ):
     """Test that list returns only the latest version of each deployment by default."""
     # Create config
     config_request = CreateModelDeploymentConfigRequest(
         name="test-config-latest",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
     )
     await deployment_config_service.create_deployment_config(config_request, "default")
 
@@ -404,16 +418,22 @@ async def test_delete_deployment_not_found_integration(deployment_service):
 
 
 @pytest.mark.asyncio
-async def test_filter_by_workspace_integration(deployment_service, deployment_config_service, sample_nim_deployment):
+async def test_filter_by_workspace_integration(
+    deployment_service, deployment_config_service, sample_model_spec, sample_executor_config
+):
     """Test filtering deployments by workspace."""
     # Create configs in different workspaces
     config1 = CreateModelDeploymentConfigRequest(
         name="config1",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
     )
     config2 = CreateModelDeploymentConfigRequest(
         name="config2",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
     )
 
     await deployment_config_service.create_deployment_config(config1, "workspace1")
@@ -443,7 +463,9 @@ async def test_filter_by_workspace_integration(deployment_service, deployment_co
 
 
 @pytest.mark.asyncio
-async def test_filter_by_status_integration(deployment_service, sample_deployment_config, sample_nim_deployment):
+async def test_filter_by_status_integration(
+    deployment_service, sample_deployment_config, sample_model_spec, sample_executor_config
+):
     """Test filtering deployments by status."""
     # Create a deployment
     request = CreateModelDeploymentRequest(
@@ -490,13 +512,15 @@ async def test_create_deployment_without_hf_token_integration(deployment_service
 
 
 async def test_update_deployment_with_new_config_version_integration(
-    deployment_service, deployment_config_service, sample_nim_deployment
+    deployment_service, deployment_config_service, sample_model_spec, sample_executor_config
 ):
     """Test updating a deployment to use a new config version."""
     # Create config v1
     config_request = CreateModelDeploymentConfigRequest(
         name="update-test-config",
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         description="Version 1",
     )
     await deployment_config_service.create_deployment_config(config_request, "default")
@@ -505,7 +529,9 @@ async def test_update_deployment_with_new_config_version_integration(
     from nmp.core.models.schemas import UpdateModelDeploymentConfigRequest as UpdateConfigRequest
 
     update_config_request = UpdateConfigRequest(
-        nim_deployment=sample_nim_deployment,
+        engine="nim",
+        model_spec=sample_model_spec,
+        executor_config=sample_executor_config,
         description="Version 2",
     )
     await deployment_config_service.update_deployment_config("default", "update-test-config", update_config_request)
