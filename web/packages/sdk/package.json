@@ -42,7 +42,10 @@
     "concurrently": "catalog:",
     "orval": "catalog:",
     "prettier": "catalog:",
+    "@types/node": "catalog:",
     "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   }
 }
