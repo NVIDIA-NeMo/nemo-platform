@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.resources.entities import AsyncEntitiesResource
 from nemo_platform_plugin.discovery import discover_seed_jobs
-from nmp.common.config import Configuration
+from nmp.common.config import get_platform_config
 from nmp.common.entities import EntityClient
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.service.api.health import async_wait_for_dependencies
@@ -28,7 +28,6 @@ class PlatformSeedResult:
 
     auth_ok: bool = False
     guardrails_ok: bool = False
-    evaluator_ok: bool = False
     models_ok: bool = False
     plugin_results: dict[str, bool] = field(default_factory=dict)
     errors: list[str] = field(default_factory=list)
@@ -45,20 +44,6 @@ async def seed_guardrails(entity_client: EntityClient, config: PlatformSeedConfi
     await populate_config_store(entity_client, config.guardrails_config_store_path)
 
     logger.info("Guardrails config store populated")
-
-
-async def seed_evaluator(entity_client: EntityClient, config: PlatformSeedConfig) -> None:
-    """Register evaluator system metrics and benchmarks. Idempotent."""
-    from nmp.evaluator.api.v2.benchmarks.manager import BenchmarksManager
-    from nmp.evaluator.api.v2.metrics.manager import MetricsManager
-
-    metrics_manager = MetricsManager(entity_client, as_service="platform-seed")
-    benchmarks_manager = BenchmarksManager(entity_client, as_service="platform-seed")
-    await asyncio.gather(
-        metrics_manager.register_system_metrics(config.evaluator_recreate_existing),
-        benchmarks_manager.register_system_benchmarks(config.evaluator_recreate_existing),
-    )
-    logger.info("Evaluator system metrics and benchmarks registered")
 
 
 async def seed_auth(entity_client: EntityClient, config: PlatformSeedConfig) -> None:
@@ -165,15 +150,6 @@ async def run_platform_seed(
             logger.exception(msg)
             result.errors.append(msg)
 
-    if config.evaluator_enabled:
-        try:
-            await seed_evaluator(entity_client, config)
-            result.evaluator_ok = True
-        except Exception as e:
-            msg = f"Evaluator seed failed: {e}"
-            logger.exception(msg)
-            result.errors.append(msg)
-
     if config.model_provider_enabled:
         try:
             await seed_model_provider(sdk)
@@ -204,7 +180,7 @@ async def run_platform_seed_from_startup() -> bool:
         return True
 
     try:
-        platform_config = Configuration.get_platform_config()
+        platform_config = get_platform_config()
     except Exception as e:
         logger.error("Failed to load platform config: %s", e)
         return False
