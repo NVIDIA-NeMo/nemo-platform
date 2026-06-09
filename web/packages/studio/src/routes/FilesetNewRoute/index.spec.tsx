@@ -1,14 +1,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { DatasetQualityReport } from '@nemo/common/src/utils/datasetQuality';
+import {
+  checkDatasetQuality,
+  type DatasetQualityReport,
+} from '@nemo/common/src/utils/datasetQuality';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
+import { workspace1 } from '@studio/mocks/entity-store/projects';
+import { FilesetNewRoute } from '@studio/routes/FilesetNewRoute';
+import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams';
+import { render, screen } from '@studio/tests/util/render';
+import { TestProviders } from '@studio/tests/util/TestProviders';
+import { within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 
 vi.mock('@nemo/common/src/utils/datasetQuality', () => ({
   checkDatasetQuality: vi.fn(),
 }));
 
-import { checkDatasetQuality } from '@nemo/common/src/utils/datasetQuality';
 const mockCheckDatasetQuality = vi.mocked(checkDatasetQuality);
 
 function makeQualityReport(overrides: Partial<DatasetQualityReport> = {}): DatasetQualityReport {
@@ -22,13 +31,6 @@ function makeQualityReport(overrides: Partial<DatasetQualityReport> = {}): Datas
     ...overrides,
   };
 }
-import { workspace1 } from '@studio/mocks/entity-store/projects';
-import { FilesetNewRoute } from '@studio/routes/FilesetNewRoute';
-import { mockUseNavigate, mockUseParams } from '@studio/tests/util/mockUseParams';
-import { render, screen } from '@studio/tests/util/render';
-import { TestProviders } from '@studio/tests/util/TestProviders';
-import { within } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
 
 const renderRoute = () => {
   return render(
@@ -212,6 +214,9 @@ describe('FilesetNewRoute', () => {
     }
 
     async function uploadFile(user: ReturnType<typeof userEvent.setup>, file: File) {
+      // The Upload component renders a visually hidden file input with no accessible name;
+      // querySelector is the only reliable way to reach it in jsdom.
+      // eslint-disable-next-line testing-library/no-node-access
       const input = document.querySelector('input[type="file"]') as HTMLInputElement;
       await user.upload(input, file);
     }
@@ -271,7 +276,9 @@ describe('FilesetNewRoute', () => {
 
       await uploadFile(user, makeJsonlFile());
 
-      expect(await screen.findByText(/No recognized fine-tuning schema detected/i)).toBeInTheDocument();
+      expect(
+        await screen.findByText(/No recognized fine-tuning schema detected/i)
+      ).toBeInTheDocument();
     });
 
     it('disables the Create Fileset button when quality report has errors', async () => {
@@ -294,7 +301,13 @@ describe('FilesetNewRoute', () => {
       mockCheckDatasetQuality.mockResolvedValue(
         makeQualityReport({
           hasWarnings: true,
-          issues: [{ severity: 'warning', code: 'LONG_ENTRIES', message: '1 row may exceed context window.' }],
+          issues: [
+            {
+              severity: 'warning',
+              code: 'LONG_ENTRIES',
+              message: '1 row may exceed context window.',
+            },
+          ],
         })
       );
       const user = userEvent.setup();

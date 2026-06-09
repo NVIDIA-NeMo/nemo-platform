@@ -7,9 +7,11 @@ import { ControlledTextInput } from '@nemo/common/src/components/form/Controlled
 import { RadioCard } from '@nemo/common/src/components/RadioCard';
 import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import {
+  checkDatasetQuality,
+  type DatasetQualityReport,
+} from '@nemo/common/src/utils/datasetQuality';
 import { FILESET_NAME_MAX_LENGTH, FILESET_NAME_REGEXP } from '@nemo/common/src/utils/filesetName';
-import { checkDatasetQuality } from '@nemo/common/src/utils/datasetQuality';
-import type { DatasetQualityReport } from '@nemo/common/src/utils/datasetQuality';
 import {
   filesUploadFile,
   getFilesListFilesetFilesQueryKey,
@@ -177,8 +179,8 @@ interface DatasetQualityReportViewProps {
 const DatasetQualityReportView: FC<DatasetQualityReportViewProps> = ({ report }) => {
   const partialScanNote = report.scannedLines < report.totalLines && (
     <Text kind="body/regular/sm" color="secondary">
-      Scanned first {report.scannedLines.toLocaleString()} of{' '}
-      {report.totalLines.toLocaleString()} lines.
+      Scanned first {report.scannedLines.toLocaleString()} of {report.totalLines.toLocaleString()}{' '}
+      lines.
     </Text>
   );
 
