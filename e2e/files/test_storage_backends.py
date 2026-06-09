@@ -85,15 +85,18 @@ def ngc_fileset(sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Iterator[
 
 
 @pytest.fixture
-def hf_secret(sdk: NeMoPlatform, workspace: str) -> Iterator[str | None]:
-    """Create a secret for the HF token if available, otherwise yield None."""
+def hf_token() -> str:
+    """Return the HF token from the environment."""
     token = os.environ.get(HF_TOKEN_ENV)
-    if not token:
-        yield None
-        return
+    assert token, f"{HF_TOKEN_ENV} must be set"
+    return token
 
+
+@pytest.fixture
+def hf_secret(sdk: NeMoPlatform, workspace: str, hf_token: str) -> Iterator[str]:
+    """Create a secret containing the HF token, cleaned up after test."""
     secret_name = f"e2e-hf-tok-{uuid.uuid4().hex[:8]}"
-    sdk.secrets.create(workspace=workspace, name=secret_name, value=token)
+    sdk.secrets.create(workspace=workspace, name=secret_name, value=hf_token)
     yield secret_name
     try:
         sdk.secrets.delete(workspace=workspace, name=secret_name)
@@ -102,16 +105,15 @@ def hf_secret(sdk: NeMoPlatform, workspace: str) -> Iterator[str | None]:
 
 
 @pytest.fixture
-def hf_fileset(sdk: NeMoPlatform, workspace: str, hf_secret: str | None) -> Iterator[str]:
+def hf_fileset(sdk: NeMoPlatform, workspace: str, hf_secret: str) -> Iterator[str]:
     """Create a Hugging Face-backed fileset, cleaned up after test."""
     fileset_name = f"e2e-hf-fs-{uuid.uuid4().hex[:8]}"
 
     storage = HuggingfaceStorageConfigParam(
         repo_id=HF_REPO_ID,
         repo_type=HF_REPO_TYPE,
+        token_secret=hf_secret,
     )
-    if hf_secret is not None:
-        storage["token_secret"] = hf_secret
 
     sdk.files.filesets.create(
         workspace=workspace,
@@ -251,6 +253,7 @@ class TestNGCFileset:
 # ===================================================================
 
 
+@pytest.mark.skipif(not os.environ.get(HF_TOKEN_ENV), reason=f"{HF_TOKEN_ENV} not set")
 class TestHuggingFaceFileset:
     """Tests for Hugging Face-backed filesets."""
 

@@ -23,7 +23,6 @@ import os
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from collections.abc import Iterator
@@ -62,16 +61,26 @@ _services_log_key = pytest.StashKey[Path]()
 
 
 @pytest.fixture(scope="session")
-def services_log_path(request: pytest.FixtureRequest) -> Path:
+def services_log_path(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Return a unique services log path for this session.
 
-    Appends a UUID so parallel pytest processes never clobber each
-    other's logs.  The path is stashed on the session so the
+    ``E2E_SERVICES_LOG_DIR`` (if set) is treated as a **directory**; in CI
+    the job uploads everything under it as artifacts.  When unset we
+    fall back to a pytest-managed temp directory.  Either way, each
+    session writes to a UUID-named file inside the directory so
+    parallel workers never clobber each other.
+
+    The path is stashed on the session so the
     ``pytest_runtest_makereport`` hook can read it without requesting
     the fixture.
     """
-    base = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
-    path = base.with_stem(f"{base.stem}-{uuid.uuid4().hex[:8]}")
+    log_dir = os.environ.get("E2E_SERVICES_LOG_DIR")
+    if log_dir:
+        directory = Path(log_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+    else:
+        directory = tmp_path_factory.mktemp("e2e-services-logs")
+    path = directory / f"services-{uuid.uuid4().hex[:8]}.log"
     request.session.stash[_services_log_key] = path
     return path
 
