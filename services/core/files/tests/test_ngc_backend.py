@@ -518,6 +518,31 @@ async def test_delete_not_implemented(ngc_config, mock_ngc_client, ngc_secrets):
         await impl.delete("test.txt")
 
 
+def test_ngc_config_does_not_own_storage_data(ngc_config):
+    """NGC is read-only external storage; the platform does not own the source data."""
+    assert ngc_config.owns_storage_data is False
+
+
+def test_ngc_config_cache_prefix_unresolved_version_is_none(ngc_config):
+    """Without a pinned version we cannot safely compute the cache prefix."""
+    assert ngc_config.version is None
+    assert ngc_config.cache_path_prefix is None
+
+
+async def test_ngc_config_cache_prefix_matches_backend(ngc_config, mock_ngc_client, ngc_secrets):
+    """The secret-free config cache prefix must match the backend's get_cache_path_key().
+
+    This guards against the two implementations drifting apart.
+    """
+    resolved = ngc_config.model_copy(update={"version": "1.0"})
+    impl = NGCStorageImpl(resolved, ngc_secrets)
+
+    backend_prefix = await impl.get_cache_path_key()
+
+    assert resolved.cache_path_prefix == backend_prefix
+    assert resolved.cache_path_prefix == "cache/ngc/test-org/test-team/test-resource/1.0"
+
+
 # ---- Factory tests ----
 
 

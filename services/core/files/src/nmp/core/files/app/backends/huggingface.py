@@ -334,7 +334,7 @@ class HuggingfaceStorageImpl(StorageImpl):
         Args:
             path: File path within the repo. If None, returns the cache root prefix.
         """
-        prefix = f"cache/hf/{self.config.repo_id}/{self.config.revision}"
+        prefix = self.config.cache_path_prefix
         if path is None:
             return prefix
         return f"{prefix}/{path}"

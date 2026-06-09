@@ -47,6 +47,40 @@ class BaseStorageConfig(BaseModel):
         """Get the secret references for the storage config."""
         return {}
 
+    @property
+    def owns_storage_data(self) -> bool:
+        """Whether the platform owns the underlying source data for this backend.
+
+        When True, deleting a fileset must also delete the underlying source
+        data (e.g. local files, S3 objects under our prefix). When False, the
+        backend points at source data the platform does not own and must not
+        delete (e.g. read-only external registries like NGC or HuggingFace).
+
+        Note: this concerns *source* data only. Cacheable external backends
+        still materialize copies in the platform's default storage (see
+        ``cache_path_prefix``); that cache is always owned by the platform.
+
+        Defaults to False so external backends are safe by default.
+        """
+        return False
+
+    @property
+    def cache_path_prefix(self) -> str | None:
+        """Prefix under which this backend's files are cached in default storage.
+
+        External backends (NGC, HuggingFace) stream from a remote source and
+        cache copies in the platform's default storage under this prefix. The
+        prefix is fully determined by the (already-resolved) config, so it can
+        be computed without resolving any storage secret.
+
+        Returns None for backends that are not cached (local/default storage,
+        which has no separate cache layer).
+
+        Backends that implement caching MUST keep this in sync with their
+        ``get_cache_path_key()`` implementation.
+        """
+        return None
+
     def copy_config(self, path: str) -> Self:
         """
         This method is necessary for when we're using a storage config
@@ -80,6 +114,12 @@ class LocalStorageConfig(BaseStorageConfig):
         paths like ``./files_storage`` (joined against cwd).
         """
         return str(Path.cwd() / Path(v).expanduser())
+
+    @property
+    def owns_storage_data(self) -> bool:
+        # Deleting a local-backed fileset removes the underlying directory
+        # (see LocalStorageImpl.delete_all), so we own that data.
+        return True
 
     def copy_config(self, path: str) -> Self:
         new_subpath = os.path.join(self.path, path)
@@ -116,6 +156,12 @@ class HuggingfaceStorageConfig(BaseStorageConfig):
     def get_secret_references(self) -> dict[str, SecretRef]:
         return {"token": self.token_secret} if self.token_secret else {}
 
+    @property
+    def cache_path_prefix(self) -> str:
+        # Single source of truth for the HF cache layout (used by the backend impl).
+        # Format: cache/hf/{repo_id}/{revision}
+        return f"cache/hf/{self.repo_id}/{self.revision}"
+
 
 class NGCStorageConfig(BaseStorageConfig):
     type: Literal[StorageConfigType.NGC] = StorageConfigType.NGC
@@ -145,6 +191,28 @@ class NGCStorageConfig(BaseStorageConfig):
 
     def get_secret_references(self) -> dict[str, SecretRef]:
         return {"api_key": self.api_key_secret}
+
+    def cache_path_prefix_for_version(self, version: str) -> str:
+        """Cache prefix for a specific (resolved) NGC version.
+
+        This is the single source of truth for the NGC cache layout. The backend
+        impl calls this with a version it has resolved (which may require a
+        network call when the version is 'latest'); the secret-free
+        ``cache_path_prefix`` property calls it with the already-pinned version.
+
+        Format: cache/ngc/{org}/{team}/{target}/{version}
+        """
+        return f"cache/ngc/{self.org}/{self.team}/{self.target}/{version}"
+
+    @property
+    def cache_path_prefix(self) -> str | None:
+        # The version is pinned at fileset-create time (resolve_config), so a
+        # persisted fileset always has it. If it is somehow unresolved we cannot
+        # compute the prefix without contacting NGC (which needs the secret), so
+        # we return None rather than guess and delete the wrong prefix.
+        if self.version is None:
+            return None
+        return self.cache_path_prefix_for_version(self.version)
 
 
 class S3StorageConfig(BaseStorageConfig):
@@ -210,6 +278,19 @@ class S3StorageConfig(BaseStorageConfig):
         if self.secret_access_key_secret:
             refs["secret_access_key"] = self.secret_access_key_secret
         return refs
+
+    @property
+    def owns_storage_data(self) -> bool:
+        # Deleting an S3-backed fileset removes the objects under our prefix
+        # (see S3StorageImpl.delete_all), so we own that source data.
+        return True
+
+    @property
+    def cache_path_prefix(self) -> str:
+        # Single source of truth for the S3 cache layout (used by the backend impl).
+        # Format: cache/s3/{bucket}[/{prefix}]
+        prefix_part = f"/{self.prefix}" if self.prefix else ""
+        return f"cache/s3/{self.bucket}{prefix_part}"
 
     def copy_config(self, path: str) -> Self:
         """Create a copy with an extended prefix for subpath filesets."""

@@ -299,7 +299,7 @@ class NGCStorageImpl(StorageImpl):
             path: File path within the asset. If None, returns the cache root prefix.
         """
         version = await self._get_version()
-        prefix = f"cache/ngc/{self.config.org}/{self.config.team}/{self.config.target}/{version}"
+        prefix = self.config.cache_path_prefix_for_version(version)
         if path is None:
             return prefix
         return f"{prefix}/{path}"

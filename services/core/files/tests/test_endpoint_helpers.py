@@ -10,6 +10,7 @@ from nmp.common.api.common import SecretRef
 from nmp.common.secrets.exceptions import SecretNotFoundError
 from nmp.core.files.api.endpoint_helpers import (
     CacheContext,
+    delete_cached_data,
     get_cache_status_for_files,
     get_download_file_info,
     get_file_info,
@@ -100,6 +101,164 @@ async def test_resolve_storage_secrets_propagates_not_found(mock_sdk):
 
     with pytest.raises(SecretNotFoundError):
         await resolve_storage_secrets(config, "default", mock_sdk)
+
+
+# Tests for delete_cached_data
+
+
+async def test_delete_cached_data_deletes_external_cache():
+    """For an external (NGC) fileset, the cache prefix is deleted from default storage.
+
+    The default storage config is scoped down to the cache prefix and delete_all()
+    is invoked on it. No storage secret is required.
+    """
+    ngc_config = NGCStorageConfig(
+        org="o",
+        team="t",
+        target="r",
+        version="1.0",
+        api_key_secret=SecretRef(root="some-secret"),
+    )
+    default_config = LocalStorageConfig(path="/data")
+
+    scoped_storage = MagicMock()
+    scoped_storage.delete_all = AsyncMock()
+
+    with (
+        patch.object(type(default_config), "copy_config", return_value=default_config) as mock_copy,
+        patch(
+            "nmp.core.files.api.endpoint_helpers.storage_impl_factory",
+            return_value=scoped_storage,
+        ) as mock_factory,
+    ):
+        await delete_cached_data(ngc_config, default_config)
+
+    mock_copy.assert_called_once_with("cache/ngc/o/t/r/1.0")
+    mock_factory.assert_called_once_with(default_config, {})
+    scoped_storage.delete_all.assert_awaited_once()
+
+
+async def test_delete_cached_data_noop_when_not_cacheable():
+    """A local-backed fileset has no cache layer, so nothing is deleted."""
+    local_config = LocalStorageConfig(path="/data/filesets/x")
+    default_config = LocalStorageConfig(path="/data")
+
+    with patch("nmp.core.files.api.endpoint_helpers.storage_impl_factory") as mock_factory:
+        await delete_cached_data(local_config, default_config)
+
+    mock_factory.assert_not_called()
+
+
+async def test_delete_cached_data_swallows_errors():
+    """Cache cleanup is best-effort: a failure must not propagate (would block delete)."""
+    hf_config = HuggingfaceStorageConfig(repo_id="org/repo", revision="abc123")
+    default_config = LocalStorageConfig(path="/data")
+
+    failing_storage = MagicMock()
+    failing_storage.delete_all = AsyncMock(side_effect=RuntimeError("boom"))
+
+    with (
+        patch.object(type(default_config), "copy_config", return_value=default_config),
+        patch(
+            "nmp.core.files.api.endpoint_helpers.storage_impl_factory",
+            return_value=failing_storage,
+        ),
+    ):
+        # Should not raise
+        await delete_cached_data(hf_config, default_config)
+
+    failing_storage.delete_all.assert_awaited_once()
+
+
+async def test_delete_cached_data_prefers_source_backend_prefix():
+    """When a source impl is available, its resolved cache key is the source of truth.
+
+    This is the key case for an NGC fileset whose persisted config never had its
+    version pinned: the secret-free config prefix would be None, but the source
+    backend resolves the live version, so the cache is still cleaned.
+    """
+    # Unresolved version -> config-derived prefix is None.
+    ngc_config = NGCStorageConfig(
+        org="o",
+        team="t",
+        target="r",
+        version=None,
+        api_key_secret=SecretRef(root="some-secret"),
+    )
+    assert ngc_config.cache_path_prefix is None
+    default_config = LocalStorageConfig(path="/data")
+
+    # Source impl resolves the live version into a concrete cache prefix.
+    source_storage = MagicMock()
+    source_storage.get_cache_path_key = AsyncMock(return_value="cache/ngc/o/t/r/42")
+
+    scoped_storage = MagicMock()
+    scoped_storage.delete_all = AsyncMock()
+
+    with (
+        patch.object(type(default_config), "copy_config", return_value=default_config) as mock_copy,
+        patch(
+            "nmp.core.files.api.endpoint_helpers.storage_impl_factory",
+            return_value=scoped_storage,
+        ),
+    ):
+        await delete_cached_data(ngc_config, default_config, source_storage)
+
+    source_storage.get_cache_path_key.assert_awaited_once_with()
+    mock_copy.assert_called_once_with("cache/ngc/o/t/r/42")
+    scoped_storage.delete_all.assert_awaited_once()
+
+
+async def test_delete_cached_data_unresolved_version_no_source_is_noop():
+    """NGC fileset with unresolved version AND no source impl: cannot safely target.
+
+    Without a resolved version or a working source backend we don't know the cache
+    prefix, so we must not guess. Nothing is deleted (logged as a potential orphan).
+    """
+    ngc_config = NGCStorageConfig(
+        org="o",
+        team="t",
+        target="r",
+        version=None,
+        api_key_secret=SecretRef(root="some-secret"),
+    )
+    default_config = LocalStorageConfig(path="/data")
+
+    with patch("nmp.core.files.api.endpoint_helpers.storage_impl_factory") as mock_factory:
+        await delete_cached_data(ngc_config, default_config, source_storage=None)
+
+    mock_factory.assert_not_called()
+
+
+async def test_delete_cached_data_falls_back_when_source_resolution_fails():
+    """If the source impl errors while resolving the prefix, fall back to config prefix."""
+    ngc_config = NGCStorageConfig(
+        org="o",
+        team="t",
+        target="r",
+        version="1.0",
+        api_key_secret=SecretRef(root="some-secret"),
+    )
+    default_config = LocalStorageConfig(path="/data")
+
+    source_storage = MagicMock()
+    source_storage.get_cache_path_key = AsyncMock(side_effect=RuntimeError("ngc down"))
+
+    scoped_storage = MagicMock()
+    scoped_storage.delete_all = AsyncMock()
+
+    with (
+        patch.object(type(default_config), "copy_config", return_value=default_config) as mock_copy,
+        patch(
+            "nmp.core.files.api.endpoint_helpers.storage_impl_factory",
+            return_value=scoped_storage,
+        ),
+    ):
+        await delete_cached_data(ngc_config, default_config, source_storage)
+
+    # Fell back to the secret-free config prefix.
+    mock_copy.assert_called_once_with("cache/ngc/o/t/r/1.0")
+    scoped_storage.delete_all.assert_awaited_once()
 
 
 # Tests for get_cache_status_for_files
