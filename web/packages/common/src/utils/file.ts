@@ -104,6 +104,19 @@ export async function getFirstRow(
  */
 export async function getFileRowCount(file: File, format: FileFormatType): Promise<number> {
   try {
+    if (format === 'parquet') {
+      let count = 0;
+      const buffer = await file.arrayBuffer();
+      await parquetRead({
+        file: buffer,
+        rowFormat: 'object',
+        onComplete: (rows) => {
+          count = rows.length;
+        },
+      });
+      return count;
+    }
+
     const text = await file.text();
 
     if (format === 'jsonl') {
@@ -118,17 +131,6 @@ export async function getFileRowCount(file: File, format: FileFormatType): Promi
         skipEmptyLines: true,
       });
       return result.data.length;
-    } else if (format === 'parquet') {
-      let count = 0;
-      const buffer = await file.arrayBuffer();
-      await parquetRead({
-        file: buffer,
-        rowFormat: 'object',
-        onComplete: (rows) => {
-          count = rows.length;
-        },
-      });
-      return count;
     } else {
       const data = JSON.parse(text);
       return Array.isArray(data) ? data.length : 1;
@@ -152,24 +154,7 @@ export async function getRowAtIndex(
   index: number
 ): Promise<Record<string, unknown> | null> {
   try {
-    const text = await file.text();
-
-    if (format === 'jsonl') {
-      const lines = text
-        .trim()
-        .split('\n')
-        .filter((line) => line.length > 0);
-      if (index >= 0 && index < lines.length) {
-        return JSON.parse(lines[index]);
-      }
-      return null;
-    } else if (format === 'csv') {
-      const result = Papa.parse<Record<string, string>>(text, {
-        header: true,
-        skipEmptyLines: true,
-      });
-      return (result.data[index] as Record<string, unknown>) ?? null;
-    } else if (format === 'parquet') {
+    if (format === 'parquet') {
       let targetRow: Record<string, unknown> | null = null;
       const buffer = await file.arrayBuffer();
       await parquetRead({
@@ -188,6 +173,25 @@ export async function getRowAtIndex(
         },
       });
       return targetRow;
+    }
+
+    const text = await file.text();
+
+    if (format === 'jsonl') {
+      const lines = text
+        .trim()
+        .split('\n')
+        .filter((line) => line.length > 0);
+      if (index >= 0 && index < lines.length) {
+        return JSON.parse(lines[index]);
+      }
+      return null;
+    } else if (format === 'csv') {
+      const result = Papa.parse<Record<string, string>>(text, {
+        header: true,
+        skipEmptyLines: true,
+      });
+      return (result.data[index] as Record<string, unknown>) ?? null;
     } else {
       const data = JSON.parse(text);
       if (Array.isArray(data)) {
