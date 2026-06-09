@@ -5,6 +5,7 @@ import { customFetch } from '@nemo/sdk/generated/fetchers/platform';
 import { filesDownloadFile, getFilesDownloadFileQueryKey } from '@nemo/sdk/generated/platform/api';
 import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
+import { PLATFORM_BASE_URL } from '@studio/constants/environment';
 import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import axios from 'axios';
@@ -54,9 +55,12 @@ export const datasetFileContentQueryOptions = ({
       );
 
       // HEAD the file to confirm it exists and read Content-Length for conditional ranging.
+      // Prepend PLATFORM_BASE_URL so axios resolves the correct host (the relative
+      // path alone resolves against window.location, which differs in tests and
+      // may differ in deployed environments with a custom base path).
       let fileSize: number | null = null;
       try {
-        const headResponse = await axios.head(fileUrl);
+        const headResponse = await axios.head(`${PLATFORM_BASE_URL}${fileUrl}`);
         const contentLength = headResponse.headers['content-length'];
         fileSize = contentLength ? parseInt(String(contentLength), 10) : null;
       } catch {
