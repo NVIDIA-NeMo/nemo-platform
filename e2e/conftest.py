@@ -256,7 +256,19 @@ def _services(services_log_path: Path) -> Iterator[str]:
     url = f"http://127.0.0.1:{port}"
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
-    args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
+    # --service-group alone does not start controllers (see resolve_run_configuration);
+    # jobs e2e tests need the jobs controller for scheduling.
+    args = [
+        nemo_bin,
+        "services",
+        "run",
+        "--service-group",
+        "all",
+        "--controller-group",
+        "all",
+        "--port",
+        str(port),
+    ]
     env = os.environ.copy()
     env["NMP_SEED_ON_STARTUP"] = "true"
     if not _e2e_auth_enabled():
