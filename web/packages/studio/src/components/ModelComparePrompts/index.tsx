@@ -55,6 +55,7 @@ interface PromptRow {
 interface ExpandedCellState {
   title: string;
   content: string;
+  stats?: ResponseStats;
 }
 
 /** Builds prompt rows from parsed dataset rows using the shared sampling controls. */
@@ -467,38 +468,40 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-6 py-4">
-      <Stack gap="density-xs" className="max-w-lg min-w-0 shrink-0">
-        <Text kind="label/bold/sm">Dataset</Text>
-        <Select
-          items={datasetItems}
-          value={pickerValue}
-          onValueChange={handleDatasetSelect}
-          placeholder="Pick a sample…"
-          disabled={isRunning}
-          className="w-full"
-        />
-        {parseError && (
-          <Text kind="label/regular/sm" className="text-fg-error">
-            {parseError}
-          </Text>
-        )}
-      </Stack>
-
-      {fileResult && hasPromptKey && (
-        <Stack gap="density-md" className="min-h-0">
-          <FileSamplingMethodSelect
-            value={sampleMethod}
-            onValueChange={setSampleMethod}
-            rowCountGroup={{
-              value: sampleSize,
-              onValueChange: setSampleSize,
-              maxRows: Math.max(1, rowCount),
-              disabled: isRunning,
-            }}
-            attributes={{ select: { disabled: isRunning } }}
+      <div className="flex shrink-0 flex-wrap items-end gap-2">
+        <Stack gap="density-xs" className="min-w-[220px] max-w-sm flex-1">
+          <Text kind="label/bold/sm">Dataset</Text>
+          <Select
+            items={datasetItems}
+            value={pickerValue}
+            onValueChange={handleDatasetSelect}
+            placeholder="Pick a sample…"
+            disabled={isRunning}
+            className="w-full"
           />
+          {parseError && (
+            <Text kind="label/regular/sm" className="text-fg-error">
+              {parseError}
+            </Text>
+          )}
         </Stack>
-      )}
+
+        {fileResult && hasPromptKey && (
+          <div className="ml-6 shrink-0">
+            <FileSamplingMethodSelect
+              value={sampleMethod}
+              onValueChange={setSampleMethod}
+              rowCountGroup={{
+                value: sampleSize,
+                onValueChange: setSampleSize,
+                maxRows: Math.max(1, rowCount),
+                disabled: isRunning,
+              }}
+              attributes={{ select: { disabled: isRunning } }}
+            />
+          </div>
+        )}
+      </div>
       {/* Results table fills remaining height; this is the main vertical scroll region. */}
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full table-fixed border-separate border-spacing-0">
@@ -512,14 +515,14 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             <tr>
               <th className="border border-base px-3 py-2 text-left font-medium align-middle">
                 <Flex align="center" justify="between" gap="density-md">
-                  <span>Prompts</span>
+                  <span className="font-bold">Prompts</span>
                   {fileResult && hasPromptKey && (
                     <Button
                       kind="primary"
+                      color="brand"
                       size="small"
                       onClick={runInference}
                       disabled={isRunning || !hasPrompts || !hasAssignedModel}
-                      className="bg-green-600 hover:bg-green-700"
                     >
                       {isRunning ? (
                         <Loader2 size={14} className="animate-spin" />
@@ -567,6 +570,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                     content={row.prompt}
                     title={`Prompt (dataset row ${row.sourceIndex})`}
                     onExpand={setExpandedCell}
+                    boldContent
                   />
                 </td>
                 {models.map((m) => {
@@ -595,7 +599,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                       <ExpandableCell
                         content={response.text}
                         title={`${modelName} response (dataset row ${row.sourceIndex})`}
-                        onExpand={setExpandedCell}
+                        onExpand={(state) => setExpandedCell({ ...state, stats: response.stats })}
                         footer={<CellStats stats={response.stats} className="px-3 pb-2" />}
                       />
                     </td>
@@ -605,9 +609,9 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             ))}
           </tbody>
           {hasPrompts && anyAverages && (
-            <tfoot className="sticky bottom-0 z-10 bg-surface-sunken">
+            <tfoot className="sticky bottom-0 z-10 bg-surface-raised">
               <tr>
-                <td className="border-l border-t border-b border-r border-base px-3 py-2 align-middle font-medium">
+                <td className="border-l border-t-2 border-b border-r border-base px-3 py-2 align-middle font-bold">
                   Average
                 </td>
                 {models.map((m) => {
@@ -615,10 +619,10 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   return (
                     <td
                       key={m.id}
-                      className="border-t border-b border-r border-base px-3 py-2 align-middle"
+                      className="border-t-2 border-b border-r border-base px-3 py-2 align-middle"
                     >
                       {avg ? (
-                        <CellStats stats={avg} />
+                        <CellStats stats={avg} emphasis />
                       ) : (
                         <Text kind="body/regular/md" className="text-fg-subdued">
                           —
@@ -652,7 +656,8 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
         slotHeading={expandedCell?.title ?? 'Cell Content'}
         className="w-[90vw] max-w-[1000px]"
         slotFooter={
-          <Flex justify="end" align="center" className="w-full">
+          <Flex justify="between" align="center" className="w-full">
+            {expandedCell?.stats ? <CellStats stats={expandedCell.stats} emphasis /> : <span />}
             <Button kind="tertiary" onClick={() => setExpandedCell(null)}>
               Close
             </Button>
@@ -675,11 +680,17 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
  * (response cells add their own horizontal padding; the footer row's td
  * already pads). Pass `className` to override.
  */
-const CellStats: FC<{ stats: ResponseStats; className?: string }> = ({ stats, className }) => {
+const CellStats: FC<{ stats: ResponseStats; className?: string; emphasis?: boolean }> = ({
+  stats,
+  className,
+  emphasis,
+}) => {
   const seconds = (stats.totalMs / 1000).toFixed(1);
   const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
   return (
-    <div className={`text-xs font-mono text-[var(--color-brand)] ${className ?? ''}`}>
+    <div
+      className={`font-mono text-[var(--color-brand)] ${emphasis ? 'text-sm font-bold' : 'text-xs'} ${className ?? ''}`}
+    >
       {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
     </div>
   );
@@ -691,7 +702,8 @@ const ExpandableCell: FC<{
   title: string;
   onExpand: (state: ExpandedCellState) => void;
   footer?: React.ReactNode;
-}> = ({ content, title, onExpand, footer }) => {
+  boldContent?: boolean;
+}> = ({ content, title, onExpand, footer, boldContent }) => {
   return (
     <div className="group relative">
       <button
@@ -702,7 +714,10 @@ const ExpandableCell: FC<{
         <Maximize2 size={12} />
       </button>
       <div className="max-h-[130px] overflow-y-auto px-3 py-2">
-        <Text kind="body/regular/md" className="whitespace-pre-wrap">
+        <Text
+          kind="body/regular/md"
+          className={`whitespace-pre-wrap${boldContent ? ' font-bold' : ''}`}
+        >
           {content}
         </Text>
       </div>
