@@ -5355,14 +5355,14 @@
 </tbody>
 </table>
 <h2 id="nested-fields">Nested fields<a class="headerlink" href="#nested-fields" title="Permanent link">&para;</a></h2>
-<p>The API supports filtering on nested <code>data.*</code> fields (e.g., custom labels). These fields aren't part of the typed filter model, so use <code>extra_query</code> with bracket notation to pass them through:</p>
+<p>The API supports filtering on labels via <code>extra_query</code> with bracket notation:</p>
 <div class="language-python highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Filter by a custom label</span>
 </span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">benchmarks</span> <span class="o">=</span> <span class="n">client</span><span class="o">.</span><span class="n">evaluation</span><span class="o">.</span><span class="n">benchmarks</span><span class="o">.</span><span class="n">list</span><span class="p">(</span>
-</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">extra_query</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;filter[data.labels.eval_category]&quot;</span><span class="p">:</span> <span class="s2">&quot;agentic&quot;</span><span class="p">}</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>    <span class="n">extra_query</span><span class="o">=</span><span class="p">{</span><span class="s2">&quot;filter[labels.eval_category]&quot;</span><span class="p">:</span> <span class="s2">&quot;agentic&quot;</span><span class="p">}</span>
 </span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">)</span>
 </span></code></pre></div>
 <p>The equivalent REST call:</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>?filter[data.labels.eval_category]=agentic
+<div class="language-text highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>?filter[labels.eval_category]=agentic
 </span></code></pre></div>
 <h2 id="common-patterns">Common patterns<a class="headerlink" href="#common-patterns" title="Permanent link">&para;</a></h2>
 <h3 id="date-range">Date range<a class="headerlink" href="#date-range" title="Permanent link">&para;</a></h3>
