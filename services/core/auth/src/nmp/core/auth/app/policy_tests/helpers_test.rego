@@ -31,8 +31,7 @@ test_normalize_endpoint if {
         "/apis/models/v2/workspaces/{workspace}/models/{name}": {"get": {}},
         "/apis/files/v2/workspaces/{workspace}/filesets/{name}": {"get": {}},
         "/apis/entities/v2/workspaces": {"get": {}},
-        "/apis/entities/v2/workspaces/{workspace}/members": {"get": {}},
-        "/apis/evaluation/v2/workspaces/{workspace}/benchmarks/{name}": {"get": {}}
+        "/apis/entities/v2/workspaces/{workspace}/members": {"get": {}}
     }
     
     # Test pattern matching for models
@@ -53,7 +52,4 @@ test_normalize_endpoint if {
     common.normalize_endpoint("/apis/entities/v2/workspaces") == "/apis/entities/v2/workspaces"
         with data.authz.endpoints as mock_endpoints
     
-    # Test evaluation benchmarks pattern
-    common.normalize_endpoint("/apis/evaluation/v2/workspaces/test-ns/benchmarks/my-config") == "/apis/evaluation/v2/workspaces/{workspace}/benchmarks/{name}"
-        with data.authz.endpoints as mock_endpoints
 }

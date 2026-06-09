@@ -842,8 +842,8 @@ safe_synthesizer:
   container_image: nmp-gpu-tasks
   # default: '.nemo/safe-synthesizer-runtime'
   runtime_venv: .nemo/safe-synthesizer-runtime
-  # default: 'nemo-safe-synthesizer[engine,cu129]==0.1.1'
-  runtime_package: nemo-safe-synthesizer[engine,cu129]==0.1.1
+  # default: 'nemo-safe-synthesizer[engine,cu129]==0.1.2'
+  runtime_package: nemo-safe-synthesizer[engine,cu129]==0.1.2
   # default: '3.11'
   runtime_python_version: '3.11'
   runtime_python:

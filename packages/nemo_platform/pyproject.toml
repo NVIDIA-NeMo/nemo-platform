@@ -382,7 +382,7 @@ nemo-safe-synthesizer-plugin = [
   "gunicorn>=23.0.0",
   "httpx>=0.27.2",
   "nemo-platform-plugin",
-  "nemo-safe-synthesizer==0.1.1",
+  "nemo-safe-synthesizer==0.1.2",
   "pydantic[email]>=2.9.2",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",

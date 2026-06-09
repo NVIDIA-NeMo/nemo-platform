@@ -24,6 +24,7 @@
     "gen:platform": "tsx ./orval/generate.ts platform",
     "gen:platform-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts platform",
     "gen:safe-synthesizer": "tsx ./orval/generate.ts safe-synthesizer",
+    "gen:safe-synthesizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts safe-synthesizer",
     "test": "vitest run"
   },
   "dependencies": {

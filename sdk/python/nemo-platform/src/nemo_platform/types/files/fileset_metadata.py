@@ -15,35 +15,32 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
 
-from typing import Dict
-from typing_extensions import TypedDict
+from ..._models import BaseModel
+from .dataset_metadata_content import DatasetMetadataContent
+from ..shared.model_metadata_content import ModelMetadataContent
 
-from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param import FilesetMetadataParam
-
-__all__ = ["FilesetUpdateParams"]
+__all__ = ["FilesetMetadata"]
 
 
-class FilesetUpdateParams(TypedDict, total=False):
-    workspace: str
-
-    custom_fields: Dict[str, object]
-    """Custom fields for the fileset."""
-
-    description: str
-    """The description of the fileset."""
-
-    metadata: FilesetMetadataParam
+class FilesetMetadata(BaseModel):
     """Tagged metadata container - the key indicates the type.
 
-    Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(
-    schema={"columns": ["id", "name"]}, ) )
+    Example:
+        metadata = FilesetMetadata(
+            dataset=DatasetMetadataContent(
+                schema={"columns": ["id", "name"]},
+            )
+        )
     """
 
-    project: str
-    """The name of the project associated with this fileset."""
+    dataset: Optional[DatasetMetadataContent] = None
+    """Content for dataset-type filesets."""
 
-    purpose: FilesetPurpose
-    """The purpose of the fileset."""
+    model: Optional[ModelMetadataContent] = None
+    """Content for model-type filesets.
+
+    Contains tool calling configuration that is merged into the ModelSpec during
+    checkpoint analysis.
+    """

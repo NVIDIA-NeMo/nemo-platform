@@ -18,7 +18,7 @@
 from typing import Optional
 
 from ..._models import BaseModel
-from ..evaluation.inference_params import InferenceParams
+from .inference_params import InferenceParams
 
 __all__ = ["PromptData"]
 
