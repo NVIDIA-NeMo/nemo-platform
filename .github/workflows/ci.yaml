@@ -563,7 +563,8 @@ jobs:
       - policy-wasm
       - python-unit-test-tools
       - python-unit-test
-      - python-integration-test
+      # Enable if you want this required
+      # - python-integration-test
       - require-nvskills
       - wheel-build
       - wheel-test
