@@ -438,7 +438,6 @@ platform-seed-service = [
   "nmp-common",
   "nmp-auth",
   "nmp-guardrails",
-  "nmp-evaluator",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
