@@ -3,6 +3,8 @@
 
 """CLI commands for installing AI agent skill files."""
 
+import json
+import re
 from pathlib import Path
 from typing import Annotated
 
@@ -303,10 +305,209 @@ def install(
         typer.echo(f"  {path}")
 
 
+_SKILL_NAME_PATTERN = re.compile(r"^[a-z](?:[a-z0-9-]*[a-z0-9])?$")
+
+
+def _validate_skill_name(name: str) -> None:
+    """Reject names that won't load as skill directory names.
+
+    Skills are discovered by directory name and surface in the CLI's
+    ``skills list`` output, so the name needs to be filesystem-safe and
+    visually consistent with the existing catalog (kebab-case, lowercase).
+    """
+    if not _SKILL_NAME_PATTERN.match(name):
+        typer.echo(
+            f"Error: Invalid skill name '{name}'. Use lowercase kebab-case "
+            "(e.g. 'my-skill', 'nemo-foo-bar'): must start with a letter, end "
+            "with a letter or digit, and contain only lowercase letters, "
+            "digits, and hyphens.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+
+_SKILL_TEMPLATE = """\
+---
+name: {name}
+description: {description_yaml}
+triggers:
+  - TODO: phrase a user might say that should route here
+  - TODO: another phrase
+  - TODO: another phrase
+not-for:
+  - TODO: name a related skill and when to prefer it instead
+compatibility: TODO describe runtime requirements (CLI version, sandbox compatibility, network needs).
+maturity: alpha
+license: Apache-2.0
+user-invocable: true
+allowed-tools: [Read]
+---
+
+# {title}
+
+TODO: one sentence describing what this skill does and when to use it.
+
+## When to use this skill
+
+TODO: spell out the situations where this skill should fire.
+
+## How it works
+
+TODO: describe the steps the skill walks through. Reference commands, files, or other skills it hands off to.
+
+## What not to do
+
+TODO: list the things this skill should NOT do (out-of-scope behaviors, common mistakes).
+"""
+
+
+_TESTS_TEMPLATE = """\
+{{
+  "skill": "{name}",
+  "tests": [
+    {{
+      "type": "explicit",
+      "prompt": "Use the {name} skill to TODO.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "explicit",
+      "prompt": "Run {name}. TODO.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "explicit",
+      "prompt": "Invoke the {name} skill on TODO.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "implicit",
+      "prompt": "TODO: a phrase the user might say that should route here without naming the skill.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "implicit",
+      "prompt": "TODO: another natural phrasing.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "implicit",
+      "prompt": "TODO: a third natural phrasing.",
+      "expected_skill": "{name}"
+    }},
+    {{
+      "type": "contextual",
+      "prompt": "TODO: an adjacent-but-distinct task that should NOT route here (e.g. a sibling skill's territory).",
+      "expected_skill_not": "{name}"
+    }},
+    {{
+      "type": "contextual",
+      "prompt": "TODO: another adjacent task that should NOT fire this skill.",
+      "expected_skill_not": "{name}"
+    }},
+    {{
+      "type": "contextual",
+      "prompt": "TODO: a third adjacent task that should NOT fire this skill.",
+      "expected_skill_not": "{name}"
+    }},
+    {{
+      "type": "negative-control",
+      "prompt": "TODO: a phrase that sounds related but should NOT route here.",
+      "expected_skill_not": "{name}"
+    }},
+    {{
+      "type": "negative-control",
+      "prompt": "TODO: an off-topic phrase.",
+      "expected_skill_not": "{name}"
+    }},
+    {{
+      "type": "negative-control",
+      "prompt": "TODO: a third phrase that should NOT route here.",
+      "expected_skill_not": "{name}"
+    }}
+  ]
+}}
+"""
+
+
+@app.command("new")
+def new(
+    name: Annotated[
+        str,
+        typer.Argument(help="Skill name in lowercase kebab-case (e.g. 'my-skill')"),
+    ],
+    description: Annotated[
+        str,
+        typer.Option(
+            "--description",
+            "-d",
+            help="One-line description seeded into the SKILL.md frontmatter.",
+        ),
+    ] = "TODO: one-line description (what the skill does + when to use it).",
+    directory: Annotated[
+        Path,
+        typer.Option(
+            "--dir",
+            help=(
+                "Parent directory the skill folder will be created under. Defaults to the current working directory."
+            ),
+        ),
+    ] = Path("."),
+) -> None:
+    """Scaffold a new skill that follows the platform's skill spec.
+
+    Creates ``<dir>/<name>/`` containing:
+
+    - ``SKILL.md`` with all required frontmatter fields preset to TODOs.
+    - ``tests.json`` with twelve four-mode placeholders (3 explicit,
+      3 implicit, 3 contextual, 3 negative-control) the author fills in.
+    - ``references/`` directory (with ``.gitkeep``) for supporting docs.
+
+    Examples:
+      nemo skills new my-skill
+      nemo skills new my-skill --description "Does the thing"
+      nemo skills new my-skill --dir packages/nemo_platform_ext/src/nemo_platform_ext/skills
+    """
+    _validate_skill_name(name)
+
+    skill_root = directory / name
+    if skill_root.exists():
+        typer.echo(f"Error: '{skill_root}' already exists.", err=True)
+        raise typer.Exit(code=1)
+
+    references_dir = skill_root / "references"
+    references_dir.mkdir(parents=True)
+
+    skill_md = skill_root / "SKILL.md"
+    # JSON-encode `description` so user input with colons, quotes, or newlines
+    # cannot break the YAML frontmatter. JSON strings are valid YAML 1.2 scalars.
+    skill_md.write_text(
+        _SKILL_TEMPLATE.format(
+            name=name,
+            description_yaml=json.dumps(description),
+            title=name.replace("-", " ").title(),
+        )
+    )
+
+    tests_json = skill_root / "tests.json"
+    tests_json.write_text(_TESTS_TEMPLATE.format(name=name))
+
+    gitkeep = references_dir / ".gitkeep"
+    gitkeep.write_text("")
+
+    typer.echo(f"Scaffolded skill '{name}' at {skill_root}:")
+    typer.echo(f"  {skill_md}")
+    typer.echo(f"  {tests_json}")
+    typer.echo(f"  {references_dir}/")
+    typer.echo("")
+    typer.echo("Next: fill in the TODOs in SKILL.md and tests.json.")
+
+
 _SKILLS_COMMAND_ORDER = {
     "list": 0,
     "show": 1,
     "install": 2,
+    "new": 3,
 }
 app.registered_commands.sort(
     key=lambda command: _SKILLS_COMMAND_ORDER.get(command.name or "", len(_SKILLS_COMMAND_ORDER))
