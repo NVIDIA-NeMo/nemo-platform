@@ -265,7 +265,6 @@ nemo-agents-example-calculator = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-plugin = [
   "nemo-platform-plugin",
-  "nmp-common",
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.7.0,<1.8",
   "nvidia-nat-langchain>=1.7.0,<1.8",
@@ -285,7 +284,6 @@ nemo-anonymizer-plugin = [
   "nemo-anonymizer>=0.2.1",
   "data-designer==0.6.1",
   "data-designer-nemo",
-  "nmp-common",
   "httpx>=0.27",
   "fastapi",
   "pandas",
@@ -307,7 +305,6 @@ nemo-data-designer-plugin = [
   "nemo-platform-plugin",
   "data-designer==0.6.1",
   "data-designer-nemo",
-  "nmp-common",
   "httpx>=0.27",
   "fastapi",
   "pandas",
@@ -319,7 +316,6 @@ nemo-evaluator-plugin = [
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
-  "nmp-common",
   "pydantic>=2.10.6",
   "typer>=0.20.0",
 ]
@@ -387,7 +383,6 @@ nemo-safe-synthesizer-plugin = [
   "httpx>=0.27.2",
   "nemo-platform-plugin",
   "nemo-safe-synthesizer==0.1.1",
-  "nmp-common",
   "pydantic[email]>=2.9.2",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",
@@ -559,6 +554,10 @@ evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
 safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
+[project.entry-points."nemo.sdk_provider"]
+platform = "nmp.common.sdk_factory:PlatformSDKProvider"
+
+# Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.seed"]
 auditor = "nemo_auditor.seed_job:AuditorSeedJob"
 
@@ -620,7 +619,7 @@ only-include = ["_empty"]
 # and add them as a normal dependency above instead.
 [tool.bundle-package]
 # Library packages
-nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
+nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common", inherit = { "entry-points" = ["nemo.*"] } }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
 nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
