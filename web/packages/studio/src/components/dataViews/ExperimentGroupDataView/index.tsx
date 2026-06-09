@@ -19,7 +19,7 @@ import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ComponentProps, FC, useCallback, useMemo } from 'react';
+import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 
 export type ExperimentRow = ExperimentResponse & { id: string };
 
