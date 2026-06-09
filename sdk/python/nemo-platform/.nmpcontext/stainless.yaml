@@ -233,7 +233,6 @@ resources:
     models:
       cache_status: CacheStatus
       create_fileset_request: CreateFilesetRequest
-      dataset_metadata_content: DatasetMetadataContent
       fileset: FilesetOutput
       fileset_file: FilesetFileOutput
       fileset_outputs_page: FilesetOutputsPage
@@ -677,6 +676,14 @@ resources:
       pagination_data: PaginationData
       generic_sort_field: GenericSortField
       api_endpoint_data: APIEndpointData
+      # InferenceParams is a cross-cutting type referenced by the shared PromptData
+      # schema (and used by both the models and evaluator services at the source level).
+      # Pin it in $shared so sync-models does not re-home it under a feature resource
+      # such as `models`, which would create a circular import:
+      #   shared/prompt_data -> models/inference_params -> models/__init__
+      #     -> model_entity -> shared/prompt_data
+      # Keeping it in $shared makes the import intra-package (shared -> shared) and acyclic.
+      inference_params: InferenceParams
       prompt_data: PromptData
       delete_response: DeleteResponse
       datetime_filter: DatetimeFilter
@@ -699,6 +706,13 @@ resources:
       auth_context: AuthContext
       tool_call_config: ToolCallConfig
       model_metadata_content: ModelMetadataContent
+      # DatasetMetadataContent is referenced by the shared FilesetMetadata schema.
+      # Keep it in $shared so the generated import is intra-package
+      # (shared/fileset_metadata -> shared/dataset_metadata_content) and avoids the
+      # circular import that occurs when it lives under the `files` resource:
+      #   shared/fileset_metadata -> files/dataset_metadata_content -> files/__init__
+      #     -> files/fileset -> shared/fileset_metadata
+      dataset_metadata_content: DatasetMetadataContent
       fileset_metadata: FilesetMetadataOutput
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
