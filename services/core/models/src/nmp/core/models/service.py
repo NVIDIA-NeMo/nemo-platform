@@ -35,7 +35,7 @@ class ModelsService(Service[ModelsConfig]):
 
     def get_routers(self) -> List[RouterConfig]:
         """Return routers for the models service."""
-        from nmp.core.models.api.v2 import adapters, deployment_configs, deployments, models, providers
+        from nmp.core.models.api.v2 import adapters, deployment_configs, deployments, models, prompts, providers
 
         return [
             RouterConfig(
@@ -62,6 +62,11 @@ class ModelsService(Service[ModelsConfig]):
                 providers.router,
                 tag="ModelProviders",
                 description="Operations related to model providers.",
+            ),
+            RouterConfig(
+                prompts.router,
+                tag="Prompts",
+                description="CRUD operations for reusable chat prompt entities.",
             ),
         ]
 

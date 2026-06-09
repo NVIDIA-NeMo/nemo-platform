@@ -1,0 +1,186 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from nmp.common.api.common import Page
+from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
+from nmp.common.api.utils import generate_openapi_extra_params
+from nmp.common.entities.client import EntityValidationError
+from nmp.core.models.api.dependencies import get_prompt_service
+from nmp.core.models.api.service.prompt_service import PromptService
+from nmp.core.models.schemas import (
+    CreatePromptRequest,
+    DeletePromptRequest,
+    GetPromptRequest,
+    Prompt,
+    PromptFilter,
+    PromptSort,
+    UpdatePromptRequest,
+)
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter()
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/prompts",
+    summary="List Prompts By Workspace",
+    response_description="Return prompts for a workspace",
+    status_code=status.HTTP_200_OK,
+    response_model=Page[Prompt],
+    response_model_exclude_none=True,
+    openapi_extra=generate_openapi_extra_params(
+        filter_schema=PromptFilter,
+        filter_description=("Filter prompts by workspace, project, name, description, created_at, and updated_at."),
+    ),
+)
+async def list_prompts(
+    workspace: str,
+    page: int = Query(default=1, description="Page number."),
+    page_size: int = Query(default=100, description="Page size."),
+    sort: PromptSort = Query(
+        default=PromptSort.CREATED_AT_ASC,
+        description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
+    ),
+    parsed_filter: ParsedFilter = Depends(make_filter_dep(PromptFilter)),
+    service: PromptService = Depends(get_prompt_service),
+) -> Page[Prompt]:
+    """List prompts for a specific workspace."""
+    # Extract workspace — inject from path param if not in filter
+    filter_workspace = parsed_filter.remove("workspace") or workspace
+    try:
+        return await service.list_prompts(
+            workspace=filter_workspace,
+            page=page,
+            page_size=page_size,
+            sort=sort,
+            filter_operation=parsed_filter.operation,
+        )
+    except Exception as e:
+        logger.exception(f"Failed to list prompts for workspace {workspace}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post(
+    "/v2/workspaces/{workspace}/prompts",
+    summary="Create Prompt",
+    response_description="Create a new prompt",
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_prompt(
+    workspace: str,
+    request: CreatePromptRequest,
+    service: PromptService = Depends(get_prompt_service),
+) -> Prompt:
+    """Create a new prompt."""
+    logger.info(f"Creating prompt: {workspace}/{request.name}")
+    try:
+        return await service.create_prompt(request, workspace)
+    except EntityValidationError as e:
+        logger.warning(f"Entity store validation error during prompt creation: {e}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except ValueError as e:
+        if "already exists" in str(e).lower():
+            logger.warning(f"Prompt already exists: {workspace}/{request.name}")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Prompt with workspace '{workspace}' and name '{request.name}' already exists",
+            )
+        logger.warning(f"Prompt creation validation error: {e}")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to create prompt")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get(
+    "/v2/workspaces/{workspace}/prompts/{name}",
+    summary="Get Prompt",
+    response_description="Return prompt details",
+    status_code=status.HTTP_200_OK,
+)
+async def get_prompt(
+    workspace: str,
+    name: str,
+    service: PromptService = Depends(get_prompt_service),
+) -> Prompt:
+    """Get a prompt by workspace and name."""
+    logger.debug(f"Getting prompt: {workspace}/{name}")
+    try:
+        prompt = await service.get_prompt(GetPromptRequest(workspace=workspace, name=name))
+        if not prompt:
+            logger.warning(f"Prompt not found: {workspace}/{name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt not found: {workspace}/{name}",
+            )
+        return prompt
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to get prompt {workspace}/{name}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.put(
+    "/v2/workspaces/{workspace}/prompts/{name}",
+    summary="Update Prompt",
+    response_description="Update an existing prompt",
+    status_code=status.HTTP_200_OK,
+)
+async def update_prompt(
+    workspace: str,
+    name: str,
+    request: UpdatePromptRequest,
+    service: PromptService = Depends(get_prompt_service),
+) -> Prompt:
+    """Update an existing prompt (full replacement of mutable fields)."""
+    logger.debug(f"Updating prompt: {workspace}/{name}")
+    try:
+        prompt = await service.update_prompt(workspace, name, request)
+        if not prompt:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt not found: {workspace}/{name}",
+            )
+        return prompt
+    except EntityValidationError as e:
+        logger.warning(f"Entity store validation error during prompt update: {e}")
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Failed to update prompt")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.delete(
+    "/v2/workspaces/{workspace}/prompts/{name}",
+    summary="Delete Prompt",
+    response_description="Delete a prompt",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_prompt(
+    workspace: str,
+    name: str,
+    service: PromptService = Depends(get_prompt_service),
+):
+    """Delete a prompt by workspace and name."""
+    logger.info(f"Deleting prompt: {workspace}/{name}")
+    try:
+        deleted = await service.delete_prompt(DeletePromptRequest(workspace=workspace, name=name))
+        if not deleted:
+            logger.warning(f"Prompt not found for deletion: {workspace}/{name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Prompt not found: {workspace}/{name}",
+            )
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Failed to delete prompt {workspace}/{name}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
