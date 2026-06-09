@@ -20,15 +20,18 @@ reusable actions, and supporting docs.
 
 - `ci.yaml`
   Main source validation workflow. It runs linting, OPA policy WASM build,
-  Python unit tests, Python integration tests, OPA policy tests, and PR
-  coverage comments. It runs on pushes to `main`, pull requests to `main`,
-  merge queue checks, and manual dispatch. On successful `main` pushes, it
-  also sends a completion event to an external CI consumer.
+  Python unit tests, Python integration tests, OPA policy tests, Studio web
+  checks for relevant web changes, and PR coverage comments. It runs on pushes
+  to `main`, pull requests to `main`, merge queue checks, and manual dispatch.
+  On successful `main` pushes, it also sends a completion event to an external
+  CI consumer.
 
-- `studio-ci.yaml`
-  Frontend/Studio workflow. It runs Studio type checks, tests, formatting,
-  linting, dependency checks, and scripts checks for relevant web changes.
-  Studio UI E2E tests run only on manual dispatch.
+  The final `ci-status` job is the merge gate for this workflow. Repository
+  branch protection or rulesets should require `CI status`, not the individual
+  test jobs. The job checks every job listed in its `needs` and passes only
+  when each one is `success` or `skipped`, which lets path-filtered jobs remain
+  optional. When adding a new CI job that should block merges, add it to
+  `ci-status.needs`.
 
 - `security.yaml`
   Security workflow. It runs TruffleHog secrets scanning and CodeQL analysis on
