@@ -243,9 +243,11 @@ def test_nemotron_personas_sampling(sdk: NeMoPlatform, workspace: str, nemotron_
         return [_parse_age(value) for value in demo_values]
 
     preview_results = sdk.data_designer.preview(config_builder, workspace=workspace)
+    assert len(preview_results.dataset) == PREVIEW_NUM_RECORDS
     assert all(25 <= age <= 45 for age in _get_demo_ages(preview_results.dataset))
 
     job_dataset = _create_job_and_get_dataset(sdk, workspace, config_builder)
+    assert len(job_dataset) == JOB_NUM_RECORDS
     assert all(25 <= age <= 45 for age in _get_demo_ages(job_dataset))
 
 
