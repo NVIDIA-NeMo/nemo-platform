@@ -145,7 +145,7 @@ _STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
     ),
     "agent_deployment": StudioLinkDestination(
         "Agent deployment {name}",
-        "/workspaces/{workspace}/agents",
+        "/workspaces/{workspace}/agents/{name}",
         aliases=("agent_deployment_detail",),
         requires_name=True,
     ),
@@ -380,6 +380,12 @@ _STUDIO_LINK_DESTINATIONS: dict[str, StudioLinkDestination] = {
         aliases=("workspace_members", "member_list"),
     ),
     "experiment": StudioLinkDestination("Experiment", "/workspaces/{workspace}/experiment"),
+    "experiment_group": StudioLinkDestination(
+        "Experiment group {name}",
+        "/workspaces/{workspace}/experiment/{name}",
+        aliases=("experiment_group_detail",),
+        requires_name=True,
+    ),
 }
 
 _STUDIO_LINK_DESTINATION_ALIASES = {
@@ -407,6 +413,8 @@ _STUDIO_LINK_ARGUMENT_ALIASES: dict[str, tuple[str, ...]] = {
         "traceId",
         "span_id",
         "spanId",
+        "experiment_group_id",
+        "experimentGroupId",
     ),
     "file_path": ("file", "filePath", "file_path_encoded", "filePathEncoded", "path"),
 }
@@ -467,6 +475,7 @@ _STUDIO_LINK_DESTINATION_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
     "settings": ("settings_enabled",),
     "members": ("members_enabled",),
     "experiment": ("experiment",),
+    "experiment_group": ("experiment",),
 }
 
 _STUDIO_LINK_DESTINATION_ANY_FEATURE_FLAGS: dict[str, tuple[str, ...]] = {
@@ -536,8 +545,6 @@ _STUDIO_LINK_TOOL = {
         "required": ["destination"],
     },
 }
-
-_MCP_TOOLS = [_APPROVAL_TOOL, _STUDIO_LINK_TOOL]
 
 
 def _studio_config_from_request(request: Request) -> StudioConfig:
@@ -764,53 +771,53 @@ def _build_studio_system_prompt(
 ) -> str:
     normalized_base_url = _normalize_studio_base_url(studio_base_url)
     current_studio_route = _trimmed_string(studio_pathname) or "unknown"
-    destinations = enabled_destinations or _STUDIO_LINK_DESTINATIONS
+    destinations = _STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     lines = [
-            "You are being invoked from inside NeMo Studio's Code Agent chat.",
-            f"Current Studio workspace: {workspace or 'unknown'}",
-            f"Studio UI base URL: {normalized_base_url or 'unknown'}",
-            f"Current Studio route path: {current_studio_route}",
-            "Enabled Studio link destinations for this Studio instance: "
-            f"{_studio_link_destination_description(destinations)}.",
-            "Only call studio_link with one of the enabled destinations above.",
-            "If a Studio page is disabled by feature flag, choose the closest enabled parent/list page instead of linking to the disabled route.",
-            "When the user asks for a Studio page link, do not ask them for the base URL.",
-            "Always use the current Studio workspace for Studio UI links unless the user explicitly names another workspace.",
-            "Do not infer the Studio workspace from the local username, account name, API response defaults, or filesystem paths.",
-            "The MCP server URL is an internal callback for tools, not the Studio UI base URL.",
-            "Do not invent Studio route paths manually when studio_link can provide the link.",
-            "If studio_link is unavailable and you must construct a Studio UI link manually, use only a known enabled Studio route and prefer a relative Markdown link that starts with /workspaces/ or /models/.",
-            "Evaluation pages use /workspaces/{workspace}/evaluation/... with singular evaluation; never nest evaluation links under /dashboard/evaluations/.",
-            "Interactive Studio choice behavior:",
-            "When you need the user to choose from a finite set of agents, deployments, models, jobs, filesets, resources, or next actions, do not ask them to type the choice in plain text.",
-            "Use Claude Code's AskUserQuestion tool so Studio can render the choices as clickable options.",
-            "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
-            "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
-            "For a list of deployed agents, make each option label the agent name and put status/model/tool details in the description.",
-            "Required Studio-link behavior:",
-            "Default to trying to include a Studio link in Studio-related responses.",
-            "When your answer mentions or depends on a Studio resource, page, workflow, or result, first choose the nearest studio_link destination and include that link unless no relevant Studio page exists.",
-            "When you are unsure which detail page applies, link to the closest list page for the current workspace instead of omitting a link.",
-            "Direct Studio link requests are mandatory tool-use requests.",
-            "When the user asks for a link, URL, clickable link, href, where to open, where to find, how to view, or how to chat with a Studio resource or page, call mcp__nemo_studio__studio_link before responding.",
-            "Never answer a Studio link request by saying you cannot generate URLs, do not know the port, do not know the base URL, or need the user to provide the Studio URL.",
-            "After any successful Studio action, you must include a Studio link in the response even if the user did not ask for one.",
-            "Before your final response for any successful create, start, deploy, evaluate, inspect, or modify action, call mcp__nemo_studio__studio_link and include the returned markdown exactly.",
-            "Never finish a successful Studio action without a visible Markdown link to the most relevant Studio page.",
-            "Use the returned markdown from studio_link exactly; do not replace it with localhost, the API host, or the MCP server host.",
-            "If the user asks for an agent link and an agent name is known from the conversation, use destination='agent' with that name; otherwise use destination='agents'.",
-            "If the user asks for an agent chat or playground link and an agent name is known from the conversation, use destination='agent_chat' with that name; otherwise use destination='agents'.",
-            "If the user asks for a deployment, deployment chat, or deployment playground link and the agent name is known from the conversation, use destination='agent_chat' with the agent name; otherwise use destination='agents'.",
-            "For a newly started job, use destination='job' and the job name when available; otherwise use destination='jobs'.",
-            "For generated filesets, custom models, deployments, evaluations, guardrails, secrets, Data Designer, Safe Synthesizer, settings, members, or intake work, choose the matching studio_link destination.",
-            "For created datasets or filesets use destination='fileset_panel' with the fileset name when available; otherwise use destination='filesets'.",
-            "For started evaluations use destination='evaluation_result' with the result or job name when available; otherwise use destination='evaluation_results' or destination='evaluation_metrics'.",
-            "For the evaluation results list specifically, use destination='evaluation_results'; it resolves to /workspaces/{workspace}/evaluation/results.",
-            "For Data Designer jobs use destination='data_designer_job' with the job name when available; otherwise use destination='data_designer'.",
-            "For Safe Synthesizer jobs use destination='safe_synthesizer_job' or destination='safe_synthesizer_report' with the job name when available; otherwise use destination='safe_synthesizer'.",
-            "For Base Models or available base models use destination='base_models'.",
-            "For Custom Models or customization jobs use destination='customizations'; never use customizations for Base Models.",
-            "For Agents use destination='agents'.",
+        "You are being invoked from inside NeMo Studio's Code Agent chat.",
+        f"Current Studio workspace: {workspace or 'unknown'}",
+        f"Studio UI base URL: {normalized_base_url or 'unknown'}",
+        f"Current Studio route path: {current_studio_route}",
+        "Enabled Studio link destinations for this Studio instance: "
+        f"{_studio_link_destination_description(destinations)}.",
+        "Only call studio_link with one of the enabled destinations above.",
+        "If a Studio page is disabled by feature flag, choose the closest enabled parent/list page instead of linking to the disabled route.",
+        "When the user asks for a Studio page link, do not ask them for the base URL.",
+        "Always use the current Studio workspace for Studio UI links unless the user explicitly names another workspace.",
+        "Do not infer the Studio workspace from the local username, account name, API response defaults, or filesystem paths.",
+        "The MCP server URL is an internal callback for tools, not the Studio UI base URL.",
+        "Do not invent Studio route paths manually when studio_link can provide the link.",
+        "If studio_link is unavailable and you must construct a Studio UI link manually, use only a known enabled Studio route and prefer a relative Markdown link that starts with /workspaces/ or /models/.",
+        "Evaluation pages use /workspaces/{workspace}/evaluation/... with singular evaluation; never nest evaluation links under /dashboard/evaluations/.",
+        "Interactive Studio choice behavior:",
+        "When you need the user to choose from a finite set of agents, deployments, models, jobs, filesets, resources, or next actions, do not ask them to type the choice in plain text.",
+        "Use Claude Code's AskUserQuestion tool so Studio can render the choices as clickable options.",
+        "For AskUserQuestion, provide input shaped as {'questions': [{'header': '<short title>', 'question': '<what should the user choose?>', 'options': [{'label': '<option>', 'description': '<short impact/details>'}]}]}.",
+        "If you need both a finite choice and free-form text, ask multiple AskUserQuestion questions: first the finite options, then a text question without options.",
+        "For a list of deployed agents, make each option label the agent name and put status/model/tool details in the description.",
+        "Required Studio-link behavior:",
+        "Default to trying to include a Studio link in Studio-related responses.",
+        "When your answer mentions or depends on a Studio resource, page, workflow, or result, first choose the nearest studio_link destination and include that link unless no relevant Studio page exists.",
+        "When you are unsure which detail page applies, link to the closest list page for the current workspace instead of omitting a link.",
+        "Direct Studio link requests are mandatory tool-use requests.",
+        "When the user asks for a link, URL, clickable link, href, where to open, where to find, how to view, or how to chat with a Studio resource or page, call mcp__nemo_studio__studio_link before responding.",
+        "Never answer a Studio link request by saying you cannot generate URLs, do not know the port, do not know the base URL, or need the user to provide the Studio URL.",
+        "After any successful Studio action, you must include a Studio link in the response even if the user did not ask for one.",
+        "Before your final response for any successful create, start, deploy, evaluate, inspect, or modify action, call mcp__nemo_studio__studio_link and include the returned markdown exactly.",
+        "Never finish a successful Studio action without a visible Markdown link to the most relevant Studio page.",
+        "Use the returned markdown from studio_link exactly; do not replace it with localhost, the API host, or the MCP server host.",
+        "If the user asks for an agent link and an agent name is known from the conversation, use destination='agent' with that name; otherwise use destination='agents'.",
+        "If the user asks for an agent chat or playground link and an agent name is known from the conversation, use destination='agent_chat' with that name; otherwise use destination='agents'.",
+        "If the user asks for a deployment, deployment chat, or deployment playground link and the agent name is known from the conversation, use destination='agent_chat' with the agent name; otherwise use destination='agents'.",
+        "For a newly started job, use destination='job' and the job name when available; otherwise use destination='jobs'.",
+        "For generated filesets, custom models, deployments, evaluations, guardrails, secrets, Data Designer, Safe Synthesizer, settings, members, or intake work, choose the matching studio_link destination.",
+        "For created datasets or filesets use destination='fileset_panel' with the fileset name when available; otherwise use destination='filesets'.",
+        "For started evaluations use destination='evaluation_result' with the result or job name when available; otherwise use destination='evaluation_results' or destination='evaluation_metrics'.",
+        "For the evaluation results list specifically, use destination='evaluation_results'; it resolves to /workspaces/{workspace}/evaluation/results.",
+        "For Data Designer jobs use destination='data_designer_job' with the job name when available; otherwise use destination='data_designer'.",
+        "For Safe Synthesizer jobs use destination='safe_synthesizer_job' or destination='safe_synthesizer_report' with the job name when available; otherwise use destination='safe_synthesizer'.",
+        "For Base Models or available base models use destination='base_models'.",
+        "For Custom Models or customization jobs use destination='customizations'; never use customizations for Base Models.",
+        "For Agents use destination='agents'.",
     ]
     if "agent_chat" in destinations:
         lines.extend(
@@ -859,7 +866,7 @@ def _build_studio_link_result(
     args: dict[str, Any],
     enabled_destinations: Mapping[str, StudioLinkDestination] | None = None,
 ) -> dict[str, Any]:
-    available_destinations = enabled_destinations or _STUDIO_LINK_DESTINATIONS
+    available_destinations = _STUDIO_LINK_DESTINATIONS if enabled_destinations is None else enabled_destinations
     if not workspace:
         return {
             "error": "current Studio workspace is unavailable",

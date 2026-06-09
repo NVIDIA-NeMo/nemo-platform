@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import {
-  ClaudeCodeStudioLink,
-  getStudioInternalLinkTarget,
-} from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
+import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
+import { getStudioInternalLinkTarget } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLinkTarget';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 
@@ -59,7 +57,10 @@ describe('ClaudeCodeStudioLink', () => {
 
   it('canonicalizes generated evaluation results links to the registered route', () => {
     expect(
-      getStudioInternalLinkTarget('/workspaces/default/dashboard/evaluations/results', 'https://studio.test')
+      getStudioInternalLinkTarget(
+        '/workspaces/default/dashboard/evaluations/results',
+        'https://studio.test'
+      )
     ).toBe('/workspaces/default/evaluation/results');
     expect(
       getStudioInternalLinkTarget(
@@ -69,7 +70,10 @@ describe('ClaudeCodeStudioLink', () => {
       )
     ).toBe('/workspaces/default/evaluation/results?status=complete');
     expect(
-      getStudioInternalLinkTarget('/workspaces/default/evaluations/results#latest', 'https://studio.test')
+      getStudioInternalLinkTarget(
+        '/workspaces/default/evaluations/results#latest',
+        'https://studio.test'
+      )
     ).toBe('/workspaces/default/evaluation/results#latest');
   });
 

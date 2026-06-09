@@ -269,6 +269,20 @@ def test_mcp_tools_list_includes_feature_flag_enabled_destinations(monkeypatch: 
     assert "chat with or try a model" in studio_link_tool["description"]
 
 
+def test_build_studio_system_prompt_preserves_empty_enabled_destinations():
+    prompt = coding_agents._build_studio_system_prompt(
+        "default",
+        "https://studio.test",
+        "/workspaces/default/dashboard/code-agent",
+        {},
+    )
+
+    destinations_line = next(
+        line for line in prompt.splitlines() if line.startswith("Enabled Studio link destinations")
+    )
+    assert destinations_line == "Enabled Studio link destinations for this Studio instance: ."
+
+
 def test_studio_link_destinations_cover_registered_workspace_routes():
     repo_root = Path(__file__).resolve().parents[4]
     routes_index = (repo_root / "web/packages/studio/src/routes/index.tsx").read_text()
@@ -301,6 +315,7 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
         "evaluationResultDetails": "evaluation_result",
         "evaluationResults": "evaluation_results",
         "experiment": "experiment",
+        "experimentGroupDetail": "experiment_group",
         "filesetDetail": "fileset",
         "filesetDetails": "fileset_panel",
         "filesetFile": "fileset_file",
@@ -476,6 +491,36 @@ def test_mcp_studio_link_encodes_detail_route_parts(service_client: TestClient):
     }
 
 
+def test_mcp_studio_link_returns_agent_deployment_detail_markdown(service_client: TestClient):
+    session_id = str(uuid.uuid4())
+
+    response = service_client.post(
+        f"/v2/coding-agents/mcp/{session_id}?workspace=default",
+        json={
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "studio_link",
+                "arguments": {
+                    "destination": "agent_deployment",
+                    "name": "spanish-translator",
+                },
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    result_text = response.json()["result"]["content"][0]["text"]
+    assert json.loads(result_text) == {
+        "workspace": "default",
+        "destination": "agent_deployment",
+        "path": "/workspaces/default/agents/spanish-translator",
+        "url": None,
+        "markdown": "[Agent deployment spanish-translator](/workspaces/default/agents/spanish-translator)",
+    }
+
+
 def test_mcp_studio_link_returns_agent_chat_markdown(service_client: TestClient):
     session_id = str(uuid.uuid4())
 
@@ -556,6 +601,20 @@ def test_mcp_studio_link_rejects_disabled_feature_flag_destination(service_clien
     assert result["error"] == "Studio destination is disabled by feature flag: model_chat"
     assert "model_chat" not in result["available_destinations"]
     assert "base_models" in result["available_destinations"]
+
+
+def test_build_studio_link_result_preserves_empty_enabled_destinations():
+    result = coding_agents._build_studio_link_result(
+        "default",
+        None,
+        {"destination": "agents"},
+        {},
+    )
+
+    assert result == {
+        "error": "Studio destination is disabled by feature flag: agents",
+        "available_destinations": [],
+    }
 
 
 def test_mcp_studio_link_returns_fileset_file_markdown(service_client: TestClient):
