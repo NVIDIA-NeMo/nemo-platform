@@ -116,7 +116,7 @@ jobs:
     name: Python unit tests (tools)
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.tools == 'true'
       )
@@ -396,7 +396,7 @@ jobs:
     name: Web typecheck
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -427,7 +427,7 @@ jobs:
     name: Web tests
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -458,7 +458,7 @@ jobs:
     name: Web format check
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -483,7 +483,7 @@ jobs:
     name: Web lint
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -508,7 +508,7 @@ jobs:
     name: Web studio deps check
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -533,7 +533,7 @@ jobs:
     name: Studio UI E2E tests
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.web-studio == 'true'
       )
@@ -676,6 +676,7 @@ jobs:
 
   require-nvskills:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - name: Require trusted NVSkills signature for skills changes
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
