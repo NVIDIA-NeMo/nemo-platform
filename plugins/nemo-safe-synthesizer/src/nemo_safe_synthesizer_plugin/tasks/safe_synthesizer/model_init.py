@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
 import httpx
-from nmp.common.config import get_platform_config
+from nemo_platform_plugin.config import get_platform_config
 
 logger = logging.getLogger(__name__)
 
