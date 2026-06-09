@@ -41,6 +41,7 @@ from nemo_example_plugin.schema import (
     ExampleItemPage,
     UpdateExampleItemRequest,
 )
+from nemo_platform_plugin.api.filters import make_filter_obj_dep
 from nemo_platform_plugin.entity_client import (
     NemoEntitiesClient,
     NemoEntityConflictError,
@@ -49,7 +50,6 @@ from nemo_platform_plugin.entity_client import (
 from nemo_platform_plugin.functions.routes import add_function_routes
 from nemo_platform_plugin.schema import PaginationData
 from nemo_platform_plugin.service import NemoService, RouterSpec
-from nmp.common.entities.filters import make_filter_obj_dep
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)

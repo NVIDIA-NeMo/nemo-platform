@@ -6,7 +6,6 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
     "nemo-platform",
     "nemo-platform-plugin",
-    "nmp-common",
     "nemo-agents-example-calculator",
     "nvidia-nat-core>=1.7.0,<1.8",
     "nvidia-nat-langchain>=1.7.0,<1.8",
@@ -72,7 +71,6 @@ packages = ["src/nemo_agents_plugin"]
 [tool.uv.sources]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
-nmp-common = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
 
 [tool.pytest.ini_options]

@@ -15,7 +15,7 @@ from typing import (
 import aiohttp
 from anyio import to_thread
 from ngcbase.constants import SCOPED_KEY_PREFIX
-from ngcbase.errors import ResourceNotFoundException
+from ngcbase.errors import NgcException, ResourceNotFoundException
 from ngcsdk import Client
 from nmp.common.files.storage_config import NGCStorageConfig as NGCStorageConfig
 from nmp.core.files.app.backends.base import (
@@ -91,7 +91,7 @@ class NGCStorageImpl(StorageImpl):
 
         try:
             self._client = await to_thread.run_sync(_configure)
-        except ValueError as exc:
+        except (ValueError, NgcException) as exc:
             raise NGCBackendError(f"Error creating NGC storage backend: [{str(exc)}]") from exc
 
         return self._client
@@ -264,17 +264,17 @@ class NGCStorageImpl(StorageImpl):
         """Validate that we can access the NGC asset."""
         validate_external_host(self.config.host)
 
-        registry_api = await self._get_registry_api()
-        target = await self._get_target()
-        target_with_version = await self._get_target_with_version()
-
         try:
+            registry_api = await self._get_registry_api()
+            target = await self._get_target()
             await to_thread.run_sync(registry_api.info, target)
+        except NGCBackendError:
+            raise
         except ResourceNotFoundException as exc:
-            raise NGCBackendError(f"NGC {self.config.target_type} not found: {target_with_version}") from exc
+            raise NGCBackendError(f"NGC {self.config.target_type} not found: {self.config.target}") from exc
         except Exception as exc:
             raise NGCBackendError(
-                f"Failed to access NGC {self.config.target_type} {target_with_version} [{str(exc)}]"
+                f"Failed to access NGC {self.config.target_type} {self.config.target} [{exc}]"
             ) from exc
 
     async def upload(

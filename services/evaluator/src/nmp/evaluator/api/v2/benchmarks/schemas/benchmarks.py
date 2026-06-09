@@ -1,11 +1,13 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
+from typing import Annotated
+
 import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.values import DatasetRows
 from nmp.common.api.common import Page
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
 from nmp.evaluator.app.values import Fileset, FilesetRef, MetricRef
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from typing_extensions import Self
@@ -27,6 +29,10 @@ class BenchmarksListFilter(Filter):
     project: str | None = Field(default=None, description="Filter benchmarks by project name.")
     created_at: DatetimeFilter | None = Field(default=None, description="Filter benchmarks by creation date range.")
     updated_at: DatetimeFilter | None = Field(default=None, description="Filter benchmarks by last update date range.")
+    labels: Annotated[dict[str, str] | None, map_entity_field("data.labels", namespace=True)] = Field(
+        default=None,
+        description="Filter by labels. Address an individual label as a sub-path, e.g. filter[labels.eval_category]=agentic.",
+    )
 
 
 class BenchmarkRequest(BaseModel):

@@ -9,6 +9,8 @@
 // - list_jobs_apis_customization_v2_workspaces__workspace__jobs_get              -> customizationListJobs
 // - create_job_apis_data_designer_v2_workspaces__workspace__jobs_post         -> dataDesignerCreateJob
 // - list_workspaces_apis_entities_v2_workspaces_get                           -> entitiesListWorkspaces
+// - create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post        -> agentsCreateAnalyzeJob
+// - list_jobs_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite_get   -> agentsListEvaluateSuiteJobs
 //
 // Non-apis_ routes (unchanged):
 // - gateway_proxy_get                                                         -> gatewayProxyGet
@@ -86,12 +88,24 @@ const extractAllPathResources = (pathPart: string): string[] => {
 
 /**
  * Qualifies the action resource using path information for disambiguation.
- * When the path is more specific than the action, the path qualifier is prepended.
+ * When the path is more specific than the action, the path qualifier is added.
+ *
+ * Two collection shapes are handled:
+ *   - Subtype-first ("{subtype}_jobs"), used by evaluation — the qualifier
+ *     precedes the action noun and is prepended.
+ *   - Noun-first ("jobs_{subtype}"), used by agent jobs and data-designer —
+ *     the subtype trails the action noun and is moved in front so each
+ *     subtype yields a distinct name. Without this, every subtype under one
+ *     service collapses to the same generated name (e.g. all of
+ *     analyze/evaluate/evaluate-suite/optimize/optimize-skills -> "createJob").
  *
  * e.g., actionResource="job", pathResource="benchmark_jobs" -> "benchmark_job"
  * e.g., actionResource="benchmark", pathResource="benchmarks" -> "benchmark"
  * e.g., actionResource="job_result_aggregate_scores", pathResource="benchmark_jobs"
  *       -> "benchmark_job_result_aggregate_scores"
+ * e.g., actionResource="job", pathResource="jobs_analyze" -> "analyze_job"
+ * e.g., actionResource="job_result", pathResource="jobs_evaluate_suite"
+ *       -> "evaluate_suite_job_result"
  */
 const qualifyResource = (actionResource: string, pathResource: string): string => {
   if (!actionResource || !pathResource) return actionResource;
@@ -99,17 +113,36 @@ const qualifyResource = (actionResource: string, pathResource: string): string =
   const actionWords = actionResource.split('_');
   const pathWords = pathResource.split('_');
 
-  // Singularize the last path word for comparison
-  const singPathWords = pathWords.map((w, i) => (i === pathWords.length - 1 ? singularize(w) : w));
+  // Singularize every path word so plural collections (e.g. "jobs") match the
+  // singular action noun (e.g. "job"). Singularizing only the last word missed
+  // the noun-first "jobs_<subtype>" shape, where the noun isn't last.
+  const singPathWords = pathWords.map(singularize);
 
-  // Find where the first action word appears in the singularized path
+  // Find where the first action word (the resource noun) appears in the path.
   const firstActionSingular = singularize(actionWords[0]);
   const matchIndex = singPathWords.indexOf(firstActionSingular);
 
   if (matchIndex > 0) {
-    // Path has qualifier words before the action resource — prepend them
+    // Path has qualifier words before the action resource — prepend them.
+    // e.g. "benchmark_jobs" + "job" -> "benchmark_job"
     const qualifiers = pathWords.slice(0, matchIndex);
     return [...qualifiers, ...actionWords].join('_');
+  }
+
+  if (matchIndex === 0 && pathWords.length > 1) {
+    // The action noun leads the path. Any trailing path words that aren't
+    // already part of the action resource are the subtype — move them in
+    // front. Words already covered by the action (the flat-endpoint case,
+    // where path and action describe the same resource) are dropped, leaving
+    // the name unchanged.
+    // e.g. "jobs_analyze" + "job" -> "analyze_job"
+    //      "jobs_evaluate_suite" + "job_result" -> "evaluate_suite_job_result"
+    //      "metric_job_results" + "metric_job_results" -> "metric_job_results"
+    const actionSet = new Set(actionWords.map(singularize));
+    const subtype = pathWords.slice(1).filter((w) => !actionSet.has(singularize(w)));
+    if (subtype.length > 0) {
+      return [...subtype, ...actionWords].join('_');
+    }
   }
 
   return actionResource;

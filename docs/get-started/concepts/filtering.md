@@ -131,19 +131,19 @@ client.files.filesets.list(filter={"purpose": {"$eq": "dataset"}})
 
 ## Nested fields
 
-The API supports filtering on nested `data.*` fields (e.g., custom labels). These fields aren't part of the typed filter model, so use `extra_query` with bracket notation to pass them through:
+The API supports filtering on labels via `extra_query` with bracket notation:
 
 ```python
 # Filter by a custom label
 benchmarks = client.evaluation.benchmarks.list(
-    extra_query={"filter[data.labels.eval_category]": "agentic"}
+    extra_query={"filter[labels.eval_category]": "agentic"}
 )
 ```
 
 The equivalent REST call:
 
 ```
-?filter[data.labels.eval_category]=agentic
+?filter[labels.eval_category]=agentic
 ```
 
 ## Common patterns

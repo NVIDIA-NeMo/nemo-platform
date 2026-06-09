@@ -62,27 +62,36 @@ def _operation_references_any(operation: FilterOperation | None, fields: set[str
     return False
 
 
-def _validate_fields(operation: FilterOperation, valid_fields: set[str]) -> None:
+def _validate_fields(
+    operation: FilterOperation, valid_fields: set[str], namespaces: frozenset[str] = frozenset()
+) -> None:
     """Walk the operation tree and raise ValueError for any unknown field names.
 
-    Validates that each field is either a known filter/entity field or a ``data.*``
-    path (which addresses fields stored in the entity's data JSON column).
+    Validates that each field is one of:
+
+    * a known filter/entity field, or
+    * a ``data.*`` path (which addresses fields stored in the entity's data JSON
+      column), or
+    * a sub-path of a declared *namespace* field — e.g. ``labels.<key>`` when the
+      filter model maps ``labels`` to a nested entity namespace. ``namespaces`` is
+      supplied generically by the model; this function has no per-service knowledge.
     """
     if isinstance(operation, ComparisonOperation):
         f = operation.field
         if f.startswith("data."):
             return
-        # Reject any other dotted path — only ``data.*`` may address nested
-        # JSON fields. ``name.foo`` and similar smuggle past first-segment
-        # validation otherwise.
         if "." in f:
+            # Dotted sub-paths are only valid under a declared namespace field
+            # (``labels.<key>`` → ``data.labels.<key>``). Otherwise reject, so
+            # paths like ``name.foo`` can't smuggle past validation.
+            if f.split(".", 1)[0] in namespaces:
+                return
             raise ValueError(f"Unknown filter field '{f}'. Valid fields: {sorted(valid_fields)}")
-        top_level = f.split(".")[0]
-        if top_level not in valid_fields:
+        if f not in valid_fields:
             raise ValueError(f"Unknown filter field '{f}'. Valid fields: {sorted(valid_fields)}")
     elif isinstance(operation, LogicalOperation):
         for child in operation.operations:
-            _validate_fields(child, valid_fields)
+            _validate_fields(child, valid_fields, namespaces)
 
 
 @dataclass
@@ -244,6 +253,11 @@ def make_filter_dep(
     # subclasses don't and skip these branches.
     get_field_map = getattr(filter_model, "_get_entity_field_map", None)
     entity_field_map: dict[str, str] = get_field_map() if callable(get_field_map) else {}
+    # Namespace fields (e.g. ``labels`` → ``data.labels``) whose dotted sub-paths
+    # are valid. Supplied by the model, so the parser stays service-agnostic.
+    get_namespace_map = getattr(filter_model, "_get_entity_namespace_map", None)
+    entity_namespace_map: dict[str, str] = get_namespace_map() if callable(get_namespace_map) else {}
+    namespace_fields: frozenset[str] = frozenset(entity_namespace_map)
 
     async def _dependency(request: Request) -> ParsedFilter:
         try:
@@ -265,7 +279,7 @@ def make_filter_dep(
             # Validate field names
             if operation is not None:
                 valid_fields = _get_valid_fields(filter_model)
-                _validate_fields(operation, valid_fields)
+                _validate_fields(operation, valid_fields, namespace_fields)
 
             # Translate field names for the entity store (e.g., purpose → data.purpose)
             translate = getattr(filter_model, "translate_operation", None)
