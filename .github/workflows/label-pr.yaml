@@ -1,0 +1,32 @@
+name: Label PR by type
+
+# Applies a conventional-commit-type label (feat, fix, docs, ...) to each PR so that GitHub's
+# automatically generated release notes (.github/release.yml) can group merged PRs into sections.
+# This complements semantic-pull-requests.yaml, which only validates the title.
+#
+# Uses pull_request_target (not pull_request) so PRs opened from forks are labeled too. This is
+# safe here because the action only reads the PR title from the event payload; it never checks
+# out or executes PR code.
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write        # the action creates the type label if it does not exist yet
+  pull-requests: write # ...and applies it to the PR
+
+jobs:
+  label:
+    name: Apply conventional-commit label
+    runs-on: ubuntu-latest
+    steps:
+      # task_types matches the set allowed by semantic-pull-requests.yaml (including cp) so a title
+      # that passes validation can never fail here. No custom_labels: the label name is the
+      # conventional type itself (feat, fix, ...), which .github/release.yml groups into sections.
+      # Pinned to the commit SHA of tag 1.4.0.
+      - uses: ytanikin/pr-conventional-commits@6ac1cea04190fc076b0e539025501d7e7d241ac1 # 1.4.0
+        with:
+          task_types: '["feat","fix","docs","style","refactor","perf","test","build","ci","chore","revert","cp"]'
+          add_label: 'true'
