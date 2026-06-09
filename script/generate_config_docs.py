@@ -49,7 +49,6 @@ from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
-from nmp.automodel.config import AutomodelConfig
 from nmp.studio.config import StudioConfig
 from nmp.unsloth.config import UnslothConfig
 from ruamel.yaml import YAML

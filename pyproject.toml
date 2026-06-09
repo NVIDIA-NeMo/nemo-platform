@@ -560,10 +560,6 @@ exclude = [
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
 
-  # Legacy evaluator service remains in-tree until the final deletion PR, but
-  # this package-wiring PR intentionally removes its dependencies.
-  "./services/evaluator/",
-
   "./services/guardrails/",
 
   "./services/intake/",

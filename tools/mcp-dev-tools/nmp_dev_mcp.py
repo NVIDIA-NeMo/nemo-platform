@@ -445,7 +445,6 @@ def create_server(working_dir: str | None = None) -> FastMCP:
 
         Examples:
             - run_pytest("tools/mcp-dev-tools/tests") - Run all tests in directory
-            - run_pytest("services/evaluator/tests", markers="unit") - Run unit tests only
             - run_pytest("packages/nmp_common", verbose=False) - Run without verbose
         """
         import re
