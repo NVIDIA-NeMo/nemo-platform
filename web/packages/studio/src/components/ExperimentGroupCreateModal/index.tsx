@@ -11,7 +11,7 @@
  */
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { FormModal, FormModalProps } from '@nemo/common/src/components/FormModal';
+import { FormModal, type FormModalProps } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
 import {
   getListExperimentGroupsQueryKey,
@@ -37,8 +37,8 @@ import {
 import { handleFormErrorsGeneric } from '@studio/util/forms/error';
 import { AxiosError } from 'axios';
 import { Plus } from 'lucide-react';
-import { FC } from 'react';
-import { SubmitHandler, useForm } from 'react-hook-form';
+import type { FC } from 'react';
+import { useForm, type SubmitHandler } from 'react-hook-form';
 
 export interface ExperimentGroupCreateModalProps extends Pick<FormModalProps, 'open' | 'onClose'> {
   workspace: string;
