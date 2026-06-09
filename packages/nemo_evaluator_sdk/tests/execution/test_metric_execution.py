@@ -641,6 +641,30 @@ class TestGenerateOnlineSample:
         }
 
     @pytest.mark.asyncio
+    async def test_uses_reasoning_content_when_chat_content_is_none(self, mocker: MockerFixture):
+        response = {
+            "choices": [
+                {
+                    "message": {
+                        "content": None,
+                        "reasoning_content": "reasoning-only answer",
+                    }
+                }
+            ],
+        }
+        inference_fn = mocker.AsyncMock(return_value=response)
+
+        sample = await generate_online_sample(
+            target=_make_model(),
+            row={"prompt": "hello"},
+            index=0,
+            prompt_template={"messages": [{"role": "user", "content": "{{item.prompt}}"}]},
+            inference_fn=inference_fn,
+        )
+
+        assert sample == {"output_text": "reasoning-only answer", "response": response}
+
+    @pytest.mark.asyncio
     async def test_copies_postprocessed_agent_trajectory_to_top_level_sample(self, mocker: MockerFixture):
         response = {
             "choices": [{"message": {"content": "raw"}}],
@@ -1550,7 +1574,7 @@ class TestEvaluateMetricOnline:
         assert isinstance(exc_info.value.__cause__, ValueError)
 
     @pytest.mark.asyncio
-    async def test_empty_output_text_is_omitted_from_sdk_sample(self, mocker: MockerFixture):
+    async def test_empty_output_text_is_preserved_in_sdk_sample(self, mocker: MockerFixture):
         metric = _make_test_metric()
         model = _make_model()
 
@@ -1564,7 +1588,10 @@ class TestEvaluateMetricOnline:
 
         async def _compute_scores(input: MetricInput) -> MetricResult:
             assert input.row.data == {"prompt": "hello"}
-            assert input.candidate.as_sample() == {"response": {"choices": [{"message": {"content": ""}}]}}
+            assert input.candidate.as_sample() == {
+                "output_text": "",
+                "response": {"choices": [{"message": {"content": ""}}]},
+            }
             return _make_metric_result(("score", 1.0))
 
         metric.compute_scores = mocker.AsyncMock(side_effect=_compute_scores)
