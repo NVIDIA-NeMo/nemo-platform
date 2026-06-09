@@ -529,6 +529,8 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Generate SDK from OpenAPI specs
         run: pnpm --filter @nemo/sdk gen:all-force
+      - name: Typecheck SDK generated output
+        run: pnpm --filter @nemo/sdk typecheck
       - name: Typecheck studio against generated SDK
         run: pnpm --filter nemo-studio-ui typecheck
 
