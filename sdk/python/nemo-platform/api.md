@@ -8,8 +8,6 @@ from nemo_platform.types import (
     BackendFormat,
     DatetimeFilter,
     DeleteResponse,
-    ErrorResponse,
-    FieldError,
     FileStorageType,
     FilesetMetadata,
     FinetuningType,

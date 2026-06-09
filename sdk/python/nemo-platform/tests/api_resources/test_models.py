@@ -71,6 +71,7 @@ class TestModels:
                 "inference_params": {
                     "max_completion_tokens": 1,
                     "max_tokens": 1,
+                    "model": "model",
                     "stop": ["string"],
                     "temperature": 0,
                     "top_p": 0,
@@ -265,6 +266,7 @@ class TestModels:
                 "inference_params": {
                     "max_completion_tokens": 1,
                     "max_tokens": 1,
+                    "model": "model",
                     "stop": ["string"],
                     "temperature": 0,
                     "top_p": 0,
@@ -534,6 +536,7 @@ class TestAsyncModels:
                 "inference_params": {
                     "max_completion_tokens": 1,
                     "max_tokens": 1,
+                    "model": "model",
                     "stop": ["string"],
                     "temperature": 0,
                     "top_p": 0,
@@ -728,6 +731,7 @@ class TestAsyncModels:
                 "inference_params": {
                     "max_completion_tokens": 1,
                     "max_tokens": 1,
+                    "model": "model",
                     "stop": ["string"],
                     "temperature": 0,
                     "top_p": 0,
