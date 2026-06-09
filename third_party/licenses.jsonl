@@ -233,7 +233,6 @@
 {"name": "pyopenssl", "license": "APACHE-2.0", "compatible": true}
 {"name": "pyperclip", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "pytest", "license": "MIT", "compatible": true}
-{"name": "python-box", "license": "MIT", "compatible": true}
 {"name": "python-dateutil", "license": "APACHE-2.0", "compatible": true}
 {"name": "python-dotenv", "license": "BSD-3-CLAUSE", "compatible": true}
 {"name": "python-json-logger", "license": "BSD-3-CLAUSE", "compatible": true}

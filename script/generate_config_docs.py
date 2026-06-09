@@ -49,7 +49,6 @@ from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
 from nmp.customizer.config import CustomizerConfig
-from nmp.evaluator.config import EvaluatorSettings
 from nmp.studio.config import StudioConfig
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
@@ -70,7 +69,6 @@ CONFIG_CLASSES: list[type[Any]] = [
     ModelsConfig,
     SecretsServiceConfig,
     CustomizerConfig,
-    EvaluatorSettings,
     SafeSynthesizerConfig,
     StudioConfig,
 ]
