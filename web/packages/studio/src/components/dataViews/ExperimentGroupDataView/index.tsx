@@ -40,7 +40,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
-  const { data: group } = useGetExperimentGroup(workspace, experimentGroupName);
+  const {
+    data: group,
+    isLoading: isGroupLoading,
+    error: groupError,
+  } = useGetExperimentGroup(workspace, experimentGroupName);
   const experimentGroupId = group?.id ?? '';
 
   const dataViewState = useStudioDataViewState({
@@ -81,6 +85,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       })),
     [experimentsData]
   );
+
+  if (groupError) {
+    return <ErrorMessage message="Failed to load experiment group." />;
+  }
 
   const makeColumns: ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns'] = ({
     accessor,
@@ -179,7 +187,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         DataViewRoot: {
           data: tableData,
           totalCount,
-          requestStatus: isLoading && !experimentsData ? 'loading' : undefined,
+          requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
         },
         DataViewTableContent: {
           renderEmptyState: () => (
