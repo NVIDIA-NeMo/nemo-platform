@@ -112,7 +112,7 @@ When the job completes, access:
 
 For **platform jobs**, set `pretrained_model_job` in the job spec to a completed job that has an **`adapter`** result in Files. Reuse is generation-only (no retraining). Use either `pretrained_model_job` or `config.training.pretrained_model`, not both.
 
-For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Local and Subprocess Execution](host-local-development.md).
+For **host-local** development (`nemo safe-synthesizer run-local`), set `config.training.pretrained_model` to a local adapter or work directory from an earlier run. See [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution).
 
 ## Job Builder API
 
@@ -312,7 +312,7 @@ kubectl get events -n <namespace> --sort-by='.lastTimestamp'
 
 ## Related Topics
 
-- [Local and Subprocess Execution](host-local-development.md): `run-local`, adapter reuse, and plugin tests
-- [safe-synthesizer-101](../tutorials/safe-synthesizer-101.md): Get started with NeMo Safe Synthesizer jobs
-- [index](../tutorials/index.md): More hands-on tutorials
-- [reference](reference.md): Full parameter reference
+- [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution): `run-local`, adapter reuse, and plugin tests
+- [safe-synthesizer-101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101): Get started with NeMo Safe Synthesizer jobs
+- [index](/documentation/synthesize-safe-data/tutorials): More hands-on tutorials
+- [reference](/documentation/synthesize-safe-data/about/parameters-reference): Full parameter reference

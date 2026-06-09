@@ -10,7 +10,7 @@ Learn the fundamentals of NeMo Safe Synthesizer by creating your first Safe Synt
 
 Before you begin, make sure that you have:
 
-- Access to a deployment of NeMo Safe Synthesizer (see [getting-started](/documentation/safe-synthesizer-reference/getting-started))
+- Access to a deployment of NeMo Safe Synthesizer (see [getting-started](/documentation/synthesize-safe-data))
 - **An NVIDIA GPU with 80 GB+ VRAM** — Safe Synthesizer requires GPU access for model training, even when using remote inference for other services. Verify with `nvidia-smi`.
 - Python environment with `nemo-platform` SDK installed
 - Basic understanding of Python and pandas
@@ -130,7 +130,7 @@ print(f"✅ Using model provider: {provider_name}")
 
 <Note>
 
-If you prefer not to send column data to `build.nvidia.com`, you can [deploy your own LLM](/documentation/models-and-inference/tutorials/deploy-models) and create a custom model provider. Pass the fully-qualified provider name (`workspace/provider-name`) to `.with_classify_model_provider()` instead.
+If you prefer not to send column data to `build.nvidia.com`, you can deploy your own LLM and create a custom model provider. Pass the fully-qualified provider name (`workspace/provider-name`) to `.with_classify_model_provider()` instead.
 
 </Note>
 
@@ -324,8 +324,8 @@ The evaluation report contains two high-level scores: Synthetic Quality Score (S
 
 Now that you've completed your first Safe Synthesizer job, try the local CLI path:
 
-- [Local and Subprocess Execution](../about/host-local-development.md) - run Safe Synthesizer directly on a host GPU
-- [Getting Started](../getting-started.md) - review local runtime prerequisites
+- [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution) - run Safe Synthesizer directly on a host GPU
+- [Getting Started](/documentation/synthesize-safe-data) - review local runtime prerequisites
 
 ### Try These Next
 
@@ -374,7 +374,7 @@ print(f"Total jobs: {len(all_jobs.data)}")
 - Use smaller model (adjust `training.pretrained_model`)
 - Check GPU availability
 
-For local CLI failures, see [Local and Subprocess Execution](../about/host-local-development.md).
+For local CLI failures, see [Local and Subprocess Execution](/documentation/synthesize-safe-data/about/local-and-subprocess-execution).
 
 **Error: "Dataset must have at least 200 records to use holdout."**
 

@@ -67,6 +67,33 @@ navigation:
       path: ../../data-designer/sdk-resources.mdx
     - page: Migrating from Standalone Library
       path: ../../data-designer/migration.mdx
+  - section: Synthesize Safe Data
+    path: ../../safe-synthesizer/getting-started.mdx
+    contents:
+    - section: About
+      path: ../../safe-synthesizer/about/index.mdx
+      contents:
+      - page: Data Synthesis
+        path: ../../safe-synthesizer/about/data-synthesis.mdx
+      - page: PII Replacement
+        path: ../../safe-synthesizer/about/pii-replacement.mdx
+      - page: Evaluation
+        path: ../../safe-synthesizer/about/evaluation.mdx
+      - page: Jobs
+        path: ../../safe-synthesizer/about/jobs.mdx
+      - page: Local and Subprocess Execution
+        path: ../../safe-synthesizer/about/host-local-development.mdx
+      - page: Parameters Reference
+        path: ../../safe-synthesizer/about/reference.mdx
+    - section: Tutorials
+      path: ../../safe-synthesizer/tutorials/index.mdx
+      contents:
+      - page: Safe Synthesizer 101
+        path: ../../safe-synthesizer/tutorials/safe-synthesizer-101.mdx
+      - page: Differential Privacy
+        path: ../../safe-synthesizer/tutorials/differential-privacy.mdx
+    - page: SDK Resources
+      path: ../../safe-synthesizer/sdk-resources.mdx
   - section: Anonymize Data
     path: ../../anonymizer/index.mdx
     contents:

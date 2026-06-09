@@ -1,7 +1,10 @@
+---
+title: "Safe Synthesizer NeMo Platform SDK Resources"
+description: ""
+---
 <a id="safe-synthesizer-nmp-sdk-resources"></a>
-# Safe Synthesizer {{platform_name}} SDK Resources
 
-The `nemo_safe_synthesizer_plugin.sdk` module provides {{platform_name}}-specific helpers for creating and monitoring {{nss_short_name}} jobs. Use these objects when you want to submit jobs through the platform Jobs service and retrieve platform-managed results.
+The `nemo_safe_synthesizer_plugin.sdk` module provides NeMo Platform-specific helpers for creating and monitoring NeMo Safe Synthesizer jobs. Use these objects when you want to submit jobs through the platform Jobs service and retrieve platform-managed results.
 
 ## SafeSynthesizerResource
 
@@ -23,13 +26,13 @@ An async variant with the same namespace is available as `AsyncNeMoPlatform.safe
 
 ## SafeSynthesizerJobsResource
 
-`client.safe_synthesizer.jobs` calls the plugin API for {{nss_short_name}} jobs.
+`client.safe_synthesizer.jobs` calls the plugin API for NeMo Safe Synthesizer jobs.
 
 | Method | Description |
 |--------|-------------|
-| `create(*, spec, name=None, workspace=None, project=None, timeout=None, **params)` | Creates a {{nss_short_name}} platform job from a job spec. |
-| `list(*, workspace=None, **params)` | Lists {{nss_short_name}} jobs in a workspace. |
-| `retrieve(name, *, workspace=None)` | Retrieves one {{nss_short_name}} job by name. |
+| `create(*, spec, name=None, workspace=None, project=None, timeout=None, **params)` | Creates a NeMo Safe Synthesizer platform job from a job spec. |
+| `list(*, workspace=None, **params)` | Lists NeMo Safe Synthesizer jobs in a workspace. |
+| `retrieve(name, *, workspace=None)` | Retrieves one NeMo Safe Synthesizer job by name. |
 | `get_status(name, *, workspace=None)` | Returns the job status from the platform Jobs service. |
 | `get_logs(name, *, workspace=None, **kwargs)` | Returns paginated job logs from the platform Jobs service. |
 
@@ -92,6 +95,6 @@ job = (
 
 ## Related Topics
 
-- [Safe Synthesizer 101](tutorials/safe-synthesizer-101.md) - submit and monitor a first job
-- [Safe Synthesizer Jobs](about/jobs.md) - understand job lifecycle and troubleshooting
-- [Parameters Reference](about/reference.md) - review job spec and configuration fields
+- [Safe Synthesizer 101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101) - submit and monitor a first job
+- [Safe Synthesizer Jobs](/documentation/synthesize-safe-data/about/jobs) - understand job lifecycle and troubleshooting
+- [Parameters Reference](/documentation/synthesize-safe-data/about/parameters-reference) - review job spec and configuration fields
