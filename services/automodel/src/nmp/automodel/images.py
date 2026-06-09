@@ -9,7 +9,7 @@ from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.automodel.config import config
 
 # Default NGC dev registry for platform-built automodel images (flat repo names for NVCR).
-DEFAULT_AUTOMODEL_IMAGE_REGISTRY = "nvcr.io/0921617854601259/nemo-platform-dev"
+DEFAULT_AUTOMODEL_IMAGE_REGISTRY = "my-registry/nemo-platform-dev"
 
 BASE_IMAGE_NAME = "nmp-automodel-base"
 TASKS_IMAGE_NAME = "nmp-automodel-tasks"

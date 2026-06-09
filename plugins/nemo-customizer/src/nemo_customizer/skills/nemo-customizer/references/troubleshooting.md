@@ -130,7 +130,7 @@ docker buildx bake \
   --load \
   --set "*.platform=linux/amd64"
 
-export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-nvcr.io/0921617854601259/nemo-platform-dev}/nmp-unsloth-training:${BAKE_TAG:-local}"
+export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-my-registry/nemo-platform-dev}/nmp-unsloth-training:${BAKE_TAG:-local}"
 # Restart platform so the env var is picked up
 nemo services restart
 ```

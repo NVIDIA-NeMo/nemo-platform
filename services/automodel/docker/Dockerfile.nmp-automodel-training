@@ -3,7 +3,7 @@
 # Same platform glue as tasks; separate image tag for the compiler training step.
 
 ARG BASE_TAG_AUTOMODEL=local
-ARG BASE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+ARG BASE_REGISTRY=my-registry/nemo-platform-dev
 ARG SMOKE_MARKER=smoke_nmp_automodel_training
 
 FROM ${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL} AS nmp-automodel-base

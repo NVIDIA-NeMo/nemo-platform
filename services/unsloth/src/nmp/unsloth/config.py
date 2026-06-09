@@ -17,7 +17,7 @@ class UnslothConfig(create_service_config_class("unsloth")):  # type: ignore[mis
     """Environment variables use the ``NMP_UNSLOTH_`` prefix."""
 
     image_registry: str = Field(
-        default="nvcr.io/0921617854601259/nemo-platform-dev",
+        default="my-registry/nemo-platform-dev",
         description=(
             "Registry host/path prefix for nmp-unsloth-tasks and nmp-unsloth-training. "
             "Override via NMP_UNSLOTH_IMAGE_REGISTRY for other environments."

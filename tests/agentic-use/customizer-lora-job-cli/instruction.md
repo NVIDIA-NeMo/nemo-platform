@@ -9,7 +9,7 @@ The CLIs are available at `/app/.venv/bin/nemo` and `/app/.venv/bin/nmp`. The pl
 ## Context
 
 - The NeMo Platform API server is running with the jobs controller and customization plugin enabled
-- Platform image registry/tag are configured for `nvcr.io/0921617854601259/nemo-platform-dev` (see environment setup)
+- Platform image registry/tag are configured for `my-registry/nemo-platform-dev` (see environment setup)
 - The Docker backend is configured for GPU job execution; the Docker socket is mounted
 - A workspace `lora-training-workspace` has been pre-created
 - A model entity `smollm-135m` (HF weights fileset `smollm-135m-weights`) has been registered in the workspace

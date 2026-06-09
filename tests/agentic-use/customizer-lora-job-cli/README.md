@@ -17,7 +17,7 @@ Build and push platform/automodel images before running this eval. From the repo
 export BAKE_TAG=$(git rev-parse --short HEAD)
 export BASE_TAG_AUTOMODEL=$BAKE_TAG
 export NMP_IMAGE_TAG=$BAKE_TAG
-export NMP_IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+export NMP_IMAGE_REGISTRY=my-registry/nemo-platform-dev
 echo "$NMP_IMAGE_TAG"
 
 # Bake/push nmp-automodel images (and platform task images as needed)

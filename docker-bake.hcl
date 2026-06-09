@@ -9,7 +9,7 @@
 #   docker buildx bake --print -f docker-bake.hcl nmp-automodel-gpu-wheels
 #
 # Automodel — build and push wheels:
-#   export WHEELS_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export WHEELS_REGISTRY=my-registry/nemo-platform-dev
 #   export WHEELS_TAG=$(git rev-parse --short HEAD)
 #   docker buildx bake -f docker-bake.hcl nmp-automodel-gpu-wheels --push
 #
@@ -21,7 +21,7 @@
 #     --set "*.platform=linux/amd64"
 #
 # Unsloth — push to registry:
-#   export IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export IMAGE_REGISTRY=my-registry/nemo-platform-dev
 #   export BAKE_TAG=$(git rev-parse --short HEAD)
 #   docker buildx bake -f docker-bake.hcl nmp-unsloth-training --push \
 #     --set "*.platform=linux/amd64"
@@ -35,15 +35,15 @@
 # ---------------------------------------------------------------------------
 
 variable "IMAGE_REGISTRY" {
-  default = "nvcr.io/0921617854601259/nemo-platform-dev"
+  default = "my-registry/nemo-platform-dev"
 }
 
 variable "BASE_REGISTRY" {
-  default = "nvcr.io/0921617854601259/nemo-platform-dev"
+  default = "my-registry/nemo-platform-dev"
 }
 
 variable "WHEELS_REGISTRY" {
-  default = "nvcr.io/0921617854601259/nemo-platform-dev"
+  default = "my-registry/nemo-platform-dev"
 }
 
 variable "BAKE_TAG" {

@@ -11,7 +11,7 @@ class AutomodelConfig(create_service_config_class("automodel")):  # type: ignore
     """Environment variables use the NMP_AUTOMODEL_ prefix."""
 
     image_registry: str = Field(
-        default="nvcr.io/0921617854601259/nemo-platform-dev",
+        default="my-registry/nemo-platform-dev",
         description=(
             "Registry host/path prefix for nmp-automodel-tasks and nmp-automodel-training. "
             "Override via NMP_AUTOMODEL_IMAGE_REGISTRY for other environments."

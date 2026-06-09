@@ -15,7 +15,7 @@
 
 services:
   file-io:
-    image: ${FILE_IO_IMAGE:-nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-tasks:local}
+    image: ${FILE_IO_IMAGE:-my-registry/nemo-platform-dev/nmp-automodel-tasks:local}
     container_name: file-io-task
 
     # Mount config file and storage directory

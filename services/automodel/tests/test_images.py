@@ -12,7 +12,7 @@ from nmp.automodel.images import (
 )
 
 
-def test_default_automodel_images_use_nvcr_dev_registry(monkeypatch):
+def test_default_automodel_images_use_platform_dev_registry(monkeypatch):
     monkeypatch.setattr("nmp.automodel.images.config", AutomodelConfig())
 
     tasks = get_tasks_image()
@@ -20,18 +20,18 @@ def test_default_automodel_images_use_nvcr_dev_registry(monkeypatch):
 
     assert tasks == f"{DEFAULT_AUTOMODEL_IMAGE_REGISTRY}/{TASKS_IMAGE_NAME}:local"
     assert training == f"{DEFAULT_AUTOMODEL_IMAGE_REGISTRY}/{TRAINING_IMAGE_NAME}:local"
-    assert TASKS_IMAGE_NAME.count("/") == 0  # NVCR: single repo segment, no nested paths
+    assert TASKS_IMAGE_NAME.count("/") == 0  # single repo segment, no nested paths
 
 
 def test_automodel_image_registry_override(monkeypatch):
     monkeypatch.setattr(
         "nmp.automodel.images.config",
-        AutomodelConfig(image_registry="nvcr.io/0921617854601259/other-registry"),
+        AutomodelConfig(image_registry="my-registry/other-registry"),
     )
 
     assert (
         get_automodel_qualified_image(TASKS_IMAGE_NAME)
-        == "nvcr.io/0921617854601259/other-registry/nmp-automodel-tasks:local"
+        == "my-registry/other-registry/nmp-automodel-tasks:local"
     )
 
 
@@ -39,8 +39,8 @@ def test_automodel_full_image_override(monkeypatch):
     monkeypatch.setattr(
         "nmp.automodel.images.config",
         AutomodelConfig(
-            tasks_image="nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-tasks:dev",
+            tasks_image="my-registry/nemo-platform-dev/nmp-automodel-tasks:dev",
         ),
     )
 
-    assert get_tasks_image() == "nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-tasks:dev"
+    assert get_tasks_image() == "my-registry/nemo-platform-dev/nmp-automodel-tasks:dev"

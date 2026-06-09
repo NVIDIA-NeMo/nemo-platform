@@ -18,7 +18,7 @@ from __future__ import annotations
 from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.unsloth.config import config
 
-DEFAULT_UNSLOTH_IMAGE_REGISTRY = "nvcr.io/0921617854601259/nemo-platform-dev"
+DEFAULT_UNSLOTH_IMAGE_REGISTRY = "my-registry/nemo-platform-dev"
 
 BASE_IMAGE_NAME = "nmp-unsloth-base"
 TASKS_IMAGE_NAME = "nmp-unsloth-tasks"

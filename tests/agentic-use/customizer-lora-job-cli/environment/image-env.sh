@@ -5,7 +5,7 @@
 #   export BAKE_TAG=$(git rev-parse --short HEAD)
 #   export BASE_TAG_AUTOMODEL=$BAKE_TAG
 #   export NMP_IMAGE_TAG=$BAKE_TAG
-#   export NMP_IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export NMP_IMAGE_REGISTRY=my-registry/nemo-platform-dev
 #
 # Override any variable before starting the eval container when testing a
 # different tag or registry.
@@ -21,5 +21,5 @@ fi
 export BAKE_TAG
 export BASE_TAG_AUTOMODEL="${BASE_TAG_AUTOMODEL:-$BAKE_TAG}"
 export NMP_IMAGE_TAG="${NMP_IMAGE_TAG:-$BAKE_TAG}"
-export NMP_IMAGE_REGISTRY="${NMP_IMAGE_REGISTRY:-nvcr.io/0921617854601259/nemo-platform-dev}"
+export NMP_IMAGE_REGISTRY="${NMP_IMAGE_REGISTRY:-my-registry/nemo-platform-dev}"
 export NMP_AUTOMODEL_IMAGE_REGISTRY="${NMP_AUTOMODEL_IMAGE_REGISTRY:-$NMP_IMAGE_REGISTRY}"

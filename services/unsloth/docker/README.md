@@ -36,7 +36,7 @@ docker buildx bake \
 
 # --- Option B: push to a registry ---
 docker login nvcr.io
-export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export IMAGE_REGISTRY="my-registry/nemo-platform-dev"
 export BAKE_TAG="$(git rev-parse --short HEAD)"
 docker buildx bake \
   -f docker-bake.hcl \
@@ -124,7 +124,7 @@ docker buildx bake \
 **B) Push to a registry the GPU host will pull from**:
 
 ```bash
-export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export IMAGE_REGISTRY="my-registry/nemo-platform-dev"
 export BAKE_TAG="$(git rev-parse --short HEAD)"
 
 docker buildx bake \
@@ -138,7 +138,7 @@ docker buildx bake \
 **C) Air-gapped GPU host** (save + `scp` + `docker load`):
 
 ```bash
-export IMAGE_REGISTRY="nvcr.io/0921617854601259/nemo-platform-dev"
+export IMAGE_REGISTRY="my-registry/nemo-platform-dev"
 export BAKE_TAG="$(git rev-parse --short HEAD)"
 docker buildx build \
   -f services/unsloth/docker/Dockerfile.nmp-unsloth-training \
@@ -159,7 +159,7 @@ build this is just the bare name:
 
 ```bash
 # Local bake (--load; matches docker-bake.hcl defaults):
-export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-nvcr.io/0921617854601259/nemo-platform-dev}/nmp-unsloth-training:${BAKE_TAG:-local}"
+export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY:-my-registry/nemo-platform-dev}/nmp-unsloth-training:${BAKE_TAG:-local}"
 
 # Or, when you pushed (Option B above):
 export NMP_UNSLOTH_TRAINING_IMAGE="${IMAGE_REGISTRY}/nmp-unsloth-training:${BAKE_TAG}"
@@ -172,7 +172,7 @@ Or persist in `~/.nemo/config.yaml`:
 
 ```yaml
 unsloth:
-  training_image: nvcr.io/0921617854601259/nemo-platform-dev/nmp-unsloth-training:local
+  training_image: my-registry/nemo-platform-dev/nmp-unsloth-training:local
 ```
 
 ### 3. Prepare model + dataset filesets

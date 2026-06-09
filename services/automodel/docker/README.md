@@ -1,6 +1,6 @@
 # nmp-automodel container images
 
-Three images derived from the legacy `nmp` **customizer-automodel** base builder (not the full `customizer-automodel` HTTP service image). Published as flat NVCR repo names under **`nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — NVCR rejects that on push).
+Three images derived from the legacy `nmp` **customizer-automodel** base builder (not the full `customizer-automodel` HTTP service image). Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — some registries reject that on push).
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
@@ -10,9 +10,9 @@ Three images derived from the legacy `nmp` **customizer-automodel** base builder
 
 Full references (default tag `local`):
 
-- `nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-base:local`
-- `nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-tasks:local`
-- `nvcr.io/0921617854601259/nemo-platform-dev/nmp-automodel-training:local`
+- `my-registry/nemo-platform-dev/nmp-automodel-base:local`
+- `my-registry/nemo-platform-dev/nmp-automodel-tasks:local`
+- `my-registry/nemo-platform-dev/nmp-automodel-training:local`
 
 Bake file: **`docker-bake.hcl`** at the Platform repo root (`context = "."`). Run all commands from the Platform repo root.
 
@@ -36,8 +36,8 @@ docker login nvcr.io
 export WHEELS_TAG="$(git rev-parse --short HEAD)"
 # Bake variables (WHEELS_REGISTRY, WHEELS_TAG, IMAGE_REGISTRY) are overridden via env, not --set.
 # Example:
-#   export WHEELS_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
-#   export IMAGE_REGISTRY=nvcr.io/0921617854601259/nemo-platform-dev
+#   export WHEELS_REGISTRY=my-registry/nemo-platform-dev
+#   export IMAGE_REGISTRY=my-registry/nemo-platform-dev
 
 docker buildx bake --print -f docker-bake.hcl nmp-automodel-gpu-wheels
 
@@ -95,4 +95,4 @@ docker run --rm $NMP_AUTOMODEL_TASKS_IMAGE
 docker run --rm $NMP_AUTOMODEL_TASKS_IMAGE -m nmp.automodel.tasks --list
 ```
 
-The job compiler resolves `nmp-automodel-tasks` and `nmp-automodel-training` under `NMP_AUTOMODEL_IMAGE_REGISTRY` (default `nvcr.io/0921617854601259/nemo-platform-dev`). See `nmp.automodel.images`.
+The job compiler resolves `nmp-automodel-tasks` and `nmp-automodel-training` under `NMP_AUTOMODEL_IMAGE_REGISTRY` (default `my-registry/nemo-platform-dev`). See `nmp.automodel.images`.
