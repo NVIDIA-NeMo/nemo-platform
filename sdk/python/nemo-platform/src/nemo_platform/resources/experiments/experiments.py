@@ -24,6 +24,14 @@ import httpx
 
 from ..._types import Body, Omit, Query, Headers, NoneType, NotGiven, omit, not_given
 from ..._utils import path_template, maybe_transform, async_maybe_transform
+from .sessions import (
+    SessionsResource,
+    AsyncSessionsResource,
+    SessionsResourceWithRawResponse,
+    AsyncSessionsResourceWithRawResponse,
+    SessionsResourceWithStreamingResponse,
+    AsyncSessionsResourceWithStreamingResponse,
+)
 from ..._compat import cached_property
 from ..._resource import SyncAPIResource, AsyncAPIResource
 from ..._response import (
@@ -47,6 +55,10 @@ __all__ = ["ExperimentsResource", "AsyncExperimentsResource"]
 
 
 class ExperimentsResource(SyncAPIResource):
+    @cached_property
+    def sessions(self) -> SessionsResource:
+        return SessionsResource(self._client)
+
     @cached_property
     def with_raw_response(self) -> ExperimentsResourceWithRawResponse:
         """
@@ -302,7 +314,8 @@ class ExperimentsResource(SyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
+              dataset_name, dataset_version, created_by, created_at, or updated_at.
 
           page: Page number.
 
@@ -384,6 +397,10 @@ class ExperimentsResource(SyncAPIResource):
 
 
 class AsyncExperimentsResource(AsyncAPIResource):
+    @cached_property
+    def sessions(self) -> AsyncSessionsResource:
+        return AsyncSessionsResource(self._client)
+
     @cached_property
     def with_raw_response(self) -> AsyncExperimentsResourceWithRawResponse:
         """
@@ -639,7 +656,8 @@ class AsyncExperimentsResource(AsyncAPIResource):
         List Experiments
 
         Args:
-          filter: Filter experiments by name, experiment_group_id, agent_name, and dataset_name.
+          filter: Filter experiments by name, experiment_group_id, agent_name, agent_version,
+              dataset_name, dataset_version, created_by, created_at, or updated_at.
 
           page: Page number.
 
@@ -740,6 +758,10 @@ class ExperimentsResourceWithRawResponse:
             experiments.delete,
         )
 
+    @cached_property
+    def sessions(self) -> SessionsResourceWithRawResponse:
+        return SessionsResourceWithRawResponse(self._experiments.sessions)
+
 
 class AsyncExperimentsResourceWithRawResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
@@ -760,6 +782,10 @@ class AsyncExperimentsResourceWithRawResponse:
         self.delete = async_to_raw_response_wrapper(
             experiments.delete,
         )
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithRawResponse:
+        return AsyncSessionsResourceWithRawResponse(self._experiments.sessions)
 
 
 class ExperimentsResourceWithStreamingResponse:
@@ -782,6 +808,10 @@ class ExperimentsResourceWithStreamingResponse:
             experiments.delete,
         )
 
+    @cached_property
+    def sessions(self) -> SessionsResourceWithStreamingResponse:
+        return SessionsResourceWithStreamingResponse(self._experiments.sessions)
+
 
 class AsyncExperimentsResourceWithStreamingResponse:
     def __init__(self, experiments: AsyncExperimentsResource) -> None:
@@ -802,3 +832,7 @@ class AsyncExperimentsResourceWithStreamingResponse:
         self.delete = async_to_streamed_response_wrapper(
             experiments.delete,
         )
+
+    @cached_property
+    def sessions(self) -> AsyncSessionsResourceWithStreamingResponse:
+        return AsyncSessionsResourceWithStreamingResponse(self._experiments.sessions)

@@ -29,7 +29,7 @@ for benchmark in benchmarks:
 # Filter by evaluation category label
 filtered_benchmarks = client.evaluation.benchmarks.list(
     workspace="system",
-    extra_query={"filter[data.labels.eval_category]": "advanced_reasoning"},
+    extra_query={"filter[labels.eval_category]": "advanced_reasoning"},
 )
 print(filtered_benchmarks)
 ```

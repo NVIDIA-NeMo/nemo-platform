@@ -24,6 +24,7 @@ import pytest
 
 from tests.utils import assert_matches_type
 from nemo_platform import NeMoPlatform, AsyncNeMoPlatform
+from nemo_platform._utils import parse_datetime
 from nemo_platform.pagination import SyncDefaultPagination, AsyncDefaultPagination
 from nemo_platform.types.experiments import (
     ExperimentResponse,
@@ -269,9 +270,20 @@ class TestExperiments:
             workspace="workspace",
             filter={
                 "agent_name": "agent_name",
+                "agent_version": "agent_version",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,
@@ -605,9 +617,20 @@ class TestAsyncExperiments:
             workspace="workspace",
             filter={
                 "agent_name": "agent_name",
+                "agent_version": "agent_version",
+                "created_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
+                "created_by": "created_by",
                 "dataset_name": "dataset_name",
+                "dataset_version": "dataset_version",
                 "experiment_group_id": "experiment_group_id",
                 "name": "name",
+                "updated_at": {
+                    "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                    "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
+                },
             },
             page=1,
             page_size=1,

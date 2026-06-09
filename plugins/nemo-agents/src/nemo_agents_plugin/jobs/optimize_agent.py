@@ -63,6 +63,7 @@ from nemo_agents_plugin.utils import (
 from nemo_platform import NeMoPlatform
 from nemo_platform_plugin.job import NemoJob
 from nemo_platform_plugin.job_context import JobContext
+from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.refs import EndpointURL
 from nemo_platform_plugin.run_dependencies import LocalRunError
 from pydantic import BaseModel, Field
@@ -127,6 +128,55 @@ class OptimizeAgentJob(NemoJob):
     description: ClassVar[str] = "Optimize an agent workflow (prompt tuning, HPO) as a scheduled platform job."
     container: ClassVar[str] = "cpu-tasks"
     spec_schema: ClassVar[type[BaseModel]] = OptimizeAgentSpec
+
+    @classmethod
+    async def compile(  # type: ignore[override]
+        cls,
+        *,
+        workspace: str,
+        spec: OptimizeAgentSpec,
+        entity_client: object,
+        job_name: str | None,
+        async_sdk: object,
+        profile: str | None = None,
+        options: dict | None = None,
+    ) -> PlatformJobSpec:
+        """Single-step PlatformJobSpec running ``nemo_agents_plugin.tasks.optimize``."""
+        from nemo_agents_plugin.jobs.evaluate_suite import _require_absolute
+        from nemo_platform_plugin.jobs.api_factory import (
+            EnvironmentVariable,
+            PlatformJobStep,
+            SubprocessExecutionProviderSpec,
+        )
+        from nmp.common.jobs.constants import (
+            DEFAULT_JOB_STORAGE_PATH,
+            PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+        )
+
+        _require_absolute(spec.optimize_config, "optimize_config")
+
+        spec_dict = spec.model_dump(mode="json")
+        # URL workspace is the auth boundary; overwrites any spec workspace.
+        spec_dict["workspace"] = workspace
+
+        return PlatformJobSpec(
+            steps=[
+                PlatformJobStep(
+                    name="optimize-agent",
+                    executor=SubprocessExecutionProviderSpec(
+                        provider="subprocess",
+                        command=["python", "-m", "nemo_agents_plugin.tasks.optimize"],
+                    ),
+                    config=spec_dict,
+                    environment=[
+                        EnvironmentVariable(
+                            name=PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
+                            value=DEFAULT_JOB_STORAGE_PATH,
+                        ),
+                    ],
+                ),
+            ],
+        )
 
     def run(self, config: dict, *, ctx: JobContext, sdk: NeMoPlatform | None = None) -> dict:
         """Run optimization by delegating to the ``nat optimize`` CLI.

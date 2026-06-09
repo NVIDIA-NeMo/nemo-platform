@@ -10,12 +10,12 @@ from nemo_platform_plugin.jobs.api_factory import (
     EnvironmentVariable,
     PlatformJobStep,
 )
+from nemo_platform_plugin.jobs.image import get_qualified_image
 from nmp.common.jobs.constants import (
     DEFAULT_NEMO_JOB_STEP_CONFIG_FILE_PATH,
     EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
     PERSISTENT_JOB_STORAGE_PATH_ENVVAR,
 )
-from nmp.common.jobs.image import get_qualified_image
 from nmp.evaluator.app.values import Dataset, Fileset, FilesetRef
 from nmp.evaluator.config import settings
 

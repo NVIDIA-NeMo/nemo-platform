@@ -7,7 +7,7 @@ requires-python = ">=3.11,<3.14"
 authors = [{ name = "NVIDIA", email = "nemo@nvidia.com" }]
 dependencies = [
     "nemo-platform",
-    "data-designer==0.6.0",
+    "data-designer==0.6.1",
     "anyio>=4.0",
     "duckdb",
     "pydantic>=2",

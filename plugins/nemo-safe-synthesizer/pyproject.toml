@@ -28,6 +28,9 @@ safe-synthesizer = "nemo_safe_synthesizer_plugin.service:SafeSynthesizerService"
 [project.entry-points."nemo.cli"]
 safe-synthesizer = "nemo_safe_synthesizer_plugin.cli:SafeSynthesizerCLI"
 
+[project.entry-points."nemo.sdk"]
+safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
+
 [project.entry-points."nemo.skills"]
 safe-synthesizer = "nemo_safe_synthesizer_plugin.skills:get_skills_path"
 

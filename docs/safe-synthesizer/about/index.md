@@ -106,7 +106,7 @@ Get hands-on experience with Safe Synthesizer through step-by-step tutorials.
 
     Understand the job lifecycle, configuration, and execution for Safe Synthesizer pipelines.
 
--   **[Host-Local Development](host-local-development.md)**
+-   **[Local and Subprocess Execution](host-local-development.md)**
 
     ---
 

@@ -10,7 +10,7 @@ from typing import Any
 
 from nmp.intake.spans.clickhouse_client import ClickHouseSpanClient
 from nmp.intake.spans.span_attribute_catalog import COST_SCALE, SpanAttributeField, spec_for_field
-from nmp.intake.spans.storage import result_rows
+from nmp.intake.spans.storage import float_or_none, result_rows
 from nmp.intake.spans.trace_repository import current_spans_sql
 
 
@@ -72,12 +72,12 @@ class ExperimentRollupRepository:
             )
         ):
             rollups[row["experiment_id"]].evaluator_scores[row["evaluator_name"]] = ScoreRollup(
-                sum=_float_or_none(row["sum"]),
-                mean=_float_or_none(row["mean"]),
-                median=_float_or_none(row["median"]),
-                p90=_float_or_none(row["p90"]),
-                p95=_float_or_none(row["p95"]),
-                p99=_float_or_none(row["p99"]),
+                sum=float_or_none(row["sum"]),
+                mean=float_or_none(row["mean"]),
+                median=float_or_none(row["median"]),
+                p90=float_or_none(row["p90"]),
+                p95=float_or_none(row["p95"]),
+                p99=float_or_none(row["p99"]),
                 count=int(row["count"]),
             )
 
@@ -271,12 +271,12 @@ def _score_rollup(row: dict[str, Any], prefix: str) -> ScoreRollup | None:
     if count == 0:
         return None
     return ScoreRollup(
-        sum=_float_or_none(row[f"{prefix}_sum"]),
-        mean=_float_or_none(row[f"{prefix}_mean"]),
-        median=_float_or_none(row[f"{prefix}_median"]),
-        p90=_float_or_none(row[f"{prefix}_p90"]),
-        p95=_float_or_none(row[f"{prefix}_p95"]),
-        p99=_float_or_none(row[f"{prefix}_p99"]),
+        sum=float_or_none(row[f"{prefix}_sum"]),
+        mean=float_or_none(row[f"{prefix}_mean"]),
+        median=float_or_none(row[f"{prefix}_median"]),
+        p90=float_or_none(row[f"{prefix}_p90"]),
+        p95=float_or_none(row[f"{prefix}_p95"]),
+        p99=float_or_none(row[f"{prefix}_p99"]),
         count=count,
     )
 
@@ -285,9 +285,3 @@ def _string_list(value: Any) -> list[str]:
     if value is None:
         return []
     return sorted(str(item) for item in value if str(item))
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    return float(value)

@@ -19,6 +19,8 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
+from ..shared_params.datetime_filter import DatetimeFilter
+
 __all__ = ["ExperimentFilterParam"]
 
 
@@ -28,11 +30,31 @@ class ExperimentFilterParam(TypedDict, total=False):
     agent_name: str
     """Filter experiments by agent name."""
 
+    agent_version: str
+    """Filter experiments by agent version."""
+
+    created_at: DatetimeFilter
+    """
+    Filter experiments by creation timestamp; supports `$gte` and `$lte` for ranges.
+    """
+
+    created_by: str
+    """Filter experiments by the principal that created them."""
+
     dataset_name: str
     """Filter experiments by dataset name."""
+
+    dataset_version: str
+    """Filter experiments by dataset version."""
 
     experiment_group_id: str
     """Filter experiments by owning group id."""
 
     name: str
     """Filter experiments by name."""
+
+    updated_at: DatetimeFilter
+    """
+    Filter experiments by last-updated timestamp; supports `$gte` and `$lte` for
+    ranges.
+    """

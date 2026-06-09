@@ -95,7 +95,7 @@ customizer-service = [
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
-  "data-designer==0.6.0",
+  "data-designer==0.6.1",
   "anyio>=4.0",
   "duckdb",
   "pydantic>=2",
@@ -117,19 +117,6 @@ entities-service = [
   "fastmcp>=3.2.0",
   "nemo-platform-sdk",
   "alembic>=1.13.1",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
-evaluator = [
-  "pydantic>=2.10.6",
-  "jinja2>=3.1.6",
-  "jsonschema>=4.23.0",
-  "jsonpath-ng>=1.7.0",
-  "pyarrow>=19.0.1",
-  "pandas>=1.5.3",
-  "openai>=1.61.0",
-  "sacrebleu>=2.5.1",
-  "rouge_score==0.1.2",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -295,8 +282,8 @@ nemo-agents-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-anonymizer-plugin = [
   "nemo-platform-plugin",
-  "nemo-anonymizer>=0.2.0",
-  "data-designer==0.6.0",
+  "nemo-anonymizer>=0.2.1",
+  "data-designer==0.6.1",
   "data-designer-nemo",
   "nmp-common",
   "httpx>=0.27",
@@ -318,7 +305,7 @@ nemo-auditor-plugin = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-data-designer-plugin = [
   "nemo-platform-plugin",
-  "data-designer==0.6.0",
+  "data-designer==0.6.1",
   "data-designer-nemo",
   "nmp-common",
   "httpx>=0.27",
@@ -335,6 +322,19 @@ nemo-evaluator-plugin = [
   "nmp-common",
   "pydantic>=2.10.6",
   "typer>=0.20.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-evaluator-sdk = [
+  "pydantic>=2.10.6",
+  "jinja2>=3.1.6",
+  "jsonschema>=4.23.0",
+  "jsonpath-ng>=1.7.0",
+  "pyarrow>=19.0.1",
+  "pandas>=1.5.3",
+  "openai>=1.61.0",
+  "sacrebleu>=2.5.1",
+  "rouge_score==0.1.2",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -438,7 +438,6 @@ platform-seed-service = [
   "nmp-common",
   "nmp-auth",
   "nmp-guardrails",
-  "nmp-evaluator",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -557,6 +556,7 @@ anonymizer = "nemo_anonymizer_plugin.sdk.resources:anonymizer_sdk_resources"
 auditor = "nemo_auditor.sdk:auditor_sdk_resources"
 data_designer = "nemo_data_designer_plugin.sdk.resources:data_designer_sdk_resources"
 evaluator = "nemo_evaluator.sdk.resources:evaluator_sdk_resources"
+safe_synthesizer = "nemo_safe_synthesizer_plugin.sdk.resources:safe_synthesizer_sdk_resources"
 
 # Generated from [tool.bundle-package]; do not edit this table by hand.
 [project.entry-points."nemo.seed"]
@@ -622,7 +622,7 @@ only-include = ["_empty"]
 # Library packages
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
-nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk", deps_group = "evaluator" }
+nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
 garak-api = { source = "../../packages/garak_api/garakapi", module = "garakapi", deps_group = "auditor-service" }
