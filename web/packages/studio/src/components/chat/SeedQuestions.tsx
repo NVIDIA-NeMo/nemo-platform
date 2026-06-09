@@ -2,11 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
-import { type FC } from 'react';
+import { type FC, type ReactNode } from 'react';
 
 interface SeedQuestionsProps {
   questions?: string[];
   onSelect: (prompt: string) => void;
+  /** Rendered right-aligned at the trailing end of the flex-wrap row. */
+  slotEnd?: ReactNode;
 }
 
 /**
@@ -18,6 +20,7 @@ interface SeedQuestionsProps {
 export const SeedQuestions: FC<SeedQuestionsProps> = ({
   questions = DEFAULT_SEED_QUESTIONS,
   onSelect,
+  slotEnd,
 }) => {
   return (
     <div className="flex flex-wrap items-start gap-2">
@@ -31,6 +34,7 @@ export const SeedQuestions: FC<SeedQuestionsProps> = ({
           {q}
         </button>
       ))}
+      {slotEnd && <div className="ml-auto shrink-0">{slotEnd}</div>}
     </div>
   );
 };

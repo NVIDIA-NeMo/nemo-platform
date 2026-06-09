@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
+import { UploadModal } from '@nemo/common/src/components/UploadModal';
+import type { SubmitUploadType } from '@nemo/common/src/components/UploadModal/types';
 import { useChatCompletion } from '@nemo/common/src/hooks/useChatCompletion';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { FileFormat, InputFileSchemaType } from '@nemo/common/src/types';
@@ -24,8 +26,8 @@ const DEFAULT_SAMPLE_SIZE = 5;
 const INFERENCE_BATCH_SIZE = 10;
 
 /** Sentinel item values for the dataset picker. */
-const UPLOAD_ACTION_VALUE = '__upload__';
 const UPLOADED_FILE_VALUE = '__uploaded__';
+const FILESET_PICKER_VALUE = '__fileset_picker__';
 
 interface ResponseStats {
   /** Wall-clock time from request fire to response, in ms. */
@@ -185,19 +187,20 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const [pickerValue, setPickerValue] = useState<string | undefined>(undefined);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
+  const [isFilesetPickerOpen, setIsFilesetPickerOpen] = useState(false);
   const { mutateAsync: createCompletion } = useChatCompletion();
 
-  // Monotonic run id. Incremented when a run starts and when prompts
-  // change, so any in-flight run that finishes later checks runIdRef before
-  // writing results and drops the update if it's stale.
+  // Monotonic run id. Incremented on invalidation; guards stale writeCell calls.
   const runIdRef = useRef(0);
+  // AbortController for the active run; aborted when a new run starts,
+  // dataset/sampling changes, or the component unmounts.
+  const runAbortRef = useRef<AbortController | null>(null);
 
   const rowCount = fileResult?.rowCount ?? 0;
 
   const handleFileChange = useCallback((result: DatasetInputFileResult | null) => {
-    runIdRef.current += 1; // invalidate any in-flight run
+    runIdRef.current += 1;
+    runAbortRef.current?.abort();
     setFileResult(result);
     setPromptRows([]);
     if (result) {
@@ -241,6 +244,10 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     runIdRef.current += 1;
     const myRunId = runIdRef.current;
 
+    runAbortRef.current?.abort();
+    const runController = new AbortController();
+    runAbortRef.current = runController;
+
     setIsRunning(true);
     clearResponses();
 
@@ -268,6 +275,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             workspace: model.modelWorkspace || workspace,
             messages: [{ role: 'user', content: row.prompt }],
             stream: false,
+            signal: runController.signal,
           })
             .then((result) => {
               const totalMs = performance.now() - startTime;
@@ -299,14 +307,17 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     });
 
     // Run tasks in capped-size batches so we don't flood the gateway.
-    for (let i = 0; i < taskFactories.length; i += INFERENCE_BATCH_SIZE) {
-      if (runIdRef.current !== myRunId) break; // stale run: stop firing more
-      const batch = taskFactories.slice(i, i + INFERENCE_BATCH_SIZE).map((fn) => fn());
-      await Promise.allSettled(batch);
-    }
-
-    if (runIdRef.current === myRunId) {
-      setIsRunning(false);
+    try {
+      for (let i = 0; i < taskFactories.length; i += INFERENCE_BATCH_SIZE) {
+        if (runController.signal.aborted) break;
+        const batch = taskFactories.slice(i, i + INFERENCE_BATCH_SIZE).map((fn) => fn());
+        await Promise.allSettled(batch);
+      }
+    } finally {
+      if (runAbortRef.current === runController) {
+        runAbortRef.current = null;
+        setIsRunning(false);
+      }
     }
   }, [models, promptRows, workspace, createCompletion, clearResponses]);
 
@@ -356,11 +367,19 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     onReadyChange?.(isReady);
   }, [isReady, onReadyChange]);
 
+  // Abort any active run on unmount (e.g. tab switch, navigation).
+  useEffect(() => {
+    return () => {
+      runAbortRef.current?.abort();
+    };
+  }, []);
+
   // Drive the prompt table from parsed preview rows + sampling controls (no separate file preview).
   useEffect(() => {
     if (!fileResult?.keyMapping.promptKey || !fileResult.parsedRows?.length) return;
 
     runIdRef.current += 1;
+    runAbortRef.current?.abort();
     setPromptRows(buildPromptRowsFromParsedRows(fileResult, sampleSize, sampleMethod));
   }, [fileResult, sampleSize, sampleMethod]);
 
@@ -398,11 +417,11 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const handleDatasetSelect = useCallback(
     (value: string) => {
       if (!value) return;
-      if (value === UPLOAD_ACTION_VALUE) {
-        fileInputRef.current?.click();
+      if (value === UPLOADED_FILE_VALUE) return;
+      if (value === FILESET_PICKER_VALUE) {
+        setIsFilesetPickerOpen(true);
         return;
       }
-      if (value === UPLOADED_FILE_VALUE) return;
       const sample = SAMPLE_DATASETS.find((s) => s.id === value);
       if (!sample) return;
       setParseError(null);
@@ -413,19 +432,21 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     [handleFileChange]
   );
 
-  const handleFileUploadInput = useCallback(
-    async (event: React.ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0];
-      // Reset the input so the same file can be re-picked later.
-      event.target.value = '';
-      if (!file) return;
+  const handleFilesetPickerSubmit = useCallback(
+    async (data: SubmitUploadType) => {
+      if (data.type !== 'dataset') return;
+      setIsFilesetPickerOpen(false);
       setParseError(null);
+      const response = await fetch(data.url);
+      const blob = await response.blob();
+      const filename = data.path.split('/').pop() ?? 'dataset.json';
+      const file = new File([blob], filename, { type: blob.type });
       const result = await parseUploadedFile(file);
       if ('error' in result) {
         setParseError(result.error);
         return;
       }
-      setUploadedFileName(file.name);
+      setUploadedFileName(data.path);
       setPickerValue(UPLOADED_FILE_VALUE);
       handleFileChange(result);
     },
@@ -440,7 +461,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     if (uploadedFileName) {
       items.push({ value: UPLOADED_FILE_VALUE, children: `Uploaded: ${uploadedFileName}` });
     }
-    items.push({ value: UPLOAD_ACTION_VALUE, children: 'Upload from disk…' });
+    items.push({ value: FILESET_PICKER_VALUE, children: 'Pick from platform…' });
     return items;
   }, [uploadedFileName]);
 
@@ -452,7 +473,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
           items={datasetItems}
           value={pickerValue}
           onValueChange={handleDatasetSelect}
-          placeholder="Pick a sample or upload your own…"
+          placeholder="Pick a sample…"
           disabled={isRunning}
           className="w-full"
         />
@@ -461,13 +482,6 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             {parseError}
           </Text>
         )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,.jsonl"
-          className="hidden"
-          onChange={handleFileUploadInput}
-        />
       </Stack>
 
       {fileResult && hasPromptKey && (
@@ -489,7 +503,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full table-fixed border-separate border-spacing-0">
           <colgroup>
-            <col className="w-[500px] min-w-[400px]" />
+            <col className="w-[320px] min-w-[280px]" />
             {models.map((m) => (
               <col key={m.id} className="w-[320px] min-w-[280px]" />
             ))}
@@ -618,6 +632,17 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
           )}
         </table>
       </div>
+
+      <UploadModal
+        workspace={workspace}
+        open={isFilesetPickerOpen}
+        includeDataset
+        allowNewDataset={false}
+        title="Pick dataset file"
+        submitButtonText="Use file"
+        onClose={() => setIsFilesetPickerOpen(false)}
+        onSubmit={handleFilesetPickerSubmit}
+      />
 
       <Modal
         open={expandedCell !== null}

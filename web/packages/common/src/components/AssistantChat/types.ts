@@ -63,7 +63,7 @@ export interface AssistantChatProps {
    */
   hideComposer?: boolean;
   /**
-   * External broadcast trigger. Whenever `nonce` changes (excluding initial
+   * External broadcast trigger. Whenever `seq` changes (excluding initial
    * mount), the runtime appends `text` as a new user message and runs a
    * completion — same code path as a user typing into the composer.
    */
@@ -72,7 +72,7 @@ export interface AssistantChatProps {
    * Monotonic counter — when it changes, the runtime aborts any in-flight
    * stream. Lets a parent cancel many AssistantChats at once.
    */
-  cancelNonce?: number;
+  stopCount?: number;
   /**
    * Content rendered immediately above the composer, inside the same outer
    * frame. Use for seed-prompt chips or any prefatory hint that should read
@@ -87,8 +87,8 @@ export interface AssistantChatProps {
 }
 
 export interface BroadcastSignal {
-  /** Monotonically increasing; on change, runtime fires a send. */
-  nonce: number;
+  /** Monotonically increasing sequence — on change, runtime fires a send. */
+  seq: number;
   /** Text to inject as the user's next message. */
   text: string;
 }

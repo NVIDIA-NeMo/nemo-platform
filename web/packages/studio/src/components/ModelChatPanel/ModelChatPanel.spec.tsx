@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { DEFAULT_INFERENCE_PARAMS } from '@studio/components/chat/params';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
 import { render } from '@testing-library/react';
@@ -36,9 +35,6 @@ const renderPanel = (modelURN: string | null, availableModels: ModelEntity[]) =>
             id: 0,
             collapsed: false,
             modelURN,
-            systemPrompt: 'You are a helpful assistant.',
-            params: DEFAULT_INFERENCE_PARAMS,
-            paramsTouched: false,
             roleColor: 'baseline',
             roleLabel: 'Baseline',
             isSinglePanel: true,
@@ -50,10 +46,6 @@ const renderPanel = (modelURN: string | null, availableModels: ModelEntity[]) =>
           onToggle={vi.fn()}
           onRemove={vi.fn()}
           onModelChange={vi.fn()}
-          onSystemPromptChange={vi.fn()}
-          onParamsChange={vi.fn()}
-          onEvaluate={vi.fn()}
-          onFineTune={vi.fn()}
         />
       </MemoryRouter>
     </TestProviders>

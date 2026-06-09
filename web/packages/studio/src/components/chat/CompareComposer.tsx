@@ -5,7 +5,14 @@ import { Button } from '@nvidia/foundations-react-core';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { RotateCcw, Send, Square } from 'lucide-react';
 import * as React from 'react';
-import { type FC, useCallback, useState } from 'react';
+import {
+  type FC,
+  type MutableRefObject,
+  type ReactNode,
+  useCallback,
+  useRef,
+  useState,
+} from 'react';
 
 interface CompareComposerProps {
   /** Any panel currently streaming? Switches the Send button into a Stop button. */
@@ -22,6 +29,12 @@ interface CompareComposerProps {
    *  Clicking a chip fills the draft but does NOT auto-submit — preserves the
    *  "send happens on the green button" mental model. */
   seedQuestions?: string[];
+  /** Rendered right-aligned at the trailing end of the seed-questions row. */
+  slotSeedEnd?: ReactNode;
+  /** Kept in sync with internal draft so callers can read it imperatively. */
+  draftRef?: MutableRefObject<string>;
+  /** When triggerCount changes, resets the draft to text (panel→broadcast transfer). */
+  seed?: { triggerCount: number; text: string };
 }
 
 /**
@@ -38,8 +51,21 @@ export const CompareComposer: FC<CompareComposerProps> = ({
   onStop,
   onResetAll,
   seedQuestions,
+  slotSeedEnd,
+  draftRef,
+  seed,
 }) => {
   const [draft, setDraft] = useState('');
+
+  // Keep caller's ref in sync so they can read the current draft imperatively.
+  if (draftRef) draftRef.current = draft;
+
+  // Pre-fill from panel toggle transfer (panel→broadcast).
+  const seenSeedTriggerRef = useRef(seed?.triggerCount);
+  if (seed?.text && seed.triggerCount !== seenSeedTriggerRef.current) {
+    seenSeedTriggerRef.current = seed.triggerCount;
+    setDraft(seed.text);
+  }
 
   const canSend = !isAnyRunning && readyPanelCount > 0 && draft.trim().length > 0;
 
@@ -68,12 +94,17 @@ export const CompareComposer: FC<CompareComposerProps> = ({
           totalPanelCount === 1 ? '' : 's'
         }…`;
 
-  const showSeeds =
-    !!seedQuestions && seedQuestions.length > 0 && !isAnyRunning && draft.trim().length === 0;
+  const showSeeds = !!seedQuestions && seedQuestions.length > 0 && !isAnyRunning;
 
   return (
     <div className="flex flex-col gap-2">
-      {showSeeds && <SeedQuestions questions={seedQuestions} onSelect={(text) => setDraft(text)} />}
+      {(showSeeds || slotSeedEnd) && (
+        <SeedQuestions
+          questions={showSeeds ? seedQuestions : []}
+          onSelect={(text) => setDraft(text)}
+          slotEnd={slotSeedEnd}
+        />
+      )}
       <div className="flex items-center gap-2 rounded-md border border-base bg-surface-base px-3 py-1.5 focus-within:border-emphasis">
         <textarea
           value={draft}

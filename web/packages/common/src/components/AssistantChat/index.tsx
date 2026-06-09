@@ -29,7 +29,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
   onRunningChange,
   hideComposer,
   broadcast,
-  cancelNonce,
+  stopCount,
   slotAboveComposer,
   emptyState,
   composerOverride,
@@ -46,7 +46,7 @@ export const AssistantChat: FC<AssistantChatProps> = ({
     onMessageComplete,
     onRunningChange,
     broadcast,
-    cancelNonce,
+    stopCount,
   });
 
   const composerPlaceholder = useMemo(

@@ -25,7 +25,7 @@ type UseAssistantChatRuntimeOptions = Pick<
   AssistantChatProps,
   | 'baseURL'
   | 'broadcast'
-  | 'cancelNonce'
+  | 'stopCount'
   | 'disabled'
   | 'initialMessages'
   | 'model'
@@ -49,7 +49,7 @@ export const useAssistantChatRuntime = ({
   onMessageComplete,
   onRunningChange,
   broadcast,
-  cancelNonce,
+  stopCount,
 }: UseAssistantChatRuntimeOptions) => {
   const [messages, setMessages] = useState<readonly ThreadMessageLike[]>(initialMessages);
   const [isRunning, setIsRunning] = useState(false);
@@ -275,16 +275,16 @@ export const useAssistantChatRuntime = ({
     setThreadMessages([]);
   }, [setThreadMessages]);
 
-  // External broadcast — when the caller bumps `broadcast.nonce`, append the
+  // External broadcast — when the caller bumps `broadcast.seq`, append the
   // payload text as a new user message and run a completion. The ref is seeded
-  // with whatever nonce is present at mount, so an AssistantChat that mounts
+  // with whatever seq is present at mount, so an AssistantChat that mounts
   // mid-flight (with a non-null broadcast prop) doesn't re-fire the last
   // broadcast it sees on first render. Subsequent changes fire.
-  const broadcastSeenNonceRef = useRef<number | undefined>(broadcast?.nonce);
+  const broadcastSeenSeqRef = useRef<number | undefined>(broadcast?.seq);
   useEffect(() => {
     if (!broadcast) return;
-    if (broadcast.nonce === broadcastSeenNonceRef.current) return;
-    broadcastSeenNonceRef.current = broadcast.nonce;
+    if (broadcast.seq === broadcastSeenSeqRef.current) return;
+    broadcastSeenSeqRef.current = broadcast.seq;
     const text = broadcast.text.trim();
     if (!text || disabled) return;
     const synthetic: AppendMessage = {
@@ -294,14 +294,21 @@ export const useAssistantChatRuntime = ({
     void handleNewMessage(synthetic);
   }, [broadcast, disabled, handleNewMessage]);
 
-  // External cancel — same nonce pattern.
-  const cancelSeenNonceRef = useRef<number | undefined>(cancelNonce);
+  // External cancel — same sequence pattern.
+  const stopSeenCountRef = useRef<number | undefined>(stopCount);
   useEffect(() => {
-    if (cancelNonce === undefined) return;
-    if (cancelNonce === cancelSeenNonceRef.current) return;
-    cancelSeenNonceRef.current = cancelNonce;
+    if (stopCount === undefined) return;
+    if (stopCount === stopSeenCountRef.current) return;
+    stopSeenCountRef.current = stopCount;
     void handleCancel();
-  }, [cancelNonce, handleCancel]);
+  }, [stopCount, handleCancel]);
+
+  // Abort any in-flight request on unmount (panel removed or remounted).
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+    };
+  }, []);
 
   // Surface running-state transitions so a parent can aggregate Stop logic
   // across multiple AssistantChat instances.
