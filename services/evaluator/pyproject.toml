@@ -3,7 +3,7 @@ name = "nmp-evaluator"
 version = "0.0.1"
 description = "The NeMo Evaluation Microservice is the one stop shop for evaluation needs as part of the NeMo Platform ecosystem"
 readme = "README.md"
-requires-python = ">=3.11,<3.16"
+requires-python = ">=3.11,<3.15"
 
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -17,7 +17,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  "Programming Language :: Python :: 3.15",
 ]
 
 dependencies = [

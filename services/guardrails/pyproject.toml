@@ -4,7 +4,7 @@ version = "0.0.1"
 description = "NeMo Guardrails Microservice - programmable guardrails for LLM endpoints"
 readme = "README.md"
 authors = [{ name = "NVIDIA", email = "nemoguardrails@nvidia.com" }]
-requires-python = ">=3.11,<3.16"
+requires-python = ">=3.11,<3.15"
 
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -18,7 +18,6 @@ classifiers = [
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
-  "Programming Language :: Python :: 3.15",
 ]
 
 dependencies = [
