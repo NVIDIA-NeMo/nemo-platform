@@ -116,7 +116,7 @@ jobs:
     name: Python unit tests (tools)
     needs: [changes]
     if: >
-      always() && (
+      !cancelled() && (
         github.event_name == 'workflow_dispatch' ||
         needs.changes.outputs.tools == 'true'
       )
@@ -392,6 +392,177 @@ jobs:
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
 
+  web-typecheck:
+    name: Web typecheck
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Typecheck changed packages
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            pnpm --filter="...[origin/${{ github.base_ref }}]" run --parallel --if-present typecheck
+          else
+            pnpm run --recursive --parallel --if-present typecheck
+          fi
+
+  web-test:
+    name: Web tests
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Test changed packages
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git fetch origin "${{ github.base_ref }}" --depth=1
+            pnpm --filter="...[origin/${{ github.base_ref }}]" run --parallel --if-present test:ci
+          else
+            pnpm run --recursive --parallel --if-present test:ci
+          fi
+
+  web-format:
+    name: Web format check
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check formatting
+        run: pnpm format
+
+  web-lint:
+    name: Web lint
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm lint
+
+  web-studio-deps:
+    name: Web studio deps check
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Check studio deps
+        run: pnpm deps:studio
+
+  web-studio-e2e:
+    name: Studio UI E2E tests
+    needs: [changes]
+    if: >
+      !cancelled() && (
+        github.event_name == 'workflow_dispatch' ||
+        needs.changes.outputs.web-studio == 'true'
+      )
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+        shell: bash
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+      - name: Install pnpm via corepack
+        run: npm i -g corepack@0.31.0 && corepack enable pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install Playwright browsers
+        run: pnpm --filter nemo-studio-ui exec playwright install --with-deps
+      - name: Run E2E tests
+        run: CI=1 pnpm --filter nemo-studio-ui test:e2e
+      - name: Upload E2E artifacts
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: studio-e2e-results
+          retention-days: 7
+          path: web/packages/studio/playwright-report/
+
   benchmark-guardrails:
     name: Guardrails plugin benchmark
     if: github.event_name == 'workflow_dispatch'
@@ -505,6 +676,7 @@ jobs:
 
   require-nvskills:
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     steps:
       - name: Require trusted NVSkills signature for skills changes
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
@@ -569,6 +741,12 @@ jobs:
       - wheel-build
       - wheel-test
       - python-e2e-test
+      - web-typecheck
+      - web-test
+      - web-format
+      - web-lint
+      - web-studio-deps
+      - web-studio-e2e
       - benchmark-guardrails
       - opa-policy-test
     if: always()

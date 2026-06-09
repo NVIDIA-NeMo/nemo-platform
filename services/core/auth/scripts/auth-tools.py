@@ -647,7 +647,7 @@ def check(
         console.print("\n[yellow]Tip: Add these permissions to the permissions section in static-authz.yaml.[/yellow]")
 
     # Check if permissions reference doc is up to date
-    docs_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.md"
+    docs_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.mdx"
     if docs_path.exists():
         expected = _generate_permissions_reference(auth_config)
         actual = docs_path.read_text(encoding="utf-8")
@@ -1166,7 +1166,7 @@ def _build_grouped_rows(
             rows.append(f"| `{perm_name}` | {description} | {role_marks} |")
         else:
             actions = [_perm_action(p) for p in group]
-            actions_str = " \\| ".join(actions)
+            actions_str = " \\\\| ".join(actions)
             display = f"`{prefix}.({actions_str})`"
             # Build a combined description from the common prefix
             desc_parts = prefix.split(".")
@@ -1202,9 +1202,12 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
     ordered_roles = ["Viewer", "Editor", "Admin"]
 
     lines: List[str] = []
+    lines.append("---")
+    lines.append('title: "Permissions Reference"')
+    lines.append('description: ""')
+    lines.append("---")
     lines.append("(permissions-reference)=")
     lines.append("")
-    lines.append("# Permissions Reference")
     lines.append("")
     lines.append(
         "Complete reference of all permissions across the NeMo Platform APIs. "
@@ -1217,8 +1220,11 @@ def _generate_permissions_reference(auth_config: Dict) -> str:
         "For the RBAC model, see [Authorization Concepts](../concepts.md)."
     )
     lines.append("")
-    lines.append("!!! note\n    PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level.")
+    lines.append("<Note>")
     lines.append("")
+    lines.append("PlatformAdmin is omitted — it bypasses permission checks entirely at the policy level.")
+    lines.append("")
+    lines.append("</Note>")
 
     for area, perm_names in area_groups.items():
         display_name = AREA_DISPLAY_NAMES.get(area, area.replace("-", " ").title())
@@ -1272,7 +1278,7 @@ def generate_docs(
         auth_path = project_root / auth_path
 
     if output_path is None:
-        output_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.md"
+        output_path = project_root / "docs" / "auth" / "authorization" / "permissions-reference.mdx"
     else:
         output_path = project_root / output_path
 
