@@ -31,33 +31,16 @@ jobs:
       web-studio: ${{ steps.changes.outputs.web-studio }}
       tools: ${{ steps.changes.outputs.tools }}
     steps:
-      - uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Detect Path Changes
-          phase: start
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/changes
         id: changes
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Detect Path Changes
-          phase: finish
-          status: ${{ job.status }}
 
   actionlint:
     name: Run actionlint
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Run actionlint
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install actionlint
         shell: bash
         run: |
@@ -72,30 +55,18 @@ jobs:
         shell: bash
         run: |
           "${RUNNER_TEMP}/actionlint/actionlint"
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Run actionlint
-          phase: finish
-          status: ${{ job.status }}
 
   lint:
     name: Lint all
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Lint all
-          phase: start
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           enable-cache: true
           python-version: "3.11"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: '22'
       - name: Install pnpm via corepack
@@ -113,7 +84,7 @@ jobs:
           CI_PROJECT_DIR: ${{ github.workspace }}
       - name: Upload lint artifacts
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: lint-artifacts
           retention-days: 7
@@ -127,38 +98,19 @@ jobs:
             python-sdk-lint/
             web/packages/sdk/generated/
             diff.txt
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Lint all
-          phase: finish
-          status: ${{ job.status }}
 
   policy-wasm:
     name: Build OPA policy WASM
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Build OPA policy WASM
-          phase: start
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - uses: ./.github/actions/build-policy-wasm
       - name: Upload policy WASM
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: policy-wasm
           retention-days: 1
           path: services/core/auth/src/nmp/core/auth/assets/policy.wasm
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Build OPA policy WASM
-          phase: finish
-          status: ${{ job.status }}
 
   python-unit-test-tools:
     name: Python unit tests (tools)
@@ -173,14 +125,9 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Python unit tests (tools)
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
@@ -188,18 +135,11 @@ jobs:
         run: uv run pytest tools -v --junit-xml=report.xml
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-unit-test-tools-results
           retention-days: 30
           path: report.xml
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Python unit tests (tools)
-          phase: finish
-          status: ${{ job.status }}
 
   python-unit-test:
     name: Python unit tests
@@ -209,19 +149,14 @@ jobs:
       contents: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Python unit tests
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
@@ -234,7 +169,7 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-unit-test-results
           retention-days: 30
@@ -243,13 +178,6 @@ jobs:
             coverage.xml
             coverage.json
             coverage-html/
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Python unit tests
-          phase: finish
-          status: ${{ job.status }}
 
   python-integration-test:
     name: Python integration tests
@@ -257,26 +185,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Python integration tests
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Free disk space
         uses: ./.github/actions/free-disk-space
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.11"
           enable-cache: true
       - name: Log in to Docker Hub
-        uses: docker/login-action@v4
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
         with:
           username: ${{ vars.AIRE_DOCKERHUB_USERNAME }}
           password: ${{ secrets.AIRE_DOCKERHUB_ACCESS_TOKEN }}
@@ -294,7 +217,7 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-integration-test-results
           retention-days: 30
@@ -302,13 +225,6 @@ jobs:
             report.xml
             coverage.xml
             coverage.json
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Python integration tests
-          phase: finish
-          status: ${{ job.status }}
 
   # Build wheels for all packages × python versions. Downstream jobs
   # (wheel-test, python-e2e-test) download these artifacts instead
@@ -327,15 +243,10 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: ${{ matrix.package }} wheel build (py${{ matrix.python-version }})
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
         if: matrix.package == 'nemo-platform'
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
@@ -351,19 +262,12 @@ jobs:
           nightly-timestamp: "19700101000000"
           python-version: ${{ matrix.python-version }}
       - name: Upload wheel
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
           path: ${{ steps.build.outputs.wheel-path }}
           retention-days: 7
           if-no-files-found: error
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: ${{ matrix.package }} wheel build (py${{ matrix.python-version }})
-          phase: finish
-          status: ${{ job.status }}
 
   # Test each wheel: install from the artifact and run basic CLI /
   # import checks.
@@ -381,19 +285,14 @@ jobs:
         python-version: ["3.11", "3.12", "3.13"]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
       - name: Download wheel
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: ${{ matrix.package }}-wheel-py${{ matrix.python-version }}
           path: ${{ runner.temp }}/wheelcheck
@@ -447,13 +346,6 @@ jobs:
           import nemo_platform_plugin.commands
           print('nemo_platform_plugin', getattr(nemo_platform_plugin, '__version__', '<no __version__>'))
           "
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: ${{ matrix.package }} wheel build + test (py${{ matrix.python-version }})
-          phase: finish
-          status: ${{ job.status }}
 
   # E2E tests: start services from the workspace venv and run the e2e
   # suite against the real process.
@@ -464,19 +356,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Python e2e tests
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Download policy WASM
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: policy-wasm
           path: services/core/auth/src/nmp/core/auth/assets
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           python-version: "3.13"
           enable-cache: true
@@ -497,63 +384,13 @@ jobs:
           echo "::endgroup::"
       - name: Upload test artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: python-e2e-test-results
           retention-days: 30
           path: |
             report.xml
             ${{ runner.temp }}/e2e-services-logs/
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Python e2e tests
-          phase: finish
-          status: ${{ job.status }}
-
-  # Required-check pin: branch protection should reference this aggregator
-  # rather than the per-row matrix jobs, so the matrix can grow or shrink
-  # without admin intervention. Skipped counts as pass.
-  wheel-test-aggregate:
-    name: Wheel build + test
-    needs: [wheel-test]
-    if: always()
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: Wheel build + test
-          phase: start
-      - name: Check matrix result
-        shell: bash
-        env:
-          MATRIX_RESULT: ${{ needs.wheel-test.result }}
-          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-        run: |
-          set -euo pipefail
-          case "${MATRIX_RESULT}" in
-            success|skipped)
-              echo "wheel-test matrix: ${MATRIX_RESULT}"
-              ;;
-            *)
-              echo "::error::wheel-test matrix concluded ${MATRIX_RESULT}"
-              echo "::error::see per-row results: ${RUN_URL}"
-              exit 1
-              ;;
-          esac
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: Wheel build + test
-          phase: finish
-          status: ${{ job.status }}
 
   benchmark-guardrails:
     name: Guardrails plugin benchmark
@@ -562,21 +399,16 @@ jobs:
     timeout-minutes: 30
     steps:
       - name: Checkout nemo-platform
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           path: nemo-platform
-      - name: Record test start
-        uses: ./nemo-platform/.github/actions/test-status
-        with:
-          name: Guardrails plugin benchmark
-          phase: start
       - name: Checkout NeMo-Guardrails
-        uses: actions/checkout@v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           repository: NVIDIA/NeMo-Guardrails
           path: NeMo-Guardrails
       - name: Install uv
-        uses: astral-sh/setup-uv@v7
+        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78 # v7.6.0
         with:
           # Point setup-uv at the nemo-platform checkout so it picks up the
           # repo's `required-version` constraint from pyproject.toml. Other
@@ -597,19 +429,12 @@ jobs:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload benchmark artifacts
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: benchmark-guardrails-results
           retention-days: 30
           path: |
             nemo-platform/plugins/nemo-guardrails/benchmarks/artifacts/runs/
-      - name: Record test status
-        if: always()
-        uses: ./nemo-platform/.github/actions/test-status
-        with:
-          name: Guardrails plugin benchmark
-          phase: finish
-          status: ${{ job.status }}
 
   coverage-comment:
     name: Post coverage comment
@@ -622,13 +447,13 @@ jobs:
     steps:
       - name: Download unit test coverage
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-unit-test-results
           path: unit-coverage
       - name: Download integration test coverage
         continue-on-error: true
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: python-integration-test-results
           path: integration-coverage
@@ -668,12 +493,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Record test start
-        uses: ./.github/actions/test-status
-        with:
-          name: OPA policy tests
-          phase: start
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
       - name: Install OPA 1.8.0
         run: |
           curl -L -o opa https://github.com/open-policy-agent/opa/releases/download/v1.8.0/opa_linux_amd64_static
@@ -682,176 +502,47 @@ jobs:
       - name: Run test
         run: |
           ./opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
-      - name: Record test status
-        if: always()
-        uses: ./.github/actions/test-status
-        with:
-          name: OPA policy tests
-          phase: finish
-          status: ${{ job.status }}
 
-  # Required-check pin: branch protection should require this final aggregate
-  # job. Jobs opt in by uploading a test-status artifact; skipped jobs do not
-  # contribute to the aggregate.
+  # Required-check pin: branch protection should require this final aggregate.
+  # Skipped jobs count as pass so conditional jobs can remain optional.
   ci-status:
     name: CI status
+    needs:
+      - changes
+      - actionlint
+      - lint
+      - policy-wasm
+      - python-unit-test-tools
+      - python-unit-test
+      - python-integration-test
+      - wheel-build
+      - wheel-test
+      - python-e2e-test
+      - benchmark-guardrails
+      - opa-policy-test
     if: always()
     runs-on: ubuntu-latest
-    timeout-minutes: 120
     permissions:
-      actions: read
       contents: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-      - name: Wait for contributing jobs
+      - name: Check all dependent jobs
         shell: bash
         env:
-          GH_TOKEN: ${{ github.token }}
+          NEEDS_JSON: ${{ toJson(needs) }}
         run: |
           set -euo pipefail
-
-          # Exclude this gate and jobs that intentionally depend on it.
-          excluded_jobs=(
-            "CI status"
-            "Notify CI consumer"
-          )
-
-          is_excluded() {
-            local job_name="$1"
-            local excluded_job
-            for excluded_job in "${excluded_jobs[@]}"; do
-              if [[ "${job_name}" == "${excluded_job}" ]]; then
-                return 0
-              fi
-            done
-            return 1
-          }
-
-          while true; do
-            mapfile -t unfinished_jobs < <(
-              gh api --paginate \
-                "/repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs?per_page=100" \
-                --jq '.jobs[] | select(.status != "completed") | .name'
-            )
-
-            waiting_jobs=()
-            for job_name in "${unfinished_jobs[@]}"; do
-              if ! is_excluded "${job_name}"; then
-                waiting_jobs+=("${job_name}")
-              fi
-            done
-
-            if [[ "${#waiting_jobs[@]}" -eq 0 ]]; then
-              break
-            fi
-
-            echo "Waiting for ${#waiting_jobs[@]} job(s): ${waiting_jobs[*]}"
-            sleep 30
-          done
-
-      - name: Download test statuses
-        uses: actions/download-artifact@v8
-        with:
-          pattern: test-status-${{ github.run_attempt }}-*
-          path: test-status
-          merge-multiple: true
-      - name: Check test statuses
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          failed=0
-          total=0
-          keys_file="${RUNNER_TEMP}/test-status-keys.txt"
-
-          declare -A names
-          declare -A started
-          declare -A finished
-          declare -A finish_passed
-          declare -A finish_status
-
-          : > "${keys_file}"
 
           {
             echo "## CI status"
             echo
-            echo "| Job | Started | Finished | Passed | Status |"
-            echo "| --- | --- | --- | --- | --- |"
+            echo "| Job | Result |"
+            echo "| --- | --- |"
+            printf '%s\n' "${NEEDS_JSON}" \
+              | jq -r 'to_entries[] | "| \(.key) | \(.value.result) |"'
           } >> "${GITHUB_STEP_SUMMARY}"
 
-          while IFS= read -r -d '' status_file; do
-            if [[ "$(jq -r '.run_attempt' "${status_file}")" != "${GITHUB_RUN_ATTEMPT}" ]]; then
-              continue
-            fi
-
-            key="$(jq -r '.key' "${status_file}")"
-            name="$(jq -r '.name' "${status_file}")"
-            phase="$(jq -r '.phase' "${status_file}")"
-            passed="$(jq -r '.passed' "${status_file}")"
-            status="$(jq -r '.status' "${status_file}")"
-            total=$((total + 1))
-
-            names["${key}"]="${name}"
-            echo "${key}" >> "${keys_file}"
-
-            case "${phase}" in
-              start)
-                started["${key}"]=true
-                ;;
-              finish)
-                finished["${key}"]=true
-                finish_passed["${key}"]="${passed}"
-                finish_status["${key}"]="${status}"
-                ;;
-              *)
-                echo "::error title=CI status::${name} has invalid phase ${phase}"
-                failed=1
-                ;;
-            esac
-          done < <(find test-status -type f -name '*.json' -print0 | sort -z)
-
-          while IFS= read -r key; do
-            [[ -n "${key}" ]] || continue
-
-            name="${names[$key]}"
-            has_start=false
-            has_finish=false
-            passed=false
-            status="missing finish"
-
-            if [[ -n "${started[$key]+x}" ]]; then
-              has_start=true
-            fi
-            if [[ -n "${finished[$key]+x}" ]]; then
-              has_finish=true
-              status="${finish_status[$key]}"
-            fi
-            if [[ "${has_start}" == "true" && "${has_finish}" == "true" && "${finish_passed[$key]:-false}" == "true" ]]; then
-              passed=true
-            fi
-
-            printf '| %s | %s | %s | %s | %s |\n' \
-              "${name}" "${has_start}" "${has_finish}" "${passed}" "${status}" >> "${GITHUB_STEP_SUMMARY}"
-
-            if [[ "${has_start}" != "true" ]]; then
-              echo "::error title=CI status::${name} has a finish marker without a start marker"
-              failed=1
-            elif [[ "${has_finish}" != "true" ]]; then
-              echo "::error title=CI status::${name} started but did not upload a finish marker"
-              failed=1
-            elif [[ "${passed}" != "true" ]]; then
-              echo "::error title=CI status::${name} concluded ${status}"
-              failed=1
-            fi
-          done < <(sort -u "${keys_file}")
-
-          if [[ "${total}" -eq 0 ]]; then
-            echo "::error title=CI status::No test status artifacts were found"
-            exit 1
-          fi
-
-          exit "${failed}"
+          printf '%s\n' "${NEEDS_JSON}" \
+            | jq -e 'to_entries | map(.value.result) | all(. as $result | ["success", "skipped"] | any($result == .))'
 
   notify-ci-consumer:
     name: Notify CI consumer
