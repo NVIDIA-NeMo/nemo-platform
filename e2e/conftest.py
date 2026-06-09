@@ -60,6 +60,31 @@ _TAIL_LINES_ON_FAILURE = 100
 
 _services_log_key = pytest.StashKey[Path]()
 
+NGC_API_KEY_ENV = "NGC_API_KEY"
+
+
+@pytest.fixture
+def ngc_api_key() -> str:
+    """Return the NGC API key from the environment."""
+    key = os.environ.get(NGC_API_KEY_ENV)
+    assert key, f"{NGC_API_KEY_ENV} must be set"
+    return key
+
+
+@pytest.fixture
+def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
+    """Create a secret containing the NGC API key, cleaned up after test."""
+    secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
+    print("INSIDE THE FIXTURE")
+    print(f"secret_name: {secret_name}")
+    print(f"workspace: {workspace}")
+    sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
+    yield secret_name
+    try:
+        sdk.secrets.delete(workspace=workspace, name=secret_name)
+    except Exception:
+        pass  # Best-effort cleanup; the workspace is deleted anyway
+
 
 @pytest.fixture(scope="session")
 def services_log_path(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Path:

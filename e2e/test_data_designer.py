@@ -1,12 +1,16 @@
 import tempfile
 import time
+from collections.abc import Generator
+from contextlib import suppress
 from typing import Any
 
 import data_designer.config as dd
 import pandas as pd
+import pytest
 from data_designer_nemo.fileset_file_seed_source import FilesetFileSeedSource
+from data_designer_nemo.nemotron_personas import WORKSPACE, get_resource_name_for_locale
 from nemo_data_designer_plugin.sdk.errors import DataDesignerJobError
-from nemo_platform import NeMoPlatform
+from nemo_platform import NeMoPlatform, NotFoundError
 from nemo_platform.types.inference import ModelProvider
 from nmp.testing import MockProviderResponse, NemoRun, add_mock_provider
 from nmp.testing.pytest_outcomes import pytest_skip
@@ -127,6 +131,9 @@ def test_simple_ndd_config(sdk: NeMoPlatform, workspace: str) -> None:
 
 
 def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
+    """Tests that the Data Designer *library* plugin that makes Filesets available as seed sources
+    is wired up properly by the Data Designer *platform plugin*.
+    """
     fileset_name = "my-fileset"
     sdk.files.filesets.create(name=fileset_name, workspace=workspace)
 
@@ -160,21 +167,49 @@ def test_fileset_seed_data(sdk: NeMoPlatform, workspace: str) -> None:
     _assert_dataset_equal(job_dataset, expected_job_dataset)
 
 
-def test_nemotron_personas_sampling(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: str) -> None:
-    # Once MG's PR lands, we can lift his ngc_secret fixture from his files test to the root conftest and use it here.
-    # To be clear: we'll replace this line below with a *fixture* in the test arguments
-    ngc_secret = "..."
+@pytest.fixture
+def nemotron_personas_locale(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: str, ngc_secret: str) -> Generator[str]:
+    """Invokes the CLI to create a Fileset for Nemotron Personas data.
+
+    This test does call out to NGC and downloads personas data. Use the smallest locale available
+    to keep test runtime manageable.
+
+    Nemotron Personas filesets are created in the "system" workspace, **not** the (ephemeral) ``workspace``
+    pytest fixture workspace. The "system" workspace persists across e2e runs, so we delete the fileset
+    before and after the test to ensure a clean test environment.
+    """
+    locale = "en_SG"
+
+    # The "system" workspace persists across e2e runs, so a fileset from a previous
+    # run may still exist while the secret it references has been deleted. Remove any
+    # stale fileset before recreating it so make-fileset starts from a clean slate.
+    fileset_name = get_resource_name_for_locale(locale)
+    with suppress(NotFoundError):
+        sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
 
     nemo_run(
         "data-designer",
         "personas",
         "make-fileset",
         "--locale",
-        "en_SG",
+        locale,
         "--api-key-secret",
         f"{workspace}/{ngc_secret}",
     )
 
+    yield locale
+
+    with suppress(NotFoundError):
+        sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
+
+
+def test_nemotron_personas_sampling(sdk: NeMoPlatform, workspace: str, nemotron_personas_locale: str) -> None:
+    """Test Nemotron Personas data can be created in the platform and subsequently dd.SamplerType.PERSON
+    columns can be included in workloads.
+
+    Nemotron Personas filesets are created via the CLI. The CLI invocation is "buried" in a pytest
+    fixture to ensure a clean test environment on each run, see ``nemotron_personas_locale``.
+    """
     provider = _make_mock_provider(sdk, workspace)
     config_builder = _setup_dd_config(provider)
 
@@ -183,7 +218,7 @@ def test_nemotron_personas_sampling(nemo_run: NemoRun, sdk: NeMoPlatform, worksp
             name="customer",
             sampler_type=dd.SamplerType.PERSON,
             params=dd.PersonSamplerParams(
-                locale="en_SG",
+                locale=nemotron_personas_locale,
                 age_range=[25, 45],
             ),
         )
