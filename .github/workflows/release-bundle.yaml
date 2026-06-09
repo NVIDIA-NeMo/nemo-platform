@@ -555,11 +555,13 @@ jobs:
               [[ -n "${RELEASE_CHECKSUMS_DIGEST:-}" ]] || { echo "::error::release checksums digest is required"; exit 1; }
               bundle="$(jq -n \
                 --arg repo "${BUNDLE_REPO}" \
+                --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
                 --arg tag "${RELEASE_TAG}" \
                 --arg checksums_digest "${RELEASE_CHECKSUMS_DIGEST}" \
                 '{
                   source: "release",
                   repo: $repo,
+                  workflow_run_id: $workflow_run_id,
                   tag: $tag,
                   checksums_digest: $checksums_digest
                 }')"
