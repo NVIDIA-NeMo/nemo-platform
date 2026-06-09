@@ -22,6 +22,12 @@ from nmp.core.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
+
+def _sanitize_for_log(value: object) -> str:
+    """Prevent log injection by removing line-break/control characters."""
+    return str(value).replace("\r", "").replace("\n", "")
+
+
 router = APIRouter()
 
 
@@ -77,7 +83,9 @@ async def create_prompt(
     service: PromptService = Depends(get_prompt_service),
 ) -> Prompt:
     """Create a new prompt."""
-    logger.info(f"Creating prompt: {workspace}/{request.name}")
+    safe_workspace = _sanitize_for_log(workspace)
+    safe_request_name = _sanitize_for_log(request.name)
+    logger.info(f"Creating prompt: {safe_workspace}/{safe_request_name}")
     try:
         return await service.create_prompt(request, workspace)
     except EntityValidationError as e:
@@ -85,7 +93,7 @@ async def create_prompt(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except ValueError as e:
         if "already exists" in str(e).lower():
-            logger.warning(f"Prompt already exists: {workspace}/{request.name}")
+            logger.warning(f"Prompt already exists: {safe_workspace}/{safe_request_name}")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"Prompt with workspace '{workspace}' and name '{request.name}' already exists",
