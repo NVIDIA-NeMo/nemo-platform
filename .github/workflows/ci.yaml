@@ -160,6 +160,9 @@ jobs:
         with:
           python-version: "3.11"
           enable-cache: true
+      - name: Check runner size
+        run: lscpu
+        shell: bash
       - name: Run unit tests
         run: make test-unit-ci
         env:
