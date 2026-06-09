@@ -842,14 +842,18 @@ components:
         structured_generation_schema_method:
           type: string
           enum:
+          - auto
           - regex
           - json_schema
+          - structural_tag
           title: structured_generation_schema_method
           description: The method used to generate the schema from your dataset and
-            pass it to the generation backend. 'regex' uses a custom regex construction
+            pass it to the generation backend. 'auto' picks 'structural_tag' on xgrammar-capable
+            backends and 'regex' otherwise. 'regex' uses a custom regex construction
             method that tends to be more comprehensive than 'json_schema' at the cost
-            of speed.
-          default: regex
+            of speed. 'structural_tag' uses XGrammar Structural Tag to compose schema-constrained
+            JSONL output.
+          default: auto
         structured_generation_use_single_sequence:
           type: boolean
           title: structured_generation_use_single_sequence

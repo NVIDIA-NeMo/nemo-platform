@@ -24,7 +24,7 @@ class SafeSynthesizerConfig(NemoConfig):
     job_executor_profile: str = "default"
     container_image: str = "nmp-gpu-tasks"
     runtime_venv: str = ".nemo/safe-synthesizer-runtime"
-    runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.1"
+    runtime_package: str = "nemo-safe-synthesizer[engine,cu129]==0.1.2"
     runtime_python_version: str = "3.11"
     runtime_python: str | None = None
     default_job_resource_memory_request: str = "16G"
