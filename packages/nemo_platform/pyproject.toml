@@ -120,19 +120,6 @@ entities-service = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-evaluator = [
-  "pydantic>=2.10.6",
-  "jinja2>=3.1.6",
-  "jsonschema>=4.23.0",
-  "jsonpath-ng>=1.7.0",
-  "pyarrow>=19.0.1",
-  "pandas>=1.5.3",
-  "openai>=1.61.0",
-  "sacrebleu>=2.5.1",
-  "rouge_score==0.1.2",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
 evaluator-service = [
   "fastapi[standard]>=0.115.4",
   "pydantic>=2.10.3",
@@ -335,6 +322,19 @@ nemo-evaluator-plugin = [
   "nmp-common",
   "pydantic>=2.10.6",
   "typer>=0.20.0",
+]
+
+# Generated from [tool.bundle-package]; do not edit by hand.
+nemo-evaluator-sdk = [
+  "pydantic>=2.10.6",
+  "jinja2>=3.1.6",
+  "jsonschema>=4.23.0",
+  "jsonpath-ng>=1.7.0",
+  "pyarrow>=19.0.1",
+  "pandas>=1.5.3",
+  "openai>=1.61.0",
+  "sacrebleu>=2.5.1",
+  "rouge_score==0.1.2",
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
@@ -623,7 +623,7 @@ only-include = ["_empty"]
 # Library packages
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
-nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk", deps_group = "evaluator" }
+nemo-evaluator-sdk = { source = "../../packages/nemo_evaluator_sdk/src/nemo_evaluator_sdk", module = "nemo_evaluator_sdk" }
 data-designer-nemo = { source = "../../packages/data_designer_nemo/src/data_designer_nemo", module = "data_designer_nemo" }
 nmp-platform-runner = { source = "../../packages/nmp_platform_runner/src/nmp/platform_runner", module = "nmp/platform_runner", deps_group = "services" }
 garak-api = { source = "../../packages/garak_api/garakapi", module = "garakapi", deps_group = "auditor-service" }
