@@ -94,14 +94,13 @@ If your customization job was created with W&B integration enabled (see [Weights
 2. Find the run corresponding to your customization job
 3. View training and validation loss curves, learning rate schedules, and other metrics under the run's dashboard
 
+```python
 client = NeMoPlatform(
     base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
     workspace="default",
 )
 
 # Create a customization job with W&B integration
-
-```python
 job = client.customization.jobs.create(
     name="my-wandb-job",
     workspace="default",

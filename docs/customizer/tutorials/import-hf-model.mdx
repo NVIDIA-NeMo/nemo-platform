@@ -65,13 +65,6 @@ Next, create a model repository in the NeMo Data Store and upload the downloaded
 
 ### Create Namespace and Model Repository
 
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
-
 ```bash
 # Set environment variables - Update these to match your deployment
 export NAMESPACE="my-org"
@@ -97,9 +90,6 @@ curl -X POST "${DATASTORE_URL}/v1/hf/api/repos/create" \
 }'
 ```
 
-</Tab>
-
-</Tabs>
 ### Upload Model Files to Data Store
 
 Upload the downloaded model files to the Data Store repository:
@@ -107,13 +97,6 @@ Upload the downloaded model files to the Data Store repository:
 ## Create Model Entity in Entity Store
 
 After uploading the model files to the Data Store, create a model entity in the Entity Store to register the model with its metadata and specifications for use in customization jobs.
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
 
 ```bash
 # Create model entity in Entity Store
@@ -140,19 +123,9 @@ curl -X POST "${NEMO_BASE_URL}/v1/models" \
 }' | jq .
 ```
 
-</Tab>
-
-</Tabs>
 ## Deploy the Base Model
 
 Deploy the base model for inference with LoRA adapter support enabled, allowing it to load fine-tuned adapters from customization jobs.
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
 
 ```bash
 curl "${NEMO_BASE_URL}/v1/deployment/configs" \
@@ -192,19 +165,9 @@ curl "${NEMO_BASE_URL}/v1/deployment/model-deployments" \
 
 ```
 
-</Tab>
-
-</Tabs>
 ## Create Customization Target
 
 Create a customization target that references the uploaded model in the Data Store.
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
 
 ```bash
 
@@ -224,17 +187,7 @@ curl -X POST \
 }' | jq .
 ```
 
-</Tab>
-
-</Tabs>
 Wait for the model to be downloaded and ready:
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="CLI">
 
 ```bash
 # Check target status with comprehensive handling
@@ -268,19 +221,9 @@ done
 
 ```
 
-</Tab>
-
-</Tabs>
 ## Create Customization Configuration
 
 Create a configuration for LoRA fine-tuning:
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
 
 ```bash
 # Create customization configuration
@@ -310,9 +253,6 @@ curl -X POST \
 }' | jq .
 ```
 
-</Tab>
-
-</Tabs>
 ---
 
 ## Prepare Training and Validation Datasets
@@ -531,13 +471,6 @@ print(f"Created dataset entity: {dataset.namespace}/{dataset.name}")
 
 Start the LoRA fine-tuning job. The job will create an output artifact with the name specified in `output`, which you'll use later to access your fine-tuned model for inference.
 
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
-
 ```bash
 # Create job and capture job ID
 RESPONSE=$(curl -s -X POST \
@@ -570,9 +503,6 @@ echo "Started job with ID: $JOB_ID"
 echo "Output name: $OUTPUT_NAME"
 ```
 
-</Tab>
-
-</Tabs>
 Copy the following values from the response:
 
 - `id` (Job ID)
@@ -581,13 +511,6 @@ Copy the following values from the response:
 We'll need them later to monitor the job's status and access the fine-tuned model.
 
 Check job progress:
-
-<Tabs>
-
-<Tab title="Python SDK">
-
-</Tab>
-<Tab title="cURL">
 
 ```bash
 # Monitor job status with comprehensive handling
@@ -630,9 +553,6 @@ sleep 60 # Wait 1 minute before checking again
 done
 ```
 
-</Tab>
-
-</Tabs>
 ---
 
 ## Test the Deployed Model
@@ -665,50 +585,50 @@ lora_model_id = f"{NAMESPACE}/{MODEL_NAME}-lora@v{MODEL_VERSION}"
 # First, check if the models are available for inference
 # Note: The base model deployment must be running and registered with the NIM proxy
 try:
-# List models from the entity store (shows all registered models)
-models_response = client.models.list()
-available_models = models_response.data
+    # List models from the entity store (shows all registered models)
+    models_response = client.models.list()
+    available_models = models_response.data
 
-print("Registered models:")
-for model in available_models:
-print(f" - {model.id}")
+    print("Registered models:")
+    for model in available_models:
+        print(f" - {model.id}")
 
-# Test base model
-print(f"\nTesting base model: {base_model_id}")
-base_response = client.chat.completions.create(
-model=base_model_id,
-messages=[
-{
-"role": "user",
-"content": "Hello, can you help me?"
-}
-],
-max_tokens=100,
-temperature=0.7
-)
+    # Test base model
+    print(f"\nTesting base model: {base_model_id}")
+    base_response = client.chat.completions.create(
+        model=base_model_id,
+        messages=[
+            {
+                "role": "user",
+                "content": "Hello, can you help me?"
+            }
+        ],
+        max_tokens=100,
+        temperature=0.7
+    )
 
-print("Base model response:")
-print(base_response.choices[0].message.content)
+    print("Base model response:")
+    print(base_response.choices[0].message.content)
 
-# Test LoRA-adapted model (if available)
-print(f"\nTesting LoRA-adapted model: {lora_model_id}")
-lora_response = client.chat.completions.create(
-model=lora_model_id,
-messages=[
-{
-"role": "user",
-"content": "Hello, can you help me?"
-}
-],
-max_tokens=100,
-temperature=0.7
-)
+    # Test LoRA-adapted model (if available)
+    print(f"\nTesting LoRA-adapted model: {lora_model_id}")
+    lora_response = client.chat.completions.create(
+        model=lora_model_id,
+        messages=[
+            {
+                "role": "user",
+                "content": "Hello, can you help me?"
+            }
+        ],
+        max_tokens=100,
+        temperature=0.7
+    )
 
-print("LoRA-adapted model response:")
-print(lora_response.choices[0].message.content)
+    print("LoRA-adapted model response:")
+    print(lora_response.choices[0].message.content)
 
 except Exception as e:
-print(f"Error testing model: {e}")
+    print(f"Error testing model: {e}")
 ```
 
 </Tab>

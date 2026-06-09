@@ -97,6 +97,23 @@ Example entry formatted for JSONL dataset file:
 
 For illustrative purposes only, we show an example entry as multi-line JSON.
 
+```json
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "<system message>"
+    }, {
+      "role": "user",
+      "content": "<user message>"
+    }, {
+      "role": "assistant",
+      "content": "<assistant message>"
+    }
+  ]
+}
+```
+
 </Accordion>
 <a id="ft-tut-format-dataset-reasoning-considerations"></a>
 ### Reasoning Considerations
@@ -117,8 +134,24 @@ For example, if your original system message is `You are a helpful assistant.`, 
 
 <Tab title="Detailed Thinking Off">
 
+```json
+{"messages": [
+  {"role": "system", "content": "detailed thinking off"},
+  {"role": "user", "content": "What is 2 + 2?"},
+  {"role": "assistant", "content": "4"}
+]}
+```
+
 </Tab>
 <Tab title="Detailed Thinking On">
+
+```json
+{"messages": [
+  {"role": "system", "content": "detailed thinking on"},
+  {"role": "user", "content": "What is 2 + 2?"},
+  {"role": "assistant", "content": "<think>To solve 2 + 2, add 2 and 2 together.</think> The answer is 4."}
+]}
+```
 
 </Tab>
 
@@ -143,6 +176,44 @@ Every sample must be a single line as in this example below.
 <Accordion title="Expanded JSON example">
 
 For illustrative purposes only, we show an example entry as multi-line JSON.
+
+```json
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": ""
+    },
+    {
+      "role": "assistant",
+      "content": "",
+      "tool_calls": [{
+        "type": "function",
+        "function": {
+          "name": "fibonacci",
+          "arguments": {"n": 20}
+        }
+      }]
+    }
+  ],
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "fibonacci",
+      "description": "Calculates the nth Fibonacci number.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "n": {
+            "description": "The position of the Fibonacci number.",
+            "type": "integer"
+          }
+        }
+      }
+    }
+  }]
+}
+```
 
 </Accordion>
 ##### Shared Tools

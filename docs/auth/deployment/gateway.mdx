@@ -117,19 +117,19 @@ Add `request_headers_to_remove` to your route configuration:
 
 ```yaml
 route_config:
-virtual_hosts:
-- name: nmp_service
-domains: ["*"]
-request_headers_to_remove:
-- "x-nmp-principal-id"
-- "x-nmp-principal-email"
-- "x-nmp-principal-groups"
-- "x-nmp-principal-on-behalf-of"
-- "x-nmp-scopes"
-- "x-nmp-authorized"
-routes:
-- match: { prefix: "/" }
-route: { cluster: nmp_backend }
+  virtual_hosts:
+    - name: nmp_service
+      domains: ["*"]
+      request_headers_to_remove:
+        - "x-nmp-principal-id"
+        - "x-nmp-principal-email"
+        - "x-nmp-principal-groups"
+        - "x-nmp-principal-on-behalf-of"
+        - "x-nmp-scopes"
+        - "x-nmp-authorized"
+      routes:
+        - match: { prefix: "/" }
+          route: { cluster: nmp_backend }
 ```
 
 </Accordion>

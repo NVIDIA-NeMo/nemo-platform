@@ -102,9 +102,9 @@ nemo skills show agents-secure
 What it does under the hood:
 
 - Lists deployed agents and prompts you to choose one.
-- Inspects each LLM's `base_url`. If it does not route through a
-  guardrails virtual model, suggests creating one with a content-safety,
-  topic-control, or safety-guard backend.
+- Inspects each LLM's `model_name`. If it does not reference a guarded
+  virtual model (one with a content-safety, topic-control, or
+  safety-guard backend), suggests creating one.
 - Names the recommended guardrails catalog model and walks you through
   creating the guarded virtual model.
 - Persists suggestions to the `nemo-agent-security` fileset.
