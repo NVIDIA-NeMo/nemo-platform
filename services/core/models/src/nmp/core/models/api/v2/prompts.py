@@ -66,8 +66,7 @@ async def list_prompts(
             filter_operation=parsed_filter.operation,
         )
     except Exception as e:
-        safe_workspace = str(workspace).replace("\r", "").replace("\n", "")
-        logger.exception(f"Failed to list prompts for workspace {safe_workspace}")
+        logger.exception(f"Failed to list prompts for workspace {_sanitize_for_log(workspace)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -117,11 +116,11 @@ async def get_prompt(
     service: PromptService = Depends(get_prompt_service),
 ) -> Prompt:
     """Get a prompt by workspace and name."""
-    logger.debug(f"Getting prompt: {workspace}/{name}")
+    logger.debug(f"Getting prompt: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
     try:
         prompt = await service.get_prompt(GetPromptRequest(workspace=workspace, name=name))
         if not prompt:
-            logger.warning(f"Prompt not found: {workspace}/{name}")
+            logger.warning(f"Prompt not found: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Prompt not found: {workspace}/{name}",
@@ -130,7 +129,7 @@ async def get_prompt(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Failed to get prompt {workspace}/{name}")
+        logger.exception(f"Failed to get prompt {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -147,7 +146,7 @@ async def update_prompt(
     service: PromptService = Depends(get_prompt_service),
 ) -> Prompt:
     """Update an existing prompt (full replacement of mutable fields)."""
-    logger.debug(f"Updating prompt: {workspace}/{name}")
+    logger.debug(f"Updating prompt: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
     try:
         prompt = await service.update_prompt(workspace, name, request)
         if not prompt:
@@ -178,11 +177,11 @@ async def delete_prompt(
     service: PromptService = Depends(get_prompt_service),
 ):
     """Delete a prompt by workspace and name."""
-    logger.info(f"Deleting prompt: {workspace}/{name}")
+    logger.info(f"Deleting prompt: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
     try:
         deleted = await service.delete_prompt(DeletePromptRequest(workspace=workspace, name=name))
         if not deleted:
-            logger.warning(f"Prompt not found for deletion: {workspace}/{name}")
+            logger.warning(f"Prompt not found for deletion: {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Prompt not found: {workspace}/{name}",
@@ -191,5 +190,5 @@ async def delete_prompt(
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception(f"Failed to delete prompt {workspace}/{name}")
+        logger.exception(f"Failed to delete prompt {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
