@@ -23,6 +23,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator
