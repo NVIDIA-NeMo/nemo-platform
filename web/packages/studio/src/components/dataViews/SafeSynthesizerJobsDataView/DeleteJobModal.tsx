@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { useJobsDeleteJob } from '@nemo/sdk/generated/platform/api';
-import { getSafeSynthesizerListJobsQueryKey } from '@nemo/sdk/vendored/safe-synthesizer/api';
-import { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import { getSafeSynthesizerListJobsQueryKey } from '@nemo/sdk/generated/safe-synthesizer/api';
+import { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useQueryClient } from '@tanstack/react-query';

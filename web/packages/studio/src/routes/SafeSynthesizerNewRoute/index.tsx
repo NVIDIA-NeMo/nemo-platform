@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useSafeSynthesizerCreateJob } from '@nemo/sdk/vendored/safe-synthesizer/api';
+import { useSafeSynthesizerCreateJob } from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Banner, Button, Divider, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { getErrorMessage } from '@studio/api/common/utils';
 import { SAFE_SYNTHESIZER_ENABLED } from '@studio/constants/environment';

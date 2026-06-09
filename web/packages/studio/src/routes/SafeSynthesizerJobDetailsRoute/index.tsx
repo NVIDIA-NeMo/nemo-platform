@@ -6,7 +6,7 @@ import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
 import {
   useSafeSynthesizerDownloadJobResultSummary as useDownloadJobResultSummaryV1beta1SafeSynthesizerJobsJobIdResultsSummaryDownloadGet,
   useSafeSynthesizerGetJobSuspense as useGetJobV1beta1SafeSynthesizerJobsJobIdGetSuspense,
-} from '@nemo/sdk/vendored/safe-synthesizer/api';
+} from '@nemo/sdk/generated/safe-synthesizer/api';
 import { Grid, Stack } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { SafeSynthesizerNavigation } from '@studio/components/SafeSynthesizerNavigation';

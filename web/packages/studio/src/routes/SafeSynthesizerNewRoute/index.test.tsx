@@ -34,7 +34,7 @@ vi.mock('@studio/providers/breadcrumbs/useBreadcrumbs', () => ({
   useBreadcrumbs: mockUseBreadcrumbs,
 }));
 
-vi.mock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+vi.mock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
   useSafeSynthesizerCreateJob: () => ({
     mutate: mockMutate,
     isPending: false,
@@ -251,7 +251,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: true,
       }));
 
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: () => ({
           mutate: mockMutate,
           isPending: true,
@@ -346,7 +346,7 @@ describe('SafeSynthesizerNewRoute', () => {
         expect(payload.data.spec.config).toHaveProperty('privacy');
       });
 
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: () => ({
           mutate: mockMutateLocal,
           isPending: false,
@@ -390,7 +390,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       const mockMutateLocal = vi.fn();
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: () => ({
           mutate: mockMutateLocal,
           isPending: false,
@@ -427,7 +427,7 @@ describe('SafeSynthesizerNewRoute', () => {
         SAFE_SYNTHESIZER_ENABLED: true,
       }));
 
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: () => ({
           mutate: mockMutate,
           isPending: true,
@@ -456,7 +456,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onSuccessCallback: ((data: { name?: string }) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onSuccess?: (data: { name?: string }) => void };
         }) => {
@@ -496,7 +496,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onSuccessCallback: ((data: { name?: string }) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onSuccess?: (data: { name?: string }) => void };
         }) => {
@@ -537,7 +537,7 @@ describe('SafeSynthesizerNewRoute', () => {
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
       let onSuccessCallback: ((data: { name?: string }) => void) | undefined;
 
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: {
             onSuccess?: (data: { name?: string }) => void;
@@ -597,7 +597,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onError?: (error: AxiosError) => void };
         }) => {
@@ -640,7 +640,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onError?: (error: AxiosError) => void };
         }) => {
@@ -688,7 +688,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onError?: (error: AxiosError) => void };
         }) => {
@@ -725,7 +725,7 @@ describe('SafeSynthesizerNewRoute', () => {
       }));
 
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onError?: (error: AxiosError) => void };
         }) => {
@@ -841,7 +841,7 @@ describe('SafeSynthesizerNewRoute', () => {
       let onErrorCallback: ((error: AxiosError) => void) | undefined;
       const mockMutateLocal = vi.fn();
 
-      vi.doMock('@nemo/sdk/vendored/safe-synthesizer/api', () => ({
+      vi.doMock('@nemo/sdk/generated/safe-synthesizer/api', () => ({
         useSafeSynthesizerCreateJob: (options?: {
           mutation?: { onError?: (error: AxiosError) => void };
         }) => {
