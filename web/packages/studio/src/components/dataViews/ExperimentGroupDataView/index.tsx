@@ -97,10 +97,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [experimentsData]
   );
 
-  if (groupError) {
-    return <ErrorMessage message="Failed to load experiment group." />;
-  }
-
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -129,7 +125,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor('agent_version', {
         header: 'Agent Version',
         enableSorting: false,
-        // meta: { filter: { type: 'text', label: 'Agent Version' } },
+        meta: { filter: { type: 'text', label: 'Agent Version' } },
         cell: ({ row }) => <Text>{row.original.agent_version || '-'}</Text>,
       }),
       accessor('dataset_name', {
@@ -141,7 +137,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor('dataset_version', {
         header: 'Dataset Version',
         enableSorting: false,
-        // meta: { filter: { type: 'text', label: 'Dataset Version' } },
+        meta: { filter: { type: 'text', label: 'Dataset Version' } },
         cell: ({ row }) => <Text>{row.original.dataset_version || '-'}</Text>,
       }),
       accessor((original) => original.model_names?.join(', '), {
@@ -192,6 +188,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           ),
       }),
       // Filter-only columns (hidden via columnVisibility above).
+      accessor(() => '', {
+        id: 'created_by',
+        header: 'Created By',
+        enableSorting: false,
+        enableHiding: false,
+        meta: { filter: { type: 'text', label: 'Created By' } },
+      }),
       accessor('updated_at', {
         header: 'Updated At',
         enableSorting: false,
@@ -207,6 +210,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     ],
     []
   );
+
+  if (groupError) {
+    return <ErrorMessage message="Failed to load experiment group." />;
+  }
 
   if (error) {
     return <ErrorMessage message="Failed to load experiments." />;
