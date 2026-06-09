@@ -1,13 +1,17 @@
 name: Test Status
-description: Upload this job's terminal status for the CI status gate
+description: Upload this job's start or finish marker for the CI status gate
 
 inputs:
   name:
     description: Human-readable check name to show in the CI status summary
     required: true
+  phase:
+    description: "Marker phase: start or finish"
+    required: true
   status:
     description: "Pass the job.status context from an if: always() step"
-    required: true
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -17,33 +21,55 @@ runs:
       shell: bash
       env:
         STATUS_NAME: ${{ inputs.name }}
+        PHASE: ${{ inputs.phase }}
         STATUS: ${{ inputs.status }}
       run: |
         set -euo pipefail
 
-        passed=false
-        if [[ "${STATUS}" == "success" ]]; then
-          passed=true
-        fi
+        case "${PHASE}" in
+          start)
+            status="started"
+            passed=false
+            ;;
+          finish)
+            if [[ -z "${STATUS}" ]]; then
+              echo "::error::status is required when phase is finish"
+              exit 1
+            fi
+            status="${STATUS}"
+            passed=false
+            if [[ "${status}" == "success" ]]; then
+              passed=true
+            fi
+            ;;
+          *)
+            echo "::error::phase must be start or finish"
+            exit 1
+            ;;
+        esac
 
         slug="$(printf '%s' "${STATUS_NAME}-${GITHUB_JOB}" \
           | tr '[:upper:]' '[:lower:]' \
           | tr -c 'a-z0-9_.-' '-' \
           | sed -e 's/-\{1,\}/-/g' -e 's/^-//' -e 's/-$//')"
         status_dir="${RUNNER_TEMP}/test-status-${slug}"
-        status_file="${status_dir}/${slug}.json"
-        artifact_name="test-status-${GITHUB_RUN_ATTEMPT}-${slug}"
+        status_file="${status_dir}/${slug}-${PHASE}.json"
+        artifact_name="test-status-${GITHUB_RUN_ATTEMPT}-${slug}-${PHASE}"
 
         mkdir -p "${status_dir}"
         jq -n \
           --arg name "${STATUS_NAME}" \
           --arg job_id "${GITHUB_JOB}" \
-          --arg status "${STATUS}" \
+          --arg key "${slug}" \
+          --arg phase "${PHASE}" \
+          --arg status "${status}" \
           --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
           --argjson passed "${passed}" \
           '{
             name: $name,
             job_id: $job_id,
+            key: $key,
+            phase: $phase,
             status: $status,
             run_attempt: $run_attempt,
             passed: $passed
