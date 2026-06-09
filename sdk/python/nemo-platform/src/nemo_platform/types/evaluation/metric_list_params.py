@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import Literal, TypedDict
 
 from .metric_type import MetricType
@@ -59,6 +60,12 @@ class Filter(TypedDict, total=False):
 
     description: str
     """Filter metrics by description."""
+
+    labels: Dict[str, str]
+    """Filter by labels.
+
+    Address an individual label as a sub-path, e.g. filter[labels.team]=eval.
+    """
 
     name: str
     """Filter metrics by name."""

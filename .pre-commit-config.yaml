@@ -125,6 +125,15 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+  - repo: local
+    hooks:
+      - id: no-nmp-common-in-plugins
+        name: Plugins must not import from nmp-common
+        entry: 'from nmp\.common|from nmp_common|import nmp\.common|import nmp_common'
+        language: pygrep
+        files: ^plugins/.*\.py$
+        exclude: __pycache__
+
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:

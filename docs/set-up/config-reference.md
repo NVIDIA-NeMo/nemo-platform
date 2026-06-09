@@ -48,8 +48,8 @@ service:
   log_level: INFO
   # Scheme for the {{platform_name}} service. | default: 'http'
   scheme: http
-  # Host for the {{platform_name}} service. | default: '0.0.0.0'
-  host: 0.0.0.0
+  # Host for the {{platform_name}} service. | default: '127.0.0.1'
+  host: 127.0.0.1
   # Port for the {{platform_name}} service. | default: 8080
   port: 8080
 ```
