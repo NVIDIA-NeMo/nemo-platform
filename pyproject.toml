@@ -39,7 +39,6 @@ dependencies = [
   "mypy-extensions==1.0.0",
   "tornado>=6.5.5",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nmp-hello-world",
   "nmp-intake",
@@ -122,7 +121,6 @@ dev = [
   # Service packages for local development (not in root deps to allow --only-group in containers)
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nemo-safe-synthesizer-plugin",
   "nmp-hello-world",
@@ -203,7 +201,6 @@ core-services = [
 functional-services = [
   { include-group = "core-services" },
   "nmp-studio",
-  "nmp-evaluator",
   "nmp-guardrails",
   "nemo-data-designer-plugin",
   "nemo-anonymizer-plugin",
@@ -217,7 +214,6 @@ functional-services = [
 cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
-  "nmp-evaluator",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nmp-hello-world",
@@ -333,7 +329,6 @@ nmp-auth = { workspace = true }
 nemo-anonymizer-plugin = { workspace = true }
 nemo-data-designer-plugin = { workspace = true }
 data-designer-nemo = { workspace = true }
-nmp-evaluator = { workspace = true }
 nemo-evaluator-sdk = { workspace = true }
 nmp-guardrails = { workspace = true }
 nmp-intake = { workspace = true }
@@ -392,7 +387,6 @@ members = [
   "services/hello-world",
   "services/studio",
   "services/guardrails",
-  "services/evaluator",
   "services/intake",
   "plugins/nemo-anonymizer",
   "plugins/nemo-data-designer",
@@ -565,6 +559,10 @@ exclude = [
   "services/automodel/src/nmp/automodel/tasks/training/backends/",
   "services/automodel/src/nmp/automodel/tasks/training/utils.py",
   "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
+
+  # Legacy evaluator service remains in-tree until the final deletion PR, but
+  # this package-wiring PR intentionally removes its dependencies.
+  "./services/evaluator/",
 
   "./services/guardrails/",
 
