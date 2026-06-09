@@ -89,6 +89,38 @@ def services_log_path(request: pytest.FixtureRequest, tmp_path_factory: pytest.T
     return path
 
 
+_E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
+_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
+
+
+def _e2e_services_env() -> dict[str, str]:
+    """Environment for the ``nemo services run`` child process.
+
+    ``pytest_configure`` sets ``NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX`` on the
+    pytest process so ``add_mock_provider()`` can build providers, but the IGW
+    must see the same value in *its* process or mock routing and cache refresh
+    behave differently from the test client.  Mirror the Docker E2E backend
+    (``nmp.testing.e2e.docker``) by setting inference env vars explicitly here
+    rather than relying on inherited shell state.
+
+    Use ``packages/nmp_platform/config/local.yaml`` (``inference_gateway: {}``)
+    so IGW polls the Models service on the background refresh interval instead
+    of the dev-only ``debug_model_providers`` block in
+    ``services/core/inference-gateway/config/local.yaml``, which disables that
+    loop.
+    """
+    env = os.environ.copy()
+    env["NMP_SEED_ON_STARTUP"] = "true"
+    env["NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"] = "igw-mock-"
+    env["NMP_CONFIG_FILE_PATH"] = str(_E2E_PLATFORM_CONFIG)
+    env["NMP_CONFIG_WARNINGS_DISABLED"] = "1"
+    if not _e2e_auth_enabled():
+        env["NMP_AUTH_ENABLED"] = "false"
+    elif "NMP_AUTH_ENABLED" not in env:
+        env["NMP_AUTH_ENABLED"] = "true"
+    return env
+
+
 def _e2e_auth_enabled() -> bool:
     """Return whether the e2e harness should run with authorization enabled.
 
@@ -267,13 +299,7 @@ def _services(services_log_path: Path) -> Iterator[str]:
         "--port",
         str(port),
     ]
-    env = os.environ.copy()
-    env["NMP_SEED_ON_STARTUP"] = "true"
-    if not _e2e_auth_enabled():
-        # Bundled local.yaml enables auth; disable it for the default e2e harness.
-        env["NMP_AUTH_ENABLED"] = "false"
-    elif "NMP_AUTH_ENABLED" not in env:
-        env["NMP_AUTH_ENABLED"] = "true"
+    env = _e2e_services_env()
 
     logger.info("Starting nemo services on port %d", port)
 
