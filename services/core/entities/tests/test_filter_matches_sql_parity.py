@@ -1,19 +1,26 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""SQL-parity safety net for FilterOperation.matches().
+"""SQL-parity safety net for in-memory filter evaluation.
 
 Each parametrized FilterOperation tree is run two ways against the same seeded
-SQLite rows:
-  1. Through SQLAlchemyFilterRepository (the SQL source of truth).
-  2. Through op.matches(row) over the ORM instances (the in-memory mirror).
+SQLite rows, both through the same ``op.apply(repo)`` front door:
+  1. ``SQLAlchemyFilterRepository`` (the SQL source of truth).
+  2. ``InMemoryFilterRepository`` over the ORM instances (the in-memory backend).
 
-The two must select exactly the same set of row ids. This guards matches()
-against drift from the repository's coercion/null semantics.
+The two must select exactly the same set of row ids. ``InMemoryFilterRepository``
+is a native-Python evaluator, NOT a byte-for-byte SQL mirror (see its class
+docstring), so this suite only covers the cases where native
+and SQL semantics agree — strings, real numbers, native booleans (via ``$eq``),
+and logical trees. It deliberately excludes the cases where the SQL backends
+disagree with each other or rely on JSON-to-text coercion (e.g. int-vs-string
+``$eq``, boolean text rendering, non-numeric-text numeric casts); those are
+pinned as documented divergences in the plugin's test_filter_matches.py.
 """
 
 import pytest
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
+from nmp.common.api.in_memory_filter import InMemoryFilterRepository
 from nmp.core.entities.app.repository.sqlalchemy.filter import SQLAlchemyFilterRepository
 from sqlalchemy import JSON, Column, Integer, String, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Session
@@ -30,14 +37,17 @@ class FakeEntity(Base):
     data = Column(JSON)
 
 
+# The compared JSON fields (score, tier, flag) are present on every row so the
+# suite exercises agreeing semantics, not SQL's literal-"null" handling of
+# absent keys (a documented native divergence pinned in the unit tests). A
+# plain-column NULL (name on row 5) and an explicit/absent ``k`` for $eq-None
+# coverage are the only nullable bits, and $eq agrees with SQL on both.
 SEED = [
     dict(id=1, name="llama", data={"score": 5, "tier": "free", "flag": True, "k": None}),
     dict(id=2, name="Llama-2", data={"score": 9, "tier": "pro", "flag": False}),
     dict(id=3, name="zephyr", data={"score": 10, "tier": "pro", "flag": True, "k": "v"}),
-    dict(id=4, name="mistral", data={"score": 100, "tier": "enterprise"}),
-    dict(id=5, name=None, data={}),
-    # Leading-numeric text exercises SQLite's lenient CAST(... AS FLOAT).
-    dict(id=6, name="mix5", data={"num_text": "5abc", "flag": True}),
+    dict(id=4, name="mistral", data={"score": 100, "tier": "enterprise", "flag": False}),
+    dict(id=5, name=None, data={"score": 1, "tier": "free", "flag": False}),
 ]
 
 
@@ -73,7 +83,6 @@ CASES = [
     ("eq_name_none", C(FilterOperator.EQ, "name", None)),
     ("eq_data_tier", C(FilterOperator.EQ, "data.tier", "pro")),
     ("eq_data_score_int", C(FilterOperator.EQ, "data.score", 5)),
-    ("eq_data_score_str", C(FilterOperator.EQ, "data.score", "5")),
     ("eq_data_flag_true", C(FilterOperator.EQ, "data.flag", True)),
     ("eq_data_flag_false", C(FilterOperator.EQ, "data.flag", False)),
     ("eq_data_k_none", C(FilterOperator.EQ, "data.k", None)),
@@ -103,23 +112,15 @@ CASES = [
             NOT(C(FilterOperator.LT, "data.score", 9)),
         ),
     ),
-    # JSON boolean via non-$eq operators: bool renders as SQLite "1"/"0" text.
-    ("like_data_flag_sqlite", C(FilterOperator.LIKE, "data.flag", "1")),
-    ("in_data_flag_sqlite", C(FilterOperator.IN, "data.flag", ["1"])),
-    ("nin_data_flag_sqlite", C(FilterOperator.NIN, "data.flag", ["1"])),
-    # Numeric comparison vs non-numeric / leading-numeric JSON text (lenient CAST).
-    ("gt_data_num_text_cast", C(FilterOperator.GT, "data.num_text", 4)),
-    ("lt_data_num_text_cast", C(FilterOperator.LT, "data.num_text", 6)),
 ]
 
 
 @pytest.mark.parametrize("label,op", CASES, ids=[c[0] for c in CASES])
 def test_matches_matches_sql(db, label, op):
-    repo = SQLAlchemyFilterRepository(FakeEntity)
-    condition = op.apply(repo)
+    condition = op.apply(SQLAlchemyFilterRepository(FakeEntity))
     sql_ids = {r.id for r in db.execute(select(FakeEntity).where(condition)).scalars().all()}
 
     all_rows = db.execute(select(FakeEntity)).scalars().all()
-    py_ids = {r.id for r in all_rows if op.matches(r)}
+    py_ids = {r.id for r in all_rows if op.apply(InMemoryFilterRepository(r))}
 
-    assert py_ids == sql_ids, f"{label}: matches()={sorted(py_ids)} != SQL={sorted(sql_ids)}"
+    assert py_ids == sql_ids, f"{label}: in-memory={sorted(py_ids)} != SQL={sorted(sql_ids)}"

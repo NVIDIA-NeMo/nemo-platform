@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
+from nmp.common.api.in_memory_filter import InMemoryFilterRepository
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.auth import AuthContext
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
@@ -85,10 +86,11 @@ def create_platform_job_response(job: PlatformJob, attempt: PlatformJobAttempt) 
 
 # Status lives on PlatformJobAttempt, not PlatformJob, so it cannot be
 # resolved by the PlatformJob entity-store query. Instead, the full filter tree
-# is evaluated in-memory via FilterOperation.matches() against a "virtual job"
-# entity that carries the attempt's status. The store query receives only a
-# status-free *superset* of the filter (see _status_free_superset) so it never
-# drops a row that matches() would accept; matches() then narrows exactly.
+# is evaluated in-memory (op.apply(InMemoryFilterRepository(virtual_job))) against
+# a "virtual job" entity that carries the attempt's status. The store query
+# receives only a status-free *superset* of the filter (see _status_free_superset)
+# so it never drops a row the in-memory pass would accept; that pass then narrows
+# exactly.
 _STATUS_FIELD = "data.status"
 
 
@@ -108,8 +110,8 @@ def _status_free_superset(operation: FilterOperation | None) -> FilterOperation 
 
     Status lives on the attempt, not the job, so it cannot be pushed to the
     PlatformJob store query. We push down a relaxed, status-independent filter
-    that is guaranteed to keep every row the in-memory ``matches()`` would
-    accept; ``matches()`` then narrows the candidate set exactly.
+    that is guaranteed to keep every row the in-memory evaluation would accept;
+    that evaluation then narrows the candidate set exactly.
 
     ``None`` means "no store constraint" (accept all jobs in scope) — always a
     valid superset. The relaxation rules below preserve the superset property:
@@ -129,7 +131,7 @@ def _status_free_superset(operation: FilterOperation | None) -> FilterOperation 
     - ``$not`` -> kept verbatim only when its operand is status-free (then the
       whole negation is exact and status-independent). If the operand references
       status, negation can invert sub/superset relationships, so we relax the
-      entire ``$not`` to None and let matches() do the work.
+      entire ``$not`` to None and let the in-memory pass do the work.
     """
     if operation is None:
         return None
@@ -159,18 +161,17 @@ def _status_free_superset(operation: FilterOperation | None) -> FilterOperation 
 
 
 def _build_virtual_job_entity(job: PlatformJob, attempt: PlatformJobAttempt) -> dict[str, Any]:
-    """Build the in-memory entity that ``FilterOperation.matches()`` evaluates.
+    """Build the virtual entity that ``InMemoryFilterRepository`` evaluates.
 
     The filter tree addresses fields the way the entity store stores them: base
     columns (``name``, ``project``, ``workspace``, ...) as plain attributes and
     everything else under ``data.<field>`` (e.g. ``data.source``). This dict
-    mirrors that DBEntity row shape so ``matches()`` resolves every field
-    consistently with the SQL layer.
+    mirrors that DBEntity row shape so the in-memory repository resolves every
+    field the same way the SQL repository would.
 
     Status is the join: it lives on the attempt, so it is injected as
-    ``data.status``. The attempt status enum is stored as its JSON string value
-    (e.g. ``"active"``) to mirror how the store would serialize it and how
-    ``matches()`` compares JSON fields as text.
+    ``data.status``. The attempt status enum is stored as its string value
+    (e.g. ``"active"``) so it compares equal to the string the filter carries.
     """
     data = dict(job._get_data_fields())
     data[_STATUS_FIELD.split(".", 1)[1]] = attempt.status.value
@@ -333,10 +334,10 @@ class JobDispatcher:
     ) -> Tuple[List[PlatformJobResponse], int]:
         """List platform jobs with their current attempts."""
         # Status lives on PlatformJobAttempt, not PlatformJob, so the full filter
-        # tree is evaluated in-memory via matches() against a virtual job entity
-        # that carries the attempt status. The store query receives a status-free
-        # SUPERSET of the filter so it never drops a row matches() would accept
-        # (see _status_free_superset); matches() then narrows the page exactly.
+        # tree is evaluated in-memory against a virtual job entity that carries the
+        # attempt status. The store query receives a status-free SUPERSET of the
+        # filter so it never drops a row the in-memory pass would accept (see
+        # _status_free_superset); that pass then narrows the page exactly.
         # The operation is already entity-translated by make_filter_dep.
         store_operation = _status_free_superset(parsed.operation)
 
@@ -372,7 +373,7 @@ class JobDispatcher:
 
             if parsed.operation is not None:
                 virtual_entity = _build_virtual_job_entity(job, attempt)
-                if not parsed.operation.matches(virtual_entity):
+                if not parsed.operation.apply(InMemoryFilterRepository(virtual_entity)):
                     continue
 
             platform_job = create_platform_job_response(job, attempt)
