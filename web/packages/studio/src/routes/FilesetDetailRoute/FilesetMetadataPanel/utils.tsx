@@ -35,8 +35,7 @@ export const getMetadataSections = (
   }
 
   modelEntities.forEach((entity, index) => {
-    const entitySection = getModelEntitySection(entity, index);
-    if (entitySection) sections.push(entitySection);
+    sections.push(getModelEntitySection(entity, index));
   });
 
   return sections;
@@ -187,7 +186,7 @@ const formatFinetuningType = (type: string): string => {
   }
 };
 
-const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSection | null => {
+const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSection => {
   const rows: MetadataRow[] = [];
 
   if (entity.description) {
@@ -216,8 +215,7 @@ const getModelEntitySection = (entity: ModelEntity, index: number): MetadataSect
 
   return {
     value: `model-entity-${index}`,
-    title:
-      index === 0 ? `Model Entity: ${entity.name}` : `Model Entity ${index + 1}: ${entity.name}`,
+    title: `Model Entity ${index + 1}: ${entity.name}`,
     rows,
   };
 };
