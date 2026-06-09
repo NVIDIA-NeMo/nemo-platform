@@ -14,6 +14,8 @@
     "gen:customizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts customizer",
     "gen:data-designer": "tsx ./orval/generate.ts data-designer",
     "gen:data-designer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts data-designer",
+    "gen:evaluator": "tsx ./orval/generate.ts evaluator",
+    "gen:evaluator-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts evaluator",
     "gen:deployment-management": "tsx ./orval/generate.ts deployment-management",
     "gen:entity-store": "tsx ./orval/generate.ts entity-store",
     "gen:evaluator": "tsx ./orval/generate.ts evaluator",
