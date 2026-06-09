@@ -39,11 +39,7 @@ interface AssistantChatThreadProps {
   onReset: () => void;
   showRunningIndicator?: boolean;
   attributes?: AssistantChatThreadAttributes;
-  /** When true, suppresses the bottom composer — message thread still renders. */
   hideComposer?: boolean;
-  /** Content rendered in a sub-row directly above the composer, INSIDE the
-   *  same outer card. Used for seed-prompt chips so they read as part of the
-   *  composer affordance rather than a separate block. */
   slotAboveComposer?: ReactNode;
   emptyState?: {
     slotHeading?: string;

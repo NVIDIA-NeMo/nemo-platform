@@ -288,7 +288,8 @@ export const AgentsTable: FC<CombinedAgentsTableProps> = ({
           onSelect: () => {
             const target = generatePath(ROUTES.workspace.modelCompare, { workspace });
             const model = row.models[0];
-            navigate(model ? `${target}?model=${encodeURIComponent(model)}` : target);
+            const urn = model ? `${row.workspace}/${model}` : null;
+            navigate(urn ? `${target}?model=${encodeURIComponent(urn)}` : target);
           },
         },
         { kind: 'divider' as const },

@@ -95,6 +95,7 @@ export const useAssistantChatRuntime = ({
       // Timing for per-message metrics (TTFT, total, tokens/sec). Emitted via
       // onMessageComplete so callers (e.g. Studio's Chat route) can render a
       // stats badge without owning the runtime.
+      // TODO: provide time metric from backend inference gateway (issue 219)
       const startMs = performance.now();
       let ttftMs = 0;
       let chunkCount = 0;

@@ -54,7 +54,10 @@ export const ModelCompareRoute: FC = () => {
   useEffect(() => {
     if (didPreselectRef.current || isLoadingModels || availableModels.length === 0) return;
     const param = searchParams.get('model');
-    if (!param) return;
+    if (!param) {
+      didPreselectRef.current = true;
+      return;
+    }
     const match = availableModels.find(
       (m) => `${m.workspace}/${m.name}` === param || m.name === param
     );
