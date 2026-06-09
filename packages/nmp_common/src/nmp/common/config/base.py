@@ -59,7 +59,7 @@ class CommonServiceConfig(create_service_config_class("service")):
         "INFO", alias="LOG_LEVEL", description="Logging level for the NeMo Platform."
     )
     scheme: str = Field(default="http", description="Scheme for the NeMo Platform service.")
-    host: str = Field(default="0.0.0.0", description="Host for the NeMo Platform service.")
+    host: str = Field(default="127.0.0.1", description="Host for the NeMo Platform service.")
     port: int = Field(default=8080, description="Port for the NeMo Platform service.")
 
     def get_host_url(self) -> str:

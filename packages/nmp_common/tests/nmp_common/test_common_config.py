@@ -170,7 +170,7 @@ class TestCommonServiceConfig:
 
         assert config.log_level == "INFO"
         assert config.log_format == "plain"
-        assert config.host == "0.0.0.0"
+        assert config.host == "127.0.0.1"
         assert config.port == 8080
 
     def test_common_service_config_global_settings_key(self):
