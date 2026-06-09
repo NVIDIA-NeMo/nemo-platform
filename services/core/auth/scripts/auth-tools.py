@@ -368,7 +368,7 @@ def infer_permissions(path: str, method: str) -> List[str]:
 def _get_area_from_api_path(path: str) -> str:
     """Extract the area name from an API path like /apis/<area>/v2/...
 
-    The area is used for per-area scopes (e.g. models:read, evaluation:write).
+    The area is used for per-area scopes (e.g. models:read, models:write).
     Some areas have different names than their URL segments (e.g. inference-gateway -> inference).
     """
     parts = path.strip("/").split("/")

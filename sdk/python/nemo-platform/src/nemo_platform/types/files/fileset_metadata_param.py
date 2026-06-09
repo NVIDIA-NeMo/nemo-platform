@@ -15,16 +15,17 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Optional
+from __future__ import annotations
 
-from ..._models import BaseModel
-from .dataset_metadata_content import DatasetMetadataContent
-from ..shared.model_metadata_content import ModelMetadataContent
+from typing_extensions import TypedDict
+
+from .dataset_metadata_content_param import DatasetMetadataContentParam
+from ..shared_params.model_metadata_content import ModelMetadataContent
 
 __all__ = ["FilesetMetadataParam"]
 
 
-class FilesetMetadataParam(BaseModel):
+class FilesetMetadataParam(TypedDict, total=False):
     """Tagged metadata container - the key indicates the type.
 
     Example:
@@ -35,10 +36,10 @@ class FilesetMetadataParam(BaseModel):
         )
     """
 
-    dataset: Optional[DatasetMetadataContent] = None
+    dataset: DatasetMetadataContentParam
     """Content for dataset-type filesets."""
 
-    model: Optional[ModelMetadataContent] = None
+    model: ModelMetadataContent
     """Content for model-type filesets.
 
     Contains tool calling configuration that is merged into the ModelSpec during

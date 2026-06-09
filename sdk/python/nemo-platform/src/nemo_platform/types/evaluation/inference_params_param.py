@@ -36,6 +36,9 @@ class InferenceParamsParam(TypedDict, total=False, extra_items=object):  # type:
     max_tokens: int
     """Max tokens to generate"""
 
+    model: str
+    """Model identifier"""
+
     stop: SequenceNotStr[str]
 
     temperature: float
