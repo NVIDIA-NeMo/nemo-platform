@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
 import { Root as DataViewRoot } from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
@@ -9,12 +10,16 @@ import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
 import { getSortParamWithWhitelist } from '@nemo/common/src/utils/query';
 import { useGetExperimentGroup, useListExperiments } from '@nemo/sdk/generated/platform/api';
-import type { ExperimentResponse, ListExperimentsSort } from '@nemo/sdk/generated/platform/schema';
+import type {
+  ExperimentFilter,
+  ExperimentResponse,
+  ListExperimentsSort,
+} from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ComponentProps, FC, useMemo } from 'react';
+import { ComponentProps, FC, useCallback, useMemo } from 'react';
 
 export type ExperimentRow = ExperimentResponse & { id: string };
 
@@ -47,8 +52,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   } = useGetExperimentGroup(workspace, experimentGroupName);
   const experimentGroupId = group?.id ?? '';
 
-  const dataViewState = useStudioDataViewState({
+  const dataViewState = useStudioDataViewState<ExperimentFilter>({
     defaultSort: { id: 'created_at', desc: true },
+    // created_by isn't returned by the API and updated_at isn't shown; both are filter-only.
+    columnVisibility: { created_by: false, updated_at: false },
   });
 
   const page = dataViewState.pagination.state.pageIndex + 1;
@@ -69,7 +76,11 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       page,
       page_size: pageSize,
       sort: sortParam as ListExperimentsSort,
-      filter: { experiment_group_id: experimentGroupId },
+      // User filters merge under the group scope, which always wins so it can't be overridden.
+      filter: {
+        ...dataViewState.apiFilter.filter,
+        experiment_group_id: experimentGroupId,
+      },
     },
     { query: { placeholderData: keepPreviousData, enabled: !!experimentGroupId } }
   );
@@ -90,91 +101,112 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     return <ErrorMessage message="Failed to load experiment group." />;
   }
 
-  const makeColumns: ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns'] = ({
-    accessor,
-  }) => [
-    accessor('name', {
-      header: 'Name',
-      enableSorting: true,
-      meta: { title: false },
-      size: 300,
-      cell: ({ row }) => {
-        const { name, summary } = row.original;
-        if (!summary) return <Text>{name}</Text>;
-        return (
-          <Tooltip slotContent={summary} className={tooltipClassName} side="bottom">
-            <Text className="cursor-default">{name}</Text>
-          </Tooltip>
-        );
-      },
-    }),
-    accessor('agent_name', {
-      header: 'Agent Name',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{row.original.agent_name || '-'}</Text>,
-    }),
-    accessor('agent_version', {
-      header: 'Agent Version',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{row.original.agent_version || '-'}</Text>,
-    }),
-    accessor('dataset_name', {
-      header: 'Dataset Name',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{row.original.dataset_name || '-'}</Text>,
-    }),
-    accessor('dataset_version', {
-      header: 'Dataset Version',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{row.original.dataset_version || '-'}</Text>,
-    }),
-    accessor((original) => original.model_names?.join(', '), {
-      id: 'model_names',
-      header: 'Models names',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{row.original.model_names?.join(', ') || '-'}</Text>,
-    }),
-    accessor((original) => formatScores(original.aggregate_scores), {
-      id: 'aggregate_scores',
-      header: 'Aggregate Scores',
-      enableSorting: false,
-    }),
-    accessor((original) => original.cost_usd?.mean, {
-      id: 'cost_usd',
-      header: 'Avg Cost',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const mean = row.original.cost_usd?.mean;
-        return <Text>{mean != null ? `$${mean.toFixed(3)}` : '-'}</Text>;
-      },
-    }),
-    accessor((original) => original.latency_ms?.mean, {
-      id: 'latency_ms',
-      header: 'Avg Latency',
-      enableSorting: false,
-      cell: ({ row }) => {
-        const mean = row.original.latency_ms?.mean;
-        return <Text>{mean != null ? `${Math.round(mean)} ms` : '-'}</Text>;
-      },
-    }),
-    accessor((original) => original.run_count, {
-      id: 'run_count',
-      header: 'Run Count',
-      enableSorting: false,
-      cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
-    }),
-    accessor('created_at', {
-      header: 'Created',
-      size: 200,
-      enableSorting: true,
-      cell: ({ row }) =>
-        row.original.created_at ? (
-          <RelativeTime datetime={row.original.created_at} />
-        ) : (
-          <Text>-</Text>
-        ),
-    }),
-  ];
+  const makeColumns = useCallback<
+    ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
+  >(
+    ({ accessor }) => [
+      accessor('name', {
+        header: 'Name',
+        enableSorting: true,
+        meta: { title: false, filter: { type: 'text', label: 'Name' } },
+        size: 300,
+        cell: ({ row }) => {
+          const { name, summary } = row.original;
+          if (!summary) return <Text>{name}</Text>;
+          return (
+            <Tooltip slotContent={summary} className={tooltipClassName} side="bottom">
+              <Text className="cursor-default">{name}</Text>
+            </Tooltip>
+          );
+        },
+      }),
+      accessor('agent_name', {
+        header: 'Agent Name',
+        enableSorting: false,
+        meta: { filter: { type: 'text', label: 'Agent Name' } },
+        cell: ({ row }) => <Text>{row.original.agent_name || '-'}</Text>,
+      }),
+      accessor('agent_version', {
+        header: 'Agent Version',
+        enableSorting: false,
+        // meta: { filter: { type: 'text', label: 'Agent Version' } },
+        cell: ({ row }) => <Text>{row.original.agent_version || '-'}</Text>,
+      }),
+      accessor('dataset_name', {
+        header: 'Dataset Name',
+        enableSorting: false,
+        meta: { filter: { type: 'text', label: 'Dataset Name' } },
+        cell: ({ row }) => <Text>{row.original.dataset_name || '-'}</Text>,
+      }),
+      accessor('dataset_version', {
+        header: 'Dataset Version',
+        enableSorting: false,
+        // meta: { filter: { type: 'text', label: 'Dataset Version' } },
+        cell: ({ row }) => <Text>{row.original.dataset_version || '-'}</Text>,
+      }),
+      accessor((original) => original.model_names?.join(', '), {
+        id: 'model_names',
+        header: 'Model Names',
+        enableSorting: false,
+        cell: ({ getValue }) => <Text>{getValue<string>() || '-'}</Text>,
+      }),
+      accessor((original) => formatScores(original.aggregate_scores), {
+        id: 'aggregate_scores',
+        header: 'Aggregate Scores',
+        enableSorting: false,
+      }),
+      accessor((original) => original.cost_usd?.mean, {
+        id: 'cost_usd',
+        header: 'Avg Cost',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const mean = row.original.cost_usd?.mean;
+          return <Text>{mean != null ? `$${mean.toFixed(3)}` : '-'}</Text>;
+        },
+      }),
+      accessor((original) => original.latency_ms?.mean, {
+        id: 'latency_ms',
+        header: 'Avg Latency',
+        enableSorting: false,
+        cell: ({ row }) => {
+          const mean = row.original.latency_ms?.mean;
+          return <Text>{mean != null ? `${Math.round(mean)} ms` : '-'}</Text>;
+        },
+      }),
+      accessor((original) => original.run_count, {
+        id: 'run_count',
+        header: 'Run Count',
+        enableSorting: false,
+        cell: ({ row }) => <Text>{String(row.original.run_count ?? 0)}</Text>,
+      }),
+      accessor('created_at', {
+        header: 'Created',
+        size: 200,
+        enableSorting: true,
+        meta: { filter: dateTimeFilter('Created At') },
+        cell: ({ row }) =>
+          row.original.created_at ? (
+            <RelativeTime datetime={row.original.created_at} />
+          ) : (
+            <Text>-</Text>
+          ),
+      }),
+      // Filter-only columns (hidden via columnVisibility above).
+      accessor('updated_at', {
+        header: 'Updated At',
+        enableSorting: false,
+        enableHiding: false,
+        meta: { filter: dateTimeFilter('Updated At') },
+        cell: ({ row }) =>
+          row.original.updated_at ? (
+            <RelativeTime datetime={row.original.updated_at} />
+          ) : (
+            <Text>-</Text>
+          ),
+      }),
+    ],
+    []
+  );
 
   if (error) {
     return <ErrorMessage message="Failed to load experiments." />;
