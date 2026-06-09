@@ -205,6 +205,7 @@ class TestBenchmarks:
                 },
                 "dataset": "string",
                 "description": "description",
+                "labels": {"foo": "string"},
                 "name": "name",
                 "project": "project",
                 "updated_at": {
@@ -476,6 +477,7 @@ class TestAsyncBenchmarks:
                 },
                 "dataset": "string",
                 "description": "description",
+                "labels": {"foo": "string"},
                 "name": "name",
                 "project": "project",
                 "updated_at": {

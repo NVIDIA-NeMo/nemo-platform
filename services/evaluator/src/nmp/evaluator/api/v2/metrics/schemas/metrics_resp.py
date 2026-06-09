@@ -13,7 +13,7 @@ import nmp.evaluator.app.values as app
 import nmp.evaluator.entities as entities
 from nemo_evaluator_sdk.enums import MetricType
 from nmp.common.api.common import Page
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
 from nmp.evaluator.api.v2.metrics.schemas import metrics as schema_metrics
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
@@ -237,6 +237,10 @@ class MetricsListFilter(Filter):
     project: str | None = Field(default=None, description="Filter metrics by project name.")
     created_at: DatetimeFilter | None = Field(default=None, description="Filter metrics by creation date range.")
     updated_at: DatetimeFilter | None = Field(default=None, description="Filter metrics by last update date range.")
+    labels: Annotated[dict[str, str] | None, map_entity_field("data.labels", namespace=True)] = Field(
+        default=None,
+        description="Filter by labels. Address an individual label as a sub-path, e.g. filter[labels.team]=eval.",
+    )
 
 
 # This is needed to ensure the generated OAS has a better name than UnionsPage.

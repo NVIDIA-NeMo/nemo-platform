@@ -17,28 +17,62 @@ class EntityFieldMapping:
 
         class MyFilter(Filter):
             storage_type: Annotated[str | None, map_entity_field("data.storage.type")] = None
+
+    Set ``namespace=True`` to map a field that addresses a *nested namespace*
+    rather than a single scalar. The user-facing prefix is rewritten and
+    arbitrary dotted sub-keys under it become valid filter fields::
+
+        class MyFilter(Filter):
+            labels: Annotated[dict[str, str] | None, map_entity_field("data.labels", namespace=True)] = None
+
+    With the above, both ``labels`` and ``labels.<key>`` are accepted and
+    translate to ``data.labels`` / ``data.labels.<key>``.
     """
 
-    def __init__(self, entity_path: str):
+    def __init__(self, entity_path: str, *, namespace: bool = False):
         self.entity_path = entity_path
+        self.namespace = namespace
 
 
-def map_entity_field(entity_path: str) -> EntityFieldMapping:
+def map_entity_field(entity_path: str, *, namespace: bool = False) -> EntityFieldMapping:
     """Annotate a filter field with its entity store path.
 
     Use when the entity path differs from the default ``data.{field_name}`` convention.
+    Pass ``namespace=True`` when the field maps a nested namespace rather than a single
+    scalar, so arbitrary dotted sub-keys (``field.<key>``) are accepted and rewritten
+    under ``entity_path`` (e.g. ``labels.x`` → ``data.labels.x``).
     """
-    return EntityFieldMapping(entity_path)
+    return EntityFieldMapping(entity_path, namespace=namespace)
 
 
 _BOOL_TRUE_VALUES = (True, "true")
 _BOOL_FALSE_VALUES = (False, "false")
 
 
+def _map_field(field: str, field_map: dict[str, str], namespace_map: dict[str, str] | None) -> str:
+    """Resolve a user-facing field name to its entity-store path.
+
+    Exact scalar mappings (``field_map``) win first. Otherwise a namespace
+    mapping rewrites the prefix: a field equal to ``labels`` or starting with
+    ``labels.`` maps to ``data.labels`` / ``data.labels.<sub>`` when ``labels``
+    is a declared namespace. Unmapped fields pass through unchanged.
+    """
+    if field in field_map:
+        return field_map[field]
+    if namespace_map:
+        for prefix, entity_prefix in namespace_map.items():
+            if field == prefix:
+                return entity_prefix
+            if field.startswith(prefix + "."):
+                return entity_prefix + field[len(prefix) :]
+    return field
+
+
 def _apply_field_map(
     operation: FilterOperation,
     field_map: dict[str, str],
     bool_coercible: set[str] | None = None,
+    namespace_map: dict[str, str] | None = None,
 ) -> FilterOperation:
     """Walk a FilterOperation tree, translate field names, and coerce booleans.
 
@@ -47,10 +81,13 @@ def _apply_field_map(
 
     * ``"false"`` / ``False`` → ``$eq null``  (field is absent)
     * ``"true"``  / ``True``  → ``$not { $eq null }`` (field has a value)
+
+    *namespace_map* maps user-facing namespace prefixes to entity-store prefixes
+    so dotted sub-paths (``labels.x`` → ``data.labels.x``) translate generically.
     """
     if isinstance(operation, ComparisonOperation):
         field = operation.field
-        mapped_field = field_map.get(field, field)
+        mapped_field = _map_field(field, field_map, namespace_map)
 
         # Bool coercion for Union[..., bool, str] fields
         if bool_coercible and field in bool_coercible and operation.operator == FilterOperator.EQ:
@@ -68,7 +105,7 @@ def _apply_field_map(
     elif isinstance(operation, LogicalOperation):
         return LogicalOperation(
             operator=operation.operator,
-            operations=[_apply_field_map(op, field_map, bool_coercible) for op in operation.operations],
+            operations=[_apply_field_map(op, field_map, bool_coercible, namespace_map) for op in operation.operations],
         )
     return operation
 
@@ -85,6 +122,7 @@ class Filter(_PluginFilter):
     model_config = ConfigDict(extra="forbid", protected_namespaces=())
 
     _entity_field_map_cache: ClassVar[dict[str, str] | None] = None
+    _entity_namespace_map_cache: ClassVar[dict[str, str] | None] = None
     _bool_coercible_fields_cache: ClassVar[set[str] | None] = None
 
     @classmethod
@@ -95,17 +133,45 @@ class Filter(_PluginFilter):
         field_map: dict[str, str] = {}
         for field_name, field_info in cls.model_fields.items():
             # Check for explicit map_entity_field annotation
-            explicit_path = next(
-                (m.entity_path for m in (field_info.metadata or []) if isinstance(m, EntityFieldMapping)),
+            mapping = next(
+                (m for m in (field_info.metadata or []) if isinstance(m, EntityFieldMapping)),
                 None,
             )
-            if explicit_path:
-                field_map[field_name] = explicit_path
+            if mapping is not None:
+                # Namespace mappings are handled by _get_entity_namespace_map
+                # (prefix rewriting), not by exact-match translation here.
+                if mapping.namespace:
+                    continue
+                field_map[field_name] = mapping.entity_path
             elif field_name not in ENTITY_BASE_FIELDS:
                 field_map[field_name] = f"data.{field_name}"
             # Base fields map to themselves — no entry needed
         cls._entity_field_map_cache = field_map
         return field_map
+
+    @classmethod
+    def _get_entity_namespace_map(cls) -> dict[str, str]:
+        """User-facing namespace prefixes → entity-store prefixes.
+
+        Populated from ``map_entity_field(..., namespace=True)`` annotations.
+        Sub-paths under a namespace (e.g. ``labels.<key>``) are valid filter
+        fields and translate to ``<entity_prefix>.<key>``. This is what lets a
+        plugin expose a nested data blob (labels, tags, metadata, …) without the
+        global parser knowing the namespace's name.
+        """
+        cached = cls.__dict__.get("_entity_namespace_map_cache")
+        if cached is not None:
+            return cached
+        namespace_map: dict[str, str] = {}
+        for field_name, field_info in cls.model_fields.items():
+            mapping = next(
+                (m for m in (field_info.metadata or []) if isinstance(m, EntityFieldMapping) and m.namespace),
+                None,
+            )
+            if mapping is not None:
+                namespace_map[field_name] = mapping.entity_path
+        cls._entity_namespace_map_cache = namespace_map
+        return namespace_map
 
     @classmethod
     def _get_bool_coercible_fields(cls) -> set[str]:
@@ -138,9 +204,10 @@ class Filter(_PluginFilter):
         """
         field_map = cls._get_entity_field_map()
         bool_coercible = cls._get_bool_coercible_fields()
-        if not field_map and not bool_coercible:
+        namespace_map = cls._get_entity_namespace_map()
+        if not field_map and not bool_coercible and not namespace_map:
             return operation
-        return _apply_field_map(operation, field_map, bool_coercible or None)
+        return _apply_field_map(operation, field_map, bool_coercible or None, namespace_map or None)
 
     @model_validator(mode="before")
     @classmethod

@@ -3,12 +3,12 @@
 
 """Tests for ParsedFilter — extract, remove, and make_filter_dep."""
 
-from typing import Optional, Union
+from typing import Annotated, Optional, Union
 
 from fastapi import Depends, FastAPI
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.entities.values import DatetimeFilter, Filter
+from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
 from starlette.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -480,3 +480,96 @@ class TestBoolCoercionEndToEnd:
         assert resp.status_code == 200
         op = resp.json()["operation"]
         assert op == {"data.base_model": {"$eq": "llama-3"}}
+
+
+# ---------------------------------------------------------------------------
+# Namespace field mapping — map_entity_field(..., namespace=True)
+# ---------------------------------------------------------------------------
+
+
+class NamespaceFilter(Filter):
+    """Filter exercising a namespace mapping: ``labels.*`` → ``data.labels.*``.
+
+    The ``labels`` knowledge lives entirely here, in the model — the generic
+    parser only learns "this field is a namespace" via the annotation.
+    """
+
+    name: str | None = None
+    labels: Annotated[dict[str, str] | None, map_entity_field("data.labels", namespace=True)] = None
+
+
+class TestNamespaceTranslate:
+    """Prefix rewriting in translate_operation (no per-service knowledge in the core)."""
+
+    def test_subpath_translates(self):
+        op = ComparisonOperation(operator=FilterOperator.EQ, field="labels.eval_category", value="agentic")
+        assert NamespaceFilter.translate_operation(op).to_dict() == {"data.labels.eval_category": {"$eq": "agentic"}}
+
+    def test_bare_namespace_translates(self):
+        op = ComparisonOperation(operator=FilterOperator.EQ, field="labels", value="x")
+        assert NamespaceFilter.translate_operation(op).to_dict() == {"data.labels": {"$eq": "x"}}
+
+    def test_deep_subpath_translates(self):
+        op = ComparisonOperation(operator=FilterOperator.LIKE, field="labels.team.name", value="eval")
+        assert NamespaceFilter.translate_operation(op).to_dict() == {"data.labels.team.name": {"$like": "eval"}}
+
+    def test_already_canonical_unchanged(self):
+        op = ComparisonOperation(operator=FilterOperator.EQ, field="data.labels.x", value="y")
+        assert NamespaceFilter.translate_operation(op).to_dict() == {"data.labels.x": {"$eq": "y"}}
+
+    def test_scalar_field_subpath_not_rewritten(self):
+        # ``name`` is a scalar field, not a namespace — its sub-path is left alone
+        # here (and rejected at validation time; see TestNamespaceEndToEnd).
+        op = ComparisonOperation(operator=FilterOperator.EQ, field="name.foo", value="y")
+        assert NamespaceFilter.translate_operation(op).to_dict() == {"name.foo": {"$eq": "y"}}
+
+    def test_namespace_inside_logical_tree(self):
+        op = LogicalOperation(
+            operator=FilterOperator.OR,
+            operations=[
+                ComparisonOperation(operator=FilterOperator.EQ, field="labels.a", value="1"),
+                ComparisonOperation(operator=FilterOperator.EQ, field="data.labels.b", value="2"),
+            ],
+        )
+        assert NamespaceFilter.translate_operation(op).to_dict() == {
+            "$or": [{"data.labels.a": {"$eq": "1"}}, {"data.labels.b": {"$eq": "2"}}]
+        }
+
+
+class TestNamespaceEndToEnd:
+    """End-to-end through make_filter_dep: validation + translation together."""
+
+    def _client(self) -> TestClient:
+        return TestClient(_make_app(NamespaceFilter))
+
+    def test_subpath_validates_and_translates(self):
+        resp = self._client().get("/items", params={"filter[labels.eval_category]": "agentic"})
+        assert resp.status_code == 200
+        assert resp.json()["operation"] == {"data.labels.eval_category": {"$eq": "agentic"}}
+
+    def test_data_prefixed_form_still_works(self):
+        # Regression: the explicit data.labels.* path must keep working unchanged.
+        resp = self._client().get("/items", params={"filter[data.labels.eval_category]": "agentic"})
+        assert resp.status_code == 200
+        assert resp.json()["operation"] == {"data.labels.eval_category": {"$eq": "agentic"}}
+
+    def test_json_subpath_form(self):
+        resp = self._client().get('/items?filter={"labels.team":"eval"}')
+        assert resp.status_code == 200
+        assert resp.json()["operation"] == {"data.labels.team": {"$eq": "eval"}}
+
+    def test_subpath_in_or_tree(self):
+        resp = self._client().get("/items", params={"filter": '{"$or":[{"labels.a":"1"},{"name":"x"}]}'})
+        assert resp.status_code == 200
+        assert resp.json()["operation"] == {"$or": [{"data.labels.a": {"$eq": "1"}}, {"name": {"$eq": "x"}}]}
+
+    def test_unknown_dotted_field_still_400(self):
+        # A non-namespace dotted path must still be rejected — no permissive auto-map.
+        resp = self._client().get("/items", params={"filter[foo.bar]": "x"})
+        assert resp.status_code == 400
+        assert "foo.bar" in resp.json()["detail"]
+
+    def test_scalar_field_subpath_400(self):
+        # ``name`` is a scalar field; ``name.foo`` is not a valid namespace sub-path.
+        resp = self._client().get("/items", params={"filter[name.foo]": "x"})
+        assert resp.status_code == 400
