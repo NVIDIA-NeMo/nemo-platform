@@ -166,7 +166,7 @@ export const ExperimentGroupCreateModal: FC<ExperimentGroupCreateModalProps> = (
                 {...register('description')}
               />
             </FormField>
-            <Button aria-label="Add evaluator">
+            <Button aria-label="Add evaluator" disabled>
               <Plus />
               Add evaluator
             </Button>
