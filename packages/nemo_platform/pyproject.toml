@@ -660,7 +660,6 @@ inherit."optional-dependencies" = true
 inherit.scripts = true
 inherit."entry-points" = ["nemo.*"]
 force_include."../../../../../docs" = "nemo_platform/cli/docs"
-force_include."../../../../../mkdocs.yml" = "nemo_platform/cli/mkdocs.yml"
 
 [tool.bundle-package.nemo-agents-example-calculator]
 source = "../../plugins/nemo-agents/examples/calculator-agent/src/calculator_agent"

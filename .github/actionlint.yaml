@@ -1,0 +1,9 @@
+
+rules:
+  custom:
+    - name: "input-names-kebab-case"
+      description: "Ensure action input names use kebab-case"
+      # This regex looks for keys in the inputs section of an action metadata file
+      # It allows lowercase letters, numbers, and hyphens.
+      pattern: '^inputs\.[a-z0-9-]+$'
+      message: "input name must be kebab-case (lowercase and hyphens only)"
