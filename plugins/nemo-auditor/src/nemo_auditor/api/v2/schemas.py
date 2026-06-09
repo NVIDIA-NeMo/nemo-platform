@@ -20,6 +20,7 @@ from nemo_auditor.entities import (
     AuditRunData,
     AuditSystemData,
 )
+from nemo_platform_plugin.schema import DatetimeFilter, NemoFilter
 from pydantic import BaseModel, Field
 
 
@@ -61,3 +62,58 @@ class UpdateAuditTargetRequest(BaseModel):
     type: str = Field(description="Target type (e.g., 'nim', 'openai').")
     model: str = Field(description="Model identifier.")
     options: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Filters — extend NemoFilter so extra fields are rejected (extra="forbid")
+# ---------------------------------------------------------------------------
+
+
+class TargetFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/targets``."""
+
+    type: str | None = Field(
+        default=None,
+        description="Filter to targets of this type (e.g., 'nim', 'openai').",
+    )
+    model: str | None = Field(
+        default=None,
+        description="Filter to targets using this model identifier.",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Filter to targets with this description.",
+    )
+    project: str | None = Field(
+        default=None,
+        description="Filter to targets in this project.",
+    )
+    created_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter on creation time (supports $gte / $lte).",
+    )
+    updated_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter on last-update time (supports $gte / $lte).",
+    )
+
+
+class ConfigFilter(NemoFilter):
+    """Query filter for ``GET /v2/workspaces/{workspace}/configs``."""
+
+    description: str | None = Field(
+        default=None,
+        description="Filter to configs with this description.",
+    )
+    project: str | None = Field(
+        default=None,
+        description="Filter to configs in this project.",
+    )
+    created_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter on creation time (supports $gte / $lte).",
+    )
+    updated_at: DatetimeFilter | None = Field(
+        default=None,
+        description="Filter on last-update time (supports $gte / $lte).",
+    )

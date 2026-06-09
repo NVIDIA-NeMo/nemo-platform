@@ -43,7 +43,7 @@ Match the user's intent to one downstream skill. Pick exactly one.
 |---|---|---|
 | "set up", "install", "get started", "try NeMo", "first time" | `setup` | Verify the platform is installed and running. If not, the skill tells the user how to run the CLI install (`make bootstrap` + `nemo setup`). Install itself is CLI-only. |
 | "design an agent", "I want an agent that handles X", "what should my agent do" | `nemo-explore` | Capture the agent's job, audience, categories, tools, model, constraints before any code |
-| "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>.spec.md` |
+| "write the spec", "save the design", "capture what we agreed" | `nemo-spec` | Persist the explore answers as `agents/<name>-spec/AGENT-SPEC.md` |
 | "build the agent", "create the agent", "deploy", "scaffold from spec" | `nemo-build-agent` | Scaffold the NAT workflow YAML, deploy, eval, optional guardrails |
 | "ask my agent", "try the agent", "test it" | `nemo-try-agent` | Send a query to a deployed agent or fall back to model chat |
 | "status", "what is running", "platform health", "is the platform up", "what's deployed", "show me what's running" | `nemo-status` | Read-only dashboard: platform, agents, providers, models |
@@ -99,7 +99,7 @@ If the user's intent doesn't fit any row, do not guess. Read out the available s
 NeMo Platform skills I can route to:
   setup           verify install or get the CLI install command
   nemo-explore    design conversation: capture goal, audience, tools, constraints
-  nemo-spec       write the design to agents/<name>.spec.md
+  nemo-spec       write the design to agents/<name>-spec/AGENT-SPEC.md
   nemo-build-agent  scaffold the NAT workflow YAML and deploy
   nemo-try-agent  query a deployed agent or chat with a model
   nemo-status     read-only platform health dashboard

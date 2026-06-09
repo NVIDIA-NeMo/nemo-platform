@@ -76,11 +76,65 @@ When using Anonymizer as a {{platform_name}} service:
 
 ## Prerequisites
 
-Before starting these tutorials, complete the [Quick Start](../quickstart.md) to:
+Complete [Setup](../../get-started/setup.md) to install {{platform_name}}, run `nemo services run`, and configure an inference provider. The root workspace includes the Anonymizer plugin, so `nemo services run` discovers it automatically and mounts `/apis/anonymizer/...` on the gateway — no separate plugin install step is needed. Verify the CLI is registered:
 
-- Install the plugin and verify the `nemo anonymizer` CLI.
-- Configure an inference provider used in `model_configs`.
-- Create a fileset and upload a CSV containing PII.
+```bash
+nemo anonymizer --help
+```
+
+You should see `validate`, `preview`, and `run` command groups.
+
+These tutorials route inference through an [Inference Gateway](../../run-inference/about.md) provider, so a {{platform_name}} cluster must be running before you preview or run a job. The examples reference the default NVIDIA Build provider created during setup.
+
+--8<-- "_snippets/nvidia-build-model-provider.md"
+
+### Upload an Input Fileset
+
+`sdk.anonymizer.preview`, `preview submit`, and `run submit` reject local file paths, so the tutorials read from a fileset. Create a small CSV containing PII and upload it to a fileset named `anonymizer-inputs`:
+
+```python
+import os
+import tempfile
+from pathlib import Path
+
+from nemo_platform import NeMoPlatform
+from nemo_platform._exceptions import ConflictError
+
+WORKSPACE = os.environ.get("NMP_WORKSPACE", "default")
+FILESET = "anonymizer-inputs"
+INPUT_FILENAME = "anonymizer-input.csv"
+
+sdk = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace=WORKSPACE,
+)
+
+with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False) as f:
+    f.write(
+        "id,biography\n"
+        "1,Alice Johnson lives in Seattle and works at NVIDIA.\n"
+        "2,Bob Smith can be reached at bob.smith@example.com.\n"
+    )
+    input_path = Path(f.name)
+
+try:
+    sdk.files.filesets.create(
+        name=FILESET,
+        workspace=WORKSPACE,
+        description="Anonymizer input files",
+    )
+except ConflictError:
+    pass  # already exists
+
+sdk.files.upload(
+    local_path=str(input_path),
+    fileset=FILESET,
+    workspace=WORKSPACE,
+    remote_path=INPUT_FILENAME,
+)
+```
+
+The tutorials reference this file with `fileset://{WORKSPACE}/anonymizer-inputs#anonymizer-input.csv`.
 
 ## Tutorials
 

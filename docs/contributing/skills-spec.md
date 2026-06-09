@@ -45,7 +45,7 @@ Entry point: a coding agent (Claude Code, Cursor, Codex, OpenCode) opened inside
 |---|---|---|
 | 1 | `nemo-skill-selection` | Router: parses natural-language intent, picks the right downstream skill |
 | 2 | `nemo-explore` | Design conversation: captures goal, audience, tools, constraints |
-| 3 | `nemo-spec` | Writes the design to `agents/<name>.spec.md` |
+| 3 | `nemo-spec` | Writes the design to `agents/<name>-spec/AGENT-SPEC.md` |
 | 4 | `nemo-build-agent` | Scaffolds NAT workflow YAML and deploys |
 | 5 | `nemo-try-agent` | Sends queries to the deployed agent |
 | 6 | `nemo-status` | Read-only platform health dashboard |
@@ -124,7 +124,7 @@ not-for:
   - nemo-explore (use for design conversation before a spec exists)
   - nemo-try-agent (use to test an already-deployed agent)
   - nemo-agents-optimize (use to improve a deployed agent's metrics)
-compatibility: nemo-platform >= 0.1.0; macOS or Linux; requires `agents/<name>.spec.md`
+compatibility: nemo-platform >= 0.1.0; macOS or Linux; requires `agents/<name>-spec/AGENT-SPEC.md`
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -186,7 +186,7 @@ Every skill needs four kinds of routing tests:
 
 - **Explicit:** user names the skill directly. `"Use nemo-build-agent to deploy my agent."`
 - **Implicit:** user describes the intent without naming the skill. `"Scaffold and deploy my agent."`
-- **Contextual:** user describes the intent with surrounding situation. `"I have a spec at agents/calculator.spec.md and a working dev cluster. Take it from here."`
+- **Contextual:** user describes the intent with surrounding situation. `"I have a spec at agents/calculator-spec/AGENT-SPEC.md and a working dev cluster. Take it from here."`
 - **Negative-control:** unrelated request that should NOT route to this skill. `"Set up a new Postgres database with seed data."`
 
 At least 3 examples per mode. `scripts/skill-test.py` runs them and fails if routing diverges.

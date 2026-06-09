@@ -1,9 +1,12 @@
 <!-- @nemo-nb: process -->
 <!-- @nemo-nb: skip-test -->
 <a id="host-local-development"></a>
-# Host-Local Development and Testing
 
-Run {{nss_short_name}} on your machine's GPU with `nemo safe-synthesizer run-local`. This page covers the plugin CLI only (`run-local` and `runtime`). It does not cover platform job submission or `nemo safe-synthesizer jobs …` commands (not exposed in the CLI today).
+# Local and Subprocess Execution
+
+Run {{nss_short_name}} on your machine's GPU with `nemo safe-synthesizer run-local`. The public command is a local subprocess wrapper: the main NeMo CLI starts a separate Safe Synthesizer runtime Python, and that runtime executes the synthesis task module.
+
+This page covers local execution only. Platform job submission uses the Jobs API or SDK; the `nemo safe-synthesizer` CLI exposes `run-local` and `runtime`.
 
 ## Prerequisites
 
@@ -25,7 +28,18 @@ uv run nemo safe-synthesizer --help
 # Commands: run-local, runtime
 ```
 
-## Run a job locally
+## Execution modes
+
+There are two local paths:
+
+| Mode | Command | Use it when |
+|------|---------|-------------|
+| Managed local subprocess | `uv run nemo safe-synthesizer run-local ...` | You want the supported plugin CLI. This creates the parent CLI process, then launches the runtime Python subprocess. |
+| Direct local task | `<runtime-python> -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer run-local ...` | You are debugging the task process itself and want to bypass the parent CLI wrapper. |
+
+Both modes run on the host GPU and write artifacts to the local filesystem. Both accept the same task arguments: `--spec-file`, `--workspace`, `--output-dir`, and optional `--data-source`.
+
+## Run with the managed local subprocess
 
 Use a job spec JSON (example in `plugins/nemo-safe-synthesizer/src/nemo_safe_synthesizer_plugin/nss-job.json`) and a local input file:
 
@@ -43,6 +57,39 @@ uv run nemo safe-synthesizer run-local \
 | `--data-source` | Local CSV (or other supported file) used **instead of** downloading from `data_source` in the spec |
 | `--output-dir` | Where artifacts are written (default `./nss-output`) |
 | `--workspace` | Workspace label for spec fields that reference workspaces (default `default`) |
+
+The parent command launches a subprocess equivalent to:
+
+```bash
+<runtime-python> -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer run-local \
+  --workspace default \
+  --spec-file ./nss-job.json \
+  --data-source ./input.csv \
+  --output-dir ./nss-output
+```
+
+Find the configured runtime Python with:
+
+```bash
+uv run nemo safe-synthesizer runtime info
+```
+
+## Run the local task directly
+
+Direct task execution is useful when you need to reproduce a subprocess failure without the parent CLI wrapper.
+
+```bash
+$(uv run nemo safe-synthesizer runtime info | awk -F': ' '/^python:/ {print $2}') \
+  -m nemo_safe_synthesizer_plugin.tasks.safe_synthesizer run-local \
+  --workspace default \
+  --spec-file ./nss-job.json \
+  --data-source ./input.csv \
+  --output-dir ./nss-output
+```
+
+If the runtime Python does not exist, run `uv run nemo safe-synthesizer runtime setup` first.
+
+If you omit `--data-source`, the task downloads `data_source` from the platform Files service. Use `--data-source` for offline local files.
 
 ### Output layout
 
@@ -161,7 +208,5 @@ Requires `RUN_NSS_LOCAL_E2E=1`, CUDA, and `nemo safe-synthesizer runtime setup`.
 
 ## Related topics
 
-- [Parameters Reference](reference.md) — spec and `config` fields
-- [Getting Started](../getting-started.md) — GPU and platform context
-- [Jobs](jobs.md) — platform job lifecycle (separate from this run-local guide)
+- [Getting Started](../getting-started.md) — GPU and local runtime prerequisites
 - Plugin README: `plugins/nemo-safe-synthesizer/README.md`

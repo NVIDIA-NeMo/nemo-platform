@@ -10,12 +10,65 @@ filter models live in :mod:`nemo_agents_plugin.schema`.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Literal
 
 from nemo_platform_plugin.entity import NemoEntity
+from nemo_platform_plugin.refs import FilesetRef
 from pydantic import Field
 
 DeploymentStatus = Literal["pending", "starting", "running", "failed", "deleting"]
+
+
+# ---------------------------------------------------------------------------
+# Canonical spec storage convention
+# ---------------------------------------------------------------------------
+#
+# Each agent has exactly one spec, named by convention. We do **not** store
+# the spec location on the agent — it is fully derivable from the agent's
+# workspace and name. The convention is enforced by the nemo-spec and
+# nemo-build-agent skills; consumers (analyst agent, Studio, optimization
+# loop) should call :func:`agent_spec_file_ref` rather than reconstruct the
+# path inline.
+#
+# Layout:
+#   - Fileset (entity ref):  ``{workspace}/{agent-name}-spec``
+#   - File inside fileset:   ``AGENT-SPEC.md`` (industry-standard name)
+#   - Full file ref:         ``{workspace}/{agent-name}-spec#AGENT-SPEC.md``
+#   - Local cache:           ``agents/{agent-name}-spec/AGENT-SPEC.md``
+#
+# This is intentionally **not** an Optional field on the Agent. The
+# relationship is 1:1 and convention-bound; carrying a stored ref would
+# duplicate state with no resilience benefit (rename of either entity
+# orphans both representations equally).
+
+AGENT_SPEC_FILENAME = "AGENT-SPEC.md"
+"""Canonical filename inside the agent's spec fileset."""
+
+
+AGENT_SPEC_LOCAL_ROOT = "agents"
+"""Local directory holding agent build artifacts."""
+
+
+def agent_spec_fileset_name(agent_name: str) -> str:
+    """Return the conventional fileset name holding an agent's spec."""
+    return f"{agent_name}-spec"
+
+
+def agent_spec_local_path(agent_name: str, root: str | Path = AGENT_SPEC_LOCAL_ROOT) -> Path:
+    """Return the local write-through cache path for an agent's spec."""
+    return Path(root) / agent_spec_fileset_name(agent_name) / AGENT_SPEC_FILENAME
+
+
+def agent_spec_file_ref(workspace: str, agent_name: str) -> FilesetRef:
+    """Return the canonical file ref ``workspace/<name>-spec#AGENT-SPEC.md``.
+
+    Use this anywhere downstream code needs to point at an agent's spec —
+    do not reconstruct the path inline. If the layout ever changes (e.g.
+    moving to a per-agent bundle fileset holding multiple artifacts), this
+    is the only function that needs to update.
+    """
+    return FilesetRef(f"{workspace}/{agent_spec_fileset_name(agent_name)}#{AGENT_SPEC_FILENAME}")
 
 
 class Agent(NemoEntity, entity_type="agent"):
@@ -23,6 +76,10 @@ class Agent(NemoEntity, entity_type="agent"):
 
     Entity type: ``agent``
     Primary lookup: by ``name`` within a ``workspace``.
+
+    The agent's spec lives at the location returned by
+    :func:`agent_spec_file_ref` — it is **not** stored on the entity
+    because the path is fully derivable from ``(workspace, name)``.
     """
 
     description: str = Field(default="", description="Human-readable description of the agent.")

@@ -337,12 +337,16 @@ jobs:
         run: make test-e2e
         env:
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
-          E2E_SERVICES_LOG: ${{ runner.temp }}/services.log
+          E2E_SERVICES_LOG_DIR: ${{ runner.temp }}/e2e-services-logs
+          NGC_API_KEY: ${{ secrets.NGC_REGISTRY_READ_TOKEN }}
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
       - name: Dump server logs
         if: always()
         run: |
-          echo "::group::Server log"
-          cat "${{ runner.temp }}/services.log" 2>/dev/null || echo "No server log found"
+          echo "::group::Server logs"
+          for f in "${{ runner.temp }}/e2e-services-logs"/*.log; do
+            [ -f "$f" ] && echo "--- $(basename "$f") ---" && cat "$f" || echo "No server logs found"
+          done
           echo "::endgroup::"
       - name: Upload test artifacts
         if: always()
@@ -352,7 +356,7 @@ jobs:
           retention-days: 30
           path: |
             report.xml
-            ${{ runner.temp }}/services.log
+            ${{ runner.temp }}/e2e-services-logs/
 
   # Required-check pin: branch protection should reference this aggregator
   # rather than the per-row matrix jobs, so the matrix can grow or shrink

@@ -435,25 +435,30 @@ def _local_runtime_env(ctx: JobContext):
     :class:`JobContext` with tempdir-backed storage and exposes the
     same envvars here so unmodified task code keeps working.
 
-    Caller-set values win — we only fill envvars that aren't already set,
-    and we restore the prior environment on exit so tests and back-to-back
+    Caller-set storage values win — we only fill storage envvars that aren't
+    already set. The workspace envvar always reflects the current local
+    context so a parent job's workspace does not leak into nested local runs.
+    Prior environment values are restored on exit so tests and back-to-back
     calls don't leak state.
     """
-    overrides: dict[str, str] = {
+    storage_overrides: dict[str, str] = {
         _PERSISTENT_STORAGE_ENVVAR: str(ctx.storage.persistent),
         _EPHEMERAL_STORAGE_ENVVAR: str(ctx.storage.ephemeral),
-        _WORKSPACE_ENVVAR: ctx.workspace,
     }
     # Scheduler-built local contexts leave job_id as ``None``. Explicit
     # caller-provided contexts may still mirror a job id for legacy code.
+    force_overrides: dict[str, str] = {_WORKSPACE_ENVVAR: ctx.workspace}
     if ctx.job_id is not None:
-        overrides[_JOB_ID_ENVVAR] = ctx.job_id
+        force_overrides[_JOB_ID_ENVVAR] = ctx.job_id
     saved: dict[str, str | None] = {}
     try:
-        for key, value in overrides.items():
+        for key, value in storage_overrides.items():
             if key in os.environ:
                 continue  # respect explicit caller setup
             saved[key] = None
+            os.environ[key] = value
+        for key, value in force_overrides.items():
+            saved[key] = os.environ.get(key)
             os.environ[key] = value
         yield
     finally:
