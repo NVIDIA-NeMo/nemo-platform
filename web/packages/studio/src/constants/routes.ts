@@ -39,6 +39,7 @@ export const ROUTE_PARAMS = {
   /** Benchmark entity name segment under evaluation/benchmarks/:name */
   benchmarkName: 'benchmarkName',
   experimentGroupName: 'experimentGroupName',
+  experimentName: 'experimentName',
 } as const;
 
 // Just an alias to make the routes more readable
@@ -72,6 +73,7 @@ export const ROUTES = {
     /** Empty landing page for the EXPERIMENT feature (gated by VITE_FF_EXPERIMENT). */
     experiment: `/workspaces/:${P.workspace}/experiment`,
     experimentGroupDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}`,
+    experimentDetail: `/workspaces/:${P.workspace}/experiment/:${P.experimentGroupName}/:${P.experimentName}`,
     customizationJobList: `/workspaces/:${P.workspace}/customizations`,
     customizationJobDetails: `/workspaces/:${P.workspace}/customizations/:${P.customizationJobName}`,
     newCustomizationJob: `/workspaces/:${P.workspace}/customizations/fine-tuned/new`,
