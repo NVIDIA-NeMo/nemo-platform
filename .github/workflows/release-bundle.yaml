@@ -479,8 +479,12 @@ jobs:
           # whole release. The dispatch carries it; the consumer re-verifies with sha256sum -c.
           checksums_digest="$(sha256sum release-bundle/checksums.txt | cut -d' ' -f1)"
 
+          channel="Stable"
           prerelease=()
-          [[ "${CADENCE}" == "rc" ]] && prerelease=(--prerelease)
+          if [[ "${CADENCE}" == "rc" ]]; then
+            channel="Release Candidate"
+            prerelease=(--prerelease)
+          fi
 
           # Upload each artifact as its own asset. GitHub flattens asset names to basenames; the
           # consumer restores wheels/ from the manifest paths. Re-run model: if a release already
@@ -491,7 +495,7 @@ jobs:
             release-bundle/checksums.txt \
             release-bundle/wheels/*.whl \
             --title "${RELEASE_TAG}" \
-            --notes "Automated ${CADENCE} release bundle for ${RELEASE_TAG}. checksums.txt sha256=${checksums_digest}" \
+            --notes "Automated ${channel} build of NeMo Platform ${RELEASE_TAG}." \
             "${prerelease[@]}"
 
           {
