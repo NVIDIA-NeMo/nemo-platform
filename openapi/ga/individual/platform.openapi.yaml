@@ -6598,6 +6598,7 @@ paths:
         required: false
         schema:
           type: integer
+          minimum: 1
           description: Page number.
           default: 1
           title: Page
@@ -6607,6 +6608,8 @@ paths:
         required: false
         schema:
           type: integer
+          maximum: 1000
+          minimum: 1
           description: Page size.
           default: 100
           title: Page Size
@@ -8407,13 +8410,13 @@ components:
           const: function
           title: Type
           description: The type of the tool. Currently only 'function' is supported.
-          default: function
         function:
           allOf:
           - $ref: '#/components/schemas/FunctionDefinition'
           description: The function definition for this tool.
       type: object
       required:
+      - type
       - function
       title: ChatCompletionTool
       description: An OpenAI-compatible tool definition (currently always a function

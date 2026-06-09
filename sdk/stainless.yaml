@@ -721,6 +721,7 @@ resources:
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType
+      inference_params: InferenceParams
   iam:
     standalone_api: true
     subresources:
