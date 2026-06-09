@@ -75,9 +75,6 @@ def ngc_api_key() -> str:
 def ngc_secret(sdk: NeMoPlatform, workspace: str, ngc_api_key: str) -> Iterator[str]:
     """Create a secret containing the NGC API key, cleaned up after test."""
     secret_name = f"e2e-ngc-key-{uuid.uuid4().hex[:8]}"
-    print("INSIDE THE FIXTURE")
-    print(f"secret_name: {secret_name}")
-    print(f"workspace: {workspace}")
     sdk.secrets.create(workspace=workspace, name=secret_name, value=ngc_api_key)
     yield secret_name
     try:
