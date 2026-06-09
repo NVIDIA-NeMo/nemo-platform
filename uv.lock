@@ -6350,7 +6350,6 @@ core-services = [
     { name = "nmp-models", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-secrets", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-unsloth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 cpu-tasks = [
     { name = "nemo-anonymizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6438,7 +6437,6 @@ enabled-plugins = [
     { name = "nemo-safe-synthesizer-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-switchyard", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-unsloth-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-unsloth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 functional-services = [
     { name = "nemo-agents-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6470,7 +6468,6 @@ functional-services = [
     { name = "nmp-platform-seed", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-secrets", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-studio", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-unsloth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
 gpu-tasks = [
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6559,7 +6556,6 @@ core-services = [
     { name = "nmp-models", editable = "services/core/models" },
     { name = "nmp-platform", editable = "packages/nmp_platform" },
     { name = "nmp-secrets", editable = "services/core/secrets" },
-    { name = "nmp-unsloth", editable = "services/unsloth" },
 ]
 cpu-tasks = [
     { name = "nemo-anonymizer-plugin", editable = "plugins/nemo-anonymizer" },
@@ -6649,7 +6645,6 @@ enabled-plugins = [
     { name = "nemo-safe-synthesizer-plugin", editable = "plugins/nemo-safe-synthesizer" },
     { name = "nemo-switchyard", editable = "plugins/nemo-switchyard" },
     { name = "nemo-unsloth-plugin", editable = "plugins/nemo-unsloth" },
-    { name = "nmp-unsloth", editable = "services/unsloth" },
 ]
 functional-services = [
     { name = "nemo-agents-plugin", editable = "plugins/nemo-agents" },
@@ -6682,7 +6677,6 @@ functional-services = [
     { name = "nmp-platform-seed", editable = "services/platform-seed" },
     { name = "nmp-secrets", editable = "services/core/secrets" },
     { name = "nmp-studio", editable = "services/studio" },
-    { name = "nmp-unsloth", editable = "services/unsloth" },
 ]
 gpu-tasks = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
