@@ -246,6 +246,7 @@ export const ModelCompareRoute: FC = () => {
                         text: draft,
                       }));
                     }
+                    setComposerSeed(null);
                     setPerPanelInput(true);
                   }}
                   className="flex cursor-pointer items-center justify-center rounded p-1.5 text-fg-subdued transition-colors hover:bg-surface-sunken hover:text-fg-base"

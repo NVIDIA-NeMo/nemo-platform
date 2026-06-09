@@ -137,19 +137,34 @@ export const ModelChat: FC<ModelChatProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerSeed?.triggerCount]);
 
-  // Seeds render INSIDE the AssistantChat composer card (above the textarea)
-  // so the chip row + input share one bordered frame. Suppressed once the
-  // panel has produced a metric (i.e. responded once) and in Compare mode
-  // (the page-level CompareComposer owns seeds there).
-  const showChatSeeds =
-    !!seedQuestions && seedQuestions.length > 0 && !latestMetrics && !rest.hideComposer;
+  // Seeds render INSIDE the AssistantChat composer card (above the textarea).
+  // Always shown when the composer is visible — not suppressed after first response.
+  // In broadcast-all mode (hideComposer=true) the page-level CompareComposer owns seeds.
+  const showChatSeeds = !!seedQuestions && seedQuestions.length > 0 && !rest.hideComposer;
+
+  // In per-panel mode: metrics sit above seeds in slotAboveComposer so they
+  // appear inside the composer frame, above the textarea.
+  // In broadcast-all mode: hideComposer hides slotAboveComposer entirely, so
+  // metrics fall back to the standalone div below the chat surface.
+  const metricsInComposer = showMetrics && latestMetrics && !rest.hideComposer;
+  const metricsBelow = showMetrics && latestMetrics && !!rest.hideComposer;
+
   const chatSeedSlot =
-    showChatSeeds || (composerToggle && !rest.hideComposer) ? (
-      <SeedQuestions
-        questions={showChatSeeds ? seedQuestions : []}
-        onSelect={seedComposer}
-        slotEnd={composerToggle}
-      />
+    showChatSeeds || metricsInComposer || (composerToggle && !rest.hideComposer) ? (
+      <>
+        {metricsInComposer && (
+          <div className="px-3 pt-1">
+            <StatsBadge metrics={latestMetrics} />
+          </div>
+        )}
+        {(showChatSeeds || (composerToggle && !rest.hideComposer)) && (
+          <SeedQuestions
+            questions={showChatSeeds ? seedQuestions : []}
+            onSelect={seedComposer}
+            slotEnd={composerToggle}
+          />
+        )}
+      </>
     ) : undefined;
 
   return (
@@ -168,7 +183,7 @@ export const ModelChat: FC<ModelChatProps> = ({
           slotAboveComposer={chatSeedSlot}
         />
       </div>
-      {showMetrics && latestMetrics && (
+      {metricsBelow && (
         <div className="shrink-0 px-3 pt-1">
           <StatsBadge metrics={latestMetrics} />
         </div>

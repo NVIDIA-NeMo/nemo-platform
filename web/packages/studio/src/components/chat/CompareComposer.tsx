@@ -61,7 +61,7 @@ export const CompareComposer: FC<CompareComposerProps> = ({
   if (draftRef) draftRef.current = draft;
 
   // Pre-fill from panel toggle transfer (panel→broadcast).
-  const seenSeedTriggerRef = useRef(seed?.triggerCount);
+  const seenSeedTriggerRef = useRef<number | undefined>(undefined);
   if (seed?.text && seed.triggerCount !== seenSeedTriggerRef.current) {
     seenSeedTriggerRef.current = seed.triggerCount;
     setDraft(seed.text);
