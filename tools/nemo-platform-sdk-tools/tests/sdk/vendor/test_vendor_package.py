@@ -347,7 +347,7 @@ name = "nemo-platform"
 
 [project.optional-dependencies]
 # Generated from [tool.bundle-package]; do not edit by hand.
-nemo-evaluator-plugin = ["nemo-evaluator-sdk", "nmp-evaluator"]
+nemo-evaluator-plugin = ["nemo-evaluator-sdk", "stale-plugin-dep"]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
 services = ["nemo-platform[core-service]", "old-service"]
@@ -403,7 +403,6 @@ members = [
     "packages/nemo_platform",
     "packages/nmp_common",
     "services/core/auth",
-    "services/evaluator",
     "services/guardrails",
     "services/platform-seed",
 ]
@@ -421,7 +420,6 @@ name = "nemo-platform"
 nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
 nmp-auth = { source = "../../services/core/auth/src/nmp/core/auth", module = "nmp/core/auth", deps_group = "auth-service" }
 nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
-nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
 nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 """.lstrip(),
         encoding="utf-8",
@@ -430,14 +428,13 @@ nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_se
         """
 [project]
 name = "nmp-platform-seed"
-dependencies = ["nmp-common", "nmp-auth", "nmp-guardrails", "nmp-evaluator"]
+dependencies = ["nmp-common", "nmp-auth", "nmp-guardrails"]
 """.lstrip(),
         encoding="utf-8",
     )
     for package_path, package_name in [
         ("packages/nmp_common", "nmp-common"),
         ("services/core/auth", "nmp-auth"),
-        ("services/evaluator", "nmp-evaluator"),
         ("services/guardrails", "nmp-guardrails"),
     ]:
         pyproject_path = tmp_path / package_path / "pyproject.toml"
@@ -461,7 +458,6 @@ dependencies = []
         "nmp-common",
         "nmp-auth",
         "nmp-guardrails",
-        "nmp-evaluator",
     ]
 
 

@@ -2,7 +2,7 @@
 #
 # WHY THIS FILE EXISTS INSTEAD OF pyproject.toml
 # -----------------------------------------------
-# nvidia-nat requires pymilvus>=2.6, which conflicts with nmp-evaluator's
+# nvidia-nat requires pymilvus>=2.6, which previously conflicted with the legacy evaluator service's
 # requirement of pymilvus==2.4.6 in the NeMo Platform workspace uv.lock. This means
 # nvidia-nat cannot be added as a workspace dependency.
 #
