@@ -48,7 +48,7 @@ Homepage = "https://docs.nvidia.com/nemo/microservices/latest/about/index.html"
 
 [project.optional-dependencies]
 aiohttp = ["aiohttp", "httpx_aiohttp>=0.1.9"]
-evaluator = [
+nemo-evaluator-sdk = [
   "pydantic>=2.10.6",
   "jinja2>=3.1.6",
   "jsonschema>=4.23.0",

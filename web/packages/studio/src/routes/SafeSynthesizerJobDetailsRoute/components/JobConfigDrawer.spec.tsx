@@ -3,7 +3,7 @@
 
 import { MockToastProvider } from '@nemo/common/src/tests/MockToastProvider';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import { type SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import { type SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { JobConfigDrawer } from '@studio/routes/SafeSynthesizerJobDetailsRoute/components/JobConfigDrawer';
 import { render, screen } from '@testing-library/react';

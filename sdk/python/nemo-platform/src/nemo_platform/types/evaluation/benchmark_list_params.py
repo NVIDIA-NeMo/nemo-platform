@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+from typing import Dict
 from typing_extensions import Literal, TypedDict
 
 from .fileset_ref import FilesetRef
@@ -73,6 +74,13 @@ class Filter(TypedDict, total=False):
 
     description: str
     """Filter benchmarks by description."""
+
+    labels: Dict[str, str]
+    """Filter by labels.
+
+    Address an individual label as a sub-path, e.g.
+    filter[labels.eval_category]=agentic.
+    """
 
     name: str
     """Filter benchmarks by name."""

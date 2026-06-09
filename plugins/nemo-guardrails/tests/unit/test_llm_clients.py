@@ -4,16 +4,17 @@
 """Unit tests for request-scoped LLM client header plumbing."""
 
 from typing import Any, Protocol, cast
+from unittest.mock import MagicMock
 
 import pytest
 from nemo_guardrails_plugin import llm_clients
 from nemo_guardrails_plugin.llm_clients import (
     build_header_aware_chat_nvidia,
-    build_platform_headers,
     get_request_headers,
     platform_headers_context,
     register_header_aware_nim_provider,
 )
+from nemo_platform_plugin.sdk_provider import get_forwarding_headers
 from nemoguardrails.llm.models import langchain_initializer
 
 
@@ -44,36 +45,46 @@ def assert_and_get_header_aware_client(client: object) -> HeaderAwareClientForTe
     return cast(HeaderAwareClientForTest, client)
 
 
-class TestBuildPlatformHeaders:
-    def test_delegates_to_downstream_service_header_builder(self, monkeypatch) -> None:
-        captured: dict[str, str] = {}
+def _make_fake_sdk(**custom_headers: str) -> MagicMock:
+    """Build a mock SDK with the given ``_custom_headers``."""
+    sdk = MagicMock()
+    sdk._custom_headers = custom_headers
+    return sdk
 
-        def _fake_build(service_name: str) -> dict[str, str]:
-            captured["service_name"] = service_name
-            return {"X-NMP-Principal-Id": f"service:{service_name}", "traceparent": "00-platform"}
 
-        monkeypatch.setattr("nemo_guardrails_plugin.llm_clients.build_downstream_service_headers", _fake_build)
-
-        assert build_platform_headers("guardrails-test") == {
+class TestGetForwardingHeaders:
+    def test_returns_custom_headers_from_sdk(self) -> None:
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
+        assert get_forwarding_headers(sdk) == {
             "X-NMP-Principal-Id": "service:guardrails-test",
             "traceparent": "00-platform",
         }
-        assert captured == {"service_name": "guardrails-test"}
+
+    def test_returns_empty_for_sdk_with_no_custom_headers(self) -> None:
+        sdk = _make_fake_sdk()
+        assert get_forwarding_headers(sdk) == {}
 
 
 class TestRequestHeadersContext:
     def test_defaults_to_empty_headers(self) -> None:
         assert get_request_headers() == {}
 
-    def test_sets_platform_headers_and_resets_after_exit(self, monkeypatch) -> None:
-        def _fake_build(service_name: str) -> dict[str, str]:
-            return {"X-NMP-Principal-Id": f"service:{service_name}", "traceparent": "00-platform"}
-
-        monkeypatch.setattr("nemo_guardrails_plugin.llm_clients.build_downstream_service_headers", _fake_build)
+    def test_sets_platform_headers_and_resets_after_exit(self) -> None:
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
 
         assert get_request_headers() == {}
 
-        with platform_headers_context("guardrails-test"):
+        with platform_headers_context(sdk):
             assert get_request_headers() == {
                 "traceparent": "00-platform",
                 "X-NMP-Principal-Id": "service:guardrails-test",
@@ -81,16 +92,14 @@ class TestRequestHeadersContext:
 
         assert get_request_headers() == {}
 
-    def test_nested_contexts_restore_previous_headers(self, monkeypatch) -> None:
-        def _fake_build(service_name: str) -> dict[str, str]:
-            return {"traceparent": service_name}
+    def test_nested_contexts_restore_previous_headers(self) -> None:
+        outer_sdk = _make_fake_sdk(traceparent="outer")
+        inner_sdk = _make_fake_sdk(traceparent="inner")
 
-        monkeypatch.setattr("nemo_guardrails_plugin.llm_clients.build_downstream_service_headers", _fake_build)
-
-        with platform_headers_context("outer"):
+        with platform_headers_context(outer_sdk):
             assert get_request_headers() == {"traceparent": "outer"}
 
-            with platform_headers_context("inner"):
+            with platform_headers_context(inner_sdk):
                 assert get_request_headers() == {"traceparent": "inner"}
 
             assert get_request_headers() == {"traceparent": "outer"}
@@ -109,10 +118,6 @@ class TestHeaderAwareChatNVIDIA:
                 return None, None, self.default_headers
 
         monkeypatch.setattr("nemo_guardrails_plugin.llm_clients._load_chat_nvidia_class", lambda: FakeChatNVIDIA)
-        monkeypatch.setattr(
-            "nemo_guardrails_plugin.llm_clients.build_downstream_service_headers",
-            lambda service_name: {"X-NMP-Principal-Id": f"service:{service_name}", "traceparent": "00-platform"},
-        )
 
         client = assert_and_get_header_aware_client(
             build_header_aware_chat_nvidia(
@@ -124,7 +129,13 @@ class TestHeaderAwareChatNVIDIA:
         assert client.model == "default/safety"
         assert client.default_headers == {"X-Static": "yes"}
 
-        with platform_headers_context("guardrails-test"):
+        sdk = _make_fake_sdk(
+            **{
+                "X-NMP-Principal-Id": "service:guardrails-test",
+                "traceparent": "00-platform",
+            }
+        )
+        with platform_headers_context(sdk):
             _inputs, _payload, headers = client._prepare_inputs_and_payload([])
             assert headers == {
                 "X-Static": "yes",
@@ -145,10 +156,6 @@ class TestHeaderAwareChatNVIDIA:
                 return "inputs", "payload", dict(self.default_headers or {})
 
         monkeypatch.setattr("nemo_guardrails_plugin.llm_clients._load_chat_nvidia_class", lambda: FakeChatNVIDIA)
-        monkeypatch.setattr(
-            "nemo_guardrails_plugin.llm_clients.build_downstream_service_headers",
-            lambda service_name: {"X-NMP-Principal-Id": f"service:{service_name}"},
-        )
 
         client = assert_and_get_header_aware_client(
             build_header_aware_chat_nvidia(
@@ -157,7 +164,8 @@ class TestHeaderAwareChatNVIDIA:
             )
         )
 
-        with platform_headers_context("guardrails-test"):
+        sdk = _make_fake_sdk(**{"X-NMP-Principal-Id": "service:guardrails-test"})
+        with platform_headers_context(sdk):
             _inputs, _payload, headers = client._prepare_inputs_and_payload([])
 
         assert headers == {

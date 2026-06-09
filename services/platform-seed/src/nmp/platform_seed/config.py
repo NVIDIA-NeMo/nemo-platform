@@ -32,16 +32,11 @@ class PlatformSeedConfig(BaseSettings):
         description="Seed auth role bindings",
     )
     guardrails_enabled: bool = Field(default=True, description="Seed guardrail configs from config store")
-    evaluator_enabled: bool = Field(default=True, description="Register system metrics and benchmarks")
     model_provider_enabled: bool = Field(default=True, description="Seed the default nvidia-build model provider")
 
     guardrails_config_store_path: Path = Field(
         default_factory=lambda: Path(os.getenv("CONFIG_STORE_PATH", "/dev/null")),
         description="Path to guardrails config store directory",
-    )
-    evaluator_recreate_existing: bool = Field(
-        default=False,
-        description="Recreate/replace existing system metrics and benchmarks",
     )
     wait_for_ready_enabled: bool = Field(
         default=True,
