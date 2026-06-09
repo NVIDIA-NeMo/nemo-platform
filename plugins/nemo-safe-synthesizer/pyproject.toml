@@ -13,7 +13,6 @@ dependencies = [
     "nemo-platform",
     "nemo-platform-plugin",
     "nemo-safe-synthesizer==0.1.1",
-    "nmp-common",
     "pydantic[email]>=2.9.2",
     "pydantic-settings>=2.2.1",
     "python-multipart~=0.0.9",
@@ -54,36 +53,6 @@ nemo-platform-plugin = [
   "typer>=0.20.0,<0.26",
 ]
 
-# Generated from [tool.bundle-package]; do not edit by hand.
-nmp-common = [
-  "aiofiles>=24.1.0",
-  "base58>=2.1.1",
-  "pydantic>=2.10.3",
-  "pydantic-settings>=2.8.1",
-  "fastapi[standard]>=0.115.4",
-  "lark>=1.1.0",
-  "nemo-platform-plugin",
-  "pyyaml>=6.0.2",
-  "sqlalchemy>=2.0.0",
-  "huggingface-hub>=1.0.1,<2.0.0",
-  "hvac>=2.3.0",
-  "kubernetes>=30.1.0",
-  "prometheus-fastapi-instrumentator>=7.1.0",
-  "opentelemetry-exporter-prometheus>=0.59b0",
-  "opentelemetry-processor-baggage>=0.59b0",
-  "opentelemetry-instrumentation-fastapi>=0.59b0",
-  "opentelemetry-instrumentation-system-metrics>=0.59b0",
-  "opentelemetry-instrumentation-sqlalchemy>=0.59b0",
-  "opentelemetry-instrumentation-httpx>=0.59b0",
-  "opentelemetry-exporter-otlp-proto-http>=1.38.0",
-  "opentelemetry-exporter-otlp-proto-grpc>=1.38.0",
-  "opentelemetry-sdk>=1.38.0",
-  "prometheus-client>=0.23.0",
-  "structlog>=24.1.0",
-  "nvidia-ml-py>=13.0.0",
-  "pyjwt[crypto]>=2.12.0",
-]
-
 [build-system]
 requires = ["hatchling", "nmp-build-tools"]
 build-backend = "hatchling.build"
@@ -101,7 +70,6 @@ cache-keys = [{ file = "pyproject.toml" }]
 nemo-platform = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
-nmp-common = { workspace = true }
 nmp-build-tools = { workspace = true }
 
 [tool.pytest.ini_options]
@@ -119,5 +87,4 @@ markers = [
 [tool.nemo.openapi]
 
 [tool.bundle-package]
-nmp-common = { source = "../../packages/nmp_common/src/nmp/common", module = "nmp/common" }
 nemo-platform-plugin = { source = "../../packages/nemo_platform_plugin/src/nemo_platform_plugin", module = "nemo_platform_plugin" }
