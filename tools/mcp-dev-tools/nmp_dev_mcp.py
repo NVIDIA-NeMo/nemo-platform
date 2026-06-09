@@ -790,39 +790,34 @@ def create_server(working_dir: str | None = None) -> FastMCP:
 
     # === DOCS MAKE TARGET OPERATIONS ===
 
-    @server.tool(description="Run a docs Makefile target from the docs/ directory")
+    @server.tool(
+        description="Run a Fern docs Makefile target (docs-*) from the repo root"
+    )
     async def make_docs(target: str) -> dict[str, Any]:
         """
-        Run a make target from the docs/ subdirectory (equivalent to `cd docs && make <target>`).
+        Run a Fern docs make target from the repo root (equivalent to `make <target>`).
+
+        The docs site is built with Fern; targets live in the root Makefile.
 
         Args:
             target: Make target name. Allowed targets:
-                   Build: html, html-fast, publish, clean, env
-                   Serve: live, live-fast, test-serve
-                   Quality: linkcheck, lint-python
-                   Utility: replace-substitutions, sync, help
+                   Setup: docs-deps, docs-login
+                   Serve: docs
+                   Quality: docs-check, docs-broken-links, docs-fix-links
+                   Publish: docs-preview, docs-publish
 
         Returns:
             Dictionary with make command results
         """
         allowed_docs_targets = {
-            # Build
-            "html",
-            "html-fast",
-            "publish",
-            "clean",
-            "env",
-            # Serve
-            "live",
-            "live-fast",
-            "test-serve",
-            # Quality
-            "linkcheck",
-            "lint-python",
-            # Utility
-            "replace-substitutions",
-            "sync",
-            "help",
+            "docs-deps",
+            "docs-login",
+            "docs",
+            "docs-check",
+            "docs-broken-links",
+            "docs-fix-links",
+            "docs-preview",
+            "docs-publish",
         }
 
         if target not in allowed_docs_targets:
@@ -831,7 +826,7 @@ def create_server(working_dir: str | None = None) -> FastMCP:
                 "error": f"Target '{target}' not in allowlist. Allowed: {sorted(allowed_docs_targets)}",
             }
 
-        return run_command(["make", "-C", "docs", target], timeout=600)
+        return run_command(["make", target], timeout=600)
 
     return server
 

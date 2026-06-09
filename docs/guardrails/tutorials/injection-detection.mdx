@@ -1,0 +1,310 @@
+---
+title: "Detecting Injection Attacks with Guardrails"
+description: ""
+---
+
+
+<a id="guardrails-injection-detection"></a>
+
+Detect potential exploitation attempts (such as code injection, cross-site scripting, SQL injection, and template injection) using NeMo Platform.
+
+## About Injection Detection
+
+Injection detection is primarily intended for agentic systems as part of a defense-in-depth strategy.
+
+The first part of injection detection is [YARA rules](https://yara.readthedocs.io/en/stable/index.html).
+A YARA rule specifies a set of strings (text or binary patterns) to match and a Boolean expression that specifies the rule logic.
+YARA rules are familiar to many security teams and are easy to audit.
+
+The second part of injection detection is choosing an action when a rule is triggered.
+You can choose to _reject_ the response and return a refusal such as:
+"I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of \{detections}."
+Rejecting the output is the safest action and most appropriate for production deployments.
+As an alternative, you can _omit_ the triggering text (masks the offending content).
+
+## About the Tutorial
+
+This tutorial demonstrates how to configure basic YARA rules that are part of the NeMo Guardrails toolkit.
+You can view the default rules in the [yara_rules directory](https://github.com/NVIDIA-NeMo/Guardrails/tree/develop/nemoguardrails/library/injection_detection/yara_rules).
+The default rules support SQL injection, cross-site scripting (XSS), Jinja template injection, and Python code that uses shells, networking, and more.
+
+For the main model, this tutorial uses the [Llama-3.1-8B-Instruct](https://build.nvidia.com/meta/llama-3_1-8b-instruct) NIM.
+
+## Prerequisites
+
+Before you begin:
+
+- You have access to a running NeMo Platform.
+- `NMP_BASE_URL` is set to the NeMo Platform base URL.
+- A `ModelProvider` is configured with an LLM provider. Follow [Setup](/documentation/get-started) if you haven't done this yet.
+
+This tutorial uses the following NIM, available on `build.nvidia.com`:
+
+- `main` model: `meta/llama-3.1-8b-instruct`
+
+---
+
+## Step 1: Configure the Client
+
+Instantiate the platform client.
+
+```python
+import os
+from nemo_platform import NeMoPlatform, ConflictError
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+```
+
+---
+
+## Step 2: Create a Guardrail Configuration
+
+This config enables injection detection and applies it to model output.
+
+```python
+guardrails_config = {
+    "rails": {
+        "config": {
+            "injection_detection": {
+                "injections": ["code", "sqli", "template", "xss"],
+                "action": "reject",
+            }
+        },
+        "output": {"flows": ["injection detection"]},
+    },
+}
+
+config_name = "injection-detection-config"
+try:
+    config = client.guardrail.configs.create(
+        name=config_name,
+        description="Injection detection guardrails",
+        data=guardrails_config,
+    )
+except ConflictError:
+    print(f"Config {config_name} already exists, continuing...")
+```
+
+The `rails.config.injection_detection` field configures how to apply the injection detection rules. It supports the following fields:
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `injections` | list of strings | Yes | List of injection categories to detect (e.g., `"code"`, `"sqli"`, `"template"`, `"xss"`) |
+| `action` | string | Yes | Action to take when an injection is detected: `"reject"` (block and return refusal) or `"omit"` (mask the offending content) |
+| `yara_rules` | object | No | Custom YARA rules as key-value pairs, where the key is the rule name and the value is the YARA rule definition |
+
+---
+
+## Step 3: Create a VirtualModel
+
+Create a VirtualModel that routes inference through the guardrails middleware. Since injection detection uses output rails only, only `response_middleware` is needed.
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+nemo inference virtual-models create guarded-injection-detect \
+  --default-model-entity default/meta-llama-3-1-8b-instruct \
+  --response-middleware '[{"name":"nemo-guardrails","config_type":"guardrail_config","config_id":"default/injection-detection-config"}]'
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+client.inference.virtual_models.create(
+    name="guarded-injection-detect",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/injection-detection-config",
+        }
+    ],
+)
+```
+
+</Tab>
+
+</Tabs>
+---
+
+## Step 4: Verify Blocked Content
+
+Get a pre-configured OpenAI client from the SDK and send a request for Python code that uses networking packages, which is likely to trigger injection detection:
+
+```python
+oai_client = client.models.get_openai_client()
+
+response = oai_client.chat.completions.create(
+    model="default/guarded-injection-detect",
+    messages=[
+        {
+            "role": "user",
+            "content": "Write a Python script that uses requests and urllib to fetch weather data.",
+        }
+    ],
+    max_tokens=200,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-6e6ee35f-87be-4372-8f3d-f4f0c61f51db",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of code."
+      },
+      "finish_reason": "content_filter"
+    }
+  ]
+}
+```
+
+</Accordion>
+---
+
+## Step 5: Verify Allowed Content
+
+Send a safe request and confirm you receive a normal response:
+
+```python
+response = oai_client.chat.completions.create(
+    model="default/guarded-injection-detect",
+    messages=[
+        {
+            "role": "user",
+            "content": "Tell me about Cape Hatteras National Seashore in 50 words or less.",
+        }
+    ],
+    max_tokens=100,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-3f3f3d2e-2caa-4f89-9a46-8c2b2d0b1f8c",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "Cape Hatteras National Seashore protects barrier islands, beaches, and lighthouses along North Carolina's Outer Banks."
+      },
+      "finish_reason": "stop"
+    }
+  ]
+}
+```
+
+</Accordion>
+---
+
+## Optional: Specify Inline Rules
+
+Provide custom YARA rules inline. The example below performs a case-insensitive check for the word "Ethernet" and rejects the response if it appears.
+
+```python
+inline_rules_config = client.guardrail.configs.create(
+    name="injection-detection-inline-config",
+    description="Injection detection with inline YARA rules",
+    data={
+        "rails": {
+            "config": {
+                "injection_detection": {
+                    "injections": ["reject_ethernet"],
+                    "yara_rules": {
+                        "reject_ethernet": 'rule reject_ethernet {\n strings:\n $string = "ethernet" nocase\n condition:\n $string\n}'
+                    },
+                    "action": "reject",
+                }
+            },
+            "output": {"flows": ["injection detection"]},
+        },
+    },
+)
+```
+
+Create a VirtualModel for the inline config:
+
+```python
+client.inference.virtual_models.create(
+    name="guarded-injection-inline",
+    default_model_entity="default/meta-llama-3-1-8b-instruct",
+    response_middleware=[
+        {
+            "name": "nemo-guardrails",
+            "config_type": "guardrail_config",
+            "config_id": "default/injection-detection-inline-config",
+        }
+    ],
+)
+```
+
+Send a request that contains the word "ethernet", which triggers the rule:
+
+```python
+response = oai_client.chat.completions.create(
+    model="default/guarded-injection-inline",
+    messages=[{"role": "user", "content": "Explain Ethernet headers."}],
+    max_tokens=100,
+)
+
+print(response.model_dump_json(indent=2))
+```
+
+<Accordion title="Example Response">
+
+```json
+{
+  "id": "chatcmpl-9b2c6b21-7f5f-4a3c-9c77-2a4b2e4b6b2a",
+  "object": "chat.completion",
+  "model": "meta/llama-3.1-8b-instruct",
+  "choices": [
+    {
+      "index": 0,
+      "message": {
+        "role": "assistant",
+        "content": "I'm sorry, the desired output triggered rule(s) designed to mitigate exploitation of reject_ethernet."
+      },
+      "finish_reason": "content_filter"
+    }
+  ]
+}
+```
+
+</Accordion>
+---
+
+## Cleanup
+
+```python
+client.inference.virtual_models.delete(name="guarded-injection-detect")
+client.guardrail.configs.delete(name=config_name)
+# Uncomment if Optional section was run:
+# client.inference.virtual_models.delete(name="guarded-injection-inline")
+# client.guardrail.configs.delete(name="injection-detection-inline-config")
+print("Cleanup complete")
+```
+
+---
