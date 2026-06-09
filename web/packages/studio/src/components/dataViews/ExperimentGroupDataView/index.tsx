@@ -96,6 +96,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     accessor('name', {
       header: 'Name',
       enableSorting: true,
+      meta: { title: false },
       size: 300,
       cell: ({ row }) => {
         const { name, summary } = row.original;
