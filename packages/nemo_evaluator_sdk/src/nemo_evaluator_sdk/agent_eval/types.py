@@ -70,7 +70,9 @@ class AgentEvalTask(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
     id: str
-    intent: str
+    intent: str = Field(
+        description="The user-facing intent of the task. It's not used as a context for an agent. Think of it as a description of the task."
+    )
     inputs: dict[str, Any]
     metrics: list[Metric] = Field(default_factory=list)
     views: dict[str, SemanticView] = Field(default_factory=dict)

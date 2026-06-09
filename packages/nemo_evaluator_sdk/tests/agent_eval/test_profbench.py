@@ -10,13 +10,16 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from nemo_evaluator_sdk.agent_eval import AgentEvaluator
-from nemo_evaluator_sdk.agent_eval.runtimes.codex import runtime as codex_runtime
+from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalTask, AgentEvaluator, AgentOutput
+from nemo_evaluator_sdk.agent_eval.benchmarks import (
+    AgentEvalBenchmarkEvaluationKind,
+    AgentEvalBenchmarkLoadConfig,
+)
 from nemo_evaluator_sdk.values import Model
 
 profbench = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.profbench")
 profbench_dashboard = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.dashboard")
-profbench_runner = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.runner")
+profbench_examples = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.examples")
 
 
 class _FakeUrlopenResponse:
@@ -77,6 +80,26 @@ def _stub_remote_profbench_source(monkeypatch: pytest.MonkeyPatch, body: str) ->
     return remote_source
 
 
+class _FakeLiveTarget:
+    async def run_tasks(self, tasks: list[AgentEvalTask], config: Any | None = None) -> list[AgentEvalAttempt]:
+        del config
+        return [
+            AgentEvalAttempt(id=f"{task.id}:generated", task_id=task.id, output=AgentOutput(text="Generated answer."))
+            for task in tasks
+        ]
+
+
+class _FakeProfBenchModelJudge:
+    def __init__(self, *, model: Model) -> None:
+        self.model = model
+
+    async def judge(self, request: Any) -> Any:
+        return profbench.ProfBenchJudgeDecision(
+            fulfilled=request.criterion_id.endswith("criterion-1"),
+            reason=f"judged {request.criterion_id}",
+        )
+
+
 def test_load_profbench_expands_tasks_attempts_and_line_index(tmp_path: Path) -> None:
     fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
 
@@ -94,6 +117,70 @@ def test_load_profbench_expands_tasks_attempts_and_line_index(tmp_path: Path) ->
     assert [criterion.id for criterion in metric.criteria] == ["pb-1:criterion-1", "pb-1:criterion-2"]
     assert metric.criteria[0].line_number == 1
     assert metric.criteria[0].json_path == "$.rubrics[0]"
+
+
+def test_profbench_benchmark_adapter_loads_stored_attempts(tmp_path: Path) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    benchmark = profbench.ProfBenchAgentEvalBenchmark()
+
+    bundle = benchmark.load(
+        AgentEvalBenchmarkLoadConfig(
+            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
+            source=fixture,
+            limit=1,
+            evidence_dir=tmp_path / "evidence",
+        )
+    )
+
+    assert bundle.evaluation_kind == AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS
+    assert len(bundle.tasks) == 1
+    assert bundle.attempts is not None
+    assert [attempt.metadata["model_id"] for attempt in bundle.attempts] == ["o3", "r1-0528", "grok4"]
+    assert bundle.metadata["benchmark"] == "ProfBench"
+
+
+def test_profbench_benchmark_adapter_loads_live_target_without_attempts(tmp_path: Path) -> None:
+    class FakeJudge:
+        async def judge(self, request: Any) -> Any:
+            return profbench.ProfBenchJudgeDecision(fulfilled=True, reason=f"judged {request.criterion_id}")
+
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    benchmark = profbench.ProfBenchAgentEvalBenchmark(judge_factory=FakeJudge)
+
+    bundle = benchmark.load(
+        AgentEvalBenchmarkLoadConfig(
+            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
+            source=fixture,
+            limit=1,
+            evidence_dir=tmp_path / "evidence",
+        )
+    )
+
+    assert bundle.evaluation_kind == AgentEvalBenchmarkEvaluationKind.LIVE_TARGET
+    assert len(bundle.tasks) == 1
+    assert bundle.attempts is None
+    metric = bundle.tasks[0].metrics[0]
+    assert isinstance(metric, profbench.ProfBenchRubricMetric)
+    assert isinstance(metric.judge, FakeJudge)
+    assert bundle.metadata["score_source"] == "live_target_and_live_judge"
+
+
+def test_profbench_benchmark_adapter_writes_custom_reports(tmp_path: Path) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    benchmark = profbench.ProfBenchAgentEvalBenchmark()
+    bundle = benchmark.load(
+        AgentEvalBenchmarkLoadConfig(
+            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
+            source=fixture,
+        )
+    )
+    result = AgentEvaluator().run_sync(tasks=bundle.tasks, attempts=bundle.attempts)
+
+    reports = benchmark.write_reports(result, tmp_path)
+
+    assert [path.name for path in reports.paths] == ["sdk-report.html", "report.html"]
+    assert (tmp_path / "sdk-report.html").is_file()
+    assert (tmp_path / "report.html").is_file()
 
 
 def test_profbench_baseline_scoring_creates_traceable_deductions(tmp_path: Path) -> None:
@@ -209,37 +296,115 @@ def test_profbench_example_writes_sdk_and_profbench_dashboards(tmp_path: Path) -
     assert not (tmp_path / "profbench-report.html").exists()
 
 
-def test_profbench_run_instance_id_has_expected_format() -> None:
-    run_instance_id = profbench_runner._new_profbench_run_instance_id()
-
-    assert re.fullmatch(r"\d{8}_\d{6}_\d{5}_[0-9a-f]{6}", run_instance_id)
+def test_profbench_examples_run_instance_id_has_expected_format() -> None:
+    assert re.fullmatch(r"\d{8}_\d{6}_\d{5}_[0-9a-f]{6}", profbench_examples._new_profbench_run_instance_id())
 
 
-def test_profbench_output_root_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    env_root = tmp_path / "env-root"
-    cli_root = tmp_path / "cli-root"
+def test_profbench_examples_parser_uses_short_runtime_names_and_agent_model() -> None:
+    docker_args = profbench_examples._parse_args(["docker", "--agent-model", "gpt-test"])
+    local_args = profbench_examples._parse_args(["local", "--agent-model", "gpt-5.5"])
 
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_OUTPUT_DIR", str(env_root))
+    assert docker_args.example == "docker"
+    assert docker_args.agent_model == "gpt-test"
+    assert not hasattr(docker_args, "target_model")
+    assert local_args.example == "local"
+    assert local_args.agent_model == "gpt-5.5"
 
-    assert profbench_runner._resolve_profbench_output_root(cli_root) == cli_root
-    assert profbench_runner._resolve_profbench_output_root() == env_root
+    with pytest.raises(SystemExit):
+        profbench_examples._parse_args(["docker-sandbox"])
+    with pytest.raises(SystemExit):
+        profbench_examples._parse_args(["local-codex"])
+    with pytest.raises(SystemExit):
+        profbench_examples._parse_args(["docker", "--target-model", "gpt-test"])
 
-    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_OUTPUT_DIR")
-    assert profbench_runner._resolve_profbench_output_root() == profbench_runner.DEFAULT_OUTPUT_DIR
 
+@pytest.mark.asyncio
+async def test_profbench_offline_example_function_writes_reports(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    run_instance_id = "20260608_162200_28290_40da8e"
+    output_root = tmp_path / "offline"
+    monkeypatch.setattr(profbench_examples, "_new_profbench_run_instance_id", lambda: run_instance_id)
 
-def test_profbench_output_dir_uses_run_then_mode_tree(tmp_path: Path) -> None:
-    run_instance_id = "20260604_154749_70985_82f7dd"
-
-    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "baseline") == (
-        tmp_path / run_instance_id / "baseline"
+    result, reports = await profbench_examples.run_offline_profbench_adapter_smoke(
+        output_dir=output_root,
+        run_id="offline-smoke",
+        source=fixture,
+        limit=1,
     )
-    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "live-candidate") == (
-        tmp_path / run_instance_id / "live-candidate"
+
+    assert result.summary.task_count == 1
+    assert result.summary.attempt_count == 3
+    assert [path.name for path in reports.paths] == ["sdk-report.html", "report.html"]
+    assert result.run_id == "offline-smoke"
+    assert result.output_dir == output_root / run_instance_id
+    assert (output_root / run_instance_id / "run.json").is_file()
+    assert (output_root / run_instance_id / "report.html").is_file()
+
+
+@pytest.mark.asyncio
+async def test_profbench_docker_example_function_uses_codex_runtime_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    run_instance_id = "20260608_162200_28290_40da8e"
+    output_root = tmp_path / "docker"
+
+    def fake_resolve_codex_target(*, runtime: Any, model: str | None, output_dir: Path) -> tuple[Any, str, str]:
+        assert runtime == profbench_examples.RuntimeChoice.DOCKER
+        assert model == "gpt-test"
+        assert output_dir == output_root / run_instance_id
+        return _FakeLiveTarget(), "codex_docker_cli_candidate_and_live_judge", "docker_cli"
+
+    monkeypatch.setattr(profbench_examples, "_new_profbench_run_instance_id", lambda: run_instance_id)
+    monkeypatch.setattr(profbench_examples, "resolve_codex_target", fake_resolve_codex_target)
+    monkeypatch.setattr(profbench_examples, "ProfBenchModelJudge", _FakeProfBenchModelJudge)
+
+    result, reports = await profbench_examples.run_docker_sandbox_profbench_live_candidate_smoke(
+        output_dir=output_root,
+        run_id="docker-smoke",
+        source=fixture,
+        limit=1,
+        agent_model="gpt-test",
     )
-    assert profbench_runner._profbench_output_dir(tmp_path, run_instance_id, "live-judge") == (
-        tmp_path / run_instance_id / "live-judge"
+
+    assert result.summary.task_count == 1
+    assert result.summary.attempt_count == 1
+    assert result.output_dir == output_root / run_instance_id
+    assert [path.name for path in reports.paths] == ["sdk-report.html", "report.html"]
+
+
+@pytest.mark.asyncio
+async def test_profbench_local_codex_example_function_uses_local_codex_runtime(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
+    run_instance_id = "20260608_162200_28290_40da8e"
+    output_root = tmp_path / "local"
+
+    def fake_resolve_codex_target(*, runtime: Any, model: str | None, output_dir: Path) -> tuple[Any, str, str]:
+        assert runtime == profbench_examples.RuntimeChoice.LOCAL
+        assert model == "gpt-5.5"
+        assert output_dir == output_root / run_instance_id
+        return _FakeLiveTarget(), "codex_cli_candidate_and_live_judge", "local_cli"
+
+    monkeypatch.setattr(profbench_examples, "_new_profbench_run_instance_id", lambda: run_instance_id)
+    monkeypatch.setattr(profbench_examples, "resolve_codex_target", fake_resolve_codex_target)
+    monkeypatch.setattr(profbench_examples, "ProfBenchModelJudge", _FakeProfBenchModelJudge)
+
+    result, reports = await profbench_examples.run_local_codex_profbench_live_candidate_smoke(
+        output_dir=output_root,
+        run_id="local-smoke",
+        source=fixture,
+        limit=1,
+        agent_model="gpt-5.5",
     )
+
+    assert result.summary.task_count == 1
+    assert result.summary.attempt_count == 1
+    assert result.output_dir == output_root / run_instance_id
+    assert [path.name for path in reports.paths] == ["sdk-report.html", "report.html"]
 
 
 def test_remote_profbench_source_is_saved_as_local_evidence(
@@ -269,197 +434,6 @@ def test_remote_profbench_source_is_saved_as_local_evidence(
     assert details is not None
     assert details.deductions[0].evidence[0].href().startswith("file://")
     assert not details.deductions[0].evidence[0].href().startswith("https://")
-
-
-def test_profbench_model_helpers_separate_evaluated_and_judge_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL_URL", "https://legacy.test/v1/chat/completions")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL", "legacy-model")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL", "https://evaluated.test/v1/chat/completions")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL", "evaluated-model")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL_URL", "https://judge.test/v1/chat/completions")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL", "judge-model")
-
-    evaluated_model = profbench_runner._evaluated_model()
-    judge_model = profbench_runner._judge_model()
-
-    assert evaluated_model.url == "https://evaluated.test/v1/chat/completions"
-    assert evaluated_model.name == "evaluated-model"
-    assert judge_model.url == "https://judge.test/v1/chat/completions"
-    assert judge_model.name == "judge-model"
-
-
-def test_profbench_model_helpers_preserve_legacy_shared_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL_URL", raising=False)
-    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_EVALUATED_MODEL", raising=False)
-    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL_URL", raising=False)
-    monkeypatch.delenv("NEMO_EVALUATOR_PROFBENCH_JUDGE_MODEL", raising=False)
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL_URL", "https://legacy.test/v1/chat/completions")
-    monkeypatch.setenv("NEMO_EVALUATOR_PROFBENCH_MODEL", "legacy-model")
-
-    evaluated_model = profbench_runner._evaluated_model()
-    judge_model = profbench_runner._judge_model()
-
-    assert evaluated_model.url == "https://legacy.test/v1/chat/completions"
-    assert evaluated_model.name == "legacy-model"
-    assert judge_model.url == "https://legacy.test/v1/chat/completions"
-    assert judge_model.name == "legacy-model"
-
-
-def test_profbench_live_candidate_target_selects_codex_runtime(tmp_path: Path) -> None:
-    target, params, score_source, effective_runtime = profbench_runner._live_candidate_target(
-        agent=profbench_runner.AgentChoice.CODEX,
-        agent_model="gpt-5",
-        runtime=codex_runtime.RuntimeChoice.LOCAL,
-        output_dir=tmp_path / "live-candidate",
-        env={"OPENAI_API_KEY": "sk-test-key"},
-    )
-
-    assert isinstance(target, codex_runtime.CodexCliAgentRuntime)
-    assert target._model == "gpt-5"
-    assert target._work_root == tmp_path / "live-candidate" / "evidence" / "codex"
-    assert params is None
-    assert score_source == "codex_cli_candidate_and_live_judge"
-    assert effective_runtime == codex_runtime.EffectiveCodexRuntime.LOCAL_CLI
-
-
-@pytest.mark.asyncio
-async def test_profbench_run_examples_reuses_one_run_folder_for_enabled_modes(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    run_instance_id = "20260604_154749_70985_82f7dd"
-    calls: list[tuple[str, int | None, Path, str]] = []
-
-    async def fake_baseline(*, limit: int | None, output_root: str | Path | None, run_instance_id: str | None) -> None:
-        assert output_root is not None
-        assert run_instance_id is not None
-        calls.append(("baseline", limit, Path(output_root), run_instance_id))
-
-    async def fake_live_judge(*, limit: int | None, output_root: str | Path | None, run_instance_id: str | None) -> None:
-        assert output_root is not None
-        assert run_instance_id is not None
-        calls.append(("live-judge", limit, Path(output_root), run_instance_id))
-
-    async def fake_live_candidate(
-        *,
-        limit: int | None,
-        output_root: str | Path | None,
-        run_instance_id: str | None,
-        agent: profbench_runner.AgentChoice,
-        agent_model: str | None,
-        runtime: codex_runtime.RuntimeChoice,
-    ) -> None:
-        assert output_root is not None
-        assert run_instance_id is not None
-        assert agent == profbench_runner.AgentChoice.CODEX
-        assert agent_model == "gpt-5"
-        assert runtime == codex_runtime.RuntimeChoice.LOCAL
-        calls.append(("live-candidate", limit, Path(output_root), run_instance_id))
-
-    monkeypatch.setattr(profbench_runner, "run_profbench_baseline_example", fake_baseline)
-    monkeypatch.setattr(profbench_runner, "run_profbench_live_judge_example", fake_live_judge)
-    monkeypatch.setattr(profbench_runner, "run_profbench_live_candidate_example", fake_live_candidate)
-
-    await profbench_runner.run_examples(
-        limit=1,
-        run_live_judge=True,
-        run_live_candidate=True,
-        output_root=tmp_path,
-        run_instance_id=run_instance_id,
-        agent=profbench_runner.AgentChoice.CODEX,
-        agent_model="gpt-5",
-        runtime=codex_runtime.RuntimeChoice.LOCAL,
-    )
-
-    assert calls == [
-        ("baseline", 1, tmp_path, run_instance_id),
-        ("live-judge", 1, tmp_path, run_instance_id),
-        ("live-candidate", 1, tmp_path, run_instance_id),
-    ]
-    assert (tmp_path / run_instance_id).is_dir()
-    assert not (tmp_path / run_instance_id / "baseline").exists()
-    assert not (tmp_path / run_instance_id / "live-judge").exists()
-    assert not (tmp_path / run_instance_id / "live-candidate").exists()
-
-
-@pytest.mark.asyncio
-async def test_profbench_baseline_example_writes_run_then_mode_output(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
-    remote_source = _stub_remote_profbench_source(monkeypatch, fixture.read_text(encoding="utf-8"))
-    run_instance_id = "20260601_175657_75909_573ed6"
-    monkeypatch.setattr(profbench_runner, "_profbench_source", lambda: remote_source)
-
-    await profbench_runner.run_profbench_baseline_example(
-        limit=1,
-        output_root=tmp_path,
-        run_instance_id=run_instance_id,
-    )
-
-    output_dir = tmp_path / run_instance_id / "baseline"
-    evidence_dir = output_dir / "evidence"
-    assert (output_dir / "summary.json").is_file()
-    assert (output_dir / "report.html").is_file()
-    assert (evidence_dir / "profbench-dataset.jsonl").is_file()
-    assert not (output_dir / "profbench-report.html").exists()
-    assert not (tmp_path / run_instance_id / "evidence" / "profbench-dataset.jsonl").exists()
-
-    run_payload = json.loads((output_dir / "run.json").read_text(encoding="utf-8"))
-    assert run_payload["run_id"] == f"{run_instance_id}-baseline"
-    assert run_payload["output_dir"] == str(output_dir)
-    assert run_payload["artifacts"]["results"] == "results.jsonl"
-
-
-@pytest.mark.asyncio
-async def test_profbench_live_judge_example_writes_mode_evidence_artifacts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
-    remote_source = _stub_remote_profbench_source(monkeypatch, fixture.read_text(encoding="utf-8"))
-    run_instance_id = "20260601_175657_75909_573ed6"
-
-    class FakeProfBenchModelJudge:
-        def __init__(self, model: Model) -> None:
-            self.model = model
-
-        async def judge(self, request: Any) -> Any:
-            return profbench.ProfBenchJudgeDecision(
-                fulfilled=request.criterion_id.endswith("criterion-1"),
-                reason=f"judged {request.criterion_id}",
-            )
-
-    monkeypatch.setattr(profbench_runner, "_profbench_source", lambda: remote_source)
-    monkeypatch.setattr(profbench_runner, "ProfBenchModelJudge", FakeProfBenchModelJudge)
-
-    await profbench_runner.run_profbench_live_judge_example(
-        limit=1,
-        output_root=tmp_path,
-        run_instance_id=run_instance_id,
-    )
-
-    output_dir = tmp_path / run_instance_id / "live-judge"
-    evidence_dir = output_dir / "evidence"
-    judge_artifacts = sorted(evidence_dir.glob("judge-*.json"))
-    assert (evidence_dir / "profbench-dataset.jsonl").is_file()
-    assert judge_artifacts
-    assert not list((tmp_path / run_instance_id / "evidence").glob("judge-*.json"))
-
-    result_payloads = [
-        json.loads(line) for line in (output_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
-    ]
-    first_judge_uri = next(
-        locator["uri"]
-        for result in result_payloads
-        for output in result["outputs"]
-        if output["name"] == profbench.PROFBENCH_DETAILS_OUTPUT
-        for criterion in output["value"]["criterion_scores"]
-        for locator in criterion["evidence"]
-        if locator["kind"] == "judge"
-    )
-    assert first_judge_uri.startswith(str(evidence_dir.resolve()))
-    assert Path(first_judge_uri).is_file()
-    assert profbench.EvidenceLocator(kind="judge", uri=first_judge_uri, line=1).href().startswith("file://")
-
 
 def test_profbench_judge_parser_accepts_embedded_json_and_yes_no_fallback() -> None:
     embedded = profbench._parse_yes_no_decision('```json\n{"fulfilled": true, "reason": "matched"}\n```')
