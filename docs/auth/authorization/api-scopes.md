@@ -27,7 +27,6 @@ Each API has a read and write scope. A token with an API-specific scope can only
 | Auth | `auth:read` | `auth:write` | `/apis/auth/` |
 | Data Designer | `data-designer:read` | `data-designer:write` | `/apis/data-designer/` |
 | Entities | `entities:read` | `entities:write` | `/apis/entities/` (internal — see note) |
-| Evaluation | `evaluation:read` | `evaluation:write` | `/apis/evaluation/` |
 | Files | `files:read` | `files:write` | `/apis/files/` |
 | Guardrails | `guardrails:read` | `guardrails:write` | `/apis/guardrails/` |
 | Inference | `inference:read` | `inference:write` | `/apis/inference-gateway/` |
@@ -61,8 +60,8 @@ nemo auth login
 # Read-only access to everything
 nemo auth login --scope "platform:read"
 
-# Only evaluation and models access
-nemo auth login --scope "evaluation:read evaluation:write models:read models:write"
+# Only files and models access
+nemo auth login --scope "files:read files:write models:read models:write"
 ```
 
 ## Two-Layer Authorization
@@ -110,8 +109,8 @@ The PDP distinguishes between OIDC standard scopes and platform scopes:
 
 - **CI/CD tokens** that should only read: `platform:read`
 - **Monitoring scripts** that should never modify resources: `platform:read`
-- **Evaluation-only pipelines**: `evaluation:read evaluation:write models:read`
 - **Data ingestion scripts**: `files:read files:write`
+- **Model catalog readers**: `models:read`
 - **Shared service accounts**: limit blast radius by restricting to only the areas needed
 
 ## Related

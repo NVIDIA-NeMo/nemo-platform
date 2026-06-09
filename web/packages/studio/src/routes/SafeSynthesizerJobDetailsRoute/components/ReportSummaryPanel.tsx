@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Dial } from '@nemo/common/src/components/Dial';
-import { SafeSynthesizerSummary } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import { SafeSynthesizerSummary } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { Button, Flex, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { getSafeSynthesizerJobReportRoute } from '@studio/routes/utils';

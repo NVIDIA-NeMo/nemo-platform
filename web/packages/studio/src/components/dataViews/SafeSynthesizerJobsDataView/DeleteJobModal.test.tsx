@@ -3,7 +3,7 @@
 
 import { ToastProvider } from '@nemo/common/src/providers/toast/ToastProvider';
 import { useJobsDeleteJob } from '@nemo/sdk/generated/platform/api';
-import { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

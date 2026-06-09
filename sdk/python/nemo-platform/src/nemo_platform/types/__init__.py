@@ -20,12 +20,10 @@ from __future__ import annotations
 from .shared import (
     ModelSpec as ModelSpec,
     MoEConfig as MoEConfig,
-    FieldError as FieldError,
     PromptData as PromptData,
     AuthContext as AuthContext,
     MambaConfig as MambaConfig,
     BackendFormat as BackendFormat,
-    ErrorResponse as ErrorResponse,
     DatetimeFilter as DatetimeFilter,
     DeleteResponse as DeleteResponse,
     FinetuningType as FinetuningType,

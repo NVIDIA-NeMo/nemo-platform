@@ -395,10 +395,16 @@ jobs:
     name: Assemble release bundle
     needs: [plan-release, build-sdks]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
+      # Selects the consumer's fetch path: nightly = Actions artifact, rc/stable = GitHub Release asset.
+      source: ${{ inputs.cadence == 'nightly' && 'artifact' || 'release' }}
       bundle_artifact_id: ${{ steps.upload-release-bundle.outputs.artifact-id }}
       bundle_artifact_name: release-bundle-${{ needs.plan-release.outputs.release_label }}
       bundle_artifact_digest: ${{ steps.upload-release-bundle.outputs.artifact-digest }}
+      release_tag: ${{ steps.upload-release.outputs.release_tag }}
+      release_checksums_digest: ${{ steps.upload-release.outputs.checksums_digest }}
     steps:
       - name: Checkout workflow code
         uses: actions/checkout@v6
@@ -443,14 +449,59 @@ jobs:
           cd release-bundle
           sha256sum -c checksums.txt
 
-      - name: Upload release bundle
+      # Nightly: hand off via an Actions artifact (tagless, disposable), unchanged.
+      - name: Upload release bundle artifact
         id: upload-release-bundle
+        if: inputs.cadence == 'nightly'
         uses: actions/upload-artifact@v6
         with:
           name: release-bundle-${{ needs.plan-release.outputs.release_label }}
           path: release-bundle/
           if-no-files-found: error
           overwrite: true
+
+      # RC/stable: attach each artifact as its own asset on the tag reserve-release-tag pushed, so
+      # users can grab a single file (and, later, just the Helm chart) instead of one opaque blob.
+      - name: Upload release bundle to release
+        id: upload-release
+        if: inputs.cadence != 'nightly'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.plan-release.outputs.release_tag }}
+          CADENCE: ${{ inputs.cadence }}
+        run: |
+          set -euo pipefail
+
+          [[ -n "${RELEASE_TAG}" ]] || { echo "::error::release_tag is required for ${CADENCE} releases"; exit 1; }
+
+          # checksums.txt covers release-manifest.json + every wheel, so its digest anchors the
+          # whole release. The dispatch carries it; the consumer re-verifies with sha256sum -c.
+          checksums_digest="$(sha256sum release-bundle/checksums.txt | cut -d' ' -f1)"
+
+          channel="Stable"
+          prerelease=()
+          if [[ "${CADENCE}" == "rc" ]]; then
+            channel="Release Candidate"
+            prerelease=(--prerelease)
+          fi
+
+          # Upload each artifact as its own asset. GitHub flattens asset names to basenames; the
+          # consumer restores wheels/ from the manifest paths. Re-run model: if a release already
+          # exists for this tag the command fails ("a release with the same tag name already
+          # exists"); delete it (gh release delete "${RELEASE_TAG}") to redo.
+          gh release create "${RELEASE_TAG}" \
+            release-bundle/release-manifest.json \
+            release-bundle/checksums.txt \
+            release-bundle/wheels/*.whl \
+            --title "${RELEASE_TAG}" \
+            --notes "Automated ${channel} build of NeMo Platform ${RELEASE_TAG}." \
+            "${prerelease[@]}"
+
+          {
+            printf 'release_tag=%s\n' "${RELEASE_TAG}"
+            printf 'checksums_digest=%s\n' "${checksums_digest}"
+          } >>"${GITHUB_OUTPUT}"
 
   dispatch-release-bundle:
     name: Dispatch release bundle
@@ -463,41 +514,68 @@ jobs:
           GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
           BUNDLE_REPO: ${{ github.repository }}
+          SOURCE: ${{ needs.assemble-release-bundle.outputs.source }}
           BUNDLE_WORKFLOW_RUN_ID: ${{ github.run_id }}
           BUNDLE_WORKFLOW_RUN_ATTEMPT: ${{ github.run_attempt }}
           BUNDLE_ARTIFACT_ID: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_id }}
           BUNDLE_ARTIFACT_NAME: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_name }}
           BUNDLE_ARTIFACT_DIGEST: ${{ needs.assemble-release-bundle.outputs.bundle_artifact_digest }}
+          RELEASE_TAG: ${{ needs.assemble-release-bundle.outputs.release_tag }}
+          RELEASE_CHECKSUMS_DIGEST: ${{ needs.assemble-release-bundle.outputs.release_checksums_digest }}
         run: |
           set -euo pipefail
 
           [[ -n "${GH_TOKEN:-}" ]] || { echo "::error::CI_DISPATCH_TOKEN must be set"; exit 1; }
           [[ -n "${DISPATCH_REPO:-}" ]] || { echo "::error::CI_DISPATCH_REPO must be set"; exit 1; }
           [[ -n "${BUNDLE_REPO:-}" ]] || { echo "::error::bundle repo is required"; exit 1; }
-          [[ -n "${BUNDLE_WORKFLOW_RUN_ID:-}" ]] || { echo "::error::bundle workflow run id is required"; exit 1; }
-          [[ -n "${BUNDLE_WORKFLOW_RUN_ATTEMPT:-}" ]] || { echo "::error::bundle workflow run attempt is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_ID:-}" ]] || { echo "::error::bundle artifact id is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_NAME:-}" ]] || { echo "::error::bundle artifact name is required"; exit 1; }
-          [[ -n "${BUNDLE_ARTIFACT_DIGEST:-}" ]] || { echo "::error::bundle artifact digest is required"; exit 1; }
 
-          jq -n \
-            --arg bundle_repo "${BUNDLE_REPO}" \
-            --arg bundle_workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
-            --arg bundle_workflow_run_attempt "${BUNDLE_WORKFLOW_RUN_ATTEMPT}" \
-            --arg bundle_artifact_id "${BUNDLE_ARTIFACT_ID}" \
-            --arg bundle_artifact_name "${BUNDLE_ARTIFACT_NAME}" \
-            --arg bundle_artifact_digest "${BUNDLE_ARTIFACT_DIGEST}" \
-            '{
-              event_type: "release-bundle-produced",
-              client_payload: {
-                bundle: {
-                  repo: $bundle_repo,
-                  workflow_run_id: $bundle_workflow_run_id,
-                  workflow_run_attempt: $bundle_workflow_run_attempt,
-                  artifact_id: $bundle_artifact_id,
-                  artifact_name: $bundle_artifact_name,
-                  artifact_digest: $bundle_artifact_digest
-                }
-              }
-            }' \
+          # assemble-release-bundle picks the storage backend by cadence (nightly -> Actions
+          # artifact, rc/stable -> GitHub Release asset) and reports it as `source`. The consumer
+          # uses this same field to fail-closed select its fetch path.
+          case "${SOURCE}" in
+            artifact)
+              [[ -n "${BUNDLE_ARTIFACT_ID:-}" ]] || { echo "::error::bundle artifact id is required"; exit 1; }
+              [[ -n "${BUNDLE_ARTIFACT_NAME:-}" ]] || { echo "::error::bundle artifact name is required"; exit 1; }
+              [[ -n "${BUNDLE_ARTIFACT_DIGEST:-}" ]] || { echo "::error::bundle artifact digest is required"; exit 1; }
+              bundle="$(jq -n \
+                --arg repo "${BUNDLE_REPO}" \
+                --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
+                --arg workflow_run_attempt "${BUNDLE_WORKFLOW_RUN_ATTEMPT}" \
+                --arg artifact_id "${BUNDLE_ARTIFACT_ID}" \
+                --arg artifact_name "${BUNDLE_ARTIFACT_NAME}" \
+                --arg artifact_digest "${BUNDLE_ARTIFACT_DIGEST}" \
+                '{
+                  source: "artifact",
+                  repo: $repo,
+                  workflow_run_id: $workflow_run_id,
+                  workflow_run_attempt: $workflow_run_attempt,
+                  artifact_id: $artifact_id,
+                  artifact_name: $artifact_name,
+                  artifact_digest: $artifact_digest
+                }')"
+              ;;
+            release)
+              [[ -n "${RELEASE_TAG:-}" ]] || { echo "::error::release tag is required"; exit 1; }
+              [[ -n "${RELEASE_CHECKSUMS_DIGEST:-}" ]] || { echo "::error::release checksums digest is required"; exit 1; }
+              bundle="$(jq -n \
+                --arg repo "${BUNDLE_REPO}" \
+                --arg workflow_run_id "${BUNDLE_WORKFLOW_RUN_ID}" \
+                --arg tag "${RELEASE_TAG}" \
+                --arg checksums_digest "${RELEASE_CHECKSUMS_DIGEST}" \
+                '{
+                  source: "release",
+                  repo: $repo,
+                  workflow_run_id: $workflow_run_id,
+                  tag: $tag,
+                  checksums_digest: $checksums_digest
+                }')"
+              ;;
+            *)
+              echo "::error::unknown bundle source: '${SOURCE}'"
+              exit 1
+              ;;
+          esac
+
+          jq -n --argjson bundle "${bundle}" \
+            '{event_type: "release-bundle-produced", client_payload: {bundle: $bundle}}' \
           | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -

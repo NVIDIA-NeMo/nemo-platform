@@ -16,13 +16,11 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from .model_spec import ModelSpec as ModelSpec
-from .field_error import FieldError as FieldError
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData
 from .auth_context import AuthContext as AuthContext
 from .mamba_config import MambaConfig as MambaConfig
 from .backend_format import BackendFormat as BackendFormat
-from .error_response import ErrorResponse as ErrorResponse
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .delete_response import DeleteResponse as DeleteResponse
 from .finetuning_type import FinetuningType as FinetuningType

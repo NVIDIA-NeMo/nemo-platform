@@ -3,11 +3,11 @@
 
 import { useJobLogs } from '@nemo/common/src/hooks/useJobLogs';
 import { PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
-import * as safeSynthesizerApi from '@nemo/sdk/vendored/safe-synthesizer/api';
+import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
 import {
   type SafeSynthesizerJob,
   type SafeSynthesizerSummary,
-} from '@nemo/sdk/vendored/safe-synthesizer/schema';
+} from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';

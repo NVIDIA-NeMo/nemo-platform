@@ -36,6 +36,9 @@ class InferenceParams(BaseModel):
     max_tokens: Optional[int] = None
     """Max tokens to generate"""
 
+    model: Optional[str] = None
+    """Model identifier"""
+
     stop: Optional[List[str]] = None
 
     temperature: Optional[float] = None
