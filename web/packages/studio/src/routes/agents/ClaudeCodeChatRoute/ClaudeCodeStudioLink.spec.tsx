@@ -37,6 +37,42 @@ describe('ClaudeCodeStudioLink', () => {
     ).toBe('/workspaces/default/customizations');
   });
 
+  it('maps legacy Studio entry URLs to the current workspace dashboard', () => {
+    expect(
+      getStudioInternalLinkTarget(
+        'http://localhost:8080/studio',
+        'http://ns.local.aire.nvidia.com:5173',
+        'default'
+      )
+    ).toBe('/workspaces/default/dashboard');
+  });
+
+  it('strips legacy Studio prefixes and rewrites stale workspaces', () => {
+    expect(
+      getStudioInternalLinkTarget(
+        'http://localhost:8080/studio/workspaces/danielleali/agents/spanish-translator?tab=chat-playground',
+        'http://ns.local.aire.nvidia.com:5173',
+        'default'
+      )
+    ).toBe('/workspaces/default/agents/spanish-translator?tab=chat-playground');
+  });
+
+  it('canonicalizes generated evaluation results links to the registered route', () => {
+    expect(
+      getStudioInternalLinkTarget('/workspaces/default/dashboard/evaluations/results', 'https://studio.test')
+    ).toBe('/workspaces/default/evaluation/results');
+    expect(
+      getStudioInternalLinkTarget(
+        'http://localhost:8080/workspaces/danielleali/dashboard/evaluation/results?status=complete',
+        'http://ns.local.aire.nvidia.com:5173',
+        'default'
+      )
+    ).toBe('/workspaces/default/evaluation/results?status=complete');
+    expect(
+      getStudioInternalLinkTarget('/workspaces/default/evaluations/results#latest', 'https://studio.test')
+    ).toBe('/workspaces/default/evaluation/results#latest');
+  });
+
   it('renders accepted Studio paths as router links', () => {
     render(
       <MemoryRouter>
