@@ -503,6 +503,55 @@ jobs:
         run: |
           ./opa test services/core/auth/src/nmp/core/auth/app/policies services/core/auth/src/nmp/core/auth/app/policy_tests services/core/auth/src/nmp/core/auth/assets/static-authz.yaml -v
 
+  require-nvskills:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require trusted NVSkills signature for skills changes
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          SIGNATURE_ACTOR: ${{ vars.NVSKILLS_SIGNATURE_PUSH_ACTOR || 'svc-nvskills-signing' }}
+          SIGNATURE_TITLE: ${{ vars.NVSKILLS_SIGNATURE_COMMIT_TITLE || 'Attach NVSkills validation signatures' }}
+          ONBOARDING_DOC: https://nvidia.atlassian.net/wiki/spaces/GAIT/pages/3483240468/Github+First+-+Outbound+Repos+Onboarding+doc+-+NVCARPS#Review-Internal-Pipeline-Logs
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner,
+              repo,
+              pull_number: pr.number,
+              per_page: 100,
+            });
+
+            const touchedSkills = files.some((file) => file.filename.startsWith('skills/'));
+            if (!touchedSkills) {
+              core.info('No files under skills/ changed.');
+              return;
+            }
+
+            const commit = await github.rest.repos.getCommit({
+              owner,
+              repo,
+              ref: pr.head.sha,
+            });
+
+            const actor = commit.data.author?.login || '';
+            const title = commit.data.commit.message.split('\n')[0];
+
+            const okActor = actor === process.env.SIGNATURE_ACTOR;
+            const okTitle = title.startsWith(process.env.SIGNATURE_TITLE);
+
+            if (!okActor || !okTitle) {
+              core.setFailed(
+                'Files under skills/ changed in this PR, but HEAD is not the trusted NVSkills signature commit. ' +
+                'Ask a maintainer/admin to comment /nvskills-ci. If new skills/ content was pushed after signing, rerun /nvskills-ci. ' +
+                `Expected HEAD GitHub author "${process.env.SIGNATURE_ACTOR}" and commit title prefix "${process.env.SIGNATURE_TITLE}". ` +
+                `See ${process.env.ONBOARDING_DOC}.`
+              );
+            }
+
   # Required-check pin: branch protection should require this final aggregate.
   # Skipped jobs count as pass so conditional jobs can remain optional.
   ci-status:
@@ -515,6 +564,7 @@ jobs:
       - python-unit-test-tools
       - python-unit-test
       - python-integration-test
+      - require-nvskills
       - wheel-build
       - wheel-test
       - python-e2e-test
