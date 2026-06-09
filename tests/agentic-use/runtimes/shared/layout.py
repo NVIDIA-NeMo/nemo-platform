@@ -45,7 +45,9 @@ def resolve_run_layout(
 ) -> AgenticRunLayout:
     """Resolve or create the on-disk layout for one task attempt."""
     if config is not None and config.output_dir is not None:
-        run_dir = Path(config.output_dir)
+        # Must be absolute: run_dir subpaths are used as Docker bind-mount sources,
+        # and Docker treats a relative `-v` source as a (slash-free) named volume.
+        run_dir = Path(config.output_dir).resolve()
     else:
         run_dir = new_run_dir(default_jobs_dir(shared), task.id)
 
