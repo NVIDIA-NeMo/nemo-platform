@@ -278,7 +278,6 @@ nemo-agents-example-calculator = [
 # Generated from [tool.bundle-package]; do not edit by hand.
 nemo-agents-plugin = [
   "nemo-platform-plugin",
-  "nmp-common",
   "nemo-agents-example-calculator",
   "nvidia-nat-core>=1.7.0,<1.8",
   "nvidia-nat-langchain>=1.7.0,<1.8",
@@ -298,7 +297,6 @@ nemo-anonymizer-plugin = [
   "nemo-anonymizer>=0.2.1",
   "data-designer==0.6.1",
   "data-designer-nemo",
-  "nmp-common",
   "httpx>=0.27",
   "fastapi",
   "pandas",
@@ -320,7 +318,6 @@ nemo-data-designer-plugin = [
   "nemo-platform-plugin",
   "data-designer==0.6.1",
   "data-designer-nemo",
-  "nmp-common",
   "httpx>=0.27",
   "fastapi",
   "pandas",
@@ -332,7 +329,6 @@ nemo-evaluator-plugin = [
   "nemo-evaluator-sdk",
   "nemo-platform-plugin",
   "nemo-platform-sdk",
-  "nmp-common",
   "pydantic>=2.10.6",
   "typer>=0.20.0",
 ]
@@ -387,7 +383,6 @@ nemo-safe-synthesizer-plugin = [
   "httpx>=0.27.2",
   "nemo-platform-plugin",
   "nemo-safe-synthesizer==0.1.1",
-  "nmp-common",
   "pydantic[email]>=2.9.2",
   "pydantic-settings>=2.2.1",
   "python-multipart~=0.0.9",
