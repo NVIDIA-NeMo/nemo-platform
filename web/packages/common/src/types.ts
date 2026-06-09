@@ -30,6 +30,13 @@ export enum FileFormat {
   PARQUET = 'parquet',
 }
 
+export const SUPPORTED_FILE_FORMATS: FileFormat[] = [
+  FileFormat.JSON,
+  FileFormat.JSONL,
+  FileFormat.CSV,
+  FileFormat.PARQUET,
+];
+
 /**
  * Enum for supported input file schema types
  */

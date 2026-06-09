@@ -9,10 +9,10 @@
  * files" count, and anywhere else we iterate `filesList` for schema purposes.
  *
  * The naive heuristic covers what the inference pipeline supports today
- * (`.json` / `.jsonl`). CSV / Parquet support is a separate ticket.
+ * (`.json` / `.jsonl` / `.csv` / `.parquet`).
  */
 
-const SCHEMA_ASSIGNABLE_EXTENSIONS = new Set(['json', 'jsonl']);
+const SCHEMA_ASSIGNABLE_EXTENSIONS = new Set(['json', 'jsonl', 'csv', 'parquet']);
 
 export function isSchemaAssignableFile(path: string): boolean {
   const ext = path.split('.').pop()?.toLowerCase();
