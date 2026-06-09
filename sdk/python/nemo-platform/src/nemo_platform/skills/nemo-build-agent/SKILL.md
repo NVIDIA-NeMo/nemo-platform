@@ -16,7 +16,7 @@ not-for:
   - nemo-try-agent (use to query a deployed agent)
   - nemo-setup (use to install the platform first)
   - superpowers:brainstorming (use for unrelated design work)
-compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands plus a single `lsof`/`curl` probe at pre-flight; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
+compatibility: nemo-platform >= 0.1.0; running platform (run nemo-setup first — uses `nemo services run`, no Docker); requires agents plugin installed; writes files to agents/; runs nemo CLI commands; defers platform-health probing to `nemo-status`; LangGraph + NAT under the hood; macOS or Linux; safe under sandbox.
 maturity: active
 license: Apache-2.0
 user-invocable: true
@@ -31,17 +31,21 @@ NeMo Platform optimizes LangGraph agents wrapped in NVIDIA NeMo Agent Toolkit (N
 
 ## Pre-flight
 
-1. Confirm the platform is up using `lsof` (ground truth) + `curl` against `/health/ready` (functional). If either fails, route to `nemo-setup` and stop. Do not trust `nemo services status` — it reports stale "running" from held locks after the process has died.
+1. Confirm the platform is up. Run `nemo-status`'s platform probe (canonical lsof + curl check) and stop if it reports `PLATFORM_DOWN` or `PLATFORM_WEDGED`; route to `nemo-setup` and return when it clears. Do not reimplement the probe here — `nemo-status` owns it so changes (new components, new ports) land in one place.
 
-   ```bash
-   lsof -iTCP:8080 -sTCP:LISTEN >/dev/null 2>&1 || { echo "PLATFORM_DOWN"; exit 1; }
-   curl -sS --connect-timeout 2 --max-time 5 http://localhost:8080/health/ready -o /dev/null -w "%{http_code}\n" 2>/dev/null | grep -q "^200$" || { echo "PLATFORM_WEDGED"; exit 1; }
-   ```
-
-2. Confirm a spec exists at `agents/$AGENT_NAME.spec.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
+2. Confirm a spec exists at `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. If missing, call `nemo-explore` then `nemo-spec`, then return.
 3. Confirm the agents plugin is loaded: `.venv/bin/nemo agents --help 2>&1 | grep -q "create"`. If the plugin is missing, report that explicitly; the user has not installed `plugins/nemo-agents` and the build cannot proceed.
 4. Read the spec. Extract: name, categories, tools, model, constraints, success criteria.
-5. Check for an existing deployment: `.venv/bin/nemo agents deployments list 2>/dev/null | grep -q "$AGENT_NAME"`. If the agent is already deployed, ask the user whether to skip (idempotent path) or redeploy.
+5. Confirm the canonical spec fileset exists. By convention the spec lives at `<workspace>/<agent-name>-spec#AGENT-SPEC.md` — there is no ref to thread through, just a one-shot presence check:
+
+   ```bash
+   nemo files filesets get "${AGENT_NAME}-spec" --workspace "${WORKSPACE:-default}" >/dev/null 2>&1 \
+     && echo "spec_fileset_ok" \
+     || { echo "spec_fileset_missing — run nemo-spec to upload before continuing"; exit 1; }
+   ```
+
+   If the fileset is missing, route back to `nemo-spec` and return when the upload succeeds.
+6. Check for an existing deployment: `.venv/bin/nemo agents deployments list 2>/dev/null | grep -q "$AGENT_NAME"`. If the agent is already deployed, ask the user whether to skip (idempotent path) or redeploy.
 
 ## Step 1: Scaffold and deploy
 
@@ -50,7 +54,8 @@ Write `agents/$AGENT_NAME.yml` from `references/templates/agent.yml`, substituti
 ```bash
 AGENT_NAME=<agent-name>            # set once; reused throughout this skill
 .venv/bin/nemo agents delete "$AGENT_NAME" 2>/dev/null || true
-.venv/bin/nemo agents create --name "$AGENT_NAME" --agent-config "agents/$AGENT_NAME.yml"
+.venv/bin/nemo agents create --name "$AGENT_NAME" \
+  --agent-config "agents/$AGENT_NAME.yml"
 .venv/bin/nemo agents deploy --agent "$AGENT_NAME"
 .venv/bin/nemo agents deployments wait --agent "$AGENT_NAME"
 ```
@@ -98,13 +103,13 @@ Data Designer (DD) is the platform's synthetic-data tool. It can produce any of:
 
 ### Procedure
 
-1. **Enumerate.** Read `agents/$AGENT_NAME.spec.md`. Surface to the user the full list of synthetic-data purposes this agent plausibly needs, based on the spec. Do not prescribe a count or shortlist; let the user pick freely from the catalog above (or add purposes you haven't anticipated).
+1. **Enumerate.** Read `agents/$AGENT_NAME-spec/AGENT-SPEC.md`. Surface to the user the full list of synthetic-data purposes this agent plausibly needs, based on the spec. Do not prescribe a count or shortlist; let the user pick freely from the catalog above (or add purposes you haven't anticipated).
 
 2. **Wait for picks.** Do not generate any DD config until the user has explicitly named which purposes they want. If the user says "you decide," default to: a knowledge base if the spec describes retrievable content, an eval dataset always, persona-grounded adversarial inputs if the spec lists safety constraints. Announce the defaults you chose.
 
 3. **Hand off per purpose.** For each chosen purpose, invoke the `data-designer` skill once. Pass it: the agent name, the purpose label (KB / eval / benchmark / persona / other), and the spec path. The DD skill is responsible for the config shape — this skill does not duplicate that logic.
 
-4. **Ground every config in the spec.** Each DD config MUST reference `agents/$AGENT_NAME.spec.md` for product context, categories, audience, and constraints. Do not redefine these inline. If the generated config inlines context, edit it to read from the spec instead — drift between agent definition and synthetic data is a reproducibility failure.
+4. **Ground every config in the spec.** Each DD config MUST reference `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for product context, categories, audience, and constraints. Do not redefine these inline. If the generated config inlines context, edit it to read from the spec instead — drift between agent definition and synthetic data is a reproducibility failure.
 
 5. **Run each config.** Use `.venv/bin/python agents/$AGENT_NAME.<purpose>.py` (or the CLI invocation once `nemo data-designer preview-local` lands in a release > 2.1.0). For larger jobs, submit via `nemo data-designer jobs create`.
 
@@ -131,7 +136,7 @@ NeMo Agent Toolkit (NAT) has first-class retrieval support:
 
 ### Retriever wiring procedure
 
-1. **Detect.** Scan `agents/$AGENT_NAME.spec.md` for tools whose names suggest retrieval: `*_search`, `*_lookup`, `query_*`, `find_*`, `rag_*`, or any tool the user described in `nemo-explore` as "the agent looks things up in X." Cross-reference against the filesets Step 3 produced.
+1. **Detect.** Scan `agents/$AGENT_NAME-spec/AGENT-SPEC.md` for tools whose names suggest retrieval: `*_search`, `*_lookup`, `query_*`, `find_*`, `rag_*`, or any tool the user described in `nemo-explore` as "the agent looks things up in X." Cross-reference against the filesets Step 3 produced.
 
 2. **Pair.** For each retrieval-style tool, identify which Step 3 fileset feeds it. If the spec lists `billing_kb_search` and Step 3 produced `billing-support-kb`, pair them. If a tool has no matching fileset, surface the gap to the user: "Your spec lists `billing_kb_search` but no KB fileset was generated. Generate one now (route to Step 3) or drop the tool from the agent?"
 
@@ -141,7 +146,8 @@ NeMo Agent Toolkit (NAT) has first-class retrieval support:
 
 ```bash
 .venv/bin/nemo agents undeploy --agent $AGENT_NAME
-.venv/bin/nemo agents create --name $AGENT_NAME --agent-config agents/$AGENT_NAME.yml
+.venv/bin/nemo agents create --name $AGENT_NAME \
+  --agent-config agents/$AGENT_NAME.yml
 .venv/bin/nemo agents deploy --agent $AGENT_NAME
 .venv/bin/nemo agents deployments wait --agent $AGENT_NAME
 ```
@@ -186,7 +192,8 @@ If the spec lists constraints, add a content-safety intercept to the YAML (see `
 
 ```bash
 .venv/bin/nemo agents undeploy --agent $AGENT_NAME
-.venv/bin/nemo agents create --name $AGENT_NAME --agent-config agents/$AGENT_NAME.yml
+.venv/bin/nemo agents create --name $AGENT_NAME \
+  --agent-config agents/$AGENT_NAME.yml
 .venv/bin/nemo agents deploy --agent $AGENT_NAME
 .venv/bin/nemo agents deployments wait --agent $AGENT_NAME
 ```

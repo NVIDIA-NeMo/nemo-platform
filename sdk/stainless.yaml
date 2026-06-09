@@ -1109,3 +1109,11 @@ resources:
       retrieve: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       update: put /apis/intake/v2/workspaces/{workspace}/experiments/{name}
       delete: delete /apis/intake/v2/workspaces/{workspace}/experiments/{name}
+    subresources:
+      sessions:
+        models:
+          experiment_session_filter: ExperimentSessionFilter
+          experiment_session_response: ExperimentSessionResponse
+          experiment_session_responses_page: ExperimentSessionResponsesPage
+        methods:
+          list: get /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions

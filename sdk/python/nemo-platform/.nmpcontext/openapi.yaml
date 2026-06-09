@@ -6299,6 +6299,71 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HTTPValidationError'
+  /apis/intake/v2/workspaces/{workspace}/experiments/{name}/sessions:
+    get:
+      tags:
+      - Experiments
+      summary: List Experiment Sessions
+      operationId: list_experiment_sessions_apis_intake_v2_workspaces__workspace__experiments__name__sessions_get
+      parameters:
+      - name: workspace
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Workspace
+      - name: name
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Name
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          description: Page number.
+          default: 1
+          title: Page
+        description: Page number.
+      - name: page_size
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 1000
+          minimum: 1
+          description: Page size.
+          default: 100
+          title: Page Size
+        description: Page size.
+      - in: query
+        name: filter
+        style: deepObject
+        required: false
+        explode: true
+        schema:
+          $ref: '#/components/schemas/ExperimentSessionFilter'
+        description: Filter sessions by test_case_id and status.
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ExperimentSessionResponsesPage'
+        '404':
+          description: Experiment not found
+        '503':
+          description: ClickHouse unavailable
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
   /apis/intake/v2/workspaces/{workspace}/ingest/atif:
     post:
       tags:
@@ -15360,6 +15425,122 @@ components:
       required:
       - data
       title: ExperimentResponsesPage
+    ExperimentSessionFilter:
+      additionalProperties: false
+      description: Filter for listing ExperimentSessions.
+      properties:
+        test_case_id:
+          description: Filter by producer-supplied test case id.
+          title: Test Case Id
+          type: string
+        status:
+          description: Filter by root-span status (success, error, cancelled, unknown).
+          title: Status
+          type: string
+      title: ExperimentSessionFilter
+      type: object
+    ExperimentSessionResponse:
+      properties:
+        workspace:
+          type: string
+          title: Workspace
+        experiment_name:
+          type: string
+          title: Experiment Name
+        session_id:
+          type: string
+          title: Session Id
+        test_case_id:
+          title: Test Case Id
+          description: Producer-supplied test case identifier; null when the producer
+            did not set one.
+          type: string
+        trace_id:
+          type: string
+          title: Trace Id
+        root_span_id:
+          type: string
+          title: Root Span Id
+        started_at:
+          type: string
+          format: date-time
+          title: Started At
+        ended_at:
+          title: Ended At
+          type: string
+          format: date-time
+        latency_ms:
+          title: Latency Ms
+          type: number
+        status:
+          allOf:
+          - $ref: '#/components/schemas/SpanStatus'
+          description: 'Root-span status: success, error, cancelled, or unknown.'
+        input:
+          title: Input
+          description: Root-span input text (the query).
+          type: string
+        input_tokens:
+          title: Input Tokens
+          description: Sum of input tokens across this session's spans.
+          type: integer
+        output_tokens:
+          title: Output Tokens
+          description: Sum of output tokens across this session's spans.
+          type: integer
+        cached_tokens:
+          title: Cached Tokens
+          description: Sum of cached tokens across this session's spans.
+          type: integer
+        cost_total_usd:
+          title: Cost Total Usd
+          description: Sum of cost across this session's spans.
+          type: number
+        evaluator_scores:
+          additionalProperties:
+            type: number
+          type: object
+          title: Evaluator Scores
+          description: Per-evaluator session-mean score. Includes NUMERIC and BOOLEAN
+            evaluator results only; text/categorical results are omitted.
+      type: object
+      required:
+      - workspace
+      - experiment_name
+      - session_id
+      - trace_id
+      - root_span_id
+      - started_at
+      - status
+      title: ExperimentSessionResponse
+      description: "One ingested session of an Experiment \u2014 a single test case\
+        \ execution.\n\nHydrated from ClickHouse at read time by joining ``experiment_sessions``\
+        \ with\nthe session's root span (for status, input, tokens, cost) and\n``evaluator_results``\
+        \ (for per-evaluator session-mean scores)."
+    ExperimentSessionResponsesPage:
+      properties:
+        data:
+          items:
+            $ref: '#/components/schemas/ExperimentSessionResponse'
+          type: array
+          title: Data
+        pagination:
+          allOf:
+          - $ref: '#/components/schemas/PaginationData'
+          description: Pagination information.
+        sort:
+          title: Sort
+          description: The field on which the results are sorted.
+          type: string
+        filter:
+          title: Filter
+          description: Filtering information.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - data
+      title: ExperimentSessionResponsesPage
     ExtendedBenchmark:
       properties:
         name:

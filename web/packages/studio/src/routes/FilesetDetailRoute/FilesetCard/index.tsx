@@ -6,7 +6,7 @@ import {
   type FilesetFileOutput,
   type FilesetOutput,
 } from '@nemo/sdk/generated/platform/schema';
-import { Stack, Text } from '@nvidia/foundations-react-core';
+import { Stack } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { DatasetSamplePanel } from '@studio/routes/FilesetDetailRoute/FilesetCard/DatasetSamplePanel';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
@@ -62,11 +62,6 @@ export const FilesetCard: FC<FilesetCardProps> = ({
     >
       <div className="lg:col-span-2">
         <Stack gap="density-md">
-          {fileset.description && (
-            <Text kind="body/regular/md" data-testid="fileset-card-description">
-              {fileset.description}
-            </Text>
-          )}
           <ReadmeBody
             isFilesError={isFilesError}
             readmePath={readmePath}

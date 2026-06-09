@@ -70,8 +70,6 @@ navigation:
   - section: Anonymize Data
     path: ../../anonymizer/index.mdx
     contents:
-    - page: Quickstart
-      path: ../../anonymizer/quickstart.mdx
     - section: Tutorials
       path: ../../anonymizer/tutorials/index.mdx
       contents:
