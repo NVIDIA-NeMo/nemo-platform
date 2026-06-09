@@ -267,17 +267,14 @@ class NGCStorageImpl(StorageImpl):
         try:
             registry_api = await self._get_registry_api()
             target = await self._get_target()
-            target_with_version = await self._get_target_with_version()
             await to_thread.run_sync(registry_api.info, target)
         except NGCBackendError:
             raise
         except ResourceNotFoundException as exc:
-            target_with_version = f"{self.config.target}"
-            raise NGCBackendError(f"NGC {self.config.target_type} not found: {target_with_version}") from exc
+            raise NGCBackendError(f"NGC {self.config.target_type} not found: {self.config.target}") from exc
         except Exception as exc:
-            target_with_version = f"{self.config.target}"
             raise NGCBackendError(
-                f"Failed to access NGC {self.config.target_type} {target_with_version} [{str(exc)}]"
+                f"Failed to access NGC {self.config.target_type} {self.config.target} [{exc}]"
             ) from exc
 
     async def upload(
