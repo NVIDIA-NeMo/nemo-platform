@@ -60,7 +60,8 @@ async def list_prompts(
             filter_operation=parsed_filter.operation,
         )
     except Exception as e:
-        logger.exception(f"Failed to list prompts for workspace {workspace}")
+        safe_workspace = str(workspace).replace("\r", "").replace("\n", "")
+        logger.exception(f"Failed to list prompts for workspace {safe_workspace}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
