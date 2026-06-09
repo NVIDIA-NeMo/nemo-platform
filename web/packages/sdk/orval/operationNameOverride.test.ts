@@ -48,14 +48,6 @@ describe('operationNameOverride', () => {
     ).toBe('dataDesignerCreateJob');
   });
 
-  it('create data designer job with create path segment', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'create_job_apis_data_designer_v2_workspaces__workspace__jobs_create_post',
-      })
-    ).toBe('dataDesignerCreateJob');
-  });
-
   it('list workspaces', () => {
     expect(
       operationNameOverride({
@@ -66,42 +58,6 @@ describe('operationNameOverride', () => {
 
   it('gateway proxy get (non-apis)', () => {
     expect(operationNameOverride({ operationId: 'gateway_proxy_get' })).toBe('gatewayProxyGet');
-  });
-
-  // --- Job subtype routes ---
-
-  it('create agent analyze job', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post',
-      })
-    ).toBe('agentsCreateAnalyzeJob');
-  });
-
-  it('list agent evaluate suite jobs', () => {
-    expect(
-      operationNameOverride({
-        operationId: 'list_jobs_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite_get',
-      })
-    ).toBe('agentsListEvaluateSuiteJobs');
-  });
-
-  it('get agent optimize job logs', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'get_job_logs_apis_agents_v2_workspaces__workspace__jobs_optimize__name__logs_get',
-      })
-    ).toBe('agentsGetOptimizeJobLogs');
-  });
-
-  it('list agent optimize skills job results', () => {
-    expect(
-      operationNameOverride({
-        operationId:
-          'list_job_results_apis_agents_v2_workspaces__workspace__jobs_optimize_skills__name__results_get',
-      })
-    ).toBe('agentsListOptimizeSkillsJobResults');
   });
 
   // --- Flat collection endpoints (should keep original names) ---
@@ -205,6 +161,120 @@ describe('operationNameOverride', () => {
         operationId: 'get_job_status_apis_audit_v2_workspaces__workspace__jobs__name__status_get',
       })
     ).toBe('auditGetJobStatus');
+  });
+
+  // --- Noun-first job-subtype collections ("jobs_{subtype}") ---
+  // Agent jobs and data-designer mount each job type at /jobs/{subtype}, so the
+  // action noun comes first and the subtype trails it. Each subtype must yield a
+  // distinct name; previously they all collapsed onto "createJob"/"listJobs"/etc.
+
+  it('agents create analyze job', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_analyze_post',
+      })
+    ).toBe('agentsCreateAnalyzeJob');
+  });
+
+  it('agents create evaluate job', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_evaluate_post',
+      })
+    ).toBe('agentsCreateEvaluateJob');
+  });
+
+  it('agents create evaluate-suite job', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite_post',
+      })
+    ).toBe('agentsCreateEvaluateSuiteJob');
+  });
+
+  it('agents create optimize job', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_optimize_post',
+      })
+    ).toBe('agentsCreateOptimizeJob');
+  });
+
+  it('agents create optimize-skills job', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_agents_v2_workspaces__workspace__jobs_optimize_skills_post',
+      })
+    ).toBe('agentsCreateOptimizeSkillsJob');
+  });
+
+  it('agents list evaluate jobs', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'list_jobs_apis_agents_v2_workspaces__workspace__jobs_evaluate_get',
+      })
+    ).toBe('agentsListEvaluateJobs');
+  });
+
+  it('agents get optimize-skills job', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'get_job_apis_agents_v2_workspaces__workspace__jobs_optimize_skills__name__get',
+      })
+    ).toBe('agentsGetOptimizeSkillsJob');
+  });
+
+  it('agents get optimize job logs (sub-resource)', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'get_job_logs_apis_agents_v2_workspaces__workspace__jobs_optimize__name__logs_get',
+      })
+    ).toBe('agentsGetOptimizeJobLogs');
+  });
+
+  it('agents get evaluate-suite job result (sub-resource)', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'get_job_result_apis_agents_v2_workspaces__workspace__jobs_evaluate_suite__job__results__name__get',
+      })
+    ).toBe('agentsGetEvaluateSuiteJobResult');
+  });
+
+  it('agents list analyze job results (sub-resource)', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'list_job_results_apis_agents_v2_workspaces__workspace__jobs_analyze__name__results_get',
+      })
+    ).toBe('agentsListAnalyzeJobResults');
+  });
+
+  it('data-designer create job stays stable (dedupes the "create" subtype)', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'create_job_apis_data_designer_v2_workspaces__workspace__jobs_create_post',
+      })
+    ).toBe('dataDesignerCreateJob');
+  });
+
+  it('data-designer list create jobs', () => {
+    expect(
+      operationNameOverride({
+        operationId: 'list_jobs_apis_data_designer_v2_workspaces__workspace__jobs_create_get',
+      })
+    ).toBe('dataDesignerListCreateJobs');
+  });
+
+  it('data-designer cancel create job', () => {
+    expect(
+      operationNameOverride({
+        operationId:
+          'cancel_job_apis_data_designer_v2_workspaces__workspace__jobs_create__name__cancel_post',
+      })
+    ).toBe('dataDesignerCancelCreateJob');
   });
 
   it('drops the redundant intake prefix', () => {
