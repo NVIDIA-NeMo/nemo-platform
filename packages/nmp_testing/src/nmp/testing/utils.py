@@ -480,6 +480,10 @@ def add_mock_provider(
     # reconciler calls GET /v1/models on each provider, and MOCK_SERVED_MODELS_HEADER tells
     # the mock which IDs to return. Without it, the mock returns the generic "mock-model"
     # default, causing the reconciler to overwrite our update_status served_models mapping.
+    # Use model *entity* names (the served_models keys), not served_model_name values:
+    # discovery builds model_entity_id from the mock's /v1/models ids, and passthrough
+    # VirtualModels are named after that entity. Advertising served names here makes the
+    # reconciler delete VMs created for the entity and recreate them under the wrong name.
     if served_models is None:
         if mock_response_body_by_model:
             served_models = {
@@ -500,7 +504,7 @@ def add_mock_provider(
         if mock_status is not None:
             default_extra_headers[MOCK_STATUS_HEADER] = str(mock_status)
 
-    default_extra_headers[MOCK_SERVED_MODELS_HEADER] = json.dumps(list(served_models.values()))
+    default_extra_headers[MOCK_SERVED_MODELS_HEADER] = json.dumps(list(served_models.keys()))
 
     # Create the provider via SDK API (served_models not supported in SDK API).
     # If a provider with the same name already exists (ex. in a shared workspace),
@@ -564,24 +568,6 @@ def add_mock_provider(
         ],
     )
 
-    # Create a passthrough VirtualModel via the SDK for every served entity, mirroring
-    # the production provider reconciler's _ensure_passthrough_virtual_model behavior.
-    # The IGW now requires every inference request to resolve to a VirtualModel, and
-    # the IGW's background cache refresher rebuilds the VM map from the SDK list every
-    # few seconds — so any local-only seed would be wiped out at the next refresh tick.
-    # Going through the SDK ensures the VM exists in the entity store and survives refreshes.
-    # 409 ConflictError is treated as idempotent (matches the production reconciler).
-    for entity_name in served_models:
-        try:
-            sdk.inference.virtual_models.create(
-                workspace=workspace,
-                name=entity_name,
-                default_model_entity=f"{workspace}/{entity_name}",
-                autoprovisioned=True,
-            )
-        except ConflictError:
-            pass
-
     try:
         # From integration tests, we can directly update the local model cache to speed up subsequent requests
         model_cache = global_model_cache()
@@ -591,8 +577,7 @@ def add_mock_provider(
 
         # Also seed the local VirtualModel cache so requests fired immediately after
         # this call hit the right cache state without waiting for the IGW's next
-        # background refresh tick. The SDK create above is what makes this survive
-        # subsequent refreshes; this in-place seed is purely a latency optimization.
+        # background refresh tick. This in-place seed is purely a latency optimization.
         from datetime import datetime as _datetime
 
         from nemo_platform.types.inference.virtual_model import VirtualModel as _SDKVirtualModel
@@ -615,14 +600,11 @@ def add_mock_provider(
                 updated_at=now_iso,
             )
     except RuntimeError:
-        # From E2E tests, the local cache is not available (app runs in container).
+        # From E2E tests, the local cache is not available (app runs in a separate process).
         # Wait for model entities AND their autoprovisioned VirtualModels to become
-        # available in the container's caches. The container's caches pick up served_models
-        # from the update_status above; the production provider reconciler then creates
-        # the passthrough VirtualModel asynchronously. Inference requests now require
-        # a VirtualModel, so both must be present before the test fires requests.
-        # (We've also created VMs via the SDK above, but the container's cache is
-        # decoupled from this process so it still needs to refresh and pick them up.)
+        # available in the remote IGW caches. The provider reconciler creates passthrough
+        # VirtualModels asynchronously after update_status; inference routes require both
+        # the model entity and its VirtualModel to be visible before requests succeed.
         for entity_name in served_models.keys():
             wait_for_virtual_model(sdk, workspace, entity_name)
             wait_for_model_entity(sdk, workspace, entity_name)
