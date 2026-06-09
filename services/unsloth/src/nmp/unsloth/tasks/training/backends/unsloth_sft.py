@@ -30,6 +30,26 @@ from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallba
 logger = logging.getLogger(__name__)
 
 
+def compute_default_eval_steps(
+    *,
+    num_train_samples: int,
+    per_device_train_batch_size: int,
+    gradient_accumulation_steps: int,
+    max_steps: int | None = None,
+) -> int:
+    """Default ``eval_steps`` when validation data is present but ``eval_steps`` is unset.
+
+    Runs one validation pass per effective epoch at
+    ``max(1, effective_steps - 1)``, where ``effective_steps`` is
+    ``min(steps_per_epoch, max_steps)`` when ``max_steps`` is set (same
+    cap automodel uses in ``compute_val_check_interval``).
+    """
+    effective_batch = per_device_train_batch_size * gradient_accumulation_steps
+    steps_per_epoch = max(1, (num_train_samples + effective_batch - 1) // effective_batch)
+    effective_steps = min(steps_per_epoch, max_steps) if max_steps is not None else steps_per_epoch
+    return max(1, effective_steps - 1)
+
+
 def train_sft(
     spec: "UnslothJobOutput",
     ctx: "JobContext",
@@ -215,8 +235,20 @@ def train_sft(
         args_kwargs["save_strategy"] = "steps"
     else:
         args_kwargs["save_strategy"] = "epoch"
-    if spec.schedule.eval_steps is not None:
-        args_kwargs["eval_steps"] = spec.schedule.eval_steps
+    eval_steps = spec.schedule.eval_steps
+    if eval_ds is not None and eval_steps is None:
+        eval_steps = compute_default_eval_steps(
+            num_train_samples=len(train_ds),
+            per_device_train_batch_size=spec.batch.per_device_train_batch_size,
+            gradient_accumulation_steps=spec.batch.gradient_accumulation_steps,
+            max_steps=spec.schedule.max_steps,
+        )
+        logger.info(
+            "Default eval_steps=%s (validation data present, schedule.eval_steps unset)",
+            eval_steps,
+        )
+    if eval_ds is not None and eval_steps is not None:
+        args_kwargs["eval_steps"] = eval_steps
         args_kwargs["eval_strategy"] = "steps"
 
     # Wandb run-name: surfaces in W&B when WANDB_API_KEY is set in the

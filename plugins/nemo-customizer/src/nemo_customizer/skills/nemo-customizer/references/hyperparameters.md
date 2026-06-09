@@ -469,7 +469,7 @@ See `references/dataset-formats.md` § Unsloth for row-shape rules.
 | `lr_scheduler_type` | `"linear"` | `"linear"`, `"cosine"`, `"constant"`, `"constant_with_warmup"`, `"cosine_with_restarts"`. |
 | `logging_steps` | `1` | Loss-log cadence. |
 | `save_steps` | `null` | If set, save checkpoint every N steps. |
-| `eval_steps` | `null` | If set with `validation_path`, eval every N steps. |
+| `eval_steps` | `null` | If set with `validation_path`, eval every N steps. When `null` and `validation_path` is set, the training driver defaults to **one validation pass per effective epoch** at `max(1, effective_steps - 1)` (same effective-step cap as automodel's default `val_check_interval`). |
 | `seed` | `3407` | Trainer seed (`TrainingArguments.seed`). |
 
 **Hard mutex enforced by the schema:** `epochs` xor `max_steps`; `warmup_steps` xor `warmup_ratio`. Validation errors surface at submit time.

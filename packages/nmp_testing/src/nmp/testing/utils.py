@@ -23,6 +23,8 @@ from nmp.common.entities.utils import get_random_id
 
 NemoRun = Callable[..., subprocess.CompletedProcess[str]]
 
+_E2E_IGW_WAIT_TIMEOUT_SEC = 60
+
 _ENTITY_NAME_PATTERN = re.compile(NAME_PATTERN)
 
 
@@ -96,7 +98,7 @@ def wait_for_model_entity(
     sdk: NeMoPlatform,
     workspace: str,
     model_name: str,
-    timeout: float = 20,
+    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
 ) -> None:
     """Poll until a model entity is available in IGW's model cache.
@@ -113,7 +115,7 @@ def wait_for_model_entity(
         sdk: The NeMoPlatform SDK client.
         workspace: The workspace containing the model entity.
         model_name: The model entity name (without workspace prefix).
-        timeout: Maximum time to wait in seconds (default: 20).
+        timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
 
     Raises:
@@ -146,7 +148,7 @@ def wait_for_virtual_model(
     sdk: NeMoPlatform,
     workspace: str,
     name: str,
-    timeout: float = 20,
+    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
 ) -> None:
     """Poll until a VirtualModel exists in the entity store (platform SDK).
@@ -161,7 +163,7 @@ def wait_for_virtual_model(
         workspace: The workspace containing the VirtualModel.
         name: The VirtualModel name (without workspace prefix). For an
             autoprovisioned passthrough VM, this is the served model entity name.
-        timeout: Maximum time to wait in seconds (default: 20).
+        timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
 
     Raises:
@@ -188,7 +190,7 @@ def wait_for_igw_virtual_model(
     sdk: NeMoPlatform,
     workspace: str,
     name: str,
-    timeout: float = 20,
+    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
 ) -> None:
     """Poll until a VirtualModel is visible in IGW's in-process cache.
@@ -202,7 +204,7 @@ def wait_for_igw_virtual_model(
         sdk: The NeMoPlatform SDK client.
         workspace: The workspace containing the VirtualModel.
         name: The VirtualModel name (without workspace prefix).
-        timeout: Maximum time to wait in seconds (default: 20).
+        timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
 
     Raises:

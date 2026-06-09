@@ -217,7 +217,7 @@ def compile_training_step(
     secret_envs = _collect_integration_secret_envs(job_spec)
 
     return PlatformJobStep(
-        name="customization-training-job",
+        name="training",
         executor=executor,
         environment=[*base_env, *secret_envs, EnvironmentVariable(name="HF_DATASETS_OFFLINE", value="1")],
         config=training_config.model_dump(mode="json"),

@@ -15,7 +15,7 @@ from nmp.automodel.adapter import automodel_spec_to_compiler_output
 from nmp.automodel.api.v2.jobs.schemas import CustomizationJobOutput, LoRAParams, OutputResponse, SFTTraining
 from nmp.automodel.app.jobs.compiler import _build_file_download_config
 from nmp.automodel.compile import platform_job_config_compiler
-from nmp.automodel.images import DEFAULT_AUTOMODEL_IMAGE_REGISTRY, TASKS_IMAGE_NAME, TRAINING_IMAGE_NAME
+from nmp.automodel.images import get_tasks_image, get_training_image
 from nmp.common.entities.utils import get_random_id
 from nmp.common.jobs.exceptions import PlatformJobCompilationError
 
@@ -118,7 +118,7 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
     assert len(steps) == 4
     training_step = steps[1]
     training_name = training_step.name if hasattr(training_step, "name") else training_step["name"]
-    assert training_name == "customization-training-job"
+    assert training_name == "training"
     training_cmd = (
         training_step.executor.container.command
         if hasattr(training_step, "executor")
@@ -143,9 +143,7 @@ async def test_platform_job_config_compiler_sft_lora(mock_sdk, monkeypatch):
             return step.executor.container.image
         return step["executor"]["container"]["image"]
 
-    tasks_image = f"{DEFAULT_AUTOMODEL_IMAGE_REGISTRY}/{TASKS_IMAGE_NAME}"
-    training_image = f"{DEFAULT_AUTOMODEL_IMAGE_REGISTRY}/{TRAINING_IMAGE_NAME}"
-    assert _step_image(steps[0]).startswith(tasks_image)
-    assert _step_image(steps[1]).startswith(training_image)
-    assert _step_image(steps[2]).startswith(tasks_image)
-    assert _step_image(steps[3]).startswith(tasks_image)
+    assert _step_image(steps[0]) == get_tasks_image()
+    assert _step_image(steps[1]) == get_training_image()
+    assert _step_image(steps[2]) == get_tasks_image()
+    assert _step_image(steps[3]) == get_tasks_image()
