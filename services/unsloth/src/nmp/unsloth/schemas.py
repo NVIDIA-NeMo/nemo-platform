@@ -201,8 +201,8 @@ class WandbIntegration(BaseModel):
     enabled: bool = False
     project: str | None = None
     run_name: str | None = None
-    # No api_key_secret for now — users export WANDB_API_KEY in the venv
-    # environment themselves. Matches the BYO-venv stance.
+    # No api_key_secret for now — users export WANDB_API_KEY in the
+    # training container environment themselves.
 
 
 class IntegrationsSpec(BaseModel):
@@ -215,7 +215,7 @@ class IntegrationsSpec(BaseModel):
 
 
 class OutputResponse(BaseModel):
-    """Stored on the canonical UnslothJobOutput. Path is resolved at run() time.
+    """Stored on the canonical UnslothJobOutput. Output naming is resolved during ``to_spec``.
 
     ``type`` is the high-level shape (``adapter`` for a saved LoRA, ``model``
     for a merged checkpoint). ``save_method`` keeps the original Unsloth

@@ -3,8 +3,6 @@
 
 """CLI overrides: submit/run accept a job JSON file instead of ``--spec``."""
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable
 from pathlib import Path

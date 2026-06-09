@@ -5,12 +5,14 @@
 
 Mirrors the automodel pattern: validates the platform refs (model
 entity + dataset fileset) against the live SDK, then resolves output
-naming and the fileset name. The plugin's local ``run`` orchestrates
-the actual download → train → upload → model_entity steps later.
+naming and the fileset name. :meth:`~nemo_unsloth_plugin.jobs.jobs.UnslothJob.compile`
+turns the canonical spec into a 4-step container job that performs
+download → train → upload → model_entity on the platform cluster.
 
 Only platform refs are accepted today (per the strict-refs design
-choice). Bare HF ids and arbitrary local paths are rejected before the
-job runs because the run path expects a real fileset to download from.
+choice). Bare HF ids and arbitrary local paths are rejected before
+submit because the container pipeline expects a real fileset to
+download from.
 """
 
 from __future__ import annotations

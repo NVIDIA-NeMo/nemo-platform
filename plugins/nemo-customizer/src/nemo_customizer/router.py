@@ -9,6 +9,7 @@ from typing import ClassVar
 
 from fastapi import APIRouter
 from nemo_platform_plugin.authz import AuthzContribution, AuthzEndpointMethod, combine_authz_contributions
+from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
 from nemo_platform_plugin.discovery import (
     CUSTOMIZATION_CONTRIBUTORS_GROUP,
     discover_customization_contributors,
@@ -16,7 +17,7 @@ from nemo_platform_plugin.discovery import (
 from nemo_platform_plugin.service import NemoService, RouterSpec
 
 
-class CustomizationRouterError(RuntimeError):
+class CustomizationRouterError(CustomizationContributorDiscoveryError):
     """Raised when the customization router cannot start."""
 
 

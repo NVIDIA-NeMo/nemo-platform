@@ -1,7 +1,7 @@
 [project]
 name = "nmp-unsloth"
 version = "0.1.0"
-description = "NeMo Unsloth task package — local SFT driver and container compile glue. No HTTP server."
+description = "NeMo Unsloth task package — container SFT driver and compile glue. No HTTP server."
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [
@@ -15,9 +15,8 @@ dependencies = [
 
 # Heavy ML deps live behind an optional extra. The package itself is
 # importable without these (e.g. compile.py + schemas), so the API
-# process / plugin discovery doesn't pay the install cost. BYO-venv
-# users install nmp-unsloth[unsloth] (or nemo-unsloth-plugin[unsloth]
-# which delegates here) into a separate, GPU-capable venv.
+# process / plugin discovery doesn't pay the install cost. The extra is
+# for the training container image and local development against train_sft.
 [project.optional-dependencies]
 # We deliberately don't pin transformers / trl / peft / accelerate / bitsandbytes
 # here. Unsloth's own pyproject.toml has *precise* constraints for these

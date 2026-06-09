@@ -8,8 +8,8 @@ expects the platform Jobs runner to mount a step-config JSON file via
 ``NEMO_JOB_STEP_CONFIG_FILE_PATH`` and then invokes
 ``train_sft`` against the paths the file_io step downloaded to.
 
-These tests cover the failure path (no env var → exit 2 with a hint
-back to the local BYO-venv flow). The happy path requires the
+These tests cover the failure path (no env var → exit 2 with a hint to
+submit via the customization CLI). The happy path requires the
 ``[unsloth]`` extra in the test env, so we don't exercise it here.
 """
 
@@ -103,7 +103,7 @@ class TestEntrypointWithoutStepConfig:
         rc = main()
         assert rc == 2
         err = capsys.readouterr().err
-        # Friendly hint redirects the user to the local CLI path.
+        # Friendly hint redirects the user to the submit CLI path.
         assert "nemo customization unsloth submit" in err
 
     def test_module_invocation_exits_2(self, monkeypatch: pytest.MonkeyPatch) -> None:

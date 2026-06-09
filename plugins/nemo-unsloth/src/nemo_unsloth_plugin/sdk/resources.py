@@ -1,20 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unsloth contributor SDK resources (composed by ``nemo-customizer-plugin``).
-
-A job-collection resource exposing ``plugin_status``, ``create``, and
-``get_job_resource``, plus a ``UnslothCustomization`` namespace that
-the hub mounts under ``client.customization.unsloth``.
-
-Even though Unsloth runs locally, we keep the SDK because the
-customization router still persists job records (the jobs collection
-route is exposed). ``create`` will succeed at the HTTP layer up to the
-point ``compile()`` runs; production deployments should prefer the
-local CLI path.
-"""
-
-from __future__ import annotations
+"""Unsloth contributor SDK resources (composed by ``nemo-customizer-plugin``)."""
 
 from typing import Any
 
@@ -58,15 +45,7 @@ class UnslothJobsResource:
         workspace: str | None = None,
         name: str | None = None,
     ) -> UnslothJobResource:
-        """Submit an Unsloth training job record.
-
-        Note:
-            Unsloth jobs execute *locally* — the platform-side compile
-            path raises ``NotImplementedError`` if the request lands
-            against an environment that tries to run the canonical job
-            container. Use ``nemo customization unsloth run`` for the
-            common case.
-        """
+        """Submit an Unsloth training job to the platform GPU cluster."""
         body: dict[str, Any] = http_utils.create_job_payload(spec)
         if name is not None:
             body["name"] = name

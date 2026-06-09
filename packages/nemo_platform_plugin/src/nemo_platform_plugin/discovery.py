@@ -49,7 +49,10 @@ from typing import Any, cast
 
 from nemo_platform_plugin.cli import NemoCLI
 from nemo_platform_plugin.controller import NemoController
-from nemo_platform_plugin.customization_contributor import CustomizationContributor
+from nemo_platform_plugin.customization_contributor import (
+    CustomizationContributor,
+    CustomizationContributorDiscoveryError,
+)
 from nemo_platform_plugin.function import NemoFunction
 from nemo_platform_plugin.inference_middleware import NemoInferenceMiddleware
 from nemo_platform_plugin.interface import PluginManifest
@@ -496,8 +499,8 @@ def discover_customization_contributors() -> dict[str, CustomizationContributor]
     Returns a dict keyed by entry-point key (e.g. ``"automodel"``) mapping to a
     :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributor`
     instance. Entry points may register a class (instantiated here) or a pre-built
-    instance. Broken contributors are skipped with a warning (same fault isolation as
-    :func:`discover`).
+    instance. Broken or misconfigured contributors raise
+    :class:`~nemo_platform_plugin.customization_contributor.CustomizationContributorDiscoveryError`.
     """
 
     result: dict[str, CustomizationContributor] = {}
@@ -508,10 +511,9 @@ def discover_customization_contributors() -> dict[str, CustomizationContributor]
             contributor = _instantiate_customization_contributor(loaded)
             key = getattr(type(contributor), "name", None) or ep.name
             if key != ep.name:
-                logger.warning(
-                    "Contributor entry-point key %r differs from class name %r; using entry-point key",
-                    ep.name,
-                    key,
+                raise CustomizationContributorDiscoveryError(
+                    f"Contributor entry-point key {ep.name!r} differs from class name {key!r}; "
+                    "entry-point key and contributor class `name` must match.",
                 )
             result[ep.name] = contributor
             logger.debug(
@@ -519,13 +521,12 @@ def discover_customization_contributors() -> dict[str, CustomizationContributor]
                 ep.name,
                 ep.value,
             )
-        except Exception:
-            logger.warning(
-                "Failed to load customization contributor %r (%s) — skipping",
-                ep.name,
-                ep.value,
-                exc_info=True,
-            )
+        except CustomizationContributorDiscoveryError:
+            raise
+        except Exception as exc:
+            raise CustomizationContributorDiscoveryError(
+                f"Failed to load customization contributor {ep.name!r} ({ep.value})",
+            ) from exc
 
     return result
 

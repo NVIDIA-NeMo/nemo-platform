@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Plugin configuration for Unsloth local training."""
+"""Plugin configuration for Unsloth container-submit training."""
 
 from __future__ import annotations
 
@@ -13,11 +13,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class UnslothPluginConfig(BaseSettings):
     """Environment-driven Unsloth plugin settings.
 
-    All fields are optional; defaults match the in-process / BYO-venv
-    posture documented in the plugin README. The only knob the contributor
-    actually consumes today is ``default_training_execution_profile`` —
-    forwarded into ``add_job_routes`` so the platform's job collection
-    routes have a sensible profile when the submitter omits one.
+    All fields are optional. The only knob the contributor actually
+    consumes today is ``default_training_execution_profile`` — forwarded
+    into ``add_job_routes`` so the platform's job collection routes have
+    a sensible profile when the submitter omits one.
     """
 
     model_config = SettingsConfigDict(env_prefix="NMP_UNSLOTH_", extra="ignore")

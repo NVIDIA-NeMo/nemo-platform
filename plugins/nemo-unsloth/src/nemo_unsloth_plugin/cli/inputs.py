@@ -18,8 +18,6 @@ swaps in:
 - ``explain`` → unchanged (the original schema dump is useful as-is).
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import Callable
 from pathlib import Path
@@ -92,7 +90,6 @@ def _replace_job_run_disabled(group: typer.Typer) -> None:
 def _replace_job_submit(group: typer.Typer) -> None:
     """Replace ``submit`` with a ``JOB_JSON`` positional + standard submit flags."""
     original = _pluck_callback(group, "submit")
-    _drop_command(group, "submit")
 
     @group.command("submit")
     def submit(

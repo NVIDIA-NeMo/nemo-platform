@@ -597,7 +597,9 @@ class TestDiscoverCustomizationContributors:
             result = discover_customization_contributors()
         assert isinstance(result["fake"], _Contributor)
 
-    def test_failing_contributor_is_skipped(self) -> None:
+    def test_failing_contributor_raises(self) -> None:
+        from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
         bad = _make_ep("bad", None)
         bad.load.side_effect = RuntimeError("broken")
 
@@ -616,6 +618,26 @@ class TestDiscoverCustomizationContributors:
 
         good = _make_ep("good", _Contributor)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
-            result = discover_customization_contributors()
-        assert "bad" not in result
-        assert "good" in result
+            with pytest.raises(CustomizationContributorDiscoveryError, match="Failed to load"):
+                discover_customization_contributors()
+
+    def test_name_mismatch_raises(self) -> None:
+        from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
+        class _Contributor:
+            name = "wrong"
+            dependencies = ["jobs"]
+
+            def get_routers(self) -> list[RouterSpec]:
+                return []
+
+            def get_cli(self) -> None:
+                return None
+
+            def get_authz_contribution(self):
+                return None
+
+        ep = _make_ep("expected", _Contributor)
+        with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
+            with pytest.raises(CustomizationContributorDiscoveryError, match="differs from class name"):
+                discover_customization_contributors()

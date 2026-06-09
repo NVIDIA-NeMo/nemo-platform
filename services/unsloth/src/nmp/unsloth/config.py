@@ -1,12 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Configuration for the nmp-unsloth compiler and tasks.
+"""Configuration for the nmp-unsloth compiler and container tasks.
 
 Modeled after :mod:`nmp.automodel.config`. Environment variables use
-the ``NMP_UNSLOTH_`` prefix. None of these settings are consumed by the
-plugin's local ``run`` path today — they exist so a future container
-submit (4-step PlatformJobSpec) lands without restructuring config.
+the ``NMP_UNSLOTH_`` prefix and drive image resolution for the 4-step
+container ``PlatformJobSpec`` the plugin's :meth:`~nemo_unsloth_plugin.jobs.jobs.UnslothJob.compile` builds.
 """
 
 from nmp.common.config import create_service_config_class, get_platform_config, get_service_config

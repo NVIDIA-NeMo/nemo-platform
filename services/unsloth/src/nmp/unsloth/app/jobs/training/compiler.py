@@ -1,13 +1,11 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Compile the training step of an unsloth job.
+"""Compile the GPU training step of an unsloth container job.
 
-This is the GPU step that container submit will execute. The plugin's
-local ``run`` does **not** call this code path — it invokes
-:func:`~nmp.unsloth.tasks.training.backends.unsloth_sft.train_sft`
-directly inside the BYO-venv. Wiring the compiler step here today keeps
-a future submit one-file-per-step away.
+This is the second step in the 4-step ``PlatformJobSpec`` built by
+:func:`~nmp.unsloth.compile.platform_job_config_compiler`. The container
+entrypoint is ``python -m nmp.unsloth.tasks.training``.
 """
 
 from __future__ import annotations

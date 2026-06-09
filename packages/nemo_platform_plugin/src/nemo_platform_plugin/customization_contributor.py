@@ -12,6 +12,10 @@ from nemo_platform_plugin.authz import AuthzContribution
 from nemo_platform_plugin.service import RouterSpec
 
 
+class CustomizationContributorDiscoveryError(RuntimeError):
+    """Raised when customization contributor discovery fails."""
+
+
 @runtime_checkable
 class CustomizationContributor(Protocol):
     """One training backend mounted under ``/apis/customization``."""

@@ -3,10 +3,9 @@
 
 """Tests for the compile-side entry.
 
-The plugin's local ``run`` does not invoke this code path — it lives
-here so a future container submit drops in. We only check the
-delegation contract: ``compile.platform_job_config_compiler`` forwards
-to :mod:`nmp.unsloth.app.jobs.compiler` with the args the platform
+We check the delegation contract:
+``compile.platform_job_config_compiler`` forwards to
+:mod:`nmp.unsloth.app.jobs.compiler` with the args the platform
 schedule passes through.
 """
 

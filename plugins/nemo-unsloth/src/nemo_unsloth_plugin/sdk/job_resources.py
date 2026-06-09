@@ -1,12 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Unsloth job resources for status polling via the customization plugin API.
-
-Local-only training executes inside the user's venv, but we still expose
-an SDK so callers can ``get_status`` against any record the
-customization router persisted.
-"""
+"""Unsloth job resources for status polling via the customization plugin API."""
 
 from __future__ import annotations
 
