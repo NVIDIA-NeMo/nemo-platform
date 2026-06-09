@@ -1056,10 +1056,6 @@ class ModelEntityFilter(Filter):
         description="Filter models by whether their deployment config has LoRA enabled.",
     )
     description: Optional[str] = Field(None, description="Filter by description.")
-    fileset: Optional[str] = Field(
-        None,
-        description="Filter by fileset reference in the form {workspace}/{fileset_name}.",
-    )
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on update date.")
 

@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import type { FilesetFileOutput, FilesetOutput } from '@nemo/sdk/generated/platform/schema';
+import { FilesetPurpose } from '@nemo/sdk/generated/platform/schema';
 import { Grid, GridItem, Stack, Text } from '@nvidia/foundations-react-core';
 import { useDatasetFileContent } from '@studio/api/datasets/useDatasetFileContent';
 import { ReadmeBody } from '@studio/routes/FilesetDetailRoute/FilesetCard/ReadmeBody';
@@ -31,6 +33,18 @@ export const FilesetCard: FC<FilesetCardProps> = ({
   isFilesError,
 }) => {
   const readmePath = useMemo(() => files?.find(isRootReadme)?.path, [files]);
+  const isModel = fileset.purpose === FilesetPurpose.model;
+  const filesetRef = `${workspace}/${filesetName}`;
+
+  const { data: modelEntitiesResponse } = useModelsListModels(
+    workspace,
+    {},
+    { query: { enabled: isModel } }
+  );
+  const modelEntities = useMemo(
+    () => (modelEntitiesResponse?.data ?? []).filter((entity) => entity.fileset === filesetRef),
+    [modelEntitiesResponse, filesetRef]
+  );
 
   const {
     data: rawContent,
@@ -75,7 +89,11 @@ export const FilesetCard: FC<FilesetCardProps> = ({
         </Stack>
       </GridItem>
       <GridItem cols={{ lg: 4 }} className="min-w-0">
-        <FilesetMetadataPanel fileset={fileset} readmeMetadata={parsed?.metadata} />
+        <FilesetMetadataPanel
+          fileset={fileset}
+          readmeMetadata={parsed?.metadata}
+          modelEntities={isModel ? modelEntities : undefined}
+        />
       </GridItem>
     </Grid>
   );
