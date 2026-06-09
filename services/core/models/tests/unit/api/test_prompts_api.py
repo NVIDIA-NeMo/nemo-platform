@@ -105,6 +105,25 @@ def test_list_prompts_with_name_filter(client, mock_prompt_service, sample_page)
     assert mock_prompt_service.list_prompts.call_args.kwargs.get("filter_operation") is not None
 
 
+def test_list_prompts_workspace_filter_cannot_override_path(client, mock_prompt_service, sample_page):
+    mock_prompt_service.list_prompts.return_value = sample_page
+
+    response = client.get("/apis/models/v2/workspaces/default/prompts?filter[workspace][]=other")
+
+    assert response.status_code == 200
+    assert mock_prompt_service.list_prompts.call_args.kwargs["workspace"] == "default"
+
+
+def test_list_prompts_invalid_page_returns_422(client):
+    response = client.get("/apis/models/v2/workspaces/default/prompts?page=0")
+    assert response.status_code == 422
+
+
+def test_list_prompts_invalid_page_size_returns_422(client):
+    response = client.get("/apis/models/v2/workspaces/default/prompts?page_size=0")
+    assert response.status_code == 422
+
+
 def test_list_prompts_response_structure(client, mock_prompt_service, sample_page):
     mock_prompt_service.list_prompts.return_value = sample_page
 

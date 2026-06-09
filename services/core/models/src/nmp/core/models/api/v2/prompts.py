@@ -45,8 +45,8 @@ router = APIRouter()
 )
 async def list_prompts(
     workspace: str,
-    page: int = Query(default=1, description="Page number."),
-    page_size: int = Query(default=100, description="Page size."),
+    page: int = Query(default=1, ge=1, description="Page number."),
+    page_size: int = Query(default=100, ge=1, le=1000, description="Page size."),
     sort: PromptSort = Query(
         default=PromptSort.CREATED_AT_ASC,
         description="The field to sort by. To sort in decreasing order, use `-` in front of the field name.",
@@ -55,19 +55,19 @@ async def list_prompts(
     service: PromptService = Depends(get_prompt_service),
 ) -> Page[Prompt]:
     """List prompts for a specific workspace."""
-    # Extract workspace — inject from path param if not in filter
-    filter_workspace = parsed_filter.remove("workspace") or workspace
+    # Discard any workspace override in the filter — always scope to the path workspace.
+    parsed_filter.remove("workspace")
     try:
         return await service.list_prompts(
-            workspace=filter_workspace,
+            workspace=workspace,
             page=page,
             page_size=page_size,
             sort=sort,
             filter_operation=parsed_filter.operation,
         )
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to list prompts for workspace {_sanitize_for_log(workspace)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @router.post(
@@ -98,10 +98,10 @@ async def create_prompt(
                 detail=f"Prompt with workspace '{workspace}' and name '{request.name}' already exists",
             )
         logger.warning(f"Prompt creation validation error: {e}")
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid prompt data")
+    except Exception:
         logger.exception("Failed to create prompt")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @router.get(
@@ -128,9 +128,9 @@ async def get_prompt(
         return prompt
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to get prompt {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @router.put(
@@ -160,9 +160,9 @@ async def update_prompt(
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(e))
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception("Failed to update prompt")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")
 
 
 @router.delete(
@@ -189,6 +189,6 @@ async def delete_prompt(
         return None
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         logger.exception(f"Failed to delete prompt {_sanitize_for_log(workspace)}/{_sanitize_for_log(name)}")
-        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Internal server error")

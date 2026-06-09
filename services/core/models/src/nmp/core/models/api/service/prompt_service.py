@@ -150,8 +150,7 @@ class PromptService:
         entity.tool_choice = request.tool_choice
         entity.response_format = request.response_format
         entity.inference_params = request.inference_params
-        if request.tags is not None:
-            entity.tags = request.tags
+        entity.tags = request.tags or []
 
         updated = await self.entity_client.update(entity)
         logger.info("Prompt updated", extra={"workspace": updated.workspace, "prompt_name": updated.name})

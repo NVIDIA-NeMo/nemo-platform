@@ -757,7 +757,6 @@ class ChatCompletionTool(BaseModel):
     """An OpenAI-compatible tool definition (currently always a function tool)."""
 
     type: Literal["function"] = Field(
-        default="function",
         description="The type of the tool. Currently only 'function' is supported.",
     )
     function: FunctionDefinition = Field(description="The function definition for this tool.")

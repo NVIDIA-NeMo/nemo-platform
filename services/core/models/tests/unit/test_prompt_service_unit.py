@@ -62,11 +62,12 @@ def sample_messages() -> list[PromptMessage]:
 def sample_tools() -> list[ChatCompletionTool]:
     return [
         ChatCompletionTool(
+            type="function",
             function=FunctionDefinition(
                 name="get_weather",
                 description="Get the current weather for a city.",
                 parameters={"type": "object", "properties": {"city": {"type": "string"}}},
-            )
+            ),
         )
     ]
 
@@ -196,6 +197,21 @@ async def test_update_prompt_success(prompt_service, mock_entity_client, sample_
     # Full replacement clears fields not present in the request
     assert updated_entity.tools is None
     assert updated_entity.tool_choice is None
+
+
+@pytest.mark.asyncio
+async def test_update_prompt_clears_tags_when_omitted(prompt_service, mock_entity_client, sample_prompt_entity):
+    """Test that omitting tags in an update replaces them with an empty list (full replacement)."""
+    sample_prompt_entity.tags = ["old-tag"]
+    mock_entity_client.get.return_value = sample_prompt_entity
+    mock_entity_client.update.return_value = sample_prompt_entity
+
+    request = UpdatePromptRequest(description="no tags")
+
+    await prompt_service.update_prompt("default", "summarizer", request)
+
+    updated_entity = mock_entity_client.update.call_args[0][0]
+    assert updated_entity.tags == []
 
 
 @pytest.mark.asyncio
