@@ -21,10 +21,10 @@ from typing_extensions import TypedDict
 
 from ..._types import SequenceNotStr
 
-__all__ = ["InferenceParamsParam"]
+__all__ = ["InferenceParams"]
 
 
-class InferenceParamsParam(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
+class InferenceParams(TypedDict, total=False, extra_items=object):  # type: ignore[call-arg]
     """Parameters for model inference.
 
     Extra fields can be supplied for additional options applied to the inference request directly. Fields not supported by the model may cause inference errors during evaluation.

@@ -26,6 +26,7 @@ from .delete_response import DeleteResponse as DeleteResponse
 from .finetuning_type import FinetuningType as FinetuningType
 from .pagination_data import PaginationData as PaginationData
 from .fileset_metadata import FilesetMetadata as FilesetMetadata
+from .inference_params import InferenceParams as InferenceParams
 from .platform_job_log import PlatformJobLog as PlatformJobLog
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .validation_error import ValidationError as ValidationError
@@ -40,6 +41,7 @@ from .sliding_window_config import SlidingWindowConfig as SlidingWindowConfig
 from .model_metadata_content import ModelMetadataContent as ModelMetadataContent
 from .auth_discovery_response import AuthDiscoveryResponse as AuthDiscoveryResponse
 from .oidc_discovery_response import OidcDiscoveryResponse as OidcDiscoveryResponse
+from .dataset_metadata_content import DatasetMetadataContent as DatasetMetadataContent
 from .platform_job_result_response import PlatformJobResultResponse as PlatformJobResultResponse
 from .platform_job_status_response import PlatformJobStatusResponse as PlatformJobStatusResponse
 from .tool_calling_metadata_content import ToolCallingMetadataContent as ToolCallingMetadataContent
