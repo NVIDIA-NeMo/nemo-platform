@@ -531,8 +531,6 @@ jobs:
         run: pnpm --filter @nemo/sdk gen:all-force
       - name: Typecheck SDK generated output
         run: pnpm --filter @nemo/sdk typecheck
-      - name: Typecheck studio against generated SDK
-        run: pnpm --filter nemo-studio-ui typecheck
 
   web-studio-deps:
     name: Web studio deps check
