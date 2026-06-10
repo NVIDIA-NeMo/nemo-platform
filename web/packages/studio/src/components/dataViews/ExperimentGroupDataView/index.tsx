@@ -7,6 +7,7 @@ import {
   EditColumnsMenu,
 } from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
+import { useRowClick } from '@nemo/common/src/components/DataView/useRowClick';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
@@ -20,10 +21,12 @@ import type {
 } from '@nemo/sdk/generated/platform/schema';
 import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { getExperimentDetailRoute } from '@studio/routes/utils';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 export type ExperimentRow = ExperimentResponse & { id: string };
 
@@ -49,6 +52,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
+  const navigate = useNavigate();
   const {
     data: group,
     isLoading: isGroupLoading,
@@ -102,6 +106,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [experimentsData]
   );
 
+<<<<<<< HEAD
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -218,6 +223,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     []
   );
 
+  const { wrapColumns, onClick: rowClickHandler, className: rowClickClassName } = useRowClick(
+    (row: ExperimentRow) => {
+      navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name));
+    },
+    tableData
+  );
+
   if (groupError) {
     return <ErrorMessage message="Failed to load experiment group." />;
   }
@@ -229,7 +241,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
   return (
     <StudioDataView
       dataViewState={dataViewState}
-      makeColumns={makeColumns}
+      makeColumns={wrapColumns(makeColumns)}
       searchField="name"
       toolbarSlotEnd={
         <EditColumnsMenu
@@ -250,6 +262,8 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           data: tableData,
           totalCount,
           requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
+          onClick: rowClickHandler,
+          className: rowClickClassName,
         },
         DataViewTableContent: {
           renderEmptyState: () => (
