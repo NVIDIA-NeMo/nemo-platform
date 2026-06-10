@@ -1,0 +1,118 @@
+---
+title: "About Generating Safe Synthetic Data"
+description: ""
+---
+
+<a id="safe-synthesizer"></a>
+
+NVIDIA NeMo Safe Synthesizer enables you to create private versions of sensitive tabular datasets. The resulting data is entirely synthetic, with no one-to-one mapping to your original records. NeMo Safe Synthesizer is purpose-built for privacy compliance and data protection while preserving data utility for downstream AI tasks.
+
+<Button href="/documentation/synthesize-safe-data" variant="primary">**Quickstart**</Button>
+<Button href="/documentation/synthesize-safe-data/tutorials" variant="secondary">**Tutorials**</Button>
+
+---
+
+NeMo Safe Synthesizer allows you to generate synthetic data that maintains the statistical properties of your original dataset without exposing sensitive information about individual records.
+
+NeMo Safe Synthesizer is best when you have the data you need, but because it is private or sensitive in nature you cannot use it as-is. NeMo Safe Synthesizer interpolates from existing data to generate a private, synthetic version, where new records have no one-to-one mapping to original records. If you do not have any data or want to extrapolate based on a very small set of examples, refer to [index](/documentation/design-synthetic-data). NeMo Data Designer supports synthetic data creation from scratch or small seed for AI training and development use cases.
+
+<a id="safe-synthesizer-job"></a>
+## NeMo Safe Synthesizer Job
+
+A complete NeMo Safe Synthesizer job consists of the following steps:
+
+1. [Upload Data](/documentation/get-started/core-concepts/manage-files): Add your tabular data to the Files API
+2. Prepare Data:
+ - [Configure PII Replacement](/documentation/synthesize-safe-data/about/pii-replacement): Set up detection and replacement of sensitive information (recommended prior to the Synthesis step to ensure the model has no chance of learning the most sensitive information like names and addresses)
+ - Configure training data organization and holdout splits
+3. Configure Synthesis:
+ - [Training](/documentation/synthesize-safe-data/about/data-synthesis): Set model selection and training parameters including differential privacy
+ - Generate synthetic records
+ - [Evaluation](/documentation/synthesize-safe-data/about/evaluation): Assess quality and privacy
+4. Execute and Review:
+ - [Run and Monitor Job](/documentation/synthesize-safe-data/about/jobs): Execute the job and track progress
+ - Download synthetic data and evaluation reports
+
+Find all Safe Synthesizer configuration parameters in [Parameters Reference](/documentation/synthesize-safe-data/about/parameters-reference).
+
+---
+
+## Installation Options
+
+Try out this early access API using Docker Compose or deploying the NeMo Platform Helm chart.
+
+<Cards>
+
+<Card title="Quickstart" href="/documentation/synthesize-safe-data">
+
+Get started with the NeMo Safe Synthesizer microservice locally using the NeMo Platform CLI. Easiest for local testing.
+
+<small><span class="md-tag">standalone</span></small>
+
+</Card>
+<Card title="Helm Chart">
+
+Deploy the NeMo Platform Helm Chart, which includes NeMo Safe Synthesizer.
+
+<small><span class="md-tag">helm-chart</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## Tutorials
+
+Get hands-on experience with Safe Synthesizer through step-by-step tutorials.
+
+<Cards>
+
+<Card title="Tutorials" href="/documentation/synthesize-safe-data/tutorials">
+
+Learn how to use NeMo Safe Synthesizer with hands-on tutorials covering basics to advanced topics.
+
+<small><span class="md-tag">beginner</span> <span class="md-tag">intermediate</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## Core Concepts
+
+<Cards>
+
+<Card title="Data Synthesis" href="/documentation/synthesize-safe-data/about/data-synthesis">
+
+Learn about LLM-based synthesis, differential privacy, and tabular fine-tuning for generating synthetic data.
+
+</Card>
+<Card title="PII Replacement" href="/documentation/synthesize-safe-data/about/pii-replacement">
+
+Understand how PII detection and replacement works to protect sensitive information before synthesis.
+
+</Card>
+<Card title="Evaluation" href="/documentation/synthesize-safe-data/about/evaluation">
+
+Learn about quality and privacy metrics used to assess synthetic data including SQS and DPS scores.
+
+</Card>
+<Card title="Jobs" href="/documentation/synthesize-safe-data/about/jobs">
+
+Understand the job lifecycle, configuration, and execution for Safe Synthesizer pipelines.
+
+</Card>
+<Card title="Local and Subprocess Execution" href="/documentation/synthesize-safe-data/about/local-and-subprocess-execution">
+
+Run on a host GPU with `nemo safe-synthesizer run-local` and `runtime` commands; reuse local adapters and run plugin tests.
+
+</Card>
+<Card title="Parameters Reference" href="/documentation/synthesize-safe-data/about/parameters-reference">
+
+Reference all configuration parameters available when creating Safe Synthesizer jobs.
+
+</Card>
+
+</Cards>

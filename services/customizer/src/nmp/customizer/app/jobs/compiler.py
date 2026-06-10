@@ -331,7 +331,7 @@ async def _validate_deployment_config(
     resolved_config = await _resolve_deployment_config_ref(dc, workspace, sdk)
 
     # LoRA job referencing a config that has lora_enabled=False
-    if is_lora and resolved_config.nim_deployment and resolved_config.nim_deployment.lora_enabled is False:
+    if is_lora and resolved_config.model_spec and resolved_config.model_spec.lora_enabled is False:
         raise PlatformJobCompilationError(
             f"deployment_config references '{dc}' which has lora_enabled=false, "
             "but this is a LoRA training job. The deployment would not load LoRA adapters. "
@@ -354,9 +354,11 @@ async def _validate_deployment_config(
 
         # Output model entity already exists (retraining to create a new FileSet).
         # Verify the config actually targets this model entity.
-        nim = resolved_config.nim_deployment
+        model_spec = resolved_config.model_spec
         config_targets_model = (resolved_config.model_entity_id == f"{existing_me.workspace}/{existing_me.name}") or (
-            nim and nim.model_name == existing_me.name and nim.model_namespace == existing_me.workspace
+            model_spec
+            and model_spec.model_name == existing_me.name
+            and model_spec.model_namespace == existing_me.workspace
         )
         if not config_targets_model:
             raise PlatformJobCompilationError(

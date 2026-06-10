@@ -1,0 +1,30 @@
+---
+title: "About Guardrails"
+description: ""
+---
+<a id="nemo-ms-guardrails"></a>
+
+Use NeMo Guardrails to apply safety checks and content moderation to large language model (LLM) applications. Guardrails runs as an Inference Gateway (IGW) middleware plugin that evaluates user inputs and model outputs against configurable guardrail policies. It supports dedicated task models (such as content safety or topic control) and integrates directly into the inference pipeline through VirtualModels.
+
+Guardrail configurations define which checks run, which models perform the checks, and how blocked content is handled. You wire a guardrail configuration onto a VirtualModel, and every inference request to that VirtualModel flows through the safety checks automatically — using the standard IGW OpenAI-compatible endpoint.
+
+---
+
+## Concepts
+
+- **[Architecture](/documentation/guardrail-models/core-concepts/architecture)** — How guardrails fits into the inference pipeline as IGW middleware.
+- **[Guardrail Configurations](/documentation/guardrail-models/core-concepts/configurations)** — Define rails, models, and prompts.
+- **[Running Inference](/documentation/guardrail-models/core-concepts/running-inference)** — Make inference calls through a guarded VirtualModel.
+- **[Running Checks](/documentation/guardrail-models/core-concepts/running-checks)** — Evaluate messages against rails without running inference.
+
+---
+
+## Tutorials
+
+These tutorials walk you through common guardrail tasks using NeMo Guardrails.
+
+- **[Deploy NemoGuard NIMs](/documentation/guardrail-models/tutorials/deploy-nemo-guard-ni-ms)** — Deploy NemoGuard NIMs in your environment.
+- **[Content Safety](/documentation/guardrail-models/tutorials/content-safety)** — Detect and block harmful content with NemoGuard NIMs.
+- **[Parallel Rails](/documentation/guardrail-models/tutorials/parallel-rails)** — Run input and output rails in parallel.
+- **[Multimodal Data](/documentation/guardrail-models/tutorials/multimodal-data)** — Safety checks for multimodal data.
+- **[Injection Detection](/documentation/guardrail-models/tutorials/injection-detection)** — Detect SQL, XSS, and code injection.

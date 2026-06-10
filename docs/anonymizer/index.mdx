@@ -1,0 +1,135 @@
+---
+title: "Anonymizer Service"
+description: ""
+---
+<a id="anonymizer"></a>
+
+The Anonymizer service detects personally identifiable information (PII) in text data on the NeMo Platform and replaces or rewrites it.
+
+## Overview
+
+The service wraps the open-source [NVIDIA NeMo Anonymizer library](https://github.com/NVIDIA-NeMo/Anonymizer) and exposes it through the NeMo Platform's Python SDK and CLI. The library still owns PII detection, replacement, rewrite, and config validation. The platform adds inference routing through the Inference Gateway, fileset-backed inputs, plugin-service execution for streaming preview, and a Jobs-worker path for full anonymization runs.
+
+## How It Works: Library + Platform
+
+The library defines **what** to anonymize and **how**. The platform decides **where the work runs** and **how models are reached**.
+
+<Note>
+
+The code snippets below are for conceptual demonstration purposes only. For runnable examples, see the [tutorials](/documentation/anonymize-data/tutorials).
+
+</Note>
+### 1. Build a config with the library
+
+Use `anonymizer.config` (installed automatically with the `nemo-anonymizer-plugin`) to define the replacement strategy:
+
+```python
+from anonymizer.config.anonymizer_config import AnonymizerConfig
+from anonymizer.config.replace_strategies import Redact
+
+config = AnonymizerConfig(
+    replace=Redact(format_template="[REDACTED_{label}]"),
+)
+```
+
+**The library handles:** PII detection, the four replacement strategies (`Substitute`, `Redact`, `Annotate`, `Hash`), the `Rewrite` mode, and config validation.
+
+**Learn more:** See the [open-source library documentation](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) for detailed coverage of detection, replacement strategies, and rewrite mode.
+
+### 2. Execute on the platform
+
+Submit the config to the Anonymizer service with the NeMo Platform SDK:
+
+```python
+from nemo_anonymizer_plugin.app.task_config import PreviewRequest
+from nemo_platform import NeMoPlatform
+
+sdk = NeMoPlatform(base_url="...", workspace="default")
+anonymizer = sdk.anonymizer
+
+preview_result = anonymizer.preview(PreviewRequest(
+    config=config,
+    data={"source": "my-fileset#data/input.csv", "text_column": "biography"},
+    model_configs=[...],
+    num_records=10,
+))
+
+preview_result.dataset           # pandas DataFrame of anonymized records
+preview_result.trace_dataset     # detection trace
+preview_result.display_record(0) # render a record with entity highlights
+```
+
+For a full anonymization run, execute the job locally or submit it to the Jobs worker:
+
+```bash
+nemo anonymizer run run --spec-file /path/to/run-spec.yaml      # in-process
+nemo anonymizer run submit --spec-file /path/to/run-spec.yaml   # NeMo Services job
+```
+
+The SDK equivalent of `run submit` is `sdk.anonymizer.run(request)`, which returns an `AnonymizerJobResource` you can poll with `wait_until_done()` and pull artifacts from with `download_artifacts()`.
+
+**The platform handles:** Inference routing through the Inference Gateway, fileset-backed inputs, and authentication.
+
+## Key Differences from Standalone Library
+
+When using Anonymizer as a NeMo Platform service:
+
+| Feature           | Standalone Library                                  | NeMo Platform Service                                                                                       |
+|-------------------|-----------------------------------------------------|-----------------------------------------------------------------------------------------------------------------|
+| **Inference**     | Direct calls to NVIDIA Build defaults               | Routes through the Inference Gateway via `model_configs`                                                        |
+| **Execution**     | Local Python process                                | Streaming preview runs in the plugin service; full runs execute either in the local CLI (`run run`) or on the Jobs worker (`run submit`) |
+| **Input sources** | Local file, `http(s)` URL                           | Local file (`run run` only), `http(s)` URL, or NeMo Platform Fileset                                        |
+| **Artifacts**     | Local filesystem                                    | Local artifact directory (`persistent/results/artifacts`) for `run run`; NeMo Platform job artifact storage for `run submit` |
+| **Authentication**| Direct API keys                                     | NeMo Platform Secrets service                                                                               |
+
+## Replacement Strategies
+
+The library supports four replacement strategies plus a full-passage rewrite mode. The plugin exposes all of them unchanged.
+
+| Strategy     | Behavior                                                                                  |
+|--------------|-------------------------------------------------------------------------------------------|
+| `Substitute` | LLM-generated, contextually realistic replacements (for example, swap a real name for another plausible name). |
+| `Redact`     | Replace detected entities with a fixed redaction token (for example, `[REDACTED_FIRST_NAME]`).                 |
+| `Annotate`   | Wrap detected entities with span-style labels.                                            |
+| `Hash`       | Replace detected entities with deterministic hashes.                                      |
+| `Rewrite`    | Rewrite the entire passage to protect both explicit and implicit identifiers.             |
+
+See the [library documentation](https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs) for the configuration shape of each strategy.
+
+## What the Plugin Adds
+
+This package is a thin wrapper around the [NVIDIA NeMo Anonymizer library](https://github.com/NVIDIA-NeMo/Anonymizer). It does **not** re-document detection, replacement, or rewrite semantics. It adds:
+
+- A `nemo anonymizer` CLI with `validate`, `preview`, and `run` command groups.
+- An `sdk.anonymizer` SDK accessor (`AnonymizerResource`, `AsyncAnonymizerResource`).
+- A streaming `anonymizer.preview` function that emits `preview_dataset`, `trace_dataset`, and `failed_records` frames from the plugin service.
+- An `anonymizer.run` job that writes `dataset.parquet`, `trace.parquet`, `metadata.json`, and optional `failed_records.json`. The job can execute in the local CLI process (`nemo anonymizer run run`) or on the NeMo Platform Jobs worker (`nemo anonymizer run submit` / `sdk.anonymizer.run`).
+- Fileset input handling (`fileset://<workspace>/<fileset>#<path>`).
+- Inference Gateway routing for model providers referenced from `model_configs`.
+
+## Next Steps
+
+<Cards>
+
+<Card title="Tutorials" href="/documentation/anonymize-data/tutorials">
+
+Walk through preview (`anonymizer.preview`) and job execution (`anonymizer.run`) end to end.
+
+</Card>
+<Card title="SDK Resources" href="/documentation/anonymize-data/sdk-resources">
+
+Reference for the `anonymizer` SDK accessor, preview result, and job result objects.
+
+</Card>
+<Card title="CLI Reference" href="/documentation/anonymize-data/cli-reference">
+
+Reference for `nemo anonymizer` commands and their spec files.
+
+</Card>
+<Card title="Library Documentation" href="https://github.com/NVIDIA-NeMo/Anonymizer/tree/main/docs">
+
+Detection, replacement strategies, rewrite mode, and other library internals.
+
+</Card>
+
+</Cards>

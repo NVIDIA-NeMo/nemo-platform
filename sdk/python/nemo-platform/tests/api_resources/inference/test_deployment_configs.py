@@ -41,8 +41,10 @@ class TestDeploymentConfigs:
     def test_method_create(self, client: NeMoPlatform) -> None:
         deployment_config = client.inference.deployment_configs.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         )
         assert_matches_type(ModelDeploymentConfig, deployment_config, path=["response"])
 
@@ -51,12 +53,13 @@ class TestDeploymentConfigs:
     def test_method_create_with_all_params(self, client: NeMoPlatform) -> None:
         deployment_config = client.inference.deployment_configs.create(
             workspace="workspace",
-            name="nim-config-v1",
-            nim_deployment={
+            engine="nim",
+            executor_config={
                 "gpu": 0,
-                "additional_envs": {"foo": "bar"},
-                "chat_template": "chat_template",
+                "additional_args": ["string"],
+                "additional_envs": {"foo": "string"},
                 "disk_size": "disk_size",
+                "health_check_path": "health_check_path",
                 "image_name": "image_name",
                 "image_tag": "image_tag",
                 "k8s_nim_operator_config": {
@@ -65,19 +68,22 @@ class TestDeploymentConfigs:
                     "startup_probe_grace_seconds": 1,
                     "tolerations": [{"foo": "bar"}],
                 },
+                "override_config": {"foo": "bar"},
+            },
+            model_spec={
+                "chat_template": "chat_template",
                 "lora_enabled": True,
                 "model_name": "model_name",
                 "model_namespace": "model_namespace",
-                "model_provider": "model_provider",
                 "model_revision": "model_revision",
                 "model_type": "llm",
-                "override_config": {"foo": "bar"},
                 "tool_call_config": {
                     "auto_tool_choice": True,
                     "tool_call_parser": "tool_call_parser",
                     "tool_call_plugin": "tool_call_plugin",
                 },
             },
+            name="nim-config-v1",
             description="description",
             model_entity_id="model_entity_id",
             project="project",
@@ -89,8 +95,10 @@ class TestDeploymentConfigs:
     def test_raw_response_create(self, client: NeMoPlatform) -> None:
         response = client.inference.deployment_configs.with_raw_response.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         )
 
         assert response.is_closed is True
@@ -103,8 +111,10 @@ class TestDeploymentConfigs:
     def test_streaming_response_create(self, client: NeMoPlatform) -> None:
         with client.inference.deployment_configs.with_streaming_response.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -120,8 +130,10 @@ class TestDeploymentConfigs:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             client.inference.deployment_configs.with_raw_response.create(
                 workspace="",
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
                 name="nim-config-v1",
-                nim_deployment={"gpu": 0},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -182,7 +194,9 @@ class TestDeploymentConfigs:
         deployment_config = client.inference.deployment_configs.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         )
         assert_matches_type(ModelDeploymentConfig, deployment_config, path=["response"])
 
@@ -192,11 +206,13 @@ class TestDeploymentConfigs:
         deployment_config = client.inference.deployment_configs.update(
             name="name",
             workspace="workspace",
-            nim_deployment={
+            engine="nim",
+            executor_config={
                 "gpu": 0,
-                "additional_envs": {"foo": "bar"},
-                "chat_template": "chat_template",
+                "additional_args": ["string"],
+                "additional_envs": {"foo": "string"},
                 "disk_size": "disk_size",
+                "health_check_path": "health_check_path",
                 "image_name": "image_name",
                 "image_tag": "image_tag",
                 "k8s_nim_operator_config": {
@@ -205,13 +221,15 @@ class TestDeploymentConfigs:
                     "startup_probe_grace_seconds": 1,
                     "tolerations": [{"foo": "bar"}],
                 },
+                "override_config": {"foo": "bar"},
+            },
+            model_spec={
+                "chat_template": "chat_template",
                 "lora_enabled": True,
                 "model_name": "model_name",
                 "model_namespace": "model_namespace",
-                "model_provider": "model_provider",
                 "model_revision": "model_revision",
                 "model_type": "llm",
-                "override_config": {"foo": "bar"},
                 "tool_call_config": {
                     "auto_tool_choice": True,
                     "tool_call_parser": "tool_call_parser",
@@ -229,7 +247,9 @@ class TestDeploymentConfigs:
         response = client.inference.deployment_configs.with_raw_response.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         )
 
         assert response.is_closed is True
@@ -243,7 +263,9 @@ class TestDeploymentConfigs:
         with client.inference.deployment_configs.with_streaming_response.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -260,14 +282,18 @@ class TestDeploymentConfigs:
             client.inference.deployment_configs.with_raw_response.update(
                 name="name",
                 workspace="",
-                nim_deployment={"gpu": 0},
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             client.inference.deployment_configs.with_raw_response.update(
                 name="",
                 workspace="workspace",
-                nim_deployment={"gpu": 0},
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -401,8 +427,10 @@ class TestAsyncDeploymentConfigs:
     async def test_method_create(self, async_client: AsyncNeMoPlatform) -> None:
         deployment_config = await async_client.inference.deployment_configs.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         )
         assert_matches_type(ModelDeploymentConfig, deployment_config, path=["response"])
 
@@ -411,12 +439,13 @@ class TestAsyncDeploymentConfigs:
     async def test_method_create_with_all_params(self, async_client: AsyncNeMoPlatform) -> None:
         deployment_config = await async_client.inference.deployment_configs.create(
             workspace="workspace",
-            name="nim-config-v1",
-            nim_deployment={
+            engine="nim",
+            executor_config={
                 "gpu": 0,
-                "additional_envs": {"foo": "bar"},
-                "chat_template": "chat_template",
+                "additional_args": ["string"],
+                "additional_envs": {"foo": "string"},
                 "disk_size": "disk_size",
+                "health_check_path": "health_check_path",
                 "image_name": "image_name",
                 "image_tag": "image_tag",
                 "k8s_nim_operator_config": {
@@ -425,19 +454,22 @@ class TestAsyncDeploymentConfigs:
                     "startup_probe_grace_seconds": 1,
                     "tolerations": [{"foo": "bar"}],
                 },
+                "override_config": {"foo": "bar"},
+            },
+            model_spec={
+                "chat_template": "chat_template",
                 "lora_enabled": True,
                 "model_name": "model_name",
                 "model_namespace": "model_namespace",
-                "model_provider": "model_provider",
                 "model_revision": "model_revision",
                 "model_type": "llm",
-                "override_config": {"foo": "bar"},
                 "tool_call_config": {
                     "auto_tool_choice": True,
                     "tool_call_parser": "tool_call_parser",
                     "tool_call_plugin": "tool_call_plugin",
                 },
             },
+            name="nim-config-v1",
             description="description",
             model_entity_id="model_entity_id",
             project="project",
@@ -449,8 +481,10 @@ class TestAsyncDeploymentConfigs:
     async def test_raw_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         response = await async_client.inference.deployment_configs.with_raw_response.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         )
 
         assert response.is_closed is True
@@ -463,8 +497,10 @@ class TestAsyncDeploymentConfigs:
     async def test_streaming_response_create(self, async_client: AsyncNeMoPlatform) -> None:
         async with async_client.inference.deployment_configs.with_streaming_response.create(
             workspace="workspace",
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
             name="nim-config-v1",
-            nim_deployment={"gpu": 0},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -480,8 +516,10 @@ class TestAsyncDeploymentConfigs:
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `workspace` but received ''"):
             await async_client.inference.deployment_configs.with_raw_response.create(
                 workspace="",
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
                 name="nim-config-v1",
-                nim_deployment={"gpu": 0},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
@@ -542,7 +580,9 @@ class TestAsyncDeploymentConfigs:
         deployment_config = await async_client.inference.deployment_configs.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         )
         assert_matches_type(ModelDeploymentConfig, deployment_config, path=["response"])
 
@@ -552,11 +592,13 @@ class TestAsyncDeploymentConfigs:
         deployment_config = await async_client.inference.deployment_configs.update(
             name="name",
             workspace="workspace",
-            nim_deployment={
+            engine="nim",
+            executor_config={
                 "gpu": 0,
-                "additional_envs": {"foo": "bar"},
-                "chat_template": "chat_template",
+                "additional_args": ["string"],
+                "additional_envs": {"foo": "string"},
                 "disk_size": "disk_size",
+                "health_check_path": "health_check_path",
                 "image_name": "image_name",
                 "image_tag": "image_tag",
                 "k8s_nim_operator_config": {
@@ -565,13 +607,15 @@ class TestAsyncDeploymentConfigs:
                     "startup_probe_grace_seconds": 1,
                     "tolerations": [{"foo": "bar"}],
                 },
+                "override_config": {"foo": "bar"},
+            },
+            model_spec={
+                "chat_template": "chat_template",
                 "lora_enabled": True,
                 "model_name": "model_name",
                 "model_namespace": "model_namespace",
-                "model_provider": "model_provider",
                 "model_revision": "model_revision",
                 "model_type": "llm",
-                "override_config": {"foo": "bar"},
                 "tool_call_config": {
                     "auto_tool_choice": True,
                     "tool_call_parser": "tool_call_parser",
@@ -589,7 +633,9 @@ class TestAsyncDeploymentConfigs:
         response = await async_client.inference.deployment_configs.with_raw_response.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         )
 
         assert response.is_closed is True
@@ -603,7 +649,9 @@ class TestAsyncDeploymentConfigs:
         async with async_client.inference.deployment_configs.with_streaming_response.update(
             name="name",
             workspace="workspace",
-            nim_deployment={"gpu": 0},
+            engine="nim",
+            executor_config={"gpu": 0},
+            model_spec={},
         ) as response:
             assert not response.is_closed
             assert response.http_request.headers.get("X-Stainless-Lang") == "python"
@@ -620,14 +668,18 @@ class TestAsyncDeploymentConfigs:
             await async_client.inference.deployment_configs.with_raw_response.update(
                 name="name",
                 workspace="",
-                nim_deployment={"gpu": 0},
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
             )
 
         with pytest.raises(ValueError, match=r"Expected a non-empty value for `name` but received ''"):
             await async_client.inference.deployment_configs.with_raw_response.update(
                 name="",
                 workspace="workspace",
-                nim_deployment={"gpu": 0},
+                engine="nim",
+                executor_config={"gpu": 0},
+                model_spec={},
             )
 
     @pytest.mark.skip(reason="Mock server tests are disabled")
