@@ -3,8 +3,10 @@
 
 import type { ToolCallMessagePartComponent } from '@assistant-ui/react';
 import { Text } from '@nvidia/foundations-react-core';
+import { JobProgressToolCall } from '@studio/routes/agents/ClaudeCodeChatRoute/JobProgressToolCall';
 import {
   CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME,
+  isClaudeCodeJobProgressToolName,
   isClaudeCodeSubtleToolCallName,
   toClaudeCodeToolArgs,
   type ClaudeCodeToolArgs,
@@ -622,6 +624,10 @@ export const ClaudeCodeToolCallPart: ToolCallMessagePartComponent<ClaudeCodeTool
   toolName,
 }) => {
   const isRunning = status.type === 'running';
+
+  if (isClaudeCodeJobProgressToolName(toolName)) {
+    return <JobProgressToolCall args={args} />;
+  }
 
   if (toolName === CLAUDE_CODE_SUBTLE_TOOL_GROUP_NAME) {
     const subtleActions = getSubtleToolGroupActions(args);

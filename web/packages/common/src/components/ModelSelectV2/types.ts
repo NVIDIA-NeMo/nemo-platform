@@ -41,6 +41,8 @@ export interface ModelSelectV2Props {
   hideAdapters?: boolean;
   /** Make the component fill the width of its container */
   fullWidth?: boolean;
+  /** Preferred side for the dropdown content */
+  dropdownSide?: 'top' | 'bottom';
   /** Current inference parameter values */
   inferenceParams?: Partial<InferenceParams>;
   /** Called when the user changes any inference parameter */

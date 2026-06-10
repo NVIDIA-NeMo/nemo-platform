@@ -3,6 +3,7 @@
 
 export interface ClaudeCodeStreamHandlers {
   onClaudeEvent: (event: unknown) => void;
+  onInputRequest: (request: ClaudeCodeInputRequest) => void;
   onPermissionRequest: (request: ClaudeCodePermissionRequest) => void;
   onDone: () => void;
   onError: (error: Error) => void;
@@ -19,6 +20,19 @@ export interface ClaudeCodePermissionDecision {
   approved: boolean;
   reason?: string;
   updatedInput?: Record<string, unknown>;
+}
+
+export type ClaudeCodeInputRequestKind = 'agent' | 'eval_config' | 'dataset_file' | 'model';
+
+export interface ClaudeCodeInputRequest {
+  requestId: string;
+  kind: ClaudeCodeInputRequestKind;
+  input: Record<string, unknown>;
+}
+
+export interface ClaudeCodeInputDecision {
+  skipped?: boolean;
+  value?: Record<string, unknown>;
 }
 
 export interface ClaudeCodeChatRouteState {
@@ -57,6 +71,7 @@ export interface ClaudeCodeAssistantTextPart {
 
 export interface ClaudeCodeAssistantToolUsePart {
   type: 'tool_use';
+  id?: string;
   name: string;
   input: Record<string, unknown>;
 }

@@ -36,10 +36,14 @@ const getAssistantMessagePart = (
   if (part.type === 'text') return { type: 'text', text: part.text };
   if (part.type === 'tool_use') {
     const toolName = part.name || 'tool';
+    const toolCallId =
+      typeof part.id === 'string' && part.id.trim()
+        ? part.id
+        : `claude-history-tool-${assistantMessageId}-${toolName}-${index}`;
 
     return createClaudeCodeToolCallPart({
       input: part.input,
-      toolCallId: `claude-history-tool-${assistantMessageId}-${toolName}-${index}`,
+      toolCallId,
       toolName,
     });
   }
