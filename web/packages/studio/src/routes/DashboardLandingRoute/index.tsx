@@ -2,70 +2,31 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { GradientBackground } from '@nemo/common/src/components/GradientBackground';
-import { Button, Card, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
+import { Button, Flex, Text, TextArea, Tooltip } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
+import {
+  CLAUDE_CODE_SKILLS_QUERY_KEY,
+  listClaudeCodeSkills,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import { SkillActionSection } from '@studio/routes/DashboardLandingRoute/SkillActionSection';
+import { getSkillActionSuggestions } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
-import { FlaskConical, HatGlasses, KeyRound, Send, Terminal } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
   type FC,
   type FormEvent,
   type KeyboardEvent,
-  type ReactNode,
   useCallback,
+  useMemo,
   useState,
 } from 'react';
 import { useNavigate } from 'react-router-dom';
-
-interface PromptSuggestion {
-  title: string;
-  prompt: string;
-  icon: ReactNode;
-}
-
-const PROMPT_SUGGESTIONS: PromptSuggestion[] = [
-  {
-    title: 'Create an agent',
-    prompt: 'Create a new agent in this workspace and deploy it once it is ready.',
-    icon: <HatGlasses size={18} />,
-  },
-  {
-    title: 'Start an evaluation',
-    prompt: 'Start an evaluation for one of my agents using an example evaluation config.',
-    icon: <FlaskConical size={18} />,
-  },
-  {
-    title: 'Set up a secret',
-    prompt: 'Help me create a workspace secret for an API key.',
-    icon: <KeyRound size={18} />,
-  },
-];
-
-const PromptCard = ({
-  suggestion,
-  onSelect,
-}: {
-  suggestion: PromptSuggestion;
-  onSelect: () => void;
-}) => (
-  <Card asChild interactive className="min-h-28 w-full cursor-pointer shadow-none!">
-    <button type="button" onClick={onSelect}>
-      <span className="flex size-8 items-center justify-center rounded bg-surface-raised text-accent">
-        {suggestion.icon}
-      </span>
-      <span className="min-w-0">
-        <Text kind="label/bold/md">{suggestion.title}</Text>
-        <Text kind="body/regular/sm" color="secondary" className="mt-1 line-clamp-2">
-          {suggestion.prompt}
-        </Text>
-      </span>
-    </button>
-  </Card>
-);
 
 const LandingComposer = ({
   input,
@@ -142,6 +103,16 @@ export const DashboardLandingRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
   const [input, setInput] = useState('');
+  const {
+    data: skills,
+    isError: isSkillsError,
+    isLoading: isSkillsLoading,
+    refetch: refetchSkills,
+  } = useQuery({
+    queryKey: CLAUDE_CODE_SKILLS_QUERY_KEY,
+    queryFn: listClaudeCodeSkills,
+  });
+  const skillActionSuggestions = useMemo(() => getSkillActionSuggestions(skills ?? []), [skills]);
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Dashboard' }],
@@ -173,15 +144,14 @@ export const DashboardLandingRoute: FC = () => {
 
               <LandingComposer input={input} onChange={setInput} onSubmit={handleSubmit} />
 
-              <Flex className="grid w-full grid-cols-1 gap-3 md:grid-cols-3">
-                {PROMPT_SUGGESTIONS.map((suggestion) => (
-                  <PromptCard
-                    key={suggestion.title}
-                    suggestion={suggestion}
-                    onSelect={() => handlePromptSelect(suggestion.prompt)}
-                  />
-                ))}
-              </Flex>
+              <SkillActionSection
+                actions={skillActionSuggestions}
+                isError={isSkillsError}
+                isLoading={isSkillsLoading}
+                onRetry={() => void refetchSkills()}
+                onSelect={handlePromptSelect}
+                totalSkillCount={skills?.length ?? 0}
+              />
             </Flex>
           </main>
         </GradientBackground>
