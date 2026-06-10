@@ -32,6 +32,7 @@ from nemo_platform.types import (
     PlatformJobTaskStatusResponse,
     PromptData,
     SlidingWindowConfig,
+    StringFilter,
     ToolCallConfig,
     ToolCallingMetadataContent,
     ValidationError,

@@ -18,12 +18,17 @@
 from __future__ import annotations
 
 from typing import List, Union
-from typing_extensions import TypedDict
+from typing_extensions import TypeAlias, TypedDict
 
 from ..shared.platform_job_status import PlatformJobStatus
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["PlatformJobsListFilterParam"]
+__all__ = ["PlatformJobsListFilterParam", "Name", "Source"]
+
+Name: TypeAlias = Union[StringFilter, str]
+
+Source: TypeAlias = Union[StringFilter, str]
 
 
 class PlatformJobsListFilterParam(TypedDict, total=False):
@@ -32,13 +37,13 @@ class PlatformJobsListFilterParam(TypedDict, total=False):
     created_at: DatetimeFilter
     """Jobs created at 'gte' datetime or 'lte' datetime."""
 
-    name: str
+    name: Name
     """Name of the job."""
 
     project: str
     """Project of the job."""
 
-    source: str
+    source: Source
     """The source of the job."""
 
     status: Union[PlatformJobStatus, List[PlatformJobStatus]]

@@ -8,7 +8,7 @@ from typing import Annotated, Optional, Union
 from fastapi import Depends, FastAPI
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter, make_filter_dep
-from nmp.common.entities.values import DatetimeFilter, Filter, map_entity_field
+from nmp.common.entities.values import DatetimeFilter, Filter, StringFilter, map_entity_field
 from starlette.testclient import TestClient
 
 # ---------------------------------------------------------------------------
@@ -28,6 +28,12 @@ class BoolCoercibleFilter(Filter):
     base_model: Optional[Union[bool, str]] = None
     pure_bool: Optional[bool] = None
     name: str | None = None
+
+
+class StringFieldFilter(Filter):
+    """Filter with a StringFilter-typed field to exercise operator bracket notation."""
+
+    name: StringFilter | str | None = None
 
 
 def _make_app(filter_model):
@@ -573,3 +579,50 @@ class TestNamespaceEndToEnd:
         # ``name`` is a scalar field; ``name.foo`` is not a valid namespace sub-path.
         resp = self._client().get("/items", params={"filter[name.foo]": "x"})
         assert resp.status_code == 400
+
+
+class TestStringFilterEndToEnd:
+    """End-to-end tests through make_filter_dep with StringFilter operator brackets.
+
+    ``make_filter_dep`` parses bracket notation into FilterOperation objects
+    independently of the field's declared StringFilter type, so widening the
+    field to ``StringFilter | str | None`` is purely additive for parsing.
+    """
+
+    def _client(self) -> TestClient:
+        return TestClient(_make_app(StringFieldFilter))
+
+    def test_bracket_like(self):
+        client = self._client()
+        resp = client.get("/items", params={"filter[name][$like]": "llama"})
+        assert resp.status_code == 200
+        op = resp.json()["operation"]
+        assert op == {"name": {"$like": "llama"}}
+
+    def test_bracket_in_comma_split(self):
+        client = self._client()
+        resp = client.get("/items", params={"filter[name][$in]": "a,b,c"})
+        assert resp.status_code == 200
+        op = resp.json()["operation"]
+        assert op == {"name": {"$in": ["a", "b", "c"]}}
+
+    def test_bracket_nin_comma_split(self):
+        client = self._client()
+        resp = client.get("/items", params={"filter[name][$nin]": "x,y"})
+        assert resp.status_code == 200
+        op = resp.json()["operation"]
+        assert op == {"name": {"$nin": ["x", "y"]}}
+
+    def test_bracket_implicit_eq(self):
+        client = self._client()
+        resp = client.get("/items", params={"filter[name]": "llama-3"})
+        assert resp.status_code == 200
+        op = resp.json()["operation"]
+        assert op == {"name": {"$eq": "llama-3"}}
+
+    def test_explicit_eq(self):
+        client = self._client()
+        resp = client.get("/items", params={"filter[name][$eq]": "llama-3"})
+        assert resp.status_code == 200
+        op = resp.json()["operation"]
+        assert op == {"name": {"$eq": "llama-3"}}

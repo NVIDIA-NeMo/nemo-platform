@@ -644,9 +644,11 @@ components:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Jobs created at 'gte' datetime or 'lte' datetime.
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Name of the job.
           title: Name
-          type: string
         workspace:
           description: Workspace of the job.
           title: Workspace
@@ -1417,6 +1419,31 @@ components:
       description: 'Reference to a platform secret or local environment variable.
         Format: ''secret_name'' (uses request workspace) or ''workspace/secret_name''
         (explicit workspace).'
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
     ValidationError:
       properties:
         loc:

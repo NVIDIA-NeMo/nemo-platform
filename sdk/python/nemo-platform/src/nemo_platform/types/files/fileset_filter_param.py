@@ -17,13 +17,19 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
 from .fileset_purpose import FilesetPurpose
 from .storage_config_type import StorageConfigType
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["FilesetFilterParam"]
+__all__ = ["FilesetFilterParam", "Description", "Name"]
+
+Description: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class FilesetFilterParam(TypedDict, total=False):
@@ -35,10 +41,10 @@ class FilesetFilterParam(TypedDict, total=False):
     Supports '$gte' (on or after) and '$lte' (on or before) datetime filters.
     """
 
-    description: str
+    description: Description
     """Filter by fileset description."""
 
-    name: str
+    name: Name
     """Filter by fileset name."""
 
     purpose: FilesetPurpose
