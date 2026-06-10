@@ -1,0 +1,227 @@
+---
+title: "Setup"
+description: ""
+---
+<a id="nemo-setup"></a>
+
+Install NeMo Platform and start working with AI agents.
+
+<a id="nemo-setup-prerequisites"></a>
+## Prerequisites
+
+- Python 3.11-3.13
+- [Git](https://git-scm.com/), GNU Make, [uv](https://docs.astral.sh/uv/), [Node.js (≥22.18.0, \<23)](https://nodejs.org/en/download) satisfying `web/package.json`, and [pnpm](https://pnpm.io/installation)
+- An API key from one of: [NVIDIA Build](https://build.nvidia.com), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/settings/keys), [Google Gemini](https://aistudio.google.com/apikey), or a local [Ollama](https://ollama.com) instance (no key needed)
+- 16 GB available disk space and 8 GB RAM
+
+## Install
+
+Clone the source repository and bootstrap the local environment:
+
+```bash
+git clone https://github.com/NVIDIA-NeMo/nemo-platform.git
+cd nemo-platform
+make bootstrap
+source .venv/bin/activate
+```
+
+The `make bootstrap` target creates the Python environment, syncs Python dependencies, builds Studio assets, and installs local plugins.
+
+If Studio asset bootstrap fails, the API can still run but Studio is unavailable until the web bundle is built. Install Node.js with pnpm using `pnpm env use --global 22.18.0`, then rerun `make bootstrap-studio` from the repository root.
+
+Verify the installation:
+
+```bash
+nemo --help
+```
+
+## Set up the platform
+
+```bash
+nemo setup
+```
+
+The wizard walks through each stage:
+
+1. **Start services** — launches the platform locally
+2. **Choose a provider** — select your model provider and enter your API key
+3. **Register the provider** — connects the provider to the platform
+4. **Discover models** — finds available models from your provider
+5. **Set a default model** — pick the model to use by default
+6. **Install skills** — adds NeMo skills to detected coding agents (Cursor, Claude Code, Codex)
+7. **Deploy agent** — optionally deploys a demo calculator agent on the platform
+
+Each stage is idempotent — you can re-run `nemo setup` at any time to add more providers or update your configuration.
+
+When setup completes, try chatting with the model you selected. Use the model name shown at the end of setup (or find it with `nemo models list`):
+
+```bash
+nemo chat <model-name>
+```
+
+### Demo agent
+
+If you accepted **Deploy agent** during setup, a demo calculator agent is running on the platform. Try it out:
+
+```bash
+nemo agents invoke --agent calculator-agent --input "What is 12 * 8?"
+```
+
+### Coding agent skills
+
+If you accepted **Install skills** during setup and use Cursor, Claude Code, or Codex, your coding agent now has NeMo skills. Ask it to:
+
+- "Help me optimize my agent" — invokes the `nemo-agents-optimize` skill which analyzes deployed agents, compares models, suggests improvements
+- "Help me secure my agent" — invokes the `nemo-agents-secure` skill which runs audit scans, adds guardrails, flags vulnerabilities
+- "Evaluate my model [model_name] for helpfulness of responses on the HuggingFace nvidia/HelpSteer2 dataset. Limit evaluation to 5 samples" — runs evaluation
+- "Generate training data for [task]" — builds Data Designer configurations
+
+Run `nemo skills list` to see which skills are installed for the current environment — the agent can only invoke what's in that list.
+
+## Supported providers
+
+| Provider | Env var | Base URL |
+|----------|---------|----------|
+| NVIDIA Build | `NVIDIA_API_KEY` | `https://integrate.api.nvidia.com` |
+| OpenAI | `OPENAI_API_KEY` | `https://api.openai.com/v1` |
+| Anthropic | `ANTHROPIC_API_KEY` | `https://api.anthropic.com` |
+| Google Gemini | `GEMINI_API_KEY` | `https://generativelanguage.googleapis.com/v1beta/openai` |
+| Ollama (local) | — | `http://localhost:11434/v1` |
+| Custom | `NEMO_DEFAULT_INFERENCE_KEY` | Set via `NEMO_DEFAULT_INFERENCE_BASE_URL` |
+
+Ollama requires no API key but must be running before `nemo setup`. Start it with `ollama serve`.
+
+## Non-interactive setup
+
+For CI pipelines, scripts, or automated environments, use `--auto`. Set one provider environment variable — the first match wins.
+
+```bash
+export OPENAI_API_KEY=sk-...
+nemo setup --auto --start-services
+```
+
+**Priority order:** `NEMO_DEFAULT_INFERENCE_KEY` > `NVIDIA_API_KEY` > `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`
+
+### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--auto` | off | Non-interactive mode: register provider from environment variables |
+| `--workspace`, `-w` | `default` | Target workspace |
+| `--start-services` / `--no-start-services` | prompt (interactive) or skip (auto) | Start local platform services |
+| `--install-skills` / `--no-install-skills` | prompt (interactive) or skip (auto) | Install NeMo skills for detected coding agents |
+| `--deploy-agent` / `--no-deploy-agent` | prompt (interactive) or skip (auto) | Deploy the demo calculator agent |
+
+Override the default model with `NEMO_DEFAULT_MODEL`:
+
+```bash
+export OPENAI_API_KEY=sk-...
+export NEMO_DEFAULT_MODEL=default/openai-gpt-4.1
+nemo setup --auto --start-services
+```
+
+### Examples
+
+```bash
+# Full automation: services, skills, and agent
+export NVIDIA_API_KEY=nvapi-...
+nemo setup --auto --start-services --install-skills --deploy-agent
+
+# Provider only (platform already running)
+export OPENAI_API_KEY=sk-...
+nemo setup --auto
+
+# Skip skills and agent
+nemo setup --no-install-skills --no-deploy-agent
+```
+
+## What to explore next
+
+| Goal | Command or link |
+|------|-----------------|
+| Chat with a model | `nemo chat <model-name>` |
+| List available models | `nemo models list` |
+| Open the Studio UI | [http://localhost:8080](http://localhost:8080) |
+| Browse docs from the CLI | `nemo docs --list` |
+| Evaluate a model | [Run LLM-as-a-Judge Evaluation](/documentation/evaluate-models/tutorials/run-llm-as-a-judge-evaluation) |
+| Generate synthetic data | [Data Designer Tutorials](/documentation/design-synthetic-data/tutorials) |
+| Optimize an agent | [Optimize Agents](/documentation/agents/optimize-agents) |
+
+## Python SDK
+
+The `nemo-platform` package includes a Python SDK. After running `nemo setup`, the simplest initialization uses your CLI context:
+
+```python
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform()
+```
+
+For scripts or CI where you want explicit control:
+
+```python
+import os
+from nemo_platform import NeMoPlatform
+
+client = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+```
+
+An asynchronous client is also available. See the [SDK reference](/documentation/reference/python-sdk) for details.
+
+## Troubleshooting
+
+### Platform won't start
+
+Check `~/.local/state/nmp/instances/<scope>/services.log` in the directory where you ran `nemo setup`. The most common cause is port 8080 already in use.
+
+### Studio returns 404 or unavailable
+
+Studio requires the FastAPI web assets built by `make bootstrap-studio`. If `make bootstrap` warned that Studio asset bootstrap did not complete, install Node.js with pnpm using `pnpm env use --global 22.18.0`, then rerun `make bootstrap-studio` and `nemo services restart` from the repository root.
+
+### No models discovered
+
+The provider may still be syncing. Wait 30 seconds and run `nemo models list`. If still empty, verify your API key is valid and the provider endpoint is reachable.
+
+### "Platform not reachable" error
+
+Start services explicitly:
+
+```bash
+nemo setup --start-services
+```
+
+Or start them in a separate terminal:
+
+```bash
+nemo services run
+```
+
+### Re-running setup
+
+`nemo setup` is idempotent. Existing secrets, providers, and agent deployments are detected and skipped. Run it again to add a second provider or re-attempt a stage that failed.
+
+### Managing services
+
+```bash
+nemo services ls              # running instances only
+nemo services ls --all        # include stopped instance directories (with logs on disk)
+nemo services rm <scope>      # remove one stopped instance directory
+nemo services prune           # remove all stopped instance directories
+curl -s http://localhost:8080/health/ready   # check if running
+cat ~/.local/state/nmp/instances/<scope>/services.log   # view service output
+nemo services stop            # stop the running instance for this scope
+```
+
+### Stopped instance directories cluttering `ls --all`
+
+After stopping or crashing local services, stopped scope directories can remain under `~/.local/state/nmp/instances/<scope>/`. Empty lock-only ghosts are cleaned automatically; directories with service logs stay until you remove them:
+
+```bash
+nemo services ls --all        # see stopped scopes
+nemo services logs --instance <scope>   # inspect logs before removing
+nemo services rm <scope>      # remove one stopped instance directory
+nemo services prune           # remove all stopped instance directories
+```

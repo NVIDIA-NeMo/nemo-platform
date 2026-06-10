@@ -15,15 +15,11 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from ..._models import BaseModel
 from .model_metadata_content import ModelMetadataContent
-
-if TYPE_CHECKING:
-    from ..files.dataset_metadata_content import DatasetMetadataContent
+from .dataset_metadata_content import DatasetMetadataContent
 
 __all__ = ["FilesetMetadata"]
 

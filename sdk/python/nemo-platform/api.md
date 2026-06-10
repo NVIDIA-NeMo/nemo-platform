@@ -6,6 +6,7 @@ from nemo_platform.types import (
     AuthContext,
     AuthDiscoveryResponse,
     BackendFormat,
+    DatasetMetadataContent,
     DatetimeFilter,
     DeleteResponse,
     FileStorageType,
@@ -13,6 +14,7 @@ from nemo_platform.types import (
     FinetuningType,
     GenericSortField,
     HTTPValidationError,
+    InferenceParams,
     LinearLayerSpec,
     MambaConfig,
     MoEConfig,
@@ -39,8 +41,6 @@ from nemo_platform.types import (
 # [Audit](src/nemo_platform/resources/audit/api.md)
 
 # [Entities](src/nemo_platform/resources/entities/api.md)
-
-# [Evaluation](src/nemo_platform/resources/evaluation/api.md)
 
 # [Files](src/nemo_platform/resources/files/api.md)
 

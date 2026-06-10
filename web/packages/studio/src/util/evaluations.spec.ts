@@ -21,13 +21,13 @@ const makeModel = (
 
 describe('evaluation utils', () => {
   describe('getModelName', () => {
-    it('should return the model name when the model is a string', () => {
-      const job = { spec: { model: 'meta/llama-3.1-8b-instruct' } };
+    it('should return the model name when the target has a name', () => {
+      const job = { spec: { target: { name: 'meta/llama-3.1-8b-instruct' } } };
       expect(getModelName(job as never)).toBe('meta/llama-3.1-8b-instruct');
     });
 
-    it('should return the model name when the model is an object', () => {
-      const job = { spec: { model: { name: 'my-model' } } };
+    it('should return the model name when the target is an agent with a name', () => {
+      const job = { spec: { target: { name: 'my-model' } } };
       expect(getModelName(job as never)).toBe('my-model');
     });
 

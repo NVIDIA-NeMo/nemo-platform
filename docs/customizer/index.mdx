@@ -1,0 +1,166 @@
+---
+title: "About Fine-Tuning"
+description: ""
+---
+<a id="ft-about"></a>
+Learn how to fine-tune models by making requests to NVIDIA NeMo Customizer through the API. Fine-tuned models you have created can be deployed using NVIDIA NIMs.
+
+## Fine-Tuning Workflow
+
+<a id="ft-workflow"></a>
+At a high level, the fine-tuning workflow consists of the following steps:
+
+1. [Create a Model Entity](/documentation/customizer-reference/manage-model-entities/overview) pointing to your base model checkpoint (stored as a FileSet).
+1. Format a compatible [dataset](/documentation/fine-tune-models/tutorials/format-training-dataset).
+1. [Create a customization job](/documentation/fine-tune-models/manage-customization-jobs) referencing the Model Entity.
+1. Monitor the job until it completes.
+1. The customization job automatically creates either:
+ - **LoRA jobs**: An adapter attached to the original Model Entity
+ - **Full fine-tuning jobs**: A new Model Entity with the customized weights
+1. [Deploy the model](/documentation/models-and-inference) using the Deployment Management Service.
+1. Move on to [Evaluate the output model](/documentation/evaluate-models).
+
+---
+
+## Model Catalog
+
+Explore the model families and sizes supported by NVIDIA NeMo Customizer.
+
+
+<Cards>
+
+<Card title="Llama Models" href="/documentation/customizer-reference/models/llama">
+
+View the available Llama models in the model catalog.
+
+</Card>
+<Card title="Llama Nemotron Models" href="/documentation/customizer-reference/models/llama-nemotron">
+
+View the available Llama Nemotron models from NVIDIA, including Nano and Super variants for efficient and advanced instruction tuning.
+
+</Card>
+<Card title="Phi Models" href="/documentation/customizer-reference/models/phi">
+
+View the available Phi models from Microsoft, designed for strong reasoning capabilities with efficient deployment.
+
+</Card>
+<Card title="GPT-OSS Models" href="/documentation/customizer-reference/models/gpt-oss">
+
+View the available GPT-OSS models supported for Full SFT customization.
+
+</Card>
+<Card title="Embedding Models" href="/documentation/fine-tune-models/models/embedding">
+
+View the available embedding models for question-answering and retrieval tasks.
+
+</Card>
+
+</Cards>
+
+## Task Guides
+
+Perform common fine-tuning tasks.
+
+<Cards>
+
+<Card title="Manage Customization Jobs" href="/documentation/fine-tune-models/manage-customization-jobs">
+
+Create, list, view, and cancel customization jobs.
+
+</Card>
+<Card title="Manage Model Entities" href="/documentation/customizer-reference/manage-model-entities/overview">
+
+Create FileSets and Model Entities to prepare base models for customization.
+
+</Card>
+<Card title="Manage Datasets" href="/documentation/get-started/core-concepts/manage-files">
+
+Upload and manage datasets for training.
+
+</Card>
+
+</Cards>
+
+---
+
+## Tutorials
+
+Follow these tutorials to learn how to accomplish common fine-tuning tasks.
+
+<Cards>
+
+<Card title="Format Training Datasets" href="/documentation/fine-tune-models/tutorials/format-training-dataset">
+
+Learn how to format datasets for different model types.
+
+<small><span class="md-tag">datasets</span> <span class="md-tag">chat-models</span> <span class="md-tag">completion-models</span></small>
+
+</Card>
+<Card title="Start a LoRA Customization Job" href="tutorials/lora-customization-job.ipynb">
+
+Learn how to start a LoRA customization job using a custom dataset.
+
+<small><span class="md-tag">nemo-customizer</span></small>
+
+</Card>
+<Card title="Start a Full SFT Customization Job" href="tutorials/sft-customization-job.ipynb">
+
+Learn how to start a SFT customization job using a custom dataset.
+
+<small><span class="md-tag">nemo-customizer</span></small>
+
+</Card>
+<Card title="Align a Model with DPO" href="tutorials/dpo-customization-job.ipynb">
+
+Learn how to align a model with DPO (Direct Preference Optimization) using preference data.
+
+<small><span class="md-tag">nemo-customizer</span> <span class="md-tag">dpo</span></small>
+
+</Card>
+<Card title="Distill a Model with Knowledge Distillation" href="tutorials/distillation-customization-job.ipynb">
+
+Learn how to compress a larger teacher model into a smaller student model.
+
+<small><span class="md-tag">nemo-customizer</span> <span class="md-tag">knowledge-distillation</span></small>
+
+</Card>
+<Card title="Check Customization Job Metrics" href="/documentation/fine-tune-models/tutorials/metrics">
+
+Learn how to check job metrics using MLFlow or Weights & Biases.
+
+<small><span class="md-tag">nemo-customizer</span> <span class="md-tag">mlflow</span> <span class="md-tag">wandb</span></small>
+
+</Card>
+<Card title="Optimize Tokens per GPU" href="tutorials/optimize-throughput.ipynb">
+
+Learn how to optimize the token-per-GPU throughput for a LoRA optimization job.
+
+<small><span class="md-tag">nemo-customizer</span> <span class="md-tag">wandb</span> <span class="md-tag">sequence-packing</span></small>
+
+</Card>
+
+</Cards>
+
+---
+
+## References
+
+<Cards>
+
+<Card title="Hyperparameters" href="/documentation/customizer-reference/manage-jobs/training-configuration">
+
+View the available hyperparameters and their valid options that you can set when creating a customization job.
+
+</Card>
+<Card title="Customizer API" href="/documentation/reference/api-reference">
+
+View the OpenAPI specification for Customizer.
+
+</Card>
+<Card title="Troubleshoot Failed Jobs" href="/documentation/reference/troubleshooting/customizer">
+
+View troubleshooting tips for failed jobs.
+
+</Card>
+
+</Cards>
