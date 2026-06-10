@@ -11,7 +11,7 @@ from jinja2 import nodes as jinja_nodes
 from nmp.common.auth import AuthContext
 from nmp.common.entities import Filter, constants
 from nmp.common.entities.utils import get_random_id
-from nmp.common.entities.values import DatetimeFilter, map_entity_field
+from nmp.common.entities.values import DatetimeFilter, StringFilter, map_entity_field
 from nmp.common.inference import InferenceParams
 from nmp.core.models.constants import (
     MODEL_REF_MAX_LEN,
@@ -1021,7 +1021,7 @@ class GetModelEntityRequest(BaseModel):
 class BaseModelFilter(Filter):
     """Filter for base model properties."""
 
-    name: Optional[str] = Field(None, description="Filter by name of the base model.")
+    name: StringFilter | str | None = Field(None, description="Filter by name of the base model.")
 
 
 class FinetuningTypeFilter(Filter):
@@ -1035,7 +1035,7 @@ class FinetuningTypeFilter(Filter):
 class ModelEntityFilter(Filter):
     """Filter for Model Entity queries."""
 
-    name: Optional[str] = Field(None, description="Filter by name.")
+    name: StringFilter | str | None = Field(None, description="Filter by name.")
     project: Optional[str] = Field(None, description="Filter by project name.")
     workspace: Optional[str] = Field(None, description="Filter by workspace id.")
     base_model: Optional[Union[BaseModelFilter, bool, str]] = Field(
@@ -1055,7 +1055,7 @@ class ModelEntityFilter(Filter):
         default=None,
         description="Filter models by whether their deployment config has LoRA enabled.",
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter entities based on update date.")
 
@@ -1063,12 +1063,12 @@ class ModelEntityFilter(Filter):
 class AdapterEntityFilter(Filter):
     """Filter for Adapter list queries."""
 
-    name: Optional[str] = Field(None, description="Filter by adapter name.")
-    model: Annotated[Optional[str], map_entity_field("data.model")] = Field(
+    name: StringFilter | str | None = Field(None, description="Filter by adapter name.")
+    model: Annotated[StringFilter | str | None, map_entity_field("data.model")] = Field(
         default=None,
         description="Filter by parent (base) model entity reference in the form {workspace}/{model_name}.",
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     fileset: Optional[str] = Field(
         None,
         description="Filter by fileset reference in the form {workspace}/{fileset_name}.",
@@ -1512,9 +1512,9 @@ class ModelProviderFilter(Filter):
     project: Optional[str] = Field(None, description="Filter by project URN.")
     status: Optional[ModelProviderStatus] = Field(None, description="Filter by status.")
     model_deployment_id: Optional[str] = Field(None, description="Filter by associated deployment ID.")
-    name: Optional[str] = Field(None, description="Filter by name.")
-    description: Optional[str] = Field(None, description="Filter by description.")
-    host_url: Optional[str] = Field(None, description="Filter by host URL.")
+    name: StringFilter | str | None = Field(None, description="Filter by name.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
+    host_url: StringFilter | str | None = Field(None, description="Filter by host URL.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
 
@@ -1525,10 +1525,10 @@ class ModelDeploymentConfigFilter(Filter):
     workspace: Optional[str] = Field(None, description="Filter by workspace.")
     project: Optional[str] = Field(None, description="Filter by project URN.")
     model_entity_id: Optional[str] = Field(None, description="Filter by associated model entity ID.")
-    name: Annotated[Optional[str], map_entity_field("data.base_name")] = Field(
+    name: Annotated[StringFilter | str | None, map_entity_field("data.base_name")] = Field(
         None, description="Filter by config name."
     )
-    description: Optional[str] = Field(None, description="Filter by description.")
+    description: StringFilter | str | None = Field(None, description="Filter by description.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")
 
@@ -1539,11 +1539,11 @@ class ModelDeploymentFilter(Filter):
     workspace: Optional[str] = Field(None, description="Filter by workspace.")
     project: Optional[str] = Field(None, description="Filter by project URN.")
     status: Optional[ModelDeploymentStatus] = Field(None, description="Filter by status.")
-    config: Optional[str] = Field(None, description="Filter by config name.")
+    config: StringFilter | str | None = Field(None, description="Filter by config name.")
     model_provider_id: Optional[str] = Field(None, description="Filter by model provider ID.")
-    name: Annotated[Optional[str], map_entity_field("data.base_name")] = Field(
+    name: Annotated[StringFilter | str | None, map_entity_field("data.base_name")] = Field(
         None, description="Filter by deployment name."
     )
-    status_message: Optional[str] = Field(None, description="Filter by status message.")
+    status_message: StringFilter | str | None = Field(None, description="Filter by status message.")
     created_at: Optional[DatetimeFilter] = Field(None, description="Filter by creation date.")
     updated_at: Optional[DatetimeFilter] = Field(None, description="Filter by update date.")

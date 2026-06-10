@@ -17,18 +17,23 @@
 
 from __future__ import annotations
 
-from typing import Union
-from typing_extensions import TypeAlias, TypedDict
+from typing_extensions import Annotated, TypedDict
 
-from ..shared_params.string_filter import StringFilter
+from ..._types import SequenceNotStr
+from ..._utils import PropertyInfo
 
-__all__ = ["BaseModelFilterParam", "Name"]
-
-Name: TypeAlias = Union[StringFilter, str]
+__all__ = ["StringFilter"]
 
 
-class BaseModelFilterParam(TypedDict, total=False):
-    """Filter for base model properties."""
+class StringFilter(TypedDict, total=False):
+    eq: Annotated[str, PropertyInfo(alias="$eq")]
+    """Filter for results equal to this value."""
 
-    name: Name
-    """Filter by name of the base model."""
+    in_: Annotated[SequenceNotStr[str], PropertyInfo(alias="$in")]
+    """Filter for results in this list of values."""
+
+    like: Annotated[str, PropertyInfo(alias="$like")]
+    """Filter for results matching this pattern."""
+
+    nin: Annotated[SequenceNotStr[str], PropertyInfo(alias="$nin")]
+    """Filter for results not in this list of values."""

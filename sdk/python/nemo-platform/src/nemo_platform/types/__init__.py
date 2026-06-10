@@ -23,6 +23,7 @@ from .shared import (
     PromptData as PromptData,
     AuthContext as AuthContext,
     MambaConfig as MambaConfig,
+    StringFilter as StringFilter,
     BackendFormat as BackendFormat,
     DatetimeFilter as DatetimeFilter,
     DeleteResponse as DeleteResponse,

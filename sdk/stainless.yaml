@@ -689,6 +689,7 @@ resources:
       prompt_data: PromptData
       delete_response: DeleteResponse
       datetime_filter: DatetimeFilter
+      string_filter: StringFilter
       platform_job_status: PlatformJobStatus
       file_storage_type: FileStorageType
       platform_job_result_response: PlatformJobResultResponse
