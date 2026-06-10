@@ -1362,3 +1362,125 @@ async def test_list_jobs_filter_name_operator_and_project_like(
     assert "excluded-job" not in returned_names
     assert "no-project-job" not in returned_names
     assert len(returned_names) == 1
+
+
+# =============================================================================
+# list_jobs: status-filter pagination + total_count (AIRCORE-738)
+#
+# Status lives on PlatformJobAttempt, so it is filtered in-memory after the
+# store query. These tests pin the two bugs AIRCORE-738 describes: total_count
+# must reflect the matched set (not the status-free superset), and each page
+# must fill up to page_size with *matching* jobs rather than under-filling.
+# =============================================================================
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_status_filter_total_count_excludes_non_matching(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """total_count for a status filter counts matched jobs, not the superset (AIRCORE-738)."""
+    for i in range(3):
+        await _make_job(mock_dispatcher, mock_store, f"active-{i}", PlatformJobStatus.ACTIVE)
+    for i in range(2):
+        await _make_job(mock_dispatcher, mock_store, f"completed-{i}", PlatformJobStatus.COMPLETED)
+    await _make_job(mock_dispatcher, mock_store, "error-0", PlatformJobStatus.ERROR)
+
+    jobs, total_count = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=ComparisonOperation(field="data.status", operator=FilterOperator.EQ, value="active"),
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    # Before the fix total_count was 6 (the status-free superset).
+    assert total_count == 3
+    assert len(jobs) == 3
+    assert all(j.status == PlatformJobStatus.ACTIVE for j in jobs)
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_status_filter_pages_fill_to_page_size(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """Each status-filtered page returns up to page_size matching jobs; total_count is exact (AIRCORE-738)."""
+    from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobSortField
+
+    # Interleave statuses so a naive store-side page of size 2 would mix matches
+    # with non-matches and under-fill the page.
+    expected_active: set[str] = set()
+    for i in range(5):
+        active = await _make_job(mock_dispatcher, mock_store, f"active-{i}", PlatformJobStatus.ACTIVE)
+        expected_active.add(active.id)
+        await _make_job(mock_dispatcher, mock_store, f"completed-{i}", PlatformJobStatus.COMPLETED)
+
+    op = ParsedFilter(
+        operation=ComparisonOperation(field="data.status", operator=FilterOperator.EQ, value="active"),
+    )
+
+    seen: list[str] = []
+    page_sizes: list[int] = []
+    for offset in (0, 2, 4):
+        page, total_count = await mock_dispatcher.list_jobs(
+            parsed=op,
+            workspace=DEFAULT_WORKSPACE,
+            limit=2,
+            offset=offset,
+            sort=PlatformJobSortField.CREATED_AT_ASC,
+        )
+        assert total_count == 5  # exact matched count, independent of the page
+        page_sizes.append(len(page))
+        seen.extend(j.id for j in page)
+
+    # Pages fill (2, 2, 1) instead of under-filling, and every matching job
+    # surfaces exactly once across the pages — no empty pages, no duplicates.
+    assert page_sizes == [2, 2, 1]
+    assert set(seen) == expected_active
+    assert len(seen) == 5
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_status_filter_no_match_zero_count(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """A status with no matching jobs returns [] and total_count 0, not the superset (AIRCORE-738)."""
+    for i in range(3):
+        await _make_job(mock_dispatcher, mock_store, f"completed-{i}", PlatformJobStatus.COMPLETED)
+
+    jobs, total_count = await mock_dispatcher.list_jobs(
+        parsed=ParsedFilter(
+            operation=ComparisonOperation(field="data.status", operator=FilterOperator.EQ, value="active"),
+        ),
+        workspace=DEFAULT_WORKSPACE,
+    )
+
+    assert jobs == []
+    assert total_count == 0
+
+
+@pytest.mark.asyncio
+async def test_list_jobs_no_status_filter_paginates_via_store(
+    mock_dispatcher: JobDispatcher,
+    mock_store: EntityClient,
+):
+    """Without a status filter, the store-pushdown path still paginates and counts correctly (AIRCORE-738)."""
+    from nmp.core.jobs.api.v2.jobs.schemas import PlatformJobSortField
+
+    created = [await _make_job(mock_dispatcher, mock_store, f"job-{i}", PlatformJobStatus.ACTIVE) for i in range(5)]
+
+    seen: list[str] = []
+    for offset in (0, 2, 4):
+        page, total_count = await mock_dispatcher.list_jobs(
+            parsed=ParsedFilter(operation=None),
+            workspace=DEFAULT_WORKSPACE,
+            limit=2,
+            offset=offset,
+            sort=PlatformJobSortField.CREATED_AT_ASC,
+        )
+        assert total_count == 5
+        seen.extend(j.id for j in page)
+
+    assert set(seen) == {j.id for j in created}
+    assert len(seen) == 5
