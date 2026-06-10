@@ -23,7 +23,7 @@ import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { ChevronRight, File, FlaskConical } from 'lucide-react';
+import { Bot, ChevronRight, File, FlaskConical, Terminal } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
@@ -200,8 +200,14 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
                   <div className="w-[560px] border border-base rounded-lg overflow-hidden">
                     <TabsRoot defaultValue="cli">
                       <TabsList className="px-density-md">
-                        <TabsTrigger value="coding-agent">Coding agent</TabsTrigger>
-                        <TabsTrigger value="cli">CLI command</TabsTrigger>
+                        <TabsTrigger value="coding-agent">
+                          <Bot className="size-4" />
+                          Coding agent
+                        </TabsTrigger>
+                        <TabsTrigger value="cli">
+                          <Terminal className="size-4" />
+                          CLI command
+                        </TabsTrigger>
                       </TabsList>
                       <div className="px-density-md pb-density-md flex flex-col gap-density-sm">
                         <TabsContent value="coding-agent" className="px-0 pb-0 w-full">
