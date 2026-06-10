@@ -90,6 +90,30 @@ def test_compile_vllm_args_chat_template():
     assert args[args.index("--chat-template") + 1] == "{{ messages }}"
 
 
+def test_compile_vllm_args_trust_remote_code():
+    # trust-remote-code is a vllm serve CLI flag, not a (non-existent) env var.
+    model_entity = _model_entity(trust_remote_code=True)
+    view = _view(gpu=1, model_name="qwen")
+    args = vllm_compiler.compile_vllm_args(view, model_entity=model_entity)
+    assert "--trust-remote-code" in args
+
+
+def test_compile_vllm_args_no_trust_remote_code_by_default():
+    model_entity = _model_entity(trust_remote_code=False)
+    view = _view(gpu=1, model_name="qwen")
+    args = vllm_compiler.compile_vllm_args(view, model_entity=model_entity)
+    assert "--trust-remote-code" not in args
+    # Also absent when there is no model entity at all.
+    assert "--trust-remote-code" not in vllm_compiler.compile_vllm_args(view, model_entity=None)
+
+
+def test_compile_vllm_args_user_trust_remote_code_not_duplicated():
+    model_entity = _model_entity(trust_remote_code=True)
+    view = _view(gpu=1, model_name="qwen", additional_args=["--trust-remote-code"])
+    args = vllm_compiler.compile_vllm_args(view, model_entity=model_entity)
+    assert args.count("--trust-remote-code") == 1
+
+
 def test_compile_vllm_args_cpu_only_no_tp():
     view = _view(gpu=0, model_name="qwen")
     args = vllm_compiler.compile_vllm_args(view, model_entity=None)
@@ -153,7 +177,7 @@ def test_compute_tp_missing_kv_heads_falls_back_to_heads():
 
 def test_compile_vllm_env_lora():
     view = _view(gpu=1, model_name="qwen", lora_enabled=True)
-    env = vllm_compiler.compile_vllm_env_vars(view, model_entity=None)
+    env = vllm_compiler.compile_vllm_env_vars(view)
     assert env["VLLM_PLUGINS"] == "lora_filesystem_resolver"
     assert env["VLLM_LORA_RESOLVER_CACHE_DIR"] == vllm_compiler.VLLM_LORA_CACHE_DIR
     assert env["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] == "True"
@@ -161,19 +185,12 @@ def test_compile_vllm_env_lora():
 
 def test_compile_vllm_env_no_lora():
     view = _view(gpu=1, model_name="qwen", lora_enabled=False)
-    env = vllm_compiler.compile_vllm_env_vars(view, model_entity=None)
+    env = vllm_compiler.compile_vllm_env_vars(view)
     assert "VLLM_PLUGINS" not in env
-
-
-def test_compile_vllm_env_trust_remote_code():
-    model_entity = _model_entity(trust_remote_code=True)
-    view = _view(gpu=1, model_name="qwen")
-    env = vllm_compiler.compile_vllm_env_vars(view, model_entity=model_entity)
-    assert env["VLLM_TRUST_REMOTE_CODE"] == "1"
 
 
 def test_compile_vllm_env_additional_envs_merged():
     view = _view(gpu=1, model_name="qwen", additional_envs={"FOO": "bar", "NUM": 3})
-    env = vllm_compiler.compile_vllm_env_vars(view, model_entity=None)
+    env = vllm_compiler.compile_vllm_env_vars(view)
     assert env["FOO"] == "bar"
     assert env["NUM"] == "3"

@@ -920,7 +920,7 @@ class DockerDeploymentCreationReconciler:
         # Compile engine-specific environment variables (and serve args for vLLM).
         vllm_serve_args: list[str] | None = None
         if engine == ENGINE_VLLM:
-            env_vars = vllm_compiler.compile_vllm_env_vars(view, state.model_entity)
+            env_vars = vllm_compiler.compile_vllm_env_vars(view)
             vllm_serve_args = vllm_compiler.compile_vllm_args(view, state.model_entity)
             if view.lora_enabled:
                 # vLLM's lora_filesystem_resolver validates that

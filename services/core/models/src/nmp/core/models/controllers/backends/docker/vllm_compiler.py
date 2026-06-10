@@ -136,6 +136,11 @@ def compile_vllm_args(
     if view.lora_enabled and "--enable-lora" not in user_flags:
         args.append("--enable-lora")
 
+    # vLLM has no env var for trust-remote-code; it is a `vllm serve` CLI flag
+    # (EngineArgs.trust_remote_code -> --trust-remote-code).
+    if model_entity and getattr(model_entity, "trust_remote_code", False) and "--trust-remote-code" not in user_flags:
+        args.append("--trust-remote-code")
+
     # User-supplied raw args appended verbatim (highest precedence; e.g. --max-lora-rank).
     args.extend(view.additional_args or [])
     return args
@@ -143,7 +148,6 @@ def compile_vllm_args(
 
 def compile_vllm_env_vars(
     view: DeploymentConfigView,
-    model_entity: Optional[ModelEntity],
 ) -> dict[str, str]:
     """Build the environment variables for the vLLM container."""
     env_vars: dict[str, str] = {}
@@ -156,9 +160,6 @@ def compile_vllm_env_vars(
         env_vars["VLLM_PLUGINS"] = "lora_filesystem_resolver"
         env_vars["VLLM_LORA_RESOLVER_CACHE_DIR"] = VLLM_LORA_CACHE_DIR
         env_vars["VLLM_ALLOW_RUNTIME_LORA_UPDATING"] = "True"
-
-    if model_entity and getattr(model_entity, "trust_remote_code", False):
-        env_vars["VLLM_TRUST_REMOTE_CODE"] = "1"
 
     # Escape hatch: extra env vars (highest precedence).
     if view.additional_envs:
