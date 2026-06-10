@@ -55,7 +55,7 @@ repos:
     hooks:
       - id: config-reference-docs
         name: Check config reference doc is up to date
-        entry: bash -c 'uv run generate-config-docs && git diff --exit-code docs/set-up/config-reference.md'
+        entry: bash -c 'uv run generate-config-docs && git diff --exit-code docs/set-up/config-reference.mdx'
         language: system
         pass_filenames: false
         files: |
@@ -63,7 +63,7 @@ repos:
             script/generate_config_docs\.py|
             packages/nmp_common/.*|
             services/.*/src/.*/config\.py|
-            docs/set-up/config-reference\.md
+            docs/set-up/config-reference\.mdx
           )$
 
   - repo: https://github.com/norwoodj/helm-docs
