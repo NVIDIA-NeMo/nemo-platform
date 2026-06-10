@@ -18,10 +18,8 @@ import nemo_evaluator_sdk.inference as inference
 from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalRunResult, AgentEvalTask, AgentOutput
 from nemo_evaluator_sdk.agent_eval.benchmarks import (
     AgentEvalBenchmarkBundle,
-    AgentEvalBenchmarkEvaluationKind,
     AgentEvalBenchmarkLoadConfig,
     AgentEvalBenchmarkReports,
-    UnsupportedBenchmarkModeError,
 )
 from nemo_evaluator_sdk.execution.metric_execution import generate_online_sample
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -269,39 +267,18 @@ class ProfBenchAgentEvalBenchmark:
 
     def load(self, config: AgentEvalBenchmarkLoadConfig) -> AgentEvalBenchmarkBundle:
         source = config.source or self.default_source
-        if config.evaluation_kind == AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS:
-            benchmark = load_profbench(
-                source,
-                limit=config.limit,
-                judge=self._judge(),
-                evidence_dir=config.evidence_dir,
-                include_cached_fulfilments=self._include_cached_fulfilments,
-            )
-            return AgentEvalBenchmarkBundle(
-                evaluation_kind=config.evaluation_kind,
-                tasks=benchmark.tasks,
-                attempts=benchmark.attempts,
-                metadata=self._metadata(benchmark.metadata),
-            )
-
-        if config.evaluation_kind == AgentEvalBenchmarkEvaluationKind.LIVE_TARGET:
-            if self._judge_factory is None:
-                raise UnsupportedBenchmarkModeError("ProfBench live_target mode requires a judge factory")
-            benchmark = load_profbench(
-                source,
-                limit=config.limit,
-                judge=self._judge(),
-                evidence_dir=config.evidence_dir,
-                include_cached_fulfilments=False,
-            )
-            return AgentEvalBenchmarkBundle(
-                evaluation_kind=config.evaluation_kind,
-                tasks=benchmark.tasks,
-                attempts=None,
-                metadata=self._metadata(benchmark.metadata, default_score_source="live_target_and_live_judge"),
-            )
-
-        raise UnsupportedBenchmarkModeError(f"unsupported ProfBench evaluation kind {config.evaluation_kind!r}")
+        benchmark = load_profbench(
+            source,
+            limit=config.limit,
+            judge=self._judge(),
+            evidence_dir=config.evidence_dir,
+            include_cached_fulfilments=self._include_cached_fulfilments,
+        )
+        return AgentEvalBenchmarkBundle(
+            tasks=benchmark.tasks,
+            attempts=benchmark.attempts,
+            metadata=self._metadata(benchmark.metadata),
+        )
 
     def write_reports(self, result: AgentEvalRunResult, output_dir: Path) -> AgentEvalBenchmarkReports:
         from .dashboard import write_example_dashboards

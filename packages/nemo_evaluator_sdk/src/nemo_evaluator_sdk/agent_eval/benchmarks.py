@@ -6,7 +6,6 @@
 from __future__ import annotations
 
 import importlib
-from enum import StrEnum
 from pathlib import Path
 from typing import Any, Protocol, TypeGuard, runtime_checkable
 
@@ -15,19 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalRunResult, AgentEvalTask
 
 
-class AgentEvalBenchmarkEvaluationKind(StrEnum):
-    """How a benchmark bundle should be executed by :class:`AgentEvaluator`."""
-
-    STORED_ATTEMPTS = "stored_attempts"
-    LIVE_TARGET = "live_target"
-
-
 class AgentEvalBenchmarkLoadConfig(BaseModel):
-    """Generic load options passed from runners to benchmark implementations."""
+    """Generic load options passed from callers to benchmark implementations."""
 
     model_config = ConfigDict(extra="forbid")
 
-    evaluation_kind: AgentEvalBenchmarkEvaluationKind
     source: str | Path | None = None
     limit: int | None = Field(default=None, ge=0)
     evidence_dir: Path | None = None
@@ -38,7 +29,6 @@ class AgentEvalBenchmarkBundle(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="forbid")
 
-    evaluation_kind: AgentEvalBenchmarkEvaluationKind
     tasks: list[AgentEvalTask] = Field(default_factory=list)
     attempts: list[AgentEvalAttempt] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -47,10 +37,6 @@ class AgentEvalBenchmarkBundle(BaseModel):
     def _validate_evaluation_shape(self) -> "AgentEvalBenchmarkBundle":
         if not self.tasks:
             raise ValueError("benchmark bundles require at least one task")
-        if self.evaluation_kind == AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS and self.attempts is None:
-            raise ValueError("stored_attempts benchmark bundles require attempts")
-        if self.evaluation_kind == AgentEvalBenchmarkEvaluationKind.LIVE_TARGET and self.attempts is not None:
-            raise ValueError("live_target benchmark bundles must not include attempts")
         return self
 
 
@@ -72,7 +58,7 @@ class AgentEvalBenchmark(Protocol):
         ...
 
     def load(self, config: AgentEvalBenchmarkLoadConfig) -> AgentEvalBenchmarkBundle:
-        """Load tasks and, for stored-attempt runs, recorded attempts for one evaluation shape."""
+        """Load tasks and optional recorded attempts."""
         ...
 
 
@@ -83,10 +69,6 @@ class AgentEvalBenchmarkReportWriter(Protocol):
     def write_reports(self, result: AgentEvalRunResult, output_dir: Path) -> AgentEvalBenchmarkReports:
         """Write benchmark-specific reports for a completed run and return their paths."""
         ...
-
-
-class UnsupportedBenchmarkModeError(ValueError):
-    """Raised when a benchmark cannot supply the requested evaluation kind."""
 
 
 def resolve_agent_eval_benchmark(ref: str) -> AgentEvalBenchmark:

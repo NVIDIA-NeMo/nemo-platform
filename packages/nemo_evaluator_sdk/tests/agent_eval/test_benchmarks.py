@@ -10,7 +10,6 @@ import pytest
 from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalTask, AgentOutput
 from nemo_evaluator_sdk.agent_eval.benchmarks import (
     AgentEvalBenchmarkBundle,
-    AgentEvalBenchmarkEvaluationKind,
     resolve_agent_eval_benchmark,
 )
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
@@ -37,27 +36,16 @@ def _attempt() -> AgentEvalAttempt:
     return AgentEvalAttempt(id="attempt-1", task_id="task-1", output=AgentOutput(text="Answer."))
 
 
-def test_stored_attempt_bundle_requires_attempts() -> None:
-    with pytest.raises(ValueError, match="stored_attempts benchmark bundles require attempts"):
-        AgentEvalBenchmarkBundle(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
-            tasks=[_task()],
-        )
+def test_benchmark_bundle_accepts_optional_attempts() -> None:
+    bundle = AgentEvalBenchmarkBundle(tasks=[_task()], attempts=[_attempt()])
 
-
-def test_live_target_bundle_rejects_attempts() -> None:
-    with pytest.raises(ValueError, match="live_target benchmark bundles must not include attempts"):
-        AgentEvalBenchmarkBundle(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
-            tasks=[_task()],
-            attempts=[_attempt()],
-        )
+    assert bundle.attempts is not None
+    assert bundle.attempts[0].id == "attempt-1"
 
 
 def test_benchmark_bundle_requires_tasks() -> None:
     with pytest.raises(ValueError, match="benchmark bundles require at least one task"):
         AgentEvalBenchmarkBundle(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
             tasks=[],
         )
 

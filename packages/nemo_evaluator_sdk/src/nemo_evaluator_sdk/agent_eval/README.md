@@ -1,6 +1,6 @@
 # Agent-Eval Benchmark Adapters
 
-`AgentEvalBenchmark` adapters turn datasets into SDK-native `AgentEvalTask` values, optional recorded `AgentEvalAttempt` values, metrics, metadata, and optional custom reports. The ProfBench example now uses the same adapter and generic runner helpers that custom benchmarks use.
+`AgentEvalBenchmark` adapters turn datasets into SDK-native `AgentEvalTask` values, optional recorded `AgentEvalAttempt` values, metrics, metadata, and optional custom reports. The ProfBench example loads those values through an adapter, then calls `AgentEvaluator.run()` directly.
 
 ## ProfBench Examples
 
@@ -27,7 +27,7 @@ NVIDIA_API_KEY=... \
 uv run --frozen python -m packages.nemo_evaluator_sdk.examples.profbench.examples local --agent-model gpt-5.4
 ```
 
-The offline command exercises the adapter's `stored_attempts` path only, so it does not require live model credentials. For the `docker` command, `OPENAI_API_KEY` is optional: when it is set to an OpenAI Platform secret key (`sk-...`), the example uses SDK Docker sandbox mode; when it is missing or contains an OAuth-style Codex token, it falls back to the Docker CLI Codex path that mounts local Codex auth into the container. `NVIDIA_API_KEY` is still required for the live ProfBench judge. All three commands write under a generated run directory:
+The offline command scores recorded ProfBench attempts, so it does not require live model credentials. For the `docker` command, `OPENAI_API_KEY` is optional: when it is set to an OpenAI Platform secret key (`sk-...`), the example uses SDK Docker sandbox mode; when it is missing or contains an OAuth-style Codex token, it falls back to the Docker CLI Codex path that mounts local Codex auth into the container. `NVIDIA_API_KEY` is still required for the live ProfBench judge. All three commands write under a generated run directory:
 
 ```text
 env/profbench-results/
@@ -40,10 +40,10 @@ env/profbench-results/
 
 ## Execution Shapes
 
-The benchmark contract uses the evaluator's two execution shapes:
+The evaluator's inputs determine the execution shape:
 
-- `stored_attempts`: the benchmark returns tasks and recorded attempts. The runner scores those attempts without running a live target.
-- `live_target`: the benchmark returns tasks only. The runner supplies the selected model or `AgentAttemptRuntime` target, then scores the generated attempts.
+- `attempts`: score recorded attempts without running a live target.
+- `target`: generate fresh attempts from a model, agent, or `AgentAttemptRuntime`, then score those attempts.
 
 Minimal adapter shape:
 
@@ -53,7 +53,6 @@ from pathlib import Path
 from nemo_evaluator_sdk.agent_eval import (
     AgentEvalAttempt,
     AgentEvalBenchmarkBundle,
-    AgentEvalBenchmarkEvaluationKind,
     AgentEvalBenchmarkLoadConfig,
     AgentEvalTask,
     AgentOutput,
@@ -74,23 +73,15 @@ class MyBenchmark:
             )
         ]
 
-        if config.evaluation_kind == AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS:
-            return AgentEvalBenchmarkBundle(
-                evaluation_kind=config.evaluation_kind,
-                tasks=tasks,
-                attempts=[
-                    AgentEvalAttempt(
-                        id="attempt-1",
-                        task_id="task-1",
-                        output=AgentOutput(text="Recorded answer."),
-                    )
-                ],
-                metadata={"benchmark": self.name},
-            )
-
         return AgentEvalBenchmarkBundle(
-            evaluation_kind=config.evaluation_kind,
             tasks=tasks,
+            attempts=[
+                AgentEvalAttempt(
+                    id="attempt-1",
+                    task_id="task-1",
+                    output=AgentOutput(text="Recorded answer."),
+                )
+            ],
             metadata={"benchmark": self.name},
         )
 
@@ -99,11 +90,11 @@ def benchmark_factory() -> MyBenchmark:
     return MyBenchmark()
 ```
 
-Benchmark-specific constructor settings should live in the class or factory. Generic callers pass `source`, `limit`, `evidence_dir`, and `evaluation_kind`. If a benchmark needs custom HTML output, it can also implement `write_reports(result, output_dir)`. Otherwise `run_benchmark_bundle` writes the SDK dashboard.
+Benchmark-specific constructor settings should live in the class or factory. Generic callers pass `source`, `limit`, and `evidence_dir`. If a benchmark needs custom HTML output, it can also implement `write_reports(result, output_dir)`.
 
 ## Code Sandbox Invocation
 
-For live candidate generation, pass a model, agent, or `AgentAttemptRuntime` as the `target` for a `live_target` bundle. Codex runtimes live under `nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime`.
+For live candidate generation, pass a model, agent, or `AgentAttemptRuntime` as the `target` to `AgentEvaluator.run()`. Codex runtimes live under `nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime`.
 
 Runtime and credential behavior:
 
@@ -176,7 +167,7 @@ Use case → user inputs and expected outputs →(mapped to) tasks → metrics
 
 ## ProfBench Execution Paths
 
-ProfBench supports the same three evaluation paths through `ProfBenchAgentEvalBenchmark`, `AgentEvalBenchmarkLoadConfig`, and `run_benchmark_bundle`. They differ along two axes: **whose answers are scored** and **how rubrics are decided**.
+ProfBench supports the same three evaluation paths through `ProfBenchAgentEvalBenchmark`, `AgentEvalBenchmarkLoadConfig`, and `AgentEvaluator.run()`. They differ along two axes: **whose answers are scored** and **how rubrics are decided**.
 
 ## Comparison
 
@@ -185,7 +176,7 @@ ProfBench supports the same three evaluation paths through `ProfBenchAgentEvalBe
 | **Answers** | Pre-recorded in the dataset (`o3`, `r1-0528`, `grok4`) | Same pre-recorded answers | **New** answers from the supplied target |
 | **Rubric scoring** | Dataset labels (`{model}_fulfilment` in JSONL) | Live LLM judge per criterion | Live LLM judge per criterion |
 | **API / cost** | None (offline) | Judge calls only | Inference + judge calls |
-| **Bundle kind** | `stored_attempts` | `stored_attempts` | `live_target` |
+| **Evaluator input** | `attempts` | `attempts` | `target` |
 
 ## 1. Baseline - reproduce published scores
 
@@ -193,17 +184,16 @@ ProfBench supports the same three evaluation paths through `ProfBenchAgentEvalBe
 benchmark = ProfBenchAgentEvalBenchmark()
 bundle = benchmark.load(
     AgentEvalBenchmarkLoadConfig(
-        evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
         limit=limit,
         evidence_dir=output_dir / "evidence",
     )
 )
-result, reports = await run_benchmark_bundle(
-    bundle=bundle,
-    output_dir=output_dir,
-    run_id="profbench-baseline",
-    report_writer=benchmark_report_writer(benchmark),
+result = await AgentEvaluator().run(
+    tasks=bundle.tasks,
+    attempts=bundle.attempts,
+    config=AgentEvalRunConfig(output_dir=output_dir, run_id="profbench-baseline"),
 )
+reports = benchmark.write_reports(result, output_dir)
 ```
 
 - `ProfBenchAgentEvalBenchmark` with **no judge** and `include_cached_fulfilments=True` (default).
@@ -220,17 +210,16 @@ benchmark = ProfBenchAgentEvalBenchmark(
 )
 bundle = benchmark.load(
     AgentEvalBenchmarkLoadConfig(
-        evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
         limit=limit,
         evidence_dir=output_dir / "evidence",
     )
 )
-result, reports = await run_benchmark_bundle(
-    bundle=bundle,
-    output_dir=output_dir,
-    run_id="profbench-live-judge",
-    report_writer=benchmark_report_writer(benchmark),
+result = await AgentEvaluator().run(
+    tasks=bundle.tasks,
+    attempts=bundle.attempts,
+    config=AgentEvalRunConfig(output_dir=output_dir, run_id="profbench-live-judge"),
 )
+reports = benchmark.write_reports(result, output_dir)
 ```
 
 - Still scores the **bundled** baseline responses via stored attempts.
@@ -250,22 +239,19 @@ benchmark = ProfBenchAgentEvalBenchmark(
 )
 bundle = benchmark.load(
     AgentEvalBenchmarkLoadConfig(
-        evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
         limit=limit,
         evidence_dir=output_dir / "evidence",
     )
 )
-result, reports = await run_benchmark_bundle(
-    bundle=bundle,
-    output_dir=output_dir,
-    run_id="profbench-live-candidate",
+result = await AgentEvaluator().run(
+    tasks=bundle.tasks,
     target=evaluated_model,
-    params=params,
-    report_writer=benchmark_report_writer(benchmark),
+    config=AgentEvalRunConfig(output_dir=output_dir, run_id="profbench-live-candidate", params=params),
 )
+reports = benchmark.write_reports(result, output_dir)
 ```
 
-- `live_target` bundles have no attempts; the evaluator calls the **target** model (`RunConfigOnlineModel`, parallelism 2, `temperature=0`, `max_tokens=4096`) to produce answers, then scores them with the same live judge.
+- The evaluator calls the **target** model (`RunConfigOnlineModel`, parallelism 2, `temperature=0`, `max_tokens=4096`) to produce answers, then scores them with the same live judge.
 - Full "evaluate my model on ProfBench" path: new responses + live rubric judging.
 - Most expensive; needs inference and judge API access.
 

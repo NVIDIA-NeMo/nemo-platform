@@ -20,7 +20,7 @@ sequenceDiagram
     participant Dash as write_example_dashboards()
     participant Output as output-dir/run-id/live-candidate
 
-    User->>Caller: build ProfBench adapter and live_target bundle
+    User->>Caller: build ProfBench adapter and candidate target
     Caller->>Adapter: load(AgentEvalBenchmarkLoadConfig(LIVE_TARGET))
     Caller->>Caller: create output-dir/run-id/
 
@@ -86,10 +86,10 @@ sequenceDiagram
 What happens in the full live-candidate path:
 
 1. The SDK caller prepares an output directory, a candidate target, a judge model, and a `ProfBenchAgentEvalBenchmark`.
-2. An optional baseline run loads ProfBench as `stored_attempts`, scores recorded attempts with dataset labels, persists baseline files, and writes dashboards.
+2. An optional baseline run loads ProfBench recorded attempts, scores those attempts with dataset labels, persists baseline files, and writes dashboards.
 3. The live-candidate path uses separate roles for the evaluated target and the judge model.
 4. `ProfBenchAgentEvalBenchmark.load()` calls `load_profbench()` with `include_cached_fulfilments=False`, so cached labels are removed and the metric must call the judge.
-5. `run_benchmark_bundle(..., target=evaluated_model, ...)` calls `AgentEvaluator.run()`, which first generates fresh candidate attempts.
+5. `AgentEvaluator.run(..., target=evaluated_model, ...)` first generates fresh candidate attempts.
 6. For each task, the evaluator calls `generate_online_sample()` against the evaluated model and converts the returned sample into an `AgentEvalAttempt`.
 7. The evaluator then scores those generated attempts with `ProfBenchRubricMetric`.
 8. For each rubric criterion, `ProfBenchRubricMetric` calls `ProfBenchModelJudge`.

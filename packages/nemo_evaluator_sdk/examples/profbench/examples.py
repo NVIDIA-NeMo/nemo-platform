@@ -18,13 +18,13 @@ from datetime import datetime
 from pathlib import Path
 
 from nemo_evaluator_sdk.agent_eval import (
-    AgentEvalBenchmarkEvaluationKind,
+    AgentEvalBenchmarkBundle,
     AgentEvalBenchmarkLoadConfig,
     AgentEvalBenchmarkReports,
+    AgentEvalRunConfig,
     AgentEvalRunResult,
-    benchmark_report_paths,
-    benchmark_report_writer,
-    run_benchmark_bundle,
+    AgentEvalTarget,
+    AgentEvaluator,
 )
 from nemo_evaluator_sdk.agent_eval.runtimes.codex.runtime import RuntimeChoice, resolve_codex_target
 from nemo_evaluator_sdk.values import Model, SecretRef
@@ -50,17 +50,16 @@ async def run_offline_profbench_adapter_smoke(
     benchmark = ProfBenchAgentEvalBenchmark()
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
             source=source,
             limit=limit,
             evidence_dir=output_dir / "evidence",
         )
     )
-    result, reports = await run_benchmark_bundle(
+    result, reports = await _run_profbench_bundle(
+        benchmark=benchmark,
         bundle=bundle,
         output_dir=output_dir,
         run_id=resolved_run_id,
-        report_writer=benchmark_report_writer(benchmark),
     )
     _print_example_summary("Offline ProfBench adapter smoke", result, reports)
     return result, reports
@@ -94,18 +93,17 @@ async def run_docker_sandbox_profbench_live_candidate_smoke(
     )
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
             source=source,
             limit=limit,
             evidence_dir=output_dir / "evidence",
         )
     )
-    result, reports = await run_benchmark_bundle(
+    result, reports = await _run_profbench_bundle(
+        benchmark=benchmark,
         bundle=bundle,
         output_dir=output_dir,
         run_id=resolved_run_id,
         target=target,
-        report_writer=benchmark_report_writer(benchmark),
     )
     _print_example_summary("Docker sandbox ProfBench live candidate smoke", result, reports)
     return result, reports
@@ -139,18 +137,17 @@ async def run_local_codex_profbench_live_candidate_smoke(
     )
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
             source=source,
             limit=limit,
             evidence_dir=output_dir / "evidence",
         )
     )
-    result, reports = await run_benchmark_bundle(
+    result, reports = await _run_profbench_bundle(
+        benchmark=benchmark,
         bundle=bundle,
         output_dir=output_dir,
         run_id=resolved_run_id,
         target=target,
-        report_writer=benchmark_report_writer(benchmark),
     )
     _print_example_summary("Local Codex ProfBench live candidate smoke", result, reports)
     return result, reports
@@ -245,8 +242,30 @@ def _live_judge_benchmark(
     )
     return ProfBenchAgentEvalBenchmark(
         judge_factory=lambda: ProfBenchModelJudge(model=judge_model),
+        include_cached_fulfilments=False,
         score_source=score_source,
     )
+
+
+async def _run_profbench_bundle(
+    *,
+    benchmark: ProfBenchAgentEvalBenchmark,
+    bundle: AgentEvalBenchmarkBundle,
+    output_dir: Path,
+    run_id: str,
+    target: AgentEvalTarget | None = None,
+) -> tuple[AgentEvalRunResult, AgentEvalBenchmarkReports]:
+    config = AgentEvalRunConfig(
+        output_dir=output_dir,
+        run_id=run_id,
+        benchmark=bundle.metadata,
+        write_dashboard=False,
+    )
+    if target is None:
+        result = await AgentEvaluator().run(tasks=bundle.tasks, attempts=bundle.attempts, config=config)
+    else:
+        result = await AgentEvaluator().run(tasks=bundle.tasks, target=target, config=config)
+    return result, benchmark.write_reports(result, output_dir)
 
 
 def _print_example_summary(
@@ -254,7 +273,7 @@ def _print_example_summary(
     result: AgentEvalRunResult,
     reports: AgentEvalBenchmarkReports,
 ) -> None:
-    sdk_dashboard_path, dashboard_path = benchmark_report_paths(reports)
+    sdk_dashboard_path, dashboard_path = _report_paths(reports)
     print(label)
     print(f"tasks: {result.summary.task_count}")
     print(f"attempts: {result.summary.attempt_count}")
@@ -262,6 +281,14 @@ def _print_example_summary(
     print(f"metric_scores: {result.summary.metric_scores}")
     print(f"SDK dashboard: {sdk_dashboard_path}")
     print(f"Dashboard: {dashboard_path}")
+
+
+def _report_paths(reports: AgentEvalBenchmarkReports) -> tuple[Path | None, Path | None]:
+    if not reports.paths:
+        return None, None
+    sdk_dashboard_path = reports.paths[0]
+    dashboard_path = reports.paths[1] if len(reports.paths) > 1 else sdk_dashboard_path
+    return sdk_dashboard_path, dashboard_path
 
 
 if __name__ == "__main__":

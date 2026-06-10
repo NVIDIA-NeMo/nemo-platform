@@ -11,10 +11,7 @@ from typing import Any
 
 import pytest
 from nemo_evaluator_sdk.agent_eval import AgentEvalAttempt, AgentEvalTask, AgentEvaluator, AgentOutput
-from nemo_evaluator_sdk.agent_eval.benchmarks import (
-    AgentEvalBenchmarkEvaluationKind,
-    AgentEvalBenchmarkLoadConfig,
-)
+from nemo_evaluator_sdk.agent_eval.benchmarks import AgentEvalBenchmarkLoadConfig
 from nemo_evaluator_sdk.values import Model
 
 profbench = importlib.import_module("packages.nemo_evaluator_sdk.examples.profbench.profbench")
@@ -119,50 +116,51 @@ def test_load_profbench_expands_tasks_attempts_and_line_index(tmp_path: Path) ->
     assert metric.criteria[0].json_path == "$.rubrics[0]"
 
 
-def test_profbench_benchmark_adapter_loads_stored_attempts(tmp_path: Path) -> None:
+def test_profbench_benchmark_adapter_loads_recorded_attempts(tmp_path: Path) -> None:
     fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
     benchmark = profbench.ProfBenchAgentEvalBenchmark()
 
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
             source=fixture,
             limit=1,
             evidence_dir=tmp_path / "evidence",
         )
     )
 
-    assert bundle.evaluation_kind == AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS
     assert len(bundle.tasks) == 1
     assert bundle.attempts is not None
     assert [attempt.metadata["model_id"] for attempt in bundle.attempts] == ["o3", "r1-0528", "grok4"]
     assert bundle.metadata["benchmark"] == "ProfBench"
 
 
-def test_profbench_benchmark_adapter_loads_live_target_without_attempts(tmp_path: Path) -> None:
+def test_profbench_benchmark_adapter_can_strip_cached_labels_for_live_scoring(tmp_path: Path) -> None:
     class FakeJudge:
         async def judge(self, request: Any) -> Any:
             return profbench.ProfBenchJudgeDecision(fulfilled=True, reason=f"judged {request.criterion_id}")
 
     fixture = _write_profbench_fixture(tmp_path / "profbench.jsonl")
-    benchmark = profbench.ProfBenchAgentEvalBenchmark(judge_factory=FakeJudge)
+    benchmark = profbench.ProfBenchAgentEvalBenchmark(
+        judge_factory=FakeJudge,
+        include_cached_fulfilments=False,
+        score_source="fresh_candidate_and_live_judge",
+    )
 
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.LIVE_TARGET,
             source=fixture,
             limit=1,
             evidence_dir=tmp_path / "evidence",
         )
     )
 
-    assert bundle.evaluation_kind == AgentEvalBenchmarkEvaluationKind.LIVE_TARGET
     assert len(bundle.tasks) == 1
-    assert bundle.attempts is None
+    assert bundle.attempts is not None
+    assert all("profbench_fulfilments" not in attempt.metadata for attempt in bundle.attempts)
     metric = bundle.tasks[0].metrics[0]
     assert isinstance(metric, profbench.ProfBenchRubricMetric)
     assert isinstance(metric.judge, FakeJudge)
-    assert bundle.metadata["score_source"] == "live_target_and_live_judge"
+    assert bundle.metadata["score_source"] == "fresh_candidate_and_live_judge"
 
 
 def test_profbench_benchmark_adapter_writes_custom_reports(tmp_path: Path) -> None:
@@ -170,7 +168,6 @@ def test_profbench_benchmark_adapter_writes_custom_reports(tmp_path: Path) -> No
     benchmark = profbench.ProfBenchAgentEvalBenchmark()
     bundle = benchmark.load(
         AgentEvalBenchmarkLoadConfig(
-            evaluation_kind=AgentEvalBenchmarkEvaluationKind.STORED_ATTEMPTS,
             source=fixture,
         )
     )
