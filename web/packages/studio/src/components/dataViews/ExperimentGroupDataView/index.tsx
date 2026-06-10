@@ -106,7 +106,6 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     [experimentsData]
   );
 
-<<<<<<< HEAD
   const makeColumns = useCallback<
     ComponentProps<typeof DataViewRoot<ExperimentRow>>['makeColumns']
   >(
@@ -223,12 +222,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     []
   );
 
-  const { wrapColumns, onClick: rowClickHandler, className: rowClickClassName } = useRowClick(
-    (row: ExperimentRow) => {
-      navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name));
-    },
-    tableData
-  );
+  const {
+    wrapColumns,
+    onClick: rowClickHandler,
+    className: rowClickClassName,
+  } = useRowClick((row: ExperimentRow) => {
+    navigate(getExperimentDetailRoute(workspace, experimentGroupName, row.name));
+  }, tableData);
 
   if (groupError) {
     return <ErrorMessage message="Failed to load experiment group." />;
