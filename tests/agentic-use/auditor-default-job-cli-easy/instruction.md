@@ -1,4 +1,4 @@
-# Run Default Audit Job (CLI)
+# Run Default Audit (CLI)
 
 You have access to the `nemo` CLI for NeMo Platform operations. Note: MCP tools are not available in this environment - you must use the CLI.
 

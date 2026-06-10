@@ -15,6 +15,7 @@ Tests:
 import base64
 import json
 import os
+import re
 
 import pytest
 from nemo_platform import NeMoPlatform
@@ -23,6 +24,8 @@ from trace_reader import get_session
 WORKSPACE = "default"
 TARGET_NAME = "audit-target"
 CONFIG_NAME = "default"
+TARGET_REF = f"{WORKSPACE}/{TARGET_NAME}"
+CONFIG_REF = f"{WORKSPACE}/{CONFIG_NAME}"
 
 
 def _make_unsigned_jwt() -> str:
@@ -80,16 +83,41 @@ def test_audit_config_has_probe_spec(client: NeMoPlatform) -> None:
 # --- Agent trajectory checks ---
 
 
+def _has_token(cmd: str, token: str) -> bool:
+    """Check if token appears as a command-ish token, not as an arbitrary substring."""
+    return bool(re.search(r"(?:^|[\s/\-_.])(" + re.escape(token) + r")(?:[\s/\-_.]|$)", cmd))
+
+
+def _has_token_sequence(cmd: str, *tokens: str) -> bool:
+    words = cmd.split()
+    return any(tuple(words[i : i + len(tokens)]) == tokens for i in range(len(words) - len(tokens) + 1))
+
+
 def test_agent_invoked_audit() -> None:
     """Verify the agent invoked the audit with the config and target."""
     session = get_session()
     commands = session.get_bash_commands()
 
     has_audit_run = any(
-        all(p in cmd for p in ["auditor", "audit", "run", CONFIG_NAME, TARGET_NAME]) for cmd in commands
+        _has_token_sequence(cmd, "auditor", "audit", "run") and CONFIG_REF in cmd and TARGET_REF in cmd
+        for cmd in commands
     )
 
-    assert has_audit_run, f"Agent never invoked auditor audit run with config and target. Commands: {commands}"
+    assert has_audit_run, (
+        f"Agent never invoked auditor audit run with '{CONFIG_REF}' and '{TARGET_REF}'. Commands: {commands}"
+    )
+
+
+def test_agent_created_target() -> None:
+    """Verify the agent created the audit target via CLI."""
+    session = get_session()
+    commands = session.get_bash_commands()
+
+    has_target_create = any(
+        _has_token_sequence(cmd, "auditor", "targets", "create") and _has_token(cmd, TARGET_NAME) for cmd in commands
+    )
+
+    assert has_target_create, f"Agent did not create '{TARGET_NAME}'. Commands: {commands}"
 
 
 def test_agent_created_config() -> None:
@@ -97,12 +125,32 @@ def test_agent_created_config() -> None:
     session = get_session()
     commands = session.get_bash_commands()
 
-    has_config_create = any(all(p in cmd for p in ["auditor", "config"]) and "create" in cmd for cmd in commands)
+    has_config_create = any(
+        (
+            _has_token_sequence(cmd, "auditor", "configs", "create")
+            or _has_token_sequence(cmd, "auditor", "config", "create")
+        )
+        for cmd in commands
+    )
 
-    has_config_list = any(all(p in cmd for p in ["auditor", "config"]) and "list" in cmd for cmd in commands)
+    has_config_list = any(
+        (
+            _has_token_sequence(cmd, "auditor", "configs", "list")
+            or _has_token_sequence(cmd, "auditor", "config", "list")
+        )
+        for cmd in commands
+    )
 
     has_config_get = any(
-        all(p in cmd for p in ["auditor", "config"]) and ("get" in cmd or "default" in cmd) for cmd in commands
+        (
+            _has_token_sequence(cmd, "auditor", "configs", "get")
+            or _has_token_sequence(cmd, "auditor", "config", "get")
+            or (
+                (_has_token_sequence(cmd, "auditor", "configs") or _has_token_sequence(cmd, "auditor", "config"))
+                and CONFIG_REF in cmd
+            )
+        )
+        for cmd in commands
     )
 
     assert has_config_create or has_config_list or has_config_get, (

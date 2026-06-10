@@ -1,4 +1,4 @@
-# Run Default Audit Job (CLI)
+# Run Default Audit (CLI)
 
 You have access to the `nmp` CLI for NeMo Platform operations. Note: MCP tools are not available in this environment - you must use the CLI.
 
@@ -17,6 +17,19 @@ Using the `nmp` CLI, create an audit target, create an audit config, and run an 
 3. **Run an audit** using the `default` config and the `audit-target` target
 
 Note: The audit may take a long time to complete in this environment. The important thing is that the target and config are created correctly and the audit command is invoked with both of them.
+
+## Available CLI Commands
+
+```bash
+# Create the audit target.
+nmp auditor targets create audit-target -d '{"model": "aws/anthropic/bedrock-claude-sonnet-4-5-v1", "type": "openai", "options": {"provider": "nvidia-inference"}}'
+
+# Create the default audit config.
+nmp auditor configs create default -d '{"system": {"lite": true}, "run": {"generations": 5}, "plugins": {"probe_spec": "dan.AutoDANCached,goodside"}, "reporting": {}}'
+
+# Run the audit locally.
+nmp auditor audit run --spec '{"config": "default/default", "target": "default/audit-target"}'
+```
 
 ## Success Criteria
 

@@ -18,7 +18,7 @@ The Harbor container runs the NeMo Platform API in quickstart mode, but the
 local Garak runtime may not be available.
 
 As a result, the verifier validates:
-- **Setup correctness**: config has the right probes, target references the right
+- **Setup correctness**: config has the correct probes, target references the expected
   model, and the audit command references both config + target
 - **Agent behavior**: trajectory analysis confirms the agent invoked the audit
   command and reviewed its output
