@@ -18,11 +18,19 @@ import {
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
+import {
+  createEmptyClaudeCodeChatArtifacts,
+  updateClaudeCodeChatArtifactsFromEvent,
+  updateClaudeCodeChatArtifactsFromSelections,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/artifacts';
 import { getAssistantPartsFromClaudeEvent } from '@studio/routes/agents/ClaudeCodeChatRoute/stream';
-import type { ClaudeCodePermissionRequest } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
+import type {
+  ClaudeCodeChatArtifacts,
+  ClaudeCodePermissionRequest,
+} from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useCustomAssistantChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useCustomAssistantChatRuntime';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 const ASK_USER_QUESTION_TOOL_NAME = 'AskUserQuestion';
 const CUSTOM_INSTRUCTION_LABEL = 'No, and tell the Agent what to do';
@@ -182,7 +190,11 @@ const formatAskUserQuestionDisplayText = (
     .filter(isDefined)
     .join('\n\n');
 
+const getArtifactsSignature = (artifacts: ClaudeCodeChatArtifacts | undefined): string =>
+  artifacts ? JSON.stringify(artifacts) : '';
+
 interface UseClaudeCodeChatRuntimeOptions {
+  initialArtifacts?: ClaudeCodeChatArtifacts;
   initialMessages?: readonly ThreadMessageLike[];
   initialSessionId?: string;
   onError?: (error: Error) => void;
@@ -191,13 +203,28 @@ interface UseClaudeCodeChatRuntimeOptions {
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
   const queryClient = useQueryClient();
   const [sessionId, setSessionId] = useState<string | null>(options?.initialSessionId ?? null);
+  const [artifacts, setArtifacts] = useState<ClaudeCodeChatArtifacts>(
+    options?.initialArtifacts ?? createEmptyClaudeCodeChatArtifacts()
+  );
   const [decisionRequest, setDecisionRequest] = useState<AgentDecisionRequest | null>(null);
   const [decisionChoices, setDecisionChoices] = useState<readonly AgentDecisionChoice[]>([]);
   const [decisionStatus, setDecisionStatus] = useState<AgentDecisionInputStatus>('pending');
   const sessionIdRef = useRef<string | null>(options?.initialSessionId ?? null);
   const permissionRequestRef = useRef<ClaudeCodePermissionRequest | null>(null);
   const activeDecisionRef = useRef<ActiveDecisionState | null>(null);
+  const initialArtifactsRef = useRef<ClaudeCodeChatArtifacts | undefined>(
+    options?.initialArtifacts
+  );
+  const initialArtifactsSignature = getArtifactsSignature(options?.initialArtifacts);
   const onError = options?.onError;
+
+  initialArtifactsRef.current = options?.initialArtifacts;
+
+  useEffect(() => {
+    const nextArtifacts = initialArtifactsRef.current;
+    if (!nextArtifacts) return;
+    setArtifacts(nextArtifacts);
+  }, [initialArtifactsSignature]);
 
   const ensureSessionId = useCallback(async (): Promise<string> => {
     if (sessionIdRef.current) return sessionIdRef.current;
@@ -288,6 +315,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
             onClaudeEvent: (event) => {
               if (signal.aborted || !isCurrentRun()) return;
 
+              setArtifacts((current) => updateClaudeCodeChatArtifactsFromEvent(current, event));
               appendAssistantParts(getAssistantPartsFromClaudeEvent(event));
             },
             onPermissionRequest: (request) => {
@@ -321,10 +349,10 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
       approved: boolean;
       displayText?: string;
       reason?: string;
-    }) => {
+    }): Promise<boolean> => {
       const activeSessionId = sessionIdRef.current;
       const activeRequest = permissionRequestRef.current;
-      if (!activeSessionId || !activeRequest) return;
+      if (!activeSessionId || !activeRequest) return false;
 
       const trimmedReason = reason?.trim();
       const trimmedDisplayText = displayText?.trim();
@@ -343,11 +371,13 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
           appendUserMessage(trimmedDisplayText);
         }
         clearApprovalRequest();
+        return true;
       } catch (error: unknown) {
         setDecisionStatus('pending');
         const errorMessage =
           error instanceof Error ? error.message : 'Failed to resolve Claude Code permission';
         onError?.(new Error(errorMessage));
+        return false;
       }
     },
     [appendUserMessage, clearApprovalRequest, onError]
@@ -377,11 +407,16 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         return;
       }
 
-      await submitActiveDecision({
+      const submitted = await submitActiveDecision({
         approved: false,
         reason: formatAskUserQuestionReason(state.questions, answers),
         displayText: formatAskUserQuestionDisplayText(state.questions, answers),
       });
+      if (submitted) {
+        setArtifacts((current) =>
+          updateClaudeCodeChatArtifactsFromSelections(current, state.questions, answers)
+        );
+      }
     },
     [setAskUserQuestionDecision, submitActiveDecision]
   );
@@ -413,11 +448,13 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
   const handleReset = useCallback(() => {
     sessionIdRef.current = null;
     setSessionId(null);
+    setArtifacts(createEmptyClaudeCodeChatArtifacts());
     clearApprovalRequest();
     resetThread();
   }, [clearApprovalRequest, resetThread]);
 
   return {
+    artifacts,
     decisionChoices,
     decisionRequest,
     decisionStatus,

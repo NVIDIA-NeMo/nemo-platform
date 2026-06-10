@@ -1,0 +1,30 @@
+eval:
+  evaluators:
+    accuracy:
+      _type: tunable_rag_evaluator
+      default_score_weights:
+        correctness: 0.3
+        coverage: 0.5
+        relevance: 0.2
+      default_scoring: true
+      judge_llm_prompt: 'You are an evaluator. Score whether the generated answer
+        correctly addresses the question compared to the expected answer description.
+        Rules: - Score is a float between 0.0 and 1.0. - 1.0 means the answer fully
+        satisfies the expected answer criteria. - Provide a 1-2 sentence reasoning.
+
+        '
+      llm_name: judge_llm
+  general:
+    dataset:
+      _type: json
+      file_path: calculator-eval-data.json
+    max_concurrency: 1
+    output_dir: eval/calculator
+llms:
+  judge_llm:
+    _type: openai
+    api_key: not-used
+    base_url: http://127.0.0.1:8080/apis/inference-gateway/v2/workspaces/default/openai/-/v1
+    max_tokens: 1024
+    model_name: meta-llama-3-1-70b-instruct
+    temperature: 0.0
