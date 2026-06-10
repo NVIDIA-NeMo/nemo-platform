@@ -16,18 +16,14 @@ import { Button, Stack, TableRowDefinition } from '@nvidia/foundations-react-cor
 import { DocumentationButton } from '@studio/components/DocumentationButton';
 import { LINK_DOCS_STUDIO_EVALUATION } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import {
-  getEvaluationMetricsRunRoute,
-  getEvaluationResultDetailsRoute,
-} from '@studio/routes/utils';
+import { getEvaluationResultDetailsRoute } from '@studio/routes/utils';
 import { keepPreviousData } from '@tanstack/react-query';
 import { ArrowDown, ArrowUp } from 'lucide-react';
 import { useMemo, type FC } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 export const EvaluationResultsRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const navigate = useNavigate();
 
   const { filterState, handleSort, handlePaginationChange } = useTableFilters({});
 
@@ -157,12 +153,6 @@ export const EvaluationResultsRoute: FC = () => {
           actions={
             <Stack direction="row" gap="density-md">
               <DocumentationButton href={LINK_DOCS_STUDIO_EVALUATION} />
-              <Button
-                color="brand"
-                onClick={() => navigate(getEvaluationMetricsRunRoute(workspace))}
-              >
-                Evaluate Model
-              </Button>
             </Stack>
           }
         />
