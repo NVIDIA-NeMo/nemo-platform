@@ -551,11 +551,13 @@ async def test_create_model_deployment_with_sft_model(k8s_backend, sample_deploy
     k8s_backend._backend_config.default_node_selector = None
 
     # Configure sample_config for SFT
-    sample_config.nim_deployment = MagicMock()
-    sample_config.nim_deployment.model_namespace = "test-ns"
-    sample_config.nim_deployment.model_name = "test-model"
-    sample_config.nim_deployment.model_revision = None
-    sample_config.nim_deployment.disk_size = "300Gi"
+    sample_config.engine = "nim"
+    sample_config.model_spec = MagicMock()
+    sample_config.executor_config = MagicMock()
+    sample_config.model_spec.model_namespace = "test-ns"
+    sample_config.model_spec.model_name = "test-model"
+    sample_config.model_spec.model_revision = None
+    sample_config.executor_config.disk_size = "300Gi"
 
     # Create SFT model entity with fileset matching the model name
     sft_model_entity = ModelEntity(
@@ -645,11 +647,13 @@ async def test_create_model_deployment_with_files_service_model_triggers_nimcach
     k8s_backend._backend_config.default_node_selector = None
 
     # Configure sample_config
-    sample_config.nim_deployment = MagicMock()
-    sample_config.nim_deployment.model_namespace = "test-ns"
-    sample_config.nim_deployment.model_name = "test-model"
-    sample_config.nim_deployment.model_revision = None
-    sample_config.nim_deployment.disk_size = "300Gi"
+    sample_config.engine = "nim"
+    sample_config.model_spec = MagicMock()
+    sample_config.executor_config = MagicMock()
+    sample_config.model_spec.model_namespace = "test-ns"
+    sample_config.model_spec.model_name = "test-model"
+    sample_config.model_spec.model_revision = None
+    sample_config.executor_config.disk_size = "300Gi"
 
     # FILES_SERVICE: fileset set but NOT SFT (no spec, no finetuning_type LORA_MERGED/ALL_WEIGHTS)
     files_service_model_entity = ModelEntity(
@@ -728,9 +732,11 @@ async def test_create_model_deployment_without_sft_model(k8s_backend, sample_dep
     k8s_backend._backend_config = MagicMock()
 
     # Configure sample_config
-    sample_config.nim_deployment = MagicMock()
-    sample_config.nim_deployment.model_namespace = "test-ns"
-    sample_config.nim_deployment.model_name = "test-model"
+    sample_config.engine = "nim"
+    sample_config.model_spec = MagicMock()
+    sample_config.executor_config = MagicMock()
+    sample_config.model_spec.model_namespace = "test-ns"
+    sample_config.model_spec.model_name = "test-model"
 
     # Create non-SFT model entity
     non_sft_model_entity = ModelEntity(
@@ -790,11 +796,13 @@ async def test_create_model_deployment_with_sft_model_and_revision(k8s_backend, 
     k8s_backend._backend_config.default_node_selector = None
 
     # Configure sample_config with model name containing revision
-    sample_config.nim_deployment = MagicMock()
-    sample_config.nim_deployment.model_namespace = "test-ns"
-    sample_config.nim_deployment.model_name = "test-model@v1.0"
-    sample_config.nim_deployment.model_revision = None
-    sample_config.nim_deployment.disk_size = "50Gi"
+    sample_config.engine = "nim"
+    sample_config.model_spec = MagicMock()
+    sample_config.executor_config = MagicMock()
+    sample_config.model_spec.model_namespace = "test-ns"
+    sample_config.model_spec.model_name = "test-model@v1.0"
+    sample_config.model_spec.model_revision = None
+    sample_config.executor_config.disk_size = "50Gi"
 
     # Create SFT model entity with fileset matching the model name
     sft_model_entity = ModelEntity(
@@ -890,11 +898,13 @@ async def test_create_model_deployment_nimcache_uses_fileset_not_entity_name(
     k8s_backend._backend_config.default_tolerations = None
     k8s_backend._backend_config.default_node_selector = None
 
-    sample_config.nim_deployment = MagicMock()
-    sample_config.nim_deployment.model_namespace = "my-workspace"
-    sample_config.nim_deployment.model_name = "my-model-entity"
-    sample_config.nim_deployment.model_revision = None
-    sample_config.nim_deployment.disk_size = "300Gi"
+    sample_config.engine = "nim"
+    sample_config.model_spec = MagicMock()
+    sample_config.executor_config = MagicMock()
+    sample_config.model_spec.model_namespace = "my-workspace"
+    sample_config.model_spec.model_name = "my-model-entity"
+    sample_config.model_spec.model_revision = None
+    sample_config.executor_config.disk_size = "300Gi"
 
     mismatched_model_entity = ModelEntity(
         id="model-1",

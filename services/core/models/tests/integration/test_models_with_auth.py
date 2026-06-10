@@ -262,14 +262,19 @@ class TestModelsUnauthenticated:
     def test_create_deployment_config_without_auth_fails(self, sdk: NeMoPlatform):
         response = sdk._client.post(
             "/apis/models/v2/workspaces/default/deployment-configs",
-            json={"name": "test-config", "nim_deployment": {"model_name": "test", "gpu": 1}},
+            json={
+                "name": "test-config",
+                "engine": "nim",
+                "model_spec": {"model_name": "test"},
+                "executor_config": {"gpu": 1},
+            },
         )
         assert response.status_code == 401
 
     def test_update_deployment_config_without_auth_fails(self, sdk: NeMoPlatform):
         response = sdk._client.post(
             "/apis/models/v2/workspaces/default/deployment-configs/any-config",
-            json={"nim_deployment": {"model_name": "test", "gpu": 1}},
+            json={"engine": "nim", "model_spec": {"model_name": "test"}, "executor_config": {"gpu": 1}},
         )
         assert response.status_code == 401
 
@@ -311,7 +316,9 @@ def viewer_workspace(sdk: NeMoPlatform):
     admin_sdk.inference.deployment_configs.create(
         workspace=workspace,
         name=config_name,
-        nim_deployment={"model_name": "test", "gpu": 1},
+        engine="nim",
+        model_spec={"model_name": "test"},
+        executor_config={"gpu": 1},
     )
     admin_sdk.inference.deployments.create(
         workspace=workspace,
@@ -423,7 +430,9 @@ class TestViewerModelsAccess:
             viewer_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name="should-fail",
-                nim_deployment={"model_name": "test-model", "gpu": 1},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 1},
             )
 
     def test_viewer_cannot_update_deployment_config(self, viewer_workspace):
@@ -432,7 +441,9 @@ class TestViewerModelsAccess:
             viewer_sdk.inference.deployment_configs.update(
                 name=names["config"],
                 workspace=workspace,
-                nim_deployment={"model_name": "updated", "gpu": 2},
+                engine="nim",
+                model_spec={"model_name": "updated"},
+                executor_config={"gpu": 2},
             )
 
     def test_viewer_cannot_delete_deployment_config(self, viewer_workspace):
@@ -561,7 +572,9 @@ class TestEditorModelsAccess:
         created = editor_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
         )
         assert created.name == config_name
 
@@ -823,7 +836,9 @@ class TestDeploymentConfigPermissions:
         config = editor_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=short_unique_name("cfg"),
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
             model_entity_id=f"{workspace}/my-model",
         )
         assert config.model_entity_id == f"{workspace}/my-model"
@@ -847,7 +862,9 @@ class TestDeploymentConfigPermissions:
             editor_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=short_unique_name("cfg"),
-                nim_deployment={"model_name": "test-model", "gpu": 1},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 1},
                 model_entity_id="inaccessible-workspace/some-model",
             )
 
@@ -862,7 +879,9 @@ class TestDeploymentConfigPermissions:
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
         )
         grant_workspace_role(
             admin_sdk,
@@ -875,7 +894,9 @@ class TestDeploymentConfigPermissions:
         updated = editor_sdk.inference.deployment_configs.update(
             name=config_name,
             workspace=workspace,
-            nim_deployment={"model_name": "test-model", "gpu": 2},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 2},
             model_entity_id=f"{workspace}/my-model",
         )
         assert updated.model_entity_id == f"{workspace}/my-model"
@@ -891,7 +912,9 @@ class TestDeploymentConfigPermissions:
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
         )
         grant_workspace_role(
             admin_sdk,
@@ -905,7 +928,9 @@ class TestDeploymentConfigPermissions:
             editor_sdk.inference.deployment_configs.update(
                 name=config_name,
                 workspace=workspace,
-                nim_deployment={"model_name": "test-model", "gpu": 2},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 2},
                 model_entity_id="inaccessible-workspace/some-model",
             )
 
@@ -930,7 +955,9 @@ class TestDeploymentConfigPermissions:
                 user_sdk.inference.deployment_configs.create(
                     workspace=workspace,
                     name=short_unique_name("cfg"),
-                    nim_deployment={"model_name": "test-model", "gpu": 1},
+                    engine="nim",
+                    model_spec={"model_name": "test-model"},
+                    executor_config={"gpu": 1},
                     model_entity_id=f"{workspace}/some-model",
                 )
 
@@ -946,7 +973,9 @@ class TestDeploymentConfigPermissions:
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
-                nim_deployment={"model_name": "test-model", "gpu": 1},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 1},
             )
             grant_workspace_role(
                 admin_sdk,
@@ -961,7 +990,9 @@ class TestDeploymentConfigPermissions:
                 user_sdk.inference.deployment_configs.update(
                     name=config_name,
                     workspace=workspace,
-                    nim_deployment={"model_name": "test-model", "gpu": 2},
+                    engine="nim",
+                    model_spec={"model_name": "test-model"},
+                    executor_config={"gpu": 2},
                     model_entity_id=f"{workspace}/some-model",
                 )
 
@@ -981,7 +1012,9 @@ class TestDeploymentPermissions:
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
         )
         grant_workspace_role(
             admin_sdk,
@@ -1010,7 +1043,9 @@ class TestDeploymentPermissions:
         admin_sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=config_name,
-            nim_deployment={"model_name": "test-model", "gpu": 1},
+            engine="nim",
+            model_spec={"model_name": "test-model"},
+            executor_config={"gpu": 1},
         )
         admin_sdk.inference.deployments.create(
             workspace=workspace,
@@ -1044,7 +1079,9 @@ class TestDeploymentPermissions:
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
-                nim_deployment={"model_name": "test-model", "gpu": 1},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 1},
             )
             grant_workspace_role(
                 admin_sdk,
@@ -1075,7 +1112,9 @@ class TestDeploymentPermissions:
             admin_sdk.inference.deployment_configs.create(
                 workspace=workspace,
                 name=config_name,
-                nim_deployment={"model_name": "test-model", "gpu": 1},
+                engine="nim",
+                model_spec={"model_name": "test-model"},
+                executor_config={"gpu": 1},
             )
             admin_sdk.inference.deployments.create(
                 workspace=workspace,

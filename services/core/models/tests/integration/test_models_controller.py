@@ -66,7 +66,9 @@ def test_controller_reconciles_created_deployment(controller_with_mock_backend):
     sdk.inference.deployment_configs.create(
         name=config_name,
         workspace="default",
-        nim_deployment={"gpu": 0},  # No GPU for mock
+        engine="nim",
+        model_spec={},
+        executor_config={"gpu": 0},  # No GPU for mock
     )
 
     # Create deployment - starts in CREATED status
@@ -105,7 +107,9 @@ def test_controller_polls_pending_deployment(controller_with_mock_backend):
     deployment_name = f"test-deployment-poll-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Configure status to PENDING so first step doesn't immediately go to READY
@@ -149,7 +153,9 @@ def test_controller_handles_backend_error(controller_with_mock_backend):
     deployment_name = f"test-deployment-err-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Configure backend to return ERROR
@@ -176,7 +182,9 @@ def test_controller_deletes_when_deleting(controller_with_mock_backend):
     deployment_name = f"test-deployment-del-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state
@@ -213,7 +221,9 @@ def test_controller_garbage_collects_deleted_deployment(controller_with_mock_bac
     deployment_name = f"test-deployment-gc-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Progress through lifecycle: CREATED → PENDING → READY → DELETING → DELETED
@@ -259,7 +269,9 @@ def test_controller_orphan_cleanup_after_deleted(controller_with_mock_backend):
     deployment_name = f"test-deployment-orphan-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # CREATED → PENDING → READY
@@ -310,7 +322,9 @@ def test_controller_creates_model_provider_when_ready(controller_with_mock_backe
     deployment_name = f"test-deployment-prov-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state with host_url - this should trigger provider creation
@@ -340,7 +354,9 @@ def test_controller_deletes_model_provider_on_delete(controller_with_mock_backen
     deployment_name = f"test-deployment-delprov-{test_uuid}"
 
     # Create config and deployment
-    sdk.inference.deployment_configs.create(name=config_name, workspace="default", nim_deployment={"gpu": 0})
+    sdk.inference.deployment_configs.create(
+        name=config_name, workspace="default", engine="nim", model_spec={}, executor_config={"gpu": 0}
+    )
     sdk.inference.deployments.create(name=deployment_name, workspace="default", config=config_name)
 
     # Move to READY state (creates provider)
@@ -493,7 +509,9 @@ def test_docker_deployment_lifecycle(controller_with_docker, docker_client):
     sdk.inference.deployment_configs.create(
         name=config_name,
         workspace="default",
-        nim_deployment={
+        engine="nim",
+        model_spec={},
+        executor_config={
             "gpu": 0,
             "image_name": image_name,
             "image_tag": image_tag,

@@ -399,13 +399,15 @@ resources:
           get: get /apis/inference-gateway/v2/workspaces/{workspace}/openai/-/v1/models/{name}
       deployment_configs:
         models:
+          container_executor_config: ContainerExecutorConfig
           create_model_deployment_config_request: CreateModelDeploymentConfigRequest
+          engine: Engine
           k8s_nim_operator_config: K8sNIMOperatorConfig
           model_deployment_config: ModelDeploymentConfig
           model_deployment_config_filter: ModelDeploymentConfigFilter
+          model_deployment_config_model_spec: ModelDeploymentConfigModelSpec
           model_deployment_configs_page: ModelDeploymentConfigsPage
           model_type: ModelType
-          nim_deployment: NIMDeployment
           update_model_deployment_config_request: UpdateModelDeploymentConfigRequest
         methods:
           list: get /apis/models/v2/workspaces/{workspace}/deployment-configs

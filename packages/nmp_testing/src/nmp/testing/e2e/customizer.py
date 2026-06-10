@@ -11,11 +11,12 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, cast
 
 import httpx
 import pytest
 from nemo_platform import NeMoPlatform
-from nemo_platform.types.inference import NIMDeploymentParam
+from nemo_platform.types.inference import ContainerExecutorConfigParam, ModelDeploymentConfigModelSpecParam
 
 logger = logging.getLogger(__name__)
 
@@ -411,7 +412,8 @@ def run_inference_test(
     logger.info("✓ Inference successful")
 
     assert isinstance(inference_response, dict), f"Expected dict response, got {type(inference_response)}"
-    content = inference_response["choices"][0]["message"]["content"]
+    response_dict = cast(dict[str, Any], inference_response)
+    content = response_dict["choices"][0]["message"]["content"]
     assert isinstance(content, str) and len(content) > 0, "Message content should be a non-empty string"
 
     logger.info(f"Generated response ({len(content)} chars):")
@@ -446,25 +448,29 @@ def deploy_and_test_model(
 
     try:
         logger.info(f"Creating deployment config: {deployment_config_name}")
-        nim_deployment_params: NIMDeploymentParam = {
-            "gpu": 1,
+        model_spec_params: ModelDeploymentConfigModelSpecParam = {
             "model_name": model_name,
             "model_namespace": workspace,
+        }
+        executor_config_params: ContainerExecutorConfigParam = {
+            "gpu": 1,
             "additional_envs": {
                 "NIM_MODEL_PROFILE": "vllm",
             },
         }
         if nim_image_name:
-            nim_deployment_params["image_name"] = nim_image_name
+            executor_config_params["image_name"] = nim_image_name
         if nim_image_tag:
-            nim_deployment_params["image_tag"] = nim_image_tag
+            executor_config_params["image_tag"] = nim_image_tag
 
         deployment_config = sdk.inference.deployment_configs.create(
             workspace=workspace,
             name=deployment_config_name,
             description=f"E2E test deployment config for {model_name}",
             model_entity_id=model_name,
-            nim_deployment=nim_deployment_params,
+            engine="nim",
+            model_spec=model_spec_params,
+            executor_config=executor_config_params,
         )
         logger.info(f"✓ Deployment config created: {deployment_config.name}")
 

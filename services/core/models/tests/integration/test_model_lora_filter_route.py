@@ -34,15 +34,18 @@ def _create_lora_config(test_clients: ClientContext, model_name: str, lora_enabl
     body = {
         "name": f"{model_name}-config",
         "model_entity_id": f"{DEFAULT_WORKSPACE}/{model_name}",
-        "nim_deployment": {
+        "engine": "nim",
+        "model_spec": {
             "model_type": "llm",
             "lora_enabled": lora_enabled,
+            "model_namespace": "nvidia",
+            "model_name": "llama-3-8b",
+        },
+        "executor_config": {
             "gpu": 1,
             "disk_size": "50Gi",
             "image_name": "nvcr.io/nvidia/nim/llm",
             "image_tag": "latest",
-            "model_namespace": "nvidia",
-            "model_name": "llama-3-8b",
         },
     }
     response = test_clients.test_client.post(CONFIGS_PATH, json=body)
