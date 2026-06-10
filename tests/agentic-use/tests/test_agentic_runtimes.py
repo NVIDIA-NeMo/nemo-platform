@@ -10,10 +10,9 @@ from pathlib import Path
 
 import pytest
 import yaml
+from nemo_evaluator_sdk.agent_eval.runtimes.environment import EnvCommandResult, EnvRunSpec
 from runtimes.shared.config import AgenticSharedConfig, WorkflowRuntimeConfig
-from runtimes.shared.environment import EnvCommandResult, EnvRunSpec
-from runtimes.shared.layout import resolve_run_layout, task_image_tag
-from runtimes.shared.task_loader import agentic_task_from_dir
+from runtimes.shared.platform import agentic_task_from_dir, resolve_run_layout, task_image_tag
 from runtimes.workflow.command import build_workflow_agent_cmd
 from runtimes.workflow.prep import prepare_workflow_for_runtime
 from runtimes.workflow.runtime import NatWorkflowAttemptRuntime
@@ -122,8 +121,7 @@ def test_runtime_for_backend_rejects_unknown() -> None:
 
 
 def test_build_agent_eval_attempt_metadata_matches_captured_schema(tmp_path: Path) -> None:
-    from runtimes.shared.artifacts import build_agent_eval_attempt, to_captured_agent_attempt
-    from runtimes.shared.layout import AgenticRunLayout
+    from runtimes.shared.platform import AgenticRunLayout, build_agent_eval_attempt, to_captured_agent_attempt
 
     task = agentic_task_from_dir(WORKSPACE_BASIC, tasks_root=TASKS_DIR)
     layout = AgenticRunLayout(
@@ -183,7 +181,7 @@ async def test_aut_runtime_run_tasks_with_mocked_env(tmp_path: Path) -> None:
 
 
 def test_attempt_from_result_maps_status_and_measurements(tmp_path: Path) -> None:
-    from runtimes.shared.result_adapter import attempt_from_result
+    from runtimes.shared.platform import attempt_from_result
 
     output_dir = tmp_path / "20260101T000000Z-demo"
     (output_dir / "agent").mkdir(parents=True)
@@ -218,7 +216,7 @@ def test_attempt_from_result_maps_status_and_measurements(tmp_path: Path) -> Non
 
 
 def test_attempt_from_result_marks_unsuccessful_agent_partial(tmp_path: Path) -> None:
-    from runtimes.shared.result_adapter import attempt_from_result
+    from runtimes.shared.platform import attempt_from_result
 
     output_dir = tmp_path / "run"
     (output_dir / "agent").mkdir(parents=True)
@@ -271,7 +269,7 @@ async def test_score_captured_attempts_offline(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_verifier_reward_metric_reads_metadata() -> None:
     from nemo_evaluator_sdk.metrics.protocol import CandidateOutput, DatasetRow, MetricInput
-    from runtimes.shared.metrics import VerifierRewardMetric
+    from runtimes.shared.platform import VerifierRewardMetric
 
     metric = VerifierRewardMetric()
     candidate = CandidateOutput(output_text="x", metadata={"reward": 1})
@@ -320,7 +318,7 @@ def _make_run_result(*, reward: float, total_tokens: int, runtime_sec: float, co
 
 
 def test_summarize_run_aggregates_pass_tokens_runtime_provenance() -> None:
-    from runtimes.shared.reporting import summarize_run
+    from nemo_evaluator_sdk.agent_eval.gating import summarize_run
 
     summary = summarize_run(_make_run_result(reward=1.0, total_tokens=120, runtime_sec=4.5))
 
@@ -333,7 +331,7 @@ def test_summarize_run_aggregates_pass_tokens_runtime_provenance() -> None:
 
 
 def test_evaluate_gate_passes_then_flags_token_regression(tmp_path: Path) -> None:
-    from runtimes.shared.reporting import GateThresholds, evaluate_gate, write_gate_report
+    from nemo_evaluator_sdk.agent_eval.gating import GateThresholds, evaluate_gate, write_gate_report
 
     baseline = _make_run_result(reward=1.0, total_tokens=100, runtime_sec=4.0)
     candidate = _make_run_result(reward=1.0, total_tokens=200, runtime_sec=4.0)
@@ -356,7 +354,7 @@ def test_evaluate_gate_passes_then_flags_token_regression(tmp_path: Path) -> Non
 
 
 def test_evaluate_gate_blocks_cross_commit_comparison() -> None:
-    from runtimes.shared.reporting import GateThresholds, evaluate_gate
+    from nemo_evaluator_sdk.agent_eval.gating import GateThresholds, evaluate_gate
 
     baseline = _make_run_result(reward=1.0, total_tokens=100, runtime_sec=4.0, commit="aaa111")
     candidate = _make_run_result(reward=1.0, total_tokens=100, runtime_sec=4.0, commit="bbb222")
@@ -378,8 +376,7 @@ def test_evaluate_gate_blocks_cross_commit_comparison() -> None:
 
 
 def test_build_verify_run_spec_shape(tmp_path: Path) -> None:
-    from runtimes.shared.layout import AgenticRunLayout
-    from runtimes.shared.verify import build_verify_run_spec
+    from runtimes.shared.platform import AgenticRunLayout, build_verify_run_spec
 
     layout = AgenticRunLayout(
         run_dir=tmp_path,
@@ -404,8 +401,7 @@ def test_build_verify_run_spec_shape(tmp_path: Path) -> None:
 
 
 def test_build_verify_run_spec_returns_none_without_tests(tmp_path: Path) -> None:
-    from runtimes.shared.layout import AgenticRunLayout
-    from runtimes.shared.verify import build_verify_run_spec
+    from runtimes.shared.platform import AgenticRunLayout, build_verify_run_spec
 
     task_dir = tmp_path / "no-tests-task"
     task_dir.mkdir()
@@ -422,9 +418,8 @@ def test_build_verify_run_spec_returns_none_without_tests(tmp_path: Path) -> Non
 
 @pytest.mark.asyncio
 async def test_run_verify_reads_reward_file(tmp_path: Path) -> None:
-    from runtimes.shared.environment import EnvCommandResult, EnvRunSpec
-    from runtimes.shared.layout import AgenticRunLayout
-    from runtimes.shared.verify import run_verify
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment import EnvCommandResult, EnvRunSpec
+    from runtimes.shared.platform import AgenticRunLayout, run_verify
 
     layout = AgenticRunLayout(
         run_dir=tmp_path,
@@ -456,7 +451,7 @@ async def test_run_verify_reads_reward_file(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_workflow_runtime_runs_verify_through_handle(tmp_path: Path) -> None:
-    from runtimes.shared.verify import verifier_log_dir
+    from runtimes.shared.platform import verifier_log_dir
 
     task = agentic_task_from_dir(WORKSPACE_BASIC, tasks_root=TASKS_DIR)
     layout = resolve_run_layout(task, AgenticSharedConfig(jobs_dir=tmp_path))
@@ -493,7 +488,7 @@ async def test_workflow_runtime_runs_verify_through_handle(tmp_path: Path) -> No
 
 
 def test_load_environment_spec_prefers_yaml(tmp_path: Path) -> None:
-    from runtimes.shared.environment_spec import load_environment_spec
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import load_environment_spec
 
     (tmp_path / "environment.yaml").write_text(
         "environment:\n"
@@ -516,7 +511,7 @@ def test_load_environment_spec_prefers_yaml(tmp_path: Path) -> None:
 
 
 def test_load_environment_spec_falls_back_to_dockerfile(tmp_path: Path) -> None:
-    from runtimes.shared.environment_spec import load_environment_spec
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import load_environment_spec
 
     env_dir = tmp_path / "environment"
     env_dir.mkdir()
@@ -528,14 +523,14 @@ def test_load_environment_spec_falls_back_to_dockerfile(tmp_path: Path) -> None:
 
 
 def test_load_environment_spec_missing_raises(tmp_path: Path) -> None:
-    from runtimes.shared.environment_spec import load_environment_spec
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import load_environment_spec
 
     with pytest.raises(FileNotFoundError):
         load_environment_spec(tmp_path)
 
 
 def test_plan_task_build_dockerfile_escape_hatch(tmp_path: Path) -> None:
-    from runtimes.shared.environment_spec import plan_task_build
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import plan_task_build
 
     env_dir = tmp_path / "environment"
     env_dir.mkdir()
@@ -549,7 +544,7 @@ def test_plan_task_build_dockerfile_escape_hatch(tmp_path: Path) -> None:
 
 
 def test_plan_task_build_generates_derived_dockerfile(tmp_path: Path) -> None:
-    from runtimes.shared.environment_spec import plan_task_build
+    from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import plan_task_build
 
     (tmp_path / "environment.yaml").write_text(
         "environment:\n  image: base:1\n  dependencies:\n    python: [pytest]\n  setup: [seed-providers]\n",

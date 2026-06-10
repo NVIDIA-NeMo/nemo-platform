@@ -8,12 +8,12 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from nemo_evaluator_sdk.agent_eval.runtimes.environment import AgentEnvironmentProvider, EnvRunSpec
+from nemo_evaluator_sdk.agent_eval.runtimes.verify import apply_verify_to_metadata
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalRunConfig, AgentEvalTask
 
 from runtimes.aut.command import build_aut_agent_cmd
 from runtimes.aut.prep import prepare_aut_config_for_runtime
-from runtimes.shared.agent_log import agent_log_has_workflow_error
-from runtimes.shared.artifacts import build_agent_eval_attempt
 from runtimes.shared.config import AutRuntimeConfig
 from runtimes.shared.constants import (
     DOCKER_SOCKET_CONTAINER_PATH,
@@ -21,15 +21,16 @@ from runtimes.shared.constants import (
     INSTRUCTION_CONTAINER_PATH,
     REPO_ROOT,
 )
-from runtimes.shared.container_env import base_container_env
-from runtimes.shared.environment import (
-    AgentEnvironmentProvider,
+from runtimes.shared.platform import (
+    AgenticRunLayout,
     DockerEnvironmentProvider,
-    EnvRunSpec,
+    agent_log_has_workflow_error,
+    base_container_env,
+    build_agent_eval_attempt,
+    maybe_run_verify,
+    resolve_run_layout,
+    task_agent_timeout_sec,
 )
-from runtimes.shared.layout import AgenticRunLayout, resolve_run_layout
-from runtimes.shared.task_loader import task_agent_timeout_sec
-from runtimes.shared.verify import apply_verify_to_metadata, maybe_run_verify
 
 RUNTIME_NAME = "aut"
 AUT_CONFIG_CONTAINER_PATH = "/tmp/aut_agent.yml"

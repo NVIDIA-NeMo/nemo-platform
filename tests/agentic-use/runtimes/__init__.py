@@ -3,29 +3,7 @@
 
 """Backend-specific AgentAttemptRuntime implementations for agentic-use evals."""
 
-from runtimes.aut.runtime import AutAgentAttemptRuntime
-from runtimes.claude_code.runtime import ClaudeCodeAgentAttemptRuntime
-from runtimes.codex.runtime import CodexAgentAttemptRuntime
-from runtimes.cursor_agent.runtime import CursorAgentAttemptRuntime
-from runtimes.orchestrator import AgenticEvalOrchestrator, AgenticOrchestratorConfig, runtime_for_backend
-from runtimes.shared.environment import (
-    AgentEnvironmentHandle,
-    AgentEnvironmentProvider,
-    DockerEnvironmentHandle,
-    DockerEnvironmentProvider,
-    EnvCommandResult,
-    EnvRunSpec,
-)
-from runtimes.shared.environment_spec import (
-    BuildPlan,
-    EnvironmentSpec,
-    execute_build_plan,
-    load_environment_spec,
-    plan_task_build,
-    render_derived_dockerfile,
-)
-from runtimes.shared.metrics import AgentPhaseSuccessMetric, VerifierRewardMetric
-from runtimes.shared.reporting import (
+from nemo_evaluator_sdk.agent_eval.gating import (
     GateCheck,
     GateReport,
     GateThresholds,
@@ -34,10 +12,34 @@ from runtimes.shared.reporting import (
     summarize_run,
     write_gate_report,
 )
-from runtimes.shared.result_adapter import attempt_from_result, attempt_from_result_dir
-from runtimes.shared.verify import (
-    VerifierOutcome,
-    apply_verify_to_metadata,
+from nemo_evaluator_sdk.agent_eval.runtimes.environment import (
+    AgentEnvironmentHandle,
+    AgentEnvironmentProvider,
+    DockerEnvironmentHandle,
+    EnvCommandResult,
+    EnvRunSpec,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import (
+    BuildPlan,
+    EnvironmentSpec,
+    execute_build_plan,
+    load_environment_spec,
+    plan_task_build,
+    render_derived_dockerfile,
+)
+from nemo_evaluator_sdk.agent_eval.runtimes.verify import VerifierOutcome, apply_verify_to_metadata
+
+from runtimes.aut.runtime import AutAgentAttemptRuntime
+from runtimes.claude_code.runtime import ClaudeCodeAgentAttemptRuntime
+from runtimes.codex.runtime import CodexAgentAttemptRuntime
+from runtimes.cursor_agent.runtime import CursorAgentAttemptRuntime
+from runtimes.orchestrator import AgenticEvalOrchestrator, AgenticOrchestratorConfig, runtime_for_backend
+from runtimes.shared.platform import (
+    AgentPhaseSuccessMetric,
+    DockerEnvironmentProvider,
+    VerifierRewardMetric,
+    attempt_from_result,
+    attempt_from_result_dir,
     build_verify_run_spec,
     maybe_run_verify,
     run_verify,

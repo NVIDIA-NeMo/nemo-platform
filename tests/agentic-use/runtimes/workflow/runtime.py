@@ -8,20 +8,21 @@ from __future__ import annotations
 from collections.abc import Sequence
 from pathlib import Path
 
+from nemo_evaluator_sdk.agent_eval.runtimes.environment import AgentEnvironmentProvider, EnvRunSpec
+from nemo_evaluator_sdk.agent_eval.runtimes.verify import apply_verify_to_metadata
 from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalRunConfig, AgentEvalTask
 
-from runtimes.shared.artifacts import build_agent_eval_attempt
 from runtimes.shared.config import WorkflowRuntimeConfig
 from runtimes.shared.constants import INSTRUCTION_CONTAINER_PATH, WORKFLOW_CONTAINER_PATH
-from runtimes.shared.container_env import base_container_env
-from runtimes.shared.environment import (
-    AgentEnvironmentProvider,
+from runtimes.shared.platform import (
+    AgenticRunLayout,
     DockerEnvironmentProvider,
-    EnvRunSpec,
+    base_container_env,
+    build_agent_eval_attempt,
+    maybe_run_verify,
+    resolve_run_layout,
+    task_agent_timeout_sec,
 )
-from runtimes.shared.layout import AgenticRunLayout, resolve_run_layout
-from runtimes.shared.task_loader import task_agent_timeout_sec
-from runtimes.shared.verify import apply_verify_to_metadata, maybe_run_verify
 from runtimes.workflow.command import build_workflow_agent_cmd
 from runtimes.workflow.prep import prepare_workflow_for_runtime
 

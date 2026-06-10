@@ -9,19 +9,26 @@ the pytest verifier, the platform Docker build/image-tag) plus a thin factory.
 
 ## Architecture: adapter over SDK
 
-The `shared/*` modules below are **pure re-export shims** over their SDK homes —
-they exist only so existing imports keep working; the logic lives in the SDK:
+The backend-agnostic logic lives in `nemo_evaluator_sdk.agent_eval` and is
+imported **directly** by the runtime scripts (no re-export shims). Everything
+generic comes from these SDK homes:
 
-| `shared/` shim | SDK home |
-|----------------|----------|
-| `docker.py` | `agent_eval.runtimes.docker` |
-| `environment.py` | `agent_eval.runtimes.environment` (re-supplies the platform image-tag) |
-| `environment_spec.py` | `agent_eval.runtimes.environment_spec` |
-| `reporting.py` | `agent_eval.gating` |
-| `verify.py` | wraps `agent_eval.runtimes.verify` (pytest command/env/mounts stay here) |
-| `metrics.py` | `AgentPhaseSuccessMetric` from `agent_eval.common_metrics` (namespaced); `VerifierRewardMetric` is platform |
-| `artifacts.py` | `resolve_attempt_status` + evidence keys from `agent_eval.attempts`; adds the platform `state` key |
-| `layout.py` | delegates to `agent_eval.runtimes.layout`; adds the platform `state_dir` + `task_image_tag` |
+| What | SDK home |
+|------|----------|
+| Docker CLI helpers | `agent_eval.runtimes.docker` |
+| Environment boundary (`AgentEnvironmentProvider`/`Handle`, `EnvRunSpec`) | `agent_eval.runtimes.environment` |
+| Environment authoring (`load_environment_spec`, `plan_task_build`, …) | `agent_eval.runtimes.environment_spec` |
+| Gating (`GateThresholds`, `evaluate_gate`, `summarize_run`, …) | `agent_eval.gating` |
+| Verify mechanic (`apply_verify_to_metadata`, `collect_verifier_outcome`) | `agent_eval.runtimes.verify` |
+| `AgentPhaseSuccessMetric`, attempt-status + evidence helpers | `agent_eval.common_metrics`, `agent_eval.attempts` |
+| Generic orchestrator + run layout | `agent_eval.orchestrator`, `agent_eval.runtimes.layout` |
+
+All NeMo-Platform-specific glue is consolidated into a single module,
+`shared/platform.py`: the run layout with the platform `state_dir`, the
+`nmp-nat-<id>` image tag + `DockerEnvironmentProvider` default, the namespaced
+`AgentPhaseSuccessMetric` + the `VerifierRewardMetric`, agent-log/usage parsing
+and the shared container env, attempt construction (live + `result.json`), the
+live VERIFY phase, and the agentic-use task loader.
 
 The orchestrator (`orchestrator.py`) is a thin factory over
 `agent_eval.orchestrator.AgentEvalOrchestrator`: it injects the platform image
@@ -32,9 +39,10 @@ build (`prepare_task`), the `run_verify`-derived `VerifierRewardMetric`
 
 ```text
 runtimes/
-  shared/           # thin re-export shims over agent_eval.* (see table above)
-                    #   + platform-only: task_loader.py, result_adapter.py,
-                    #     config.py, container_env.py, constants.py
+  shared/           # platform glue only:
+                    #   platform.py  — all NeMo-Platform helpers (one file)
+                    #   config.py    — runtime config dataclasses
+                    #   constants.py — paths / container constants
   workflow/         # NatWorkflowAttemptRuntime (implemented, NeMo construct)
   aut/              # AutAgentAttemptRuntime (implemented, NeMo construct)
   claude_code/      # scaffold (stub) — see "Coding-agent runtimes" below
@@ -106,7 +114,7 @@ Design-doc implementation path (see [COMPLIANCE.md](./COMPLIANCE.md) for detail)
 
 ## B1 — `result.json` import + stored-attempt scoring
 
-`shared/result_adapter.py` imports an existing `nat_runner` run as an attempt:
+`shared/platform.py` imports an existing `nat_runner` run as an attempt:
 
 - `attempt_from_result_dir(output_dir)` reads `<output_dir>/result.json`.
 - `attempt_from_result(result_dict, output_dir=...)` projects a parsed record.
@@ -131,16 +139,17 @@ when `run_verify=True`. `inputs` holds only agent-facing `instruction`;
 
 ## B2 — Environment boundary
 
-Runtimes execute the agent through `shared/environment.py`
+Runtimes execute the agent through the SDK environment boundary
 (`AgentEnvironmentProvider` → `AgentEnvironmentHandle`) rather than calling
-Docker directly. `DockerEnvironmentProvider` is the default; inject another
+Docker directly. The platform `DockerEnvironmentProvider` (`shared/platform.py`,
+defaulting to the `nmp-nat-<id>` image tag) is the default; inject another
 provider (local, Harbor, NeMo Gym) via the runtime's `environment=` argument
 without changing backend code.
 
 ## B3 — Environment authoring
 
 Tasks can declare a reusable environment instead of hand-writing a Dockerfile.
-`shared/environment_spec.py` loads `environment.yaml` from the task dir:
+`agent_eval.runtimes.environment_spec` loads `environment.yaml` from the task dir:
 
 ```yaml
 environment:
@@ -171,10 +180,10 @@ as metadata, not executed here (they are runtime concerns).
 
 The SDK persists the run bundle (`tasks.jsonl`, `attempts.jsonl`,
 `results.jsonl`, `summary.json`, `report.html`) when `output_dir` is set.
-`shared/reporting.py` adds the gate on top:
+`agent_eval.gating` adds the gate on top:
 
 ```python
-from runtimes.shared.reporting import GateThresholds, evaluate_gate, load_baseline_summary, write_gate_report
+from nemo_evaluator_sdk.agent_eval.gating import GateThresholds, evaluate_gate, load_baseline_summary, write_gate_report
 
 report = evaluate_gate(
     run_result,
@@ -190,7 +199,7 @@ The orchestrator emits `gate.json` automatically (`AgenticOrchestratorConfig.wri
 
 ## Live VERIFY phase (through the B2 boundary)
 
-`shared/verify.py` runs the task-local `tests/test_outputs.py` pytest verifier
+`shared/platform.py` runs the task-local `tests/test_outputs.py` pytest verifier
 through `AgentEnvironmentHandle.run_verifier`, in the same prepared environment
 and against the same persisted workspace/state as the agent phase. Enable it via
 `AgenticSharedConfig(run_verify=True)`; the runtime stamps `reward`/`passed`/

@@ -17,7 +17,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from nemo_evaluator_sdk.agent_eval.gating import GateThresholds
 from nemo_evaluator_sdk.agent_eval.orchestrator import AgentEvalOrchestrator, OrchestratorConfig
+from nemo_evaluator_sdk.agent_eval.runtimes.docker import docker_image_exists
+from nemo_evaluator_sdk.agent_eval.runtimes.environment_spec import execute_build_plan, plan_task_build
 from nemo_evaluator_sdk.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalRunResult,
@@ -25,13 +28,12 @@ from nemo_evaluator_sdk.agent_eval.types import (
 )
 from nemo_evaluator_sdk.metrics.protocol import Metric
 
-from runtimes.shared.docker import docker_image_exists
-from runtimes.shared.environment_spec import execute_build_plan, plan_task_build
-from runtimes.shared.layout import task_image_tag
-from runtimes.shared.metrics import VerifierRewardMetric
-from runtimes.shared.reporting import GateThresholds
-from runtimes.shared.result_adapter import ResultDirAttemptSource
-from runtimes.shared.task_loader import agentic_task_from_dir
+from runtimes.shared.platform import (
+    ResultDirAttemptSource,
+    VerifierRewardMetric,
+    agentic_task_from_dir,
+    task_image_tag,
+)
 
 
 @dataclass(frozen=True)
