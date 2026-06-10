@@ -44,7 +44,7 @@ jobs:
               await github.rest.repos.createCommitStatus({
                 owner, repo, sha: pr.head.sha,
                 state: 'failure', context: 'docker-build',
-                description: 'Build timed out — re-run the trigger workflow.',
+                description: 'Build timed out — re-run "Docker build trigger" in Actions.',
               });
               failed++;
               core.info(`Failed stale docker-build (pending, ${ageMin.toFixed(1)}m) on PR #${pr.number} @ ${pr.head.sha}`);
