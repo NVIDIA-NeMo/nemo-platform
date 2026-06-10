@@ -191,16 +191,6 @@ class TestS3StorageImplInit:
         impl = S3StorageImpl(config, {})
         assert await impl.get_cache_path_key(path) == expected
 
-    @pytest.mark.parametrize("prefix", ["test-prefix", ""])
-    async def test_config_cache_prefix_matches_backend(self, prefix):
-        """The secret-free config cache prefix must match the backend's get_cache_path_key().
-
-        This guards against the two implementations drifting apart.
-        """
-        config = S3StorageConfig(bucket="test-bucket", prefix=prefix, use_sdk_auth=True)
-        impl = S3StorageImpl(config, {})
-        assert config.cache_path_prefix == await impl.get_cache_path_key()
-
     def test_config_owns_storage_data(self):
         """Deleting an S3 fileset removes objects under our prefix, so we own the data."""
         config = S3StorageConfig(bucket="test-bucket", prefix="p", use_sdk_auth=True)

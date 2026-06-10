@@ -21,7 +21,7 @@ from nmp.common.entities.client import EntityClient, EntityNotFoundError
 from nmp.common.entities.utils import parse_entity_ref
 from nmp.common.sdk_factory import get_async_platform_sdk
 from nmp.common.secrets.exceptions import SecretAccessDeniedError, SecretNotFoundError
-from nmp.core.files.app.backends import FileInfo, StorageConfig, storage_impl_factory
+from nmp.core.files.app.backends import FileInfo, StorageConfig
 from nmp.core.files.app.backends.base import ByteRange, StorageImpl
 from nmp.core.files.app.cache import CacheStatus, cache_file_directly
 from nmp.core.files.app.file_lock import FileLockManager
@@ -303,85 +303,6 @@ async def resolve_storage_secrets_for_user(
     """Resolve storage secrets using delegated headers on request-scoped SDK."""
     service_sdk = get_async_platform_sdk(as_service="files", internal=True, on_behalf_of=auth_client.principal.id)
     return await resolve_storage_secrets(storage, workspace, service_sdk)
-
-
-async def _resolve_cache_prefix(
-    fileset_storage: StorageConfig,
-    source_storage: StorageImpl | None,
-) -> str | None:
-    """Determine the cache prefix to clean for a fileset.
-
-    The cache was written under the key returned by the source backend's
-    ``get_cache_path_key()`` (which, for NGC, resolves the live version). That is
-    the authoritative prefix, so we prefer it when a working source impl is
-    available. If the source impl can't be built (e.g. its secret has been
-    deleted), we fall back to the secret-free config prefix, which is exact for a
-    fileset whose version/revision was pinned at create time.
-    """
-    if source_storage is not None:
-        try:
-            return await source_storage.get_cache_path_key()
-        except Exception:
-            logger.warning(
-                "Could not resolve cache prefix from source backend; falling back to config-derived prefix",
-                exc_info=True,
-            )
-
-    prefix = fileset_storage.cache_path_prefix
-    if prefix is None:
-        logger.warning(
-            "Cannot determine cache prefix for fileset (unresolved version and no "
-            "source backend available); cached data may be orphaned",
-            extra={"storage_type": fileset_storage.type},
-        )
-    return prefix
-
-
-async def delete_cached_data(
-    fileset_storage: StorageConfig,
-    default_storage_config: StorageConfig,
-    source_storage: StorageImpl | None = None,
-) -> None:
-    """Delete any cached copies of a fileset's files from the platform's default storage.
-
-    External backends (NGC, HuggingFace) stream from a remote source and cache
-    copies in the platform's default storage under a deterministic prefix. That
-    cache is owned by the platform, so it must be cleaned up when the fileset is
-    deleted - otherwise it is orphaned.
-
-    The prefix is resolved by :func:`_resolve_cache_prefix`, which prefers the
-    source backend's own cache key (authoritative, and correct even when the
-    fileset's persisted version was never pinned) and falls back to the
-    secret-free config prefix when the source backend is unavailable.
-
-    This is best-effort: failures are logged, not raised, since a failure to
-    clean the cache must not block fileset deletion.
-
-    Args:
-        fileset_storage: The fileset's storage config (the cache source).
-        default_storage_config: The platform's default storage config (the cache layer).
-        source_storage: The source backend impl, if it could be built (i.e. its
-            secret is available). Used to resolve the exact cache prefix.
-    """
-    cache_prefix = await _resolve_cache_prefix(fileset_storage, source_storage)
-    if cache_prefix is None:
-        # Backend is not cached into default storage (e.g. local/default storage),
-        # or we could not determine the prefix safely.
-        return
-
-    # Scope the default storage config down to the cache prefix and delete everything
-    # under it. The default storage backend uses no user-provided secret.
-    try:
-        cache_scope = default_storage_config.copy_config(cache_prefix)
-        cache_storage = storage_impl_factory(cache_scope, {})
-        await cache_storage.delete_all()
-        logger.info("Deleted cached fileset data", extra={"cache_prefix": cache_prefix})
-    except Exception:
-        logger.warning(
-            "Failed to delete cached fileset data; cache may be orphaned",
-            extra={"cache_prefix": cache_prefix},
-            exc_info=True,
-        )
 
 
 async def get_cache_status_for_files(

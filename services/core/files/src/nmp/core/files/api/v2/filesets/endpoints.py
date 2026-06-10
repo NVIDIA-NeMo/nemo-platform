@@ -36,7 +36,6 @@ from nmp.common.service.dependencies import (
 )
 from nmp.core.files.api.endpoint_helpers import (
     CacheContext,
-    delete_cached_data,
     get_cache_status_for_files,
     get_download_file_info,
     get_fileset,
@@ -52,7 +51,6 @@ from nmp.core.files.api.v2.filesets.schemas import (
     UpdateFilesetRequest,
 )
 from nmp.core.files.app.backends import FileInfo, storage_impl_factory
-from nmp.core.files.app.backends.base import StorageImpl
 from nmp.core.files.app.backends.factory import StorageConfig
 from nmp.core.files.app.cache import CacheStatus, warm_fileset_cache
 from nmp.core.files.app.external_hosts import (
@@ -403,7 +401,6 @@ async def delete_fileset(
     workspace: str,
     name: str,
     entity_store: EntityClient = Depends(get_entity_client),
-    config: FilesConfig = Depends(get_service_config_factory(FilesConfig)),
     sdk: AsyncNeMoPlatform = Depends(get_sdk_client),
     auth_client: AuthClient = Depends(get_auth_client),
 ) -> FilesetOutput:
@@ -417,13 +414,12 @@ async def delete_fileset(
     logger.info(f"DELETE /filesets/{name} - workspace={workspace}")
     fileset = await get_fileset(workspace, name, entity_store)
 
-    # Build the source backend impl. This requires the storage secret, which may have
-    # been deleted since the fileset was created. When that happens the impl is None
-    # and we fall back to secret-free behavior below.
-    source_storage: StorageImpl | None = None
+    # Delete underlying source storage data. This is a no-op for external backends
+    # like NGC/HuggingFace, and removes files for backends we own (local/S3).
     try:
         secrets = await resolve_storage_secrets_for_user(fileset.storage, workspace, sdk, auth_client)
-        source_storage = storage_impl_factory(fileset.storage, secrets)
+        storage = storage_impl_factory(fileset.storage, secrets)
+        await storage.delete_all()
     except (SecretNotFoundError, SecretAccessDeniedError) as exc:
         # For backends we own (local, S3), the secret is required to delete the source
         # data; silently skipping that would orphan data we're responsible for. Surface
@@ -442,21 +438,8 @@ async def delete_fileset(
             ) from exc
         logger.warning(
             f"Storage secret unavailable while deleting external fileset '{workspace}/{name}'; "
-            f"the source is not ours to delete, proceeding with entity deletion: {exc}"
+            f"nothing to delete on the source, proceeding with entity deletion: {exc}"
         )
-
-    # 1. Clean up any cached copies the platform materialized in default storage for
-    #    external backends (NGC, HuggingFace). We prefer the source impl to resolve the
-    #    exact cache prefix (correct even when the persisted version was never pinned),
-    #    and fall back to the secret-free config prefix when the source is unavailable.
-    #    Best-effort; never blocks deletion.
-    await delete_cached_data(fileset.storage, config.default_storage_config, source_storage)
-
-    # 2. Delete the underlying *source* data. No-op for external backends we don't own
-    #    (NGC, HuggingFace); removes files for backends we do own (local, S3). Skipped
-    #    entirely when the source impl couldn't be built (external + missing secret).
-    if source_storage is not None:
-        await source_storage.delete_all()
 
     await entity_store.delete(Fileset, fileset.name, workspace=workspace)
 

@@ -339,7 +339,8 @@ class S3StorageImpl(StorageImpl):
 
         Format: cache/s3/{bucket}/{prefix}/{path}
         """
-        base = self.config.cache_path_prefix
+        prefix_part = f"/{self.config.prefix}" if self.config.prefix else ""
+        base = f"cache/s3/{self.config.bucket}{prefix_part}"
         if path is None:
             return base
         return f"{base}/{path}"
