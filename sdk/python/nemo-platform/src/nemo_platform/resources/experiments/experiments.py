@@ -85,10 +85,10 @@ class ExperimentsResource(SyncAPIResource):
         agent_name: str,
         agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -110,14 +110,14 @@ class ExperimentsResource(SyncAPIResource):
 
           dataset_name: Producer-supplied dataset name.
 
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
+
           name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -149,10 +149,10 @@ class ExperimentsResource(SyncAPIResource):
                         "agent_name": agent_name,
                         "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
                         "summary": summary,
@@ -215,10 +215,10 @@ class ExperimentsResource(SyncAPIResource):
         agent_name: str,
         agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -239,14 +239,14 @@ class ExperimentsResource(SyncAPIResource):
 
           dataset_name: Producer-supplied dataset name.
 
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
+
           body_name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -279,10 +279,10 @@ class ExperimentsResource(SyncAPIResource):
                     "agent_name": agent_name,
                     "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
                     "summary": summary,
@@ -427,10 +427,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         agent_name: str,
         agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -452,14 +452,14 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           dataset_name: Producer-supplied dataset name.
 
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
+
           name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -491,10 +491,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
                         "agent_name": agent_name,
                         "agent_version": agent_version,
                         "dataset_name": dataset_name,
+                        "experiment_group_id": experiment_group_id,
                         "name": name,
                         "dataset_version": dataset_version,
                         "description": description,
-                        "experiment_group_id": experiment_group_id,
                         "metadata": metadata,
                         "source_link": source_link,
                         "summary": summary,
@@ -557,10 +557,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
         agent_name: str,
         agent_version: str,
         dataset_name: str,
+        experiment_group_id: str,
         body_name: str,
         dataset_version: str | Omit = omit,
         description: str | Omit = omit,
-        experiment_group_id: str | Omit = omit,
         metadata: Dict[str, object] | Omit = omit,
         source_link: str | Omit = omit,
         summary: str | Omit = omit,
@@ -581,14 +581,14 @@ class AsyncExperimentsResource(AsyncAPIResource):
 
           dataset_name: Producer-supplied dataset name.
 
+          experiment_group_id: Entity id of the owning ExperimentGroup. Required — the group must already
+              exist.
+
           body_name: Producer-supplied, workspace-unique experiment id.
 
           dataset_version: Producer-supplied dataset version.
 
           description: Human-readable description.
-
-          experiment_group_id: Entity id of the owning ExperimentGroup; optional. Soft reference, not
-              validated.
 
           metadata: Free-form producer metadata.
 
@@ -621,10 +621,10 @@ class AsyncExperimentsResource(AsyncAPIResource):
                     "agent_name": agent_name,
                     "agent_version": agent_version,
                     "dataset_name": dataset_name,
+                    "experiment_group_id": experiment_group_id,
                     "body_name": body_name,
                     "dataset_version": dataset_version,
                     "description": description,
-                    "experiment_group_id": experiment_group_id,
                     "metadata": metadata,
                     "source_link": source_link,
                     "summary": summary,

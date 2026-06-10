@@ -9776,6 +9776,11 @@ components:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter experiments by last-updated timestamp; supports `$gte`
             and `$lte` for ranges.
+        is_deleted:
+          description: When true, returns only soft-deleted experiments. Omit (or
+            false) to see only live experiments.
+          title: Is Deleted
+          type: boolean
       title: ExperimentFilter
       type: object
     ExperimentGroupFilter:
@@ -9786,6 +9791,11 @@ components:
           description: Filter groups by name.
           title: Name
           type: string
+        is_deleted:
+          description: When true, returns only soft-deleted groups. Omit (or false)
+            to see only live groups.
+          title: Is Deleted
+          type: boolean
       title: ExperimentGroupFilter
       type: object
     ExperimentGroupRequest:
@@ -9818,6 +9828,10 @@ components:
         description:
           title: Description
           type: string
+        is_deleted:
+          type: boolean
+          title: Is Deleted
+          default: false
         created_at:
           title: Created At
           type: string
@@ -9864,10 +9878,10 @@ components:
           title: Name
           description: Producer-supplied, workspace-unique experiment id.
         experiment_group_id:
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup; optional. Soft reference,
-            not validated.
           type: string
+          title: Experiment Group Id
+          description: "Entity id of the owning ExperimentGroup. Required \u2014 the\
+            \ group must already exist."
         agent_name:
           type: string
           title: Agent Name
@@ -9907,6 +9921,7 @@ components:
       type: object
       required:
       - name
+      - experiment_group_id
       - agent_name
       - agent_version
       - dataset_name
@@ -9924,10 +9939,10 @@ components:
           type: string
           title: Workspace
         experiment_group_id:
-          title: Experiment Group Id
-          description: Entity id of the owning ExperimentGroup; null when ungrouped.
-            Soft reference, not validated.
           type: string
+          title: Experiment Group Id
+          description: Entity id of the owning ExperimentGroup. Required for every
+            Experiment.
         agent_name:
           type: string
           title: Agent Name
@@ -9955,6 +9970,10 @@ components:
         summary:
           title: Summary
           type: string
+        is_deleted:
+          type: boolean
+          title: Is Deleted
+          default: false
         created_at:
           title: Created At
           type: string
@@ -9996,6 +10015,7 @@ components:
       - id
       - name
       - workspace
+      - experiment_group_id
       - agent_name
       - agent_version
       - dataset_name
