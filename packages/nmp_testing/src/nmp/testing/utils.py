@@ -98,6 +98,7 @@ def wait_for_model_entity(
     model_name: str,
     timeout: float = 20,
     poll_interval: float = 0.5,
+    ensure_virtual_model: bool = False,
 ) -> None:
     """Poll until a model entity is available in IGW's model cache.
 
@@ -109,6 +110,9 @@ def wait_for_model_entity(
         model_name: The model entity name (without workspace prefix).
         timeout: Maximum time to wait in seconds (default: 20).
         poll_interval: Time between polls in seconds (default: 0.5).
+        ensure_virtual_model: Recreate the passthrough VirtualModel before
+            each poll. Useful for E2E tests where controller cleanup and IGW
+            cache refresh can race helper-created VMs.
 
     Raises:
         TimeoutError: If the model entity is not available within the timeout.
@@ -118,6 +122,8 @@ def wait_for_model_entity(
 
     while time.time() - start < timeout:
         try:
+            if ensure_virtual_model:
+                _create_passthrough_virtual_model_once(sdk, workspace, model_name)
             sdk.inference.gateway.model.get(
                 "v1/models",
                 name=model_name,
@@ -167,6 +173,54 @@ def wait_for_virtual_model(
     last_error: Exception | None = None
 
     while time.time() - start < timeout:
+        try:
+            sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
+            return
+        except NotFoundError as e:
+            last_error = e
+            time.sleep(poll_interval)
+            continue
+        except Exception:
+            raise
+
+    raise TimeoutError(f"VirtualModel {workspace}/{name} not available after {timeout}s. Last error: {last_error}")
+
+
+def _create_passthrough_virtual_model_once(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+    try:
+        sdk.inference.virtual_models.create(
+            workspace=workspace,
+            name=name,
+            default_model_entity=f"{workspace}/{name}",
+            autoprovisioned=True,
+        )
+    except ConflictError:
+        pass
+
+
+def ensure_passthrough_virtual_model(
+    sdk: NeMoPlatform,
+    workspace: str,
+    name: str,
+    timeout: float = 20,
+    poll_interval: float = 0.5,
+) -> None:
+    """Create or confirm an autoprovisioned passthrough VirtualModel.
+
+    E2E tests can race the models controller: the controller may rediscover a
+    mock provider and briefly delete a helper-created VM before the test starts
+    routing by that entity name. Retrying create+retrieve makes the helper
+    converge on the entity-specific VM the test requested.
+    """
+    start = time.time()
+    last_error: Exception | None = None
+
+    while time.time() - start < timeout:
+        try:
+            _create_passthrough_virtual_model_once(sdk, workspace, name)
+        except Exception:
+            raise
+
         try:
             sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
             return
@@ -519,15 +573,7 @@ def add_mock_provider(
     # Going through the SDK ensures the VM exists in the entity store and survives refreshes.
     # 409 ConflictError is treated as idempotent (matches the production reconciler).
     for entity_name in served_models:
-        try:
-            sdk.inference.virtual_models.create(
-                workspace=workspace,
-                name=entity_name,
-                default_model_entity=f"{workspace}/{entity_name}",
-                autoprovisioned=True,
-            )
-        except ConflictError:
-            pass
+        ensure_passthrough_virtual_model(sdk, workspace, entity_name)
 
     try:
         # From integration tests, we can directly update the local model cache to speed up subsequent requests
@@ -571,7 +617,7 @@ def add_mock_provider(
         # (We've also created VMs via the SDK above, but the container's cache is
         # decoupled from this process so it still needs to refresh and pick them up.)
         for entity_name in served_models.keys():
-            wait_for_model_entity(sdk, workspace, entity_name)
-            wait_for_virtual_model(sdk, workspace, entity_name)
+            wait_for_model_entity(sdk, workspace, entity_name, timeout=60, ensure_virtual_model=True)
+            ensure_passthrough_virtual_model(sdk, workspace, entity_name, timeout=60)
 
     return provider
