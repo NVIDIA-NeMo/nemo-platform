@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { dateTimeFilter } from '@nemo/common/src/components/DataView/dateTimeFilter';
-import { Root as DataViewRoot } from '@nemo/common/src/components/DataView/internal';
+import {
+  Root as DataViewRoot,
+  EditColumnsMenu,
+} from '@nemo/common/src/components/DataView/internal';
 import { StudioDataView } from '@nemo/common/src/components/DataView/StudioDataView';
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
@@ -19,6 +22,7 @@ import { Text, Tooltip } from '@nvidia/foundations-react-core';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
+import { Columns3 } from 'lucide-react';
 import { type ComponentProps, type FC, useCallback, useMemo } from 'react';
 
 export type ExperimentRow = ExperimentResponse & { id: string };
@@ -105,6 +109,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor('name', {
         header: 'Name',
         enableSorting: true,
+        enableHiding: false,
         size: 300,
         cell: ({ row }) => {
           const { name, summary } = row.original;
@@ -226,6 +231,20 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       dataViewState={dataViewState}
       makeColumns={makeColumns}
       searchField="name"
+      toolbarSlotEnd={
+        <EditColumnsMenu
+          kind="secondary"
+          showChevron={false}
+          // EditColumnsMenu exposes no width control for its dropdown, so this zero-height
+          // spacer sets a min width on the menu (which sizes to its widest child).
+          slotContent={<div aria-hidden className="h-0 w-[230px]" />}
+        >
+          <>
+            <Columns3 variant="fill" />
+            <span className="hide-mobile">Columns</span>
+          </>
+        </EditColumnsMenu>
+      }
       attributes={{
         DataViewRoot: {
           data: tableData,
