@@ -234,16 +234,31 @@ class TestDeployments:
             workspace="workspace",
             all_versions=True,
             filter={
-                "config": "config",
+                "config": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
                 "model_provider_id": "model_provider_id",
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "status": "UNKNOWN",
-                "status_message": "status_message",
+                "status_message": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -667,16 +682,31 @@ class TestAsyncDeployments:
             workspace="workspace",
             all_versions=True,
             filter={
-                "config": "config",
+                "config": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
                 "model_provider_id": "model_provider_id",
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "status": "UNKNOWN",
-                "status_message": "status_message",
+                "status_message": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
