@@ -16,35 +16,31 @@ import {
   utcToLocalDate,
 } from '@nemo/common/src/utils/date';
 import {
-  getEvaluationGetMetricJobQueryKey,
-  useEvaluationCancelMetricJob,
-} from '@nemo/sdk/generated/platform/api';
+  getEvaluatorGetEvaluateJobQueryKey,
+  useEvaluatorCancelEvaluateJob,
+} from '@nemo/sdk/generated/evaluator/api';
+import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import { Banner, Button, Flex, Modal, Panel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ButtonLaunchEvaluation } from '@studio/components/evaluation/ButtonLaunchEvaluation';
 import { StatusLogsContent } from '@studio/components/evaluation/Jobs/StatusLogsContent';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import { getEvaluationJobModel, type EvaluationJobV2 } from '@studio/selectors/evaluationJob';
 import { useQueryClient } from '@tanstack/react-query';
 import { ChartBar, LayoutList, CircleX } from 'lucide-react';
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 interface DetailsPanelProps {
-  evaluationJob?: EvaluationJobV2;
+  evaluationJob?: EvaluateJob;
   error?: boolean;
 }
 
-/**
- * Component to display the details of an evaluation job.
- * Shows job ID, model, created time, configuration details, and status logs.
- */
 export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
   const navigate = useNavigate();
   const workspace = useWorkspaceFromPath();
   const toast = useToast();
   const queryClient = useQueryClient();
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
-  const { mutateAsync: cancelJob, isPending: isCancelling } = useEvaluationCancelMetricJob();
+  const { mutateAsync: cancelJob, isPending: isCancelling } = useEvaluatorCancelEvaluateJob();
 
   const handleRefreshClick = () => {
     navigate(0);
@@ -57,9 +53,8 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
       await cancelJob({ workspace, name: evaluationJob.name });
       toast.success('Job cancellation requested');
 
-      // Invalidate queries to refetch job status
       await queryClient.invalidateQueries({
-        queryKey: getEvaluationGetMetricJobQueryKey(workspace, evaluationJob.name),
+        queryKey: getEvaluatorGetEvaluateJobQueryKey(workspace, evaluationJob.name),
       });
 
       setCancelModalOpen(false);
@@ -68,6 +63,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
       toast.error('Failed to cancel job. Please try again.');
     }
   };
+
   const differenceInMilliseconds = getDifferenceInMilliseconds(
     evaluationJob?.created_at,
     evaluationJob?.updated_at
@@ -111,8 +107,7 @@ export const DetailsPanel = ({ evaluationJob, error }: DetailsPanelProps) => {
     | { message?: string; stage?: string; progress?: number }
     | undefined;
 
-  // Extract model from V2 spec
-  const model = getEvaluationJobModel(evaluationJob);
+  const model = evaluationJob.spec.target?.name;
 
   return (
     <>

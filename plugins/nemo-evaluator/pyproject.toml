@@ -51,5 +51,8 @@ asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
 
+# Opt this plugin into OpenAPI spec generation
+[tool.nemo.openapi]
+
 [tool.pyright]
 extraPaths = ["src"]

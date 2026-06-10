@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ExcludedChatCompletionMessageParam } from '@nemo/common/src/types/chat';
-import { evaluationDownloadMetricJobResultRowScores } from '@nemo/sdk/generated/platform/api';
+import { evaluatorDownloadEvaluateJobResult } from '@nemo/sdk/generated/evaluator/api';
 import { useQuery } from '@tanstack/react-query';
 
 export interface EvaluationMetrics {
@@ -34,16 +34,14 @@ export interface EvaluationResultItem {
   metrics: EvaluationMetrics;
 }
 
-// V2 row score shape from the platform API
-interface V2RowScore {
+interface RowScore {
   index: number;
   row: Record<string, unknown>;
   scores?: Record<string, number>;
   error?: string;
 }
 
-// Map V2 row scores to the EvaluationResultItem format used by the UI
-function mapV2RowScores(rows: V2RowScore[]): EvaluationResultItem[] {
+function mapRowScores(rows: RowScore[]): EvaluationResultItem[] {
   return rows.map((row) => ({
     item: {
       prompt: String(row.row?.prompt ?? row.row?.input ?? ''),
@@ -55,19 +53,17 @@ function mapV2RowScores(rows: V2RowScore[]): EvaluationResultItem[] {
     sample: {
       output_text: String(row.row?.output ?? row.row?.output_text ?? ''),
     },
-    metrics: mapV2Scores(row.scores),
+    metrics: mapScores(row.scores),
   }));
 }
 
-function mapV2Scores(scores?: Record<string, number>): EvaluationMetrics {
+function mapScores(scores?: Record<string, number>): EvaluationMetrics {
   if (!scores) return {};
 
   const result: EvaluationMetrics = {};
 
-  // Map V2 flat scores to the nested metrics structure the UI expects
   for (const [key, value] of Object.entries(scores)) {
     if (key === 'sentence' || key === 'corpus') {
-      // BLEU sub-scores
       if (!result.bleu) {
         result.bleu = { scores: {} };
       }
@@ -83,27 +79,31 @@ function mapV2Scores(scores?: Record<string, number>): EvaluationMetrics {
   return result;
 }
 
-async function fetchEvaluationResultsV2(
+async function fetchEvaluationResults(
   workspace: string,
-  jobName: string
+  jobName: string,
+  name: string
 ): Promise<EvaluationResultItem[]> {
-  const blob = await evaluationDownloadMetricJobResultRowScores(workspace, jobName);
+  const blob = await evaluatorDownloadEvaluateJobResult(workspace, jobName, name);
 
   const text = await blob.text();
   const parsed = JSON.parse(text);
 
-  // The response is either an array of row scores or wrapped in a container
-  const rows: V2RowScore[] = Array.isArray(parsed)
+  const rows: RowScore[] = Array.isArray(parsed)
     ? parsed
     : (parsed.data ?? parsed.row_scores ?? []);
 
-  return mapV2RowScores(rows);
+  return mapRowScores(rows);
 }
 
-export const useEvaluationDownloadResultsById = (workspace: string, jobName: string) => {
+export const useEvaluationDownloadResultsById = (
+  workspace: string,
+  jobName: string,
+  name = 'row_scores'
+) => {
   return useQuery<EvaluationResultItem[], Error>({
-    queryKey: ['evaluationDownloadResults', workspace, jobName],
-    queryFn: () => fetchEvaluationResultsV2(workspace, jobName),
+    queryKey: ['evaluationDownloadResults', workspace, jobName, name],
+    queryFn: () => fetchEvaluationResults(workspace, jobName, name),
     enabled: !!workspace && !!jobName,
   });
 };

@@ -165,7 +165,7 @@ jobs:
         env:
           EXTRA: cpu
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          PYTEST_WORKERS: "2"
+          PYTEST_WORKERS: "4"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
@@ -213,7 +213,7 @@ jobs:
         env:
           EXTRA: cpu
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          PYTEST_WORKERS: "2"
+          PYTEST_WORKERS: "4"
           _TYPER_FORCE_DISABLE_TERMINAL: "1"
       - name: Upload test artifacts
         if: always()
@@ -531,12 +531,7 @@ jobs:
 
   web-studio-e2e:
     name: Studio UI E2E tests
-    needs: [changes]
-    if: >
-      !cancelled() && (
-        github.event_name == 'workflow_dispatch' ||
-        needs.changes.outputs.web-studio == 'true'
-      )
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
