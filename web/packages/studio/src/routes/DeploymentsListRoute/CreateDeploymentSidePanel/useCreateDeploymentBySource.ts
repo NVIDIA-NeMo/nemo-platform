@@ -49,47 +49,12 @@ import { useCallback, useState } from 'react';
 
 type ReportStage = (message: string) => void;
 
-interface NimDeploymentConfigInput {
-  name: string;
-  gpu: number;
-  modelName?: string;
-  modelNamespace?: string;
-  modelEntityId?: string;
-  loraEnabled?: boolean;
-  imageName?: string;
-  imageTag?: string;
-  diskSize?: string;
-  additionalEnvs?: Record<string, string>;
-}
-
-function createNimDeploymentConfigRequest({
-  name,
-  gpu,
-  modelName,
-  modelNamespace,
-  modelEntityId,
-  loraEnabled,
-  imageName,
-  imageTag,
-  diskSize,
-  additionalEnvs,
-}: NimDeploymentConfigInput): CreateModelDeploymentConfigRequest {
+function createNimDeploymentConfigRequest(
+  request: Omit<CreateModelDeploymentConfigRequest, 'engine'>
+): CreateModelDeploymentConfigRequest {
   return {
-    name,
+    ...request,
     engine: Engine.nim,
-    model_spec: {
-      ...(modelNamespace ? { model_namespace: modelNamespace } : {}),
-      ...(modelName ? { model_name: modelName } : {}),
-      ...(loraEnabled != null ? { lora_enabled: loraEnabled } : {}),
-    },
-    executor_config: {
-      gpu,
-      ...(diskSize ? { disk_size: diskSize } : {}),
-      ...(imageName ? { image_name: imageName } : {}),
-      ...(imageTag ? { image_tag: imageTag } : {}),
-      ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
-    },
-    ...(modelEntityId ? { model_entity_id: modelEntityId } : {}),
   };
 }
 
@@ -108,13 +73,17 @@ async function createNgcDeployment(
     workspace,
     createNimDeploymentConfigRequest({
       name: configName,
-      gpu: values.gpu,
-      imageName: values.imageName!.trim(),
-      imageTag: values.imageTag!.trim(),
-      modelName,
-      loraEnabled: values.loraEnabled,
-      diskSize: values.diskSize?.trim() || '50Gi',
-      additionalEnvs,
+      model_spec: {
+        model_name: modelName,
+        lora_enabled: values.loraEnabled,
+      },
+      executor_config: {
+        gpu: values.gpu,
+        image_name: values.imageName!.trim(),
+        image_tag: values.imageTag!.trim(),
+        disk_size: values.diskSize?.trim() || '50Gi',
+        ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
+      },
     })
   );
 
@@ -167,10 +136,14 @@ async function createHuggingFaceDeployment(
     workspace,
     createNimDeploymentConfigRequest({
       name: configName,
-      gpu: values.gpu,
-      modelNamespace: workspace,
-      modelName: modelEntityName,
-      modelEntityId: `${workspace}/${modelEntityName}`,
+      model_spec: {
+        model_namespace: workspace,
+        model_name: modelEntityName,
+      },
+      executor_config: {
+        gpu: values.gpu,
+      },
+      model_entity_id: `${workspace}/${modelEntityName}`,
     })
   );
 
@@ -219,10 +192,14 @@ async function createWorkspaceDeployment(
     workspace,
     createNimDeploymentConfigRequest({
       name: configName,
-      gpu: values.gpu,
-      modelNamespace,
-      modelName,
-      modelEntityId: `${modelNamespace}/${modelName}`,
+      model_spec: {
+        model_namespace: modelNamespace,
+        model_name: modelName,
+      },
+      executor_config: {
+        gpu: values.gpu,
+      },
+      model_entity_id: `${modelNamespace}/${modelName}`,
     })
   );
 

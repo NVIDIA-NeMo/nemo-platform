@@ -161,4 +161,48 @@ describe('useDeleteDeploymentAndConfig', () => {
     expect(mockModelsDeleteModel).toHaveBeenCalledWith(workspace, 'deployment-model');
     expect(mockFilesDeleteFileset).toHaveBeenCalledWith(workspace, 'deployment-hf-src');
   });
+
+  it('does not plan Hugging Face cleanup when config only has model name', async () => {
+    mockModelsGetLatestDeployment
+      .mockResolvedValueOnce({
+        ...deployment,
+        status: ModelDeploymentStatus.DELETING,
+      })
+      .mockResolvedValueOnce({
+        ...deployment,
+        status: ModelDeploymentStatus.DELETED,
+      });
+    mockModelsGetLatestDeploymentConfig.mockResolvedValueOnce({
+      name: 'deployment-config',
+      workspace,
+      created_at: '2026-01-01T00:00:00Z',
+      updated_at: '2026-01-01T00:00:00Z',
+      entity_version: 1,
+      engine: 'nim',
+      model_spec: {
+        model_name: 'deployment-model',
+      },
+      executor_config: {
+        gpu: 1,
+      },
+    } as never);
+
+    const { result } = renderHook(() => useDeleteDeploymentAndConfig(workspace), { wrapper });
+
+    await act(async () => {
+      await result.current.deleteDeploymentAndConfig(deployment);
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+
+    expect(mockModelsDeleteAllDeploymentConfigVersions).toHaveBeenCalledWith(
+      workspace,
+      deployment.config
+    );
+    expect(mockModelsGetModel).not.toHaveBeenCalled();
+    expect(mockModelsDeleteModel).not.toHaveBeenCalled();
+    expect(mockFilesDeleteFileset).not.toHaveBeenCalled();
+  });
 });

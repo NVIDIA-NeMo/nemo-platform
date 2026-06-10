@@ -103,10 +103,7 @@ async function waitForDeploymentReleasedFromConfig(
 type HuggingFaceCleanup = { modelName: string; filesetName: string };
 type ModelRef = { workspace: string; name: string };
 
-function getDeploymentConfigModelRef(
-  config: ModelDeploymentConfig,
-  fallbackWorkspace: string
-): ModelRef | null {
+function getDeploymentConfigModelRef(config: ModelDeploymentConfig): ModelRef | null {
   const modelEntityId = config.model_entity_id?.trim();
   if (modelEntityId) {
     const parsed = getPartsFromReference(modelEntityId);
@@ -116,10 +113,11 @@ function getDeploymentConfigModelRef(
   }
 
   const modelName = config.model_spec?.model_name?.trim();
-  if (!modelName) return null;
+  const modelNamespace = config.model_spec?.model_namespace?.trim();
+  if (!modelNamespace || !modelName) return null;
 
   return {
-    workspace: config.model_spec?.model_namespace?.trim() || fallbackWorkspace,
+    workspace: modelNamespace,
     name: modelName,
   };
 }
@@ -138,7 +136,7 @@ async function readHuggingFaceCleanupPlan(
 ): Promise<HuggingFaceCleanup | null> {
   try {
     const cfg = await modelsGetLatestDeploymentConfig(workspace, configName);
-    const modelRef = getDeploymentConfigModelRef(cfg, workspace);
+    const modelRef = getDeploymentConfigModelRef(cfg);
     if (!modelRef || modelRef.workspace !== workspace) return null;
 
     const model = await modelsGetModel(modelRef.workspace, modelRef.name);
