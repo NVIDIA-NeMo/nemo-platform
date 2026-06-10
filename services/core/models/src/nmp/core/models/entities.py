@@ -16,12 +16,14 @@ from nmp.core.models.constants import (
 from nmp.core.models.schemas import (
     APIEndpointData,
     BackendFormat,
+    ContainerExecutorConfig,
+    Engine,
     FinetuningType,
     Lora,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     ModelProviderStatus,
     ModelSpec,
-    NIMDeployment,
     PromptData,
     ServedModelMapping,
 )
@@ -322,9 +324,17 @@ class ModelDeploymentConfig(EntityBase):
         ge=1,
     )
 
-    nim_deployment: NIMDeployment | None = Field(
+    engine: Engine | None = Field(
         default=None,
-        description="Configuration for NIM-based deployment.",
+        description="Inference engine selecting the compiler path (nim/vllm/generic).",
+    )
+    model_spec: ModelDeploymentConfigModelSpec | None = Field(
+        default=None,
+        description="What model to serve and how -- independent of the executor it runs on.",
+    )
+    executor_config: ContainerExecutorConfig | None = Field(
+        default=None,
+        description="Compute + container settings for the executor the deployment runs on.",
     )
     model_entity_id: str | None = Field(
         default=None,

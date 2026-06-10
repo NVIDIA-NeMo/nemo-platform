@@ -18,12 +18,13 @@ from nmp.core.models.api.service.model_entity_service import ModelEntityService
 from nmp.core.models.entities import Model
 from nmp.core.models.schemas import (
     APIEndpointData,
+    ContainerExecutorConfig,
     CreateModelAdapterRequest,
     CreateModelDeploymentConfigRequest,
     CreateModelEntityRequest,
+    ModelDeploymentConfigModelSpec,
     ModelSpec,
     ModelType,
-    NIMDeployment,
     PromptData,
     UpdateAdapterRequest,
     UpdateModelEntityRequest,
@@ -649,16 +650,21 @@ async def test_delete_model_adapter_not_found_integration(
 # ---------------------------------------------------------------------------
 
 
-def _lora_nim_deployment(lora_enabled: bool) -> NIMDeployment:
-    return NIMDeployment(
+def _lora_model_spec(lora_enabled: bool) -> ModelDeploymentConfigModelSpec:
+    return ModelDeploymentConfigModelSpec(
         model_type=ModelType.LLM,
         lora_enabled=lora_enabled,
+        model_namespace="nvidia",
+        model_name="llama-3-8b",
+    )
+
+
+def _lora_executor_config() -> ContainerExecutorConfig:
+    return ContainerExecutorConfig(
         gpu=1,
         disk_size="50Gi",
         image_name="nvcr.io/nvidia/nim/llm",
         image_tag="latest",
-        model_namespace="nvidia",
-        model_name="llama-3-8b",
     )
 
 
@@ -682,7 +688,9 @@ async def _create_model_with_deployment_config(
         CreateModelDeploymentConfigRequest(
             name=f"{model_name}-config",
             description=f"Deployment config for {model_name}",
-            nim_deployment=_lora_nim_deployment(lora_enabled),
+            engine="nim",
+            model_spec=_lora_model_spec(lora_enabled),
+            executor_config=_lora_executor_config(),
             model_entity_id=f"{workspace}/{model_name}",
         ),
         workspace,

@@ -68,7 +68,7 @@ async def _check_tool_call_plugin_permission(
 
     Checks two sources for tool_call_plugin usage:
     1. The request body itself (spec.tool_call_config.tool_call_plugin or
-       nim_deployment.tool_call_config.tool_call_plugin).
+       model_spec.tool_call_config.tool_call_plugin).
     2. The already-retrieved fileset's metadata
        (metadata.model.tool_calling.tool_call_plugin), if provided.
 

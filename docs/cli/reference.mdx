@@ -1452,13 +1452,13 @@ nemo inference deployment-configs [OPTIONS] COMMAND [ARGS]...
 
 Create a new ModelDeploymentConfig (version 1).
 
-**Required fields:** name, nim_deployment
+**Required fields:** engine, executor_config, model_spec, name
 
 **Examples:**
 
 ```shell
 nemo inference deployment-configs create <name> --input-file config.json
-nemo inference deployment-configs create <name> --input-data '`{"name": "value", "nim_deployment": {}}`'
+nemo inference deployment-configs create <name> --input-data '{"engine": "value", "executor_config": {}, "model_spec": {}, "name": "value"}'
 echo '{"json": "data"}' | nemo inference deployment-configs create <name> --input-file -
 nemo inference deployment-configs create <name> --<option> "value"
 ```
@@ -1476,7 +1476,9 @@ nemo inference deployment-configs create [OPTIONS] [NAME]
 **Options:**
 
 * `--workspace`
-* `--nim-deployment`: Configuration for NIM-based model deployment. (JSON string)
+* `--engine <CHOICE>`: Inference engine selecting the compiler path for a deployment. The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them.  [possible values: nim, vllm, generic]
+* `--executor-config`: Compute + container settings shared by the docker and k8s executors. Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string)
+* `--model-spec`: What model to serve and how -- independent of the executor it runs on. Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string)
 * `--description`: Optional description of the deployment configuration
 * `--model-entity-id`: Optional reference to the base model entity ID for this deployment
 * `--project`: The URN of the project associated with this deployment configuration
@@ -1596,13 +1598,13 @@ nemo inference deployment-configs get [OPTIONS] NAME
 
 Update a ModelDeploymentConfig (creates a new immutable version).
 
-**Required fields:** nim_deployment
+**Required fields:** engine, executor_config, model_spec
 
 **Examples:**
 
 ```shell
 nemo inference deployment-configs update <name> --input-file config.json
-nemo inference deployment-configs update <name> --input-data '`{"nim_deployment": {}}`'
+nemo inference deployment-configs update <name> --input-data '{"engine": "value", "executor_config": {}, "model_spec": {}}'
 echo '{"json": "data"}' | nemo inference deployment-configs update <name> --input-file -
 nemo inference deployment-configs update <name> --<option> "value"
 ```
@@ -1620,7 +1622,9 @@ nemo inference deployment-configs update [OPTIONS] NAME
 **Options:**
 
 * `--workspace`
-* `--nim-deployment`: Configuration for NIM-based model deployment. (JSON string)
+* `--engine <CHOICE>`: Inference engine selecting the compiler path for a deployment. The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them.  [possible values: nim, vllm, generic]
+* `--executor-config`: Compute + container settings shared by the docker and k8s executors. Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string)
+* `--model-spec`: What model to serve and how -- independent of the executor it runs on. Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string)
 * `--description`: Optional description of the deployment configuration
 * `--model-entity-id`: Optional reference to the base model entity ID for this deployment
 

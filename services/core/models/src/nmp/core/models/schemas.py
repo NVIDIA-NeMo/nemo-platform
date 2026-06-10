@@ -1126,27 +1126,30 @@ class K8sNIMOperatorConfig(BaseModel):
     )
 
 
-class NIMDeployment(BaseModel):
-    """Configuration for NIM-based model deployment."""
+class Engine(str, Enum):
+    """Inference engine selecting the compiler path for a deployment.
+
+    The engine determines what command, image, and env a deployment compiles to.
+    The fields a compiler consumes are not engine-specific; engines take the same
+    inputs (model_spec + executor_config) and differ in what they do with them.
+    """
+
+    NIM = "nim"
+    VLLM = "vllm"
+    # Plain container: run image + args + env, no inference-engine compiler.
+    GENERIC = "generic"
+
+
+class ModelDeploymentConfigModelSpec(BaseModel):
+    """What model to serve and how -- independent of the executor it runs on.
+
+    Executor-invariant facts about the model. The compiler resolves the weight
+    source per engine; serving fields override the model entity spec when set.
+    """
 
     model_type: Optional[ModelType] = Field(default=None, description="Type of model being deployed")
-    lora_enabled: bool = Field(default=False, description="Whether to enable LoRA support")
-    gpu: int = Field(description="Number of GPUs required for the deployment", ge=0)
-    disk_size: str = Field(default="50Gi", description="Disk size for the deployment")
 
-    # Image configuration
-    image_name: Optional[str] = Field(
-        default=None,
-        description="Container image name from NGC. If not specified, defaults to multi-llm",
-        max_length=constants.MAX_LENGTH_255,
-    )
-    image_tag: Optional[str] = Field(
-        default=None,
-        description="Container image tag from NGC",
-        max_length=constants.MAX_LENGTH_255,
-    )
-
-    # Model source configuration
+    # Model source configuration (the compiler resolves these per engine)
     model_namespace: Optional[str] = Field(
         default=None,
         description="Model repository namespace - organization/user namespace as it exists in repo_id.",
@@ -1162,41 +1165,83 @@ class NIMDeployment(BaseModel):
         description="Model revision (branch, tag, or commit). If not specified, parsed from model_name @revision suffix or defaults to 'main'",
         max_length=constants.MAX_LENGTH_255,
     )
-    model_provider: Optional[str] = Field(
-        default=None,
-        description="Model provider: 'hf' for HuggingFace or 'nmp' for NeMo Platform",
-        max_length=constants.MAX_LENGTH_255,
-    )
 
-    # NIM serving configuration (overrides model entity spec if set)
+    # Serving configuration (overrides model entity spec if set)
     chat_template: Optional[str] = Field(
         default=None,
         description="Jinja2 chat template string for the model. Overrides the chat_template from ModelEntity.spec "
-        "if both are set. Used by NIM to format chat completions.",
+        "if both are set. Used by the engine to format chat completions.",
     )
     tool_call_config: Optional[ToolCallConfig] = Field(
         default=None,
-        description="Tool calling configuration for NIM deployments. Overrides tool_call_config from "
+        description="Tool calling configuration for the deployment. Overrides tool_call_config from "
         "ModelEntity.spec if both are set. Controls how the model handles function/tool calling.",
     )
 
-    # Additional configuration
-    additional_envs: Optional[Dict[str, Any]] = Field(
+    # LoRA -- drives the adapter sidecar wiring (see LoRA Hot-Reload)
+    lora_enabled: bool = Field(default=False, description="Whether to enable LoRA support")
+
+
+class ContainerExecutorConfig(BaseModel):
+    """Compute + container settings shared by the docker and k8s executors.
+
+    Both the docker and k8s executors run containers and share this shape.
+    A future non-container executor (e.g. subprocess) would warrant turning
+    ``executor_config`` into a discriminated union.
+    """
+
+    gpu: int = Field(description="Number of GPUs required for the deployment. 0 = CPU-only.", ge=0)
+    disk_size: str = Field(default="50Gi", description="Disk size for the deployment")
+
+    # Image -- None falls back to the engine's configured default
+    # (e.g. default_vllm_image / default_nimservice_image). Required for
+    # engine="generic" (no platform default exists).
+    image_name: Optional[str] = Field(
+        default=None,
+        description="Container image name. If not specified, defaults to the engine's configured image "
+        "(e.g. default_vllm_image / default_nimservice_image). Required for engine='generic'.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+    image_tag: Optional[str] = Field(
+        default=None,
+        description="Container image tag. If not specified, defaults to the engine's configured image tag.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+
+    # Readiness probe -- None falls back to the engine's default health path
+    # (NIM: /v1/health/ready, vLLM: /health). Required for engine="generic"
+    # (no engine default exists for an arbitrary container).
+    health_check_path: Optional[str] = Field(
+        default=None,
+        description="HTTP path used for the container readiness probe. If not specified, defaults to the "
+        "engine's standard health endpoint (e.g. '/v1/health/ready' for NIM, '/health' for vLLM). "
+        "Set this for engine='generic' containers that expose a non-standard health endpoint.",
+        max_length=constants.MAX_LENGTH_255,
+    )
+
+    # Escape hatches -- for anything not surfaced as a first-class field above
+    additional_envs: Optional[Dict[str, str]] = Field(
         default=None, description="Additional environment variables for the deployment"
     )
-
-    # Kubernetes configuration for k8s-nim-operator
-    k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
-        default=None,
-        description="Typed Kubernetes configuration for common NIMService Spec fields. "
-        "Applied after defaults but before override_config.",
+    additional_args: list[str] = Field(
+        default_factory=list,
+        description="Raw container/`serve` args appended verbatim to the container's arg vector.",
     )
 
-    # Raw NIMService spec override
+    # Kubernetes configuration for k8s-nim-operator (NIM engine on k8s only).
+    # Carried here so the k8s NIM operator backend keeps working; ignored by the
+    # docker and vLLM paths.
+    k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = Field(
+        default=None,
+        description="Typed Kubernetes configuration for common NIMService Spec fields (NIM engine on k8s). "
+        "Applied after defaults but before override_config. Ignored by non-NIM engines.",
+    )
+
+    # Raw NIMService spec override (NIM engine on k8s only).
     override_config: Optional[Dict[str, Any]] = Field(
         default=None,
-        description="Raw NIMService spec configuration that takes precedence over generated config. "
-        "Allows end users to provide advanced configuration options directly.",
+        description="Raw NIMService spec configuration that takes precedence over generated config (NIM engine "
+        "on k8s). Allows advanced configuration options directly. Ignored by non-NIM engines.",
     )
 
 
@@ -1241,7 +1286,13 @@ class ModelDeploymentConfig(ModelEntityBaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",
@@ -1318,7 +1369,13 @@ class CreateModelDeploymentConfigRequest(BaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",
@@ -1334,7 +1391,13 @@ class UpdateModelDeploymentConfigRequest(BaseModel):
         description="Optional description of the deployment configuration",
         max_length=1000,
     )
-    nim_deployment: NIMDeployment = Field(description="Configuration for NIM-based deployment")
+    engine: Engine = Field(description="Inference engine selecting the compiler path (nim/vllm/generic)")
+    model_spec: ModelDeploymentConfigModelSpec = Field(
+        description="What model to serve and how -- independent of the executor it runs on"
+    )
+    executor_config: ContainerExecutorConfig = Field(
+        description="Compute + container settings for the executor the deployment runs on"
+    )
     model_entity_id: Optional[str] = Field(
         default=None,
         description="Optional reference to the base model entity ID for this deployment",

@@ -1332,7 +1332,7 @@ class TestValidateDeploymentConfig:
         )
 
         mock_config = mocker.Mock()
-        mock_config.nim_deployment = mocker.Mock(lora_enabled=False)
+        mock_config.model_spec = mocker.Mock(lora_enabled=False)
         mock_config.model_entity_id = None
         mock_sdk.inference = mocker.Mock()
         mock_sdk.inference.deployment_configs = mocker.Mock()
@@ -1351,7 +1351,7 @@ class TestValidateDeploymentConfig:
         )
 
         mock_config = mocker.Mock()
-        mock_config.nim_deployment = mocker.Mock(lora_enabled=True)
+        mock_config.model_spec = mocker.Mock(lora_enabled=True)
         mock_config.model_entity_id = None
         mock_sdk.inference = mocker.Mock()
         mock_sdk.inference.deployment_configs = mocker.Mock()
@@ -1369,7 +1369,7 @@ class TestValidateDeploymentConfig:
         )
 
         mock_config = mocker.Mock()
-        mock_config.nim_deployment = mocker.Mock(lora_enabled=True)
+        mock_config.model_spec = mocker.Mock(lora_enabled=True)
         mock_config.model_entity_id = "default/other-model"
         mock_sdk.inference = mocker.Mock()
         mock_sdk.inference.deployment_configs = mocker.Mock()
@@ -1398,7 +1398,7 @@ class TestValidateDeploymentConfig:
         spec = await make_valid_job_output_async(job_input, sdk=mock_sdk)
 
         mock_config = mocker.Mock()
-        mock_config.nim_deployment = mocker.Mock(
+        mock_config.model_spec = mocker.Mock(
             lora_enabled=True,
             model_name=output_name,
             model_namespace="default",
@@ -1427,7 +1427,7 @@ class TestValidateDeploymentConfig:
         spec = await make_valid_job_output_async(job_input, sdk=mock_sdk)
 
         mock_config = mocker.Mock()
-        mock_config.nim_deployment = mocker.Mock(
+        mock_config.model_spec = mocker.Mock(
             lora_enabled=True,
             model_name="wrong-model",
             model_namespace="default",

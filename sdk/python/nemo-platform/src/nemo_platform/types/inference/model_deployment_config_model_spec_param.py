@@ -17,46 +17,26 @@
 
 from __future__ import annotations
 
-from typing import Dict
-from typing_extensions import Required, TypedDict
+from typing_extensions import TypedDict
 
 from .model_type import ModelType
-from .k8s_nim_operator_config_param import K8sNIMOperatorConfigParam
 from ..shared_params.tool_call_config import ToolCallConfig
 
-__all__ = ["NIMDeploymentParam"]
+__all__ = ["ModelDeploymentConfigModelSpecParam"]
 
 
-class NIMDeploymentParam(TypedDict, total=False):
-    """Configuration for NIM-based model deployment."""
+class ModelDeploymentConfigModelSpecParam(TypedDict, total=False):
+    """What model to serve and how -- independent of the executor it runs on.
 
-    gpu: Required[int]
-    """Number of GPUs required for the deployment"""
-
-    additional_envs: Dict[str, object]
-    """Additional environment variables for the deployment"""
+    Executor-invariant facts about the model. The compiler resolves the weight
+    source per engine; serving fields override the model entity spec when set.
+    """
 
     chat_template: str
     """Jinja2 chat template string for the model.
 
-    Overrides the chat_template from ModelEntity.spec if both are set. Used by NIM
-    to format chat completions.
-    """
-
-    disk_size: str
-    """Disk size for the deployment"""
-
-    image_name: str
-    """Container image name from NGC. If not specified, defaults to multi-llm"""
-
-    image_tag: str
-    """Container image tag from NGC"""
-
-    k8s_nim_operator_config: K8sNIMOperatorConfigParam
-    """Kubernetes configuration for NIM deployment via k8s-nim-operator.
-
-    These fields provide typed access to commonly-used NIMService Spec fields and
-    are applied before override_config in the compilation precedence.
+    Overrides the chat_template from ModelEntity.spec if both are set. Used by the
+    engine to format chat completions.
     """
 
     lora_enabled: bool
@@ -71,9 +51,6 @@ class NIMDeploymentParam(TypedDict, total=False):
     repo_id.
     """
 
-    model_provider: str
-    """Model provider: 'hf' for HuggingFace or 'nmp' for NeMo Platform"""
-
     model_revision: str
     """Model revision (branch, tag, or commit).
 
@@ -82,12 +59,6 @@ class NIMDeploymentParam(TypedDict, total=False):
 
     model_type: ModelType
     """Model type enum for NIM deployments."""
-
-    override_config: Dict[str, object]
-    """Raw NIMService spec configuration that takes precedence over generated config.
-
-    Allows end users to provide advanced configuration options directly.
-    """
 
     tool_call_config: ToolCallConfig
     """Configuration for tool calling support in NIM deployments."""

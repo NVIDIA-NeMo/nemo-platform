@@ -15,47 +15,28 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from typing import Dict, Optional
+from typing import Optional
 
 from ..._compat import PYDANTIC_V1, ConfigDict
 from ..._models import BaseModel
 from .model_type import ModelType
-from .k8s_nim_operator_config import K8sNIMOperatorConfig
 from ..shared.tool_call_config import ToolCallConfig
 
-__all__ = ["NIMDeployment"]
+__all__ = ["ModelDeploymentConfigModelSpec"]
 
 
-class NIMDeployment(BaseModel):
-    """Configuration for NIM-based model deployment."""
+class ModelDeploymentConfigModelSpec(BaseModel):
+    """What model to serve and how -- independent of the executor it runs on.
 
-    gpu: int
-    """Number of GPUs required for the deployment"""
-
-    additional_envs: Optional[Dict[str, object]] = None
-    """Additional environment variables for the deployment"""
+    Executor-invariant facts about the model. The compiler resolves the weight
+    source per engine; serving fields override the model entity spec when set.
+    """
 
     chat_template: Optional[str] = None
     """Jinja2 chat template string for the model.
 
-    Overrides the chat_template from ModelEntity.spec if both are set. Used by NIM
-    to format chat completions.
-    """
-
-    disk_size: Optional[str] = None
-    """Disk size for the deployment"""
-
-    image_name: Optional[str] = None
-    """Container image name from NGC. If not specified, defaults to multi-llm"""
-
-    image_tag: Optional[str] = None
-    """Container image tag from NGC"""
-
-    k8s_nim_operator_config: Optional[K8sNIMOperatorConfig] = None
-    """Kubernetes configuration for NIM deployment via k8s-nim-operator.
-
-    These fields provide typed access to commonly-used NIMService Spec fields and
-    are applied before override_config in the compilation precedence.
+    Overrides the chat_template from ModelEntity.spec if both are set. Used by the
+    engine to format chat completions.
     """
 
     lora_enabled: Optional[bool] = None
@@ -70,9 +51,6 @@ class NIMDeployment(BaseModel):
     repo_id.
     """
 
-    model_provider: Optional[str] = None
-    """Model provider: 'hf' for HuggingFace or 'nmp' for NeMo Platform"""
-
     model_revision: Optional[str] = None
     """Model revision (branch, tag, or commit).
 
@@ -81,12 +59,6 @@ class NIMDeployment(BaseModel):
 
     model_type: Optional[ModelType] = None
     """Model type enum for NIM deployments."""
-
-    override_config: Optional[Dict[str, object]] = None
-    """Raw NIMService spec configuration that takes precedence over generated config.
-
-    Allows end users to provide advanced configuration options directly.
-    """
 
     tool_call_config: Optional[ToolCallConfig] = None
     """Configuration for tool calling support in NIM deployments."""

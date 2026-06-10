@@ -6,8 +6,10 @@
 from datetime import datetime
 
 import pytest
+from nemo_platform.types.inference.container_executor_config import ContainerExecutorConfig
 from nemo_platform.types.inference.model_deployment import ModelDeployment
-from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig, NIMDeployment
+from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
+from nemo_platform.types.inference.model_deployment_config_model_spec import ModelDeploymentConfigModelSpec
 from nemo_platform.types.inference.model_provider import ModelProvider
 from nemo_platform.types.models.model_entity import ModelEntity
 from nemo_platform.types.shared import ModelSpec
@@ -212,18 +214,17 @@ def test_get_model_weights_type_baked_container_no_model_name():
         updated_at=datetime.now(),
     )
 
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name="nvcr.io/nim/llama-3",
-        image_tag="latest",
-        model_name=None,
-    )
-
     config = ModelDeploymentConfig(
         workspace="test-ns",
         name="my-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name=None),
+        executor_config=ContainerExecutorConfig(
+            gpu=1,
+            image_name="nvcr.io/nim/llama-3",
+            image_tag="latest",
+        ),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -259,17 +260,13 @@ def test_get_model_weights_type_huggingface_with_hf_token():
         updated_at=datetime.now(),
     )
 
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name="nvcr.io/nim/multi-llm",
-        model_name="meta-llama/Llama-3.1-8B-Instruct",
-    )
-
     config = ModelDeploymentConfig(
         workspace="test-ns",
         name="hf-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="meta-llama/Llama-3.1-8B-Instruct"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name="nvcr.io/nim/multi-llm"),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -306,17 +303,13 @@ def test_get_model_weights_type_files_service_with_fileset():
         updated_at=datetime.now(),
     )
 
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name="nvcr.io/nim/llama-3",
-        model_name="my-model",
-    )
-
     config = ModelDeploymentConfig(
         workspace="test-ns",
         name="fs-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="my-model"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name="nvcr.io/nim/llama-3"),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -364,17 +357,13 @@ def test_get_model_weights_type_baked_container_with_model_name():
         updated_at=datetime.now(),
     )
 
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name="nvcr.io/nim/llama-3",
-        model_name="llama-3-8b",
-    )
-
     config = ModelDeploymentConfig(
         workspace="test-ns",
         name="my-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="llama-3-8b"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name="nvcr.io/nim/llama-3"),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -409,17 +398,13 @@ def test_get_model_weights_type_multi_llm_files_service():
         updated_at=datetime.now(),
     )
 
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name=None,
-        model_name="test-ns/my-model",
-    )
-
     config = ModelDeploymentConfig(
         workspace="test-ns",
         name="multi-llm-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="test-ns/my-model"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name=None),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -480,17 +465,13 @@ def test_get_model_weights_type_no_provider_with_hf_token():
 
     Bug #3716: multi-LLM deployment without provider should not return UNKNOWN.
     """
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name=None,  # Multi-LLM (no image specified)
-        model_name="Qwen/Qwen2.5-1.5B-Instruct",
-    )
-
     config = ModelDeploymentConfig(
         workspace="default",
         name="qwen-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="Qwen/Qwen2.5-1.5B-Instruct"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name=None),  # Multi-LLM (no image specified)
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -517,17 +498,13 @@ def test_get_model_weights_type_no_provider_with_hf_token():
 
 def test_get_model_weights_type_no_provider_multi_llm_files_service():
     """Test that FILES_SERVICE is detected without model_provider for multi-LLM without hf_token."""
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name=None,  # Multi-LLM
-        model_name="workspace/my-model",
-    )
-
     config = ModelDeploymentConfig(
         workspace="default",
         name="fs-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="workspace/my-model"),
+        executor_config=ContainerExecutorConfig(gpu=1, image_name=None),  # Multi-LLM
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -610,18 +587,17 @@ def test_get_model_weights_type_no_provider_sft_model():
 
 def test_get_model_weights_type_no_provider_baked_container():
     """Test baked container detection without model_provider."""
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
-        image_tag="1.8.6",
-        model_name=None,  # No model_name = baked weights
-    )
-
     config = ModelDeploymentConfig(
         workspace="default",
         name="baked-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name=None),  # No model_name = baked weights
+        executor_config=ContainerExecutorConfig(
+            gpu=1,
+            image_name="nvcr.io/nim/meta/llama-3.2-1b-instruct",
+            image_tag="1.8.6",
+        ),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -652,18 +628,17 @@ def test_get_model_weights_type_no_provider_image_tag_only_is_multi_llm():
     When only image_tag is specified (no image_name), the default multi-LLM image
     should be used. The weights type detection should still work correctly.
     """
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name=None,  # No image_name = multi-LLM
-        image_tag="1.8.6",  # But image_tag IS specified
-        model_name="Qwen/Qwen2.5-1.5B-Instruct",
-    )
-
     config = ModelDeploymentConfig(
         workspace="default",
         name="multi-llm-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="Qwen/Qwen2.5-1.5B-Instruct"),
+        executor_config=ContainerExecutorConfig(
+            gpu=1,
+            image_name=None,  # No image_name = multi-LLM
+            image_tag="1.8.6",  # But image_tag IS specified
+        ),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
@@ -690,18 +665,17 @@ def test_get_model_weights_type_no_provider_image_tag_only_is_multi_llm():
 
 def test_get_model_weights_type_no_provider_image_tag_only_files_service():
     """Test image_tag without image_name and no hf_token returns FILES_SERVICE."""
-    nim_deployment = NIMDeployment(
-        gpu=1,
-        image_name=None,  # No image_name = multi-LLM
-        image_tag="latest",  # But image_tag IS specified
-        model_name="workspace/my-model",
-    )
-
     config = ModelDeploymentConfig(
         workspace="default",
         name="fs-config",
         entity_version=1,
-        nim_deployment=nim_deployment,
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(model_name="workspace/my-model"),
+        executor_config=ContainerExecutorConfig(
+            gpu=1,
+            image_name=None,  # No image_name = multi-LLM
+            image_tag="latest",  # But image_tag IS specified
+        ),
         created_at=datetime.now(),
         updated_at=datetime.now(),
     )
