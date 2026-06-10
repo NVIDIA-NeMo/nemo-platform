@@ -228,9 +228,11 @@ check-copyright-headers:
 lint: ## Run all linters (licenses, openapi, config docs, python style/types/sdk, vendored SDK, CLI, auth config)
 	bash tools/lint/lint-all.sh
 
+LINT_FIX_VERIFY ?= 0
+
 .PHONY: lint-fix
-lint-fix: ## Auto-fix lint issues in dependency order (openapi → stainless → style → cli → vendor → licenses → config-docs)
-	bash tools/lint/lint-fix.sh
+lint-fix: ## Auto-fix lint issues (set LINT_FIX_VERIFY=1 to also run CI lint checks)
+	LINT_FIX_VERIFY=$(LINT_FIX_VERIFY) bash tools/lint/lint-fix.sh
 
 .PHONY: vendor
 vendor: ## Vendor packages into the SDK and generate wrapper metadata
