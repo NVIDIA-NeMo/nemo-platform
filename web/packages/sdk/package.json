@@ -14,9 +14,10 @@
     "gen:customizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts customizer",
     "gen:data-designer": "tsx ./orval/generate.ts data-designer",
     "gen:data-designer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts data-designer",
+    "gen:evaluator": "tsx ./orval/generate.ts evaluator",
+    "gen:evaluator-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts evaluator",
     "gen:deployment-management": "tsx ./orval/generate.ts deployment-management",
     "gen:entity-store": "tsx ./orval/generate.ts entity-store",
-    "gen:evaluator": "tsx ./orval/generate.ts evaluator",
     "gen:guardrails": "tsx ./orval/generate.ts guardrails",
     "gen:inference-gateway": "tsx ./orval/generate.ts inference-gateway",
     "gen:jobs": "tsx ./orval/generate.ts jobs",
@@ -25,7 +26,9 @@
     "gen:platform-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts platform",
     "gen:safe-synthesizer": "tsx ./orval/generate.ts safe-synthesizer",
     "gen:safe-synthesizer-zod": "ORVAL_CLIENT=zod tsx ./orval/generate.ts safe-synthesizer",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:ci": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@tanstack/react-query": "catalog:",
@@ -39,7 +42,10 @@
     "concurrently": "catalog:",
     "orval": "catalog:",
     "prettier": "catalog:",
+    "@types/node": "catalog:",
     "tsx": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
     "vitest": "catalog:"
   }
 }
