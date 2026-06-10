@@ -15,20 +15,24 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import List, Optional
 
-from typing import Union
-from typing_extensions import TypeAlias, TypedDict
+from pydantic import Field as FieldInfo
 
-from ..shared_params.string_filter import StringFilter
+from ..._models import BaseModel
 
-__all__ = ["BaseModelFilterParam", "Name"]
-
-Name: TypeAlias = Union[StringFilter, str]
+__all__ = ["StringFilter"]
 
 
-class BaseModelFilterParam(TypedDict, total=False):
-    """Filter for base model properties."""
+class StringFilter(BaseModel):
+    eq: Optional[str] = FieldInfo(alias="$eq", default=None)
+    """Filter for results equal to this value."""
 
-    name: Name
-    """Filter by name of the base model."""
+    in_: Optional[List[str]] = FieldInfo(alias="$in", default=None)
+    """Filter for results in this list of values."""
+
+    like: Optional[str] = FieldInfo(alias="$like", default=None)
+    """Filter for results matching this pattern."""
+
+    nin: Optional[List[str]] = FieldInfo(alias="$nin", default=None)
+    """Filter for results not in this list of values."""

@@ -314,9 +314,19 @@ class TestDeploymentConfigs:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "model_entity_id": "model_entity_id",
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
@@ -700,9 +710,19 @@ class TestAsyncDeploymentConfigs:
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "model_entity_id": "model_entity_id",
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "updated_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),

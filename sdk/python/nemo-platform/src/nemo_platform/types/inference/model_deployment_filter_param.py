@@ -17,18 +17,26 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
 from .model_deployment_status import ModelDeploymentStatus
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["ModelDeploymentFilterParam"]
+__all__ = ["ModelDeploymentFilterParam", "Config", "Name", "StatusMessage"]
+
+Config: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
+
+StatusMessage: TypeAlias = Union[StringFilter, str]
 
 
 class ModelDeploymentFilterParam(TypedDict, total=False):
     """Filter for ModelDeployment queries."""
 
-    config: str
+    config: Config
     """Filter by config name."""
 
     created_at: DatetimeFilter
@@ -37,7 +45,7 @@ class ModelDeploymentFilterParam(TypedDict, total=False):
     model_provider_id: str
     """Filter by model provider ID."""
 
-    name: str
+    name: Name
     """Filter by deployment name."""
 
     project: str
@@ -46,7 +54,7 @@ class ModelDeploymentFilterParam(TypedDict, total=False):
     status: ModelDeploymentStatus
     """Status enum for ModelDeployment objects."""
 
-    status_message: str
+    status_message: StatusMessage
     """Filter by status message."""
 
     updated_at: DatetimeFilter
