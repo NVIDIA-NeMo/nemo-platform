@@ -6,9 +6,9 @@
 FROM scratch AS platform-workspace
 # Do not copy repo-root pyproject.toml/uv.lock — they reference the full monorepo workspace.
 COPY services/unsloth/docker/pyproject.workspace.toml pyproject.toml
-# nemo-platform-sdk's hatch build force-includes docs/ and mkdocs.yml from the
-# repo root (see sdk/python/nemo-platform/pyproject.toml [tool.hatch.build.targets.wheel.force-include]).
-# docs/api/openapi.yaml is a symlink to ../../openapi/openapi.yaml — copy both
+# nemo-platform-sdk's hatch build force-includes docs/ from the repo root
+# (see sdk/python/nemo-platform/pyproject.toml [tool.hatch.build.targets.wheel.force-include]).
+# docs/fern/openapi/openapi.yaml is a symlink to ../../../openapi/openapi.yaml — copy both
 # trees so the symlink resolves at build time.
 COPY docs docs
 COPY openapi openapi
