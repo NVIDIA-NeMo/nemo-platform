@@ -53,6 +53,7 @@ FROM base AS runtime
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
+ARG UNSLOTH_VERSION=2026.6.1
 
 WORKDIR /app
 
@@ -65,7 +66,7 @@ RUN mkdir -p /home/${USERNAME}/.cache && \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --torch-backend=auto \
-    unsloth
+    unsloth==${UNSLOTH_VERSION}
 
 # TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
