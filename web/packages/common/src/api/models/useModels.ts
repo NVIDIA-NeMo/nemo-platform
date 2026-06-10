@@ -27,7 +27,7 @@ export const BASIC_ALL_MODELS_DROPDOWN_FILTER: ModelsListModelsParams = {
  *   1. It is a base model (base_model = false -> no parent)
  *   2. It has a NIM deployment with lora_enabled = true
  *
- * The backend's lora_enabled filter queries ModelDeploymentConfig.nim_deployment,
+ * The backend's lora_enabled filter queries ModelDeploymentConfig.model_spec,
  * so conditions 2-4 of the flowchart (has deployment, is NIM, lora_enabled) are
  * all satisfied by lora_enabled: true.
  */

@@ -7243,18 +7243,24 @@ components:
       description: Filter for Adapter list queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by adapter name.
           title: Name
-          type: string
         model:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by parent (base) model entity reference in the form
             {workspace}/{model_name}.
           title: Model
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         fileset:
           description: Filter by fileset reference in the form {workspace}/{fileset_name}.
           title: Fileset
@@ -7933,9 +7939,11 @@ components:
       description: Filter for base model properties.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name of the base model.
           title: Name
-          type: string
       title: BaseModelFilter
       type: object
     CPUExecutionProviderInput:
@@ -10388,13 +10396,17 @@ components:
       description: Filter schema for listing filesets.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset description.
           title: Description
-          type: string
         purpose:
           allOf:
           - $ref: '#/components/schemas/FilesetPurpose'
@@ -11199,13 +11211,17 @@ components:
       description: Filter schema for listing guardrail configs.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config description.
           title: Description
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -12719,13 +12735,17 @@ components:
           title: Model Entity Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -12826,21 +12846,27 @@ components:
           - $ref: '#/components/schemas/ModelDeploymentStatus'
           description: Filter by status.
         config:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Config
-          type: string
         model_provider_id:
           description: Filter by model provider ID.
           title: Model Provider Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by deployment name.
           title: Name
-          type: string
         status_message:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by status message.
           title: Status Message
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13032,9 +13058,11 @@ components:
       description: Filter for Model Entity queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -13072,9 +13100,11 @@ components:
           title: Lora Enabled
           type: boolean
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13321,17 +13351,23 @@ components:
           title: Model Deployment Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         host_url:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by host URL.
           title: Host Url
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -14847,9 +14883,11 @@ components:
           title: Project
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Name of the job.
           title: Name
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -14867,9 +14905,11 @@ components:
           description: The current status.
           title: Status
         source:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: The source of the job.
           title: Source
-          type: string
       title: PlatformJobsListFilter
       type: object
     PlatformSecretAccessResponse:
@@ -15699,21 +15739,27 @@ components:
       description: Filter for role bindings.
       properties:
         principal:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by principal ID
           title: Principal
-          type: string
         workspace:
           description: Filter by workspace
           title: Workspace
           type: string
         role:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by role
           title: Role
-          type: string
         granted_by:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by who granted the role
           title: Granted By
-          type: string
         is_active:
           description: Filter for active (True) or revoked (False) bindings
           title: Is Active
@@ -16275,6 +16321,31 @@ components:
       - s3
       title: StorageConfigType
       type: string
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
     SubprocessExecutionProvider:
       properties:
         provider:

@@ -385,15 +385,32 @@ class TestModels:
             workspace="workspace",
             filter={
                 "adapters": {"finetuning_type": "lora_merged"},
-                "base_model": {"name": "name"},
+                "base_model": {
+                    "name": {
+                        "eq": "$eq",
+                        "in_": ["string"],
+                        "like": "$like",
+                        "nin": ["string"],
+                    }
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "finetuning_type": "lora_merged",
                 "lora_enabled": True,
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "prompt": True,
                 "updated_at": {
@@ -850,15 +867,32 @@ class TestAsyncModels:
             workspace="workspace",
             filter={
                 "adapters": {"finetuning_type": "lora_merged"},
-                "base_model": {"name": "name"},
+                "base_model": {
+                    "name": {
+                        "eq": "$eq",
+                        "in_": ["string"],
+                        "like": "$like",
+                        "nin": ["string"],
+                    }
+                },
                 "created_at": {
                     "gte": parse_datetime("2019-12-27T18:11:19.117Z"),
                     "lte": parse_datetime("2019-12-27T18:11:19.117Z"),
                 },
-                "description": "description",
+                "description": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "finetuning_type": "lora_merged",
                 "lora_enabled": True,
-                "name": "name",
+                "name": {
+                    "eq": "$eq",
+                    "in_": ["string"],
+                    "like": "$like",
+                    "nin": ["string"],
+                },
                 "project": "project",
                 "prompt": True,
                 "updated_at": {
