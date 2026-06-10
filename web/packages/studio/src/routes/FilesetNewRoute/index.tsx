@@ -64,7 +64,7 @@ import {
 } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, FileCheck, XCircle, CheckCircle2 } from 'lucide-react';
-import { FC, useCallback, useMemo, useRef, useState } from 'react';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -234,6 +234,14 @@ export const FilesetNewRoute: FC = () => {
   const [isSubmitPending, setIsSubmitPending] = useState(false);
   const [qualityReports, setQualityReports] = useState<DatasetQualityReport[]>([]);
   const [isValidating, setIsValidating] = useState(false);
+  const qualityReportRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (qualityReports.length > 0) {
+      qualityReportRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [qualityReports]);
+
   const navigate = useNavigate();
   const toast = useToast();
   const queryClient = useQueryClient();
@@ -686,7 +694,7 @@ export const FilesetNewRoute: FC = () => {
                             Supports JSONL, CSV, and Parquet files up to 50 MB.
                           </Upload>
                           {purpose === FilesetPurpose.dataset && (
-                            <Stack gap="density-sm">
+                            <Stack gap="density-sm" ref={qualityReportRef}>
                               {isValidating && (
                                 <Text kind="body/regular/sm" color="secondary">
                                   Checking file quality…
