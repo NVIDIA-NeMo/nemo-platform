@@ -1,0 +1,69 @@
+{
+  "EleutherAI/gpt-j-6b": [
+    "config.json"
+  ],
+  "EleutherAI/gpt-neox-20b": [
+    "config.json"
+  ],
+  "Qwen/Qwen2.5-72B": [
+    "config.json"
+  ],
+  "Qwen/Qwen2.5-72B-Instruct": [
+    "config.json"
+  ],
+  "Qwen/Qwen2.5-7B": [
+    "config.json"
+  ],
+  "Qwen/Qwen3-4B-SafeRL": [
+    "config.json"
+  ],
+  "Qwen/Qwen3-8B": [
+    "config.json"
+  ],
+  "deepseek-ai/DeepSeek-V3-Base": [
+    "config.json",
+    "configuration_deepseek.py",
+    "modeling_deepseek.py"
+  ],
+  "deepseek-ai/deepseek-llm-67b-base": [
+    "config.json"
+  ],
+  "deepseek-ai/deepseek-llm-7b-base": [
+    "config.json"
+  ],
+  "gpt2": [
+    "config.json"
+  ],
+  "microsoft/phi-2": [
+    "config.json"
+  ],
+  "microsoft/phi-4": [
+    "config.json"
+  ],
+  "mistralai/Devstral-Small-2505": [
+    "config.json"
+  ],
+  "mistralai/Mistral-7B-v0.1": [
+    "config.json"
+  ],
+  "mistralai/Mixtral-8x7B-v0.1": [
+    "config.json"
+  ],
+  "nvidia/Mistral-NeMo-Minitron-8B-Instruct": [
+    "config.json"
+  ],
+  "nvidia/NVIDIA-Nemotron-Nano-9B-v2": [
+    "config.json",
+    "configuration_nemotron_h.py",
+    "modeling_nemotron_h.py"
+  ],
+  "nvidia/nemotron-4-340b-instruct": [
+    "model_config.yaml"
+  ],
+  "openai/gpt-oss-120b": [
+    "config.json"
+  ],
+  "openai/gpt-oss-20b": [
+    "config.json"
+  ]
+}
