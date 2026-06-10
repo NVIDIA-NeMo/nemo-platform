@@ -22,7 +22,11 @@ import {
   modelsCreateDeploymentConfig,
   modelsCreateModel,
 } from '@nemo/sdk/generated/platform/api';
-import type { CreateFilesetRequest } from '@nemo/sdk/generated/platform/schema';
+import {
+  Engine,
+  type CreateFilesetRequest,
+  type CreateModelDeploymentConfigRequest,
+} from '@nemo/sdk/generated/platform/schema';
 import { getErrorMessage } from '@studio/api/common/utils';
 import {
   additionalEnvsFormToApi,
@@ -34,12 +38,60 @@ import {
   SOURCE_NGC,
   type WizardFormValues,
 } from '@studio/routes/DeploymentsListRoute/CreateDeploymentSidePanel/schema';
-import { huggingFaceSourceFilesetName } from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
+import {
+  HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD,
+  HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
+  huggingFaceSourceFilesetName,
+} from '@studio/routes/DeploymentsListRoute/huggingFaceDeploymentArtifacts';
 import { NO_SECRET_SELECT_VALUE } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 type ReportStage = (message: string) => void;
+
+interface NimDeploymentConfigInput {
+  name: string;
+  gpu: number;
+  modelName?: string;
+  modelNamespace?: string;
+  modelEntityId?: string;
+  loraEnabled?: boolean;
+  imageName?: string;
+  imageTag?: string;
+  diskSize?: string;
+  additionalEnvs?: Record<string, string>;
+}
+
+function createNimDeploymentConfigRequest({
+  name,
+  gpu,
+  modelName,
+  modelNamespace,
+  modelEntityId,
+  loraEnabled,
+  imageName,
+  imageTag,
+  diskSize,
+  additionalEnvs,
+}: NimDeploymentConfigInput): CreateModelDeploymentConfigRequest {
+  return {
+    name,
+    engine: Engine.nim,
+    model_spec: {
+      ...(modelNamespace ? { model_namespace: modelNamespace } : {}),
+      ...(modelName ? { model_name: modelName } : {}),
+      ...(loraEnabled != null ? { lora_enabled: loraEnabled } : {}),
+    },
+    executor_config: {
+      gpu,
+      ...(diskSize ? { disk_size: diskSize } : {}),
+      ...(imageName ? { image_name: imageName } : {}),
+      ...(imageTag ? { image_tag: imageTag } : {}),
+      ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
+    },
+    ...(modelEntityId ? { model_entity_id: modelEntityId } : {}),
+  };
+}
 
 async function createNgcDeployment(
   workspace: string,
@@ -52,19 +104,19 @@ async function createNgcDeployment(
   const modelName = values.name.trim();
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(workspace, {
-    name: configName,
-    nim_deployment: {
-      model_provider: 'nmp',
+  await modelsCreateDeploymentConfig(
+    workspace,
+    createNimDeploymentConfigRequest({
+      name: configName,
       gpu: values.gpu,
-      image_name: values.imageName!.trim(),
-      image_tag: values.imageTag!.trim(),
-      model_name: modelName,
-      lora_enabled: values.loraEnabled,
-      disk_size: values.diskSize?.trim() || '50Gi',
-      ...(additionalEnvs ? { additional_envs: additionalEnvs } : {}),
-    },
-  });
+      imageName: values.imageName!.trim(),
+      imageTag: values.imageTag!.trim(),
+      modelName,
+      loraEnabled: values.loraEnabled,
+      diskSize: values.diskSize?.trim() || '50Gi',
+      additionalEnvs,
+    })
+  );
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {
@@ -105,18 +157,22 @@ async function createHuggingFaceDeployment(
   await modelsCreateModel(workspace, {
     name: modelEntityName,
     fileset: `${workspace}/${filesetName}`,
+    custom_fields: {
+      [HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD]: HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE,
+    },
   });
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(workspace, {
-    name: configName,
-    nim_deployment: {
-      model_provider: 'hf',
+  await modelsCreateDeploymentConfig(
+    workspace,
+    createNimDeploymentConfigRequest({
+      name: configName,
       gpu: values.gpu,
-      model_namespace: workspace,
-      model_name: modelEntityName,
-    },
-  });
+      modelNamespace: workspace,
+      modelName: modelEntityName,
+      modelEntityId: `${workspace}/${modelEntityName}`,
+    })
+  );
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {
@@ -159,14 +215,16 @@ async function createWorkspaceDeployment(
   }
 
   reportStage('Creating deployment configuration…');
-  await modelsCreateDeploymentConfig(workspace, {
-    name: configName,
-    nim_deployment: {
+  await modelsCreateDeploymentConfig(
+    workspace,
+    createNimDeploymentConfigRequest({
+      name: configName,
       gpu: values.gpu,
-      model_namespace: modelNamespace,
-      model_name: modelName,
-    },
-  });
+      modelNamespace,
+      modelName,
+      modelEntityId: `${modelNamespace}/${modelName}`,
+    })
+  );
 
   reportStage('Creating deployment…');
   await modelsCreateDeployment(workspace, {
