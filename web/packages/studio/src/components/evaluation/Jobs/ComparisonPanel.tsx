@@ -3,6 +3,9 @@
 
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { renderMultipleSelectedValues } from '@nemo/common/src/utils/form';
+import { getColorsFromLength } from '@nemo/common/src/utils/formatters';
+import { useEvaluatorListEvaluateJobResults } from '@nemo/sdk/generated/evaluator/api';
+import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   Flex,
   Panel,
@@ -12,37 +15,91 @@ import {
   StatusMessage,
   Text,
 } from '@nvidia/foundations-react-core';
-import { useEvaluationJobResultV2 } from '@studio/hooks/evaluation/useEvaluationJobResultV2';
-import { useJobsAndResultsV2 } from '@studio/hooks/evaluation/useJobsAndResultsV2';
-import { type EvaluationJobV2 } from '@studio/selectors/evaluationJob';
 import { prettifyName } from '@studio/util/evaluations';
+import { useQuery } from '@tanstack/react-query';
 import { ChartLine, ChartNetwork, TriangleAlert } from 'lucide-react';
 import { useState, ReactNode } from 'react';
 
-interface ComparisonPanelV2Props {
-  job: EvaluationJobV2;
+interface AggregateScores {
+  scores: Record<string, Record<string, number>>;
+}
+
+interface ComparisonPanelProps {
+  job: EvaluateJob;
   workspace: string;
   jobName: string;
 }
 
-/**
- * V2 Comparison panel that works with artifact-based results
- */
-export const ComparisonPanel = ({ job, workspace, jobName }: ComparisonPanelV2Props) => {
+export const ComparisonPanel = ({ job, workspace, jobName }: ComparisonPanelProps) => {
   const [filterMetrics, setFilterMetrics] = useState<string[]>([]);
 
   const { status } = job ?? {};
   const isPendingStatus = status === 'pending' || status === 'active';
 
-  const { scores, isLoading: isPendingResult } = useEvaluationJobResultV2(workspace, jobName);
+  const { data: resultsPage, isLoading: isLoadingMetadata } = useEvaluatorListEvaluateJobResults(
+    workspace,
+    jobName,
+    {
+      query: {
+        enabled: !!workspace && !!jobName,
+      },
+    }
+  );
 
-  // For now, just show single job - can add comparison features later
-  const { rows, allMetrics, activeMetrics } = useJobsAndResultsV2({
-    jobs: [job],
-    results: [scores],
-    filter: { metrics: filterMetrics },
-    prettifyName,
+  const aggregateScoresResult = resultsPage?.data?.find((r) => r.name === 'aggregate-scores');
+
+  const { data: scores, isLoading: isLoadingScores } = useQuery({
+    queryKey: [
+      'evaluation-job-result-scores',
+      workspace,
+      jobName,
+      aggregateScoresResult?.download_url,
+    ],
+    queryFn: async () => {
+      if (!aggregateScoresResult?.download_url) {
+        throw new Error('No download URL available');
+      }
+      const response = await fetch(aggregateScoresResult.download_url);
+      if (!response.ok) {
+        throw new Error(`Failed to download results: ${response.statusText}`);
+      }
+      return response.json() as Promise<AggregateScores>;
+    },
+    enabled: !!aggregateScoresResult?.download_url,
   });
+
+  const isPendingResult = isLoadingMetadata || isLoadingScores;
+
+  // Inline useJobsAndResultsV2 logic typed for EvaluateJob
+  const combined = [{ job, result: scores }];
+  const colorList = getColorsFromLength(combined.length);
+  const allRowsWithColors = combined.map((row, idx) => ({ ...row, color: colorList[idx] }));
+
+  const metricOpts = Array.from(
+    new Set(
+      combined.flatMap((row) => {
+        if (!row.result?.scores) return [];
+        return Object.keys(row.result.scores).map((metricName) => prettifyName(metricName));
+      })
+    )
+  );
+
+  const metricsToShow = metricOpts.filter((opt) => !filterMetrics.includes(opt));
+
+  const rows = allRowsWithColors.map((row) => {
+    if (!row.result?.scores) return row;
+    const filteredScores: Record<string, Record<string, number>> = {};
+    Object.entries(row.result.scores).forEach(([metricName, metricScores]) => {
+      const prettified = prettifyName(metricName);
+      if (metricsToShow.includes(prettified)) {
+        filteredScores[prettified] = metricScores;
+      }
+    });
+    return { ...row, result: { scores: filteredScores } };
+  });
+
+  const allMetrics = metricOpts;
+  const activeMetrics = metricsToShow;
 
   const handleFilterMetrics = (remaining: string[]) => {
     setFilterMetrics(allMetrics.filter((opt) => !remaining.includes(opt)));
@@ -90,7 +147,6 @@ export const ComparisonPanel = ({ job, workspace, jobName }: ComparisonPanelV2Pr
       />
     );
   } else {
-    // Display metrics in a simple table format
     const row = rows[0];
     content = (
       <Stack gap="4" className="w-full">
