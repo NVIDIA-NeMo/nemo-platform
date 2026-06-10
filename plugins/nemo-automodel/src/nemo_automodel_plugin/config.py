@@ -14,8 +14,6 @@ class AutomodelPluginConfig(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="NMP_AUTOMODEL_", extra="ignore")
 
     default_training_execution_profile: str = "gpu"
-    training_image: str = "nmp-automodel-training"
-    tasks_image: str = "nmp-automodel-tasks"
 
 
 def get_config() -> AutomodelPluginConfig:

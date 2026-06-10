@@ -26,3 +26,12 @@ def test_contributor_get_cli_exposes_flat_verbs() -> None:
     assert cli.info.name == "automodel"
     assert not any(g.name == "jobs" for g in cli.registered_groups)
     assert {cmd.name for cmd in cli.registered_commands} >= {"run", "submit", "explain"}
+
+
+def test_contributor_exposes_sdk_resources() -> None:
+    from nemo_automodel_plugin.sdk.resources import AsyncAutomodelCustomization, AutomodelCustomization
+
+    sdk = AutomodelContributor().get_sdk_resources()
+    assert sdk is not None
+    assert sdk.sync_resource is AutomodelCustomization
+    assert sdk.async_resource is AsyncAutomodelCustomization

@@ -5,34 +5,38 @@
 
 from __future__ import annotations
 
-import importlib
 import logging
-from typing import Any
 
 from nemo_platform import AsyncNeMoPlatform, NeMoPlatform
+from nemo_platform_plugin.customization_contributor import CustomizationContributor
 from nemo_platform_plugin.discovery import discover_customization_contributors
 from nemo_platform_plugin.sdk import NemoPluginSDKResources
 
 logger = logging.getLogger(__name__)
 
-# Contributor entry-point key → (module, sync class, async class)
-_CONTRIBUTOR_SDK: dict[str, tuple[str, str, str]] = {
-    "automodel": (
-        "nemo_automodel_plugin.sdk.resources",
-        "AutomodelCustomization",
-        "AsyncAutomodelCustomization",
-    ),
-    "unsloth": (
-        "nemo_unsloth_plugin.sdk.resources",
-        "UnslothCustomization",
-        "AsyncUnslothCustomization",
-    ),
-}
 
-
-def _load_contributor_sdk_class(module_path: str, class_name: str) -> type[Any]:
-    module = importlib.import_module(module_path)
-    return getattr(module, class_name)
+def _mount_contributor_sdk_resources(
+    target: object,
+    platform: NeMoPlatform | AsyncNeMoPlatform,
+    contributors: dict[str, CustomizationContributor],
+    *,
+    async_: bool,
+) -> None:
+    for key in sorted(contributors.keys()):
+        contributor = contributors[key]
+        sdk_resources = contributor.get_sdk_resources()
+        if sdk_resources is None:
+            continue
+        resource_cls = sdk_resources.async_resource if async_ else sdk_resources.sync_resource
+        if resource_cls is None:
+            continue
+        try:
+            setattr(target, key, resource_cls(platform))
+        except ImportError:
+            logger.warning(
+                "Customization contributor %r is installed but SDK resources are unavailable",
+                key,
+            )
 
 
 class Customization:
@@ -40,18 +44,7 @@ class Customization:
 
     def __init__(self, platform: NeMoPlatform) -> None:
         contributors = discover_customization_contributors()
-        for key, (module_path, sync_cls, _async_cls) in _CONTRIBUTOR_SDK.items():
-            if key not in contributors:
-                continue
-            try:
-                cls = _load_contributor_sdk_class(module_path, sync_cls)
-                setattr(self, key, cls(platform))
-            except ImportError:
-                logger.warning(
-                    "Customization contributor %r is installed but SDK module %s is missing",
-                    key,
-                    module_path,
-                )
+        _mount_contributor_sdk_resources(self, platform, contributors, async_=False)
 
 
 class AsyncCustomization:
@@ -59,18 +52,7 @@ class AsyncCustomization:
 
     def __init__(self, platform: AsyncNeMoPlatform) -> None:
         contributors = discover_customization_contributors()
-        for key, (module_path, _sync_cls, async_cls) in _CONTRIBUTOR_SDK.items():
-            if key not in contributors:
-                continue
-            try:
-                cls = _load_contributor_sdk_class(module_path, async_cls)
-                setattr(self, key, cls(platform))
-            except ImportError:
-                logger.warning(
-                    "Customization contributor %r is installed but SDK module %s is missing",
-                    key,
-                    module_path,
-                )
+        _mount_contributor_sdk_resources(self, platform, contributors, async_=True)
 
 
 customization_sdk_resources = NemoPluginSDKResources(

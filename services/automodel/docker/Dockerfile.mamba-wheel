@@ -97,7 +97,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.9.14 /uv /usr/local/bin/uv
 
 
 # =============================================================================
-# causal-conv1d wheel — Python 3.11 (for nmp-gpu-tasks and nmp-customizer-tasks)
+# causal-conv1d wheel — Python 3.11 (for nmp-gpu-tasks and nmp-automodel-tasks)
 # =============================================================================
 FROM mamba-wheel-base AS causal-conv1d-wheel-builder
 
@@ -139,7 +139,7 @@ RUN mkdir -p /wheels && \
     rm -rf /src/causal-conv1d
 
 # The final causal-conv1d-wheel image contains:
-#   - causal_conv1d-*-cp311-*.whl  (for Python 3.11 consumers: nmp-gpu-tasks, nmp-customizer-tasks)
+#   - causal_conv1d-*-cp311-*.whl  (for Python 3.11 consumers: nmp-gpu-tasks, nmp-automodel-tasks)
 #   - causal_conv1d-*-cp312-*.whl  (for Python 3.12 consumers)
 # Consumers must pin the Python tag glob (e.g. causal_conv1d-*cp311*.whl) to select the right one.
 FROM scratch AS causal-conv1d-wheel
@@ -182,7 +182,7 @@ RUN mkdir -p /wheels && \
     rm -rf /src/mamba
 
 # =============================================================================
-# mamba-ssm 2.3.0 wheel — Python 3.11 (for nmp-customizer-tasks)
+# mamba-ssm 2.3.0 wheel — Python 3.11 (for nmp-automodel-tasks)
 # =============================================================================
 FROM mamba-wheel-base AS mamba-ssm-23-wheel-builder
 
@@ -234,7 +234,7 @@ RUN mkdir -p /wheels && \
 # The final mamba-ssm-wheel image contains four versions:
 #   - mamba_ssm-2.2.5-cp311-*.whl  (from MAMBA_22_COMMIT=6b32be06, for nmp-gpu-tasks / Python 3.11)
 #   - mamba_ssm-2.2.5-cp312-*.whl  (from MAMBA_22_COMMIT=6b32be06, for Python 3.12 consumers, e.g. automodel)
-#   - mamba_ssm-2.3.0-cp311-*.whl  (from v2.3.0, for nmp-customizer-tasks / Python 3.11)
+#   - mamba_ssm-2.3.0-cp311-*.whl  (from v2.3.0, for nmp-automodel-tasks / Python 3.11)
 #   - mamba_ssm-2.3.0-cp312-*.whl  (from v2.3.0, for Python 3.12 consumers)
 # Consumers must pin both version AND Python tag glob to select the correct wheel.
 FROM scratch AS mamba-ssm-wheel

@@ -39,7 +39,6 @@ dependencies = [
   "mypy-extensions==1.0.0",
   "tornado>=6.5.5",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
-  "nmp-customizer",
   "nmp-evaluator",
   "nmp-guardrails",
   "nmp-hello-world",
@@ -121,7 +120,6 @@ dev = [
   "sphinx-design>=0.6.0",
   "python-dotenv>=1.2.2",
   # Service packages for local development (not in root deps to allow --only-group in containers)
-  "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nmp-evaluator",
@@ -207,7 +205,6 @@ functional-services = [
   "nmp-studio",
   "nmp-evaluator",
   "nmp-guardrails",
-  "nmp-customizer",
   "nemo-data-designer-plugin",
   "nemo-anonymizer-plugin",
   "nmp-intake",
@@ -221,7 +218,6 @@ cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nmp-evaluator",
-  "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nmp-hello-world",
@@ -233,7 +229,6 @@ gpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nmp-models",
-  "nmp-customizer",
 ]
 
 
@@ -361,7 +356,6 @@ nmp-platform-runner = { workspace = true }
 nmp-platform-seed = { workspace = true }
 nmp-hello-world = { workspace = true }
 nmp-studio = { workspace = true }
-nmp-customizer = { workspace = true }
 nmp-secrets = { workspace = true }
 nmp-dev-mcp = { workspace = true }
 nmp-testing = { workspace = true }
@@ -399,7 +393,6 @@ members = [
   "services/studio",
   "services/guardrails",
   "services/evaluator",
-  "services/customizer",
   "services/intake",
   "plugins/nemo-anonymizer",
   "plugins/nemo-data-designer",
@@ -567,8 +560,6 @@ exclude = [
   "packages/nemo_platform_plugin/src/nemo_platform_plugin/jobs/api_factory.py",
 
   "packages/garak_api/",
-
-  "./services/customizer/",
 
   # GPU-container training drivers import torch/peft/nemo_automodel/unsloth at runtime only.
   "services/automodel/src/nmp/automodel/tasks/training/backends/",

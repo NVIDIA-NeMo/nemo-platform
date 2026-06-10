@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""CLI overrides: submit/run accept a job JSON file instead of ``--spec``."""
+"""CLI overrides: submit accepts a job JSON file instead of ``--spec``."""
 
 import json
 from collections.abc import Callable

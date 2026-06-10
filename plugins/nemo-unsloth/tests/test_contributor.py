@@ -107,3 +107,13 @@ class TestCLI:
         assert "--workspace" in plain or "-w" in plain
         assert "--profile" in plain
         assert "--base-url" in plain
+
+
+class TestSDK:
+    def test_exposes_sdk_resources(self, contributor: object) -> None:
+        from nemo_unsloth_plugin.sdk.resources import AsyncUnslothCustomization, UnslothCustomization
+
+        sdk = contributor.get_sdk_resources()
+        assert sdk is not None
+        assert sdk.sync_resource is UnslothCustomization
+        assert sdk.async_resource is AsyncUnslothCustomization

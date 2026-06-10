@@ -5,11 +5,10 @@ Scripts for running the file_io task container locally.
 ## Prerequisites
 
 1. **Build the Docker image** from the repository root:
-This will build `my-registry/nmp-cpu-tasks:local` image that will be used for this task.
 
    ```bash
-   cd /path/to/nmp
-   make docker/nmp-cpu-tasks
+   cd /path/to/nemo-platform
+   docker buildx bake -f docker-bake.hcl nmp-automodel-tasks-docker
    ```
 
 2. **Have NeMo Platform running** (files service) at `http://localhost:8080`
@@ -19,16 +18,16 @@ This will build `my-registry/nmp-cpu-tasks:local` image that will be used for th
 ### Run with Docker Compose
 
 ```bash
-cd services/customizer/src/nmp/customizer/tasks/file_io/docker
+cd services/automodel/src/nmp/automodel/tasks/docker
 
 # Run the task
 docker compose up
 
 # Run with custom image
-FILE_IO_IMAGE=my-registry/nmp-cpu-tasks:dev docker compose up
+FILE_IO_IMAGE=my-registry/nemo-platform-dev/nmp-automodel-tasks:dev docker compose up
 
 # Run interactively
-docker compose run --rm file-io run task --task nmp.customizer.tasks.file_io
+docker compose run --rm file-io run task --task nmp.automodel.tasks.file_io
 ```
 
 ## Configuration
@@ -45,7 +44,7 @@ docker compose run --rm file-io run task --task nmp.customizer.tasks.file_io
 | `NEMO_JOB_TASK` | Task identifier | `file-io-task` |
 | `NEMO_JOB_WORKSPACE` | Workspace name | `default` |
 | `LOG_LEVEL` | Logging level | `INFO` |
-| `FILE_IO_IMAGE` | Docker image to use | `my-registry/nmp-cpu-tasks:local` |
+| `FILE_IO_IMAGE` | Docker image to use | `my-registry/nemo-platform-dev/nmp-automodel-tasks:local` |
 
 ### Config File Format
 

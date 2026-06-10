@@ -5,7 +5,7 @@
 #   docker compose up
 #
 #   # Run with custom command
-#   docker compose run --rm file-io run task --task nmp.customizer.tasks.file_io
+#   docker compose run --rm file-io run task --task nmp.automodel.tasks.file_io
 #
 # Prerequisites:
 #   - Build the image first (from Platform repo root):
@@ -19,10 +19,10 @@ services:
     container_name: file-io-task
 
     # Mount config file and storage directory
-    # Using test data from services/customizer/tests/tasks/file_io/data/
-    # files will be downloaded under services/customizer/tests/tasks/file_io/data/temp which is in .gitignore
+    # Using test data from services/automodel/tests/tasks/file_io/data/
+    # files will be downloaded under services/automodel/tests/tasks/file_io/data/temp which is in .gitignore
     volumes:
-      - ../../../../../../tests/tasks/file_io/data:/var/run/scratch
+      - ../../../../../tests/tasks/file_io/data:/var/run/scratch
 
     environment:
       # NeMo Platform URLs - use host.docker.internal to reach host services

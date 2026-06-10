@@ -49,7 +49,6 @@ members = [
     "nmp-build-tools",
     "nmp-common",
     "nmp-core-mcp",
-    "nmp-customizer",
     "nmp-dev-mcp",
     "nmp-entities",
     "nmp-evaluator",
@@ -4647,13 +4646,6 @@ core-service = [
     { name = "uvicorn", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "wasmtime", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
-customizer-service = [
-    { name = "fastapi", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pydantic-settings", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "uvicorn", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
 data-designer-nemo = [
     { name = "anyio", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "data-designer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -5225,7 +5217,6 @@ requires-dist = [
     { name = "fastapi", extras = ["standard"], marker = "extra == 'all'", specifier = ">=0.115.4" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'auth-service'", specifier = ">=0.115.4" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'core-service'", specifier = ">=0.115.4" },
-    { name = "fastapi", extras = ["standard"], marker = "extra == 'customizer-service'", specifier = ">=0.115.4" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'evaluator-service'", specifier = ">=0.115.4" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'hello-world-service'", specifier = ">=0.115.4" },
     { name = "fastapi", extras = ["standard"], marker = "extra == 'nmp-common'", specifier = ">=0.115.4" },
@@ -5378,7 +5369,6 @@ requires-dist = [
     { name = "nmp-common", marker = "extra == 'all'", editable = "packages/nmp_common" },
     { name = "nmp-common", marker = "extra == 'auth-service'", editable = "packages/nmp_common" },
     { name = "nmp-common", marker = "extra == 'core-service'", editable = "packages/nmp_common" },
-    { name = "nmp-common", marker = "extra == 'customizer-service'", editable = "packages/nmp_common" },
     { name = "nmp-common", marker = "extra == 'entities-service'", editable = "packages/nmp_common" },
     { name = "nmp-common", marker = "extra == 'evaluator-service'", editable = "packages/nmp_common" },
     { name = "nmp-common", marker = "extra == 'files-service'", editable = "packages/nmp_common" },
@@ -5489,7 +5479,6 @@ requires-dist = [
     { name = "pydantic", marker = "extra == 'core-service'", specifier = ">=2.0.0" },
     { name = "pydantic", marker = "extra == 'core-service'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'core-service'", specifier = ">=2.10.6" },
-    { name = "pydantic", marker = "extra == 'customizer-service'", specifier = ">=2.10.3" },
     { name = "pydantic", marker = "extra == 'data-designer-nemo'", specifier = ">=2" },
     { name = "pydantic", marker = "extra == 'entities-service'", specifier = ">=2.0.0" },
     { name = "pydantic", marker = "extra == 'evaluator-service'", specifier = ">=2.10.3" },
@@ -5523,7 +5512,6 @@ requires-dist = [
     { name = "pydantic-settings", marker = "extra == 'core-service'", specifier = ">=2.0.0" },
     { name = "pydantic-settings", marker = "extra == 'core-service'", specifier = ">=2.6.1" },
     { name = "pydantic-settings", marker = "extra == 'core-service'", specifier = ">=2.8.1" },
-    { name = "pydantic-settings", marker = "extra == 'customizer-service'", specifier = ">=2.6.1" },
     { name = "pydantic-settings", marker = "extra == 'entities-service'", specifier = ">=2.0.0" },
     { name = "pydantic-settings", marker = "extra == 'evaluator-service'", specifier = ">=2.6.1" },
     { name = "pydantic-settings", marker = "extra == 'files-service'", specifier = ">=2.8.1" },
@@ -5671,7 +5659,6 @@ requires-dist = [
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'auth-service'", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'core-service'", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'core-service'", specifier = ">=0.23.0" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'customizer-service'", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'entities-service'", specifier = ">=0.23.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'hello-world-service'", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'services'", specifier = ">=0.12.0" },
@@ -5686,7 +5673,7 @@ requires-dist = [
     { name = "yara-python", marker = "extra == 'guardrails-service'", specifier = "==4.5.1" },
     { name = "yara-python", marker = "extra == 'services'", specifier = "==4.5.1" },
 ]
-provides-extras = ["aiohttp", "all", "auditor-service", "auth-service", "core-service", "customizer-service", "data-designer-nemo", "entities-service", "evaluator-service", "files-service", "guardrails-service", "hello-world-service", "inference-gateway-service", "intake-service", "jobs-service", "models-service", "nemo-agents-example-calculator", "nemo-agents-plugin", "nemo-anonymizer-plugin", "nemo-auditor-plugin", "nemo-data-designer-plugin", "nemo-evaluator-plugin", "nemo-evaluator-sdk", "nemo-guardrails-plugin", "nemo-platform-plugin", "nemo-platform-sdk", "nemo-safe-synthesizer-plugin", "nemo-switchyard", "nmp-common", "platform-seed-service", "plugins", "secrets-service", "services", "studio-service", "switchyard"]
+provides-extras = ["aiohttp", "all", "auditor-service", "auth-service", "core-service", "data-designer-nemo", "entities-service", "evaluator-service", "files-service", "guardrails-service", "hello-world-service", "inference-gateway-service", "intake-service", "jobs-service", "models-service", "nemo-agents-example-calculator", "nemo-agents-plugin", "nemo-anonymizer-plugin", "nemo-auditor-plugin", "nemo-data-designer-plugin", "nemo-evaluator-plugin", "nemo-evaluator-sdk", "nemo-guardrails-plugin", "nemo-platform-plugin", "nemo-platform-sdk", "nemo-safe-synthesizer-plugin", "nemo-switchyard", "nmp-common", "platform-seed-service", "plugins", "secrets-service", "services", "studio-service", "switchyard"]
 
 [[package]]
 name = "nemo-platform-ext"
@@ -6186,7 +6173,6 @@ dependencies = [
     { name = "nmp-auth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-core-mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-customizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-entities", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-evaluator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-files", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6243,7 +6229,6 @@ cpu-tasks = [
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-customizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-evaluator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-hello-world", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6275,7 +6260,6 @@ dev = [
     { name = "nmp-build-tools", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-core-mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-customizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-dev-mcp", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-evaluator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-guardrails", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6340,7 +6324,6 @@ functional-services = [
     { name = "nemo-unsloth-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-auth", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-customizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-entities", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-evaluator", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-files", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
@@ -6359,7 +6342,6 @@ gpu-tasks = [
     { name = "nemo-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nemo-platform-plugin", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-customizer", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-models", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
     { name = "nmp-platform", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
 ]
@@ -6391,7 +6373,6 @@ requires-dist = [
     { name = "nmp-auth", editable = "services/core/auth" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "nmp-core-mcp", editable = "services/core/mcp" },
-    { name = "nmp-customizer", editable = "services/customizer" },
     { name = "nmp-entities", editable = "services/core/entities" },
     { name = "nmp-evaluator", editable = "services/evaluator" },
     { name = "nmp-files", editable = "services/core/files" },
@@ -6449,7 +6430,6 @@ cpu-tasks = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nmp-common", editable = "packages/nmp_common" },
-    { name = "nmp-customizer", editable = "services/customizer" },
     { name = "nmp-evaluator", editable = "services/evaluator" },
     { name = "nmp-hello-world", editable = "services/hello-world" },
     { name = "nmp-platform", editable = "packages/nmp_platform" },
@@ -6481,7 +6461,6 @@ dev = [
     { name = "nmp-build-tools", editable = "packages/nmp_build_tools" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "nmp-core-mcp", editable = "services/core/mcp" },
-    { name = "nmp-customizer", editable = "services/customizer" },
     { name = "nmp-dev-mcp", editable = "tools/mcp-dev-tools" },
     { name = "nmp-evaluator", editable = "services/evaluator" },
     { name = "nmp-guardrails", editable = "services/guardrails" },
@@ -6549,7 +6528,6 @@ functional-services = [
     { name = "nemo-unsloth-plugin", editable = "plugins/nemo-unsloth" },
     { name = "nmp-auth", editable = "services/core/auth" },
     { name = "nmp-common", editable = "packages/nmp_common" },
-    { name = "nmp-customizer", editable = "services/customizer" },
     { name = "nmp-entities", editable = "services/core/entities" },
     { name = "nmp-evaluator", editable = "services/evaluator" },
     { name = "nmp-files", editable = "services/core/files" },
@@ -6568,7 +6546,6 @@ gpu-tasks = [
     { name = "nemo-platform", editable = "packages/nemo_platform" },
     { name = "nemo-platform-plugin", editable = "packages/nemo_platform_plugin" },
     { name = "nmp-common", editable = "packages/nmp_common" },
-    { name = "nmp-customizer", editable = "services/customizer" },
     { name = "nmp-models", editable = "services/core/models" },
     { name = "nmp-platform", editable = "packages/nmp_platform" },
 ]
@@ -6844,62 +6821,6 @@ requires-dist = [
     { name = "nemo-platform-sdk", editable = "sdk/python/nemo-platform" },
     { name = "nmp-common", editable = "packages/nmp_common" },
     { name = "nmp-entities", editable = "services/core/entities" },
-]
-
-[[package]]
-name = "nmp-customizer"
-version = "0.0.1"
-source = { editable = "services/customizer" }
-dependencies = [
-    { name = "fastapi", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pydantic", extra = ["email"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pydantic-settings", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "uvicorn", extra = ["standard"], marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-
-[package.optional-dependencies]
-test = [
-    { name = "nmp-testing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pytest", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pytest-asyncio", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "nmp-testing", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pytest", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "pytest-asyncio", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-task = [
-    { name = "aiofiles", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "httpx", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-    { name = "nmp-common", marker = "(platform_machine == 'arm64' and sys_platform == 'darwin') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux')" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "fastapi", extras = ["standard"], specifier = ">=0.115.4" },
-    { name = "nmp-common", editable = "packages/nmp_common" },
-    { name = "nmp-testing", marker = "extra == 'test'", editable = "packages/nmp_testing" },
-    { name = "pydantic", specifier = ">=2.10.3" },
-    { name = "pydantic-settings", specifier = ">=2.6.1" },
-    { name = "pytest", marker = "extra == 'test'", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", marker = "extra == 'test'", specifier = ">=0.23.0" },
-    { name = "uvicorn", extras = ["standard"], specifier = ">=0.12.0" },
-]
-provides-extras = ["test"]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "nmp-testing", editable = "packages/nmp_testing" },
-    { name = "pytest", specifier = ">=8.0.0" },
-    { name = "pytest-asyncio", specifier = ">=0.23.0" },
-]
-task = [
-    { name = "aiofiles", specifier = ">=24.1.0" },
-    { name = "httpx", specifier = ">=0.27.0" },
-    { name = "nmp-common", editable = "packages/nmp_common" },
 ]
 
 [[package]]

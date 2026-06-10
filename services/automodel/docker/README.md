@@ -1,6 +1,6 @@
 # nmp-automodel container images
 
-Three images derived from the legacy `nmp` **customizer-automodel** base builder (not the full `customizer-automodel` HTTP service image). Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — some registries reject that on push).
+Three images for the **nmp-automodel** customization backend. Published as flat repo names under **`my-registry/nemo-platform-dev/nmp-automodel-*`** (no nested `nmp/...` path — some registries reject that on push).
 
 | Image | Dockerfile | Role |
 |-------|------------|------|
@@ -77,11 +77,11 @@ Override registry: `export WHEELS_REGISTRY=...` and `export IMAGE_REGISTRY=...` 
 
 ## Tasks / training runtime (platform glue)
 
-**Base (`nmp-automodel-base`):** Same as `customizer-automodel-base-builder` — NGC PyTorch 26.02, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
+**Base (`nmp-automodel-base`):** NGC PyTorch 26.02, Automodel `uv sync --locked`, pinned `transformers`/`torch`.
 
 **Tasks image:** `uv sync --package nmp-automodel --no-dev --inexact` from the minimal workspace. CPU steps only need platform SDK glue; upgrading ancillary packages here does not affect training.
 
-**Training image:** Do **not** use `uv sync` — it upgrades `transformers` and breaks `PreTrainedModel`. Use **`uv pip install -e`** with **`--overrides no_override_requirements.txt`** (customizer pattern), then `uv pip install --no-deps -e /opt/Automodel` to re-pin `nemo_automodel` from the base clone (not PyPI).
+**Training image:** Do **not** use `uv sync` — it upgrades `transformers` and breaks `PreTrainedModel`. Use **`uv pip install -e`** with **`--overrides no_override_requirements.txt`**, then `uv pip install --no-deps -e /opt/Automodel` to re-pin `nemo_automodel` from the base clone (not PyPI).
 
 ## Runtime
 

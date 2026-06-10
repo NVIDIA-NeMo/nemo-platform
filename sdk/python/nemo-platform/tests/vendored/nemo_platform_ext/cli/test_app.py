@@ -507,6 +507,23 @@ def test_plugin_loader_returns_placeholder_help_for_broken_cli():
     assert loaded.help == "Plugin commands for example are unavailable."
 
 
+def test_plugin_loader_surfaces_customization_contributor_discovery_error():
+    from nemo_platform_plugin.customization_contributor import CustomizationContributorDiscoveryError
+
+    class _BrokenCustomizationCLI(NemoCLI):
+        name = "customization"
+
+        def __init__(self) -> None:
+            raise CustomizationContributorDiscoveryError("no contributors were discovered")
+
+        def get_cli(self) -> typer.Typer:
+            return typer.Typer()
+
+    with patch("nemo_platform.cli.core.lazy_load.resolve_name", return_value=_BrokenCustomizationCLI):
+        with pytest.raises(click.ClickException, match="no contributors were discovered"):
+            lazy_plugin_loader("customization", "fake.module:BrokenCustomizationCLI")()
+
+
 def test_token_refresh_skipped_when_quickstart_auth_disabled():
     """Token refresh should not run when the quickstart config has auth disabled."""
     runner = CliRunner()

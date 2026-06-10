@@ -10,9 +10,7 @@ class at startup and:
 - merges :meth:`get_routers` into ``/apis/customization/...``
 - adds :meth:`get_cli` under ``nemo customization unsloth``
 - merges :meth:`get_authz_contribution` into the platform authz policy
-- composes ``nemo-unsloth-plugin.sdk.resources.UnslothCustomization``
-  under ``client.customization.unsloth`` (via the hub's
-  ``_CONTRIBUTOR_SDK`` map)
+- composes :meth:`get_sdk_resources` under ``client.customization.unsloth``
 """
 
 from __future__ import annotations
@@ -22,6 +20,7 @@ from typing import ClassVar
 import typer
 from fastapi import APIRouter
 from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
+from nemo_platform_plugin.customization_contributor import CustomizationContributorSDKResources
 from nemo_platform_plugin.jobs.api_factory import JobRouteOption
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import RouterSpec
@@ -112,4 +111,12 @@ class UnslothContributor:
             permission_prefix="customization.unsloth.jobs",
             include_healthz=True,
             healthz_suffix="/unsloth/healthz",
+        )
+
+    def get_sdk_resources(self) -> CustomizationContributorSDKResources:
+        from nemo_unsloth_plugin.sdk.resources import AsyncUnslothCustomization, UnslothCustomization
+
+        return CustomizationContributorSDKResources(
+            sync_resource=UnslothCustomization,
+            async_resource=AsyncUnslothCustomization,
         )

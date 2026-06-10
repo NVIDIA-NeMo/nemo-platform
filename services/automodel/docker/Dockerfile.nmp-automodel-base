@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # nmp-automodel base - PyTorch NGC image + Automodel + CUDA extension wheels.
 #
-# Mirrors nmp/docker/Dockerfile.nmp-customizer customizer-automodel-base-builder.
+# PyTorch NGC base + Automodel + CUDA extension wheels for nmp-automodel images.
 # Publish target: nmp-automodel-base (slim image; builder is build-only).
 
 ARG CAUSAL_CONV1D_WHEEL_IMAGE=local

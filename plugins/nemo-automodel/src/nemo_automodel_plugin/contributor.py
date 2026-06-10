@@ -10,6 +10,7 @@ from typing import ClassVar
 import typer
 from fastapi import APIRouter
 from nemo_platform_plugin.authz import AuthzContribution, authz_for_workspace_job_collection
+from nemo_platform_plugin.customization_contributor import CustomizationContributorSDKResources
 from nemo_platform_plugin.jobs.api_factory import JobRouteOption
 from nemo_platform_plugin.jobs.routes import add_job_routes
 from nemo_platform_plugin.service import RouterSpec
@@ -85,4 +86,12 @@ class AutomodelContributor:
             permission_prefix="customization.automodel.jobs",
             include_healthz=True,
             healthz_suffix="/automodel/healthz",
+        )
+
+    def get_sdk_resources(self) -> CustomizationContributorSDKResources:
+        from nemo_automodel_plugin.sdk.resources import AsyncAutomodelCustomization, AutomodelCustomization
+
+        return CustomizationContributorSDKResources(
+            sync_resource=AutomodelCustomization,
+            async_resource=AsyncAutomodelCustomization,
         )
