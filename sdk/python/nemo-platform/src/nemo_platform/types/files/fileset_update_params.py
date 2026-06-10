@@ -21,7 +21,7 @@ from typing import Dict
 from typing_extensions import TypedDict
 
 from .fileset_purpose import FilesetPurpose
-from .fileset_metadata_param_param import FilesetMetadataParamParam
+from .fileset_metadata_param import FilesetMetadataParam
 
 __all__ = ["FilesetUpdateParams"]
 
@@ -35,7 +35,7 @@ class FilesetUpdateParams(TypedDict, total=False):
     description: str
     """The description of the fileset."""
 
-    metadata: FilesetMetadataParamParam
+    metadata: FilesetMetadataParam
     """Tagged metadata container - the key indicates the type.
 
     Example: metadata = FilesetMetadata( dataset=DatasetMetadataContent(

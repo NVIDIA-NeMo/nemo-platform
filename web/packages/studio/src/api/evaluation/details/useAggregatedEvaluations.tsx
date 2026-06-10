@@ -3,15 +3,15 @@
 
 import { NamedEntity } from '@nemo/common/src/namedEntity';
 import {
-  evaluationGetMetricJob,
-  evaluationListMetricJobsResults,
-  evaluationListMetricJobs,
-} from '@nemo/sdk/generated/platform/api';
+  evaluatorGetEvaluateJob,
+  evaluatorListEvaluateJobResults,
+  evaluatorListEvaluateJobs,
+} from '@nemo/sdk/generated/evaluator/api';
 import {
-  MetricEvaluationJob,
-  MetricEvaluationJobsPage,
+  EvaluateJob,
+  EvaluateJobsPage,
   PlatformJobListResultResponse,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/evaluator/schema';
 import { useDetailsChartsStore } from '@studio/api/evaluation/details/useDetailsChartsStore';
 import { getEvaluationJobModel, isEvaluationJobSucceeded } from '@studio/selectors/evaluationJob';
 import { useQuery } from '@tanstack/react-query';
@@ -23,24 +23,24 @@ import { useQuery } from '@tanstack/react-query';
  * Example usage in a component:
  * fetchAllEvaluationsByConfig(workspace);
  *
- * @returns {Object} Promise<MetricEvaluationJobsPage>
+ * @returns {Object} Promise<EvaluateJobsPage>
  */
 const fetchAllEvaluationsByConfig = async (
   workspace: string | undefined
-): Promise<MetricEvaluationJobsPage> => {
+): Promise<EvaluateJobsPage> => {
   if (!workspace) {
     return {
       data: [],
     };
   }
 
-  let allEvaluations: MetricEvaluationJobsPage['data'] = [];
+  let allEvaluations: EvaluateJobsPage['data'] = [];
   let currentPage = 1;
   let totalPages = 1; // initialize to avoid infinite loop
   const pageSize = 100;
 
   while (currentPage <= totalPages) {
-    const response = await evaluationListMetricJobs(workspace, {
+    const response = await evaluatorListEvaluateJobs(workspace, {
       page_size: pageSize,
       page: currentPage,
       sort: '-created_at',
@@ -77,11 +77,11 @@ const fetchAllEvaluationsByConfig = async (
  * Example usage in a component:
  * useUniqueModelsByConfig(workspace, id);
  *
- * @returns {Object} <Record<string, MetricEvaluationJob[]>
+ * @returns {Object} <Record<string, EvaluateJob[]>
  */
 
 export const useUniqueModelsByConfig = (workspace: string | undefined, evaluationId?: string) => {
-  return useQuery<Record<string, MetricEvaluationJob[]>, Error>({
+  return useQuery<Record<string, EvaluateJob[]>, Error>({
     queryKey: ['uniqueModelsByConfig', workspace, evaluationId],
     queryFn: async () => {
       const evaluationsByConfig = await fetchAllEvaluationsByConfig(workspace);
@@ -97,13 +97,13 @@ export const useUniqueModelsByConfig = (workspace: string | undefined, evaluatio
 
           if (modelName) {
             if (!acc[modelName]) {
-              acc[modelName] = [] as MetricEvaluationJob[];
+              acc[modelName] = [] as EvaluateJob[];
             }
             acc[modelName].push(job);
           }
           return acc;
         },
-        {} as Record<string, MetricEvaluationJob[]>
+        {} as Record<string, EvaluateJob[]>
       );
     },
     placeholderData: (prevData) => prevData ?? {},
@@ -130,7 +130,7 @@ export const useAggregatedEvaluationResults = (config: NamedEntity) => {
       }
       return await Promise.all(
         selectedEvaluations.map((evaluationId) =>
-          evaluationListMetricJobsResults(config.workspace!, evaluationId)
+          evaluatorListEvaluateJobResults(config.workspace!, evaluationId)
         )
       );
     },
@@ -146,12 +146,12 @@ export const useAggregatedEvaluationResults = (config: NamedEntity) => {
  * Example usage in a component:
  * useAggregatedEvaluations(config);
  *
- * @returns {Array} MetricEvaluationJob[]
+ * @returns {Array} EvaluateJob[]
  */
 export const useAggregatedEvaluations = (config: NamedEntity) => {
   const { selectedEvaluations } = useDetailsChartsStore();
 
-  return useQuery<MetricEvaluationJob[], Error>({
+  return useQuery<EvaluateJob[], Error>({
     queryKey: ['aggregatedEvaluations', config, selectedEvaluations],
     queryFn: async () => {
       if (!config.workspace) {
@@ -159,7 +159,7 @@ export const useAggregatedEvaluations = (config: NamedEntity) => {
       }
       return await Promise.all(
         selectedEvaluations.map((evaluationId) =>
-          evaluationGetMetricJob(config.workspace!, evaluationId)
+          evaluatorGetEvaluateJob(config.workspace!, evaluationId)
         )
       );
     },

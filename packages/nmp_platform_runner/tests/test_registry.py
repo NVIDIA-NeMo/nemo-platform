@@ -19,13 +19,21 @@ class AgentsService(NemoService):
         return [RouterSpec(router=APIRouter())]
 
 
+class EvaluatorService(NemoService):
+    name = "evaluator"
+
+    def get_routers(self) -> list[RouterSpec]:
+        return [RouterSpec(router=APIRouter())]
+
+
 class AgentsDeploymentController(NemoController):
     name = "agents-deployment"
 
     async def list_objects(self) -> list:
         return []
 
-    async def reconcile_one(self, _obj: object) -> None:
+    async def reconcile_one(self, obj: object) -> None:
+        _ = obj
         return None
 
 
@@ -46,6 +54,20 @@ def test_service_groups_include_plugin_services(monkeypatch):
     assert "agents" not in groups["core"]
     assert "agents" in groups["api"]
     assert "agents" in groups["all"]
+
+
+def test_service_groups_include_evaluator_plugin_service(monkeypatch):
+    clear_registry_caches()
+    monkeypatch.setattr(registry, "discover_services", lambda: {"evaluator": EvaluatorService})
+
+    available = registry.get_available_services()
+    groups = registry.get_service_groups(available)
+
+    assert "evaluation" not in available
+    assert "evaluation" not in groups["api"]
+    assert "evaluator" not in groups["core"]
+    assert "evaluator" in groups["api"]
+    assert "evaluator" in groups["all"]
 
 
 def test_controller_groups_include_plugin_controllers(monkeypatch):
@@ -78,16 +100,25 @@ def test_openapi_services_are_explicit_and_do_not_auto_include_plugins(monkeypat
         "AVAILABLE_SERVICES",
         {
             "auth": "nmp.core.auth.main:service",
-            "evaluation": "nmp.evaluator.main:service",
             "hello-world": "nmp.hello_world.main:service",
         },
     )
-    monkeypatch.setattr(registry, "OPENAPI_SERVICES", ["auth", "evaluation"])
+    monkeypatch.setattr(registry, "OPENAPI_SERVICES", ["auth"])
     monkeypatch.setattr(registry, "discover_services", lambda: {"agents": AgentsService})
 
     available = registry.get_available_services()
 
-    assert registry.get_openapi_service_names(available) == ["auth", "evaluation"]
+    assert registry.get_openapi_service_names(available) == ["auth"]
+
+
+def test_legacy_evaluation_service_is_not_registered_by_default():
+    clear_registry_caches()
+    available = registry.get_available_services()
+    groups = registry.get_service_groups(available)
+
+    assert "evaluation" not in available
+    assert "evaluation" not in groups["api"]
+    assert "evaluation" not in registry.get_openapi_service_names(available)
 
 
 def test_intake_is_registered_as_api_and_openapi_service():

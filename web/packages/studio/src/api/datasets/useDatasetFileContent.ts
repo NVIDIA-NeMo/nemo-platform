@@ -13,6 +13,14 @@ import { isBinaryExtension } from '@studio/util/binaryFile';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
 
+/** Parquet INT64 (and similar) columns decode as BigInt; JSON.stringify rejects those by default. */
+function jsonReplacer(_key: string, value: unknown): unknown {
+  return typeof value === 'bigint' ? value.toString() : value;
+}
+
+function serializeParquetRow(row: unknown): string {
+  return JSON.stringify(row, jsonReplacer);
+}
 // Cap text-file preview at 512 KB. Enough to show meaningful JSONL content
 // while preventing OOM crashes on multi-GB external dataset shards.
 const FILE_PREVIEW_MAX_BYTES = 512 * 1024;
@@ -63,7 +71,7 @@ export const datasetFileContentQueryOptions = ({
             rowEnd: range?.[1],
             onComplete: (content) => {
               for (const row of content) {
-                data += `${JSON.stringify(row)}\n`;
+                data += `${serializeParquetRow(row)}\n`;
               }
             },
           });

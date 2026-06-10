@@ -23,7 +23,6 @@ import os
 import socket
 import subprocess
 import sys
-import tempfile
 import time
 import uuid
 from collections.abc import Iterator
@@ -34,11 +33,56 @@ import httpx
 import pytest
 from nemo_platform import NeMoPlatform
 
+
+def pytest_configure(config: pytest.Config) -> None:
+    """Enable mock inference provider for e2e tests.
+
+    Sets the env var and clears the Configuration cache so that
+    InferenceGatewayConfig picks up the new value. The cache must be
+    cleared because the config module evaluates ``get_service_config()``
+    at import time, which may run before this hook.
+    """
+    os.environ.setdefault("NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX", "igw-mock-")
+
+    from nemo_platform_plugin.config import Configuration
+
+    Configuration.clear_cache()
+
+
 logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL_INTERVAL = 1.0
-_SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
+
+# Number of log lines to dump from the services log on test failure.
+_TAIL_LINES_ON_FAILURE = 100
+
+_services_log_key = pytest.StashKey[Path]()
+
+
+@pytest.fixture(scope="session")
+def services_log_path(request: pytest.FixtureRequest, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    """Return a unique services log path for this session.
+
+    ``E2E_SERVICES_LOG_DIR`` (if set) is treated as a **directory**; in CI
+    the job uploads everything under it as artifacts.  When unset we
+    fall back to a pytest-managed temp directory.  Either way, each
+    session writes to a UUID-named file inside the directory so
+    parallel workers never clobber each other.
+
+    The path is stashed on the session so the
+    ``pytest_runtest_makereport`` hook can read it without requesting
+    the fixture.
+    """
+    log_dir = os.environ.get("E2E_SERVICES_LOG_DIR")
+    if log_dir:
+        directory = Path(log_dir)
+        directory.mkdir(parents=True, exist_ok=True)
+    else:
+        directory = tmp_path_factory.mktemp("e2e-services-logs")
+    path = directory / f"services-{uuid.uuid4().hex[:8]}.log"
+    request.session.stash[_services_log_key] = path
+    return path
 
 
 def _find_free_port() -> int:
@@ -83,8 +127,37 @@ def background_process(args: list[str], stdout: IO[Any] | None = None) -> Iterat
             proc.wait(timeout=5)
 
 
+# ---- Services log tail on failure ------------------------------------------
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa: ARG001
+    """Append the services log tail to the report when a test fails.
+
+    This hook is the pytest-sanctioned way to add extra sections to test
+    reports (``report.sections``).  Fixtures cannot do this because they
+    don't have access to the report object.
+    """
+    outcome = yield
+    report = outcome.get_result()
+
+    if not report.failed:
+        return
+
+    log_path = item.session.stash.get(_services_log_key, None)
+    if log_path and log_path.exists():
+        lines = log_path.read_text().splitlines(keepends=True)
+        tail = lines[-_TAIL_LINES_ON_FAILURE:]
+        if tail:
+            header = f"--- services log (last {len(tail)} lines) [{log_path}] ---"
+            report.sections.append(("Services Log", f"{header}\n{''.join(tail)}"))
+
+
+# ---- Fixtures --------------------------------------------------------------
+
+
 @pytest.fixture(scope="session")
-def _services() -> Iterator[str]:
+def _services(services_log_path: Path) -> Iterator[str]:
     """Spawn ``nemo services run`` and yield the base URL.
 
     Skipped when ``NMP_BASE_URL`` is already set (external services).
@@ -104,11 +177,11 @@ def _services() -> Iterator[str]:
     url = f"http://127.0.0.1:{port}"
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
-    args = [nemo_bin, "services", "run", "--service-group", "all", "--port", str(port)]
+    args = [nemo_bin, "services", "run", "--port", str(port)]
 
     logger.info("Starting nemo services on port %d", port)
 
-    log_path = _SERVICES_LOG
+    log_path = services_log_path
     with open(log_path, "w") as log_file, background_process(args, stdout=log_file) as proc:
         if not _wait_for_healthy(url):
             pytest.fail(

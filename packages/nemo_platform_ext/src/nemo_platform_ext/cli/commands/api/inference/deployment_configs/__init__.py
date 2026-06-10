@@ -4,7 +4,7 @@
 # NOTE: This file is auto-generated
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
@@ -41,9 +41,26 @@ def create_deployment_configs(
         ),
     ] = None,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    nim_deployment: Annotated[
+    engine: Annotated[
+        Literal["nim", "vllm", "generic"] | None,
+        typer.Option(
+            "--engine",
+            help="Inference engine selecting the compiler path for a deployment.The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them. (required)",
+        ),
+    ] = None,
+    executor_config: Annotated[
         str | None,
-        typer.Option("--nim-deployment", help="Configuration for NIM-based model deployment. (JSON string) (required)"),
+        typer.Option(
+            "--executor-config",
+            help="Compute + container settings shared by the docker and k8s executors.Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string) (required)",
+        ),
+    ] = None,
+    model_spec: Annotated[
+        str | None,
+        typer.Option(
+            "--model-spec",
+            help="What model to serve and how -- independent of the executor it runs on.Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string) (required)",
+        ),
     ] = None,
     description: Annotated[
         str | None, typer.Option("--description", help="Optional description of the deployment configuration")
@@ -74,11 +91,11 @@ def create_deployment_configs(
 ) -> None:
     """Create a new ModelDeploymentConfig (version 1).
 
-    [bold red]Required fields:[/] name, nim_deployment
+    [bold red]Required fields:[/] engine, executor_config, model_spec, name
 
     [green]Examples:[/]
     nemo inference deployment-configs create <name> --input-file config.json
-    nemo inference deployment-configs create <name> --input-data '{"name": "value", "nim_deployment": {}}'
+    nemo inference deployment-configs create <name> --input-data '{"engine": "value", "executor_config": {}, "model_spec": {}, "name": "value"}'
     echo '{"json": "data"}' | nemo inference deployment-configs create <name> --input-file -
     nemo inference deployment-configs create <name> --<option> "value"
     """
@@ -91,10 +108,14 @@ def create_deployment_configs(
     # Apply CLI flag overrides (flags take precedence)
     if workspace is not None:
         input_payload["workspace"] = workspace
+    if engine is not None:
+        input_payload["engine"] = engine
+    if executor_config is not None:
+        input_payload["executor_config"] = read_payload("executor_config", executor_config)
+    if model_spec is not None:
+        input_payload["model_spec"] = read_payload("model_spec", model_spec)
     if name is not None:
         input_payload["name"] = name
-    if nim_deployment is not None:
-        input_payload["nim_deployment"] = read_payload("nim_deployment", nim_deployment)
     if description is not None:
         input_payload["description"] = description
     if model_entity_id is not None:
@@ -106,11 +127,13 @@ def create_deployment_configs(
     # Validate required fields are present after merging
     validate_required_fields(
         input_payload,
-        ["name", "nim_deployment"],
+        ["engine", "executor_config", "model_spec", "name"],
         "inference deployment-configs create",
         {
+            "engine": "Inference engine selecting the compiler path for a deployment.The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them. (required)",
+            "executor_config": "Compute + container settings shared by the docker and k8s executors.Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string) (required)",
+            "model_spec": "What model to serve and how -- independent of the executor it runs on.Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string) (required)",
             "name": "Name of the deployment configuration. Allowed characters: letters (a-z, A-Z), digits (0-9), underscores, hyphens, and dots. (required)",
-            "nim_deployment": "Configuration for NIM-based model deployment. (JSON string) (required)",
         },
     )
 
@@ -294,9 +317,26 @@ def update_deployment_configs(
     ctx: typer.Context,
     name: Annotated[str, typer.Argument()],
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    nim_deployment: Annotated[
+    engine: Annotated[
+        Literal["nim", "vllm", "generic"] | None,
+        typer.Option(
+            "--engine",
+            help="Inference engine selecting the compiler path for a deployment.The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them. (required)",
+        ),
+    ] = None,
+    executor_config: Annotated[
         str | None,
-        typer.Option("--nim-deployment", help="Configuration for NIM-based model deployment. (JSON string) (required)"),
+        typer.Option(
+            "--executor-config",
+            help="Compute + container settings shared by the docker and k8s executors.Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string) (required)",
+        ),
+    ] = None,
+    model_spec: Annotated[
+        str | None,
+        typer.Option(
+            "--model-spec",
+            help="What model to serve and how -- independent of the executor it runs on.Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string) (required)",
+        ),
     ] = None,
     description: Annotated[
         str | None, typer.Option("--description", help="Optional description of the deployment configuration")
@@ -317,11 +357,11 @@ def update_deployment_configs(
 ) -> None:
     """Update a ModelDeploymentConfig (creates a new immutable version).
 
-    [bold red]Required fields:[/] nim_deployment
+    [bold red]Required fields:[/] engine, executor_config, model_spec
 
     [green]Examples:[/]
     nemo inference deployment-configs update <name> --input-file config.json
-    nemo inference deployment-configs update <name> --input-data '{"nim_deployment": {}}'
+    nemo inference deployment-configs update <name> --input-data '{"engine": "value", "executor_config": {}, "model_spec": {}}'
     echo '{"json": "data"}' | nemo inference deployment-configs update <name> --input-file -
     nemo inference deployment-configs update <name> --<option> "value"
     """
@@ -334,8 +374,12 @@ def update_deployment_configs(
     # Apply CLI flag overrides (flags take precedence)
     if workspace is not None:
         input_payload["workspace"] = workspace
-    if nim_deployment is not None:
-        input_payload["nim_deployment"] = read_payload("nim_deployment", nim_deployment)
+    if engine is not None:
+        input_payload["engine"] = engine
+    if executor_config is not None:
+        input_payload["executor_config"] = read_payload("executor_config", executor_config)
+    if model_spec is not None:
+        input_payload["model_spec"] = read_payload("model_spec", model_spec)
     if description is not None:
         input_payload["description"] = description
     if model_entity_id is not None:
@@ -343,10 +387,12 @@ def update_deployment_configs(
     # Validate required fields are present after merging
     validate_required_fields(
         input_payload,
-        ["nim_deployment"],
+        ["engine", "executor_config", "model_spec"],
         "inference deployment-configs update",
         {
-            "nim_deployment": "Configuration for NIM-based model deployment. (JSON string) (required)",
+            "engine": "Inference engine selecting the compiler path for a deployment.The engine determines what command, image, and env a deployment compiles to. The fields a compiler consumes are not engine-specific; engines take the same inputs (model_spec + executor_config) and differ in what they do with them. (required)",
+            "executor_config": "Compute + container settings shared by the docker and k8s executors.Both the docker and k8s executors run containers and share this shape. A future non-container executor (e.g. subprocess) would warrant turning `executor_config` into a discriminated union. (JSON string) (required)",
+            "model_spec": "What model to serve and how -- independent of the executor it runs on.Executor-invariant facts about the model. The compiler resolves the weight source per engine; serving fields override the model entity spec when set. (JSON string) (required)",
         },
     )
 

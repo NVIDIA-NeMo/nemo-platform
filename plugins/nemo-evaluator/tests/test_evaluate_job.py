@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, cast
@@ -42,6 +43,7 @@ from nemo_evaluator_sdk.metrics.exact_match import ExactMatchMetric
 from nemo_evaluator_sdk.metrics.f1 import F1Metric
 from nemo_evaluator_sdk.metrics.llm_judge import LLMJudgeMetric
 from nemo_evaluator_sdk.metrics.protocol import Metric, MetricInput, MetricOutput, MetricOutputSpec, MetricResult
+from nemo_evaluator_sdk.metrics.string_check import StringCheckMetric
 from nemo_evaluator_sdk.values import (
     Agent,
     AggregatedMetricResult,
@@ -64,6 +66,13 @@ from pydantic import BaseModel, ConfigDict
 from pytest_mock import MockerFixture
 from typer.testing import CliRunner
 
+ExampleSpecBuilder = Callable[[], dict[str, Any]]
+EXAMPLE_SPEC_PATHS = (
+    Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"),
+    Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"),
+    Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"),
+)
+
 
 def _exact_match_spec() -> dict:
     return {
@@ -80,6 +89,156 @@ def _exact_match_spec() -> dict:
 
 def _bundle_payload(metric) -> dict[str, Any]:
     return bundle_metric(metric, CloudpickleMetricBundlePackager()).model_dump(mode="json")
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _generated_exact_match_metric_spec() -> dict[str, Any]:
+    return {
+        "metrics": [
+            _bundle_payload(ExactMatchMetric(reference="{{item.expected}}", candidate="{{item.model_output}}")),
+        ],
+        "dataset": [
+            {"expected": "blue", "model_output": "Blue"},
+            {"expected": "Jupiter", "model_output": "Saturn"},
+        ],
+        "params": {"parallelism": 2},
+    }
+
+
+def _generated_exact_match_benchmark_spec() -> dict[str, Any]:
+    return {
+        "metrics": [
+            _bundle_payload(ExactMatchMetric(reference="{{item.reference}}")),
+            _bundle_payload(
+                StringCheckMetric(
+                    operation="contains",
+                    left_template="{{sample.output_text}}",
+                    right_template="{{item.required_phrase}}",
+                )
+            ),
+        ],
+        "dataset": [
+            {
+                "prompt": "Return exactly this word with no punctuation: Paris",
+                "reference": "Paris",
+                "required_phrase": "Paris",
+            },
+            {
+                "note": (
+                    "Intentional failure case: prompt asks for 'Oslo' but reference/required_phrase are "
+                    "'London' so both metrics should report a miss."
+                ),
+                "prompt": "Return exactly this word with no punctuation: Oslo",
+                "reference": "London",
+                "required_phrase": "London",
+            },
+        ],
+        "params": {
+            "parallelism": 4,
+            "limit_samples": 2,
+            "ignore_request_failure": False,
+            "request_timeout": 60,
+            "max_retries": 3,
+        },
+        "target": {
+            "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+            "name": "nvidia/nemotron-3-super-120b-a12b",
+            "api_key_secret": "NVIDIA_API_KEY",
+            "format": "nim",
+        },
+        "prompt_template": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "{{item.prompt}}",
+                }
+            ]
+        },
+    }
+
+
+def _generated_llm_as_judge_spec() -> dict[str, Any]:
+    return {
+        "metrics": [
+            _bundle_payload(
+                LLMJudgeMetric(
+                    model=Model(
+                        url="https://integrate.api.nvidia.com/v1/chat/completions",
+                        name="nvidia/nemotron-3-super-120b-a12b",
+                        api_key_secret=SecretRef(root="NVIDIA_API_KEY"),
+                        format="nim",
+                    ),
+                    scores=[
+                        RangeScore(
+                            name="helpfulness",
+                            description="How well does the response help the user?",
+                            minimum=0,
+                            maximum=4,
+                            parser=JSONScoreParser(json_path="helpfulness"),
+                        )
+                    ],
+                    prompt_template={
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": (
+                                    "You are an evaluator. Rate the response's helpfulness from 0-4. "
+                                    "Return only a JSON object with this shape: "
+                                    '{"helpfulness": <integer>}.'
+                                ),
+                            },
+                            {
+                                "role": "user",
+                                "content": (
+                                    "User prompt: {{item.input}}\n\n"
+                                    "Assistant response: "
+                                    "{{sample.output_text | default(item.output)}}\n\n"
+                                    "Rate this response."
+                                ),
+                            },
+                        ]
+                    },
+                )
+            )
+        ],
+        "dataset": [
+            {"input": "What is the capital of France?"},
+            {"input": "How do I make scrambled eggs?"},
+        ],
+        "params": {
+            "parallelism": 2,
+            "limit_samples": 2,
+            "request_timeout": 120,
+            "max_retries": 3,
+        },
+        "target": {
+            "url": "https://integrate.api.nvidia.com/v1/chat/completions",
+            "name": "nvidia/nemotron-3-super-120b-a12b",
+            "api_key_secret": "NVIDIA_API_KEY",
+            "format": "nim",
+        },
+        "prompt_template": {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "{{item.input}}",
+                }
+            ]
+        },
+    }
+
+
+def _example_spec_builders() -> dict[Path, ExampleSpecBuilder]:
+    return {
+        Path(
+            "skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"
+        ): _generated_exact_match_benchmark_spec,
+        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"): _generated_exact_match_metric_spec,
+        Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"): _generated_llm_as_judge_spec,
+    }
 
 
 def _assert_metric_step_entrypoint(job_spec: PlatformJobSpec) -> None:
@@ -250,15 +409,29 @@ def _llm_judge_ref_metric() -> LLMJudgeMetric:
 
 @pytest.mark.parametrize(
     "spec_path",
-    [
-        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_benchmark.json"),
-        Path("skills/nemo-evaluator-plugin/assets/specs/exact_match_metric.json"),
-        Path("skills/nemo-evaluator-plugin/assets/specs/llm_as_judge.json"),
-    ],
+    EXAMPLE_SPEC_PATHS,
 )
-def test_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-    payload = json.loads((repo_root / spec_path).read_text(encoding="utf-8"))
+def test_checked_in_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
+    payload = json.loads((_repo_root() / spec_path).read_text(encoding="utf-8"))
+
+    spec = EvaluateInputSpec.model_validate(payload)
+
+    assert "metric" not in payload
+    assert len(spec.metrics) >= 1
+    for metric_payload in payload["metrics"]:
+        bundle = MetricBundle.model_validate(metric_payload)
+        # Static cloudpickle fixtures are Python-minor-version specific, so
+        # this test validates the checked-in bundle envelope without hydrating.
+        assert bundle.payload.kind == "cloudpickle"
+        assert bundle.metric_type == metric_payload["metric_type"]
+
+
+@pytest.mark.parametrize(
+    "spec_path",
+    EXAMPLE_SPEC_PATHS,
+)
+def test_generated_example_spec_compiles_with_runtime_cloudpickle(spec_path: Path) -> None:
+    payload = _example_spec_builders()[spec_path]()
 
     spec = EvaluateSpec.model_validate(payload)
     compiled = compile_evaluate_job(spec)
@@ -266,12 +439,6 @@ def test_example_spec_uses_metric_bundle_shape(spec_path: Path) -> None:
     assert "metric" not in payload
     assert len(spec.metrics) >= 1
     assert PlatformJobSpec.model_validate(compiled).steps[0].config is not None
-    for metric_payload in payload["metrics"]:
-        bundle = MetricBundle.model_validate(metric_payload)
-        # Static cloudpickle fixtures are Python-minor-version specific, so
-        # this test validates the checked-in bundle envelope without hydrating.
-        assert bundle.payload.kind == "cloudpickle"
-        assert bundle.metric_type == metric_payload["metric_type"]
 
 
 def test_evaluate_job_runs_inline_exact_match_metric() -> None:

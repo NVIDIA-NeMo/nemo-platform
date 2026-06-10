@@ -17,3 +17,6 @@
 export function huggingFaceSourceFilesetName(deploymentName: string): string {
   return `${deploymentName}-hf-src`;
 }
+
+export const HUGGING_FACE_DEPLOYMENT_SOURCE_FIELD = 'studio_deployment_source';
+export const HUGGING_FACE_DEPLOYMENT_SOURCE_VALUE = 'huggingface';

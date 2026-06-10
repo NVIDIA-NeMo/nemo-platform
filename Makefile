@@ -61,12 +61,53 @@ generate-cli-commands: ## Run generation of the CLI commands
 
 .PHONY: generate-cli-reference-docs
 generate-cli-reference-docs: ## Generate the CLI reference documentation
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.md
-	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/_snippets/cli-summary.md
+	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py reference > docs/cli/reference.mdx
+	uv run --frozen packages/nemo_platform_ext/scripts/docs_generator.py summary > docs/fern/snippets/_snippets/cli-summary.mdx
 
 .PHONY: generate-config-reference-docs
 generate-config-reference-docs: ## Generate the platform config reference documentation
 	uv run --frozen generate-config-docs
+
+# ============================================================================
+# Fern documentation site (docs/fern)
+# ============================================================================
+# Convenience wrappers around `cd docs/fern && npm run ...` so contributors
+# don't have to remember the fern-api invocations. The CI workflows
+# (.github/workflows/fern-docs-*.yaml) are the source of truth. See
+# docs/fern/README.md and docs/AGENTS.md. First run on a machine:
+# `make docs-deps` (and `make docs-login` once for the Fern org).
+
+.PHONY: docs-deps
+docs-deps: ## Install the Fern docs tooling (docs/fern node deps)
+	cd docs/fern && npm ci
+
+.PHONY: docs
+docs: ## Start the Fern docs dev server (local preview, prints a localhost URL)
+	cd docs/fern && npm run dev
+
+.PHONY: docs-check
+docs-check: ## Validate the Fern docs (fern check + validate-mdx + gated-link check)
+	cd docs/fern && npm run check
+
+.PHONY: docs-broken-links
+docs-broken-links: ## Report broken links across the built docs
+	cd docs/fern && npm run broken-links
+
+.PHONY: docs-fix-links
+docs-fix-links: ## Delink references from published pages into gated (unready) pages
+	cd docs/fern && npm run fix:gated-links
+
+.PHONY: docs-preview
+docs-preview: ## Build a shared Fern preview URL (needs DOCS_FERN_TOKEN)
+	cd docs/fern && npm run preview
+
+.PHONY: docs-login
+docs-login: ## One-time Fern CLI auth (for the nvidia Fern org)
+	npx -y fern-api@latest login
+
+.PHONY: docs-publish
+docs-publish: ## Trigger the Publish Fern Docs workflow (normally runs on push to main)
+	gh workflow run publish-fern-docs.yaml
 
 .PHONY: update-cli
 update-cli: generate-cli-commands vendor-nemo-platform-ext generate-cli-reference-docs

@@ -3,21 +3,19 @@
 
 import { getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { snakeCaseToTitleCase } from '@nemo/common/src/utils/formatters';
-import type { EvaluatorModel, ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { type EvaluationJobV2 } from '@studio/selectors/evaluationJob';
+import type { EvaluateJob, Model } from '@nemo/sdk/generated/evaluator/schema';
+import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 
 /**
  * Extracts the model name from a evaluation job.
  * @param row - The evaluation job
  * @returns The model name or 'N/A' if not found
  */
-export const getModelName = (row?: EvaluationJobV2): string => {
-  if (row && 'spec' in row && row.spec && 'model' in row.spec) {
-    const model = row.spec.model;
-    if (typeof model === 'string') return model;
-    return model?.name ?? 'N/A';
+export const getModelName = (row?: EvaluateJob): string => {
+  const target = row?.spec?.target;
+  if (target && 'name' in target && typeof target.name === 'string') {
+    return target.name;
   }
-
   return 'N/A';
 };
 
@@ -48,14 +46,14 @@ export const parseEvaluationModelValue = (
 };
 
 export type BuildModelPayloadResult =
-  | { ok: true; payload: EvaluatorModel | string }
+  | { ok: true; payload: Model | string }
   | { ok: false; error: string };
 
 /**
  * Build the model payload for a metric evaluation job submission.
  *
  * For base models the value string is forwarded as a ModelRef.
- * For adapters an inline EvaluatorModel is built using the parent model's
+ * For adapters an inline Model is built using the parent model's
  * provider proxy URL so the inference gateway preserves the adapter name.
  */
 export const buildModelPayload = (

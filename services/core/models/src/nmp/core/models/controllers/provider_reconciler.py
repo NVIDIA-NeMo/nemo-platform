@@ -238,9 +238,9 @@ def _resolve_base_backend_model_id(
     """Resolve the NIM base model id ``workspace/base_name`` used in GET /v1/models parent/root/id.
 
     Matches ModelsController._retrieve_model_entity_for_config precedence:
-    ``model_entity_id`` if set; otherwise the model entity from ``nim_deployment`` (exposed here
+    ``model_entity_id`` if set; otherwise the model entity from ``model_spec`` (exposed here
     as ``base_model_entity`` when the controller prefetched it); otherwise parse
-    ``nim_deployment.model_namespace`` / ``model_name`` / ``model_revision`` (same as config
+    ``model_spec.model_namespace`` / ``model_name`` / ``model_revision`` (same as config
     create when ``model_entity_id`` is inferred from the entity store).
     """
     if config and getattr(config, "model_entity_id", None):
@@ -252,12 +252,12 @@ def _resolve_base_backend_model_id(
     if base_model_entity is not None:
         return f"{base_model_entity.workspace}/{base_model_entity.name}"
 
-    nim = getattr(config, "nim_deployment", None) if config else None
-    if nim is not None:
+    model_spec = getattr(config, "model_spec", None) if config else None
+    if model_spec is not None:
         model_workspace, model_name, _revision = parse_model_name_revision(
-            model_namespace=getattr(nim, "model_namespace", None),
-            model_name=getattr(nim, "model_name", None),
-            model_revision=getattr(nim, "model_revision", None),
+            model_namespace=getattr(model_spec, "model_namespace", None),
+            model_name=getattr(model_spec, "model_name", None),
+            model_revision=getattr(model_spec, "model_revision", None),
         )
         if model_workspace and model_name:
             return f"{model_workspace}/{model_name}"
@@ -781,7 +781,7 @@ class ModelProviderReconciler:
         if not base_id:
             logger.debug(
                 f"Deployment-backed provider {provider_id} could not resolve base backend model id "
-                "(no model_entity_id, nim_deployment model fields, or prefetched model entity); "
+                "(no model_entity_id, model_spec model fields, or prefetched model entity); "
                 "skipping base/LoRA/prompt-tuned classification"
             )
             return None
@@ -1091,12 +1091,20 @@ class ModelProviderReconciler:
                 logger.debug(f"Built api_endpoint for external provider: {provider.host_url}")
 
             elif weights_type == ModelWeightsType.HUGGINGFACE and config:
-                nim_deployment = config.nim_deployment
+                model_spec = getattr(config, "model_spec", None)
+                if model_spec is None:
+                    logger.warning("Missing model_spec for HuggingFace weights; skipping fileset_url build")
+                    return details
                 parsed_namespace, parsed_name, parsed_revision = parse_model_name_revision(
-                    model_namespace=nim_deployment.model_namespace,
-                    model_name=nim_deployment.model_name,
-                    model_revision=nim_deployment.model_revision,
+                    model_namespace=model_spec.model_namespace,
+                    model_name=model_spec.model_name,
+                    model_revision=model_spec.model_revision,
                 )
+                if not parsed_namespace or not parsed_name:
+                    logger.warning(
+                        "Incomplete model_spec namespace/name for HuggingFace weights; skipping fileset_url build"
+                    )
+                    return details
                 details.fileset_url = f"hf://{parsed_namespace}/{parsed_name}"
                 if parsed_revision:
                     details.fileset_url = f"{details.fileset_url}@{parsed_revision}"
@@ -1105,12 +1113,20 @@ class ModelProviderReconciler:
             elif weights_type == ModelWeightsType.FILES_SERVICE and config:
                 # Files service models (including SFT) use hf:// prefix since Files service exposes
                 # models via HuggingFace-compatible API
-                nim_deployment = config.nim_deployment
+                model_spec = getattr(config, "model_spec", None)
+                if model_spec is None:
+                    logger.warning("Missing model_spec for Files service weights; skipping fileset_url build")
+                    return details
                 parsed_namespace, parsed_name, parsed_revision = parse_model_name_revision(
-                    model_namespace=nim_deployment.model_namespace,
-                    model_name=nim_deployment.model_name,
-                    model_revision=nim_deployment.model_revision,
+                    model_namespace=model_spec.model_namespace,
+                    model_name=model_spec.model_name,
+                    model_revision=model_spec.model_revision,
                 )
+                if not parsed_namespace or not parsed_name:
+                    logger.warning(
+                        "Incomplete model_spec namespace/name for Files service weights; skipping fileset_url build"
+                    )
+                    return details
                 details.fileset_url = f"hf://{parsed_namespace}/{parsed_name}"
                 if parsed_revision:
                     details.fileset_url = f"{details.fileset_url}@{parsed_revision}"

@@ -1,0 +1,20 @@
+name: Label PR by type
+
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  label:
+    name: Apply conventional-commit label
+    runs-on: ubuntu-latest
+    steps:
+      - uses: ytanikin/pr-conventional-commits@6ac1cea04190fc076b0e539025501d7e7d241ac1 # 1.4.0
+        with:
+          task_types: '["feat","fix","docs","style","refactor","perf","test","build","ci","chore","revert","cp"]'
+          add_label: 'true'

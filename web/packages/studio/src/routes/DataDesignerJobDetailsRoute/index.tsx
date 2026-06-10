@@ -4,7 +4,7 @@
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { PlatformJobTerminalStatuses } from '@nemo/common/src/constants/query';
-import { useDataDesignerGetJob } from '@nemo/sdk/generated/data-designer/api';
+import { useDataDesignerGetCreateJob } from '@nemo/sdk/generated/data-designer/api';
 import { Button, Card, Stack, Text } from '@nvidia/foundations-react-core';
 import { AccessibleTitle } from '@studio/components/AccessibleTitle';
 import { Loading } from '@studio/components/Layouts/Loading';
@@ -27,7 +27,7 @@ export const DataDesignerJobDetailsRoute: FC = () => {
     isLoading,
     isError,
     refetch,
-  } = useDataDesignerGetJob(workspace, dataDesignerJobName, {
+  } = useDataDesignerGetCreateJob(workspace, dataDesignerJobName, {
     query: {
       refetchInterval: (query) => {
         const status = query.state.data?.status;

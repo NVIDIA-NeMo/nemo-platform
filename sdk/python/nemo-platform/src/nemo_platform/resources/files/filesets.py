@@ -34,6 +34,7 @@ from ..._response import (
 from ...pagination import SyncDefaultPagination, AsyncDefaultPagination
 from ...types.files import (
     FilesetPurpose,
+    FilesetMetadataParam,
     fileset_list_params,
     fileset_create_params,
     fileset_update_params,
@@ -43,7 +44,7 @@ from ...types.files.fileset import Fileset
 from ...types.files.fileset_purpose import FilesetPurpose
 from ...types.shared.generic_sort_field import GenericSortField
 from ...types.files.fileset_filter_param import FilesetFilterParam
-from ...types.files.fileset_metadata_param_param import FilesetMetadataParamParam
+from ...types.files.fileset_metadata_param import FilesetMetadataParam
 from ..._exceptions import ConflictError
 
 __all__ = ["FilesetsResource", "AsyncFilesetsResource"]
@@ -77,7 +78,7 @@ class FilesetsResource(SyncAPIResource):
         cache: bool | Omit = omit,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParamParam | Omit = omit,
+        metadata: FilesetMetadataParam | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         storage: fileset_create_params.Storage | Omit = omit,
@@ -206,7 +207,7 @@ class FilesetsResource(SyncAPIResource):
         workspace: str | None = None,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParamParam | Omit = omit,
+        metadata: FilesetMetadataParam | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
@@ -402,7 +403,7 @@ class AsyncFilesetsResource(AsyncAPIResource):
         cache: bool | Omit = omit,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParamParam | Omit = omit,
+        metadata: FilesetMetadataParam | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         storage: fileset_create_params.Storage | Omit = omit,
@@ -531,7 +532,7 @@ class AsyncFilesetsResource(AsyncAPIResource):
         workspace: str | None = None,
         custom_fields: Dict[str, object] | Omit = omit,
         description: str | Omit = omit,
-        metadata: FilesetMetadataParamParam | Omit = omit,
+        metadata: FilesetMetadataParam | Omit = omit,
         project: str | Omit = omit,
         purpose: FilesetPurpose | Omit = omit,
         # Use the following arguments if you need to pass additional parameters to the API that aren't available via kwargs.
