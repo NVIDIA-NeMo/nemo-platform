@@ -15,11 +15,27 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Dict, List, Optional
 
-from .span_group import SpanGroup as SpanGroup
-from .span_group_by import SpanGroupBy as SpanGroupBy
-from .span_groups_page import SpanGroupsPage as SpanGroupsPage
-from .group_list_params import GroupListParams as GroupListParams
-from .span_group_sort_field import SpanGroupSortField as SpanGroupSortField
-from .evaluator_result_list_response import EvaluatorResultListResponse as EvaluatorResultListResponse
+from ...._models import BaseModel
+from .span_group import SpanGroup
+from .span_group_by import SpanGroupBy
+from ...shared.pagination_data import PaginationData
+
+__all__ = ["SpanGroupsPage"]
+
+
+class SpanGroupsPage(BaseModel):
+    data: List[SpanGroup]
+
+    grouped_by: List[SpanGroupBy]
+    """Span fields used to group the matching spans."""
+
+    filter: Optional[Dict[str, object]] = None
+    """Filtering information."""
+
+    pagination: Optional[PaginationData] = None
+    """Pagination information."""
+
+    sort: Optional[str] = None
+    """The field on which the results are sorted."""

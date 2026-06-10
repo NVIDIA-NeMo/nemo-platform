@@ -8,39 +8,31 @@ from typing import Annotated, Literal
 
 import typer
 
-from nemo_platform.cli.commands.api.intake.spans import evaluator_results, groups
-from nemo_platform.cli.core.api import build_kwargs, merge_filter_dict
-from nemo_platform.cli.core.code_generator import handle_code_generation
-from nemo_platform.cli.core.context import CLIContext
-from nemo_platform.cli.core.errors import handle_errors
-from nemo_platform.cli.core.formatters import Column, check_output_columns_with_format, format_output
-from nemo_platform.cli.core.help_formatter import collect_warnings, create_typer_app
-from nemo_platform.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
-from nemo_platform.cli.core.types import (
-    EntityOutputFormatOption,
-    ListOutputFormatOption,
-    NoTruncateOption,
-    OutputColumnsOption,
-)
+from nemo_platform_ext.cli.core.api import build_kwargs, merge_filter_dict
+from nemo_platform_ext.cli.core.code_generator import handle_code_generation
+from nemo_platform_ext.cli.core.context import CLIContext
+from nemo_platform_ext.cli.core.errors import handle_errors
+from nemo_platform_ext.cli.core.formatters import Column, check_output_columns_with_format, format_output
+from nemo_platform_ext.cli.core.help_formatter import collect_warnings, create_typer_app
+from nemo_platform_ext.cli.core.pagination import PaginationType, fetch_all_pages, warn_if_more_pages
+from nemo_platform_ext.cli.core.types import ListOutputFormatOption, NoTruncateOption, OutputColumnsOption
 
-app = create_typer_app(name="spans", help="Manage spans")
-
-app.add_typer(evaluator_results.app, name="evaluator-results")
-app.add_typer(groups.app, name="groups")
+app = create_typer_app(name="groups", help="Manage groups")
 
 
 @app.command("list")
 @collect_warnings
 @handle_errors
-def list_spans(
+def list_groups(
     ctx: typer.Context,
     workspace: Annotated[str | None, typer.Option("--workspace")] = None,
+    by: Annotated[str, typer.Option("--by", help="Comma-separated span fields to group by, e.g.")] = ...,
     filter: Annotated[
         str | None,
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by session_id, trace_id, parent_span_id, project, evaluation context fields, source, kind, status, model, tool_name, provider, agent_id, agent_name, prompt_name, prompt_version, and started_at.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter spans by the same fields as the span list endpoint, then group matching spans by the comma-separated fields in the by query parameter.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
@@ -91,16 +83,15 @@ def list_spans(
         str | None, typer.Option("--filter.tool-name", rich_help_panel="Filter Options")
     ] = None,
     filter_trace_id: Annotated[str | None, typer.Option("--filter.trace-id", rich_help_panel="Filter Options")] = None,
-    mode: Annotated[Literal["summary", "detailed"] | None, typer.Option("--mode")] = None,
     page: Annotated[int | None, typer.Option("--page", help="Page number.")] = None,
     page_size: Annotated[int | None, typer.Option("--page-size", help="Page size.")] = None,
-    sort: Annotated[Literal["started_at", "-started_at"] | None, typer.Option("--sort")] = None,
+    sort: Annotated[Literal["span_count", "-span_count"] | None, typer.Option("--sort")] = None,
     output_format: ListOutputFormatOption = None,
     no_truncate: NoTruncateOption = None,
     columns: OutputColumnsOption = None,
     all_pages: Annotated[bool, typer.Option("--all-pages", help="Fetch all pages")] = False,
 ) -> None:
-    """List Spans"""
+    """List Span Groups"""
     state: CLIContext = ctx.obj
     output_format = state.get_output_format(output_format)
 
@@ -116,6 +107,7 @@ def list_spans(
 
     kwargs = build_kwargs(
         workspace=workspace,
+        by=by,
         filter=merge_filter_dict(
             filter,
             agent_id=filter_agent_id,
@@ -140,13 +132,12 @@ def list_spans(
             tool_name=filter_tool_name,
             trace_id=filter_trace_id,
         ),
-        mode=mode,
         page=page,
         page_size=page_size,
         sort=sort,
     )
 
-    if handle_code_generation(["intake", "spans"], "list", kwargs, output_format, state):
+    if handle_code_generation(["intake", "spans", "groups"], "list", kwargs, output_format, state):
         return
 
     client = state.get_client()
@@ -154,13 +145,13 @@ def list_spans(
     pagination_type = PaginationType.PAGE_NUMBER
     if all_pages:
         items = fetch_all_pages(
-            client.intake.spans.list,
+            client.intake.spans.groups.list,
             path_args=path_args,
             body_args=kwargs,
             pagination_type=pagination_type,
         )
     else:
-        items = client.intake.spans.list(*path_args, **kwargs)
+        items = client.intake.spans.groups.list(*path_args, **kwargs)
 
     format_output(
         items,
@@ -172,34 +163,3 @@ def list_spans(
     )
     if not all_pages:
         warn_if_more_pages(items, pagination_type)
-
-
-@app.command("get")
-@collect_warnings
-@handle_errors
-def retrieve_spans(
-    ctx: typer.Context,
-    span_id: Annotated[str, typer.Argument()],
-    workspace: Annotated[str | None, typer.Option("--workspace")] = None,
-    output_format: EntityOutputFormatOption = None,
-) -> None:
-    """Get Span"""
-    state: CLIContext = ctx.obj
-    output_format = state.get_output_format(output_format)
-
-    kwargs = build_kwargs(
-        workspace=workspace,
-    )
-    if handle_code_generation(["intake", "spans"], "retrieve", kwargs, output_format, state):
-        return
-
-    client = state.get_client()
-    result = client.intake.spans.retrieve(span_id, **kwargs)
-
-    format_output(
-        result,
-        is_list=False,
-        output_format=output_format,
-        no_truncate=state.get_no_truncate(),
-        timestamp_format=state.get_timestamp_format(),
-    )
