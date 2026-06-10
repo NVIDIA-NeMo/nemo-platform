@@ -30,6 +30,7 @@ jobs:
         if: ${{ github.event_name != 'merge_group' }}
         with:
           fetch-depth: 0
+          persist-credentials: false
       - name: TruffleHog OSS
         if: ${{ github.event_name != 'merge_group' }}
         id: trufflehog
