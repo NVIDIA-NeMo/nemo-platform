@@ -100,6 +100,7 @@ def wait_for_model_entity(
     model_name: str,
     timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
+    ensure_virtual_model: bool = False,
 ) -> None:
     """Poll until a model entity is available in IGW's model cache.
 
@@ -117,6 +118,9 @@ def wait_for_model_entity(
         model_name: The model entity name (without workspace prefix).
         timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
+        ensure_virtual_model: Recreate the passthrough VirtualModel before
+            each poll. Useful for E2E tests where controller cleanup and IGW
+            cache refresh can race helper-created VMs.
 
     Raises:
         TimeoutError: If the model entity is not available within the timeout.
@@ -126,7 +130,10 @@ def wait_for_model_entity(
 
     while time.time() - start < timeout:
         try:
-            sdk.inference.gateway.openai.v1.models.get(
+            if ensure_virtual_model:
+                _create_passthrough_virtual_model_once(sdk, workspace, model_name)
+            sdk.inference.gateway.model.get(
+                "v1/models",
                 name=model_name,
                 workspace=workspace,
             )
@@ -186,40 +193,43 @@ def wait_for_virtual_model(
     raise TimeoutError(f"VirtualModel {workspace}/{name} not available after {timeout}s. Last error: {last_error}")
 
 
-def wait_for_igw_virtual_model(
+def _create_passthrough_virtual_model_once(sdk: NeMoPlatform, workspace: str, name: str) -> None:
+    try:
+        sdk.inference.virtual_models.create(
+            workspace=workspace,
+            name=name,
+            default_model_entity=f"{workspace}/{name}",
+            autoprovisioned=True,
+        )
+    except ConflictError:
+        pass
+
+
+def ensure_passthrough_virtual_model(
     sdk: NeMoPlatform,
     workspace: str,
     name: str,
-    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
+    timeout: float = 20,
     poll_interval: float = 0.5,
 ) -> None:
-    """Poll until a VirtualModel is visible in IGW's in-process cache.
+    """Create or confirm an autoprovisioned passthrough VirtualModel.
 
-    Model-entity and OpenAI inference proxy routes resolve the VirtualModel from
-    IGW's cache (refreshed on a background interval, default 3s) before proxying.
-    E2E tests that create a provider and immediately fire inference requests can
-    race that refresh; this helper bounds the race.
-
-    Args:
-        sdk: The NeMoPlatform SDK client.
-        workspace: The workspace containing the VirtualModel.
-        name: The VirtualModel name (without workspace prefix).
-        timeout: Maximum time to wait in seconds (default: 60).
-        poll_interval: Time between polls in seconds (default: 0.5).
-
-    Raises:
-        TimeoutError: If the VirtualModel is not available in IGW within the timeout.
+    E2E tests can race the models controller: the controller may rediscover a
+    mock provider and briefly delete a helper-created VM before the test starts
+    routing by that entity name. Retrying create+retrieve makes the helper
+    converge on the entity-specific VM the test requested.
     """
     start = time.time()
     last_error: Exception | None = None
 
     while time.time() - start < timeout:
         try:
-            sdk.inference.gateway.model.get(
-                "v1/models",
-                name=name,
-                workspace=workspace,
-            )
+            _create_passthrough_virtual_model_once(sdk, workspace, name)
+        except Exception:
+            raise
+
+        try:
+            sdk.inference.virtual_models.retrieve(name=name, workspace=workspace)
             return
         except NotFoundError as e:
             last_error = e
@@ -228,9 +238,7 @@ def wait_for_igw_virtual_model(
         except Exception:
             raise
 
-    raise TimeoutError(
-        f"VirtualModel {workspace}/{name} not available in IGW after {timeout}s. Last error: {last_error}"
-    )
+    raise TimeoutError(f"VirtualModel {workspace}/{name} not available after {timeout}s. Last error: {last_error}")
 
 
 def short_unique_name(prefix: str, max_length: int = 32) -> str:
@@ -568,6 +576,16 @@ def add_mock_provider(
         ],
     )
 
+    # Create a passthrough VirtualModel via the SDK for every served entity, mirroring
+    # the production provider reconciler's _ensure_passthrough_virtual_model behavior.
+    # The IGW now requires every inference request to resolve to a VirtualModel, and
+    # the IGW's background cache refresher rebuilds the VM map from the SDK list every
+    # few seconds — so any local-only seed would be wiped out at the next refresh tick.
+    # Going through the SDK ensures the VM exists in the entity store and survives refreshes.
+    # 409 ConflictError is treated as idempotent (matches the production reconciler).
+    for entity_name in served_models:
+        ensure_passthrough_virtual_model(sdk, workspace, entity_name)
+
     try:
         # From integration tests, we can directly update the local model cache to speed up subsequent requests
         model_cache = global_model_cache()
@@ -606,8 +624,7 @@ def add_mock_provider(
         # VirtualModels asynchronously after update_status; inference routes require both
         # the model entity and its VirtualModel to be visible before requests succeed.
         for entity_name in served_models.keys():
-            wait_for_virtual_model(sdk, workspace, entity_name)
-            wait_for_model_entity(sdk, workspace, entity_name)
-            wait_for_igw_virtual_model(sdk, workspace, entity_name)
+            wait_for_model_entity(sdk, workspace, entity_name, timeout=60, ensure_virtual_model=True)
+            ensure_passthrough_virtual_model(sdk, workspace, entity_name, timeout=60)
 
     return provider
