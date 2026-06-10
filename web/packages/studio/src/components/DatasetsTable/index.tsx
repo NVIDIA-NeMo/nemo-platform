@@ -38,6 +38,7 @@ import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { LINK_DOCS_DATASETS } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { DatasetBulkDeleteModal } from '@studio/routes/FilesetListRoute/DatasetBulkDeleteModal';
+import { getNewFilesetRoute } from '@studio/routes/utils';
 import { formatStorageBackendLabel, type StorageBackend } from '@studio/util/storageBackend';
 import { keepPreviousData } from '@tanstack/react-query';
 import { Cloud, X, Database, Trash } from 'lucide-react';
@@ -51,7 +52,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 type ModalOpenState = 'delete' | 'edit' | 'none';
 
@@ -536,8 +537,16 @@ export const DatasetsTable: FC<DatasetsTableProps> = ({
                   actions={
                     <>
                       <DocumentationButton href={LINK_DOCS_DATASETS} />
-                      <NewDatasetButton />
-                      {FILESET_DETAILS_ENABLED && <NewModelFilesetButton />}
+                      {FILESET_DETAILS_ENABLED ? (
+                        <>
+                          <NewDatasetButton />
+                          <NewModelFilesetButton />
+                        </>
+                      ) : (
+                        <Button asChild color="brand">
+                          <Link to={getNewFilesetRoute(workspace)}>Create Fileset</Link>
+                        </Button>
+                      )}
                     </>
                   }
                 />
