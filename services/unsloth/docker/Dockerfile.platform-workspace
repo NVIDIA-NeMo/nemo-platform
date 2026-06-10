@@ -12,7 +12,6 @@ COPY services/unsloth/docker/pyproject.workspace.toml pyproject.toml
 # trees so the symlink resolves at build time.
 COPY docs docs
 COPY openapi openapi
-COPY mkdocs.yml mkdocs.yml
 COPY packages/nmp_build_tools packages/nmp_build_tools
 COPY packages/nmp_common packages/nmp_common
 COPY packages/nemo_platform_plugin packages/nemo_platform_plugin
