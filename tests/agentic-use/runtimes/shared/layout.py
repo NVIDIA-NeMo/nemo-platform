@@ -45,7 +45,15 @@ def resolve_run_layout(
 ) -> AgenticRunLayout:
     """Resolve or create the on-disk layout for one task attempt."""
     if config is not None and config.output_dir is not None:
-        run_dir = Path(config.output_dir)
+        run_subdir = task.metadata.get("agentic_use_run_subdir")
+        if isinstance(run_subdir, str) and run_subdir:
+            base = Path(config.output_dir).resolve()
+            candidate = (base / run_subdir).resolve()
+            if not candidate.is_relative_to(base):
+                raise ValueError(f"Invalid run_subdir escapes output_dir: {run_subdir!r}")
+            run_dir = candidate
+        else:
+            run_dir = Path(config.output_dir)
     else:
         run_dir = new_run_dir(default_jobs_dir(shared), task.id)
 

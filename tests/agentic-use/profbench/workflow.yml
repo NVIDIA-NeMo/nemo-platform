@@ -1,0 +1,25 @@
+# Reference NAT workflow configuration for the ProfBench task directory.
+#
+# `run_agent_eval.py --task profbench --backend workflow` does not execute this
+# file. ProfBench prompts are no-tool model-answer tasks, so the integrated path
+# uses the SDK `Model` target directly instead of exposing NeMo MCP tools.
+
+llms:
+  primary_llm:
+    _type: nim
+    model_name: nvidia/nemotron-3-nano-30b-a3b
+    max_tokens: 32768
+    temperature: 0.0
+    chat_template_kwargs:
+      enable_thinking: true
+
+workflow:
+  _type: tool_calling_agent
+  llm_name: primary_llm
+  tool_names: []
+  system_prompt: |
+    You are answering ProfBench benchmark prompts. Solve the user's task and
+    return only the final answer text. Do not include tool logs, markdown
+    fences, parser labels, or commentary.
+  verbose: true
+  max_iterations: 3

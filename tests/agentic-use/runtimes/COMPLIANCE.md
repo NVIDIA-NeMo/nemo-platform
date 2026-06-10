@@ -35,7 +35,7 @@ metric scoring row.
 | `workflow` | `NatWorkflowAttemptRuntime` | Implemented |
 | `aut` | `AutAgentAttemptRuntime` | Implemented |
 | `claude-code` | `ClaudeCodeAgentAttemptRuntime` | Scaffold |
-| `codex` | `CodexAgentAttemptRuntime` | Scaffold |
+| `codex` | `CodexAgentAttemptRuntime` | Thin SDK Codex wrapper |
 | `cursor-agent` | `CursorAgentAttemptRuntime` | Scaffold |
 
 ## `nat_runner` function → module
@@ -103,7 +103,7 @@ expects the portable `CapturedAgentAttempt` type.
 
 | Doc section | Status in this package |
 |-------------|------------------------|
-| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; 3 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/result_adapter.py`, exposed as the first-class **stored-attempt scoring** path via `AgenticEvalOrchestrator.score_captured_attempts` (and `run_agent_eval.py --rescore-dir`) — no Docker/agent execution. Remaining: 3 CLI backends + converging `nat_runner.main` onto the orchestrator. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
+| **B1** wrap `nat_runner` as attempt runtime(s) | In progress — AGENT phase extracted to per-backend runtimes (`workflow`, `aut` done; Codex delegates to the SDK Codex runtime; 2 CLI backends scaffolded); live VERIFY wired through the B2 boundary; `result.json` import path added via `shared/result_adapter.py`, exposed as the first-class **stored-attempt scoring** path via `AgenticEvalOrchestrator.score_captured_attempts` (and `run_agent_eval.py --rescore-dir`) — no Docker/agent execution. Remaining: 2 CLI backends + converging `nat_runner.main` onto the orchestrator. Note: doc proposes one `NatRunnerAttemptRuntime`; we deliberately split per backend per user direction. |
 | **B2** `EnvironmentProvider` boundary | **Implemented** — `shared/environment.py` defines `AgentEnvironmentProvider`/`AgentEnvironmentHandle` below `AgentAttemptRuntime`; `DockerEnvironmentProvider` wraps `shared/docker.py`. `workflow` + `aut` runtimes execute through the boundary (provider is injectable). NeMo Gym/local providers can now be added without touching runtimes. |
 | **B3** standardize environment authoring | **Implemented (minimal)** — `shared/environment_spec.py` adds a declarative `environment.yaml` (`image` + `profile` + python `dependencies` + `setup`) with a `dockerfile:` escape hatch and backward-compatible auto-detection of `environment/Dockerfile`. `plan_task_build` resolves a spec to a `BuildPlan` (image-based specs generate a tiny derived Dockerfile); the orchestrator BUILD step uses it. `setup` steps are carried as plan/label metadata, not executed (runtime concern). |
 | **B4** productize results + CI | **Implemented** — SDK `persist_run` writes `tasks/attempts/results.jsonl`, `summary.json`, `report.html`; `shared/reporting.py` adds candidate-vs-baseline gating (pass-rate, token/cost, runtime tie-breaker) + deterministic provenance checks, persisted as `gate.json` by the orchestrator. `result.json` → attempt adapter + `VerifierRewardMetric` compatibility metric also done. |

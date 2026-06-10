@@ -22,7 +22,7 @@ runtimes/
   workflow/         # NatWorkflowAttemptRuntime (implemented)
   aut/              # AutAgentAttemptRuntime (implemented)
   claude_code/      # ClaudeCodeAgentAttemptRuntime (scaffold)
-  codex/            # CodexAgentAttemptRuntime (scaffold)
+  codex/            # CodexAgentAttemptRuntime (thin SDK Codex wrapper)
   cursor_agent/     # CursorAgentAttemptRuntime (scaffold)
   orchestrator.py   # BUILD (env spec) + AgentEvaluator + gate; verify runs in the runtime
 ```
@@ -36,6 +36,40 @@ uv run python tests/agentic-use/runtimes/run_agent_eval.py \
   --task workspace-basic-cli-easy \
   --backend workflow \
   --skip-build
+```
+
+## Example: ProfBench via workflow backend
+
+ProfBench is exposed as an agentic-use task name. ProfBench rows are loaded
+through the SDK `ProfBenchAgentEvalBenchmark` adapter and scored with the live
+judge. For `--backend workflow`, candidate answers are generated through the SDK
+`Model` target using `--model`/`--agent-model`; the NAT MCP tool workflow is not
+used for ProfBench because the benchmark prompts are no-tool model-answer tasks:
+
+```bash
+NVIDIA_API_KEY=... \
+uv run python tests/agentic-use/runtimes/run_agent_eval.py \
+  --task profbench \
+  --backend workflow \
+  --allow-dirty \
+  --model meta/llama-3.3-70b-instruct \
+  --limit 1
+```
+
+## Example: ProfBench via Codex backend
+
+Codex is available through the SDK Codex runtime wrapper. By default this uses
+the host `codex exec` command and local Codex auth, while ProfBench scoring still
+uses the live judge configured by `NVIDIA_API_KEY`/`--judge-model-*`:
+
+```bash
+NVIDIA_API_KEY=... \
+uv run python tests/agentic-use/runtimes/run_agent_eval.py \
+  --task profbench \
+  --backend codex \
+  --allow-dirty \
+  --agent-model gpt-5.5 \
+  --limit 1
 ```
 
 Programmatic use:
@@ -62,14 +96,14 @@ Backend runtimes (one class per `nat_runner --agent-backend`):
 | `workflow` | `NatWorkflowAttemptRuntime` | Implemented |
 | `aut` | `AutAgentAttemptRuntime` | Implemented |
 | `claude-code` | `ClaudeCodeAgentAttemptRuntime` | Scaffold |
-| `codex` | `CodexAgentAttemptRuntime` | Scaffold |
+| `codex` | `CodexAgentAttemptRuntime` | Implemented as thin SDK Codex wrapper |
 | `cursor-agent` | `CursorAgentAttemptRuntime` | Scaffold |
 
 Design-doc implementation path (see [COMPLIANCE.md](./COMPLIANCE.md) for detail):
 
 | Phase | Item | Status |
 |-------|------|--------|
-| B1 | Wrap `nat_runner` as `AgentAttemptRuntime`(s) | In progress (workflow + aut done; 3 CLI backends scaffolded) |
+| B1 | Wrap `nat_runner` as `AgentAttemptRuntime`(s) | In progress (workflow + aut done; Codex delegates to SDK runtime; 2 CLI backends scaffolded) |
 | B2 | `EnvironmentProvider` boundary | Implemented |
 | B3 | Standardize environment authoring | Implemented (minimal) |
 | B4 | Productize results + CI (persistence, gating, provenance) | Implemented |

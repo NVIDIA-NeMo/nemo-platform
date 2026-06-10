@@ -114,6 +114,15 @@ def test_runtime_for_backend_selects_workflow() -> None:
     assert isinstance(runtime, NatWorkflowAttemptRuntime)
 
 
+def test_runtime_for_backend_selects_codex_wrapper() -> None:
+    from runtimes import runtime_for_backend
+    from runtimes.codex.runtime import CodexAgentAttemptRuntime
+
+    runtime = runtime_for_backend("codex", backend_kwargs={"agent_model": "gpt-test"})
+    assert isinstance(runtime, CodexAgentAttemptRuntime)
+    assert runtime.config.agent_model == "gpt-test"
+
+
 def test_runtime_for_backend_rejects_unknown() -> None:
     from runtimes import runtime_for_backend
 
@@ -162,6 +171,67 @@ def test_build_agent_eval_attempt_metadata_matches_captured_schema(tmp_path: Pat
 
 
 @pytest.mark.asyncio
+async def test_codex_runtime_delegates_to_sdk_cli(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalAttempt, AgentEvalTask, AgentOutput
+    from runtimes.codex import runtime as codex_runtime
+    from runtimes.shared.config import CodexRuntimeConfig
+
+    captured: dict[str, object] = {}
+
+    class FakeSdkCodexCliAgentRuntime:
+        def __init__(self, *, model: str | None = None) -> None:
+            captured["model"] = model
+
+        async def run_tasks(self, tasks: list[AgentEvalTask], config: object = None) -> list[AgentEvalAttempt]:
+            captured["tasks"] = tasks
+            captured["config"] = config
+            return [
+                AgentEvalAttempt(
+                    id="task-1:codex",
+                    task_id="task-1",
+                    output=AgentOutput(text="answer"),
+                )
+            ]
+
+    monkeypatch.setattr(codex_runtime, "SdkCodexCliAgentRuntime", FakeSdkCodexCliAgentRuntime)
+
+    runtime = codex_runtime.CodexAgentAttemptRuntime(CodexRuntimeConfig(agent_model="gpt-test"))
+    task = AgentEvalTask(id="task-1", intent="answer", inputs={})
+    attempts = await runtime.run_tasks([task], config="config")  # type: ignore[arg-type]
+
+    assert captured["model"] == "gpt-test"
+    assert captured["tasks"] == [task]
+    assert captured["config"] == "config"
+    assert attempts[0].output is not None
+    assert attempts[0].output.text == "answer"
+
+
+def test_codex_runtime_uses_docker_delegate_with_auth_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    from runtimes.codex import runtime as codex_runtime
+    from runtimes.shared.config import CodexRuntimeConfig
+
+    captured: dict[str, object] = {}
+
+    class FakeSdkCodexDockerCliAgentRuntime:
+        def __init__(self, *, model: str | None = None, auth_path: Path | None = None) -> None:
+            captured["model"] = model
+            captured["auth_path"] = auth_path
+
+        async def run_tasks(self, tasks: list[object], config: object = None) -> list[object]:
+            return []
+
+    monkeypatch.setattr(codex_runtime, "SdkCodexDockerCliAgentRuntime", FakeSdkCodexDockerCliAgentRuntime)
+    auth_path = tmp_path / "auth.json"
+
+    runtime = codex_runtime.CodexAgentAttemptRuntime(
+        CodexRuntimeConfig(agent_model="gpt-test", codex_auth_json=auth_path)
+    )
+
+    assert runtime.config.codex_auth_json == auth_path
+    assert captured == {"model": "gpt-test", "auth_path": auth_path}
+
+
+@pytest.mark.asyncio
 async def test_aut_runtime_run_tasks_with_mocked_env(tmp_path: Path) -> None:
     from runtimes.aut.runtime import AutAgentAttemptRuntime
     from runtimes.shared.config import AutRuntimeConfig
@@ -180,6 +250,201 @@ async def test_aut_runtime_run_tasks_with_mocked_env(tmp_path: Path) -> None:
     assert attempts[0].metadata["agent_runtime"] == "aut"
     assert attempts[0].metadata["agent_ok"] is True
     assert captured["env"]["AUT_AGENT_NAME"] == "test-agent"  # type: ignore[index]
+
+
+def test_profbench_runtime_task_metadata_points_to_shared_env() -> None:
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalTask
+    from runtimes import profbench as profbench_runtime
+
+    task = AgentEvalTask(id="profbench-row-1", intent="answer", inputs={"prompt": "answer"})
+    runtime_task = profbench_runtime._profbench_runtime_task(task)
+
+    assert runtime_task.metadata["task_dir"] == str(profbench_runtime.PROFBENCH_TASK_DIR.resolve())
+    assert runtime_task.metadata["instruction_path"] == str(
+        (profbench_runtime.PROFBENCH_TASK_DIR / "instruction.md").resolve()
+    )
+    assert runtime_task.metadata["agentic_use_run_subdir"] == "agent-runtime/profbench-row-1"
+
+
+def test_profbench_output_dir_resolves_to_absolute_path(tmp_path: Path) -> None:
+    from runtimes import profbench as profbench_runtime
+
+    output_dir, run_id = profbench_runtime._resolve_profbench_run(tmp_path / "runs", "run-1")
+
+    assert run_id == "run-1"
+    assert output_dir == (tmp_path / "runs" / "run-1").resolve()
+    assert output_dir.is_absolute()
+
+
+@pytest.mark.asyncio
+async def test_profbench_target_uses_single_shared_image(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalTask
+    from runtimes import profbench as profbench_runtime
+
+    built: list[str] = []
+
+    def fake_execute_build_plan(plan: object) -> None:
+        built.append(plan.image_tag)  # type: ignore[attr-defined]
+
+    class FakeTarget:
+        environment: object = object()
+
+    monkeypatch.setattr(profbench_runtime, "execute_build_plan", fake_execute_build_plan)
+
+    target = profbench_runtime._prepare_target(FakeTarget(), skip_build=False)
+    handle = await target.environment.prepare(AgentEvalTask(id="dataset-row", intent="answer", inputs={}))  # type: ignore[attr-defined]
+
+    assert built == [profbench_runtime.PROFBENCH_IMAGE_TAG]
+    assert handle.image == profbench_runtime.PROFBENCH_IMAGE_TAG
+
+
+@pytest.mark.asyncio
+async def test_run_agent_eval_routes_profbench_to_benchmark_runner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from nemo_evaluator_sdk.agent_eval import AgentEvalBenchmarkReports
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalRunResult, AgentEvalSummary
+    from nemo_evaluator_sdk.values import Model, RunConfigOnlineModel
+    from runtimes import run_agent_eval
+
+    captured: dict[str, object] = {}
+
+    def fake_runtime_for_backend(backend: str, **kwargs: object) -> object:
+        raise AssertionError(f"ProfBench workflow must not load NAT runtime: {backend}, {kwargs}")
+
+    async def fake_run_profbench_agent_eval(**kwargs: object) -> tuple[AgentEvalRunResult, AgentEvalBenchmarkReports]:
+        captured["profbench_kwargs"] = kwargs
+        return (
+            AgentEvalRunResult(
+                run_id="run-1",
+                tasks=[],
+                attempts=[],
+                results=[],
+                summary=AgentEvalSummary(),
+            ),
+            AgentEvalBenchmarkReports(paths=[tmp_path / "sdk-report.html", tmp_path / "report.html"]),
+        )
+
+    monkeypatch.setattr(run_agent_eval, "runtime_for_backend", fake_runtime_for_backend)
+    monkeypatch.setattr(run_agent_eval, "run_profbench_agent_eval", fake_run_profbench_agent_eval)
+
+    exit_code = await run_agent_eval._main(
+        [
+            "--task",
+            "profbench",
+            "--backend",
+            "workflow",
+            "--model",
+            "meta/test",
+            "--limit",
+            "1",
+            "--allow-dirty",
+        ]
+    )
+
+    assert exit_code == 0
+    kwargs = captured["profbench_kwargs"]
+    target = kwargs["target"]
+    assert isinstance(target, Model)
+    assert target.name == "meta/test"
+    assert isinstance(kwargs["params"], RunConfigOnlineModel)  # type: ignore[index]
+    assert kwargs["params"].inference.max_tokens == run_agent_eval.DEFAULT_PROFBENCH_CANDIDATE_MAX_TOKENS  # type: ignore[index,union-attr]
+    assert kwargs["config"].limit == 1  # type: ignore[index,union-attr]
+    assert kwargs["config"].judge_api_key_env == "NVIDIA_API_KEY"  # type: ignore[index,union-attr]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_eval_routes_profbench_codex_to_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    from nemo_evaluator_sdk.agent_eval import AgentEvalBenchmarkReports
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalRunResult, AgentEvalSummary
+    from runtimes import run_agent_eval
+
+    captured: dict[str, object] = {}
+    fake_runtime = object()
+
+    def fake_runtime_for_backend(backend: str, **kwargs: object) -> object:
+        captured["backend"] = backend
+        captured["runtime_kwargs"] = kwargs
+        return fake_runtime
+
+    async def fake_run_profbench_agent_eval(**kwargs: object) -> tuple[AgentEvalRunResult, AgentEvalBenchmarkReports]:
+        captured["profbench_kwargs"] = kwargs
+        return (
+            AgentEvalRunResult(
+                run_id="run-1",
+                tasks=[],
+                attempts=[],
+                results=[],
+                summary=AgentEvalSummary(),
+            ),
+            AgentEvalBenchmarkReports(paths=[tmp_path / "sdk-report.html", tmp_path / "report.html"]),
+        )
+
+    monkeypatch.setattr(run_agent_eval, "runtime_for_backend", fake_runtime_for_backend)
+    monkeypatch.setattr(run_agent_eval, "run_profbench_agent_eval", fake_run_profbench_agent_eval)
+
+    exit_code = await run_agent_eval._main(
+        [
+            "--task",
+            "profbench",
+            "--backend",
+            "codex",
+            "--agent-model",
+            "gpt-test",
+            "--limit",
+            "1",
+        ]
+    )
+
+    assert exit_code == 0
+    assert captured["backend"] == "codex"
+    assert captured["profbench_kwargs"]["target"] is fake_runtime  # type: ignore[index]
+    assert captured["profbench_kwargs"]["params"] is None  # type: ignore[index]
+
+
+@pytest.mark.asyncio
+async def test_run_agent_eval_keeps_non_profbench_orchestrator_path(monkeypatch: pytest.MonkeyPatch) -> None:
+    from nemo_evaluator_sdk.agent_eval.types import AgentEvalRunResult, AgentEvalSummary
+    from runtimes import run_agent_eval
+
+    captured: dict[str, object] = {}
+    fake_runtime = object()
+
+    def fake_runtime_for_backend(backend: str, **kwargs: object) -> object:
+        captured["backend"] = backend
+        return fake_runtime
+
+    class FakeOrchestrator:
+        def __init__(self, runtime: object, *, config: object) -> None:
+            captured["runtime"] = runtime
+            captured["orchestrator_config"] = config
+
+        async def run_agent_eval(self, task: str, *, output_dir: Path | None = None) -> AgentEvalRunResult:
+            captured["task"] = task
+            captured["output_dir"] = output_dir
+            return AgentEvalRunResult(
+                run_id="run-1",
+                tasks=[],
+                attempts=[],
+                results=[],
+                summary=AgentEvalSummary(),
+            )
+
+    monkeypatch.setattr(run_agent_eval, "runtime_for_backend", fake_runtime_for_backend)
+    monkeypatch.setattr(run_agent_eval, "AgenticEvalOrchestrator", FakeOrchestrator)
+
+    exit_code = await run_agent_eval._main(
+        ["--task", "workspace-basic-cli-easy", "--backend", "workflow"]
+    )
+
+    assert exit_code == 0
+    assert captured["backend"] == "workflow"
+    assert captured["runtime"] is fake_runtime
+    assert captured["task"] == "workspace-basic-cli-easy"
 
 
 def test_attempt_from_result_maps_status_and_measurements(tmp_path: Path) -> None:
@@ -303,6 +568,8 @@ def _make_run_result(*, reward: float, total_tokens: int, runtime_sec: float, co
         },
     )
     task_result = AgentEvalTaskResult(
+        id="result-1",
+        run_id="run-1",
         task_id="demo",
         attempt_id="demo:workflow",
         metric_type="agentic_use_verifier_reward",
