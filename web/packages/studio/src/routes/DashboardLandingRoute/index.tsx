@@ -9,7 +9,7 @@ import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
-import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
+import { FlaskConical, HatGlasses, KeyRound, Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
   type FC,
@@ -29,19 +29,19 @@ interface PromptSuggestion {
 
 const PROMPT_SUGGESTIONS: PromptSuggestion[] = [
   {
-    title: 'Explore repo',
-    prompt: 'Give me a concise map of this repo and the main places I should know about.',
-    icon: <Search size={18} />,
+    title: 'Create an agent',
+    prompt: 'Create a new agent in this workspace and deploy it once it is ready.',
+    icon: <HatGlasses size={18} />,
   },
   {
-    title: 'Draft a change',
-    prompt: 'Help me plan and implement the next small product improvement in nemo-platform.',
-    icon: <Hammer size={18} />,
+    title: 'Start an evaluation',
+    prompt: 'Start an evaluation for one of my agents using an example evaluation config.',
+    icon: <FlaskConical size={18} />,
   },
   {
-    title: 'Review recent work',
-    prompt: 'Review the current working tree and call out anything risky or unfinished.',
-    icon: <GitBranch size={18} />,
+    title: 'Set up a secret',
+    prompt: 'Help me create a workspace secret for an API key.',
+    icon: <KeyRound size={18} />,
   },
 ];
 
