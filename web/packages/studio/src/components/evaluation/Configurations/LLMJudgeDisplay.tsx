@@ -4,14 +4,23 @@
 import { Stack, Text } from '@nvidia/foundations-react-core';
 import { Pre } from '@studio/components/common/Pre';
 import { ReadOnlyField } from '@studio/components/common/ReadOnlyField';
-import {
-  getModelNameFromLLMJudgeParams,
-  getParserPatternFromLLMJudgeParams,
-  getScoreTypeFromLLMJudgeParams,
-  getSystemMessageFromLLMJudgeParams,
-  getUserMessageFromLLMJudgeParams,
-} from '@studio/selectors/evaluationConfigMetrics';
 import { FC } from 'react';
+
+const getStr = (params: Record<string, unknown> | undefined, key: string): string | undefined => {
+  const val = params?.[key];
+  return typeof val === 'string' ? val : undefined;
+};
+
+const getModelNameFromLLMJudgeParams = (params: Record<string, unknown> | undefined) =>
+  getStr(params, 'model');
+const getSystemMessageFromLLMJudgeParams = (params: Record<string, unknown> | undefined) =>
+  getStr(params, 'system_message');
+const getUserMessageFromLLMJudgeParams = (params: Record<string, unknown> | undefined) =>
+  getStr(params, 'user_message');
+const getScoreTypeFromLLMJudgeParams = (params: Record<string, unknown> | undefined) =>
+  getStr(params, 'score_type');
+const getParserPatternFromLLMJudgeParams = (params: Record<string, unknown> | undefined) =>
+  getStr(params, 'parser_pattern');
 
 export interface LLMJudgeDisplayProps {
   metricName: string;

@@ -2,7 +2,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Seed local Intake with valid experiment telemetry and verify API rollups."""
+"""Seed local Intake with valid experiment telemetry and verify API rollups.
+
+A small, parameterized smoke test: seeds one experiment (attached to one group)
+and ingests sessions via ATIF, then polls the experiment read endpoint until the
+ClickHouse-hydrated rollup converges. Useful for verifying the rollup pipeline
+at varying session counts.
+
+For a curated multi-group dataset for the Studio UI team, see
+``seed_experiments_demo.py`` in the same directory.
+"""
 
 from __future__ import annotations
 
@@ -18,6 +27,7 @@ import httpx
 DEFAULT_BASE_URL = "http://127.0.0.1:8080"
 DEFAULT_WORKSPACE = "default"
 DEFAULT_EXPERIMENT = "rollup-smoke-exp"
+DEFAULT_GROUP = "rollup-smoke-group"
 DATASET_NAME = "rollup-smoke-dataset"
 AGENT_NAME = "sample-agent"
 AGENT_VERSION = "1.0.0"
@@ -51,7 +61,8 @@ def main() -> None:
     _preflight(base_url)
 
     with httpx.Client(timeout=10.0) as client:
-        _upsert_experiment(client, base_url, args.workspace, args.experiment)
+        group_id = _upsert_group(client, base_url, args.workspace)
+        _upsert_experiment(client, base_url, args.workspace, args.experiment, group_id=group_id)
         started_at = datetime.now(timezone.utc).replace(microsecond=0)
         for index, (run_id, test_case_id, score, cost_usd, latency_ms) in enumerate(sample_rows):
             response = client.post(
@@ -91,13 +102,31 @@ def _preflight(base_url: str) -> None:
         raise SystemExit(f"Cannot reach NeMo Platform at {base_url}: {exc}") from exc
 
 
-def _upsert_experiment(client: httpx.Client, base_url: str, workspace: str, experiment: str) -> None:
+def _upsert_group(client: httpx.Client, base_url: str, workspace: str) -> str:
+    body = {"name": DEFAULT_GROUP, "description": "Smoke-test group for the rollup script."}
+    url = _intake_url(base_url, workspace, "/experiment-groups")
+    response = client.post(url, json=body)
+    if response.status_code == 409:
+        response = client.put(_intake_url(base_url, workspace, f"/experiment-groups/{DEFAULT_GROUP}"), json=body)
+    response.raise_for_status()
+    return response.json()["id"]
+
+
+def _upsert_experiment(
+    client: httpx.Client,
+    base_url: str,
+    workspace: str,
+    experiment: str,
+    *,
+    group_id: str,
+) -> None:
     body = {
         "name": experiment,
         "agent_name": AGENT_NAME,
         "agent_version": AGENT_VERSION,
         "dataset_name": DATASET_NAME,
         "dataset_version": "v1",
+        "experiment_group_id": group_id,
         "metadata": {"seeded_by": "services/intake/scripts/spans/seed_experiment_rollup_data.py"},
     }
     response = client.post(_intake_url(base_url, workspace, "/experiments"), json=body)

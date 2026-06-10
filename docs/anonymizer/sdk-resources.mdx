@@ -1,0 +1,158 @@
+---
+title: "Anonymizer NeMo Platform SDK Resources"
+description: ""
+---
+<a id="anonymizer-nmp-sdk-resources"></a>
+
+The `anonymizer.config` module (from the [NVIDIA NeMo Anonymizer library](https://github.com/NVIDIA-NeMo/Anonymizer)) builds `AnonymizerConfig` objects in a context-agnostic way. Once you are ready to execute that config against the NeMo Platform Anonymizer service, you use objects from the `nemo_platform` SDK. This page describes the NeMo Platform-specific objects.
+
+## AnonymizerResource
+
+The `AnonymizerResource` is the entry point for working with Anonymizer on NeMo Platform. It wraps the streaming preview endpoint and job submission for the plugin service.
+
+A `AnonymizerResource` is accessed directly from a `NeMoPlatform` instance:
+
+```python
+import os
+from nemo_platform import NeMoPlatform
+
+sdk = NeMoPlatform(
+    base_url=os.environ.get("NMP_BASE_URL", "http://localhost:8080"),
+    workspace="default",
+)
+anonymizer = sdk.anonymizer  # AnonymizerResource
+```
+
+An `AsyncAnonymizerResource` with the same surface is available via `AsyncNeMoPlatform.anonymizer`.
+
+| Method                                                   | Description                                                                                                              |
+|----------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `preview(request, *, workspace=None)`                    | Runs a streaming preview against the plugin service and returns an `AnonymizerPreviewResult` after the stream completes. |
+| `run(request, *, workspace=None, wait_until_done=False)` | Submits an `anonymizer.run` job to the NeMo Platform Jobs worker. Returns an `AnonymizerJobResource`. When `wait_until_done=True`, blocks until the job reaches a terminal state. |
+| `get_job_resource(job_name, workspace=None)`             | Returns an `AnonymizerJobResource` for an existing job (by job name).                                                    |
+
+`request` is a `PreviewRequest` or `AnonymizerRequest` instance from `nemo_anonymizer_plugin.app.task_config`. Both accept the same `config`, `data`, `model_configs`, and `selected_models` fields; `PreviewRequest` adds `num_records`.
+
+Both `preview` and `run` call the plugin service, so they require `model_configs` and reject local file paths in `data.source` — use a fileset reference or `http(s)` URL.
+
+## AnonymizerPreviewResult
+
+`AnonymizerResource.preview` collects the frame stream and returns an `AnonymizerPreviewResult` once the stream completes.
+
+| Attribute / Method            | Description                                                                                          |
+|-------------------------------|------------------------------------------------------------------------------------------------------|
+| `dataset`                     | `pandas.DataFrame` of anonymized records (the `preview_dataset` frame contents).                     |
+| `trace_dataset`               | `pandas.DataFrame` with detection trace columns (the `trace_dataset` frame contents).                |
+| `failed_records`              | `list[dict]` of per-record failures with reasons. Empty when nothing failed.                         |
+| `display_record(index=None)`  | Renders a single trace record as HTML in a notebook. When `index` is omitted, cycles through records. |
+
+<Accordion title="More about preview results">
+
+`AnonymizerPreviewResult` holds everything in memory; nothing is persisted to disk by default. The `dataset` and `trace_dataset` fields are regular pandas DataFrames and can be saved with `to_csv` / `to_parquet`.
+
+</Accordion>
+## AnonymizerJobResource
+
+`AnonymizerResource.run` returns an `AnonymizerJobResource`. You can also use `AnonymizerResource.get_job_resource` to get one for an existing job.
+
+```python
+job = sdk.anonymizer.run(run_request)
+job.wait_until_done()
+results = job.download_artifacts()
+dataset = results.load_dataset()
+```
+
+| Method                                              | Description                                                                                                       |
+|-----------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `get_job()`                                         | Returns the raw job record from the jobs service.                                                                 |
+| `get_job_status()`                                  | Returns the current `PlatformJobStatus`.                                                                          |
+| `check_if_complete(*, raise_if_not_complete=False)` | Returns `True` when the job is `completed`. Returns `False` (or raises) for terminal incomplete and running states. |
+| `wait_until_done()`                                 | Polls the jobs service until the job reaches a terminal state. Logs progress as it goes.                          |
+| `get_logs()`                                        | Returns logs from the job as a list of dicts. Handles pagination automatically.                                   |
+| `download_artifacts(path=None)`                     | Downloads the job artifacts tarball and unarchives it. Returns an `AnonymizerJobResults` object.                  |
+
+The async variant (`AsyncAnonymizerJobResource`) exposes the same surface with `async def` methods.
+
+## AnonymizerJobResults
+
+`download_artifacts` returns an `AnonymizerJobResults` object that loads parquet / JSON artifacts into memory. The same class also works for the local `run run` flow — point it at the artifact directory the local job results manager logs:
+
+```python
+from pathlib import Path
+from nemo_anonymizer_plugin.sdk.job_results import AnonymizerJobResults
+
+results = AnonymizerJobResults(Path("/path/to/persistent/results/artifacts"))
+dataset = results.load_dataset()
+```
+
+| Method                  | Description                                                                                                   |
+|-------------------------|---------------------------------------------------------------------------------------------------------------|
+| `load_dataset()`        | Returns the anonymized dataset as a `pandas.DataFrame` (`dataset.parquet`).                                   |
+| `load_trace()`          | Returns the trace dataframe (`trace.parquet`). The `original_text_column` from `metadata.json` is attached for `display_record`. |
+| `load_failed_records()` | Returns `failed_records.json` as `list[dict]`. Returns `[]` when the file isn't present.                      |
+| `display_record(index=None)` | Renders a single trace record as HTML in a notebook. When `index` is omitted, cycles through records.    |
+
+<Accordion title="More about job results">
+
+`AnonymizerJobResults` reads files lazily — methods load the corresponding parquet or JSON only when called. The underlying directory layout is:
+
+```text
+<artifacts_dir>/
+  dataset.parquet
+  trace.parquet
+  metadata.json
+  failed_records.json   # only when there were failures
+```
+
+By default, `download_artifacts` saves the tarball contents to a local directory named after the job; pass `path=` to override.
+
+</Accordion>
+## Request Models
+
+Both request models live in `nemo_anonymizer_plugin.app.task_config`.
+
+### Request Fields
+
+`AnonymizerRequest` defines the execution fields below, run jobs use `AnonymizerRequest` directly and process the full input file.
+
+| Field             | Type                                            | Description                                                                 |
+|-------------------|-------------------------------------------------|-----------------------------------------------------------------------------|
+| `config`          | `AnonymizerConfig`                              | Upstream library config (replace strategy or rewrite, detection params).    |
+| `data`            | `AnonymizerInputSpec`                           | Input source plus column metadata. See below.                               |
+| `model_configs`   | `list[data_designer.config.ModelConfig] \\| None` | Model pool. `provider` references an Inference Gateway provider name.       |
+| `selected_models` | `SelectedModelsOverrides \\| None`               | Optional role overrides on top of bundled defaults. Requires `model_configs`. |
+
+`PreviewRequest` extends `AnonymizerRequest` with `num_records`
+
+| Field             | Type                                            | Description                                                                 |
+|-------------------|-------------------------------------------------|-----------------------------------------------------------------------------|
+| `config`          | `AnonymizerConfig`                              | Upstream library config (replace strategy or rewrite, detection params).    |
+| `data`            | `AnonymizerInputSpec`                           | Input source plus column metadata. See below.                               |
+| `model_configs`   | `list[data_designer.config.ModelConfig] \\| None` | Model pool. `provider` references an Inference Gateway provider name.       |
+| `selected_models` | `SelectedModelsOverrides \\| None`               | Optional role overrides on top of bundled defaults. Requires `model_configs`. |
+| `num_records`     | `int` (≥ 1, default `10`)                       | Preview-only. Number of records to preview. Capped by the service's `preview_num_records.max`. |
+
+### AnonymizerInputSpec
+
+The plugin-owned API-boundary input spec:
+
+| Field          | Type           | Description                                                                              |
+|----------------|----------------|------------------------------------------------------------------------------------------|
+| `source`       | `str`          | Local path, `http(s)` URL, or fileset reference for a CSV / Parquet file.                |
+| `text_column`  | `str` (default `"text"`) | Column containing text to anonymize.                                          |
+| `id_column`    | `str \\| None`  | Optional record identifier column.                                                       |
+| `data_summary` | `str \\| None`  | Optional short description of the data passed to Anonymizer library prompts.             |
+
+Fileset references can take any of the three forms `fileset://<workspace>/<fileset>#<path>`, `<workspace>/<fileset>#<path>`, or `<fileset>#<path>`, and must resolve to a single `.csv` or `.parquet` file.
+
+### SelectedModelsOverrides
+
+Partial role → alias overrides for the three workflows. Each section is optional and is merged on top of the bundled default selection by the library.
+
+| Field       | Type                                  | Description                                                |
+|-------------|---------------------------------------|------------------------------------------------------------|
+| `detection` | `dict[str, str \\| list[str]] \\| None` | Role → alias or alias pool for detection.                  |
+| `replace`   | `dict[str, str] \\| None`              | Role → alias for replacement (for example `replacement_generator`). |
+| `rewrite`   | `dict[str, str] \\| None`              | Role → alias for rewrite mode.                             |
+
+Supplying overrides without `model_configs` raises a config validation error.

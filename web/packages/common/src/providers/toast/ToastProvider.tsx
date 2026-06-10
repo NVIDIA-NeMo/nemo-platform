@@ -13,7 +13,12 @@ import {
   useState,
 } from 'react';
 
-import { DEFAULT_TOAST_DISMISS_MS, TOAST_DEQUEUE_MS, TOAST_ENQUEUE_MS } from './constants';
+import {
+  DEFAULT_TOAST_DISMISS_MS,
+  ERROR_TOAST_DISMISS_MS,
+  TOAST_DEQUEUE_MS,
+  TOAST_ENQUEUE_MS,
+} from './constants';
 import { getTransformStyles } from './GetTransformStyles';
 import { AddToastFn, ToastContextValue, ToastDescriptor } from './types';
 import { ToastContext } from './useToast';
@@ -127,7 +132,7 @@ export const ToastProvider: FC<PropsWithChildren> = ({ children }) => {
             ...options,
           }),
         error: (message, options) =>
-          addToast(message, { status: 'error', durationMs: DEFAULT_TOAST_DISMISS_MS, ...options }),
+          addToast(message, { status: 'error', durationMs: ERROR_TOAST_DISMISS_MS, ...options }),
         info: (message, options) =>
           addToast(message, { status: 'info', durationMs: DEFAULT_TOAST_DISMISS_MS, ...options }),
         warning: (message, options) =>

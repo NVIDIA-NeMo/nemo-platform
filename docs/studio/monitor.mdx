@@ -1,0 +1,26 @@
+---
+title: "NeMo Studio Monitor"
+description: ""
+---
+Use NeMo Studio **Agents > Monitor** to inspect recent agent activity for the selected workspace.
+
+## Telemetry Source
+
+NeMo Studio reads agent telemetry from the `nemo-agent-telemetry` fileset. Each telemetry file contributes run summaries, token usage, and request metadata that NeMo Studio aggregates for the Monitor page.
+
+## Summary Cards
+
+The Monitor page summarizes recent runs across the available telemetry files. Use the agent filter to focus the page on one or more agents.
+
+## Token Usage
+
+The token usage chart shows recent token consumption from the loaded telemetry files. Use it to spot agents or time windows that are driving unusually high usage.
+
+## Inference Logs
+
+The inference logs table shows recent agent requests from the loaded telemetry files. Use it to inspect agent names, timing, token counts, and request status while debugging agent behavior.
+
+## Related Topics
+
+- [Optimize Agents](/documentation/agents/optimize-agents)
+- [Secure Agents](/documentation/agents/secure-agents)

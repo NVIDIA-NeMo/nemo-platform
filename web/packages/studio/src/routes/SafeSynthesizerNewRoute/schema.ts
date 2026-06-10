@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { generateDefaultName } from '@nemo/common/src/utils/generateDefaultName';
-import type { SafeSynthesizerJobRequest } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import type { SafeSynthesizerJobRequest } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { MAX_NUM_RECORDS } from '@studio/routes/SafeSynthesizerNewRoute/constants';
 import { z } from 'zod';
 

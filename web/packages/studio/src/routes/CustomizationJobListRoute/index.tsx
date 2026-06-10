@@ -10,7 +10,7 @@ import { ModelPanel, ModelPanelTab } from '@studio/components/sidePanels/ModelPa
 import { INTAKE_ENABLED } from '@studio/constants/environment';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { useBreadcrumbs } from '@studio/providers/breadcrumbs/useBreadcrumbs';
-import { getEvaluationMetricsRunRoute, getIntakeTracesRoute } from '@studio/routes/utils';
+import { getEvaluationResultsRoute, getIntakeTracesRoute } from '@studio/routes/utils';
 import { type FC, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
@@ -85,13 +85,7 @@ export const CustomizationJobListRoute: FC = () => {
                 onClick={() => {
                   // EvaluationModelSelect treats `URN::adapter` as a single
                   // form-field value, so when an adapter is selected we append
-                  // it to the model name here before navigating.
-                  const modelName = selectedModel?.name;
-                  const model =
-                    modelName && selectedAdapter
-                      ? `${modelName}::${selectedAdapter.name}`
-                      : modelName;
-                  navigate(getEvaluationMetricsRunRoute(workspace, { model }));
+                  navigate(getEvaluationResultsRoute(workspace));
                 }}
               >
                 Evaluate this Model

@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from nemo_platform import AsyncNeMoPlatform, NotFoundError, PermissionDeniedError
 from nmp.common.api.filter import ComparisonOperation, FilterOperation, FilterOperator, LogicalOperation
+from nmp.common.api.in_memory_filter import InMemoryFilterRepository
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.auth import AuthContext
 from nmp.common.entities.client import EntityClient, EntityConflictError, EntityNotFoundError
@@ -83,102 +84,107 @@ def create_platform_job_response(job: PlatformJob, attempt: PlatformJobAttempt) 
     )
 
 
-# Status lives on PlatformJobAttempt, not PlatformJob. It is filtered
-# in-memory after the entity store query and stripped from the operation tree
-# before that query is issued.
+# Status lives on PlatformJobAttempt, not PlatformJob, so it cannot be
+# resolved by the PlatformJob entity-store query. Instead, the full filter tree
+# is evaluated in-memory (op.apply(InMemoryFilterRepository(virtual_job))) against
+# a "virtual job" entity that carries the attempt's status. The store query
+# receives only a status-free *superset* of the filter (see _status_free_superset)
+# so it never drops a row the in-memory pass would accept; that pass then narrows
+# exactly.
 _STATUS_FIELD = "data.status"
-_STATUS_OPS = frozenset({FilterOperator.EQ, FilterOperator.IN})
-_UNSUPPORTED_STATUS_MSG = (
-    "Complex status filter expressions are not supported. Status may only be combined with other fields using $and."
-)
 
 
-def _is_status(operation: FilterOperation) -> bool:
-    return isinstance(operation, ComparisonOperation) and operation.field == _STATUS_FIELD
+def _references_status(operation: FilterOperation | None) -> bool:
+    """Whether the operation tree contains any comparison on the status field."""
+    if operation is None:
+        return False
+    if isinstance(operation, ComparisonOperation):
+        return operation.field == _STATUS_FIELD
+    if isinstance(operation, LogicalOperation):
+        return any(_references_status(child) for child in operation.operations)
+    return False
 
 
-def _validate_status_filter(operation: FilterOperation | None) -> None:
-    """Reject status filter patterns that aren't supported.
+def _status_free_superset(operation: FilterOperation | None) -> FilterOperation | None:
+    """Build a status-free store filter that accepts a SUPERSET of ``operation``.
 
-    Status is an enum — only $eq, $in, and $or of status-only comparisons are
-    accepted.  Status may only be combined with other fields using $and.
+    Status lives on the attempt, not the job, so it cannot be pushed to the
+    PlatformJob store query. We push down a relaxed, status-independent filter
+    that is guaranteed to keep every row the in-memory evaluation would accept;
+    that evaluation then narrows the candidate set exactly.
 
-    # Future: a FilterOperation.matches(entity) method would evaluate the full
-    # tree in-memory, letting the store query over-fetch and matches() narrow.
-    # That eliminates this restriction — see future work doc section 4.
+    ``None`` means "no store constraint" (accept all jobs in scope) — always a
+    valid superset. The relaxation rules below preserve the superset property:
+
+    - Status comparison -> None. Replacing a constraint with "accept all" only
+      widens.
+    - Non-status comparison -> itself. Status-independent, so it is exact and
+      safe to push verbatim.
+    - ``$and`` -> AND of the children's supersets (children that relax to None
+      are dropped). Any row satisfying the original AND satisfies every child,
+      hence every child-superset, hence their AND. Dropping a None child only
+      removes a constraint.
+    - ``$or`` -> OR of the children's supersets, UNLESS any child relaxes to
+      None, in which case the whole OR relaxes to None (an unconstrained branch
+      makes the union unconstrained). Each child-superset is a superset of its
+      child, so the OR of supersets is a superset of the OR of children.
+    - ``$not`` -> kept verbatim only when its operand is status-free (then the
+      whole negation is exact and status-independent). If the operand references
+      status, negation can invert sub/superset relationships, so we relax the
+      entire ``$not`` to None and let the in-memory pass do the work.
     """
     if operation is None:
-        return
-    if isinstance(operation, ComparisonOperation):
-        if _is_status(operation) and operation.operator not in _STATUS_OPS:
-            raise ValueError(_UNSUPPORTED_STATUS_MSG)
-        return
-    if isinstance(operation, LogicalOperation):
-        children = operation.operations
-        any_status = any(_subtree_has_status(c) for c in children)
-        if operation.operator == FilterOperator.NOT and any_status:
-            raise ValueError(_UNSUPPORTED_STATUS_MSG)
-        if operation.operator == FilterOperator.OR and any_status:
-            if any(not _is_status(c) and not _subtree_all_status(c) for c in children):
-                raise ValueError(_UNSUPPORTED_STATUS_MSG)
-        for child in children:
-            _validate_status_filter(child)
-
-
-def _subtree_has_status(operation: FilterOperation) -> bool:
-    if _is_status(operation):
-        return True
-    if isinstance(operation, LogicalOperation):
-        return any(_subtree_has_status(child) for child in operation.operations)
-    return False
-
-
-def _subtree_all_status(operation: FilterOperation) -> bool:
-    if isinstance(operation, ComparisonOperation):
-        return _is_status(operation)
-    if isinstance(operation, LogicalOperation):
-        return all(_subtree_all_status(child) for child in operation.operations)
-    return False
-
-
-def _strip_status(operation: FilterOperation) -> FilterOperation | None:
-    """Remove status comparisons from an operation tree.
-
-    Returns None if the entire tree is stripped away.
-    """
+        return None
     if isinstance(operation, ComparisonOperation):
         return None if operation.field == _STATUS_FIELD else operation
     if isinstance(operation, LogicalOperation):
-        kept = [child for op in operation.operations if (child := _strip_status(op)) is not None]
+        if operation.operator == FilterOperator.NOT:
+            # not X is status-independent only when X is; otherwise relax to None.
+            return None if _references_status(operation) else operation
+
+        relaxed = [_status_free_superset(child) for child in operation.operations]
+
+        if operation.operator == FilterOperator.OR:
+            # An unconstrained branch makes the union unconstrained.
+            if any(child is None for child in relaxed):
+                return None
+            kept = [child for child in relaxed if child is not None]
+        else:  # AND: dropping a None child only removes a constraint.
+            kept = [child for child in relaxed if child is not None]
+
         if not kept:
             return None
-        if len(kept) == 1 and operation.operator != FilterOperator.NOT:
+        if len(kept) == 1:
             return kept[0]
         return LogicalOperation(operator=operation.operator, operations=kept)
     return operation
 
 
-def _extract_status_values(operation: FilterOperation | None) -> list[str]:
-    """Walk an operation tree and collect status values.
+def _build_virtual_job_entity(job: PlatformJob, attempt: PlatformJobAttempt) -> dict[str, Any]:
+    """Build the virtual entity that ``InMemoryFilterRepository`` evaluates.
 
-    Only handles $eq and $in.  Unsupported operators are rejected earlier by
-    _validate_status_filter.
+    The filter tree addresses fields the way the entity store stores them: base
+    columns (``name``, ``project``, ``workspace``, ...) as plain attributes and
+    everything else under ``data.<field>`` (e.g. ``data.source``). This dict
+    mirrors that DBEntity row shape so the in-memory repository resolves every
+    field the same way the SQL repository would.
+
+    Status is the join: it lives on the attempt, so it is injected as
+    ``data.status``. The attempt status enum is stored as its string value
+    (e.g. ``"active"``) so it compares equal to the string the filter carries.
     """
-    if operation is None:
-        return []
-    if isinstance(operation, ComparisonOperation):
-        if _is_status(operation):
-            if operation.operator == FilterOperator.EQ:
-                return [operation.value]
-            if operation.operator == FilterOperator.IN:
-                return list(operation.value)
-        return []
-    if isinstance(operation, LogicalOperation):
-        values: list[str] = []
-        for child in operation.operations:
-            values.extend(_extract_status_values(child))
-        return values
-    return []
+    data = dict(job._get_data_fields())
+    data[_STATUS_FIELD.split(".", 1)[1]] = attempt.status.value
+    return {
+        "id": job.id,
+        "name": job.name,
+        "workspace": job.workspace,
+        "project": job.project,
+        "entity_type": PlatformJob.__entity_type__,
+        "created_at": job.created_at,
+        "updated_at": job.updated_at,
+        "data": data,
+    }
 
 
 class JobDispatcher:
@@ -327,23 +333,13 @@ class JobDispatcher:
         sort: Optional[PlatformJobSortField] = None,
     ) -> Tuple[List[PlatformJobResponse], int]:
         """List platform jobs with their current attempts."""
-        # Status lives on PlatformJobAttempt, not PlatformJob, so it must be
-        # extracted for in-memory filtering and stripped before the store query.
-        _validate_status_filter(parsed.operation)
-        status_values = _extract_status_values(parsed.operation)
-        status_filter: list[PlatformJobStatus] = []
-        for v in status_values:
-            try:
-                status_filter.append(PlatformJobStatus(v))
-            except ValueError:
-                pass
-        # If the filter mentioned status but no values were valid, nothing can match.
-        if status_values and not status_filter:
-            return [], 0
-
-        # Strip status from the operation tree before sending to the entity store.
+        # Status lives on PlatformJobAttempt, not PlatformJob, so the full filter
+        # tree is evaluated in-memory against a virtual job entity that carries the
+        # attempt status. The store query receives a status-free SUPERSET of the
+        # filter so it never drops a row the in-memory pass would accept (see
+        # _status_free_superset); that pass then narrows the page exactly.
         # The operation is already entity-translated by make_filter_dep.
-        store_operation = _strip_status(parsed.operation) if parsed.operation else None
+        store_operation = _status_free_superset(parsed.operation)
 
         # Calculate page from offset
         page = 1
@@ -362,7 +358,8 @@ class JobDispatcher:
             sort=sort_str,
         )
 
-        # IN-MEMORY JOIN: load attempts and apply status filter.
+        # IN-MEMORY JOIN: load each job's current attempt, then evaluate the full
+        # (status-aware) filter tree against a virtual entity carrying the status.
         job_outputs: list[PlatformJobResponse] = []
         for job in response.data:
             if not job.current_attempt_id:
@@ -374,8 +371,10 @@ class JobDispatcher:
                 logger.warning(f"Attempt {job.current_attempt_id} not found for job {job.id}")
                 continue
 
-            if status_filter and attempt.status not in status_filter:
-                continue
+            if parsed.operation is not None:
+                virtual_entity = _build_virtual_job_entity(job, attempt)
+                if not parsed.operation.apply(InMemoryFilterRepository(virtual_entity)):
+                    continue
 
             platform_job = create_platform_job_response(job, attempt)
             job_outputs.append(platform_job)

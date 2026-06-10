@@ -1,0 +1,65 @@
+---
+title: "Support Matrix"
+description: ""
+---
+This matrix defines the supported OSS local-install target for NeMo Platform 0.1.0. It applies to the Python package, CLI, SDK, and local services started by `nemo setup`.
+
+Docker Compose, Helm, Kubernetes, and OpenShift deployment paths are not part of the OSS 0.1.0 documentation scope.
+
+## Host Platforms
+
+| Area | Supported | Notes |
+|------|-----------|-------|
+| Deployment mode | `nemo setup` local install | Setup starts local services, registers a model provider, and configures the CLI and SDK. |
+| Python | 3.11, 3.12, 3.13 (`>=3.11,<3.14`) | Use an isolated virtual environment. Python 3.11 is the lowest supported Python version and Python 3.13 is the highest supported Python version for the OSS local install path. |
+| Linux | Ubuntu 22.04 LTS, Ubuntu 24.04 LTS, RHEL 9, Rocky Linux 9, Debian 12 | Supported for CLI, SDK, local services, and NVIDIA GPU workloads. |
+| macOS | [macOS Tahoe 26](https://support.apple.com/en-us/122868) and macOS Sequoia 15 | Supported for CLI, SDK, local services, and cloud/provider workflows. Local NVIDIA GPU workloads are not supported on macOS. |
+| Architecture | x86_64 Linux; Apple Silicon and Intel macOS | NVIDIA GPU workloads require x86_64 Linux. |
+| Windows and WSL | Not in the OSS 0.1.0 support matrix | Use a supported Linux or macOS host for the local install path. |
+
+## Local Runtime
+
+| Area | Supported | Notes |
+|------|-----------|-------|
+| Package installation | `uv` recommended; `pip` supported | The one-line installer sets up `uv` automatically. Published packages can also be installed with `pip install nemo-platform[all]`. |
+| Shell | Bash or zsh | Used by the installer, setup commands, and documented examples. |
+| Browser | Current Chrome, Edge, Firefox, or Safari | Required for the Studio UI and generated documentation. |
+
+## GPU Support
+
+| Area | Supported | Notes |
+|------|-----------|-------|
+| CUDA | CUDA 12.8 or later | GPU Python dependencies are built for CUDA 12.8. |
+| NVIDIA driver | CUDA 12.8-capable driver, R570 branch or later | See the [CUDA 12.8 release notes](https://docs.nvidia.com/cuda/archive/12.8.0/cuda-toolkit-release-notes/index.html) for exact driver minimums by operating system. |
+| GPU memory | 40 GB VRAM minimum; 80 GB VRAM recommended | Smaller GPUs can run provider or client workflows, but local model and GPU-accelerated jobs require larger GPUs. |
+| Recommended GPUs | NVIDIA A100 80GB, H100 80GB, B200 180GB | Use comparable data center GPUs that meet the CUDA and memory requirements for the model or job. |
+| GPU platform | Linux x86_64 | macOS and Windows are not supported for local NVIDIA GPU workloads. |
+
+## Resource Profiles
+
+| Profile | CPU and memory | Storage | GPU |
+|---------|----------------|---------|-----|
+| CLI, SDK, and hosted-provider setup | 8 GB RAM minimum | 16 GB free disk space | Not required |
+| Local GPU workloads | 16 GB RAM minimum; 32 GB recommended | Additional tens to hundreds of GB for model artifacts and job outputs | 40 GB VRAM minimum; 80 GB recommended |
+
+## Model Providers
+
+| Provider | Support | Notes |
+|----------|---------|-------|
+| NVIDIA Build | Supported | Configure with `NVIDIA_API_KEY`. |
+| OpenAI | Supported | Configure with `OPENAI_API_KEY`. |
+| Anthropic | Supported | Configure with `ANTHROPIC_API_KEY`. |
+| Google Gemini | Supported | Configure with `GEMINI_API_KEY`. |
+| Ollama | Supported for local provider workflows | Ollama must be installed and running before setup. |
+| Custom OpenAI-compatible endpoint | Supported | Configure `NEMO_DEFAULT_INFERENCE_BASE_URL` and `NEMO_DEFAULT_INFERENCE_KEY`. |
+
+## Out of Scope
+
+The following are not part of the OSS 0.1.0 local support matrix:
+
+- Native Windows local install.
+- Docker Compose, Helm, Kubernetes, and OpenShift deployment guides.
+- WSL-based local install or GPU validation.
+- macOS local GPU workloads.
+- Python earlier than 3.11 or Python 3.14 and later for the documented OSS local install path.
+- CUDA versions earlier than 12.8 for GPU-enabled Python dependencies.
