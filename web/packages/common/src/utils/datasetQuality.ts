@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { findMessagesArray } from '@nemo/common/src/utils/file';
+import { getTextWithCount } from '@nemo/common/src/utils/formatters';
 
 export type DatasetQualityCode =
   | 'EMPTY_FILE'
@@ -38,10 +39,6 @@ const LONG_ENTRY_CHAR_THRESHOLD = 32_768;
 
 const PROMPT_KEYS = ['prompt', 'question'];
 const COMPLETION_KEYS = ['completion', 'ideal_response', 'response', 'output', 'answer'];
-
-function plural(n: number, word: string): string {
-  return `${n} ${word}${n === 1 ? '' : 's'}`;
-}
 
 /**
  * Runs dataset quality checks on a JSONL file and returns a structured report.
@@ -127,7 +124,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
     issues.push({
       severity: 'error',
       code: 'INVALID_JSON_LINES',
-      message: `${plural(invalidLineNums.length, 'line')} could not be parsed as JSON objects.`,
+      message: `${getTextWithCount('line', invalidLineNums.length)} could not be parsed as JSON objects.`,
       affectedLines: invalidLineNums.slice(0, 10),
       count: invalidLineNums.length,
     });
@@ -161,7 +158,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
       issues.push({
         severity: 'warning',
         code: 'NULL_OR_EMPTY_FIELDS',
-        message: `${plural(nullFieldLines.length, 'row')} contain null or empty field values.`,
+        message: `${getTextWithCount('row', nullFieldLines.length)} contain null or empty field values.`,
         affectedLines: nullFieldLines.slice(0, 10),
         count: nullFieldLines.length,
       });
@@ -178,7 +175,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
       issues.push({
         severity: 'warning',
         code: 'LONG_ENTRIES',
-        message: `${plural(longLines.length, 'row')} may exceed the model's context window (~8,192 tokens).`,
+        message: `${getTextWithCount('row', longLines.length)} may exceed the model's context window (~8,192 tokens).`,
         affectedLines: longLines.slice(0, 10),
         count: longLines.length,
       });
