@@ -460,9 +460,90 @@ After polling reaches a **terminal** status (`completed`, `error`, or `cancelled
 
 | Status | Notes |
 |--------|-------|
-| `completed` | Brief success summary (e.g. adapter registered on model entity). |
+| `completed` | Brief success summary (e.g. adapter registered on model entity). When `metrics.train_loss` has ≥2 entries, add a loss-drop sentence: *Loss dropped from \<first value, 1 dp\> at step 1 to \<last value, 3 dp\> at step \<N\>; validation loss was \<val or n/a\>.* |
 | `error` | Quote `error_details.message` or the failing step; note setup that succeeded before the failure (auth, dataset upload, submit). |
 | `cancelled` | Cancellation reason if available. |
+
+**Training configuration (always)** — append a `### Training configuration` table after the header block (before **Using the adapter** when `completed`). Fill rows from the submitted job JSON; omit rows whose fields were not set. Use backend-specific labels:
+
+| Setting | automodel source | unsloth source |
+|---------|------------------|----------------|
+| Training type | `training.training_type` | `training.training_type` |
+| Finetuning type | `training.finetuning_type` | `training.finetuning_type` |
+| LoRA rank / alpha | `training.lora.rank` / `training.lora.alpha` | same |
+| Quantization | omit (full-precision / bf16 base weights) | `model.load_in_4bit` → `4-bit (load_in_4bit: true)` or omit when false |
+| Max sequence length | `training.max_seq_length` | `model.max_seq_length` |
+| Epochs | `schedule.epochs` | `schedule.epochs` |
+| Batch | `micro_batch_size` / `global_batch_size` | `batch.per_device_train_batch_size` / `batch.gradient_accumulation_steps` |
+| Effective batch size | `global_batch_size` | `per_device_train_batch_size × gradient_accumulation_steps` |
+| Learning rate | `optimizer.learning_rate` | same |
+| Optimizer | `optimizer` fields used (e.g. `weight_decay`, `warmup_steps`) | `optimizer.optim` (e.g. `adamw_8bit`) |
+| Precision | `bf16` (default) | `hardware.precision` |
+| GPU | `parallelism.num_gpus_per_node` (and `tensor_parallel_size` when >1) | `hardware.gpus` |
+| Output save method | `output.type` (e.g. `adapter`) | `output.save_method` (e.g. `lora`) |
+
+**Automodel example:**
+
+```markdown
+### Training configuration
+
+| Setting | Value |
+|---------|-------|
+| Training type | SFT |
+| Finetuning type | LoRA |
+| LoRA rank / alpha | 16 / 32 |
+| Max sequence length | 2048 |
+| Epochs | 1 |
+| Micro batch size | 16 |
+| Global batch size | 64 |
+| Effective batch size | 64 |
+| Learning rate | 1e-4 |
+| Optimizer | weight_decay 0.01, warmup_steps 0 |
+| Precision | bf16 |
+| GPU | 1 (TP=1) |
+| Output save method | adapter |
+```
+
+**Unsloth example:**
+
+```markdown
+### Training configuration
+
+| Setting | Value |
+|---------|-------|
+| Training type | SFT |
+| Finetuning type | LoRA |
+| LoRA rank / alpha | 16 / 32 |
+| Quantization | 4-bit (`load_in_4bit: true`) |
+| Max sequence length | 2048 |
+| Epochs | 1 |
+| Per-device batch size | 8 |
+| Gradient accumulation steps | 16 |
+| Effective batch size | 128 |
+| Learning rate | 1e-4 |
+| Optimizer | adamw_8bit |
+| Precision | bf16 |
+| GPU | 0 |
+| Output save method | lora |
+```
+
+**Using the adapter (`completed` only)** — after **Training configuration**, run `uv run nemo models get <model-entity> --workspace default` (parse stdout only) to confirm the adapter is listed under `adapters`. Append this section:
+
+```markdown
+### Using the adapter
+
+The adapter `<output.name>` is attached to `default/<model-entity>`. List adapters with:
+
+\`\`\`bash
+export NEMO_BASE_URL=<platform-url>   # omit line when using default localhost
+cd /path/to/nemo-platform
+uv run nemo models get <model-entity> --workspace default
+\`\`\`
+```
+
+Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the export line for default `http://127.0.0.1:8080`. The JSON `adapters` array shows `name`, `fileset`, `finetuning_type`, and `lora_config` for each registered adapter.
+
+**Save report to `/tmp`** — unless the user opts out, write the full Markdown report (header, **Training configuration**, **Using the adapter** when `completed`, and **Resources created** when a slug or new filesets were used) to `/tmp/fine-tune-result-<slug-or-job-suffix>.md`. Use the random slug from the run when one was assigned; otherwise use the job id suffix (e.g. `a925b07ff678`).
 
 **Error follow-ups** — when the failure has a known fix, append sections **below** the header block (do not replace the header). Examples:
 

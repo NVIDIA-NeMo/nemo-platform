@@ -592,6 +592,9 @@ class TestDiscoverCustomizationContributors:
             def get_authz_contribution(self):
                 return None
 
+            def get_sdk_resources(self):
+                return None
+
         ep = _make_ep("fake", _Contributor)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[ep]):
             result = discover_customization_contributors()
@@ -616,6 +619,9 @@ class TestDiscoverCustomizationContributors:
             def get_authz_contribution(self):
                 return None
 
+            def get_sdk_resources(self):
+                return None
+
         good = _make_ep("good", _Contributor)
         with patch("nemo_platform_plugin.discovery.entry_points", return_value=[bad, good]):
             with pytest.raises(CustomizationContributorDiscoveryError, match="Failed to load"):
@@ -635,6 +641,9 @@ class TestDiscoverCustomizationContributors:
                 return None
 
             def get_authz_contribution(self):
+                return None
+
+            def get_sdk_resources(self):
                 return None
 
         ep = _make_ep("expected", _Contributor)
