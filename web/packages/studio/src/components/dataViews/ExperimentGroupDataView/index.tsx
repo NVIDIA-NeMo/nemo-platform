@@ -111,7 +111,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           if (!summary) return <Text>{name}</Text>;
           return (
             <Tooltip slotContent={summary} className={tooltipClassName} side="bottom">
-              <Text className="cursor-default">{name}</Text>
+              <Text className="cursor-default border-b border-dotted border-base">{name}</Text>
             </Tooltip>
           );
         },
