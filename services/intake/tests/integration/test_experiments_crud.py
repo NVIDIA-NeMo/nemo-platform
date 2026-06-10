@@ -391,4 +391,5 @@ def test_update_or_delete_deleted_experiment_returns_404(client: TestClient) -> 
         ).status_code
         == 404
     )
-    assert client.delete(f"{EXPERIMENTS}/exp-once").status_code == 404
+    delete_response = client.delete(f"{EXPERIMENTS}/exp-once")
+    assert delete_response.status_code == 404
