@@ -768,6 +768,7 @@ jobs:
       - web-test
       - web-format
       - web-lint
+      - web-sdk-gen
       - web-studio-deps
       - web-studio-e2e
       - benchmark-guardrails
