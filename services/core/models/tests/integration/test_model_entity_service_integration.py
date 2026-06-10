@@ -8,7 +8,8 @@ from unittest.mock import AsyncMock
 import pytest
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.filesets import ListFilesResponse
-from nemo_platform.types.files import Fileset, FilesetFile, FilesetMetadata, LocalStorageConfig
+from nemo_platform.types.files import Fileset, FilesetFile, LocalStorageConfig
+from nemo_platform.types.shared import FilesetMetadata
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter
 from nmp.common.entities.client import EntityClient
