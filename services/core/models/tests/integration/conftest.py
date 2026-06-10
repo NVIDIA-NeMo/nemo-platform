@@ -16,9 +16,9 @@ from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
 from nmp.common.secrets.encryption import get_base64_encoded_random_bytes
+from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
 from nmp.core.models.controllers.backends.registry import BackendRegistry
-from nmp.core.files.app.backends.huggingface import HuggingfaceStorageImpl
 from nmp.core.models.controllers.models_controller import ModelsController
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.config import SecretsServiceConfig
