@@ -13,7 +13,7 @@ from typing import Any
 import pytest
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
-from nmp.studio import coding_agents
+from nmp.studio import coding_agents, studio_links
 from nmp.studio.config import StudioConfig
 from nmp.studio.service import StudioService
 
@@ -347,7 +347,7 @@ def test_studio_link_destinations_cover_registered_workspace_routes():
     assert {
         route_key: destination
         for route_key, destination in route_destination_map.items()
-        if route_key in registered_route_keys and destination not in coding_agents._STUDIO_LINK_DESTINATIONS
+        if route_key in registered_route_keys and destination not in studio_links.STUDIO_LINK_DESTINATIONS
     } == {}
 
 
@@ -604,7 +604,7 @@ def test_mcp_studio_link_rejects_disabled_feature_flag_destination(service_clien
 
 
 def test_build_studio_link_result_preserves_empty_enabled_destinations():
-    result = coding_agents._build_studio_link_result(
+    result = studio_links.build_studio_link_result(
         "default",
         None,
         {"destination": "agents"},
