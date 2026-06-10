@@ -9,9 +9,8 @@ pytest.importorskip("torch", reason="torch required for parallelism API tests")
 
 from nmp.core.models.parallelism.api import infer_model_cfg_from_hf
 
-# TODO: Mock HuggingFace API calls instead of accessing real gated models
 REQUIRES_HF_TOKEN = pytest.mark.skip(
-    reason="Gated HuggingFace models require mocking (not yet implemented)",
+    reason="Gated HuggingFace models require authentication (no fixture available)",
 )
 GATED_MODEL_IDS = frozenset({"meta-llama/Llama-3.1-8B"})
 

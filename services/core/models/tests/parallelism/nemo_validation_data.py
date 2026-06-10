@@ -10,9 +10,8 @@ Source: https://github.com/NVIDIA-NeMo/NeMo/blob/main/scripts/performance/recomm
 
 import pytest
 
-# TODO: Mock HuggingFace API calls instead of accessing real gated models
 REQUIRES_HF_TOKEN = pytest.mark.skip(
-    reason="Gated HuggingFace models require mocking (not yet implemented)",
+    reason="Gated HuggingFace models require authentication (no fixture available)",
 )
 GATED_MODEL_IDS = frozenset(
     {
