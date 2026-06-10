@@ -306,8 +306,10 @@ def test_entity_search_filter(sdk: NeMoPlatform, workspace: str):
         assert len(response.data) == 1
         assert response.data[0].name == entity_alpha
 
-        # Filter by name pattern (like)
-        filter_query = json.dumps({"name": {"$like": f"{prefix}%"}})
+        # Filter by name substring. $like is a case-insensitive substring match,
+        # not a SQL wildcard pattern (% and _ are literal), so the shared prefix —
+        # a substring of both entity names — matches alpha and beta.
+        filter_query = json.dumps({"name": {"$like": prefix}})
         response = sdk.entities.list(
             entity_type=ENTITY_TYPE,
             workspace=workspace,
