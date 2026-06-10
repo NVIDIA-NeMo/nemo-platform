@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import { TestProviders } from '@studio/tests/util/TestProviders';
@@ -26,7 +27,17 @@ vi.mock('@nemo/common/src/components/ModelSelectV2', () => ({
 const makeModel = (workspace: string, name: string): ModelEntity =>
   ({ workspace, name }) as unknown as ModelEntity;
 
-const renderPanel = (modelURN: string | null, availableModels: ModelEntity[]) => {
+const makeGroups = (models: ModelEntity[]): ModelWorkspaceGroup[] => {
+  const byWorkspace = new Map<string, ModelEntity[]>();
+  for (const m of models) {
+    const ws = m.workspace ?? '';
+    if (!byWorkspace.has(ws)) byWorkspace.set(ws, []);
+    byWorkspace.get(ws)!.push(m);
+  }
+  return Array.from(byWorkspace.entries()).map(([workspace, models]) => ({ workspace, models }));
+};
+
+const renderPanel = (modelURN: string | null, modelGroups: ModelWorkspaceGroup[]) => {
   return render(
     <TestProviders>
       <MemoryRouter>
@@ -41,7 +52,7 @@ const renderPanel = (modelURN: string | null, availableModels: ModelEntity[]) =>
             locked: false,
           }}
           fallbackWorkspace="route-workspace"
-          models={availableModels}
+          modelGroups={modelGroups}
           isLoadingModels={false}
           onToggle={vi.fn()}
           onRemove={vi.fn()}
@@ -58,10 +69,10 @@ describe('ModelChatPanel — URN routing', () => {
   });
 
   it("routes inference to the model's own workspace (not the route workspace)", () => {
-    renderPanel('nvidia/llama-70b', [
-      makeModel('abacusai', 'llama-70b'),
-      makeModel('nvidia', 'llama-70b'),
-    ]);
+    renderPanel(
+      'nvidia/llama-70b',
+      makeGroups([makeModel('abacusai', 'llama-70b'), makeModel('nvidia', 'llama-70b')])
+    );
 
     expect(modelChatSpy).toHaveBeenCalledWith(
       expect.objectContaining({ workspace: 'nvidia', model: 'llama-70b' })
@@ -70,12 +81,12 @@ describe('ModelChatPanel — URN routing', () => {
 
   it('picks the correct workspace even when two models share the same name', () => {
     // The previous name-based lookup would have silently bound this panel to
-    // whichever workspace's model came first in `availableModels`. With URNs
-    // end-to-end, the workspace selected in the URN is used.
-    renderPanel('abacusai/llama-70b', [
-      makeModel('nvidia', 'llama-70b'),
-      makeModel('abacusai', 'llama-70b'),
-    ]);
+    // whichever workspace's model came first in the list. With URNs end-to-end,
+    // the workspace selected in the URN is used.
+    renderPanel(
+      'abacusai/llama-70b',
+      makeGroups([makeModel('nvidia', 'llama-70b'), makeModel('abacusai', 'llama-70b')])
+    );
 
     expect(modelChatSpy).toHaveBeenCalledWith(
       expect.objectContaining({ workspace: 'abacusai', model: 'llama-70b' })

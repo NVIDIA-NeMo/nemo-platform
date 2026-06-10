@@ -1,6 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { useModelsFromDefaultAndWorkspace } from '@nemo/common/src/api/models/useModelsFromDefaultAndWorkspace';
+import { ComposerMode } from '@nemo/common/src/components/AssistantChat';
+import type { BroadcastSignal } from '@nemo/common/src/components/AssistantChat/types';
 import {
   Button,
   Flex,
@@ -12,11 +15,10 @@ import {
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
-import { useWorkspaceModels } from '@studio/components/chat/useWorkspaceModels';
 import { ModelCompareChat } from '@studio/components/ModelCompareChat';
 import { ModelComparePrompts } from '@studio/components/ModelComparePrompts';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
-import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
+import type { ComposerSeed, SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 import { MoveDown, MoveUp, Plus, RotateCcw } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -37,7 +39,9 @@ const makeDefaultEntry = (
 
 export const ModelCompareRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
-  const { models: availableModels, isLoading: isLoadingModels } = useWorkspaceModels(workspace);
+  const { groups: modelGroups, isFetching: isLoadingModels } = useModelsFromDefaultAndWorkspace({
+    workspace,
+  });
   const [searchParams] = useSearchParams();
   const [activeView, setActiveView] = useState<CompareView>('compare');
   const [perPanelInput, setPerPanelInput] = useState(false);
@@ -50,36 +54,34 @@ export const ModelCompareRoute: FC = () => {
   const nextIdRef = useRef(2);
   const didPreselectRef = useRef(false);
 
-  // Preselect panel 0 from ?model= query param once availableModels loads.
+  // Preselect panel 0 from ?model= query param once models load.
   useEffect(() => {
-    if (didPreselectRef.current || isLoadingModels || availableModels.length === 0) return;
+    if (didPreselectRef.current || isLoadingModels || modelGroups.length === 0) return;
     const param = searchParams.get('model');
     if (!param) {
       didPreselectRef.current = true;
       return;
     }
-    const match = availableModels.find(
-      (m) => `${m.workspace}/${m.name}` === param || m.name === param
-    );
+    const match = modelGroups
+      .flatMap((g) => g.models)
+      .find((m) => `${m.workspace}/${m.name}` === param || m.name === param);
     if (match) {
       setModels((prev) =>
         prev.map((m, i) => (i === 0 ? { ...m, modelURN: `${match.workspace}/${match.name}` } : m))
       );
     }
     didPreselectRef.current = true;
-  }, [isLoadingModels, availableModels, searchParams]);
+  }, [isLoadingModels, modelGroups, searchParams]);
 
   // Seed transfer: broadcast→panels and panel→broadcast.
   const compareComposerDraftRef = useRef('');
-  const [panelSeed, setPanelSeed] = useState<{ triggerCount: number; text: string } | null>(null);
-  const [composerSeed, setComposerSeed] = useState<{ triggerCount: number; text: string } | null>(
-    null
-  );
+  const [panelSeed, setPanelSeed] = useState<ComposerSeed | null>(null);
+  const [composerSeed, setComposerSeed] = useState<ComposerSeed | null>(null);
 
   // Compare-mode plumbing: broadcast carries the prompt to every panel via
   // sequence-keyed effect; stopCount flips to stop them all.
   const [chatResetCount, setChatResetCount] = useState(0);
-  const [broadcast, setBroadcast] = useState<{ seq: number; text: string } | null>(null);
+  const [broadcast, setBroadcast] = useState<BroadcastSignal | null>(null);
   const [stopCount, setStopCount] = useState(0);
   const [runningById, setRunningById] = useState<Map<number, boolean>>(() => new Map());
   const isAnyRunning = useMemo(() => Array.from(runningById.values()).some(Boolean), [runningById]);
@@ -137,7 +139,7 @@ export const ModelCompareRoute: FC = () => {
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
 
   // Empty state when the workspace has zero models and we're not still loading.
-  if (!isLoadingModels && availableModels.length === 0) {
+  if (!isLoadingModels && modelGroups.length === 0) {
     return <ChatEmptyState hasModels={false} />;
   }
 
@@ -175,14 +177,14 @@ export const ModelCompareRoute: FC = () => {
       <div className={`min-h-0 flex-1 overflow-hidden ${showChatPanels ? '' : 'hidden'}`}>
         <ModelCompareChat
           workspace={workspace}
-          availableModels={availableModels}
+          modelGroups={modelGroups}
           isLoadingModels={isLoadingModels}
           models={models}
           onRemoveModel={removeModel}
           onSetModel={setModelRef}
           chatResetCount={chatResetCount}
-          hideComposer={!perPanelInput}
-          composerToggle={
+          composerMode={perPanelInput ? ComposerMode.PER_PANEL : ComposerMode.BROADCAST_ALL}
+          slotComposerEnd={
             perPanelInput ? (
               <Tooltip slotContent="Shared input">
                 <button
@@ -217,7 +219,7 @@ export const ModelCompareRoute: FC = () => {
       <div className={`min-h-0 flex-1 overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
         <ModelComparePrompts
           workspace={workspace}
-          availableModels={availableModels}
+          modelGroups={modelGroups}
           isLoadingModels={isLoadingModels}
           models={models}
           onRemoveModel={removeModel}

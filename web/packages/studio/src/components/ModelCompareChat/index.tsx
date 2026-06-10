@@ -1,50 +1,42 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
+import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import {
   PANEL_ROLE_COLORS,
   PANEL_ROLE_LABELS,
+  type PanelChatControls,
   type PanelState,
   type SharedModelEntry,
 } from '@studio/routes/ModelCompareRoute/types';
-import { type ReactNode, useCallback, useState, type FC } from 'react';
+import { useCallback, useState, type FC } from 'react';
 
-interface ModelCompareChatProps {
+interface ModelCompareChatProps extends PanelChatControls {
   /** Route workspace — used only as a fallback for panels without an assigned model. */
   workspace: string;
-  availableModels: ModelEntity[];
+  modelGroups: ModelWorkspaceGroup[];
   isLoadingModels: boolean;
   models: SharedModelEntry[];
   onRemoveModel: (id: number) => void;
   onSetModel: (id: number, modelURN: string | null) => void;
   /** Incremented to remount all chat panels (clears messages) without losing model selections. */
   chatResetCount?: number;
-  /** Compare-mode plumbing — when set, hides per-panel composers and broadcasts. */
-  hideComposer?: boolean;
-  broadcast?: { seq: number; text: string };
-  stopCount?: number;
-  onRunningChange?: (id: number, isRunning: boolean) => void;
-  /** Rendered right-aligned at the trailing end of each panel's seed-questions row. */
-  composerToggle?: ReactNode;
-  /** When triggerCount changes, pre-fills every panel's composer textarea with text. */
-  composerSeed?: { triggerCount: number; text: string };
 }
 
 export const ModelCompareChat: FC<ModelCompareChatProps> = ({
   workspace,
-  availableModels,
+  modelGroups,
   isLoadingModels,
   models,
   onRemoveModel,
   onSetModel,
   chatResetCount,
-  hideComposer,
+  composerMode,
   broadcast,
   stopCount,
   onRunningChange,
-  composerToggle,
+  slotComposerEnd,
   composerSeed,
 }) => {
   // Per-panel UI state that's view-local (doesn't cross over to Prompts)
@@ -84,14 +76,14 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
             key={`${panel.id}-${chatResetCount ?? 0}`}
             panel={panel}
             fallbackWorkspace={workspace}
-            models={availableModels}
+            modelGroups={modelGroups}
             isLoadingModels={isLoadingModels}
             onToggle={togglePanel}
             onRemove={onRemoveModel}
             onModelChange={onSetModel}
             hideRemove={panel.locked || models.length <= 1}
-            hideComposer={hideComposer}
-            composerToggle={composerToggle}
+            composerMode={composerMode}
+            slotComposerEnd={slotComposerEnd}
             composerSeed={composerSeed}
             broadcast={broadcast}
             stopCount={stopCount}

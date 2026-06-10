@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Button, Popover, Slider, Stack, Text } from '@nvidia/foundations-react-core';
-import type { InferenceParams } from '@studio/components/chat/params';
+import { DEFAULT_INFERENCE_PARAMS, type InferenceParams } from '@studio/components/chat/params';
 import { Sliders } from 'lucide-react';
 import { useState, type FC } from 'react';
 
@@ -18,6 +18,7 @@ const SLIDERS: Array<{
   max: number;
   step: number;
   hint: string;
+  default: number;
 }> = [
   {
     key: 'temperature',
@@ -26,8 +27,17 @@ const SLIDERS: Array<{
     max: 2,
     step: 0.05,
     hint: 'Randomness — higher = more creative.',
+    default: DEFAULT_INFERENCE_PARAMS.temperature,
   },
-  { key: 'top_p', label: 'Top P', min: 0, max: 1, step: 0.01, hint: 'Nucleus sampling cutoff.' },
+  {
+    key: 'top_p',
+    label: 'Top P',
+    min: 0,
+    max: 1,
+    step: 0.01,
+    hint: 'Nucleus sampling cutoff.',
+    default: DEFAULT_INFERENCE_PARAMS.top_p,
+  },
   {
     key: 'top_k',
     label: 'Top K',
@@ -35,6 +45,7 @@ const SLIDERS: Array<{
     max: 100,
     step: 1,
     hint: 'Sample from top-K tokens. Provider-dependent.',
+    default: DEFAULT_INFERENCE_PARAMS.top_k,
   },
   {
     key: 'max_tokens',
@@ -43,6 +54,7 @@ const SLIDERS: Array<{
     max: 4096,
     step: 32,
     hint: 'Hard cap on response length.',
+    default: DEFAULT_INFERENCE_PARAMS.max_tokens,
   },
 ];
 
@@ -59,7 +71,12 @@ export const ParamsPopover: FC<ParamsPopoverProps> = ({ value, onChange }) => {
       onOpenChange={setOpen}
       slotContent={
         <Stack gap="density-lg" className="w-80 p-4">
-          <Text kind="label/bold/sm">Inference parameters</Text>
+          <div className="flex items-center justify-between">
+            <Text kind="label/bold/sm">Inference parameters</Text>
+            <Button kind="tertiary" size="small" onClick={() => onChange(DEFAULT_INFERENCE_PARAMS)}>
+              Reset
+            </Button>
+          </div>
           {SLIDERS.map((s) => {
             const current = value[s.key];
             return (

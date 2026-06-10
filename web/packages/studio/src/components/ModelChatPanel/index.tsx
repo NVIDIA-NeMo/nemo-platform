@@ -1,21 +1,23 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
-import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { useFineTunedGroup } from '@studio/components/chat/useFineTunedGroup';
 import { ModelChat } from '@studio/components/ModelChat';
-import { PANEL_ROLE_DOT_CLASS, type PanelState } from '@studio/routes/ModelCompareRoute/types';
+import {
+  PANEL_ROLE_DOT_CLASS,
+  type PanelChatControls,
+  type PanelState,
+} from '@studio/routes/ModelCompareRoute/types';
 import { Minimize2, Trash2 } from 'lucide-react';
-import { type ReactNode, useCallback, useMemo, useRef, useState, type FC } from 'react';
+import { useCallback, useRef, useState, type FC } from 'react';
 
-interface ModelChatPanelProps {
+interface ModelChatPanelProps extends PanelChatControls {
   panel: PanelState;
   /** Fallback workspace used only if a panel has no model assigned yet. */
   fallbackWorkspace: string;
-  models: ModelEntity[];
+  modelGroups: ModelWorkspaceGroup[];
   isLoadingModels: boolean;
   onToggle: (id: number) => void;
   onRemove: (id: number) => void;
@@ -23,42 +25,24 @@ interface ModelChatPanelProps {
   onModelChange: (id: number, modelURN: string | null) => void;
   /** Hide the trash button (locked baseline in agent overlay, or only one panel). */
   hideRemove?: boolean;
-  /** Compare-mode plumbing — page-level composer drives each panel's chat. */
-  hideComposer?: boolean;
-  broadcast?: { seq: number; text: string };
-  stopCount?: number;
-  onRunningChange?: (id: number, isRunning: boolean) => void;
-  /** Rendered right-aligned at the trailing end of the seed-questions row. */
-  composerToggle?: ReactNode;
-  /** When triggerCount changes, pre-fills this panel's composer textarea with text. */
-  composerSeed?: { triggerCount: number; text: string };
 }
 
 export const ModelChatPanel: FC<ModelChatPanelProps> = ({
   panel,
   fallbackWorkspace,
-  models,
+  modelGroups,
   isLoadingModels,
   onToggle,
   onRemove,
   onModelChange,
   hideRemove,
-  hideComposer,
+  composerMode,
   broadcast,
   stopCount,
   onRunningChange,
-  composerToggle,
+  slotComposerEnd,
   composerSeed,
 }) => {
-  const workspaceGroups = useMemo(() => groupModelsByWorkspace(models, { sort: true }), [models]);
-  const fineTunedGroups = useFineTunedGroup(models);
-  // Fine-tuned models surface FIRST in the picker — they're the user's own
-  // artifacts, more relevant than the auto-discovered base catalog below.
-  const modelGroups = useMemo(
-    () => [...fineTunedGroups, ...workspaceGroups],
-    [fineTunedGroups, workspaceGroups]
-  );
-
   const selectedModel: ModelSelection | null = panel.modelURN ? { model: panel.modelURN } : null;
 
   // Remount ModelChat (clears messages + metrics) when the selected model changes.
@@ -164,8 +148,8 @@ export const ModelChatPanel: FC<ModelChatPanelProps> = ({
             key={modelChatResetCount}
             model={modelName}
             workspace={modelWorkspace}
-            hideComposer={hideComposer}
-            composerToggle={composerToggle}
+            composerMode={composerMode}
+            slotComposerEnd={slotComposerEnd}
             composerSeed={composerSeed}
             broadcast={broadcast}
             stopCount={stopCount}

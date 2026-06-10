@@ -8,6 +8,7 @@ import {
   ThreadPrimitive,
   type ToolCallMessagePartComponent,
 } from '@assistant-ui/react';
+import { ComposerMode } from '@nemo/common/src/components/AssistantChat/types';
 import { ChatEmptyState } from '@nemo/common/src/components/Chat/ChatEmptyState';
 import {
   MessageContent,
@@ -39,8 +40,8 @@ interface AssistantChatThreadProps {
   onReset: () => void;
   showRunningIndicator?: boolean;
   attributes?: AssistantChatThreadAttributes;
-  hideComposer?: boolean;
-  slotAboveComposer?: ReactNode;
+  composerMode?: ComposerMode;
+  slotComposerStart?: ReactNode;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;
@@ -241,7 +242,7 @@ const UserEditComposer = () => (
 
 type AssistantComposerProps = Pick<
   AssistantChatThreadProps,
-  'disabled' | 'placeholder' | 'onReset' | 'slotAboveComposer'
+  'disabled' | 'placeholder' | 'onReset' | 'slotComposerStart'
 > & {
   className?: string;
 };
@@ -250,11 +251,11 @@ const AssistantComposer = ({
   disabled,
   placeholder,
   onReset,
-  slotAboveComposer,
+  slotComposerStart,
   className,
 }: AssistantComposerProps) => (
   <div className="flex w-full flex-col gap-2">
-    {slotAboveComposer && <div className="shrink-0">{slotAboveComposer}</div>}
+    {slotComposerStart && <div className="shrink-0">{slotComposerStart}</div>}
     <ComposerPrimitive.Root
       data-testid="assistant-chat-composer"
       className={cn(
@@ -311,8 +312,8 @@ export const AssistantChatThread = ({
   onReset,
   showRunningIndicator = true,
   attributes,
-  hideComposer,
-  slotAboveComposer,
+  composerMode,
+  slotComposerStart,
   emptyState,
   contentClassName,
   composerContainerClassName,
@@ -382,7 +383,7 @@ export const AssistantChatThread = ({
           Scroll to bottom
         </ThreadPrimitive.ScrollToBottom>
       </div>
-      {!hideComposer && (
+      {composerMode !== ComposerMode.BROADCAST_ALL && (
         <Flex
           className={cn('w-full pt-density-xl', composerContainerClassName)}
           data-testid="assistant-chat-composer-container"
@@ -392,7 +393,7 @@ export const AssistantChatThread = ({
               disabled={disabled}
               placeholder={placeholder}
               onReset={onReset}
-              slotAboveComposer={slotAboveComposer}
+              slotComposerStart={slotComposerStart}
             />
           )}
         </Flex>

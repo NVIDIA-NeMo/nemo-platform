@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { UploadModal } from '@nemo/common/src/components/UploadModal';
 import type { SubmitUploadType } from '@nemo/common/src/components/UploadModal/types';
@@ -9,9 +10,7 @@ import { getPartsFromReference } from '@nemo/common/src/namedEntity';
 import { FileFormat, InputFileSchemaType } from '@nemo/common/src/types';
 import { extractUserFriendlyKeysFromRow, resolveKeyPath } from '@nemo/common/src/utils/file';
 import { detectFileStructure, validateFileFormat } from '@nemo/common/src/utils/fileValidation';
-import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { type FileSampleMethod, sampleIndices } from '@nemo/common/src/utils/sampleTextLines';
-import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import { Button, Flex, Modal, Select, Stack, Text } from '@nvidia/foundations-react-core';
 import { SAMPLE_DATASETS } from '@studio/components/chat/sampleDatasets';
 import type { DatasetInputFileResult } from '@studio/components/DatasetInputFile';
@@ -153,7 +152,7 @@ async function parseUploadedFile(file: File): Promise<DatasetInputFileResult | {
 
 interface ModelComparePromptsProps {
   workspace: string;
-  availableModels: ModelEntity[];
+  modelGroups: ModelWorkspaceGroup[];
   isLoadingModels: boolean;
   models: SharedModelEntry[];
   onRemoveModel: (id: number) => void;
@@ -171,7 +170,7 @@ interface ModelComparePromptsProps {
 
 export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   workspace,
-  availableModels,
+  modelGroups,
   isLoadingModels,
   models,
   onRemoveModel,
@@ -539,7 +538,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   <Flex gap="density-xs" align="center">
                     <div className="flex-1 min-w-0">
                       <ModelColumnSelect
-                        models={availableModels}
+                        modelGroups={modelGroups}
                         isLoadingModels={isLoadingModels}
                         value={m.modelURN}
                         disabled={isRunning}
@@ -728,13 +727,12 @@ const ExpandableCell: FC<{
 
 /** Thin wrapper around ModelSelectV2 for table header use */
 const ModelColumnSelect: FC<{
-  models: ModelEntity[];
+  modelGroups: ModelWorkspaceGroup[];
   isLoadingModels: boolean;
   value: string | null;
   disabled?: boolean;
   onChange: (ref: string) => void;
-}> = ({ models, isLoadingModels, value, disabled, onChange }) => {
-  const modelGroups = useMemo(() => groupModelsByWorkspace(models, { sort: true }), [models]);
+}> = ({ modelGroups, isLoadingModels, value, disabled, onChange }) => {
   const selectedModel: ModelSelection | null = value ? { model: value } : null;
 
   const handleValueChange = useCallback(

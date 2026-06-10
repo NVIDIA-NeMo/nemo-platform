@@ -8,6 +8,12 @@ import type { ReactNode } from 'react';
 
 import type { AssistantChatThreadAttributes } from './AssistantChatThread';
 
+export const ComposerMode = {
+  PER_PANEL: 'per-panel',
+  BROADCAST_ALL: 'broadcast-all',
+} as const;
+export type ComposerMode = (typeof ComposerMode)[keyof typeof ComposerMode];
+
 export interface AssistantChatProps {
   /**
    * The model name to route through inference gateway.
@@ -61,7 +67,7 @@ export interface AssistantChatProps {
    * Chat route's Compare mode where a single page-level composer drives every
    * AssistantChat in parallel.
    */
-  hideComposer?: boolean;
+  composerMode?: ComposerMode;
   /**
    * External broadcast trigger. Whenever `seq` changes (excluding initial
    * mount), the runtime appends `text` as a new user message and runs a
@@ -78,7 +84,7 @@ export interface AssistantChatProps {
    * frame. Use for seed-prompt chips or any prefatory hint that should read
    * as part of the composer affordance rather than a separate block.
    */
-  slotAboveComposer?: ReactNode;
+  slotComposerStart?: ReactNode;
   emptyState?: {
     slotHeading?: string;
     slotSubheading?: string;

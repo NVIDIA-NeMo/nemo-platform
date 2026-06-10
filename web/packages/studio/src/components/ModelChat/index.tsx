@@ -1,12 +1,17 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { AssistantChat, type AssistantChatProps } from '@nemo/common/src/components/AssistantChat';
+import {
+  AssistantChat,
+  ComposerMode,
+  type AssistantChatProps,
+} from '@nemo/common/src/components/AssistantChat';
 import type { AssistantMessageCompletion } from '@nemo/common/src/components/AssistantChat/types';
 import type { ModelChatStatus } from '@nemo/common/src/utils/models';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { StatsBadge, type ChatMetrics } from '@studio/components/chat/StatsBadge';
+import type { ComposerSeed } from '@studio/routes/ModelCompareRoute/types';
 import { handleGenericError } from '@studio/util/logger';
 import { type ReactNode, useEffect, useRef, useState, type FC } from 'react';
 
@@ -24,7 +29,7 @@ interface ModelChatProps extends Pick<
   | 'initialMessages'
   | 'emptyState'
   | 'onError'
-  | 'hideComposer'
+  | 'composerMode'
   | 'broadcast'
   | 'stopCount'
   | 'onRunningChange'
@@ -43,9 +48,9 @@ interface ModelChatProps extends Pick<
   /** When false, hides the per-response StatsBadge. Default true. */
   showMetrics?: boolean;
   /** Rendered right-aligned at the trailing end of the seed-questions row. */
-  composerToggle?: ReactNode;
+  slotComposerEnd?: ReactNode;
   /** When triggerCount changes, pre-fills the panel's composer textarea with text. */
-  composerSeed?: { triggerCount: number; text: string };
+  composerSeed?: ComposerSeed;
 }
 
 const STATUS_EMPTY_STATE: Record<
@@ -72,7 +77,7 @@ export const ModelChat: FC<ModelChatProps> = ({
   promptData,
   seedQuestions = DEFAULT_SEED_QUESTIONS,
   showMetrics = true,
-  composerToggle,
+  slotComposerEnd,
   composerSeed,
   workspace,
   ...rest
@@ -82,12 +87,12 @@ export const ModelChat: FC<ModelChatProps> = ({
     disabled === undefined && modelChatStatus && modelChatStatus !== 'enabled'
       ? STATUS_EMPTY_STATE[modelChatStatus]
       : undefined;
-  // In Compare mode (hideComposer = true) the page-level composer is the
-  // affordance, so the per-panel subhead "Prompt your model to get started."
-  // is redundant — surface only the headline.
-  const compareEmptyState = rest.hideComposer
-    ? { slotHeading: 'Ready', slotSubheading: '' }
-    : undefined;
+  // In broadcast-all mode the page-level composer is the affordance, so the
+  // per-panel subhead "Prompt your model to get started." is redundant.
+  const compareEmptyState =
+    rest.composerMode === ComposerMode.BROADCAST_ALL
+      ? { slotHeading: 'Ready', slotSubheading: '' }
+      : undefined;
   const resolvedEmptyState = emptyState ?? statusDerivedEmptyState ?? compareEmptyState;
 
   // Per-message metrics: store the latest completion so a single StatsBadge
@@ -137,31 +142,30 @@ export const ModelChat: FC<ModelChatProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [composerSeed?.triggerCount]);
 
-  // Seeds render INSIDE the AssistantChat composer card (above the textarea).
-  // Always shown when the composer is visible — not suppressed after first response.
-  // In broadcast-all mode (hideComposer=true) the page-level CompareComposer owns seeds.
-  const showChatSeeds = !!seedQuestions && seedQuestions.length > 0 && !rest.hideComposer;
+  const isBroadcastAll = rest.composerMode === ComposerMode.BROADCAST_ALL;
 
-  // In per-panel mode: metrics sit above seeds in slotAboveComposer so they
-  // appear inside the composer frame, above the textarea.
-  // In broadcast-all mode: hideComposer hides slotAboveComposer entirely, so
-  // metrics fall back to the standalone div below the chat surface.
-  const metricsInComposer = showMetrics && latestMetrics && !rest.hideComposer;
-  const metricsBelow = showMetrics && latestMetrics && !!rest.hideComposer;
+  // Seeds render inside the composer card. In broadcast-all mode the page-level
+  // CompareComposer owns seeds, so suppress them here.
+  const showChatSeeds = !!seedQuestions && seedQuestions.length > 0 && !isBroadcastAll;
+
+  // In per-panel mode: metrics sit above seeds in slotComposerStart.
+  // In broadcast-all mode: slotComposerStart is hidden, so metrics fall below.
+  const metricsInComposer = showMetrics && latestMetrics && !isBroadcastAll;
+  const metricsBelow = showMetrics && latestMetrics && isBroadcastAll;
 
   const chatSeedSlot =
-    showChatSeeds || metricsInComposer || (composerToggle && !rest.hideComposer) ? (
+    showChatSeeds || metricsInComposer || (slotComposerEnd && !isBroadcastAll) ? (
       <>
         {metricsInComposer && (
           <div className="px-3 pt-1">
             <StatsBadge metrics={latestMetrics} />
           </div>
         )}
-        {(showChatSeeds || (composerToggle && !rest.hideComposer)) && (
+        {(showChatSeeds || (slotComposerEnd && !isBroadcastAll)) && (
           <SeedQuestions
             questions={showChatSeeds ? seedQuestions : []}
             onSelect={seedComposer}
-            slotEnd={composerToggle}
+            slotEnd={slotComposerEnd}
           />
         )}
       </>
@@ -180,7 +184,7 @@ export const ModelChat: FC<ModelChatProps> = ({
           promptData={promptData}
           onMessageComplete={handleMessageComplete}
           {...rest}
-          slotAboveComposer={chatSeedSlot}
+          slotComposerStart={chatSeedSlot}
         />
       </div>
       {metricsBelow && (

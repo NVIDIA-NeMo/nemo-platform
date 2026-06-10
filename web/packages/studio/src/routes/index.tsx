@@ -3,7 +3,6 @@
 
 import { ErrorMessage } from '@nemo/common/src/components/ErrorMessage';
 import { Stack } from '@nvidia/foundations-react-core';
-import { PlaygroundRedirect } from '@studio/components/chat/PlaygroundRedirect';
 import { ErrorPanel } from '@studio/components/ErrorPanel';
 import { Loading } from '@studio/components/Layouts/Loading';
 import {
@@ -754,16 +753,6 @@ export const routes: RouteObject[] = [
                       <ModelCompareRoute />
                     </Suspense>
                   ) : null,
-                  errorElement: <ErrorPanel title="Chat" />,
-                },
-                {
-                  // Legacy /playground URL kept so any deep links keep working.
-                  path: ROUTES.workspace.playground,
-                  element: (
-                    <Suspense fallback={<Loading />}>
-                      <PlaygroundRedirect />
-                    </Suspense>
-                  ),
                   errorElement: <ErrorPanel title="Chat" />,
                 },
               ]),

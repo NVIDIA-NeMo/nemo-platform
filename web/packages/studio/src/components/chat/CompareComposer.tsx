@@ -3,6 +3,7 @@
 
 import { Button } from '@nvidia/foundations-react-core';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
+import type { ComposerSeed } from '@studio/routes/ModelCompareRoute/types';
 import { RotateCcw, Send, Square } from 'lucide-react';
 import * as React from 'react';
 import {
@@ -10,6 +11,7 @@ import {
   type MutableRefObject,
   type ReactNode,
   useCallback,
+  useEffect,
   useRef,
   useState,
 } from 'react';
@@ -34,7 +36,7 @@ interface CompareComposerProps {
   /** Kept in sync with internal draft so callers can read it imperatively. */
   draftRef?: MutableRefObject<string>;
   /** When triggerCount changes, resets the draft to text (panel→broadcast transfer). */
-  seed?: { triggerCount: number; text: string };
+  seed?: ComposerSeed;
 }
 
 /**
@@ -62,10 +64,11 @@ export const CompareComposer: FC<CompareComposerProps> = ({
 
   // Pre-fill from panel toggle transfer (panel→broadcast).
   const seenSeedTriggerRef = useRef<number | undefined>(undefined);
-  if (seed?.text && seed.triggerCount !== seenSeedTriggerRef.current) {
+  useEffect(() => {
+    if (!seed?.text || seed.triggerCount === seenSeedTriggerRef.current) return;
     seenSeedTriggerRef.current = seed.triggerCount;
     setDraft(seed.text);
-  }
+  }, [seed?.triggerCount, seed?.text]);
 
   const canSend = !isAnyRunning && readyPanelCount > 0 && draft.trim().length > 0;
 
