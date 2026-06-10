@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from ..evaluation.inference_params_param import InferenceParamsParam
+from .inference_params import InferenceParams
 
 __all__ = ["PromptData"]
 
@@ -30,7 +30,7 @@ class PromptData(TypedDict, total=False):
     icl_few_shot_examples: str
     """In-context learning examples"""
 
-    inference_params: InferenceParamsParam
+    inference_params: InferenceParams
     """Parameters for model inference.
 
     Extra fields can be supplied for additional options applied to the inference

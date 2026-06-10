@@ -6,7 +6,6 @@ Types:
 from nemo_platform.types.files import (
     CacheStatus,
     CreateFilesetRequest,
-    DatasetMetadataContent,
     Fileset,
     FilesetFile,
     FilesetOutputsPage,

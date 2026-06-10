@@ -23,7 +23,7 @@ outputs:
     description: "'true' if any files under tools/ changed"
     value: ${{ steps.filter.outputs.tools }}
   web-studio:
-    description: "'true' if any Studio, common, or SDK package files changed"
+    description: "'true' if any web files changed"
     value: ${{ steps.filter.outputs.web-studio }}
 
 runs:
@@ -54,6 +54,4 @@ runs:
           tools:
             - 'tools/**'
           web-studio:
-            - 'web/packages/studio/**'
-            - 'web/packages/common/**'
-            - 'web/packages/sdk/**'
+            - 'web/**'
