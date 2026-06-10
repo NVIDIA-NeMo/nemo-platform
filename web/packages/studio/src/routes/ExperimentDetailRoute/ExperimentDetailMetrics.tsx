@@ -38,6 +38,7 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
         value={
           experiment?.created_at ? <RelativeTime datetime={experiment.created_at} /> : undefined
         }
+        loading={isLoading}
         orientation="vertical"
       />
       <Divider orientation="vertical" className="grow-0 self-stretch" />
@@ -46,6 +47,7 @@ export const ExperimentDetailMetrics: FC<ExperimentDetailMetricsProps> = ({ expe
         value={
           experiment?.updated_at ? <RelativeTime datetime={experiment.updated_at} /> : undefined
         }
+        loading={isLoading}
         orientation="vertical"
       />
       <Divider orientation="vertical" className="grow-0 self-stretch" />
