@@ -7,7 +7,7 @@ import type { ModelChatStatus } from '@nemo/common/src/utils/models';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
 import type { InferenceParams } from '@studio/components/chat/params';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
-import { StatsBadge, type ChatMetrics } from '@studio/components/chat/StatsBadge';
+import type { AssistantMessageMetrics } from '@nemo/common/src/components/AssistantChat/types';
 import { handleGenericError } from '@studio/util/logger';
 import { useMemo, useState, type FC } from 'react';
 
@@ -45,7 +45,18 @@ interface ModelChatProps extends Pick<
    *  are no messages yet. Clicking a chip seeds the composer (using the
    *  AssistantChat composer set-input API via a small DOM bridge). */
   seedQuestions?: string[];
+  /** Playground styling for the Chat tab single-panel layout. */
+  variant?: 'default' | 'playground';
+  /**
+   * Fires with the full completion stats for each finished assistant turn, so a
+   * parent (e.g. the Compare route) can aggregate timing across panels. Distinct
+   * from the internal badge state, which keeps only the latest message.
+   */
+  onMetrics?: (info: AssistantMessageCompletion) => void;
 }
+
+/** Extra bottom inset inside compare panels so messages/stats clear the panel edge. */
+const FLOATING_COMPOSER_CLEARANCE = 'pb-4';
 
 const STATUS_EMPTY_STATE: Record<
   Exclude<ModelChatStatus, 'enabled'>,
@@ -72,8 +83,13 @@ export const ModelChat: FC<ModelChatProps> = ({
   params,
   promptData: promptDataProp,
   seedQuestions = DEFAULT_SEED_QUESTIONS,
+  variant = 'default',
+  placeholder,
+  onMetrics,
   ...rest
 }) => {
+  const isPlayground = variant === 'playground';
+  const resolvedPlaceholder = placeholder ?? (isPlayground ? 'Ask anything...' : undefined);
   const resolvedDisabled = disabled ?? (modelChatStatus ? modelChatStatus !== 'enabled' : false);
   const statusDerivedEmptyState =
     disabled === undefined && modelChatStatus && modelChatStatus !== 'enabled'
@@ -85,7 +101,11 @@ export const ModelChat: FC<ModelChatProps> = ({
   const compareEmptyState = rest.hideComposer
     ? { slotHeading: 'Ready', slotSubheading: '' }
     : undefined;
-  const resolvedEmptyState = emptyState ?? statusDerivedEmptyState ?? compareEmptyState;
+  const playgroundEmptyState = isPlayground
+    ? { slotHeading: 'Ready', slotSubheading: 'Prompt your model to get started.' }
+    : undefined;
+  const resolvedEmptyState =
+    emptyState ?? statusDerivedEmptyState ?? playgroundEmptyState ?? compareEmptyState;
 
   // Build the promptData payload AssistantChat understands. Explicit
   // `promptData` from the caller wins (existing callers like
@@ -106,17 +126,26 @@ export const ModelChat: FC<ModelChatProps> = ({
     } as AssistantChatProps['promptData'];
   }, [promptDataProp, systemPrompt, params]);
 
-  // Per-message metrics: store the latest completion so a single StatsBadge
-  // can render under the chat surface.
-  const [latestMetrics, setLatestMetrics] = useState<ChatMetrics | null>(null);
+  // Per-message timing keyed by assistant message id so every completed turn
+  // renders its own stats, not just the latest reply.
+  const [metricsById, setMetricsById] = useState<Record<string, AssistantMessageMetrics>>({});
+  // Hide seed chips only after the user gets a reply via this panel's composer.
+  // Compare-mode broadcasts also complete messages but must not suppress Chat-tab seeds.
+  const [hasComposerResponse, setHasComposerResponse] = useState(false);
 
   const handleMessageComplete = (info: AssistantMessageCompletion) => {
-    setLatestMetrics({
-      ttftMs: info.ttftMs,
-      totalMs: info.totalMs,
-      completionTokens: info.completionTokens,
-      tokensPerSec: info.tokensPerSec,
-    });
+    setMetricsById((prev) => ({
+      ...prev,
+      [info.assistantMessageId]: {
+        ttftMs: info.ttftMs,
+        completionTokens: info.completionTokens,
+        tokensPerSec: info.tokensPerSec,
+      },
+    }));
+    onMetrics?.(info);
+    if (!rest.hideComposer) {
+      setHasComposerResponse(true);
+    }
   };
 
   // Seed-question handler: targets the AssistantChat composer's textarea by
@@ -126,7 +155,7 @@ export const ModelChat: FC<ModelChatProps> = ({
   const seedComposer = (text: string) => {
     if (typeof document === 'undefined') return;
     const composer = document.querySelector<HTMLTextAreaElement>(
-      '.aui-composer-input textarea, [aria-label="Message Composer"] textarea, textarea[placeholder*="Message"]'
+      'textarea[aria-label="Task prompt"], .aui-composer-input textarea, [aria-label="Message Composer"] textarea, textarea[placeholder*="Ask anything"]'
     );
     if (!composer) return;
     const setter = Object.getOwnPropertyDescriptor(
@@ -138,18 +167,22 @@ export const ModelChat: FC<ModelChatProps> = ({
     composer.focus();
   };
 
-  // Seeds render INSIDE the AssistantChat composer card (above the textarea)
-  // so the chip row + input share one bordered frame. Suppressed once the
-  // panel has produced a metric (i.e. responded once) and in Compare mode
-  // (the page-level CompareComposer owns seeds there).
+  // Seeds sit above the playground composer until the user sends from this panel.
+  // Compare mode owns its own seed row via CompareComposer.
   const showChatSeeds =
-    !!seedQuestions && seedQuestions.length > 0 && !latestMetrics && !rest.hideComposer;
+    !!seedQuestions && seedQuestions.length > 0 && !rest.hideComposer && !hasComposerResponse;
   const chatSeedSlot = showChatSeeds ? (
-    <SeedQuestions questions={seedQuestions} onSelect={seedComposer} />
+    <SeedQuestions
+      questions={seedQuestions}
+      onSelect={seedComposer}
+      label={isPlayground ? 'Ask something like' : undefined}
+    />
   ) : undefined;
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div
+      className={`flex h-full min-h-0 flex-col ${rest.hideComposer ? FLOATING_COMPOSER_CLEARANCE : ''}`}
+    >
       <div className="min-h-0 flex-1">
         <AssistantChat
           model={model}
@@ -159,15 +192,17 @@ export const ModelChat: FC<ModelChatProps> = ({
           onError={onError ?? handleGenericError}
           promptData={promptData}
           onMessageComplete={handleMessageComplete}
+          placeholder={resolvedPlaceholder}
+          composerVariant={isPlayground ? 'playground' : 'default'}
+          assistantMessageMetricsById={metricsById}
           {...rest}
           slotAboveComposer={chatSeedSlot}
+          onReset={() => {
+            setHasComposerResponse(false);
+            setMetricsById({});
+          }}
         />
       </div>
-      {latestMetrics && (
-        <div className="shrink-0 px-3 pt-1 pb-2">
-          <StatsBadge metrics={latestMetrics} />
-        </div>
-      )}
     </div>
   );
 };

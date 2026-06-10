@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AssistantMessageCompletion } from '@nemo/common/src/components/AssistantChat/types';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
+import { Button } from '@nvidia/foundations-react-core';
 import type { InferenceParams } from '@studio/components/chat/params';
 import { ModelChatPanel } from '@studio/components/ModelChatPanel';
 import {
@@ -10,6 +12,7 @@ import {
   type PanelState,
   type SharedModelEntry,
 } from '@studio/routes/ModelCompareRoute/types';
+import { Plus } from 'lucide-react';
 import { useCallback, useState, type FC } from 'react';
 
 interface ModelCompareChatProps {
@@ -24,11 +27,26 @@ interface ModelCompareChatProps {
   onSetParams: (id: number, params: InferenceParams) => void;
   onEvaluate: (id: number) => void;
   onFineTune: (id: number) => void;
+  /** Per-panel "Add to Agent" action (queues a model swap on the selected agent). */
+  onAddToAgent: (id: number) => void;
+  /** Whether an agent is selected — gates the per-panel "Add to Agent" action. */
+  canAddToAgent?: boolean;
+  /** Selected agent name — drives the locked baseline panel's lock tooltip. */
+  agentName?: string | null;
+  /** Adds another comparison panel when the user clicks the trailing + control. */
+  onAddModel?: () => void;
+  /** When false, hides the trailing + control (e.g. at the max panel count). */
+  canAddModel?: boolean;
   /** Compare-mode plumbing — when set, hides per-panel composers and broadcasts. */
   hideComposer?: boolean;
   broadcast?: { nonce: number; text: string };
   cancelNonce?: number;
   onRunningChange?: (id: number, isRunning: boolean) => void;
+  /** Bubbles each panel's completed-turn timing stats up to the route. */
+  onMetrics?: (id: number, info: AssistantMessageCompletion) => void;
+  /** Callback ref for the horizontal scroll row, used to sync scroll with the
+   *  performance-summary row below so the columns track together. */
+  scrollRef?: (el: HTMLElement | null) => void;
 }
 
 export const ModelCompareChat: FC<ModelCompareChatProps> = ({
@@ -42,10 +60,17 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
   onSetParams,
   onEvaluate,
   onFineTune,
+  onAddToAgent,
+  canAddToAgent = false,
+  agentName,
+  onAddModel,
+  canAddModel = false,
   hideComposer,
   broadcast,
   cancelNonce,
   onRunningChange,
+  onMetrics,
+  scrollRef,
 }) => {
   // Per-panel UI state that's view-local (doesn't cross over to Prompts)
   const [collapsedIds, setCollapsedIds] = useState<Set<number>>(new Set());
@@ -81,7 +106,7 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-6 pt-2 pb-2">
+      <div ref={scrollRef} className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-6 pt-2 pb-2">
         {panels.map((panel) => (
           <ModelChatPanel
             key={panel.id}
@@ -96,13 +121,29 @@ export const ModelCompareChat: FC<ModelCompareChatProps> = ({
             onParamsChange={onSetParams}
             onEvaluate={onEvaluate}
             onFineTune={onFineTune}
+            onAddToAgent={onAddToAgent}
+            canAddToAgent={canAddToAgent}
+            agentName={agentName}
             hideRemove={panel.locked || models.length <= 1}
             hideComposer={hideComposer}
             broadcast={broadcast}
             cancelNonce={cancelNonce}
             onRunningChange={onRunningChange}
+            onMetrics={onMetrics}
           />
         ))}
+        {canAddModel && onAddModel && (
+          <Button
+            kind="secondary"
+            size="small"
+            aria-label="Add comparison panel"
+            title="Add comparison panel"
+            onClick={onAddModel}
+            className="h-8 w-8 shrink-0 self-start !px-0 !border-[var(--border-color-interaction-base)] !bg-[var(--background-color-interaction-base)] hover:!border-[var(--border-color-interaction-hover)]"
+          >
+            <Plus size={16} />
+          </Button>
+        )}
       </div>
     </div>
   );

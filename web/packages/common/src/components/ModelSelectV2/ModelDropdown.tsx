@@ -42,8 +42,10 @@ interface ModelDropdownProps {
   defaultModelType?: ModelType;
   hideAdapters?: boolean;
   fullWidth?: boolean;
+  size?: 'small' | 'medium' | 'large';
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  triggerDisplay?: 'name' | 'urn';
 }
 
 export const ModelDropdown: FC<ModelDropdownProps> = ({
@@ -57,8 +59,10 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
   defaultModelType = 'custom',
   hideAdapters = false,
   fullWidth = false,
+  size = 'medium',
   open,
   onOpenChange,
+  triggerDisplay = 'name',
 }) => {
   const [search, setSearch] = useState('');
   const [modelType, setModelType] = useState<ModelType>(defaultModelType);
@@ -101,8 +105,17 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
   };
 
   const triggerLabel = selectedModel
-    ? (selectedModel.name?.split('@')[0] ?? selectedModel.name)
-    : placeholder;
+    ? triggerDisplay === 'urn'
+      ? `${selectedModel.workspace}/${selectedModel.name?.split('@')[0] ?? selectedModel.name}`
+      : (selectedModel.name?.split('@')[0] ?? selectedModel.name)
+    : // A value can be set before its entity is found in `groups` (e.g. a model
+      // seeded from an agent that isn't in this workspace's list). Surface the
+      // URN rather than the misleading "no selection" placeholder.
+      value && triggerDisplay === 'urn'
+      ? value.model
+      : placeholder;
+
+  const triggerTextKind = size === 'small' ? 'label/regular/sm' : 'label/regular/md';
 
   return (
     <DropdownRoot open={open} onOpenChange={handleOpenChange}>
@@ -113,10 +126,11 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
       >
         <Button
           kind="secondary"
+          size={size}
           disabled={disabled}
           aria-label="Select a model"
           data-testid="model-select-v2-trigger"
-          className="overflow-hidden [&[data-state=open]]:border-[var(--border-color-feedback-success)] [&[data-state=open]]:bg-[var(--background-color-interaction-base)]"
+          className="overflow-hidden !border-[var(--border-color-interaction-base)] !bg-[var(--background-color-interaction-base)] hover:!border-[var(--border-color-interaction-hover)] [&[data-state=open]]:!border-[var(--border-color-interaction-selected)]"
         >
           <Flex
             align="center"
@@ -131,13 +145,20 @@ export const ModelDropdown: FC<ModelDropdownProps> = ({
               {loading ? (
                 <>
                   <LoaderCircle size={16} className="animate-spin flex-shrink-0" />
-                  <Text className="truncate">{placeholder}</Text>
+                  <Text kind={triggerTextKind} className="truncate">
+                    {placeholder}
+                  </Text>
                 </>
               ) : (
-                <Text className="truncate">{triggerLabel}</Text>
+                <Text kind={triggerTextKind} className="truncate">
+                  {triggerLabel}
+                </Text>
               )}
             </Flex>
-            <ChevronDown size={16} className="flex-shrink-0" />
+            <ChevronDown
+              size={16}
+              className={`flex-shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}
+            />
           </Flex>
         </Button>
       </DropdownTrigger>

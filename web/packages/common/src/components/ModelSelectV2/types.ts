@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import type { ModelWorkspaceGroup } from '@nemo/common/src/api/models/useModels';
-import type { InferenceParams } from '@nemo/sdk/generated/platform/schema';
+import type { InferenceParamsSliderValues } from '@nemo/common/src/components/InferenceParamsSliders';
 
 export interface ModelSelection {
   /** Model URN (e.g. "workspace/model_name") */
@@ -30,6 +30,8 @@ export interface ModelSelectV2Props {
   defaultModelType?: 'custom' | 'base';
   /** Show the params button alongside the model button */
   showParams?: boolean;
+  /** Show the "Params" text label on the params button. Defaults to true. */
+  showParamsLabel?: boolean;
   /**
    * Hide each model's adapter sub-list. When true, models render as flat,
    * directly-selectable items even if they have adapters.
@@ -41,12 +43,16 @@ export interface ModelSelectV2Props {
   hideAdapters?: boolean;
   /** Make the component fill the width of its container */
   fullWidth?: boolean;
+  /** Size of the trigger buttons. Defaults to "medium". */
+  size?: 'small' | 'medium' | 'large';
   /** Current inference parameter values */
-  inferenceParams?: Partial<InferenceParams>;
+  inferenceParams?: Partial<InferenceParamsSliderValues>;
   /** Called when the user changes any inference parameter */
-  onInferenceParamsChange?: (params: Partial<InferenceParams>) => void;
+  onInferenceParamsChange?: (params: Partial<InferenceParamsSliderValues>) => void;
   /** Called when the model dropdown opens or closes */
   onOpenChange?: (open: boolean) => void;
+  /** How the closed trigger labels the selected model */
+  triggerDisplay?: 'name' | 'urn';
   /** aria-label for the button group */
   'aria-label'?: string;
 }

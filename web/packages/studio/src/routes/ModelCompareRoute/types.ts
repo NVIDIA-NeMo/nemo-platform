@@ -20,12 +20,15 @@ export const PANEL_ROLE_LABELS: Record<PanelRoleColor, string> = {
   amber: 'Comparison 3',
 };
 
-/** Tailwind class for the small colored status dot beside the panel label. */
+/**
+ * Tailwind class for the small colored status dot beside the panel label.
+ * Uses KUI status-indicator feedback tokens (gray / blue / yellow / green).
+ */
 export const PANEL_ROLE_DOT_CLASS: Record<PanelRoleColor, string> = {
-  baseline: 'bg-fg-subdued',
-  cyan: 'bg-accent-blue',
-  magenta: 'bg-accent-purple',
-  amber: 'bg-accent-orange',
+  baseline: 'bg-accent-gray',
+  cyan: 'bg-[var(--text-color-feedback-info)]',
+  magenta: 'bg-[var(--text-color-feedback-warning)]',
+  amber: 'bg-[var(--text-color-feedback-success)]',
 };
 
 /**

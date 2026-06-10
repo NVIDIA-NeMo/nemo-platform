@@ -79,6 +79,23 @@ export interface AssistantChatProps {
     slotHeading?: string;
     slotSubheading?: string;
   };
+  /** Playground layout: taller composer with in-field actions. Default is compact. */
+  composerVariant?: 'default' | 'playground';
+  /** Called after the runtime clears the thread (composer reset button). */
+  onReset?: () => void;
+  /** Extra classes on the scrollable message stack (e.g. bottom padding under a floating composer). */
+  contentClassName?: string;
+  /**
+   * Timing stats keyed by assistant message id. Each completed assistant turn
+   * renders its own stats inline below that turn (not just the latest one).
+   */
+  assistantMessageMetricsById?: Record<string, AssistantMessageMetrics>;
+}
+
+export interface AssistantMessageMetrics {
+  ttftMs: number;
+  completionTokens: number;
+  tokensPerSec: number;
 }
 
 export interface BroadcastSignal {

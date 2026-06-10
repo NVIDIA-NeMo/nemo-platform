@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Button } from '@nvidia/foundations-react-core';
+import { Button, Flex } from '@nvidia/foundations-react-core';
 import { SeedQuestions } from '@studio/components/chat/SeedQuestions';
 import { RotateCcw, Send, Square } from 'lucide-react';
 import * as React from 'react';
@@ -18,17 +18,14 @@ interface CompareComposerProps {
   onStop: () => void;
   /** Clears all panel histories. */
   onResetAll: () => void;
-  /** Suggested prompts rendered above the input INSIDE the same composer card.
-   *  Clicking a chip fills the draft but does NOT auto-submit — preserves the
-   *  "send happens on the green button" mental model. */
+  /** Suggested prompts in a row above the input bar. */
   seedQuestions?: string[];
 }
 
 /**
- * Page-level composer shown only in Compare mode. Mirrors the per-panel
- * AssistantComposer's single-card layout: seeds sit in an attached sub-row
- * above the input, separated by a thin internal divider, all inside one
- * rounded border.
+ * Page-level composer for Compare mode. Mirrors the Chat-tab playground
+ * composer: an "Ask something like" seed-chip row, then a tall input card with
+ * the reset + broadcast/stop controls pinned to the bottom-right.
  */
 export const CompareComposer: FC<CompareComposerProps> = ({
   isAnyRunning,
@@ -72,9 +69,11 @@ export const CompareComposer: FC<CompareComposerProps> = ({
     !!seedQuestions && seedQuestions.length > 0 && !isAnyRunning && draft.trim().length === 0;
 
   return (
-    <div className="flex flex-col gap-2">
-      {showSeeds && <SeedQuestions questions={seedQuestions} onSelect={(text) => setDraft(text)} />}
-      <div className="flex items-center gap-2 rounded-md border border-base bg-surface-base px-3 py-1.5 focus-within:border-emphasis">
+    <Flex direction="col" gap="density-md" className="w-full">
+      {showSeeds ? (
+        <SeedQuestions questions={seedQuestions} onSelect={(text) => setDraft(text)} />
+      ) : null}
+      <div className="relative w-full rounded-lg border border-base bg-surface-base focus-within:border-emphasis">
         <textarea
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
@@ -83,40 +82,42 @@ export const CompareComposer: FC<CompareComposerProps> = ({
           rows={1}
           disabled={readyPanelCount === 0}
           aria-label="Compare prompt"
-          className="placeholder:text-fg-subdued min-h-[24px] max-h-32 flex-1 resize-none border-0 bg-transparent text-sm leading-6 outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
+          className="placeholder:text-fg-subdued max-h-64 min-h-[88px] w-full resize-none border-0 bg-transparent p-3 pb-14 text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
         />
-        <Button
-          kind="tertiary"
-          size="small"
-          onClick={onResetAll}
-          title="Clear all panels"
-          aria-label="Clear all panels"
-        >
-          <RotateCcw size={14} />
-        </Button>
-        {isAnyRunning ? (
+        <Flex gap="density-sm" align="center" justify="end" className="absolute bottom-2 right-2">
           <Button
-            color="danger"
+            kind="tertiary"
             size="small"
-            onClick={onStop}
-            title="Stop all panels"
-            aria-label="Stop all panels"
+            onClick={onResetAll}
+            title="Clear all panels"
+            aria-label="Clear all panels"
           >
-            <Square size={14} />
+            <RotateCcw size={16} />
           </Button>
-        ) : (
-          <Button
-            color="brand"
-            size="small"
-            onClick={handleSubmit}
-            disabled={!canSend}
-            title="Broadcast to all panels"
-            aria-label="Broadcast to all panels"
-          >
-            <Send size={14} />
-          </Button>
-        )}
+          {isAnyRunning ? (
+            <Button
+              color="danger"
+              size="small"
+              onClick={onStop}
+              title="Stop all panels"
+              aria-label="Stop all panels"
+            >
+              <Square size={16} />
+            </Button>
+          ) : (
+            <Button
+              color="brand"
+              size="small"
+              onClick={handleSubmit}
+              disabled={!canSend}
+              title="Broadcast to all panels"
+              aria-label="Broadcast to all panels"
+            >
+              <Send size={16} />
+            </Button>
+          )}
+        </Flex>
       </div>
-    </div>
+    </Flex>
   );
 };

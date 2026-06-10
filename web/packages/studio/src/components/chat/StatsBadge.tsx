@@ -16,9 +16,6 @@ interface StatsBadgeProps {
 }
 
 export const StatsBadge: FC<StatsBadgeProps> = ({ metrics }) => {
-  // NVIDIA brand green via the Kaizen `--color-brand` token — these metrics
-  // are a positive signal (faster, more tokens) so they should pop. No border,
-  // no background — reads as inline text below the assistant message.
   return (
     <div className="inline-flex items-center gap-4 text-xs font-mono text-[var(--color-brand)]">
       <span className="inline-flex items-center gap-1" title="Time to first token">

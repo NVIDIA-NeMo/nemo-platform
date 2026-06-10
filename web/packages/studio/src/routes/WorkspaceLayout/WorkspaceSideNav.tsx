@@ -196,7 +196,7 @@ export const WorkspaceSideNav = ({ collapsed }: { collapsed?: boolean }) => {
           {
             id: 'model-compare',
             slotIcon: <Columns3 className={iconColorClass} />,
-            slotLabel: 'Chat',
+            slotLabel: 'Playground',
             href: getModelCompareRoute(workspace),
           },
         ]

@@ -3,7 +3,7 @@
 
 import { FormModal } from '@nemo/common/src/components/FormModal';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
-import { Block, Stack, Text } from '@nvidia/foundations-react-core';
+import { FormField, Select, Stack, Text } from '@nvidia/foundations-react-core';
 import { useCallback, useState, type FC } from 'react';
 
 interface RunEvaluationModalProps {
@@ -33,12 +33,7 @@ const METRICS = [
  * A in the staged-seahorse plan. A future PR replaces submit() with a real
  * POST and routes the user to the eval-job detail page.
  */
-export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({
-  open,
-  onClose,
-  workspace,
-  modelUrns,
-}) => {
+export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({ open, onClose, modelUrns }) => {
   const toast = useToast();
   const [evalSetId, setEvalSetId] = useState(EVAL_SETS[0].id);
   const [metricId, setMetricId] = useState(METRICS[0].id);
@@ -58,71 +53,47 @@ export const RunEvaluationModal: FC<RunEvaluationModalProps> = ({
       open={open}
       onClose={onClose}
       title="Run Evaluation"
+      instruction="Submit saves your choices and previews the evaluator request. Full integration coming next release."
       submitButtonText="Submit Evaluation"
       onSubmit={submit}
       disabled={submitting || modelUrns.length === 0}
       loading={submitting}
     >
-      <Stack gap="density-xl">
-        <Block className="rounded border border-base bg-surface-sunken px-3 py-2">
-          <Text kind="body/regular/sm" color="secondary">
-            Preview only — Submit captures your choices and shows what would be sent. The wire-up to
-            the evaluator service lands in the next release.
-          </Text>
-        </Block>
-        <Block>
-          <Text kind="label/bold/sm" color="secondary">
-            Models from this Playground ({modelUrns.length})
-          </Text>
+      <Stack gap="density-xl" className="pt-density-md">
+        <Stack gap="density-sm">
+          <Text kind="label/bold/sm">Models from this Playground ({modelUrns.length})</Text>
           {modelUrns.length === 0 ? (
             <Text kind="body/regular/sm" color="secondary">
               Pick at least one model in the Playground first.
             </Text>
           ) : (
-            <ul className="mt-2 list-disc pl-5">
+            <ul className="list-disc pl-5">
               {modelUrns.map((u) => (
-                <li key={u} className="text-sm font-mono">
+                <li key={u} className="font-mono text-sm">
                   {u}
                 </li>
               ))}
             </ul>
           )}
-        </Block>
-        <Block>
-          <Text kind="label/bold/sm" color="secondary">
-            Eval set
-          </Text>
-          <select
-            className="mt-1 w-full rounded border border-base bg-surface-sunken px-2 py-1 text-sm"
+        </Stack>
+        <FormField name="eval-set" slotLabel="Eval Set">
+          <Select
+            multiple={false}
+            className="w-full"
+            items={EVAL_SETS.map((e) => ({ value: e.id, children: e.name }))}
             value={evalSetId}
-            onChange={(e) => setEvalSetId(e.target.value)}
-          >
-            {EVAL_SETS.map((e) => (
-              <option key={e.id} value={e.id}>
-                {e.name}
-              </option>
-            ))}
-          </select>
-        </Block>
-        <Block>
-          <Text kind="label/bold/sm" color="secondary">
-            Metric
-          </Text>
-          <select
-            className="mt-1 w-full rounded border border-base bg-surface-sunken px-2 py-1 text-sm"
+            onValueChange={(next) => setEvalSetId(next as string)}
+          />
+        </FormField>
+        <FormField name="metric" slotLabel="Metric">
+          <Select
+            multiple={false}
+            className="w-full"
+            items={METRICS.map((m) => ({ value: m.id, children: m.name }))}
             value={metricId}
-            onChange={(e) => setMetricId(e.target.value)}
-          >
-            {METRICS.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </select>
-        </Block>
-        <Text kind="body/regular/sm" color="secondary">
-          Workspace: <Text kind="body/semibold/sm">{workspace}</Text>
-        </Text>
+            onValueChange={(next) => setMetricId(next as string)}
+          />
+        </FormField>
       </Stack>
     </FormModal>
   );

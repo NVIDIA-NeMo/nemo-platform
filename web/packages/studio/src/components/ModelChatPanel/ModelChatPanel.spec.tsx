@@ -54,6 +54,7 @@ const renderPanel = (modelURN: string | null, availableModels: ModelEntity[]) =>
           onParamsChange={vi.fn()}
           onEvaluate={vi.fn()}
           onFineTune={vi.fn()}
+          onAddToAgent={vi.fn()}
         />
       </MemoryRouter>
     </TestProviders>

@@ -39,13 +39,14 @@ function extractSystemPrompt(llm: unknown): string {
  * still in flight, or when the agent's config doesn't expose the workflow's
  * primary LLM in a recognizable shape.
  */
-export const useAgentContext = (workspace: string, agentName: string | null): AgentContextResult => {
+export const useAgentContext = (
+  workspace: string,
+  agentName: string | null
+): AgentContextResult => {
   const enabled = !!(workspace && agentName);
-  const { data, isLoading, error } = useAgentsGetAgent(
-    workspace,
-    agentName ?? '',
-    { query: { enabled } }
-  );
+  const { data, isLoading, error } = useAgentsGetAgent(workspace, agentName ?? '', {
+    query: { enabled },
+  });
 
   const context = useMemo<AgentContext | null>(() => {
     if (!enabled || !data) return null;
@@ -55,9 +56,14 @@ export const useAgentContext = (workspace: string, agentName: string | null): Ag
     const modelName = llm?.model_name;
     if (!modelName) return null;
     const agentWorkspace = data.workspace ?? workspace;
+    // `model_name` may already be workspace-qualified (e.g. "default/gemma2-2b").
+    // Only prefix the workspace when it isn't, otherwise we produce a doubled
+    // URN like "default/default/gemma2-2b" that no model entity matches and that
+    // breaks inference (the model name parses to just "default").
+    const currentModelUrn = modelName.includes('/') ? modelName : `${agentWorkspace}/${modelName}`;
     return {
       name: data.name ?? agentName ?? '',
-      currentModelUrn: `${agentWorkspace}/${modelName}`,
+      currentModelUrn,
       systemPrompt: extractSystemPrompt(llm),
     };
   }, [enabled, data, agentName, workspace]);

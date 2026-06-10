@@ -6,7 +6,7 @@ import { Flex, Select, Text } from '@nvidia/foundations-react-core';
 import classnames from 'classnames';
 import type { FC } from 'react';
 
-const SAMPLE_METHOD_ITEMS: { value: FileSampleMethod; children: string }[] = [
+export const SAMPLE_METHOD_ITEMS: { value: FileSampleMethod; children: string }[] = [
   { value: 'random', children: 'Random' },
   { value: 'head', children: 'Head' },
   { value: 'tail', children: 'Tail' },
@@ -15,7 +15,10 @@ const SAMPLE_METHOD_ITEMS: { value: FileSampleMethod; children: string }[] = [
 const DEFAULT_SELECT_CLASS = 'w-[110px] grow-0';
 const COUNT_PRESETS = [5, 10, 25, 50, 100] as const;
 
-function buildCountItems(maxRows: number, current: number): { value: string; children: string }[] {
+export function buildCountItems(
+  maxRows: number,
+  current: number
+): { value: string; children: string }[] {
   const cap = Math.max(1, maxRows);
   const set = new Set<number>();
   for (const p of COUNT_PRESETS) {
@@ -29,7 +32,7 @@ function buildCountItems(maxRows: number, current: number): { value: string; chi
     .map((n) => ({ value: String(n), children: String(n) }));
 }
 
-function clampRowCount(value: number, maxRows: number): number {
+export function clampRowCount(value: number, maxRows: number): number {
   return Math.min(Math.max(1, value), Math.max(1, maxRows));
 }
 
@@ -38,6 +41,7 @@ export interface FileSamplingMethodSelectAttributes {
   select?: {
     className?: string;
     disabled?: boolean;
+    size?: 'small' | 'medium' | 'large';
   };
 }
 
@@ -77,6 +81,7 @@ export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
       value={value}
       onValueChange={(next) => onValueChange(next as FileSampleMethod)}
       disabled={selectAttrs.disabled}
+      size={selectAttrs.size}
       className={classnames(DEFAULT_SELECT_CLASS, selectAttrs.className)}
     />
   );
@@ -97,6 +102,7 @@ export const FileSamplingMethodSelect: FC<FileSamplingMethodSelectProps> = ({
           value={countValue}
           onValueChange={(next) => rowCountGroup.onValueChange(Number(next))}
           disabled={selectAttrs.disabled || rowCountGroup.disabled}
+          size={selectAttrs.size}
           className="w-[72px] grow-0"
         />
       </Flex>

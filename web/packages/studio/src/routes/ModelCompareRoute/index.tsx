@@ -1,17 +1,25 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { AssistantMessageCompletion } from '@nemo/common/src/components/AssistantChat/types';
+import { getPartsFromReference, getURNFromNamedEntityRef } from '@nemo/common/src/namedEntity';
 import { useToast } from '@nemo/common/src/providers/toast/useToast';
+import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
 import {
   Button,
   Flex,
+  PageHeader,
   TabsList,
   TabsRoot,
   TabsTrigger,
   Text,
 } from '@nvidia/foundations-react-core';
-import { AgentContextBanner } from '@studio/components/chat/AgentContextBanner';
 import { AgentPicker } from '@studio/components/chat/AgentPicker';
+import { computeWinners } from '@studio/components/chat/BestPerformingSummary';
+import {
+  PerformanceSummaryPanel,
+  type PanelAverage,
+} from '@studio/components/chat/PerformanceSummaryPanel';
 import { ChatEmptyState } from '@studio/components/chat/ChatEmptyState';
 import { CompareComposer } from '@studio/components/chat/CompareComposer';
 import { DEFAULT_SEED_QUESTIONS } from '@studio/components/chat/defaultSeedQuestions';
@@ -21,17 +29,38 @@ import { useWorkspaceModels } from '@studio/components/chat/useWorkspaceModels';
 import { ModelCompareChat } from '@studio/components/ModelCompareChat';
 import { ModelComparePrompts } from '@studio/components/ModelComparePrompts';
 import { ROUTES } from '@studio/constants/routes';
+import { useSyncedHorizontalScroll } from '@studio/hooks/useSyncedHorizontalScroll';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
 import { useAgentContext } from '@studio/routes/ModelCompareRoute/useAgentContext';
-import { Check, Plus, RotateCcw, Target } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { generatePath, useNavigate, useSearchParams } from 'react-router-dom';
 
-type CompareView = 'chat' | 'compare' | 'prompts';
+type CompareView = 'compare' | 'prompts';
 
 const MAX_MODELS = 4;
 const DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.';
+
+/**
+ * Maps an agent's configured model onto a URN that exists in the workspace
+ * picker. The agent config stores a bare `model_name` under an arbitrary
+ * workspace, which won't always equal the platform model entity's
+ * `workspace/name` URN the dropdown matches on. We try an exact URN match
+ * first, then fall back to the (adapter-stripped) model name so the Baseline
+ * panel reliably shows the agent's model as selected instead of an empty
+ * placeholder. Falls back to the original URN when no entity matches.
+ */
+const resolveAgentModelUrn = (currentModelUrn: string, availableModels: ModelEntity[]): string => {
+  const exact = availableModels.find((m) => getURNFromNamedEntityRef(m) === currentModelUrn);
+  if (exact) return currentModelUrn;
+  const { name: targetName } = getPartsFromReference(currentModelUrn);
+  const targetBase = targetName.split('@')[0];
+  const byName = availableModels.find((m) => {
+    const name = m.name ?? '';
+    return name === targetName || name.split('@')[0] === targetBase;
+  });
+  return (byName && getURNFromNamedEntityRef(byName)) || currentModelUrn;
+};
 
 const makeDefaultEntry = (
   id: number,
@@ -60,8 +89,7 @@ export const ModelCompareRoute: FC = () => {
     error: agentError,
   } = useAgentContext(workspace, agentNameFromUrl);
 
-  const [activeView, setActiveView] = useState<CompareView>('chat');
-  const [promptsReady, setPromptsReady] = useState(false);
+  const [activeView, setActiveView] = useState<CompareView>('compare');
 
   // Start with two empty, unlocked panels — even when `?agent=` is set. The
   // seeding effect below applies the lock + baseline once the agent fetch
@@ -91,14 +119,20 @@ export const ModelCompareRoute: FC = () => {
       return;
     }
     if (seededAgentRef.current === agentContext.name) return;
+    // Defer seeding until the workspace models resolve so we can map the
+    // agent's configured model onto the picker's actual `workspace/name` URN.
+    // Seeding too early would set a URN the dropdown can't match, leaving the
+    // locked Baseline panel stuck on the empty "Select a model…" placeholder.
+    if (isLoadingModels) return;
     seededAgentRef.current = agentContext.name;
     const seedPrompt = agentContext.systemPrompt || DEFAULT_SYSTEM_PROMPT;
+    const baselineUrn = resolveAgentModelUrn(agentContext.currentModelUrn, availableModels);
     setModels((prev) =>
       prev.map((m, i) => {
         if (i === 0) {
           return {
             ...m,
-            modelURN: agentContext.currentModelUrn,
+            modelURN: baselineUrn,
             systemPrompt: seedPrompt,
             locked: true,
           };
@@ -106,7 +140,7 @@ export const ModelCompareRoute: FC = () => {
         return { ...m, systemPrompt: seedPrompt };
       })
     );
-  }, [agentContext]);
+  }, [agentContext, isLoadingModels, availableModels]);
 
   const setAgentName = useCallback(
     (next: string | null) => {
@@ -133,6 +167,25 @@ export const ModelCompareRoute: FC = () => {
   const [runningById, setRunningById] = useState<Map<number, boolean>>(() => new Map());
   const isAnyRunning = useMemo(() => Array.from(runningById.values()).some(Boolean), [runningById]);
 
+  // Completed-turn timing history per panel, used for the "Best Performing +
+  // Averages" panel. Accumulates across every turn in the session (not reset on
+  // broadcast) so the panel reflects the multi-turn averages; cleared only on
+  // reset, model removal, or a model swap.
+  const [metricsById, setMetricsById] = useState<Map<number, AssistantMessageCompletion[]>>(
+    () => new Map()
+  );
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
+  // Keep the chat-panel row and the performance-summary row scrolling together.
+  const [chatScrollRef, summaryScrollRef] = useSyncedHorizontalScroll(2);
+
+  const handleMetrics = useCallback((id: number, info: AssistantMessageCompletion) => {
+    setMetricsById((prev) => {
+      const next = new Map(prev);
+      next.set(id, [...(prev.get(id) ?? []), info]);
+      return next;
+    });
+  }, []);
+
   const handleRunningChange = useCallback((id: number, running: boolean) => {
     setRunningById((prev) => {
       if (prev.get(id) === running) return prev;
@@ -158,10 +211,23 @@ export const ModelCompareRoute: FC = () => {
       next.delete(id);
       return next;
     });
+    setMetricsById((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   const setModelRef = useCallback((id: number, modelURN: string | null) => {
     setModels((prev) => prev.map((m) => (m.id === id ? { ...m, modelURN } : m)));
+    // A model swap invalidates this panel's prior timing.
+    setMetricsById((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Map(prev);
+      next.delete(id);
+      return next;
+    });
   }, []);
 
   const setSystemPrompt = useCallback((id: number, value: string) => {
@@ -178,14 +244,8 @@ export const ModelCompareRoute: FC = () => {
     );
     setBroadcast(null);
     setRunningById(new Map());
+    setMetricsById(new Map());
   }, []);
-
-  // Auto-fall-back: leaving Compare mode when there's no longer enough panels
-  // to compare. Keeps the SegmentedControl from showing a selected-but-hidden
-  // item.
-  useEffect(() => {
-    if (activeView === 'compare' && models.length < 2) setActiveView('chat');
-  }, [activeView, models.length]);
 
   const openEvalForAll = useCallback(() => {
     const urns = Array.from(new Set(models.map((m) => m.modelURN).filter((u): u is string => !!u)));
@@ -214,24 +274,16 @@ export const ModelCompareRoute: FC = () => {
     [models, navigate, toast, workspace]
   );
 
-  const applyToAgent = useCallback(() => {
-    if (!agentContext) return;
-    const comparison = models[1];
-    const candidate = comparison?.modelURN;
-    if (!candidate) {
-      toast.error('Select a model in Comparison 1 first');
-      return;
-    }
-    // Honest UX: the agents API has no PATCH/PUT today, so we can't actually
-    // swap the model. Surface the gap clearly instead of faking a success
-    // toast — see Follow-up B in the staged-seahorse plan.
-    toast.info(
-      `Coming next — agent model swap is queued for the next release. (Planned diff: ${agentContext.currentModelUrn} → ${candidate})`
-    );
-  }, [agentContext, models, toast]);
+  // "Create Agent" isn't wired up yet (the agents API has no model-swap endpoint
+  // today). The menu item's tooltip already says it's coming in a future release,
+  // so the click is intentionally a no-op — previously this surfaced an info toast
+  // that was redundant with the tooltip.
+  const addToAgent = useCallback(() => {}, []);
 
   const handleBroadcast = useCallback((text: string) => {
     setBroadcast((prev) => ({ nonce: (prev?.nonce ?? 0) + 1, text }));
+    // Metrics accumulate across turns — don't clear here. The averages panel
+    // aggregates every completed turn in the session.
   }, []);
 
   const handleStopAll = useCallback(() => {
@@ -239,95 +291,126 @@ export const ModelCompareRoute: FC = () => {
   }, []);
 
   const atMaxModels = models.length >= MAX_MODELS;
-  const addModelDisabled = atMaxModels || (activeView === 'prompts' && !promptsReady);
-  const showCompareItem = models.length >= 2;
-  const inCompareMode = models.length >= 2;
   const anyModelSelected = models.some((m) => !!m.modelURN);
   const readyPanelCount = models.filter((m) => !!m.modelURN).length;
+
+  // Per-panel averages across all completed turns. `tokensPerSec` is weighted
+  // (sum tokens / sum seconds) rather than a mean-of-means so short turns don't
+  // over-influence the rate. Null for panels with zero completed turns so the
+  // panel can render an em-dash.
+  const averagesById = useMemo(() => {
+    const result: Record<number, PanelAverage> = {};
+    models.forEach((m) => {
+      const turns = metricsById.get(m.id) ?? [];
+      if (turns.length === 0) {
+        result[m.id] = null;
+        return;
+      }
+      let totalMs = 0;
+      let totalTokens = 0;
+      turns.forEach((t) => {
+        totalMs += t.totalMs;
+        totalTokens += t.completionTokens;
+      });
+      const count = turns.length;
+      result[m.id] = {
+        totalMs: totalMs / count,
+        completionTokens: totalTokens / count,
+        tokensPerSec: totalMs > 0 ? totalTokens / (totalMs / 1000) : 0,
+        count,
+      };
+    });
+    return result;
+  }, [models, metricsById]);
+
+  const anyAverages = Object.values(averagesById).some((a) => a !== null);
+
+  // Overall "Best Performing" winners across the session's averages. Null until
+  // at least two panels have results, since a winner needs a comparison.
+  const winners = useMemo(
+    () =>
+      computeWinners(
+        models
+          .map((m) => ({ id: m.id, avg: averagesById[m.id] }))
+          .filter((e): e is { id: number; avg: NonNullable<PanelAverage> } => e.avg !== null)
+          .map((e) => ({
+            id: e.id,
+            stats: {
+              totalMs: e.avg.totalMs,
+              tokensPerSec: e.avg.tokensPerSec,
+              completionTokens: e.avg.completionTokens,
+            },
+          }))
+      ),
+    [models, averagesById]
+  );
+
+  const modelLabelById = useCallback(
+    (id: number): string => {
+      const m = models.find((mm) => mm.id === id);
+      return m?.modelURN ? getPartsFromReference(m.modelURN).name : 'Model';
+    },
+    [models]
+  );
 
   // Empty state when the workspace has zero models and we're not still loading.
   if (!isLoadingModels && availableModels.length === 0) {
     return <ChatEmptyState hasModels={false} />;
   }
 
-  const showChatPanels = activeView === 'chat' || activeView === 'compare';
+  const showChatPanels = activeView === 'compare';
 
   return (
     <div className="flex h-full flex-col">
-      {/* Row 1 — page title */}
-      <div className="shrink-0 px-6 pt-4 pb-2">
-        <h1 className="text-2xl font-semibold">Chat</h1>
+      {/* Row 1 — page title (left) + page actions (right). Uses the shared KUI
+       *  PageHeader so the heading typography and placement match every other
+       *  page. Actions live on this row so the tab underline below can span the
+       *  full width. */}
+      <div className="shrink-0 px-6 pt-6 pb-5">
+        <PageHeader
+          className="p-0"
+          slotHeading="Playground"
+          slotActions={
+            <Flex align="center" gap="density-md" className="shrink-0">
+              <AgentPicker workspace={workspace} value={agentNameFromUrl} onChange={setAgentName} />
+              {anyModelSelected && (
+                <Button kind="secondary" size="medium" onClick={openEvalForAll}>
+                  Run Evaluation
+                </Button>
+              )}
+            </Flex>
+          }
+        />
       </div>
-      {/* Row 2 — sub-nav tabs (left) + page actions (right). No row-level
-       *  underline: each tab carries its own indicator only when active, so
-       *  the header stays quiet until the user selects a tab. */}
-      <Flex align="center" justify="between" className="shrink-0 px-6 pb-2">
+      {/* Row 2 — sub-nav tabs. */}
+      <Flex align="center" className="shrink-0 px-6 pb-2">
         <TabsRoot value={activeView} onValueChange={(value) => setActiveView(value as CompareView)}>
-          {/* -ml-3 cancels the first TabsTrigger's internal 12px left padding
-           *  so its label aligns precisely with the page title above. */}
-          <TabsList className="-ml-3 !shadow-none [&_[data-state=active]]:border-b-[var(--color-brand)]">
-            <TabsTrigger value="chat">Chat</TabsTrigger>
-            {showCompareItem && <TabsTrigger value="compare">Compare</TabsTrigger>}
+          <TabsList>
+            <TabsTrigger value="compare">Compare</TabsTrigger>
             <TabsTrigger value="prompts">Run Prompts</TabsTrigger>
           </TabsList>
         </TabsRoot>
-        <Flex align="center" gap="density-md">
-          {inCompareMode && (
-            <Button
-              kind="primary"
-              color="brand"
-              size="small"
-              onClick={openEvalForAll}
-              disabled={!anyModelSelected}
-            >
-              <Target size={14} />
-              Run Evaluation
-            </Button>
-          )}
-          {agentContext && (
-            <Button kind="secondary" size="small" onClick={applyToAgent}>
-              <Check size={14} />
-              Apply to Agent
-            </Button>
-          )}
-          <Button kind="secondary" size="small" onClick={addModel} disabled={addModelDisabled}>
-            <Plus size={14} />
-            Add Model
-          </Button>
-          <Button kind="tertiary" size="small" onClick={resetAll}>
-            <RotateCcw size={14} />
-            Reset
-          </Button>
-        </Flex>
       </Flex>
-      {/* Row 3 — agent picker (left) + context banner (right, fills remaining
-       *  width). Banner is the info chrome when an agent is selected, or a
-       *  loading/error state when the URL points at a missing agent. */}
-      <Flex align="center" gap="density-md" className="shrink-0 px-6 pb-3">
-        <AgentPicker workspace={workspace} value={agentNameFromUrl} onChange={setAgentName} />
-        <div className="min-w-0 flex-1">
-          {agentContext && (
-            <AgentContextBanner
-              agentName={agentContext.name}
-              baselineModelUrn={models[0]?.modelURN ?? null}
-            />
-          )}
-          {agentNameFromUrl && !agentContext && (agentLoading || agentError) && (
-            <div className="rounded-lg border border-base bg-surface-sunken px-3 py-2 text-sm">
-              {agentLoading ? (
-                <Text kind="body/regular/sm" color="secondary">
-                  Loading agent &quot;{agentNameFromUrl}&quot;…
-                </Text>
-              ) : (
-                <Text kind="body/regular/sm" className="text-fg-error">
-                  Agent &quot;{agentNameFromUrl}&quot; not found in workspace &quot;{workspace}
-                  &quot;. Falling back to plain Chat.
-                </Text>
-              )}
-            </div>
-          )}
+      {/* Row 3 — loading/error state when the URL points at a missing agent.
+       *  The agent picker lives in the page header actions (top-right); the
+       *  resolved-agent context is now surfaced as a tooltip on the locked
+       *  baseline model selector instead of a page banner. */}
+      {agentNameFromUrl && !agentContext && (agentLoading || agentError) && (
+        <div className="min-w-0 shrink-0 px-6 pb-3">
+          <div className="rounded-lg border border-base bg-surface-sunken px-3 py-2 text-sm">
+            {agentLoading ? (
+              <Text kind="body/regular/sm" color="secondary">
+                Loading agent &quot;{agentNameFromUrl}&quot;…
+              </Text>
+            ) : (
+              <Text kind="body/regular/sm" className="text-fg-error">
+                Agent &quot;{agentNameFromUrl}&quot; not found in workspace &quot;{workspace}
+                &quot;. Falling back to plain Chat.
+              </Text>
+            )}
+          </div>
         </div>
-      </Flex>
+      )}
 
       <div className={`min-h-0 flex-1 overflow-hidden ${showChatPanels ? '' : 'hidden'}`}>
         <ModelCompareChat
@@ -341,12 +424,20 @@ export const ModelCompareRoute: FC = () => {
           onSetParams={setParams}
           onEvaluate={openEvalForOne}
           onFineTune={openFineTune}
-          hideComposer={activeView === 'compare'}
+          onAddToAgent={addToAgent}
+          canAddToAgent={!!agentContext}
+          agentName={agentContext?.name ?? null}
+          onAddModel={addModel}
+          canAddModel={!atMaxModels}
+          hideComposer
           broadcast={broadcast ?? undefined}
           cancelNonce={cancelNonce}
           onRunningChange={handleRunningChange}
+          onMetrics={handleMetrics}
+          scrollRef={chatScrollRef}
         />
       </div>
+
       <div className={`min-h-0 flex-1 overflow-hidden ${activeView !== 'prompts' ? 'hidden' : ''}`}>
         <ModelComparePrompts
           workspace={workspace}
@@ -355,13 +446,30 @@ export const ModelCompareRoute: FC = () => {
           models={models}
           onRemoveModel={removeModel}
           onSetModel={setModelRef}
-          onReadyChange={setPromptsReady}
+          onSetParams={setParams}
+          onAddModel={addModel}
+          canAddModel={!atMaxModels}
           agentName={agentContext?.name ?? null}
         />
       </div>
 
+      {activeView === 'compare' && anyAverages && (
+        <div className="shrink-0 px-6 pt-3">
+          <PerformanceSummaryPanel
+            models={models}
+            averagesById={averagesById}
+            winners={winners}
+            modelLabelById={modelLabelById}
+            expanded={summaryExpanded}
+            onToggleExpanded={() => setSummaryExpanded((v) => !v)}
+            reserveTrailingSlot={!atMaxModels}
+            scrollRef={summaryScrollRef}
+          />
+        </div>
+      )}
+
       {activeView === 'compare' && (
-        <div className="shrink-0 px-6 py-3">
+        <div className="shrink-0 px-6 pt-6 pb-3">
           <CompareComposer
             isAnyRunning={isAnyRunning}
             readyPanelCount={readyPanelCount}

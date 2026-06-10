@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  ActionBarPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   type TextMessagePartComponent,
   ThreadPrimitive,
+  useMessage,
 } from '@assistant-ui/react';
 import {
   Banner,
@@ -14,16 +14,15 @@ import {
   Flex,
   Skeleton,
   Stack,
-  Text,
-  TextArea,
   Tooltip,
 } from '@nvidia/foundations-react-core';
 import cn from 'classnames';
-import { Check, Copy, Pencil, RefreshCw, RotateCcw, Send, Square, X } from 'lucide-react';
+import { Gauge, Hash, RotateCcw, Send, Square, Timer } from 'lucide-react';
 import type * as React from 'react';
 
 import { ChatEmptyState } from '../Chat/ChatEmptyState';
 import { MessageContent } from '../Chat/MessageContent';
+import type { AssistantMessageMetrics } from './types';
 
 interface AssistantChatThreadProps {
   disabled?: boolean;
@@ -39,9 +38,11 @@ interface AssistantChatThreadProps {
     slotHeading?: string;
     slotSubheading?: string;
   };
+  composerVariant?: 'default' | 'playground';
   contentClassName?: string;
   composerContainerClassName?: string;
   viewportClassName?: string;
+  assistantMessageMetricsById?: Record<string, AssistantMessageMetrics>;
 }
 
 const AssistantChatTextPart: TextMessagePartComponent = ({ text }) => (
@@ -59,127 +60,72 @@ const AssistantChatMessageContent = () => (
   </>
 );
 
-const ACTION_BUTTON_CLASS =
-  'flex cursor-pointer size-8 items-center justify-center rounded text-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50';
-
-const CopyAction = () => (
-  <Tooltip slotContent="Copy message">
-    <ActionBarPrimitive.Copy aria-label="Copy message" className={ACTION_BUTTON_CLASS}>
-      <MessagePrimitive.If copied>
-        <Check size={16} />
-      </MessagePrimitive.If>
-      <MessagePrimitive.If copied={false}>
-        <Copy size={16} />
-      </MessagePrimitive.If>
-    </ActionBarPrimitive.Copy>
-  </Tooltip>
+const MessageMetrics = ({ metrics }: { metrics: AssistantMessageMetrics }) => (
+  <div className="inline-flex items-center gap-4 text-xs font-mono text-[var(--color-brand)]">
+    <span className="inline-flex items-center gap-1" title="Time to first token">
+      <Timer size={12} />
+      {(metrics.ttftMs / 1000).toFixed(1)}s
+    </span>
+    <span className="inline-flex items-center gap-1" title="Tokens per second">
+      <Gauge size={12} />
+      {metrics.tokensPerSec.toFixed(1)} t/s
+    </span>
+    <span className="inline-flex items-center gap-1" title="Completion tokens">
+      <Hash size={12} />
+      {metrics.completionTokens} tokens
+    </span>
+  </div>
 );
 
-const AssistantMessage = () => (
-  <MessagePrimitive.Root
-    data-testid="assistant-chat-message"
-    data-testspeaker="assistant"
-    className="group/message self-stretch whitespace-pre-wrap"
-  >
-    <AssistantChatMessageContent />
-    <div className="mt-density-sm flex h-8 items-center">
-      <MessagePrimitive.If last>
-        <ThreadPrimitive.If running>
-          <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
-        </ThreadPrimitive.If>
-      </MessagePrimitive.If>
-      <ActionBarPrimitive.Root
-        hideWhenRunning
-        className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
+const createAssistantMessage = (
+  assistantMessageMetricsById?: Record<string, AssistantMessageMetrics>
+) => {
+  const AssistantMessage = () => {
+    // Each turn renders its own metrics, keyed by this message's id, so the
+    // whole conversation shows per-turn stats — not only the latest reply.
+    const messageId = useMessage((message) => message.id);
+    const metrics = messageId ? assistantMessageMetricsById?.[messageId] : undefined;
+    return (
+      <MessagePrimitive.Root
+        data-testid="assistant-chat-message"
+        data-testspeaker="assistant"
+        className="group/message self-stretch whitespace-pre-wrap"
       >
-        <Tooltip slotContent="Regenerate response">
-          <ActionBarPrimitive.Reload
-            aria-label="Regenerate response"
-            className={ACTION_BUTTON_CLASS}
-          >
-            <RefreshCw size={16} />
-          </ActionBarPrimitive.Reload>
-        </Tooltip>
-        <CopyAction />
-      </ActionBarPrimitive.Root>
-    </div>
-  </MessagePrimitive.Root>
-);
+        <AssistantChatMessageContent />
+        <div className="mt-density-sm flex min-h-8 w-full items-center">
+          <MessagePrimitive.If last>
+            <ThreadPrimitive.If running>
+              <Skeleton className="h-density-4 w-full" data-testid="assistant-chat-skeleton" />
+            </ThreadPrimitive.If>
+          </MessagePrimitive.If>
+          {metrics ? (
+            <div className="ml-auto">
+              <MessageMetrics metrics={metrics} />
+            </div>
+          ) : null}
+        </div>
+      </MessagePrimitive.Root>
+    );
+  };
+
+  return AssistantMessage;
+};
 
 const UserMessage = () => (
   <MessagePrimitive.Root
     data-testid="assistant-chat-message"
     data-testspeaker="user"
-    className="group/message flex w-full flex-col items-end gap-density-xs whitespace-pre-wrap"
+    className="group/message mt-density-xl flex w-full flex-col items-end gap-density-xs whitespace-pre-wrap"
   >
     <div className="max-w-[80%] rounded-xl rounded-br-none bg-surface-overlay px-3 py-2">
       <AssistantChatMessageContent />
     </div>
-    <div className="flex h-8 shrink-0 items-center">
-      <ActionBarPrimitive.Root
-        hideWhenRunning
-        className="flex gap-density-xs opacity-0 transition-opacity group-hover/message:opacity-100 group-focus-within/message:opacity-100 [@media(hover:none)]:opacity-100"
-      >
-        <Tooltip slotContent="Edit message">
-          <ActionBarPrimitive.Edit aria-label="Edit message" className={ACTION_BUTTON_CLASS}>
-            <Pencil size={16} />
-          </ActionBarPrimitive.Edit>
-        </Tooltip>
-        <CopyAction />
-      </ActionBarPrimitive.Root>
-    </div>
-  </MessagePrimitive.Root>
-);
-
-const UserEditComposer = () => (
-  <MessagePrimitive.Root
-    data-testid="assistant-chat-edit-composer"
-    className="w-full max-w-[80%] self-end rounded-xl rounded-br-none bg-surface-overlay px-4 py-2"
-  >
-    <ComposerPrimitive.Root className="w-full">
-      <ComposerPrimitive.Input
-        aria-label="Edit message"
-        addAttachmentOnPaste={false}
-        autoFocus
-        submitMode="enter"
-        rows={3}
-        render={
-          <TextArea
-            resizeable="auto"
-            size="large"
-            className="w-full max-h-64"
-            slotEnd={
-              <Flex
-                gap="density-sm"
-                align="center"
-                justify="end"
-                className="mt-density-sm self-end"
-              >
-                <Tooltip slotContent="Cancel edit">
-                  <ComposerPrimitive.Cancel
-                    aria-label="Cancel edit"
-                    className="cursor-pointer flex size-8 items-center justify-center rounded border border-base bg-surface-raised hover:bg-surface-sunken disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    <X />
-                  </ComposerPrimitive.Cancel>
-                </Tooltip>
-                <ComposerPrimitive.Send asChild>
-                  <Button aria-label="Save edit" color="brand" size="small" className="h-full">
-                    <Text kind="label/regular/sm">Send</Text>
-                  </Button>
-                </ComposerPrimitive.Send>
-              </Flex>
-            }
-          />
-        }
-      />
-    </ComposerPrimitive.Root>
   </MessagePrimitive.Root>
 );
 
 type AssistantComposerProps = Pick<
   AssistantChatThreadProps,
-  'disabled' | 'placeholder' | 'onReset' | 'slotAboveComposer'
+  'disabled' | 'placeholder' | 'onReset' | 'slotAboveComposer' | 'composerVariant'
 > & {
   className?: string;
 };
@@ -189,54 +135,106 @@ const AssistantComposer = ({
   placeholder,
   onReset,
   slotAboveComposer,
+  composerVariant = 'default',
   className,
-}: AssistantComposerProps) => (
-  <div className="flex flex-col gap-2">
-    {slotAboveComposer && <div className="shrink-0">{slotAboveComposer}</div>}
-    <ComposerPrimitive.Root
-      className={cn(
-        'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
-        className
-      )}
-    >
-      <ComposerPrimitive.Input
-        aria-label="Task prompt"
-        addAttachmentOnPaste={false}
-        disabled={disabled}
-        placeholder={placeholder}
-        submitMode="enter"
-        rows={1}
-        className="max-h-64 flex-1 resize-none border-0 bg-transparent p-density-sm text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
-      />
-      <Tooltip slotContent="Clear chat thread">
-        <Button
-          aria-label="Reset"
-          kind="tertiary"
-          size="small"
-          onClick={onReset}
-          type="button"
-          disabled={disabled}
+}: AssistantComposerProps) => {
+  if (composerVariant === 'playground') {
+    return (
+      <div className="flex flex-col gap-3">
+        {slotAboveComposer ? <div className="shrink-0">{slotAboveComposer}</div> : null}
+        <ComposerPrimitive.Root
+          className={cn('relative w-full rounded-lg border border-base bg-surface-base', className)}
         >
-          <RotateCcw />
-        </Button>
-      </Tooltip>
-      <ThreadPrimitive.If running>
-        <ComposerPrimitive.Cancel asChild>
-          <Button aria-label="Stop" color="danger" size="small">
-            <Square />
+          <ComposerPrimitive.Input
+            aria-label="Task prompt"
+            addAttachmentOnPaste={false}
+            disabled={disabled}
+            placeholder={placeholder}
+            submitMode="enter"
+            rows={3}
+            className="max-h-64 min-h-[88px] w-full resize-none border-0 bg-transparent p-3 pb-14 text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
+          />
+          <Flex gap="density-sm" align="center" justify="end" className="absolute bottom-2 right-2">
+            <Tooltip slotContent="Clear chat thread">
+              <Button
+                aria-label="Reset"
+                kind="tertiary"
+                size="small"
+                onClick={onReset}
+                type="button"
+                disabled={disabled}
+              >
+                <RotateCcw size={16} />
+              </Button>
+            </Tooltip>
+            <ThreadPrimitive.If running>
+              <ComposerPrimitive.Cancel asChild>
+                <Button aria-label="Stop" color="danger" size="small">
+                  <Square size={16} />
+                </Button>
+              </ComposerPrimitive.Cancel>
+            </ThreadPrimitive.If>
+            <ThreadPrimitive.If running={false}>
+              <ComposerPrimitive.Send asChild>
+                <Button aria-label="Submit" color="brand" size="small">
+                  <Send size={16} />
+                </Button>
+              </ComposerPrimitive.Send>
+            </ThreadPrimitive.If>
+          </Flex>
+        </ComposerPrimitive.Root>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      {slotAboveComposer && <div className="shrink-0">{slotAboveComposer}</div>}
+      <ComposerPrimitive.Root
+        className={cn(
+          'flex w-full items-end gap-1 rounded border border-base bg-surface-base p-1',
+          className
+        )}
+      >
+        <ComposerPrimitive.Input
+          aria-label="Task prompt"
+          addAttachmentOnPaste={false}
+          disabled={disabled}
+          placeholder={placeholder}
+          submitMode="enter"
+          rows={1}
+          className="max-h-64 flex-1 resize-none border-0 bg-transparent p-density-sm text-sm outline-none disabled:cursor-not-allowed disabled:text-fg-disabled"
+        />
+        <Tooltip slotContent="Clear chat thread">
+          <Button
+            aria-label="Reset"
+            kind="tertiary"
+            size="small"
+            onClick={onReset}
+            type="button"
+            disabled={disabled}
+          >
+            <RotateCcw />
           </Button>
-        </ComposerPrimitive.Cancel>
-      </ThreadPrimitive.If>
-      <ThreadPrimitive.If running={false}>
-        <ComposerPrimitive.Send asChild>
-          <Button aria-label="Submit" color="brand" size="small">
-            <Send />
-          </Button>
-        </ComposerPrimitive.Send>
-      </ThreadPrimitive.If>
-    </ComposerPrimitive.Root>
-  </div>
-);
+        </Tooltip>
+        <ThreadPrimitive.If running>
+          <ComposerPrimitive.Cancel asChild>
+            <Button aria-label="Stop" color="danger" size="small">
+              <Square />
+            </Button>
+          </ComposerPrimitive.Cancel>
+        </ThreadPrimitive.If>
+        <ThreadPrimitive.If running={false}>
+          <ComposerPrimitive.Send asChild>
+            <Button aria-label="Submit" color="brand" size="small">
+              <Send />
+            </Button>
+          </ComposerPrimitive.Send>
+        </ThreadPrimitive.If>
+      </ComposerPrimitive.Root>
+    </div>
+  );
+};
 
 export const AssistantChatThread = ({
   disabled,
@@ -245,44 +243,59 @@ export const AssistantChatThread = ({
   hideComposer,
   slotAboveComposer,
   emptyState,
+  composerVariant,
   contentClassName,
   composerContainerClassName,
   viewportClassName,
-}: AssistantChatThreadProps) => (
-  <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
-    <ThreadPrimitive.Viewport
-      className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
-    >
-      <Stack gap="density-md" className={cn('min-h-full w-full', contentClassName)}>
-        <ThreadPrimitive.Empty>
-          <ChatEmptyState
-            className="h-full min-h-[250px] w-full"
-            slotHeading={emptyState?.slotHeading}
-            slotSubheading={emptyState?.slotSubheading}
+  assistantMessageMetricsById,
+}: AssistantChatThreadProps) => {
+  // Playground centers the conversation + composer in a single reading column
+  // so it doesn't stretch across a wide panel.
+  const isPlayground = composerVariant === 'playground';
+  const playgroundColumn = isPlayground ? 'mx-auto w-full max-w-3xl' : undefined;
+  const AssistantMessage = createAssistantMessage(assistantMessageMetricsById);
+
+  return (
+    <ThreadPrimitive.Root className="flex h-full w-full flex-col" role="log">
+      <ThreadPrimitive.Viewport
+        className={cn('relative flex min-h-0 flex-1 flex-col overflow-y-auto', viewportClassName)}
+      >
+        <Stack
+          gap="density-md"
+          className={cn('min-h-full w-full', playgroundColumn, contentClassName)}
+        >
+          <ThreadPrimitive.Empty>
+            <ChatEmptyState
+              className="h-full min-h-[250px] w-full"
+              slotHeading={emptyState?.slotHeading}
+              slotSubheading={emptyState?.slotSubheading}
+            />
+          </ThreadPrimitive.Empty>
+          <ThreadPrimitive.Messages
+            components={{
+              AssistantMessage,
+              UserMessage,
+              SystemMessage: AssistantMessage,
+            }}
           />
-        </ThreadPrimitive.Empty>
-        <ThreadPrimitive.Messages
-          components={{
-            AssistantMessage,
-            UserMessage,
-            UserEditComposer,
-            SystemMessage: AssistantMessage,
-          }}
-        />
-      </Stack>
-      <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
-        Scroll to bottom
-      </ThreadPrimitive.ScrollToBottom>
-    </ThreadPrimitive.Viewport>
-    {!hideComposer && (
-      <Flex className={cn('w-full', composerContainerClassName)}>
-        <AssistantComposer
-          disabled={disabled}
-          placeholder={placeholder}
-          onReset={onReset}
-          slotAboveComposer={slotAboveComposer}
-        />
-      </Flex>
-    )}
-  </ThreadPrimitive.Root>
-);
+        </Stack>
+        <ThreadPrimitive.ScrollToBottom className="sticky bottom-density-sm self-center rounded border border-base bg-surface-raised px-density-sm py-density-xs text-sm shadow disabled:hidden">
+          Scroll to bottom
+        </ThreadPrimitive.ScrollToBottom>
+      </ThreadPrimitive.Viewport>
+      {!hideComposer && (
+        <Flex className={cn('w-full', composerContainerClassName)}>
+          <div className={cn('w-full', playgroundColumn)}>
+            <AssistantComposer
+              disabled={disabled}
+              placeholder={placeholder}
+              onReset={onReset}
+              slotAboveComposer={slotAboveComposer}
+              composerVariant={composerVariant}
+            />
+          </div>
+        </Flex>
+      )}
+    </ThreadPrimitive.Root>
+  );
+};

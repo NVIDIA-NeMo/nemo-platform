@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { InferenceParamsSliderValues } from '@nemo/common/src/components/InferenceParamsSliders';
 import { ModelSelectV2, type ModelSelection } from '@nemo/common/src/components/ModelSelectV2';
 import { useChatCompletion } from '@nemo/common/src/hooks/useChatCompletion';
 import { getPartsFromReference } from '@nemo/common/src/namedEntity';
@@ -10,22 +11,82 @@ import { detectFileStructure, validateFileFormat } from '@nemo/common/src/utils/
 import { groupModelsByWorkspace } from '@nemo/common/src/utils/models';
 import { type FileSampleMethod, sampleIndices } from '@nemo/common/src/utils/sampleTextLines';
 import type { ModelEntity } from '@nemo/sdk/generated/platform/schema';
-import { Button, Flex, Modal, Select, Stack, Text } from '@nvidia/foundations-react-core';
+import { Button, Flex, Modal, Select, Text } from '@nvidia/foundations-react-core';
+import type { InferenceParams } from '@studio/components/chat/params';
+import {
+  computeWinners,
+  CROWN_COLOR_CLASS,
+  MetricValue,
+  WINNER_ROWS,
+} from '@studio/components/chat/BestPerformingSummary';
 import { SAMPLE_DATASETS } from '@studio/components/chat/sampleDatasets';
+import { DatasetDropdown } from '@studio/components/DatasetDropdown';
 import type { DatasetInputFileResult } from '@studio/components/DatasetInputFile';
-import { FileSamplingMethodSelect } from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
-import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
-import { Loader2, Maximize2, Play, Trash2 } from 'lucide-react';
-import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  buildCountItems,
+  clampRowCount,
+  SAMPLE_METHOD_ITEMS,
+} from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
+import {
+  PANEL_ROLE_COLORS,
+  PANEL_ROLE_DOT_CLASS,
+  PANEL_ROLE_LABELS,
+  type SharedModelEntry,
+} from '@studio/routes/ModelCompareRoute/types';
+import {
+  ChevronDown,
+  ChevronUp,
+  Crown,
+  Gauge,
+  Hash,
+  Maximize2,
+  Plus,
+  Timer,
+  Trash2,
+} from 'lucide-react';
+import {
+  type ComponentProps,
+  type FC,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 
 const DEFAULT_SAMPLE_SIZE = 5;
 
 /** Number of inference requests to run concurrently; the rest queue. */
 const INFERENCE_BATCH_SIZE = 10;
 
-/** Sentinel item values for the dataset picker. */
-const UPLOAD_ACTION_VALUE = '__upload__';
+/** Sentinel value used to display a successfully uploaded file in the picker. */
 const UPLOADED_FILE_VALUE = '__uploaded__';
+
+/** Position-based role for a column index (same clamp rule the Compare grid uses). */
+const roleForIndex = (idx: number) =>
+  PANEL_ROLE_COLORS[Math.min(idx, PANEL_ROLE_COLORS.length - 1)];
+
+/**
+ * Colored dot + label, matching the Compare panel/summary role badges. The dot
+ * color is keyed to the column role (Baseline/Comparison N); `label` overrides
+ * the text (e.g. "Average") and defaults to the role name when omitted.
+ */
+const RoleBadge: FC<{
+  index: number;
+  title?: string;
+  label?: string;
+  textKind?: ComponentProps<typeof Text>['kind'];
+}> = ({ index, title, label, textKind = 'label/semibold/sm' }) => {
+  const role = roleForIndex(index);
+  return (
+    <span className="inline-flex min-w-0 items-center gap-1.5" title={title}>
+      <span className={`h-2 w-2 shrink-0 rounded-full ${PANEL_ROLE_DOT_CLASS[role]}`} />
+      <span className="truncate">
+        <Text kind={textKind}>{label ?? PANEL_ROLE_LABELS[role]}</Text>
+      </span>
+    </span>
+  );
+};
 
 interface ResponseStats {
   /** Wall-clock time from request fire to response, in ms. */
@@ -155,6 +216,12 @@ interface ModelComparePromptsProps {
   models: SharedModelEntry[];
   onRemoveModel: (id: number) => void;
   onSetModel: (id: number, modelURN: string | null) => void;
+  /** Updates a model's inference params (shared with the Compare view). */
+  onSetParams: (id: number, params: InferenceParams) => void;
+  /** Adds another model column when the user clicks the trailing + control. */
+  onAddModel?: () => void;
+  /** When false, hides the trailing + control (e.g. at the max model count). */
+  canAddModel?: boolean;
   /** Called when the view's readiness to add models changes (i.e. file is loaded with a valid prompt key) */
   onReadyChange?: (ready: boolean) => void;
   /**
@@ -173,6 +240,9 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   models,
   onRemoveModel,
   onSetModel,
+  onSetParams,
+  onAddModel,
+  canAddModel = false,
   onReadyChange,
   agentName,
 }) => {
@@ -185,6 +255,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const [pickerValue, setPickerValue] = useState<string | undefined>(undefined);
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null);
   const [parseError, setParseError] = useState<string | null>(null);
+  const [summaryExpanded, setSummaryExpanded] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { mutateAsync: createCompletion } = useChatCompletion();
@@ -229,9 +300,20 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
       .map((m) => {
         if (!m.modelURN) return null;
         const { workspace: modelWorkspace, name } = getPartsFromReference(m.modelURN);
-        return { id: m.id, modelWorkspace, name };
+        // Only send params the user has touched — untouched params let the
+        // provider apply its own defaults (matches the Compare tab).
+        return { id: m.id, modelWorkspace, name, params: m.paramsTouched ? m.params : null };
       })
-      .filter((m): m is { id: number; modelWorkspace: string; name: string } => m !== null);
+      .filter(
+        (
+          m
+        ): m is {
+          id: number;
+          modelWorkspace: string;
+          name: string;
+          params: InferenceParams | null;
+        } => m !== null
+      );
 
     if (activeModels.length === 0 || promptRows.length === 0) return;
 
@@ -268,6 +350,9 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
             workspace: model.modelWorkspace || workspace,
             messages: [{ role: 'user', content: row.prompt }],
             stream: false,
+            ...(model.params
+              ? { temperature: model.params.temperature, max_tokens: model.params.max_tokens }
+              : {}),
           })
             .then((result) => {
               const totalMs = performance.now() - startTime;
@@ -313,6 +398,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const hasPromptKey = fileResult?.keyMapping.promptKey != null;
   const hasAssignedModel = models.some((m) => m.modelURN !== null);
   const hasPrompts = promptRows.length > 0;
+  const showAddColumn = canAddModel && !!onAddModel;
 
   /**
    * Per-column averages across all completed responses. `tokensPerSec` is
@@ -348,6 +434,42 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   }, [models, promptRows]);
 
   const anyAverages = Object.values(averagesByModelId).some((a) => a !== null);
+  const showFooter = hasPrompts && anyAverages;
+
+  /**
+   * Per-stat "winner" across the per-column averages. Null until at least two
+   * columns have results, since a winner is only meaningful as a comparison.
+   */
+  const winners = useMemo(
+    () =>
+      computeWinners(
+        models
+          .map((m) => ({ id: m.id, avg: averagesByModelId[m.id] }))
+          .filter(
+            (e): e is { id: number; avg: ResponseStats & { count: number } } => e.avg !== null
+          )
+          .map((e) => ({
+            id: e.id,
+            stats: {
+              totalMs: e.avg.totalMs,
+              tokensPerSec: e.avg.tokensPerSec,
+              completionTokens: e.avg.completionTokens,
+            },
+          }))
+      ),
+    [models, averagesByModelId]
+  );
+
+  const modelLabelById = useCallback(
+    (id: number): string => {
+      const m = models.find((mm) => mm.id === id);
+      return m?.modelURN ? getPartsFromReference(m.modelURN).name : 'Model';
+    },
+    [models]
+  );
+
+  // Resolves a model id back to its column index, for position-based role identity.
+  const idToIndex = useMemo(() => new Map(models.map((m, idx) => [m.id, idx])), [models]);
 
   // Notify parent when readiness changes. "Ready" means the table is active
   // (file is loaded and has a valid prompt key mapped).
@@ -398,10 +520,6 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   const handleDatasetSelect = useCallback(
     (value: string) => {
       if (!value) return;
-      if (value === UPLOAD_ACTION_VALUE) {
-        fileInputRef.current?.click();
-        return;
-      }
       if (value === UPLOADED_FILE_VALUE) return;
       const sample = SAMPLE_DATASETS.find((s) => s.id === value);
       if (!sample) return;
@@ -412,6 +530,13 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
     },
     [handleFileChange]
   );
+
+  const handleClearDataset = useCallback(() => {
+    setPickerValue(undefined);
+    setUploadedFileName(null);
+    setParseError(null);
+    handleFileChange(null);
+  }, [handleFileChange]);
 
   const handleFileUploadInput = useCallback(
     async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -433,109 +558,115 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
   );
 
   const datasetItems = useMemo(() => {
-    const items: { value: string; children: string }[] = SAMPLE_DATASETS.map((s) => ({
+    const items: { value: string; label: string }[] = SAMPLE_DATASETS.map((s) => ({
       value: s.id,
-      children: s.label,
+      label: s.label,
     }));
     if (uploadedFileName) {
-      items.push({ value: UPLOADED_FILE_VALUE, children: `Uploaded: ${uploadedFileName}` });
+      items.push({ value: UPLOADED_FILE_VALUE, label: uploadedFileName });
     }
-    items.push({ value: UPLOAD_ACTION_VALUE, children: 'Upload from disk…' });
     return items;
   }, [uploadedFileName]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-6 py-4">
-      <Stack gap="density-xs" className="max-w-lg min-w-0 shrink-0">
-        <Text kind="label/bold/sm">Dataset</Text>
-        <Select
-          items={datasetItems}
-          value={pickerValue}
-          onValueChange={handleDatasetSelect}
-          placeholder="Pick a sample or upload your own…"
-          disabled={isRunning}
-          className="w-full"
-        />
-        {parseError && (
-          <Text kind="label/regular/sm" className="text-fg-error">
-            {parseError}
-          </Text>
-        )}
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".json,.jsonl"
-          className="hidden"
-          onChange={handleFileUploadInput}
-        />
-      </Stack>
-
-      {fileResult && hasPromptKey && (
-        <Stack gap="density-md" className="min-h-0">
-          <FileSamplingMethodSelect
-            value={sampleMethod}
-            onValueChange={setSampleMethod}
-            rowCountGroup={{
-              value: sampleSize,
-              onValueChange: setSampleSize,
-              maxRows: Math.max(1, rowCount),
-              disabled: isRunning,
-            }}
-            attributes={{ select: { disabled: isRunning } }}
-          />
-        </Stack>
+    <div className="flex h-full min-h-0 flex-col gap-4 overflow-hidden px-6 pt-2 pb-4">
+      {parseError && (
+        <Text kind="label/regular/sm" className="text-fg-error shrink-0">
+          {parseError}
+        </Text>
       )}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".json,.jsonl"
+        className="hidden"
+        onChange={handleFileUploadInput}
+      />
+
       {/* Results table fills remaining height; this is the main vertical scroll region. */}
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="min-w-full table-fixed border-separate border-spacing-0">
           <colgroup>
             <col className="w-[500px] min-w-[400px]" />
             {models.map((m) => (
-              <col key={m.id} className="w-[320px] min-w-[280px]" />
+              <col key={m.id} className="min-w-[280px]" />
             ))}
+            {showAddColumn && <col className="w-[44px]" />}
           </colgroup>
           <thead className="sticky top-0 z-10 bg-surface-raised">
+            {/* Role title row — "Prompts" + Sort/Rows/Run controls, then Baseline / Comparison N. */}
             <tr>
-              <th className="border border-base px-3 py-2 text-left font-medium align-middle">
+              <th className="rounded-tl-lg border-l border-t border-r border-base px-3 pt-2 pb-1 text-left align-bottom">
                 <Flex align="center" justify="between" gap="density-md">
-                  <span>Prompts</span>
-                  {fileResult && hasPromptKey && (
-                    <Button
-                      kind="primary"
-                      size="small"
-                      onClick={runInference}
-                      disabled={isRunning || !hasPrompts || !hasAssignedModel}
-                      className="bg-green-600 hover:bg-green-700"
-                    >
-                      {isRunning ? (
-                        <Loader2 size={14} className="animate-spin" />
-                      ) : (
-                        <Play size={14} />
-                      )}
-                      {isRunning ? 'Running...' : 'Run'}
-                    </Button>
+                  <Text kind="label/semibold/md">Prompts</Text>
+                  {isReady && (
+                    <Flex align="center" gap="density-sm" className="shrink-0">
+                      <Select
+                        multiple={false}
+                        items={SAMPLE_METHOD_ITEMS}
+                        value={sampleMethod}
+                        onValueChange={(next) => setSampleMethod(next as FileSampleMethod)}
+                        disabled={isRunning}
+                        size="small"
+                        slotEnd={
+                          <Text
+                            kind="body/regular/sm"
+                            className="text-[var(--text-color-placeholder)]"
+                          >
+                            Sort
+                          </Text>
+                        }
+                        className="w-[150px] grow-0"
+                      />
+                      <Select
+                        multiple={false}
+                        items={buildCountItems(Math.max(1, rowCount), sampleSize)}
+                        value={String(clampRowCount(sampleSize, Math.max(1, rowCount)))}
+                        onValueChange={(next) => setSampleSize(Number(next))}
+                        disabled={isRunning}
+                        size="small"
+                        slotEnd={
+                          <Text
+                            kind="body/regular/sm"
+                            className="text-[var(--text-color-placeholder)]"
+                          >
+                            Rows
+                          </Text>
+                        }
+                        className="w-[110px] grow-0"
+                      />
+                      <Button
+                        kind="primary"
+                        color="brand"
+                        size="small"
+                        onClick={runInference}
+                        disabled={isRunning || !hasPrompts || !hasAssignedModel}
+                      >
+                        {isRunning ? 'Running...' : 'Run'}
+                      </Button>
+                    </Flex>
                   )}
                 </Flex>
               </th>
-              {models.map((m) => (
-                <th key={m.id} className="border-t border-b border-r border-base px-2 py-1">
-                  <Flex gap="density-xs" align="center">
-                    <div className="flex-1 min-w-0">
-                      <ModelColumnSelect
-                        models={availableModels}
-                        isLoadingModels={isLoadingModels}
-                        value={m.modelURN}
-                        disabled={isRunning}
-                        onChange={(ref) => {
-                          onSetModel(m.id, ref || null);
-                          clearResponses(m.id);
-                        }}
+              {models.map((m, idx) => (
+                <th
+                  key={m.id}
+                  className={`border-t border-r border-base px-2 pt-2 pb-1 text-left align-bottom ${
+                    idx === models.length - 1 ? 'rounded-tr-lg' : ''
+                  }`}
+                >
+                  <Flex align="center" justify="between" gap="density-xs">
+                    <div className="px-1 min-w-0">
+                      <RoleBadge
+                        index={idx}
+                        title={modelLabelById(m.id)}
+                        textKind="label/semibold/md"
                       />
                     </div>
                     <button
                       onClick={() => onRemoveModel(m.id)}
                       disabled={isRunning}
-                      className="cursor-pointer rounded p-1"
+                      className="shrink-0 cursor-pointer rounded p-1"
                       aria-label="Remove model column"
                     >
                       <Trash2 size={14} />
@@ -543,77 +674,216 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
                   </Flex>
                 </th>
               ))}
+              {showAddColumn && (
+                <th className="bg-surface-sunken pl-3 pr-0 align-top">
+                  <Flex justify="end">
+                    <Button
+                      kind="secondary"
+                      size="small"
+                      aria-label="Add model column"
+                      title="Add model column"
+                      onClick={onAddModel}
+                      disabled={isRunning}
+                      className="h-8 w-8 shrink-0 !px-0 !border-[var(--border-color-interaction-base)] !bg-[var(--background-color-interaction-base)] hover:!border-[var(--border-color-interaction-hover)]"
+                    >
+                      <Plus size={16} />
+                    </Button>
+                  </Flex>
+                </th>
+              )}
+            </tr>
+            {/* Model picker row — dataset dropdown + model selectors. */}
+            <tr>
+              <th className="border-l border-b border-r border-base px-3 pt-1 pb-2 align-middle">
+                <DatasetDropdown
+                  datasets={datasetItems}
+                  value={pickerValue}
+                  onValueChange={handleDatasetSelect}
+                  onUpload={() => fileInputRef.current?.click()}
+                  onClear={handleClearDataset}
+                  placeholder="Select a dataset..."
+                  disabled={isRunning}
+                  size="small"
+                  className="w-full"
+                />
+              </th>
+              {models.map((m) => (
+                <th key={m.id} className="border-b border-r border-base px-2 pb-2 pt-1 text-left">
+                  <ModelColumnSelect
+                    models={availableModels}
+                    isLoadingModels={isLoadingModels}
+                    value={m.modelURN}
+                    disabled={isRunning}
+                    inferenceParams={m.params}
+                    onInferenceParamsChange={(p) => onSetParams(m.id, { ...m.params, ...p })}
+                    onChange={(ref) => {
+                      onSetModel(m.id, ref || null);
+                      clearResponses(m.id);
+                    }}
+                  />
+                </th>
+              ))}
+              {showAddColumn && <th aria-hidden className="bg-surface-sunken" />}
             </tr>
           </thead>
           <tbody>
-            {promptRows.map((row) => (
-              <tr key={row.sourceIndex} className="bg-surface-raised">
-                <td className="border-l border-b border-r border-base p-0 align-top">
-                  <ExpandableCell
-                    content={row.prompt}
-                    title={`Prompt (dataset row ${row.sourceIndex})`}
-                    onExpand={setExpandedCell}
-                  />
-                </td>
-                {models.map((m) => {
-                  const response = row.responses[m.id];
-                  const modelName = m.modelURN ? getPartsFromReference(m.modelURN).name : 'Model';
-                  if (response === undefined) {
+            {promptRows.map((row, rowIdx) => {
+              const roundBottom = rowIdx === promptRows.length - 1 && !showFooter;
+              return (
+                <tr key={row.sourceIndex} className="bg-surface-raised">
+                  <td
+                    className={`border-l border-b border-r border-base p-0 align-top ${
+                      roundBottom ? 'rounded-bl-lg' : ''
+                    }`}
+                  >
+                    <ExpandableCell
+                      content={row.prompt}
+                      title={`Prompt (dataset row ${row.sourceIndex})`}
+                      onExpand={setExpandedCell}
+                    />
+                  </td>
+                  {models.map((m, idx) => {
+                    const response = row.responses[m.id];
+                    const modelName = m.modelURN ? getPartsFromReference(m.modelURN).name : 'Model';
+                    const brClass = roundBottom && idx === models.length - 1 ? 'rounded-br-lg' : '';
+                    if (response === undefined) {
+                      return (
+                        <td
+                          key={m.id}
+                          className={`border-b border-r border-base px-3 py-2 align-top ${brClass}`}
+                        >
+                          <Text kind="body/regular/md" className="text-fg-subdued">
+                            -
+                          </Text>
+                        </td>
+                      );
+                    }
+                    if (response === null) {
+                      return (
+                        <td
+                          key={m.id}
+                          className={`border-b border-r border-base px-3 py-2 align-top ${brClass}`}
+                        >
+                          <Text kind="body/regular/md" className="text-fg-error">
+                            Error
+                          </Text>
+                        </td>
+                      );
+                    }
                     return (
-                      <td key={m.id} className="border-b border-r border-base px-3 py-2 align-top">
-                        <Text kind="body/regular/md" className="text-fg-subdued">
-                          -
-                        </Text>
+                      <td
+                        key={m.id}
+                        className={`relative border-b border-r border-base p-0 align-top ${brClass}`}
+                      >
+                        <ExpandableCell
+                          content={response.text}
+                          title={`${modelName} response (dataset row ${row.sourceIndex})`}
+                          onExpand={setExpandedCell}
+                        />
+                        {/* Pinned to the cell's bottom edge (the td is the
+                         *  positioning context). Table cells always fill the row
+                         *  height, so the stats line up across every column
+                         *  regardless of response length. */}
+                        <CellStats
+                          stats={response.stats}
+                          className="absolute inset-x-0 bottom-0 bg-surface-raised px-3 pb-2 pt-3"
+                        />
                       </td>
                     );
-                  }
-                  if (response === null) {
-                    return (
-                      <td key={m.id} className="border-b border-r border-base px-3 py-2 align-top">
-                        <Text kind="body/regular/md" className="text-fg-error">
-                          Error
-                        </Text>
-                      </td>
-                    );
-                  }
-                  return (
-                    <td key={m.id} className="border-b border-r border-base p-0 align-top">
-                      <ExpandableCell
-                        content={response.text}
-                        title={`${modelName} response (dataset row ${row.sourceIndex})`}
-                        onExpand={setExpandedCell}
-                        footer={<CellStats stats={response.stats} className="px-3 pb-2" />}
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
+                  })}
+                  {showAddColumn && <td aria-hidden className="bg-surface-sunken" />}
+                </tr>
+              );
+            })}
           </tbody>
-          {hasPrompts && anyAverages && (
+          {showFooter && (
             <tfoot className="sticky bottom-0 z-10 bg-surface-sunken">
+              {/* Header row — the "Best Performing" accordion toggle (col 0) and a
+               *  per-model "Averages:" header. When collapsed this is the only
+               *  footer row, so it carries the bottom border / rounded corners. */}
               <tr>
-                <td className="border-l border-t border-b border-r border-base px-3 py-2 align-middle font-medium">
-                  Average
+                <td
+                  className={`border-l border-t border-r border-base px-3 py-2 align-middle ${
+                    !summaryExpanded ? 'rounded-bl-lg border-b' : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setSummaryExpanded((v) => !v)}
+                    className="flex w-full cursor-pointer items-center justify-between gap-1.5"
+                    aria-expanded={summaryExpanded}
+                  >
+                    <span className="inline-flex items-center gap-1.5">
+                      {models.length > 1 && <Crown size={14} className={CROWN_COLOR_CLASS} />}
+                      <Text kind="label/semibold/sm">
+                        {models.length === 1 ? '' : 'Best Performing'}
+                      </Text>
+                    </span>
+                    {summaryExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
                 </td>
-                {models.map((m) => {
-                  const avg = averagesByModelId[m.id];
+                {models.map((m, idx) => (
+                  <td
+                    key={m.id}
+                    className={`border-t border-r border-base px-3 py-2 align-middle ${
+                      !summaryExpanded ? 'border-b' : ''
+                    } ${!summaryExpanded && idx === models.length - 1 ? 'rounded-br-lg' : ''}`}
+                  >
+                    <RoleBadge index={idx} title={modelLabelById(m.id)} label="Average" />
+                  </td>
+                ))}
+                {showAddColumn && <td aria-hidden className="bg-surface-sunken" />}
+              </tr>
+              {/* Metric rows — one per dimension, only when expanded. Each model's
+               *  average value stacks vertically, aligned by table row, and turns
+               *  brand green when that model wins the metric. */}
+                {summaryExpanded &&
+                WINNER_ROWS.map(({ key, label }, rowIdx) => {
+                  const isLastRow = rowIdx === WINNER_ROWS.length - 1;
                   return (
-                    <td
-                      key={m.id}
-                      className="border-t border-b border-r border-base px-3 py-2 align-middle"
-                    >
-                      {avg ? (
-                        <CellStats stats={avg} />
-                      ) : (
-                        <Text kind="body/regular/md" className="text-fg-subdued">
-                          —
-                        </Text>
-                      )}
-                    </td>
+                    <tr key={key}>
+                      <td
+                        className={`border-l border-r border-base px-3 py-2 align-middle ${
+                          isLastRow ? 'rounded-bl-lg border-b' : ''
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-3">
+                          <Text kind="body/regular/sm" className="text-fg-subdued">
+                            {label}
+                          </Text>
+                          {winners && (
+                            <RoleBadge
+                              index={idToIndex.get(winners[key]) ?? 0}
+                              title={modelLabelById(winners[key])}
+                            />
+                          )}
+                        </div>
+                      </td>
+                      {models.map((m, idx) => {
+                        const avg = averagesByModelId[m.id];
+                        const isWinner = winners ? winners[key] === m.id : false;
+                        const isLastModel = idx === models.length - 1;
+                        return (
+                          <td
+                            key={m.id}
+                            className={`border-r border-base px-3 py-2 align-middle ${
+                              isLastRow ? 'border-b' : ''
+                            } ${isLastRow && isLastModel ? 'rounded-br-lg' : ''}`}
+                          >
+                            {avg ? (
+                              <MetricValue stats={avg} metricKey={key} highlight={isWinner} />
+                            ) : (
+                              <Text kind="body/regular/md" className="text-fg-subdued">
+                                —
+                              </Text>
+                            )}
+                          </td>
+                        );
+                      })}
+                      {showAddColumn && <td aria-hidden className="bg-surface-sunken" />}
+                    </tr>
                   );
                 })}
-              </tr>
             </tfoot>
           )}
         </table>
@@ -654,8 +924,21 @@ const CellStats: FC<{ stats: ResponseStats; className?: string }> = ({ stats, cl
   const seconds = (stats.totalMs / 1000).toFixed(1);
   const tokensPerSec = Math.max(0, Math.round(stats.tokensPerSec));
   return (
-    <div className={`text-xs font-mono text-[var(--color-brand)] ${className ?? ''}`}>
-      {seconds}s · {stats.completionTokens} tok · {tokensPerSec} t/s
+    <div
+      className={`inline-flex items-center gap-4 text-xs font-mono text-[var(--color-brand)] ${className ?? ''}`}
+    >
+      <span className="inline-flex items-center gap-1" title="Total time">
+        <Timer size={12} />
+        {seconds}s
+      </span>
+      <span className="inline-flex items-center gap-1" title="Tokens per second">
+        <Gauge size={12} />
+        {tokensPerSec} t/s
+      </span>
+      <span className="inline-flex items-center gap-1" title="Completion tokens">
+        <Hash size={12} />
+        {stats.completionTokens} tok
+      </span>
     </div>
   );
 };
@@ -665,8 +948,7 @@ const ExpandableCell: FC<{
   content: string;
   title: string;
   onExpand: (state: ExpandedCellState) => void;
-  footer?: React.ReactNode;
-}> = ({ content, title, onExpand, footer }) => {
+}> = ({ content, title, onExpand }) => {
   return (
     <div className="group relative">
       <button
@@ -676,24 +958,36 @@ const ExpandableCell: FC<{
       >
         <Maximize2 size={12} />
       </button>
-      <div className="max-h-[130px] overflow-y-auto px-3 py-2">
+      {/* pb-10 reserves room for the absolutely-positioned stats footer so a
+       *  long response never renders underneath it. */}
+      <div className="max-h-[130px] overflow-y-auto px-3 pb-10 pt-2">
         <Text kind="body/regular/md" className="whitespace-pre-wrap">
           {content}
         </Text>
       </div>
-      {footer}
     </div>
   );
 };
 
-/** Thin wrapper around ModelSelectV2 for table header use */
+/** Thin wrapper around ModelSelectV2 for table header use. Mirrors the
+ *  Compare tab's selector: full-width with the inline params button. */
 const ModelColumnSelect: FC<{
   models: ModelEntity[];
   isLoadingModels: boolean;
   value: string | null;
   disabled?: boolean;
+  inferenceParams: InferenceParams;
+  onInferenceParamsChange: (params: Partial<InferenceParamsSliderValues>) => void;
   onChange: (ref: string) => void;
-}> = ({ models, isLoadingModels, value, disabled, onChange }) => {
+}> = ({
+  models,
+  isLoadingModels,
+  value,
+  disabled,
+  inferenceParams,
+  onInferenceParamsChange,
+  onChange,
+}) => {
   const modelGroups = useMemo(() => groupModelsByWorkspace(models, { sort: true }), [models]);
   const selectedModel: ModelSelection | null = value ? { model: value } : null;
 
@@ -714,6 +1008,12 @@ const ModelColumnSelect: FC<{
       placeholder={isLoadingModels ? 'Loading models...' : 'Select model...'}
       hideAdapters
       fullWidth
+      size="small"
+      showParams
+      showParamsLabel={false}
+      triggerDisplay="urn"
+      inferenceParams={inferenceParams}
+      onInferenceParamsChange={onInferenceParamsChange}
     />
   );
 };

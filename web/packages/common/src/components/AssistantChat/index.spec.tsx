@@ -149,50 +149,6 @@ describe('AssistantChat', () => {
   );
 
   it(
-    'edits a user message and re-runs inference with the edited prompt',
-    async () => {
-      mocks.createChatCompletion
-        .mockResolvedValueOnce(createCompletion('Original response.'))
-        .mockResolvedValueOnce(createCompletion('Edited response.'));
-
-      renderAssistantChat(<AssistantChat model="test-model" workspace="default" />);
-
-      await userEvent.type(
-        screen.getByRole('textbox', { name: /Task prompt/i }),
-        'Original prompt'
-      );
-      await userEvent.click(screen.getByRole('button', { name: /Submit/i }));
-
-      expect(await screen.findByText('Original response.')).toBeInTheDocument();
-
-      await userEvent.click(screen.getByRole('button', { name: /Edit message/i }));
-      const editInput = screen.getByRole('textbox', { name: /Edit message/i });
-      expect(editInput).toHaveValue('Original prompt');
-      expect(editInput.tagName).toBe('TEXTAREA');
-
-      await userEvent.clear(editInput);
-      await userEvent.type(editInput, 'Edited prompt');
-      await userEvent.click(screen.getByRole('button', { name: /Save edit/i }));
-
-      expect(await screen.findByText('Edited response.')).toBeInTheDocument();
-      expect(screen.getByText('Edited prompt')).toBeInTheDocument();
-      expect(screen.queryByText('Original prompt')).not.toBeInTheDocument();
-      expect(screen.queryByText('Original response.')).not.toBeInTheDocument();
-
-      await waitFor(() => expect(mocks.createChatCompletion).toHaveBeenCalledTimes(2));
-      expect(mocks.createChatCompletion).toHaveBeenLastCalledWith(
-        expect.objectContaining({
-          model: 'test-model',
-          workspace: 'default',
-          stream: true,
-          messages: [{ role: 'user', content: 'Edited prompt' }],
-        })
-      );
-    },
-    interactionTimeoutMs
-  );
-
-  it(
     'stops a hanging stream when stop is clicked',
     async () => {
       const stream = createHangingStream('0 this is an example response');

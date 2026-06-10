@@ -17,11 +17,14 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
   showModelTypeToggle,
   defaultModelType,
   showParams = false,
+  showParamsLabel = true,
   hideAdapters = false,
   fullWidth = false,
+  size = 'medium',
   inferenceParams,
   onInferenceParamsChange,
   onOpenChange,
+  triggerDisplay = 'name',
   'aria-label': ariaLabel,
 }) => {
   const [modelOpen, setModelOpen] = useState(false);
@@ -50,8 +53,10 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
       defaultModelType={defaultModelType}
       hideAdapters={hideAdapters}
       fullWidth={fullWidth}
+      size={size}
       open={modelOpen}
       onOpenChange={handleModelOpenChange}
+      triggerDisplay={triggerDisplay}
     />
   );
 
@@ -60,11 +65,13 @@ export const ModelSelectV2: FC<ModelSelectV2Props> = ({
   return (
     <Group
       aria-label={ariaLabel ?? 'Model selector'}
-      className={`max-w-full overflow-hidden ${fullWidth ? 'w-full' : ''}`}
+      className={`max-w-full overflow-hidden rounded-[var(--radius-md)] ${fullWidth ? 'w-full' : ''}`}
     >
       {modelDropdown}
       <ParamsDropdown
         disabled={disabled}
+        size={size}
+        showLabel={showParamsLabel}
         open={paramsOpen}
         onOpenChange={handleParamsOpenChange}
         inferenceParams={inferenceParams}

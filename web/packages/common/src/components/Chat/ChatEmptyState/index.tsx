@@ -26,10 +26,10 @@ export const ChatEmptyState: FC<ChatEmptyStateProps> = ({
       align="center"
       justify="center"
     >
-      <Text kind="label/bold/3xl" className="text-center">
+      <Text kind="label/bold/3xl" className="relative z-10 text-center">
         {slotHeading}
       </Text>
-      <Text kind="label/regular/lg" className="text-center">
+      <Text kind="label/regular/lg" className="relative z-10 text-center">
         {slotSubheading}
       </Text>
       <div className="absolute top-0 left-0 w-full h-full">
