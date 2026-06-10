@@ -287,6 +287,18 @@ class AgentAttemptRuntime(Protocol):
     ) -> Sequence[AgentEvalAttempt]: ...
 
 
+@runtime_checkable
+class AgentAttemptSource(Protocol):
+    """Loads a previously captured attempt for a task from a stored artifact.
+
+    The offline counterpart to :class:`AgentAttemptRuntime`: instead of executing
+    the agent, it adapts an already-produced run directory/file into an
+    :class:`AgentEvalAttempt` so it can be (re)scored through ``AgentEvaluator``.
+    """
+
+    def load_attempt(self, source: str | Path, *, task: AgentEvalTask) -> AgentEvalAttempt: ...
+
+
 def _metric_coverage(
     results: Sequence[AgentEvalTaskResult],
     tasks: Sequence[AgentEvalTask] | None,

@@ -1,7 +1,14 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Orchestrate BUILD + AgentEvaluator + VERIFY for agentic-use tasks."""
+"""Agentic-use adapter over the generic SDK orchestrator.
+
+This is a thin NeMo-Platform factory: the generic run/score/gate loop lives in
+:class:`nemo_evaluator_sdk.agent_eval.orchestrator.AgentEvalOrchestrator`. Here we
+inject the platform specifics it deliberately does not know about — the agentic
+task loader, the Docker image build (``prepare_task``), the ``run_verify``-derived
+``VerifierRewardMetric``, and the ``result.json`` :class:`AgentAttemptSource`.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from nemo_evaluator_sdk.agent_eval import AgentEvalRunConfig, AgentEvaluator
+from nemo_evaluator_sdk.agent_eval.orchestrator import AgentEvalOrchestrator, OrchestratorConfig
 from nemo_evaluator_sdk.agent_eval.types import (
     AgentAttemptRuntime,
     AgentEvalRunResult,
@@ -22,8 +29,8 @@ from runtimes.shared.docker import docker_image_exists
 from runtimes.shared.environment_spec import execute_build_plan, plan_task_build
 from runtimes.shared.layout import task_image_tag
 from runtimes.shared.metrics import VerifierRewardMetric
-from runtimes.shared.reporting import GateThresholds, evaluate_gate, load_baseline_summary, write_gate_report
-from runtimes.shared.result_adapter import attempt_from_result_dir
+from runtimes.shared.reporting import GateThresholds
+from runtimes.shared.result_adapter import ResultDirAttemptSource
 from runtimes.shared.task_loader import agentic_task_from_dir
 
 
@@ -38,7 +45,7 @@ class AgenticOrchestratorConfig:
 
 
 class AgenticEvalOrchestrator:
-    """Run agentic-use tasks through AgentEvaluator and optional verify phase."""
+    """Run agentic-use tasks through the generic orchestrator + optional verify metric."""
 
     def __init__(
         self,
@@ -48,6 +55,16 @@ class AgenticEvalOrchestrator:
     ) -> None:
         self.runtime = runtime
         self.config = config or AgenticOrchestratorConfig()
+        self._orchestrator = AgentEvalOrchestrator(
+            config=OrchestratorConfig(
+                parallelism=1,
+                write_dashboard=self.config.write_dashboard,
+                write_gate=self.config.write_gate,
+                gate_thresholds=self.config.gate_thresholds,
+                baseline_summary_path=self.config.baseline_summary_path,
+            ),
+            extra_metrics=self._extra_metrics(),
+        )
 
     async def run_agent_eval(
         self,
@@ -58,24 +75,14 @@ class AgenticEvalOrchestrator:
     ) -> AgentEvalRunResult:
         """Build the task image when needed, run the agent runtime, return SDK result."""
         task = agentic_task_from_dir(task_name)
-        task = task.model_copy(update={"metrics": self._metrics_for_task(task)})
-        image_tag = task_image_tag(task.id)
-        self._ensure_task_image(task.metadata["task_dir"], image_tag)
-
-        result = await AgentEvaluator().run(
-            tasks=[task],
+        return await self._orchestrator.run_tasks(
+            [task],
             target=self.runtime,
-            config=AgentEvalRunConfig(
-                output_dir=output_dir,
-                run_id=run_id,
-                parallelism=1,
-                write_dashboard=self.config.write_dashboard,
-                benchmark={"benchmark": "agentic-use", "task": task_name},
-            ),
+            benchmark={"benchmark": "agentic-use", "task": task_name},
+            output_dir=output_dir,
+            run_id=run_id,
+            prepare_task=self._ensure_task_image,
         )
-
-        self._maybe_write_gate(result)
-        return result
 
     async def score_captured_attempts(
         self,
@@ -87,61 +94,38 @@ class AgenticEvalOrchestrator:
     ) -> AgentEvalRunResult:
         """Score already-captured ``result.json`` runs without re-running the agent.
 
-        This is the SDK's first-class *stored-attempt* path: it imports each
-        ``nat_runner`` output directory via :func:`attempt_from_result_dir` and
-        scores them through :class:`AgentEvaluator`, so metrics can be exercised
-        (and runs rescored) with no Docker/agent execution.
+        The SDK's first-class *stored-attempt* path: each ``nat_runner`` output
+        dir is adapted via :class:`ResultDirAttemptSource` and scored through the
+        generic orchestrator, so metrics can be exercised (and runs rescored) with
+        no Docker/agent execution.
         """
         task = agentic_task_from_dir(task_name)
-        task = task.model_copy(update={"metrics": self._metrics_for_task(task)})
-        attempts = [attempt_from_result_dir(result_dir, task=task) for result_dir in result_dirs]
-
-        result = await AgentEvaluator().run(
-            tasks=[task],
+        source = ResultDirAttemptSource()
+        attempts = [source.load_attempt(result_dir, task=task) for result_dir in result_dirs]
+        return await self._orchestrator.score_attempts(
+            [task],
             attempts=attempts,
-            config=AgentEvalRunConfig(
-                output_dir=output_dir,
-                run_id=run_id,
-                parallelism=1,
-                write_dashboard=self.config.write_dashboard,
-                benchmark={"benchmark": "agentic-use", "task": task_name, "mode": "offline"},
-            ),
+            benchmark={"benchmark": "agentic-use", "task": task_name, "mode": "offline"},
+            output_dir=output_dir,
+            run_id=run_id,
         )
 
-        self._maybe_write_gate(result)
-        return result
+    def _extra_metrics(self) -> list[Metric]:
+        """Append :class:`VerifierRewardMetric` only when the runtime runs verify.
 
-    def _maybe_write_gate(self, result: AgentEvalRunResult) -> None:
-        if not (self.config.write_gate and result.output_dir is not None):
-            return
-        baseline = (
-            load_baseline_summary(self.config.baseline_summary_path)
-            if self.config.baseline_summary_path is not None
-            else None
-        )
-        report = evaluate_gate(result, thresholds=self.config.gate_thresholds, baseline_summary=baseline)
-        write_gate_report(report, result.output_dir)
-
-    def _metrics_for_task(self, task: AgentEvalTask) -> list[Metric]:
-        """Honor task-authored metrics; only *append* a compatibility metric.
-
-        Metrics originate on the task (see ``agentic_task_from_dir``). When the
-        live verify phase is enabled we append :class:`VerifierRewardMetric` so
-        the legacy pytest reward is scored too — but we never replace the task's
-        own metric set, and we avoid duplicating a metric the task already
-        declares (the SDK rejects duplicate metric types).
+        The verify-enable decision stays in the adapter (it knows its own runtime
+        config); the generic orchestrator never introspects the runtime.
         """
-        metrics: list[Metric] = list(task.metrics)
-        if self._verify_enabled() and not any(isinstance(metric, VerifierRewardMetric) for metric in metrics):
-            metrics.append(VerifierRewardMetric())
-        return metrics
+        return [VerifierRewardMetric()] if self._verify_enabled() else []
 
     def _verify_enabled(self) -> bool:
         runtime_config = getattr(self.runtime, "config", None)
         shared = getattr(runtime_config, "shared", None)
         return bool(getattr(shared, "run_verify", False))
 
-    def _ensure_task_image(self, task_dir: str | Path, image_tag: str) -> None:
+    def _ensure_task_image(self, task: AgentEvalTask) -> None:
+        image_tag = task_image_tag(task.id)
+        task_dir = task.metadata["task_dir"]
         if self.config.skip_build:
             if not docker_image_exists(image_tag):
                 raise RuntimeError(

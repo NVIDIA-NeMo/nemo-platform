@@ -39,6 +39,17 @@ _METRIC_KEYS = (
 )
 
 
+class ResultDirAttemptSource:
+    """``AgentAttemptSource`` adapting ``nat_runner`` ``result.json`` dirs into attempts.
+
+    Implements the SDK :class:`~nemo_evaluator_sdk.agent_eval.types.AgentAttemptSource`
+    protocol so the generic orchestrator's offline path can rescore captured runs.
+    """
+
+    def load_attempt(self, source: str | Path, *, task: AgentEvalTask) -> AgentEvalAttempt:
+        return attempt_from_result_dir(source, task=task)
+
+
 def attempt_from_result_dir(output_dir: str | Path, *, task: AgentEvalTask | None = None) -> AgentEvalAttempt:
     """Load ``<output_dir>/result.json`` and build an attempt from it."""
     output_dir = Path(output_dir)

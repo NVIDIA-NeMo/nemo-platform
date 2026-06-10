@@ -16,7 +16,7 @@ from nemo_evaluator_sdk.agent_eval import AgentEvalRunConfig, AgentEvalTask
 from nemo_evaluator_sdk.agent_eval.runtimes import docker_sandbox
 from nemo_evaluator_sdk.agent_eval.runtimes.docker_sandbox import (
     DockerSandboxAgentRuntime,
-    SandboxSdk,
+    SandboxSDK,
 )
 
 
@@ -147,8 +147,8 @@ class _FailingRunner:
         raise RuntimeError("sandbox run failed")
 
 
-def _fake_sdk() -> SandboxSdk:
-    return SandboxSdk(
+def _fake_sdk() -> SandboxSDK:
+    return SandboxSDK(
         Runner=_FakeRunner(),
         RunConfig=_FakeRunConfig,
         SandboxRunConfig=_FakeSandboxRunConfig,

@@ -1,31 +1,61 @@
 # Agentic-use AgentAttemptRuntime implementations
 
-Backend-specific runtimes extracted from `nat_runner.py` for use with
-`nemo_evaluator_sdk.agent_eval.AgentEvaluator`.
+NeMo-Platform **adapter** over the generic agent-eval framework in
+`nemo_evaluator_sdk.agent_eval`. The backend-agnostic building blocks (environment
+boundary, gating, attempt/evidence helpers, orchestrator, verify mechanic,
+coding-agent driver seam) now live in the SDK; this directory holds only the
+NeMo-Platform glue (the `workflow`/`aut` backends, agentic task/result formats,
+the pytest verifier, the platform Docker build/image-tag) plus a thin factory.
+
+## Architecture: adapter over SDK
+
+The `shared/*` modules below are **pure re-export shims** over their SDK homes —
+they exist only so existing imports keep working; the logic lives in the SDK:
+
+| `shared/` shim | SDK home |
+|----------------|----------|
+| `docker.py` | `agent_eval.runtimes.docker` |
+| `environment.py` | `agent_eval.runtimes.environment` (re-supplies the platform image-tag) |
+| `environment_spec.py` | `agent_eval.runtimes.environment_spec` |
+| `reporting.py` | `agent_eval.gating` |
+| `verify.py` | wraps `agent_eval.runtimes.verify` (pytest command/env/mounts stay here) |
+| `metrics.py` | `AgentPhaseSuccessMetric` from `agent_eval.common_metrics` (namespaced); `VerifierRewardMetric` is platform |
+| `artifacts.py` | `resolve_attempt_status` + evidence keys from `agent_eval.attempts`; adds the platform `state` key |
+| `layout.py` | delegates to `agent_eval.runtimes.layout`; adds the platform `state_dir` + `task_image_tag` |
+
+The orchestrator (`orchestrator.py`) is a thin factory over
+`agent_eval.orchestrator.AgentEvalOrchestrator`: it injects the platform image
+build (`prepare_task`), the `run_verify`-derived `VerifierRewardMetric`
+(`extra_metrics`), and the `result.json` `AgentAttemptSource`.
 
 ## Layout
 
 ```text
 runtimes/
-  shared/           # backend-agnostic building blocks:
-                    #   docker.py            Docker exec + build helpers
-                    #   environment.py       AgentEnvironmentProvider/Handle boundary (B2)
-                    #   environment_spec.py  environment.yaml authoring + build plans (B3)
-                    #   layout.py            per-run output layout
-                    #   task_loader.py       agentic-use task -> AgentEvalTask
-                    #   container_env.py     base container env vars
-                    #   artifacts.py         agent artifacts -> AgentEvalAttempt (+ evidence)
-                    #   result_adapter.py    nat_runner result.json -> AgentEvalAttempt (B1/B4)
-                    #   verify.py            live VERIFY via run_verifier
-                    #   reporting.py         summary + candidate/baseline gate (B4)
-                    #   metrics.py           AgentPhaseSuccessMetric, VerifierRewardMetric
-  workflow/         # NatWorkflowAttemptRuntime (implemented)
-  aut/              # AutAgentAttemptRuntime (implemented)
-  claude_code/      # ClaudeCodeAgentAttemptRuntime (scaffold)
-  codex/            # CodexAgentAttemptRuntime (scaffold)
-  cursor_agent/     # CursorAgentAttemptRuntime (scaffold)
-  orchestrator.py   # BUILD (env spec) + AgentEvaluator + gate; verify runs in the runtime
+  shared/           # thin re-export shims over agent_eval.* (see table above)
+                    #   + platform-only: task_loader.py, result_adapter.py,
+                    #     config.py, container_env.py, constants.py
+  workflow/         # NatWorkflowAttemptRuntime (implemented, NeMo construct)
+  aut/              # AutAgentAttemptRuntime (implemented, NeMo construct)
+  claude_code/      # scaffold (stub) — see "Coding-agent runtimes" below
+  codex/            # scaffold (stub)
+  cursor_agent/     # scaffold (stub)
+  orchestrator.py   # thin factory over agent_eval.orchestrator.AgentEvalOrchestrator
 ```
+
+## Coding-agent runtimes (SDK driver seam)
+
+Coding-agent CLIs plug into the SDK via
+`agent_eval.runtimes.coding_agent`: `CliAgentDriver` (the reusable driver) +
+`CodingAgentSpec` (per-agent command builder + trajectory→evidence parser).
+Reference `ClaudeCodeSpec`/`CursorAgentSpec` are shipped. The profbench codex
+runtime (`agent_eval.runtimes.codex`) remains a separate, standalone-CLI runtime.
+
+The agentic-use `codex`/`claude_code`/`cursor_agent` backends here are still
+stubs: wiring them to run the SDK driver *inside* the `nmp-agentic-base` Docker
+environment (like `workflow`/`aut`) is bespoke per agent and a tracked follow-up.
+`workflow` and `aut` stay in the adapter — they implement `AgentAttemptRuntime`
+but are NeMo constructs, not general SDK runtimes.
 
 ## Example: workflow backend
 

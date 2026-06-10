@@ -1,28 +1,23 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Default metrics for agentic-use agent-eval runs."""
+"""Default metrics for agentic-use agent-eval runs.
+
+``AgentPhaseSuccessMetric`` is promoted to the SDK; here it is namespaced under
+the ``agentic_use_*`` metric type. ``VerifierRewardMetric`` stays a platform
+compatibility shim (mirrors the legacy pytest verifier reward).
+"""
 
 from __future__ import annotations
 
+from nemo_evaluator_sdk.agent_eval.common_metrics import AgentPhaseSuccessMetric as _SDKAgentPhaseSuccessMetric
 from nemo_evaluator_sdk.metrics.protocol import MetricInput, MetricOutput, MetricOutputSpec, MetricResult
 
 
-class AgentPhaseSuccessMetric:
-    """Score 1.0 when the agent phase exited successfully, else 0.0."""
+class AgentPhaseSuccessMetric(_SDKAgentPhaseSuccessMetric):
+    """Agentic-use namespaced agent-phase metric (output stays ``agent_phase_success``)."""
 
-    @property
-    def type(self) -> str:
-        return "agentic_use_agent_phase"
-
-    def output_spec(self) -> list[MetricOutputSpec]:
-        return [MetricOutputSpec.continuous_score("agent_phase_success")]
-
-    async def compute_scores(self, input: MetricInput) -> MetricResult:
-        agent_ok = bool(input.candidate.metadata.get("agent_ok"))
-        return MetricResult(
-            outputs=[MetricOutput(name="agent_phase_success", value=1.0 if agent_ok else 0.0)],
-        )
+    metric_type = "agentic_use_agent_phase"
 
 
 class VerifierRewardMetric:

@@ -7,6 +7,23 @@ and `AgentAttemptRuntime` in `nemo_evaluator_sdk.agent_eval`).
 Design reference: internal agent-eval SDK doc
 (`https://docs.google.com/document/d/1mA9Kl6LVJFlgbj5CGulUOiaGyliP7QhqBh7jKXFGifM`).
 
+## Adapter-over-SDK note
+
+The generic building blocks have been **promoted into the SDK**
+(`nemo_evaluator_sdk.agent_eval`): the environment boundary
+(`runtimes.environment`/`environment_spec`/`docker`), gating (`gating`), attempt
+helpers (`attempts`), generic layout (`runtimes.layout`), reusable metrics
+(`common_metrics`: `AgentPhaseSuccessMetric` + a real metric-over-evidence
+`EvidencePresenceMetric`), the generic orchestrator (`orchestrator`), the
+`AgentAttemptSource` protocol, the verifier mechanic (`runtimes.verify`), and the
+coding-agent driver seam (`runtimes.coding_agent`). The `shared/*` modules
+referenced below are now **re-export shims** over those SDK homes (see
+`README.md` for the shim→SDK table); only NeMo-Platform specifics
+(`task_loader`, `result_adapter`, `config`, the pytest verifier command, the
+`state` evidence key, `task_image_tag`) remain platform code. A CI grep gate
+(`packages/nemo_evaluator_sdk/tests/agent_eval/test_import_hygiene.py`) keeps
+`agent_eval/` free of NeMo-Platform imports.
+
 ## Scope split (per SDK design)
 
 | `nat_runner` responsibility | Belongs in `AgentAttemptRuntime`? | Current location |

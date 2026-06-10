@@ -1,7 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Docker-backed sandbox runtime for agent-eval attempts."""
+"""Docker-backed sandbox runtime for agent-eval attempts.
+
+Distinct from :mod:`nemo_evaluator_sdk.agent_eval.runtimes.environment`'s
+``DockerEnvironmentProvider`` on purpose: this runtime drives the OpenAI Agents
+SDK ``SandboxAgent`` (Python ``docker`` + ``agents``, behind the
+``agent-runtimes`` extra) and *owns* the agent loop, whereas the environment
+provider only shells out to the ``docker`` CLI to execute a caller-built command
+inside a prebuilt task image. The two are not merged: this one is an
+``AgentAttemptRuntime``; the other is an execution boundary used *by* runtimes.
+"""
 
 from __future__ import annotations
 

@@ -13,9 +13,14 @@ agent phase. The resulting reward is stamped onto the attempt metadata so the
 from __future__ import annotations
 
 import textwrap
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+
+from nemo_evaluator_sdk.agent_eval.runtimes.verify import (
+    VerifierOutcome,
+    apply_verify_to_metadata,
+    collect_verifier_outcome,
+    skipped_outcome,
+)
 
 from runtimes.shared.constants import (
     DOCKER_SOCKET_CONTAINER_PATH,
@@ -28,17 +33,14 @@ from runtimes.shared.constants import (
 from runtimes.shared.environment import AgentEnvironmentHandle, EnvRunSpec
 from runtimes.shared.layout import AgenticRunLayout
 
-
-@dataclass(frozen=True)
-class VerifierOutcome:
-    """Result of the live verifier phase for one task."""
-
-    ran: bool
-    passed: bool
-    reward: int
-    exit_code: int
-    stdout: str
-    verifier_log_dir: Path | None
+__all__ = [
+    "VerifierOutcome",
+    "apply_verify_to_metadata",
+    "build_verify_run_spec",
+    "maybe_run_verify",
+    "run_verify",
+    "verifier_log_dir",
+]
 
 
 def verifier_log_dir(layout: AgenticRunLayout) -> Path:
@@ -141,28 +143,10 @@ async def run_verify(
 ) -> VerifierOutcome:
     """Execute the verifier through the environment handle and collect reward."""
     result = await handle.run_verifier(spec)
-    log_dir = verifier_log_dir(layout)
-    passed = result.ok
-
-    stdout = ""
-    stdout_path = log_dir / "test-stdout.txt"
-    if stdout_path.is_file():
-        stdout = stdout_path.read_text(encoding="utf-8", errors="replace")
-
-    reward_path = log_dir / "reward.txt"
-    if reward_path.is_file():
-        reward = 1 if reward_path.read_text(encoding="utf-8").strip() == "1" else 0
-    else:
-        reward = 1 if passed else 0
-        reward_path.write_text("1\n" if passed else "0\n", encoding="utf-8")
-
-    return VerifierOutcome(
-        ran=True,
-        passed=passed,
-        reward=reward,
+    return collect_verifier_outcome(
+        ok=result.ok,
         exit_code=result.exit_code,
-        stdout=stdout,
-        verifier_log_dir=log_dir,
+        log_dir=verifier_log_dir(layout),
     )
 
 
@@ -181,7 +165,7 @@ async def maybe_run_verify(
 ) -> VerifierOutcome:
     """Run the verifier through ``handle`` when enabled and a verifier exists."""
     if not enabled:
-        return VerifierOutcome(ran=False, passed=False, reward=0, exit_code=0, stdout="", verifier_log_dir=None)
+        return skipped_outcome()
     spec = build_verify_run_spec(
         task_dir,
         layout,
@@ -193,16 +177,5 @@ async def maybe_run_verify(
         extra_args=extra_args,
     )
     if spec is None:
-        return VerifierOutcome(ran=False, passed=False, reward=0, exit_code=0, stdout="", verifier_log_dir=None)
+        return skipped_outcome()
     return await run_verify(handle, spec, layout)
-
-
-def apply_verify_to_metadata(metadata: dict[str, Any], outcome: VerifierOutcome) -> None:
-    """Stamp verifier reward/status onto attempt metadata for scoring + gating."""
-    if not outcome.ran:
-        metadata.setdefault("verify_status", "skipped")
-        return
-    metadata["verify_status"] = "ok" if outcome.passed else "failed"
-    metadata["passed"] = outcome.passed
-    metadata["reward"] = outcome.reward
-    metadata["verifier_log_dir"] = str(outcome.verifier_log_dir) if outcome.verifier_log_dir else None

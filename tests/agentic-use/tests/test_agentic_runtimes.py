@@ -303,6 +303,8 @@ def _make_run_result(*, reward: float, total_tokens: int, runtime_sec: float, co
         },
     )
     task_result = AgentEvalTaskResult(
+        id="demo:workflow:agentic_use_verifier_reward",
+        run_id="run-1",
         task_id="demo",
         attempt_id="demo:workflow",
         metric_type="agentic_use_verifier_reward",
