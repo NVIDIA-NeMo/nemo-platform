@@ -102,9 +102,9 @@ class AutomodelRecipeWrapper:
         self._original_save_checkpoint = recipe.save_checkpoint
 
         # Monkey-patch the recipe's methods to add our callbacks
-        recipe.log_train_metrics = self._log_train_metrics
-        recipe.log_val_metrics = self._log_val_metrics
-        recipe.save_checkpoint = self._save_checkpoint
+        recipe.log_train_metrics = self._log_train_metrics  # type: ignore[method-assign]
+        recipe.log_val_metrics = self._log_val_metrics  # type: ignore[method-assign]
+        recipe.save_checkpoint = self._save_checkpoint  # type: ignore[method-assign]
 
     @property
     def recipe(self) -> AutomodelRecipe:

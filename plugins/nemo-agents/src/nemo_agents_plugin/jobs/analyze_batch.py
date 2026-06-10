@@ -155,7 +155,7 @@ class AnalyzeBatchJob(NemoJob):
             ga = asyncio.run(generate_gap_analysis(batch=batch, parser=parser, baselines=baselines))
 
         if cfg.format == "json":
-            return _serialize(ga)
+            return _serialize(ga)  # type: ignore[return-value]
 
         # markdown
         from nemo_agents_plugin.improvement._analysis_reporting import generate_gap_report

@@ -141,8 +141,8 @@ class PreviewRenderer(CLIRenderer):
             return PreviewResults(
                 config_builder=builder,
                 dataset=df,
-                dataset_metadata=self._dataset_metadata,
-                analysis=self._analysis,
+                dataset_metadata=self._dataset_metadata,  # type: ignore[arg-type]
+                analysis=self._analysis,  # type: ignore[arg-type]
                 processor_artifacts=self._processor_outputs or None,
             )
         except Exception as exc:  # pragma: no cover - defensive

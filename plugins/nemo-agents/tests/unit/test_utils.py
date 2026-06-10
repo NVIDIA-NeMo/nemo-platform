@@ -567,7 +567,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("eval-results"),
             workspace="default",
-            sdk=sentinel_sdk,
+            sdk=sentinel_sdk,  # type: ignore[arg-type]
             ctx=ctx,
         ) as base:
             (base / "summary.json").write_text("{}")
@@ -599,7 +599,7 @@ class TestResolveOutput:
         with job._resolve_output(
             FilesetRef("prod/eval-results"),
             workspace="default",
-            sdk=object(),
+            sdk=object(),  # type: ignore[arg-type]  # type: ignore[arg-type]
             ctx=ctx,
         ) as _:
             pass
@@ -629,7 +629,7 @@ class TestResolveOutput:
             with job._resolve_output(
                 FilesetRef("eval-results"),
                 workspace="default",
-                sdk=object(),
+                sdk=object(),  # type: ignore[arg-type]
                 ctx=ctx,
             ) as base:
                 (base / "partial.json").write_text("{}")
@@ -698,7 +698,7 @@ class TestResolveOutput:
             Path("/tmp/eval-out"),
             fileset="eval-results",
             workspace="prod",
-            sdk=sdk,
+            sdk=sdk,  # type: ignore[arg-type]  # type: ignore[arg-type]
         )
 
         assert sdk.files.calls == [
@@ -1024,7 +1024,7 @@ class TestOptimizeAgentResolveAgent:
         agent_config, endpoint = OptimizeAgentJob._resolve_agent(
             ref,
             workspace="default",
-            sdk=_StubSDK(),
+            sdk=_StubSDK(),  # type: ignore[arg-type]
         )
 
         assert captured == {"name": "react-agent", "workspace": "default"}
@@ -1047,7 +1047,7 @@ class TestOptimizeAgentResolveAgent:
                 self.agents = _StubAgents()
 
         ref = AgentRef("prod/react-agent")
-        OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())
+        OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
 
         assert captured == {"name": "react-agent", "workspace": "prod"}
 
@@ -1065,7 +1065,7 @@ class TestOptimizeAgentResolveAgent:
 
         ref = AgentRef("react-agent")
         with pytest.raises(RuntimeError, match="empty or invalid stored config"):
-            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())
+            OptimizeAgentJob._resolve_agent(ref, workspace="default", sdk=_StubSDK())  # type: ignore[arg-type]
 
 
 class TestRebaseOptimizeOutputs:
@@ -1333,7 +1333,7 @@ def _make_not_found_error(message: str) -> Any:
         headers: dict[str, str] = {}
         request = None
 
-    return NotFoundError(message=message, response=_StubResponse(), body={"detail": message})
+    return NotFoundError(message=message, response=_StubResponse(), body={"detail": message})  # type: ignore[arg-type]
 
 
 class _RecordingVirtualModels:
@@ -1386,7 +1386,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="default", sdk=sdk)
+        validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]
 
         assert vms.calls == [{"name": "shared-model", "workspace": "default"}]
 
@@ -1400,7 +1400,7 @@ class TestValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        validate_llm_models(config, workspace="ws", sdk=sdk)
+        validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         names = sorted(call["name"] for call in vms.calls)
         assert names == ["model-a", "model-b"]
@@ -1416,7 +1416,7 @@ class TestValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            validate_llm_models(config, workspace="default", sdk=sdk)
+            validate_llm_models(config, workspace="default", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         message = str(exc_info.value)
         # Names the missing model + the YAML key + the workspace, and points
@@ -1542,7 +1542,7 @@ class TestValidateLLMModels:
         with caplog.at_level("WARNING"):
             # Must not raise — the underlying eval/optimize call will surface
             # the real error if the model truly isn't reachable.
-            validate_llm_models(config, workspace="ws", sdk=sdk)
+            validate_llm_models(config, workspace="ws", sdk=sdk)  # type: ignore[arg-type]
 
         assert any("Could not validate LLM" in record.message for record in caplog.records)
 
@@ -1584,7 +1584,7 @@ class TestPreflightValidateLLMModels:
         vms = _RecordingVirtualModels()
         sdk = _StubSDKWithVirtualModels(vms)
 
-        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)
+        preflight_validate_llm_models(config_path, workspace="ws", sdk=sdk)  # type: ignore[arg-type]  # type: ignore[arg-type]
 
         assert vms.calls == [{"name": "real-model", "workspace": "ws"}]
 
@@ -1651,7 +1651,7 @@ class TestPreflightValidateLLMModels:
         sdk = _StubSDKWithVirtualModels(vms)
 
         with pytest.raises(ValueError) as exc_info:
-            preflight_validate_llm_models(config_path, workspace="default", sdk=sdk)
+            preflight_validate_llm_models(config_path, workspace="default", sdk=sdk)  # type: ignore[arg-type]
 
         # Sanity-check the message shape; full message coverage lives in
         # TestValidateLLMModels.

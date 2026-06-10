@@ -441,7 +441,7 @@ def _add_run_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = f"Run {job_cls.name} locally, in-process."
-    _run.__signature__ = _build_job_run_signature(leaves)
+    _run.__signature__ = _build_job_run_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="run", help=help_text)(_run)
 
 
@@ -618,7 +618,7 @@ def _add_submit_command(
             renderer.on_complete(ctx=rctx)
 
     help_text = f"Submit {job_cls.name} to a cluster."
-    _submit.__signature__ = _build_job_submit_signature(leaves)
+    _submit.__signature__ = _build_job_submit_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="submit", help=help_text)(_submit)
 
 
@@ -960,7 +960,7 @@ def _add_function_run_command(
 
     help_text = f"Run {fn_cls.name} locally, in-process."
     epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
-    _run.__signature__ = _build_function_run_signature(leaves)
+    _run.__signature__ = _build_function_run_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="run", help=help_text, epilog=epilog)(_run)
 
 
@@ -1113,12 +1113,12 @@ def _add_function_submit_command(
 
     def _submit(typer_ctx: typer.Context, **kwargs: object) -> None:
         original_kwargs = dict(kwargs)
-        spec_str: str = kwargs.pop("spec", "{}")
-        spec_file: Path | None = kwargs.pop("spec_file", None)
-        cluster: str | None = kwargs.pop("cluster", None)
-        base_url: str | None = kwargs.pop("base_url", None)
-        workspace: str = kwargs.pop("workspace", "default")
-        request_id: str | None = kwargs.pop("request_id", None)
+        spec_str: str = kwargs.pop("spec", "{}")  # type: ignore[assignment]
+        spec_file: Path | None = kwargs.pop("spec_file", None)  # type: ignore[assignment]
+        cluster: str | None = kwargs.pop("cluster", None)  # type: ignore[assignment]
+        base_url: str | None = kwargs.pop("base_url", None)  # type: ignore[assignment]
+        workspace: str = kwargs.pop("workspace", "default")  # type: ignore[assignment]
+        request_id: str | None = kwargs.pop("request_id", None)  # type: ignore[assignment]
 
         base = _load_spec(spec_str, spec_file)
         overlay = build_overlay(leaves, kwargs, unset_sentinel=UNSET)
@@ -1164,7 +1164,7 @@ def _add_function_submit_command(
 
     help_text = f"Submit {fn_cls.name} over HTTP."
     epilog = build_epilog(schema=fn_cls.spec_schema, leaves=leaves, kind="Function")
-    _submit.__signature__ = _build_function_submit_signature(leaves)
+    _submit.__signature__ = _build_function_submit_signature(leaves)  # type: ignore[attr-defined]
     group.command(name="submit", help=help_text, epilog=epilog)(_submit)
 
 

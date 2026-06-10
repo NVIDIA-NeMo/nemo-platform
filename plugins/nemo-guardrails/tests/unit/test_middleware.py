@@ -681,7 +681,7 @@ class TestProcessRequest:
         assert isinstance(result, ImmediateResponse)
         assert not isinstance(result.data, AsyncIterator)
 
-        data: dict[str, Any] = result.data
+        data: dict[str, Any] = result.data  # type: ignore[assignment]
         assert data["id"].startswith("chatcmpl-")
         assert data["model"] == "ws/llama"
         assert data["choices"] == [

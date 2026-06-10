@@ -283,7 +283,7 @@ class Configuration:
     @classmethod
     def get_service_config(cls, service_config: Type[_T_config]) -> _T_config:
         if service_config in cls._overrides:
-            return cls._overrides[service_config]
+            return cls._overrides[service_config]  # type: ignore[return-value]
         return cls._get_cached_config(service_config)
 
     @staticmethod
@@ -637,7 +637,7 @@ def get_nemo_platform_config() -> NemoPlatformConfig:
 
 
 # Default implementation — subclasses (nmp-common) override this to return their extended PlatformConfig.
-Configuration.get_platform_config = classmethod(lambda cls: cls.get_service_config(NemoPlatformConfig))
+Configuration.get_platform_config = classmethod(lambda cls: cls.get_service_config(NemoPlatformConfig))  # type: ignore[attr-defined]
 
 # Aliases — nmp-common and services use PlatformConfig / get_platform_config
 PlatformConfig = NemoPlatformConfig
