@@ -35,7 +35,10 @@ export const ExperimentDetailRoute: FC = () => {
       <Stack className="h-full overflow-auto" gap="density-2xl" padding="density-2xl">
         <PageHeader className="p-0" slotHeading={experimentName} />
         <ExperimentDetailMetrics experimentName={experimentName} />
-        <ExperimentSessionsDataView experimentName={experimentName} />
+        <ExperimentSessionsDataView
+          experimentName={experimentName}
+          experimentGroupName={experimentGroupName}
+        />
       </Stack>
     </AccessibleTitle>
   );

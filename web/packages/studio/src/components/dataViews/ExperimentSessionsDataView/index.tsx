@@ -7,19 +7,30 @@ import { RelativeTime } from '@nemo/common/src/components/RelativeTime';
 import { StatusBadge } from '@nemo/common/src/components/StatusBadge';
 import { TableEmptyState } from '@nemo/common/src/components/TableEmptyState';
 import { useStudioDataViewState } from '@nemo/common/src/hooks/useStudioDataViewState';
-import { useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
+import { useGetExperiment, useListExperimentSessions } from '@nemo/sdk/generated/platform/api';
 import type { ExperimentSessionResponse } from '@nemo/sdk/generated/platform/schema';
-import { Text, Tooltip } from '@nvidia/foundations-react-core';
+import {
+  Button,
+  CodeSnippet,
+  TabsContent,
+  TabsList,
+  TabsRoot,
+  TabsTrigger,
+  Text,
+  Tooltip,
+} from '@nvidia/foundations-react-core';
+import { LINK_DOCS_EXPERIMENTS_CLI } from '@studio/constants/links';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { tooltipClassName } from '@studio/styles/common';
 import { keepPreviousData } from '@tanstack/react-query';
-import { FlaskConical } from 'lucide-react';
+import { ChevronRight, File, FlaskConical } from 'lucide-react';
 import { type ComponentProps, type FC, useMemo } from 'react';
 
 type SessionRow = ExperimentSessionResponse & { _rowId: string };
 
 interface ExperimentSessionsDataViewProps {
   experimentName: string;
+  experimentGroupName: string;
 }
 
 const mapStatusForBadge = (status: ExperimentSessionResponse['status']) =>
@@ -34,9 +45,11 @@ const formatEvaluatorScores = (scores: ExperimentSessionResponse['evaluator_scor
 
 export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = ({
   experimentName,
+  experimentGroupName,
 }) => {
   const workspace = useWorkspaceFromPath();
   const dataViewState = useStudioDataViewState({});
+  const { data: experiment } = useGetExperiment(workspace, experimentName);
 
   const page = dataViewState.pagination.state.pageIndex + 1;
   const pageSize = dataViewState.pagination.state.pageSize;
@@ -171,13 +184,62 @@ export const ExperimentSessionsDataView: FC<ExperimentSessionsDataViewProps> = (
           requestStatus: isLoading && !sessionsData ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: () => (
-            <TableEmptyState
-              icon={<FlaskConical className="size-12" />}
-              header="No test cases"
-              emptyMessage="No test case sessions recorded for this experiment yet."
-            />
-          ),
+          renderEmptyState: () => {
+            const dataset = experiment?.dataset_name ?? '<dataset>';
+            const cliCommand =
+              `nemo exp run \\\n` +
+              `  --group "${experimentGroupName}" \\\n` +
+              `  --dataset "${dataset}" \\\n` +
+              `  --evaluators correctness,helpfulness,groundedness,tool-error`;
+            return (
+              <TableEmptyState
+                icon={<FlaskConical className="size-12" />}
+                header="No test cases"
+                emptyMessage="Run an experiment to see test case results."
+                actions={
+                  <div className="w-[560px] border border-base rounded-lg overflow-hidden">
+                    <TabsRoot defaultValue="cli">
+                      <TabsList className="px-density-md">
+                        <TabsTrigger value="coding-agent">Coding agent</TabsTrigger>
+                        <TabsTrigger value="cli">CLI command</TabsTrigger>
+                      </TabsList>
+                      <div className="px-density-md pb-density-md flex flex-col gap-density-sm">
+                        <TabsContent value="coding-agent" className="px-0 pb-0 w-full">
+                          <CodeSnippet
+                            value="To be determined"
+                            language="text"
+                            kind="block"
+                            className="w-full whitespace-pre-line"
+                          />
+                        </TabsContent>
+                        <TabsContent value="cli" className="px-0 pb-0">
+                          <CodeSnippet
+                            value={cliCommand}
+                            language="bash"
+                            kind="block"
+                            className="w-full"
+                          />
+                        </TabsContent>
+                        <Button
+                          asChild
+                          color="neutral"
+                          kind="tertiary"
+                          size="small"
+                          className="w-full justify-start"
+                        >
+                          <a href={LINK_DOCS_EXPERIMENTS_CLI} target="_blank" rel="noreferrer">
+                            <File className="!text-brand" />
+                            <Text className="flex-1">CLI docs — learn more</Text>
+                            <ChevronRight />
+                          </a>
+                        </Button>
+                      </div>
+                    </TabsRoot>
+                  </div>
+                }
+              />
+            );
+          },
         },
       }}
     />

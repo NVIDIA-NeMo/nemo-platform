@@ -58,6 +58,9 @@ export const LINK_EVAL_DOCS_BENCHMARKS =
 export const LINK_EVAL_DOCS_BENCHMARKS_INDUSTRY =
   'https://docs.nvidia.com/nemo/microservices/latest/evaluator/benchmarks/industry.html';
 
+// Experiments documentation links
+export const LINK_DOCS_EXPERIMENTS_CLI = `${DOCS_BASE_URL}experiments/cli/`;
+
 // Jobs documentation links
 export const LINK_DOCS_JOBS = `${DOCS_BASE_URL}studio/?#jobs`;
 
