@@ -104,7 +104,6 @@ packages = ["src/nemo_platform"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "../../../docs" = "nemo_platform/cli/docs"
-
 [tool.hatch.build.targets.sdist]
 # Basically everything except hidden files/directories (such as .github, .devcontainers, .python-version, etc)
 include = [

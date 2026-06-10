@@ -28,17 +28,21 @@ def minimal_nim_config():
     config.workspace = "test-ns"
     config.name = "test-config"
     config.entity_version = "v1"
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.image_name = "nvcr.io/nim/test"
-    config.nim_deployment.image_tag = "1.0.0"
-    config.nim_deployment.gpu = 1
-    config.nim_deployment.disk_size = None  # Will use backend default
-    config.nim_deployment.lora_enabled = False
-    config.nim_deployment.additional_envs = {}
-    config.nim_deployment.k8s_nim_operator_config = None
-    config.nim_deployment.override_config = {}
-    config.nim_deployment.model_name = None
-    config.nim_deployment.model_namespace = None
+    config.engine = "nim"
+    config.model_spec = MagicMock()
+    config.model_spec.lora_enabled = False
+    config.model_spec.model_name = None
+    config.model_spec.model_namespace = None
+    config.model_spec.model_revision = None
+    config.model_spec.tool_call_config = None
+    config.executor_config = MagicMock()
+    config.executor_config.image_name = "nvcr.io/nim/test"
+    config.executor_config.image_tag = "1.0.0"
+    config.executor_config.gpu = 1
+    config.executor_config.disk_size = None  # Will use backend default
+    config.executor_config.additional_envs = {}
+    config.executor_config.k8s_nim_operator_config = None
+    config.executor_config.override_config = {}
     return config
 
 
@@ -60,7 +64,7 @@ def test_default_storage_class_is_used(sample_deployment, minimal_nim_config):
 def test_default_pvc_size_is_used_when_disk_size_not_specified(sample_deployment, minimal_nim_config):
     """Test that default_pvc_size is used when deployment config doesn't specify disk_size."""
     backend_config = K8sNimOperatorConfig(default_pvc_size="500Gi")
-    minimal_nim_config.nim_deployment.disk_size = None
+    minimal_nim_config.executor_config.disk_size = None
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -76,7 +80,7 @@ def test_default_pvc_size_is_used_when_disk_size_not_specified(sample_deployment
 def test_deployment_disk_size_overrides_default_pvc_size(sample_deployment, minimal_nim_config):
     """Test that deployment config disk_size takes precedence over default_pvc_size."""
     backend_config = K8sNimOperatorConfig(default_pvc_size="500Gi")
-    minimal_nim_config.nim_deployment.disk_size = "100Gi"
+    minimal_nim_config.executor_config.disk_size = "100Gi"
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -94,7 +98,7 @@ def test_peft_source_only_used_when_lora_enabled(sample_deployment, minimal_nim_
     backend_config = K8sNimOperatorConfig(peft_source="http://custom-peft-source:8000")
 
     # Test with lora disabled
-    minimal_nim_config.nim_deployment.lora_enabled = False
+    minimal_nim_config.model_spec.lora_enabled = False
     nimservice = compile_nimservice(
         backend_config=backend_config,
         deployment=sample_deployment,
@@ -106,7 +110,7 @@ def test_peft_source_only_used_when_lora_enabled(sample_deployment, minimal_nim_
     assert "NIM_PEFT_SOURCE" not in env_vars
 
     # Test with lora enabled
-    minimal_nim_config.nim_deployment.lora_enabled = True
+    minimal_nim_config.model_spec.lora_enabled = True
     nimservice = compile_nimservice(
         backend_config=backend_config,
         deployment=sample_deployment,
@@ -123,7 +127,7 @@ def test_peft_refresh_interval_only_used_when_lora_enabled(sample_deployment, mi
     backend_config = K8sNimOperatorConfig(peft_refresh_interval=60)
 
     # Test with lora disabled
-    minimal_nim_config.nim_deployment.lora_enabled = False
+    minimal_nim_config.model_spec.lora_enabled = False
     nimservice = compile_nimservice(
         backend_config=backend_config,
         deployment=sample_deployment,
@@ -135,7 +139,7 @@ def test_peft_refresh_interval_only_used_when_lora_enabled(sample_deployment, mi
     assert "NIM_PEFT_REFRESH_INTERVAL" not in env_vars
 
     # Test with lora enabled
-    minimal_nim_config.nim_deployment.lora_enabled = True
+    minimal_nim_config.model_spec.lora_enabled = True
     nimservice = compile_nimservice(
         backend_config=backend_config,
         deployment=sample_deployment,
@@ -359,8 +363,8 @@ def test_all_backend_config_fields_together(sample_deployment, minimal_nim_confi
     )
 
     # Enable lora to test peft fields
-    minimal_nim_config.nim_deployment.lora_enabled = True
-    minimal_nim_config.nim_deployment.disk_size = None  # Use backend default
+    minimal_nim_config.model_spec.lora_enabled = True
+    minimal_nim_config.executor_config.disk_size = None  # Use backend default
 
     platform_config = PlatformConfig(  # type: ignore[abstract]
         base_url="http://platform-service:8080",
@@ -503,9 +507,9 @@ def test_per_deployment_config_overrides_backend_defaults(sample_deployment, min
     )
 
     # Per-deployment config overrides
-    minimal_nim_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_nim_config.nim_deployment.k8s_nim_operator_config.startup_probe_grace_seconds = 1200
-    minimal_nim_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_nim_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_nim_config.executor_config.k8s_nim_operator_config.startup_probe_grace_seconds = 1200
+    minimal_nim_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "resources": {"requests": {"cpu": "4"}},  # Override CPU
         "node_selector": {"zone": "us-east1-b"},  # Override zone
         "startup_probe_grace_seconds": 1200,  # Override grace period

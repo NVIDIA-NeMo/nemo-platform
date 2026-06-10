@@ -236,3 +236,36 @@ class DatetimeFilter(Filter):
         protected_namespaces=(),
         populate_by_name=True,  # Accept both "gte" and "$gte" as input
     )
+
+
+class StringFilter(Filter):
+    eq: Optional[str] = Field(
+        None,
+        alias="$eq",
+        serialization_alias="$eq",
+        description="Filter for results equal to this value.",
+    )
+    like: Optional[str] = Field(
+        None,
+        alias="$like",
+        serialization_alias="$like",
+        description="Filter for results matching this pattern.",
+    )
+    in_: Optional[list[str]] = Field(
+        None,
+        alias="$in",
+        serialization_alias="$in",
+        description="Filter for results in this list of values.",
+    )
+    nin: Optional[list[str]] = Field(
+        None,
+        alias="$nin",
+        serialization_alias="$nin",
+        description="Filter for results not in this list of values.",
+    )
+
+    model_config = ConfigDict(
+        extra="forbid",
+        protected_namespaces=(),
+        populate_by_name=True,  # Accept both "eq" and "$eq" as input
+    )

@@ -198,6 +198,7 @@ interface UseClaudeCodeChatRuntimeOptions {
   initialMessages?: readonly ThreadMessageLike[];
   initialSessionId?: string;
   onError?: (error: Error) => void;
+  workspace?: string;
 }
 
 export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptions) => {
@@ -310,6 +311,7 @@ export const useClaudeCodeChatRuntime = (options?: UseClaudeCodeChatRuntimeOptio
         await streamClaudeCodeMessage({
           sessionId: activeSessionId,
           message: prompt,
+          workspace: options?.workspace,
           signal,
           handlers: {
             onClaudeEvent: (event) => {

@@ -433,6 +433,10 @@ models:
         default_nimservice_image: nvcr.io/nim/nvidia/llm-nim
         # Default NIM image tag when none is specified | default: '1.13.1'
         default_nimservice_image_tag: 1.13.1
+        # Default vLLM image when none is specified for engine='vllm' | default: 'vllm/vllm-openai'
+        default_vllm_image: vllm/vllm-openai
+        # Default vLLM image tag when none is specified for engine='vllm' | default: 'v0.22.1'
+        default_vllm_image_tag: v0.22.1
         # NIM guided decoding backend | default: 'outlines'
         nim_guided_decoding_backend: outlines
         # PEFT/LoRA source URL for models service | default: ''
