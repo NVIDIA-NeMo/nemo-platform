@@ -79,8 +79,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       // User filters merge under the group scope, which always wins so it can't be overridden.
       filter: {
         ...dataViewState.apiFilter.filter,
+        ...(dataViewState.searchBar.state && { name: { $like: dataViewState.searchBar.state } }),
         experiment_group_id: experimentGroupId,
-      },
+      } as ExperimentFilter,
     },
     { query: { placeholderData: keepPreviousData, enabled: !!experimentGroupId } }
   );
@@ -104,14 +105,13 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor('name', {
         header: 'Name',
         enableSorting: true,
-        meta: { title: false, filter: { type: 'text', label: 'Name' } },
         size: 300,
         cell: ({ row }) => {
           const { name, summary } = row.original;
           if (!summary) return <Text>{name}</Text>;
           return (
             <Tooltip slotContent={summary} className={tooltipClassName} side="bottom">
-              <Text className="cursor-default border-b border-dotted border-base">{name}</Text>
+              <Text className="cursor-default border-b border-dotted border-brand">{name}</Text>
             </Tooltip>
           );
         },
@@ -119,25 +119,37 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
       accessor('agent_name', {
         header: 'Agent Name',
         enableSorting: false,
-        meta: { filter: { type: 'text', label: 'Agent Name' } },
+        meta: {
+          filter: { type: 'text', label: 'Agent Name', placeholder: 'Filter by Agent Name' },
+        },
         cell: ({ row }) => <Text>{row.original.agent_name || '-'}</Text>,
       }),
       accessor('agent_version', {
         header: 'Agent Version',
         enableSorting: false,
-        meta: { filter: { type: 'text', label: 'Agent Version' } },
+        meta: {
+          filter: { type: 'text', label: 'Agent Version', placeholder: 'Filter by Agent Version' },
+        },
         cell: ({ row }) => <Text>{row.original.agent_version || '-'}</Text>,
       }),
       accessor('dataset_name', {
         header: 'Dataset Name',
         enableSorting: false,
-        meta: { filter: { type: 'text', label: 'Dataset Name' } },
+        meta: {
+          filter: { type: 'text', label: 'Dataset Name', placeholder: 'Filter by Dataset Name' },
+        },
         cell: ({ row }) => <Text>{row.original.dataset_name || '-'}</Text>,
       }),
       accessor('dataset_version', {
         header: 'Dataset Version',
         enableSorting: false,
-        meta: { filter: { type: 'text', label: 'Dataset Version' } },
+        meta: {
+          filter: {
+            type: 'text',
+            label: 'Dataset Version',
+            placeholder: 'Filter by Dataset Version',
+          },
+        },
         cell: ({ row }) => <Text>{row.original.dataset_version || '-'}</Text>,
       }),
       accessor((original) => original.model_names?.join(', '), {
@@ -193,19 +205,9 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
         header: 'Created By',
         enableSorting: false,
         enableHiding: false,
-        meta: { filter: { type: 'text', label: 'Created By' } },
-      }),
-      accessor('updated_at', {
-        header: 'Updated At',
-        enableSorting: false,
-        enableHiding: false,
-        meta: { filter: dateTimeFilter('Updated At') },
-        cell: ({ row }) =>
-          row.original.updated_at ? (
-            <RelativeTime datetime={row.original.updated_at} />
-          ) : (
-            <Text>-</Text>
-          ),
+        meta: {
+          filter: { type: 'text', label: 'Created By', placeholder: 'Filter by Created By' },
+        },
       }),
     ],
     []
@@ -223,6 +225,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
     <StudioDataView
       dataViewState={dataViewState}
       makeColumns={makeColumns}
+      searchField="name"
       attributes={{
         DataViewRoot: {
           data: tableData,
