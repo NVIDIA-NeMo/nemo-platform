@@ -240,7 +240,7 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           slotContent={<div aria-hidden className="h-0 w-[230px]" />}
         >
           <>
-            <Columns3 variant="fill" />
+            <Columns3 />
             <span className="hide-mobile">Columns</span>
           </>
         </EditColumnsMenu>
