@@ -27,6 +27,16 @@ import pandas as pd
 from datasets import Dataset, DatasetDict, load_dataset
 from nemo_platform import NeMoPlatform
 from nemo_platform.filesets import parse_fileset_ref
+from nemo_platform_plugin.config import get_platform_config
+from nemo_platform_plugin.jobs.constants import (
+    DEFAULT_TASK_STORAGE_PATH,
+    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
+    NEMO_JOB_ID_ENVVAR,
+    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
+    NEMO_JOB_WORKSPACE_ENVVAR,
+)
+from nemo_platform_plugin.jobs.file_manager import FilesetFileManager
+from nemo_platform_plugin.sdk_provider import get_platform_sdk
 from nemo_safe_synthesizer.config.internal_results import SafeSynthesizerResults
 from nemo_safe_synthesizer.observability import initialize_observability
 from nemo_safe_synthesizer.sdk.library_builder import SafeSynthesizer
@@ -42,16 +52,6 @@ from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.adapter_resolution impo
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.jsonl_loader import load_jsonl_file
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.logging_setup import configure_logging
 from nemo_safe_synthesizer_plugin.tasks.safe_synthesizer.model_init import init_models_sync
-from nmp.common.config import get_platform_config
-from nmp.common.jobs.constants import (
-    DEFAULT_TASK_STORAGE_PATH,
-    EPHEMERAL_TASK_STORAGE_PATH_ENVVAR,
-    NEMO_JOB_ID_ENVVAR,
-    NEMO_JOB_STEP_CONFIG_FILE_PATH_ENVVAR,
-    NEMO_JOB_WORKSPACE_ENVVAR,
-)
-from nmp.common.jobs.file_manager import FilesetFileManager
-from nmp.common.sdk_factory import get_platform_sdk
 
 configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
 

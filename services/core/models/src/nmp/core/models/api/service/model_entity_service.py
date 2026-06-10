@@ -193,9 +193,9 @@ def _has_tool_call_plugin(request) -> bool:
     if spec and getattr(spec, "tool_call_config", None):
         if spec.tool_call_config.tool_call_plugin:
             return True
-    nim = getattr(request, "nim_deployment", None)
-    if nim and getattr(nim, "tool_call_config", None):
-        if nim.tool_call_config.tool_call_plugin:
+    model_spec = getattr(request, "model_spec", None)
+    if model_spec and getattr(model_spec, "tool_call_config", None):
+        if model_spec.tool_call_config.tool_call_plugin:
             return True
     return False
 
@@ -329,9 +329,9 @@ class ModelEntityService:
         # From latest versions: filter where lora_enabled is True, extract (workspace, name) pairs
         model_ids: set[tuple[str, str]] = set()
         for cfg in latest_by_key.values():
-            if cfg.nim_deployment is None:
+            if cfg.model_spec is None:
                 continue
-            if not cfg.nim_deployment.lora_enabled:
+            if not cfg.model_spec.lora_enabled:
                 continue
             if cfg.model_entity_id is None:
                 continue

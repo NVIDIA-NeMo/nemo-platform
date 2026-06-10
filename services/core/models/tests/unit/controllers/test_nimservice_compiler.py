@@ -46,19 +46,24 @@ def minimal_config():
     config.name = "test-config"
     config.entity_version = "v1"
 
-    # Minimal nim_deployment configuration
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3-8b-instruct"
-    config.nim_deployment.image_tag = "1.0.0"
-    config.nim_deployment.gpu = 1
-    config.nim_deployment.disk_size = "50Gi"
-    config.nim_deployment.lora_enabled = False
-    config.nim_deployment.additional_envs = {}
-    config.nim_deployment.k8s_nim_operator_config = None
-    config.nim_deployment.override_config = {}
-    config.nim_deployment.model_name = None
-    config.nim_deployment.model_namespace = None
-    config.nim_deployment.model_revision = None
+    # Minimal model_spec configuration
+    config.engine = "nim"
+    config.model_spec = MagicMock()
+    config.model_spec.lora_enabled = False
+    config.model_spec.model_name = None
+    config.model_spec.model_namespace = None
+    config.model_spec.model_revision = None
+    config.model_spec.tool_call_config = None
+
+    # Minimal executor_config configuration
+    config.executor_config = MagicMock()
+    config.executor_config.image_name = "nvcr.io/nim/meta/llama-3-8b-instruct"
+    config.executor_config.image_tag = "1.0.0"
+    config.executor_config.gpu = 1
+    config.executor_config.disk_size = "50Gi"
+    config.executor_config.additional_envs = {}
+    config.executor_config.k8s_nim_operator_config = None
+    config.executor_config.override_config = {}
 
     return config
 
@@ -71,22 +76,27 @@ def full_config():
     config.name = "test-config"
     config.entity_version = "v1"
 
-    # Full nim_deployment configuration
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
-    config.nim_deployment.image_tag = "1.8.5"
-    config.nim_deployment.gpu = 2
-    config.nim_deployment.disk_size = "200Gi"
-    config.nim_deployment.lora_enabled = True
-    config.nim_deployment.model_name = "llama-3.2-3b-instruct"
-    config.nim_deployment.model_namespace = "meta"
-    config.nim_deployment.model_revision = None
-    config.nim_deployment.additional_envs = {
+    # Full model_spec configuration
+    config.engine = "nim"
+    config.model_spec = MagicMock()
+    config.model_spec.lora_enabled = True
+    config.model_spec.model_name = "llama-3.2-3b-instruct"
+    config.model_spec.model_namespace = "meta"
+    config.model_spec.model_revision = None
+    config.model_spec.tool_call_config = None
+
+    # Full executor_config configuration
+    config.executor_config = MagicMock()
+    config.executor_config.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
+    config.executor_config.image_tag = "1.8.5"
+    config.executor_config.gpu = 2
+    config.executor_config.disk_size = "200Gi"
+    config.executor_config.additional_envs = {
         "CUSTOM_VAR": "custom_value",
         "DEBUG": "true",
     }
-    config.nim_deployment.k8s_nim_operator_config = None
-    config.nim_deployment.override_config = {}
+    config.executor_config.k8s_nim_operator_config = None
+    config.executor_config.override_config = {}
 
     return config
 
@@ -173,7 +183,7 @@ def test_compile_nimservice_image_config(backend_config, sample_deployment, mini
 
 def test_compile_nimservice_gpu_resources(backend_config, sample_deployment, minimal_config):
     """Test that GPU resources are correctly configured."""
-    minimal_config.nim_deployment.gpu = 4
+    minimal_config.executor_config.gpu = 4
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -403,7 +413,7 @@ def test_compile_nimservice_additional_env_vars(backend_config, sample_deploymen
 
 def test_compile_nimservice_additional_envs_override_defaults(backend_config, sample_deployment, minimal_config):
     """Test that additional env vars can override defaults."""
-    minimal_config.nim_deployment.additional_envs = {
+    minimal_config.executor_config.additional_envs = {
         "NIM_GUIDED_DECODING_BACKEND": "custom_backend",
     }
 
@@ -456,7 +466,7 @@ def test_compile_nimservice_labels(backend_config, sample_deployment, minimal_co
 
 def test_compile_nimservice_override_config_env_vars(backend_config, sample_deployment, minimal_config):
     """Test that override_config can add environment variables."""
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "env": [
             {"name": "OVERRIDE_VAR", "value": "override_value"},
             {"name": "ANOTHER_VAR", "value": "another_value"},
@@ -479,7 +489,7 @@ def test_compile_nimservice_override_config_env_vars(backend_config, sample_depl
 
 def test_compile_nimservice_override_config_tolerations(backend_config, sample_deployment, minimal_config):
     """Test that override_config can add Kubernetes tolerations."""
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "tolerations": [
             {
                 "key": "nvidia.com/gpu",
@@ -512,7 +522,7 @@ def test_compile_nimservice_override_config_tolerations(backend_config, sample_d
 
 def test_compile_nimservice_override_config_node_selector(backend_config, sample_deployment, minimal_config):
     """Test that override_config can add node selectors."""
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "nodeSelector": {
             "node-type": "gpu-node",
             "zone": "us-west1-a",
@@ -535,7 +545,7 @@ def test_compile_nimservice_override_config_node_selector(backend_config, sample
 
 def test_compile_nimservice_override_config_resources(backend_config, sample_deployment, minimal_config):
     """Test that override_config can override resource limits."""
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "resources": {
             "limits": {
                 "nvidia.com/gpu": "8",
@@ -567,10 +577,10 @@ def test_compile_nimservice_override_config_resources(backend_config, sample_dep
 def test_compile_nimservice_override_config_deep_merge(backend_config, sample_deployment, minimal_config):
     """Test that override_config performs deep merge on nested structures."""
     # Set up a base config with some resources
-    minimal_config.nim_deployment.gpu = 2
+    minimal_config.executor_config.gpu = 2
 
     # Override only the memory limit, GPU limit should remain
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "resources": {
             "limits": {
                 "memory": "128Gi",
@@ -598,7 +608,7 @@ def test_compile_nimservice_override_config_deep_merge(backend_config, sample_de
 def test_compile_nimservice_override_config_serializes_correctly(backend_config, sample_deployment, minimal_config):
     """Test that override_config values serialize correctly to dict for k8s API."""
     # Use override_config with multiple field types
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "env": [
             {"name": "OVERRIDE_VAR", "value": "override_value"},
             {"name": "ANOTHER_VAR", "value": "another_value"},
@@ -688,7 +698,7 @@ def test_compile_nimservice_override_config_serializes_correctly(backend_config,
 def test_compile_nimservice_override_config_serializes_to_yaml(backend_config, sample_deployment, minimal_config):
     """Test that override_config values serialize correctly to YAML for kubectl apply."""
     # Use override_config with various field types
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "env": [
             {"name": "CUSTOM_ENV", "value": "custom_value"},
         ],
@@ -748,8 +758,8 @@ def test_compile_nimservice_override_config_serializes_to_yaml(backend_config, s
 def test_compile_nimservice_k8s_nim_operator_config_resources(backend_config, sample_deployment, minimal_config):
     """Test that k8s_nim_operator_config can add/override resource limits and requests."""
     # Add k8s_nim_operator_config with resources
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "resources": {
             "limits": {
                 "memory": "32Gi",
@@ -790,8 +800,8 @@ def test_compile_nimservice_k8s_nim_operator_config_resources(backend_config, sa
 def test_compile_nimservice_k8s_nim_operator_config_tolerations(backend_config, sample_deployment, minimal_config):
     """Test that k8s_nim_operator_config can add tolerations."""
     # Add k8s_nim_operator_config with tolerations
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "tolerations": [
             {
                 "key": "nvidia.com/gpu",
@@ -834,8 +844,8 @@ def test_compile_nimservice_k8s_nim_operator_config_tolerations(backend_config, 
 def test_compile_nimservice_k8s_nim_operator_config_node_selector(backend_config, sample_deployment, minimal_config):
     """Test that k8s_nim_operator_config can add node selector with snake_case to camelCase conversion."""
     # Add k8s_nim_operator_config with node_selector (snake_case)
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "node_selector": {
             "node-type": "gpu-node",
             "zone": "us-west1-a",
@@ -863,9 +873,9 @@ def test_compile_nimservice_k8s_nim_operator_config_startup_probe_grace_seconds(
 ):
     """Test that k8s_nim_operator_config can set startup_probe_grace_seconds."""
     # Add k8s_nim_operator_config with startup_probe_grace_seconds
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.startup_probe_grace_seconds = 600
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.startup_probe_grace_seconds = 600
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "startup_probe_grace_seconds": 600,
     }
 
@@ -891,9 +901,9 @@ def test_compile_nimservice_k8s_nim_operator_config_startup_probe_grace_seconds_
 ):
     """Test that startup_probe_grace_seconds rounds up when dividing by 10."""
     # Add k8s_nim_operator_config with grace_seconds that doesn't divide evenly
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.startup_probe_grace_seconds = 605
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.startup_probe_grace_seconds = 605
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "startup_probe_grace_seconds": 605,
     }
 
@@ -924,9 +934,9 @@ def test_compile_nimservice_k8s_nim_operator_config_startup_probe_grace_seconds_
     ]
 
     for grace_seconds, expected_threshold in test_cases:
-        minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-        minimal_config.nim_deployment.k8s_nim_operator_config.startup_probe_grace_seconds = grace_seconds
-        minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+        minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+        minimal_config.executor_config.k8s_nim_operator_config.startup_probe_grace_seconds = grace_seconds
+        minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
             "startup_probe_grace_seconds": grace_seconds,
         }
 
@@ -949,7 +959,7 @@ def test_compile_nimservice_startup_probe_default_when_no_grace_seconds(
 ):
     """Test that startup probe uses default 600 seconds (60 failures) when grace_seconds is not provided."""
     # No k8s_nim_operator_config provided
-    minimal_config.nim_deployment.k8s_nim_operator_config = None
+    minimal_config.executor_config.k8s_nim_operator_config = None
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -969,9 +979,9 @@ def test_compile_nimservice_startup_probe_default_when_no_grace_seconds(
 def test_compile_nimservice_k8s_nim_operator_config_multiple_fields(backend_config, sample_deployment, minimal_config):
     """Test that k8s_nim_operator_config can set multiple fields at once."""
     # Add k8s_nim_operator_config with multiple fields
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.startup_probe_grace_seconds = 1200
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.startup_probe_grace_seconds = 1200
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "resources": {
             "limits": {"memory": "64Gi"},
             "requests": {"cpu": "8", "memory": "32Gi"},
@@ -1008,11 +1018,11 @@ def test_compile_nimservice_k8s_nim_operator_config_precedence_over_defaults(
 ):
     """Test that k8s_nim_operator_config takes precedence over defaults."""
     # Base config has gpu=1 which sets nvidia.com/gpu limit to "1"
-    minimal_config.nim_deployment.gpu = 2
+    minimal_config.executor_config.gpu = 2
 
     # k8s_nim_operator_config should override GPU limit
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "resources": {
             "limits": {
                 "nvidia.com/gpu": "4",  # Override from 2 to 4
@@ -1038,8 +1048,8 @@ def test_compile_nimservice_override_config_precedence_over_k8s_nim_operator_con
 ):
     """Test that override_config takes precedence over k8s_nim_operator_config."""
     # Set both k8s_nim_operator_config and override_config with conflicting values
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "node_selector": {
             "zone": "us-west1-a",
             "hardware": "gpu",
@@ -1049,7 +1059,7 @@ def test_compile_nimservice_override_config_precedence_over_k8s_nim_operator_con
         ],
     }
 
-    minimal_config.nim_deployment.override_config = {
+    minimal_config.executor_config.override_config = {
         "nodeSelector": {
             "zone": "us-east1-b",  # Override zone
             "environment": "production",  # Add new field
@@ -1080,8 +1090,8 @@ def test_compile_nimservice_k8s_nim_operator_config_empty_does_nothing(
 ):
     """Test that empty k8s_nim_operator_config doesn't affect the spec."""
     # Set k8s_nim_operator_config with no fields
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {}
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {}
 
     nimservice_with_empty = compile_nimservice(
         backend_config=backend_config,
@@ -1092,7 +1102,7 @@ def test_compile_nimservice_k8s_nim_operator_config_empty_does_nothing(
     )
 
     # Remove k8s_nim_operator_config
-    minimal_config.nim_deployment.k8s_nim_operator_config = None
+    minimal_config.executor_config.k8s_nim_operator_config = None
 
     nimservice_without = compile_nimservice(
         backend_config=backend_config,
@@ -1113,8 +1123,8 @@ def test_compile_nimservice_k8s_nim_operator_config_serializes_correctly(
 ):
     """Test that k8s_nim_operator_config values serialize correctly to dict for k8s API."""
     # Set k8s_nim_operator_config with various field types
-    minimal_config.nim_deployment.k8s_nim_operator_config = MagicMock()
-    minimal_config.nim_deployment.k8s_nim_operator_config.model_dump.return_value = {
+    minimal_config.executor_config.k8s_nim_operator_config = MagicMock()
+    minimal_config.executor_config.k8s_nim_operator_config.model_dump.return_value = {
         "resources": {
             "limits": {"memory": "32Gi"},
             "requests": {"cpu": "4", "memory": "16Gi"},
@@ -1194,16 +1204,21 @@ def test_compile_nimservice_matches_example_structure(backend_config, sample_dep
     config.name = "llama-config"
     config.entity_version = "v1"
 
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
-    config.nim_deployment.image_tag = "1.8.5"
-    config.nim_deployment.gpu = 1
-    config.nim_deployment.disk_size = "200Gi"
-    config.nim_deployment.lora_enabled = True
-    config.nim_deployment.model_name = "llama-3.2-3b-instruct"
-    config.nim_deployment.model_namespace = "ben-test"
-    config.nim_deployment.additional_envs = {}
-    config.nim_deployment.override_config = {}
+    config.engine = "nim"
+    config.model_spec = MagicMock()
+    config.model_spec.lora_enabled = True
+    config.model_spec.model_name = "llama-3.2-3b-instruct"
+    config.model_spec.model_namespace = "ben-test"
+    config.model_spec.model_revision = None
+    config.model_spec.tool_call_config = None
+    config.executor_config = MagicMock()
+    config.executor_config.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
+    config.executor_config.image_tag = "1.8.5"
+    config.executor_config.gpu = 1
+    config.executor_config.disk_size = "200Gi"
+    config.executor_config.additional_envs = {}
+    config.executor_config.k8s_nim_operator_config = None
+    config.executor_config.override_config = {}
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -1309,16 +1324,21 @@ def test_compile_nimservice_yaml_structure_matches_example(backend_config, sampl
     config.name = "llama-config"
     config.entity_version = "v1"
 
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
-    config.nim_deployment.image_tag = "1.8.5"
-    config.nim_deployment.gpu = 1
-    config.nim_deployment.disk_size = "200Gi"
-    config.nim_deployment.lora_enabled = True
-    config.nim_deployment.model_name = "llama-3.2-3b-instruct"
-    config.nim_deployment.model_namespace = "ben-test"
-    config.nim_deployment.additional_envs = {}
-    config.nim_deployment.override_config = {}
+    config.engine = "nim"
+    config.model_spec = MagicMock()
+    config.model_spec.lora_enabled = True
+    config.model_spec.model_name = "llama-3.2-3b-instruct"
+    config.model_spec.model_namespace = "ben-test"
+    config.model_spec.model_revision = None
+    config.model_spec.tool_call_config = None
+    config.executor_config = MagicMock()
+    config.executor_config.image_name = "nvcr.io/nim/meta/llama-3.2-3b-instruct"
+    config.executor_config.image_tag = "1.8.5"
+    config.executor_config.gpu = 1
+    config.executor_config.disk_size = "200Gi"
+    config.executor_config.additional_envs = {}
+    config.executor_config.k8s_nim_operator_config = None
+    config.executor_config.override_config = {}
 
     # Compile NIMService
     nimservice = compile_nimservice(
@@ -1422,9 +1442,9 @@ def test_compile_nimservice_can_roundtrip_through_yaml(backend_config, sample_de
 def test_compile_nimservice_multi_llm_with_files_service(backend_config, sample_deployment, minimal_config):
     """Test multi-LLM configuration for Files service (no HF_TOKEN/HF_ENDPOINT in env)."""
     # Set up multi-LLM image (using default)
-    minimal_config.nim_deployment.image_name = None  # Will use default
-    minimal_config.nim_deployment.model_namespace = "nvidia"
-    minimal_config.nim_deployment.model_name = "Llama-3.1-Nemotron-Nano-4B-v1.1"
+    minimal_config.executor_config.image_name = None  # Will use default
+    minimal_config.model_spec.model_namespace = "nvidia"
+    minimal_config.model_spec.model_name = "Llama-3.1-Nemotron-Nano-4B-v1.1"
 
     platform_config = PlatformConfig(  # type: ignore[abstract]
         service_discovery={
@@ -1464,10 +1484,10 @@ def test_compile_nimservice_multi_llm_user_overrides_decoding_backend(
 ):
     """Test that user can override NIM_GUIDED_DECODING_BACKEND for multi-LLM."""
     # Set up multi-LLM with user override
-    minimal_config.nim_deployment.image_name = None  # Will use default
-    minimal_config.nim_deployment.model_namespace = "nvidia"
-    minimal_config.nim_deployment.model_name = "Llama-3.1-Nemotron-Nano-4B-v1.1"
-    minimal_config.nim_deployment.additional_envs = {
+    minimal_config.executor_config.image_name = None  # Will use default
+    minimal_config.model_spec.model_namespace = "nvidia"
+    minimal_config.model_spec.model_name = "Llama-3.1-Nemotron-Nano-4B-v1.1"
+    minimal_config.executor_config.additional_envs = {
         "NIM_GUIDED_DECODING_BACKEND": "custom_backend",
     }
 
@@ -1498,9 +1518,9 @@ def test_compile_nimservice_multi_llm_user_overrides_decoding_backend(
 def test_compile_nimservice_llm_specific_nim_traditional_behavior(backend_config, sample_deployment, minimal_config):
     """Test that LLM-specific NIMs use traditional configuration (not multi-LLM behavior)."""
     # Set up LLM-specific image (NOT default)
-    minimal_config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3-8b-instruct"
-    minimal_config.nim_deployment.model_namespace = "meta"
-    minimal_config.nim_deployment.model_name = "llama-3-8b-instruct"
+    minimal_config.executor_config.image_name = "nvcr.io/nim/meta/llama-3-8b-instruct"
+    minimal_config.model_spec.model_namespace = "meta"
+    minimal_config.model_spec.model_name = "llama-3-8b-instruct"
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -1808,9 +1828,9 @@ def test_compile_nimcache_default_labels_and_annotations(backend_config):
 
 def test_compile_nimservice_nimcache_files_service_no_ft_env(backend_config, sample_deployment, minimal_config):
     """With NIMCache + multi-LLM image, do not set NIM_FT_MODEL (match docker)."""
-    minimal_config.nim_deployment.model_namespace = "e2e-workspace"
-    minimal_config.nim_deployment.model_name = "qwen-2-5-1-5b"
-    minimal_config.nim_deployment.image_name = "nvcr.io/nim/nvidia/llm-nim"
+    minimal_config.model_spec.model_namespace = "e2e-workspace"
+    minimal_config.model_spec.model_name = "qwen-2-5-1-5b"
+    minimal_config.executor_config.image_name = "nvcr.io/nim/nvidia/llm-nim"
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -1838,10 +1858,10 @@ def test_compile_nimservice_nimcache_files_service_no_ft_env(backend_config, sam
 
 def test_compile_nimservice_nimcache_files_service_sft_has_ft_env(backend_config, sample_deployment, minimal_config):
     """With NIMCache and model-specific image, set NIM_FT_MODEL and NGC_API_KEY."""
-    minimal_config.nim_deployment.model_namespace = "e2e-workspace"
-    minimal_config.nim_deployment.model_name = "sft-model"
+    minimal_config.model_spec.model_namespace = "e2e-workspace"
+    minimal_config.model_spec.model_name = "sft-model"
     # Model-specific image (not multi-LLM) so NIM_FT_MODEL is set.
-    minimal_config.nim_deployment.image_name = "nvcr.io/nim/meta/llama-3_1-8b-instruct"
+    minimal_config.executor_config.image_name = "nvcr.io/nim/meta/llama-3_1-8b-instruct"
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -1870,10 +1890,10 @@ def test_compile_nimservice_nimcache_files_service_sft_multi_llm_no_ft_env(
     backend_config, sample_deployment, minimal_config
 ):
     """With NIMCache but multi-LLM image, do NOT set NIM_FT_MODEL (breaks LoRA)."""
-    minimal_config.nim_deployment.model_namespace = "e2e-workspace"
-    minimal_config.nim_deployment.model_name = "sft-model"
+    minimal_config.model_spec.model_namespace = "e2e-workspace"
+    minimal_config.model_spec.model_name = "sft-model"
     # Explicit multi-LLM image so NIM_FT_MODEL is omitted (minimal_config fixture uses model-specific image).
-    minimal_config.nim_deployment.image_name = "nvcr.io/nim/nvidia/llm-nim"
+    minimal_config.executor_config.image_name = "nvcr.io/nim/nvidia/llm-nim"
 
     nimservice = compile_nimservice(
         backend_config=backend_config,
@@ -1891,7 +1911,7 @@ def test_compile_nimservice_nimcache_files_service_sft_multi_llm_no_ft_env(
 
 def test_compile_nimservice_tool_call_plugin_init_containers(backend_config, sample_deployment, minimal_config):
     """tool_call_plugin compiles three init containers and sets deterministic plugin path."""
-    minimal_config.nim_deployment.tool_call_config = SimpleNamespace(
+    minimal_config.model_spec.tool_call_config = SimpleNamespace(
         tool_call_plugin="test-ws/my-plugin-fileset",
         tool_call_parser=None,
         auto_tool_choice=None,

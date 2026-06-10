@@ -1,0 +1,129 @@
+---
+title: "Evaluation"
+description: ""
+---
+
+<a id="about-evaluation"></a>
+
+Evaluation is a critical component of NeMo Safe Synthesizer that helps you understand both the utility and privacy of your synthetic data. The evaluation step is enabled by default and provides comprehensive reports comparing your training and synthetic datasets across multiple dimensions.
+
+## How It Works
+
+The evaluation system compares your training and synthetic datasets using two main frameworks:
+
+1. **Synthetic Quality Score (SQS)**: Measures how well the synthetic data preserves statistical properties and utility
+2. **Data Privacy Score (DPS)**: Assesses privacy protection and resistance to various attack vectors
+
+We combine multiple metrics from each framework into an overall score.
+
+## Synthetic Quality Score (SQS)
+
+SQS is a measure of how well the synthetic data matches the training data. It is a score out of 10, where higher is better.
+
+SQS comprises five metrics:
+
+- **Column Correlation Stability**: Analyzes the correlation across every combination of two columns
+- **Deep Structure Stability**: Uses Principal Component Analysis to reduce the dimensionality when comparing the original and synthetic data
+- **Column Distribution Stability**: Compares the distribution for each column in the original data to its match in the synthetic data
+- **Text Structure Similarity**: Calculates the sentence, word, and character counts across the two datasets
+- **Text Semantic Similarity**: Determines whether the semantic meaning of the text held after synthesizing
+
+The first three metrics apply to numeric and categorical columns; the last two apply to free text columns. We calculate overall SQS as a weighted average of the five scores based on the number of numeric, categorical, and text columns. We show metrics with no applicable columns as N/A.
+
+### Column Correlation Stability
+
+We compute correlations for every numeric and categorical column pair in the training and synthetic data, then average the absolute differences. Lower average difference = higher score.
+
+The report shows three heatmaps (training, synthetic, and their difference). The difference heatmap is most useful for interpreting results: lighter colors indicate closer correlation matching.
+
+### Deep Structure Stability
+
+We assess deep, multi-field structure by running Principal Component Analysis (PCA) on the training data and separately the synthetic data. PCA reduces dimensionality while capturing maximum variability of the dataset, yielding principal components that summarize the dataset’s overall shape.
+
+We compare the distributional distance between principal components from the training data and the synthetic data. The closer the principal components are, the higher the Deep Structure Stability score.
+
+### Column Distribution Stability
+
+This score measures how closely each synthetic column’s value distribution matches the equivalent training data column using Jensen-Shannon Distance. Lower average JS Distance across columns yields a higher score.
+
+### Text Structure Similarity
+
+This score measures how well synthetic free text structure matches the training data by comparing average sentence, word, and character counts. Higher similarity indicates a better match.
+
+### Text Semantic Similarity
+
+We assess how well the semantic meaning of any synthetic free text matches that of the training data using cosine similarity of sentence embeddings. To penalize replaying of the training text, we take a 5% holdout from the training data prior to training the model. We do not report Text Semantic Similarity when there is no holdout set or when sample sizes are too small.
+
+## Data Privacy Score (DPS)
+
+DPS analyzes the synthetic data to measure how well protected your training data is from adversarial attacks. It returns a score out of 10, where higher is better.
+
+DPS includes three metrics:
+
+- **Membership Inference Protection**: Tests whether attackers can determine if specific records were in the training data
+- **Attribute Inference Protection**: Assesses whether sensitive attributes can be inferred from synthetic data
+- **PII Replay**: Evaluates the frequency with which sensitive values from the original data appear in the synthetic version
+
+We average the first two to provide an overall DPS. We do not factor PII replay into DPS; you should analyze it separately.
+
+### Membership Inference Protection
+
+This score measures resistance to membership inference attacks: whether an attacker can tell if a specific record was in the training set. We simulate 360 attacks using a 5% holdout from the training data. The score reflects whether an attacker was able to infer membership of a specific record with greater than random chance by exploiting differences in the model’s responses to data points from its training set versus those it has never seen before. Low scores indicate potential memorization risk.
+
+### Attribute Inference Protection
+
+This score measures resistance to attribute inference attacks: whether sensitive attributes can be predicted based on other attributes in the synthetic data. For a specific attribute, a high score indicates that even when other attributes are known, that specific attribute is difficult to predict.
+
+### PII Replay
+
+PII Replay counts the number of total and unique instances of personally identifiable information (PII) from your training data that show up in your synthetic data. Lower counts indicate higher privacy.
+
+You should expect some PII replay, and it is often not a cause for concern. We typically see rarer entities (for example, full address, full name) replayed less frequently than common ones (for example, first name, U.S. state). To reduce replay, we recommend enabling Replace PII before synthesis.
+
+## Privacy Guarantees and Evaluation
+
+**Impact of Differential Privacy on Scores:**
+
+- Enabling DP typically **improves DPS** by reducing memorization and attack success rates
+- Lower epsilon (stronger privacy) generally yields higher DPS scores
+- Enabling DP can reduce **SQS** due to privacy-utility tradeoff (noise affects quality)
+
+For differential privacy configuration and privacy-utility tradeoffs, refer to [data-synthesis](/documentation/synthesize-safe-data/about/data-synthesis) and [differential-privacy](/documentation/synthesize-safe-data/tutorials/differential-privacy).
+
+## Evaluation Reports
+
+Every NeMo Safe Synthesizer job automatically generates an HTML evaluation report containing:
+
+- Overall SQS and DPS scores
+- Detailed subscores for each metric
+- Visualizations comparing training and synthetic data
+- Statistical test results
+- Recommendations for improvement
+
+## Configuration
+
+We enable evaluation by default.
+
+## Interpreting Scores
+
+### SQS Interpretation
+
+- **8.0-10.0**: Excellent - production-ready utility; differences are negligible. Proceed to privacy review and standard validation.
+- **6.0-7.9**: Very Good - usable for most analytics/ML with minor drift. Validate key KPIs/models; consider light tuning to close gaps.
+- **4.0-5.9**: Good - noticeable utility gaps. Limit to exploratory analysis; increase training steps, adjust hyperparameters, or add data coverage; then re-evaluate.
+- **2.0-3.9**: Moderate - significant quality loss. Do not use for decisions; fix preprocessing/schema typing, address class imbalance, increase model capacity, retrain, then re-evaluate.
+- **Below 2.0**: Poor - fails utility bar. Block use; audit data quality and configuration, revise modeling approach, and re-run.
+
+### DPS Interpretation
+
+- **8.0-10.0**: Excellent - ready for external sharing; residual risk is very low. Proceed with utility review and standard governance.
+- **6.0-7.9**: Very Good - low risk for most uses. Safe for internal sharing and many external partners; tighten handling for any high-sensitivity columns.
+- **4.0-5.9**: Good - meaningful privacy risk present. Limit use to controlled internal analysis; strengthen PII replacement or enable DP (lower epsilon if already enabled), then re-evaluate.
+- **2.0-3.9**: Moderate - high leakage/memorization risk. Do not distribute; expand detection coverage, apply stronger transformations, and retune synthesis.
+- **Below 2.0**: Poor - fails privacy bar. Block release; increase training data, fix detection gaps, or enable strong DP and re-run.
+
+## Related Topics
+
+- [safe-synthesizer-101](/documentation/synthesize-safe-data/tutorials/safe-synthesizer-101): Get started with evaluation
+- [differential-privacy](/documentation/synthesize-safe-data/tutorials/differential-privacy): Learn about privacy metrics
+- [index](/documentation/synthesize-safe-data/tutorials): More tutorials

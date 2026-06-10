@@ -512,9 +512,9 @@ async def test_get_artifact_details_huggingface(reconciler):
     """Test getting artifact details for HuggingFace model."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "meta"
-    config.nim_deployment.model_name = "llama-3.1-8b-instruct"
-    config.nim_deployment.model_revision = "v1.0"
+    config.model_spec.model_namespace = "meta"
+    config.model_spec.model_name = "llama-3.1-8b-instruct"
+    config.model_spec.model_revision = "v1.0"
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -539,9 +539,9 @@ async def test_get_artifact_details_huggingface_no_revision(reconciler):
     """Test getting artifact details for HuggingFace model without revision."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "meta"
-    config.nim_deployment.model_name = "llama-3.1-8b-instruct"
-    config.nim_deployment.model_revision = None
+    config.model_spec.model_namespace = "meta"
+    config.model_spec.model_name = "llama-3.1-8b-instruct"
+    config.model_spec.model_revision = None
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -565,9 +565,9 @@ async def test_get_artifact_details_files_service(reconciler):
     """Test getting artifact details for Files service model."""
     provider = MagicMock()
     config = MagicMock()
-    config.nim_deployment.model_namespace = "test-org"
-    config.nim_deployment.model_name = "custom-model"
-    config.nim_deployment.model_revision = "v2.1"
+    config.model_spec.model_namespace = "test-org"
+    config.model_spec.model_name = "custom-model"
+    config.model_spec.model_revision = "v2.1"
 
     with patch("nmp.core.models.controllers.provider_reconciler.get_model_weights_type") as mock_get_location:
         from nmp.core.models.app import ModelWeightsType
@@ -1493,7 +1493,7 @@ async def test_reconcile_keeps_valid_lora_composite_through_gate(reconciler):
 
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
 
     ctx = ModelContext(
         model_provider=provider, model_deployment=None, model_deployment_config=config, model_entity=None
@@ -2315,7 +2315,7 @@ def test_resolve_base_backend_model_id_from_nim_deployment_only():
     """When model_entity_id is unset, nim_deployment model_namespace/model_name resolves base id."""
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = MagicMock(model_namespace="my-ws", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="my-ws", model_name="qwen-base", model_revision=None)
     assert _resolve_base_backend_model_id(config, None) == "my-ws/qwen-base"
 
 
@@ -2323,7 +2323,7 @@ def test_resolve_base_backend_model_id_prefers_model_entity_over_nim():
     """Explicit model_entity_id wins over nim_deployment."""
     config = MagicMock()
     config.model_entity_id = "a/b"
-    config.nim_deployment = MagicMock(model_namespace="ignored", model_name="ignored", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ignored", model_name="ignored", model_revision=None)
     assert _resolve_base_backend_model_id(config, None) == "a/b"
 
 
@@ -2331,7 +2331,7 @@ def test_handle_model_deployment_provider_uses_nim_when_no_model_entity_id(recon
     """Classification works when only nim_deployment references the base model (no model_entity_id)."""
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock()
     provider.workspace = "ws"
     provider.enabled_models = None
@@ -2360,7 +2360,7 @@ def test_deployment_lora_strips_provider_workspace_prefix_from_adapter_segment(r
     """NIM echoing a qualified adapter id (``ws/lora-1``) must not produce a double-prefixed composite."""
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock(workspace="ws", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2390,7 +2390,7 @@ def test_deployment_lora_decodes_double_dash_into_cross_workspace_composite(reco
     """
     config = MagicMock()
     config.model_entity_id = "ws-base/qwen-base"
-    config.nim_deployment = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
     provider = MagicMock(workspace="ws-base", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2444,7 +2444,7 @@ def test_deployment_lora_qualified_double_dash_decodes_same_name_across_workspac
     """
     config = MagicMock()
     config.model_entity_id = "ws-base/qwen-base"
-    config.nim_deployment = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws-base", model_name="qwen-base", model_revision=None)
     provider = MagicMock(workspace="ws-base", enabled_models=None)
     result = DiscoverySuccess(
         [
@@ -2598,7 +2598,7 @@ def test_deployment_prompt_tuned_strips_provider_workspace_prefix(reconciler):
     """NIM echoing a qualified prompt-tuned id (``ws/tuned``) must produce ``ws/tuned``, not ``ws/ws/tuned``."""
     config = MagicMock()
     config.model_entity_id = "ws/base"
-    config.nim_deployment = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
+    config.model_spec = MagicMock(model_namespace="ws", model_name="base", model_revision=None)
     provider = MagicMock(workspace="ws", enabled_models=None)
     result = DiscoverySuccess(
         [

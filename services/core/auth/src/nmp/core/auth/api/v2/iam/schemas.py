@@ -6,7 +6,7 @@
 from datetime import datetime
 from typing import Optional
 
-from nmp.common.entities.values import Filter
+from nmp.common.entities.values import Filter, StringFilter
 from pydantic import BaseModel, Field
 
 
@@ -51,10 +51,10 @@ class RoleBinding(BaseModel):
 class RoleBindingFilter(Filter):
     """Filter for role bindings."""
 
-    principal: Optional[str] = Field(None, description="Filter by principal ID")
+    principal: StringFilter | str | None = Field(None, description="Filter by principal ID")
     workspace: Optional[str] = Field(None, description="Filter by workspace")
-    role: Optional[str] = Field(None, description="Filter by role")
-    granted_by: Optional[str] = Field(None, description="Filter by who granted the role")
+    role: StringFilter | str | None = Field(None, description="Filter by role")
+    granted_by: StringFilter | str | None = Field(None, description="Filter by who granted the role")
     is_active: Optional[bool] = Field(default=None, description="Filter for active (True) or revoked (False) bindings")
     granted_at: Optional[DateRangeFilter] = Field(None, description="Filter by granted date range")
     revoked_at: Optional[DateRangeFilter] = Field(None, description="Filter by revoked date range")
