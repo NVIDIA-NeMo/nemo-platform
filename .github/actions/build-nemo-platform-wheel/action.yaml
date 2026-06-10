@@ -115,7 +115,7 @@ runs:
     # find them. Other packages (nemo-platform-plugin, ...) skip these.
     - name: Set up pnpm
       if: inputs.package == 'nemo-platform'
-      uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+      uses: pnpm/action-setup@v4
       with:
         package_json_file: ${{ inputs.source-root }}/web/package.json
 
