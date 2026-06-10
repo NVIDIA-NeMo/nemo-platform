@@ -19,8 +19,8 @@ from __future__ import annotations
 
 from typing_extensions import TypedDict
 
-from .dataset_metadata_content_param import DatasetMetadataContentParam
 from ..shared_params.model_metadata_content import ModelMetadataContent
+from ..shared_params.dataset_metadata_content import DatasetMetadataContent
 
 __all__ = ["FilesetMetadataParam"]
 
@@ -36,7 +36,7 @@ class FilesetMetadataParam(TypedDict, total=False):
         )
     """
 
-    dataset: DatasetMetadataContentParam
+    dataset: DatasetMetadataContent
     """Content for dataset-type filesets."""
 
     model: ModelMetadataContent

@@ -16,3 +16,30 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from __future__ import annotations
+
+from typing import Dict, Union
+from typing_extensions import TypedDict
+
+__all__ = ["DatasetMetadataContent"]
+
+
+class DatasetMetadataContent(TypedDict, total=False):
+    """Content for dataset-type filesets."""
+
+    schema: Union[Dict[str, object], str]
+    """
+    Default row schema for files in this fileset, either inline JSON Schema or a
+    schema_defs key.
+    """
+
+    schema_defs: Dict[str, Dict[str, object]]
+    """
+    Reusable JSON Schema definitions keyed by name for deduplicating per-file
+    dataset schemas.
+    """
+
+    schemas_by_path: Dict[str, Union[Dict[str, object], str]]
+    """Optional per-file row schemas keyed by relative path within the fileset.
+
+    Each value may be inline JSON Schema or a schema_defs key.
+    """
