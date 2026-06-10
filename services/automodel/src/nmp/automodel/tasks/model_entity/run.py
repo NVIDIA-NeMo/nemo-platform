@@ -28,10 +28,11 @@ from nemo_platform import (
     NotFoundError,
 )
 from nemo_platform.types.inference import (
+    ContainerExecutorConfigParam,
     ModelDeploymentConfig,
     ModelDeploymentConfigFilterParam,
+    ModelDeploymentConfigModelSpecParam,
     ModelDeploymentFilterParam,
-    NIMDeploymentParam,
 )
 from nemo_platform.types.models import LoraParam, ModelEntity
 from nemo_platform.types.shared_params.tool_call_config import ToolCallConfig as ToolCallConfigParam
@@ -335,18 +336,20 @@ class ModelEntityRunner:
 
     def _create_deployment_config(self, deploy_params: DeploymentParameters, me: ModelEntity) -> ModelDeploymentConfig:
         """Create (or update) a ModelDeploymentConfig from inline parameters."""
-        nim_deployment = NIMDeploymentParam(
+        model_spec = ModelDeploymentConfigModelSpecParam(
+            model_name=me.name,
+            model_namespace=me.workspace,
+            lora_enabled=deploy_params.lora_enabled,
+        )
+        executor_config = ContainerExecutorConfigParam(
             image_name=deploy_params.image_name,
             image_tag=deploy_params.image_tag,
             gpu=deploy_params.gpu,
-            model_name=me.name,
-            model_namespace=me.workspace,
             additional_envs=deploy_params.additional_envs,
-            lora_enabled=deploy_params.lora_enabled,
         )
 
         if deploy_params.tool_call_config:
-            nim_deployment["tool_call_config"] = ToolCallConfigParam(
+            model_spec["tool_call_config"] = ToolCallConfigParam(
                 **deploy_params.tool_call_config.model_dump(exclude_none=True)
             )
 
@@ -355,14 +358,18 @@ class ModelEntityRunner:
             return self.sdk.inference.deployment_configs.create(
                 workspace=me.workspace,
                 name=deployment_cfg_name,
-                nim_deployment=nim_deployment,
+                engine="nim",
+                model_spec=model_spec,
+                executor_config=executor_config,
             )
         except ConflictError:
             logger.info(f"Deployment config {me.workspace}/{deployment_cfg_name} already exists, updating")
             return self.sdk.inference.deployment_configs.update(
                 workspace=me.workspace,
                 name=deployment_cfg_name,
-                nim_deployment=nim_deployment,
+                engine="nim",
+                model_spec=model_spec,
+                executor_config=executor_config,
             )
 
     def _create_deployment(self, deployment_config: ModelDeploymentConfig, me: ModelEntity) -> None:
