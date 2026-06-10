@@ -1,0 +1,22 @@
+# Configures GitHub's automatically generated release notes, emitted by
+# `gh release create --generate-notes` in .github/workflows/release-bundle.yaml.
+# Merged PRs are grouped into sections by the conventional-commit-type label
+# (feat, fix, docs, ...) applied by .github/workflows/label-pr.yaml.
+#
+# GitHub reads this file from the default branch, so it only takes effect once merged to main.
+changelog:
+  categories:
+    - title: "✨ New Features"
+      labels: [feat]
+    - title: "🔧 Improvements"
+      labels: [perf, refactor]
+    - title: "🐛 Bug Fixes"
+      labels: [fix, revert]
+    - title: "📝 Documentation"
+      labels: [docs]
+    - title: "🧰 Maintenance"
+      labels: [build, ci, test, chore]
+    - title: "Other Changes"
+      labels: ["*"]
+      exclude:
+        labels: [style]
