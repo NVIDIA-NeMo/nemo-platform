@@ -180,9 +180,6 @@ def nemotron_personas_locale(nemo_run: NemoRun, sdk: NeMoPlatform, workspace: st
     """
     locale = "en_SG"
 
-    # The "system" workspace persists across e2e runs, so a fileset from a previous
-    # run may still exist while the secret it references has been deleted. Remove any
-    # stale fileset before recreating it so make-fileset starts from a clean slate.
     fileset_name = get_resource_name_for_locale(locale)
     with suppress(NotFoundError):
         sdk.files.filesets.delete(fileset_name, workspace=WORKSPACE)
