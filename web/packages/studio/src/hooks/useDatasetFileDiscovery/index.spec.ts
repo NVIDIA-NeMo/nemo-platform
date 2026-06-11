@@ -78,10 +78,16 @@ describe('partitionDatasetFiles', () => {
     expect(paths(result.unmatchedRootJsonl).sort()).toEqual(['a.jsonl', 'b.jsonl']);
   });
 
-  it('does NOT park .json (non-jsonl) root files in the unmatched bucket', () => {
-    // The lone-root fallback is .jsonl-only; .json without train/val pattern is ignored.
+  it('parks unmatched root .json files in unmatchedRootJsonl (matches customizer fallback)', () => {
     const result = partitionDatasetFiles([file('thing.json')]);
-    expect(result.unmatchedRootJsonl).toEqual([]);
+    expect(paths(result.unmatchedRootJsonl)).toEqual(['thing.json']);
+  });
+
+  it('parks mixed unmatched root .json and .jsonl together in unmatchedRootJsonl', () => {
+    const result = partitionDatasetFiles([file('a.jsonl'), file('b.json')]);
+    expect(result.training).toEqual([]);
+    expect(result.validation).toEqual([]);
+    expect(paths(result.unmatchedRootJsonl).sort()).toEqual(['a.jsonl', 'b.json']);
   });
 
   it('ignores files with non-dataset extensions', () => {

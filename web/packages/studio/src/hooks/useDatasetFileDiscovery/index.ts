@@ -64,8 +64,8 @@ export const partitionDatasetFiles = (files: FilesetFileOutput[]): PartitionedFi
       training.push(f);
     } else if (matchesAnyPattern(filename, validationRule.filePatterns)) {
       validation.push(f);
-    } else if (filename.endsWith('.jsonl')) {
-      // Only .jsonl is eligible for the lone-root fallback (matches customizer).
+    } else {
+      // Both .jsonl and .json are eligible for the lone-root fallback (matches customizer).
       unmatchedRootJsonl.push(f);
     }
   }

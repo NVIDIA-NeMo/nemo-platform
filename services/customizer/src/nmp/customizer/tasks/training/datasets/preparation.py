@@ -321,19 +321,21 @@ def discover_dataset_files(dataset_path: Path) -> tuple[list[Path], list[Path]]:
     # Discover validation files
     val_files = _discover_files_by_patterns(dataset_path, VAL_PATTERNS, VAL_DIRS)
 
-    # Fallback: if no files found with patterns, check for any .jsonl files
+    # Fallback: if no files found with patterns, check for any .jsonl/.json files
     if not train_files and not val_files:
-        all_jsonl = sorted(f for f in dataset_path.glob("*.jsonl") if f.is_file())
-        if len(all_jsonl) == 1:
-            logger.info(f"Found single JSONL file, treating as training data: {all_jsonl[0]}")
-            train_files = all_jsonl
-        elif len(all_jsonl) > 1:
+        all_data = sorted(
+            f for f in dataset_path.iterdir() if f.is_file() and f.suffix.lower() in (".jsonl", ".json")
+        )
+        if len(all_data) == 1:
+            logger.info(f"Found single JSON/JSONL file, treating as training data: {all_data[0]}")
+            train_files = all_data
+        elif len(all_data) > 1:
             # Ambiguous - could be train/val or multiple training files
             logger.warning(
-                f"Found {len(all_jsonl)} JSONL files without clear train/val naming. "
-                f"Treating all as training data: {[f.name for f in all_jsonl]}"
+                f"Found {len(all_data)} JSON/JSONL files without clear train/val naming. "
+                f"Treating all as training data: {[f.name for f in all_data]}"
             )
-            train_files = all_jsonl
+            train_files = all_data
 
     if not train_files:
         raise DatasetFormatError(

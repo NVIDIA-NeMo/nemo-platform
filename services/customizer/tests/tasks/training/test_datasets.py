@@ -315,6 +315,40 @@ class TestDiscoverDatasetFiles:
         assert len(train_files) == 1
         assert len(val_files) == 0
 
+    def test_fallback_lone_json_as_training(self, dataset_dir: Path):
+        """Lone root .json file (no train/val pattern) is claimed as training."""
+        file_path = dataset_dir / "data.json"
+        _write_jsonl(file_path, [{"a": 1}])
+
+        train_files, val_files = discover_dataset_files(dataset_dir)
+
+        assert len(train_files) == 1
+        assert train_files[0].name == "data.json"
+        assert len(val_files) == 0
+
+    def test_fallback_mixed_json_and_jsonl_both_claimed(self, dataset_dir: Path):
+        """Lone root .jsonl + .json (mixed, no pattern) → both claimed as training."""
+        jsonl_file = dataset_dir / "my_data.jsonl"
+        json_file = dataset_dir / "extra.json"
+        _write_jsonl(jsonl_file, [{"a": 1}])
+        _write_jsonl(json_file, [{"a": 2}])
+
+        train_files, val_files = discover_dataset_files(dataset_dir)
+
+        assert len(train_files) == 2
+        assert {f.name for f in train_files} == {"my_data.jsonl", "extra.json"}
+        assert len(val_files) == 0
+
+    def test_fallback_multiple_json_all_claimed_as_training(self, dataset_dir: Path):
+        """Multiple root .json files (no pattern) → all claimed as training with warning."""
+        for name in ("a.json", "b.json", "c.json"):
+            _write_jsonl(dataset_dir / name, [{"a": 1}])
+
+        train_files, val_files = discover_dataset_files(dataset_dir)
+
+        assert len(train_files) == 3
+        assert len(val_files) == 0
+
     def test_raises_when_no_files_found(self, dataset_dir: Path):
         """Test error when no training files found."""
         with pytest.raises(DatasetFormatError, match="No training files found"):
