@@ -19,9 +19,10 @@ interface EmptyProps {
 }
 
 export const Empty = ({ experimentGroupName }: EmptyProps) => {
+  const escapedGroupName = experimentGroupName.replace(/'/g, "'\\''");
   const cliCommand =
     `nemo exp run \\\n` +
-    `  --group "${experimentGroupName}" \\\n` +
+    `  --group '${escapedGroupName}' \\\n` +
     `  --dataset "<dataset-name>" \\\n` +
     `  --evaluators correctness,helpfulness,groundedness,tool-error`;
 

@@ -258,7 +258,10 @@ export const ExperimentGroupDataView: FC<ExperimentGroupDataViewProps> = ({
           requestStatus: isGroupLoading || (isLoading && !experimentsData) ? 'loading' : undefined,
         },
         DataViewTableContent: {
-          renderEmptyState: () => <Empty experimentGroupName={experimentGroupName} />,
+          renderEmptyState: ({ hasFiltersApplied, hasSearchApplied }) =>
+            hasFiltersApplied || hasSearchApplied ? null : (
+              <Empty experimentGroupName={experimentGroupName} />
+            ),
         },
       }}
     />
