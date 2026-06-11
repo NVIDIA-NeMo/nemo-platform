@@ -33,6 +33,10 @@ TRACE_INDEX_FILTER_FIELDS = frozenset(
         "test_case_id",
     }
 )
+TRACE_INDEX_FILTER_ALIASES = {
+    "experiment_id": "experiment_id",
+    "test_case_id": "test_case_id",
+}
 
 
 @router.get(
@@ -121,13 +125,24 @@ def _trace_filter(workspace: str, parsed: ParsedFilter) -> TraceListFilter:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=f"Unsupported trace filter: {comparison.field} {comparison.operator.value}",
                 )
-            setattr(filters, comparison.field, require_string_value(comparison))
+            _set_trace_index_filter(filters, comparison.field, require_string_value(comparison))
         else:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unsupported trace filter: {comparison.field} {comparison.operator.value}",
             )
     return filters
+
+
+def _set_trace_index_filter(filters: TraceListFilter, public_field: str, value: str) -> None:
+    field = TRACE_INDEX_FILTER_ALIASES[public_field]
+    current_value = getattr(filters, field)
+    if current_value is not None and current_value != value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Conflicting trace filters for {field}",
+        )
+    setattr(filters, field, value)
 
 
 def _apply_default_time_bound(filters: TraceListFilter) -> None:

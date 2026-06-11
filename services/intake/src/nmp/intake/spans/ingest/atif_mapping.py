@@ -22,7 +22,6 @@ from nmp.intake.spans.domain import (
     SpanStatus,
 )
 from nmp.intake.spans.ingest.atif_domain import (
-    AtifFinalMetrics,
     AtifMetrics,
     AtifObservation,
     AtifObservationResult,
@@ -125,11 +124,29 @@ def _trajectory_to_span(
     #
     # Token/cost accounting belongs on the spans that incurred the LLM calls
     # when a source emits per-step metrics. Some ATIF producers only emit
-    # trajectory.final_metrics, so use those on the root span only when step
-    # accounting is absent.
-    final_metrics = _trajectory_final_metrics_for_root(trajectory)
-    input_tokens = final_metrics.total_prompt_tokens if final_metrics is not None else None
-    output_tokens = final_metrics.total_completion_tokens if final_metrics is not None else None
+    # trajectory.final_metrics, so use those root totals field-by-field when
+    # the matching per-step accounting is absent.
+    final_metrics = trajectory.final_metrics
+    input_tokens = (
+        final_metrics.total_prompt_tokens
+        if final_metrics is not None and not _trajectory_has_step_prompt_metrics(trajectory)
+        else None
+    )
+    output_tokens = (
+        final_metrics.total_completion_tokens
+        if final_metrics is not None and not _trajectory_has_step_completion_metrics(trajectory)
+        else None
+    )
+    cached_tokens = (
+        final_metrics.total_cached_tokens
+        if final_metrics is not None and not _trajectory_has_step_cached_metrics(trajectory)
+        else None
+    )
+    cost_total_usd = (
+        _decimal(final_metrics.total_cost_usd)
+        if final_metrics is not None and not _trajectory_has_step_cost_metrics(trajectory)
+        else None
+    )
     external_span_id = stable_id(workspace, trajectory.session_id, "trajectory", prefix="span")
     attribute_bags = _span_attributes(
         model=trajectory.agent.model_name,
@@ -137,9 +154,9 @@ def _trajectory_to_span(
         evaluation_context=trajectory.evaluation_context,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
-        cached_tokens=final_metrics.total_cached_tokens if final_metrics is not None else None,
+        cached_tokens=cached_tokens,
         total_tokens=_sum_ints(input_tokens, output_tokens),
-        cost_total_usd=_decimal(final_metrics.total_cost_usd) if final_metrics is not None else None,
+        cost_total_usd=cost_total_usd,
         raw_attributes=raw_attributes,
     )
     return IntakeSpan(
@@ -559,24 +576,28 @@ def _step_metrics(step: AtifStep) -> AtifMetrics | None:
     return step.metrics if isinstance(step, AtifStepAgent) else None
 
 
-def _trajectory_final_metrics_for_root(trajectory: AtifTrajectory) -> AtifFinalMetrics | None:
-    if trajectory.final_metrics is None:
-        return None
-    if any(_step_has_accounting_metrics(step) for step in trajectory.steps):
-        return None
-    return trajectory.final_metrics
+def _trajectory_has_step_prompt_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.prompt_tokens is not None for step in trajectory.steps
+    )
 
 
-def _step_has_accounting_metrics(step: AtifStep) -> bool:
-    metrics = _step_metrics(step)
-    return metrics is not None and any(
-        value is not None
-        for value in (
-            metrics.prompt_tokens,
-            metrics.completion_tokens,
-            metrics.cached_tokens,
-            metrics.cost_usd,
-        )
+def _trajectory_has_step_completion_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.completion_tokens is not None
+        for step in trajectory.steps
+    )
+
+
+def _trajectory_has_step_cached_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.cached_tokens is not None for step in trajectory.steps
+    )
+
+
+def _trajectory_has_step_cost_metrics(trajectory: AtifTrajectory) -> bool:
+    return any(
+        (metrics := _step_metrics(step)) is not None and metrics.cost_usd is not None for step in trajectory.steps
     )
 
 

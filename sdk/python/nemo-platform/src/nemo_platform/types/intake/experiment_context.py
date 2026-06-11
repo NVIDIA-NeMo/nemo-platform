@@ -16,51 +16,17 @@
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
 from typing import Optional
-from datetime import datetime
 
 from ..._models import BaseModel
-from .span_status import SpanStatus
-from .experiment_context import ExperimentContext
 
-__all__ = ["Trace"]
+__all__ = ["ExperimentContext"]
 
 
-class Trace(BaseModel):
-    id: str
-
-    session_id: str
-
-    started_at: datetime
-
-    status: SpanStatus
-
-    workspace: str
-
-    cached_tokens: Optional[int] = None
-
-    cost_input_usd: Optional[float] = None
-
-    cost_output_usd: Optional[float] = None
-
-    cost_usd: Optional[float] = None
-
-    duration_ms: Optional[float] = None
-
-    ended_at: Optional[datetime] = None
-
-    error_count: Optional[int] = None
-
-    experiment_context: Optional[ExperimentContext] = None
+class ExperimentContext(BaseModel):
     """Experiment context accepted by ingest endpoints."""
 
-    input_tokens: Optional[int] = None
+    experiment_id: str
+    """Name of an existing Experiment entity."""
 
-    name: Optional[str] = None
-
-    output_tokens: Optional[int] = None
-
-    root_span_id: Optional[str] = None
-
-    span_count: Optional[int] = None
-
-    total_tokens: Optional[int] = None
+    test_case_id: Optional[str] = None
+    """Optional producer-supplied test case id."""

@@ -16219,12 +16219,8 @@ components:
         name:
           title: Name
           type: string
-        experiment_id:
-          title: Experiment Id
-          type: string
-        test_case_id:
-          title: Test Case Id
-          type: string
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
         started_at:
           type: string
           format: date-time

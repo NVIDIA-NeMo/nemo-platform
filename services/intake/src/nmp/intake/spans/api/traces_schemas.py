@@ -11,7 +11,8 @@ from typing import Literal, Self
 
 from nmp.common.entities.values import DatetimeFilter
 from nmp.intake.spans.domain import IntakeTrace, SpanStatus
-from pydantic import BaseModel, ConfigDict, Field
+from nmp.intake.spans.ingest.evaluation_context import ExperimentContext
+from pydantic import BaseModel, Field
 
 
 class TraceSortField(StrEnum):
@@ -32,15 +33,12 @@ class TraceFilter(BaseModel):
 
 
 class Trace(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
-
     id: str
     root_span_id: str | None = None
     session_id: str
     workspace: str
     name: str | None = None
-    experiment_id: str | None = None
-    test_case_id: str | None = None
+    experiment_context: ExperimentContext | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None
@@ -63,8 +61,7 @@ class Trace(BaseModel):
             session_id=trace.session_id,
             workspace=trace.workspace,
             name=trace.name,
-            experiment_id=trace.experiment_id,
-            test_case_id=trace.test_case_id,
+            experiment_context=_experiment_context(trace),
             started_at=trace.started_at,
             ended_at=trace.ended_at,
             duration_ms=trace.duration_ms,
@@ -79,3 +76,12 @@ class Trace(BaseModel):
             span_count=trace.span_count,
             error_count=trace.error_count,
         )
+
+
+def _experiment_context(trace: IntakeTrace) -> ExperimentContext | None:
+    if trace.experiment_id is None:
+        return None
+    return ExperimentContext(
+        experiment_id=trace.experiment_id,
+        test_case_id=trace.test_case_id,
+    )

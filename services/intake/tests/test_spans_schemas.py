@@ -115,5 +115,6 @@ def test_trace_response_maps_core_trace_fields():
     assert response.cost_output_usd == 0.0037
     assert response.span_count == 2
     assert response.error_count == 1
-    assert response.experiment_id == "experiment-a"
-    assert response.test_case_id == "case-a"
+    assert response.experiment_context is not None
+    assert response.experiment_context.experiment_id == "experiment-a"
+    assert response.experiment_context.test_case_id == "case-a"

@@ -351,6 +351,48 @@ def test_atif_mapping_does_not_duplicate_final_metrics_when_step_metrics_exist()
     assert child_response.cost_total_usd == 0.04
 
 
+def test_atif_mapping_uses_root_cost_when_step_metrics_have_tokens_only() -> None:
+    trajectory = AtifTrajectory.model_validate(
+        {
+            "schema_version": "ATIF-v1.7",
+            "session_id": "trace-session-id",
+            "agent": {"name": "sample-agent", "version": "1.0.0"},
+            "steps": [
+                {"step_id": 1, "source": "user", "message": "solve the task"},
+                {
+                    "step_id": 2,
+                    "source": "agent",
+                    "message": "final answer",
+                    "metrics": {"prompt_tokens": 3, "completion_tokens": 2, "cached_tokens": 1},
+                },
+            ],
+            "final_metrics": {
+                "total_prompt_tokens": 10,
+                "total_completion_tokens": 5,
+                "total_cached_tokens": 2,
+                "total_cost_usd": 0.25,
+            },
+        }
+    )
+
+    spans = trajectory_to_spans(
+        workspace="default",
+        trajectory=trajectory,
+        ingested_at=datetime(2026, 5, 18, tzinfo=timezone.utc),
+    )
+
+    root_response = Span.from_domain(spans[0])
+    child_response = Span.from_domain(next(span for span in spans if span.name == "agent-2"))
+    assert root_response.input_tokens is None
+    assert root_response.output_tokens is None
+    assert root_response.cached_tokens is None
+    assert root_response.cost_total_usd == 0.25
+    assert child_response.input_tokens == 3
+    assert child_response.output_tokens == 2
+    assert child_response.cached_tokens == 1
+    assert child_response.cost_total_usd is None
+
+
 def test_atif_mapping_populates_root_content_and_rolls_child_errors() -> None:
     trajectory = AtifTrajectory.model_validate(
         {
