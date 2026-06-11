@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import { getEntityReference } from '@nemo/common/src/namedEntity';
 import { useModelsListModels } from '@nemo/sdk/generated/platform/api';
 import {
   FilesetPurpose,
@@ -41,7 +42,7 @@ export const FilesetCard: FC<FilesetCardProps> = ({
 
   const { data: modelEntitiesResponse } = useModelsListModels(
     workspace,
-    { filter: { fileset: `${workspace}/${filesetName}` } },
+    { filter: { fileset: getEntityReference({ workspace, name: filesetName }) } },
     { query: { enabled: isModel } }
   );
   const modelEntities = modelEntitiesResponse?.data ?? [];
