@@ -5,7 +5,7 @@ import { ROUTES } from '@studio/constants/routes';
 import { DashboardLandingRoute } from '@studio/routes/DashboardLandingRoute';
 import { mockFeatureFlags } from '@studio/tests/util/mockFeatureFlags';
 import { TestProviders } from '@studio/tests/util/TestProviders';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { createMemoryRouter, generatePath, RouterProvider, useLocation } from 'react-router';
 
@@ -156,40 +156,25 @@ describe('DashboardLandingRoute', () => {
     ).toEqual(expect.arrayContaining(['nemo-guardrails', 'guardrails-plugin']));
   });
 
-  it('uses an always-visible custom horizontal scrollbar for skill actions', async () => {
+  it('uses a styled native horizontal scrollbar for skill actions', async () => {
     renderRoute();
 
     await screen.findByRole('button', { name: /Add guardrails to an agent/ });
 
     const skillActions = screen.getByLabelText('Skill action suggestions');
-    Object.defineProperty(skillActions, 'clientWidth', { configurable: true, value: 320 });
-    Object.defineProperty(skillActions, 'scrollWidth', { configurable: true, value: 1200 });
-    fireEvent.scroll(skillActions);
 
     expect(skillActions).toHaveClass(
       'overflow-x-auto',
-      '[scrollbar-width:none]',
-      '[&::-webkit-scrollbar]:hidden'
+      '[scrollbar-width:thin]',
+      '[scrollbar-color:var(--border-color-interaction-base)_var(--background-color-interaction-hover)]',
+      '[&::-webkit-scrollbar-thumb]:rounded-full'
     );
     expect(screen.getByTestId('skill-action-row')).toHaveClass('pb-density-lg');
-    expect(screen.getByTestId('skill-action-scrollbar')).not.toHaveClass('hidden');
-    expect(screen.getByTestId('skill-action-scrollbar-thumb')).toBeInTheDocument();
+    expect(screen.queryByTestId('skill-action-scrollbar')).not.toBeInTheDocument();
     expect(
       screen.queryByRole('button', { name: 'Previous skill actions' })
     ).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Next skill actions' })).not.toBeInTheDocument();
-  });
-
-  it('maps vertical wheel scrolling to horizontal skill action scrolling', async () => {
-    renderRoute();
-
-    const skillActions = await screen.findByLabelText('Skill action suggestions');
-    Object.defineProperty(skillActions, 'clientWidth', { configurable: true, value: 320 });
-    Object.defineProperty(skillActions, 'scrollWidth', { configurable: true, value: 1200 });
-
-    fireEvent.wheel(skillActions, { deltaY: 180, deltaX: 0 });
-
-    expect(skillActions.scrollLeft).toBe(180);
   });
 
   it('requires the skill and related feature flag before showing action cards', async () => {
