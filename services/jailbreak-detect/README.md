@@ -88,36 +88,26 @@ No plugin needed — use the core `nemo inference` commands. A deployment config
 three required parts: `engine` (selects the compiler path), `model_spec` (what model
 to serve), and `executor_config` (compute + container settings). Here `model_spec` is
 left empty `{}`, so the Models controller skips its model puller and just runs the
-container; the server downloads its own weights. The recipe at
-`deploy/deployment-config.json` looks like:
+container; the server downloads its own weights.
 
-```json
-{
-  "engine": "nim",
-  "model_spec": {},
-  "executor_config": {
+The `nim` engine's default readiness probe is `/v1/health/ready`, which the server
+already exposes (set explicitly via `health_check_path` for clarity). Replace
+`hf_...` with your `HF_TOKEN` for the gated forest weights (or pre-seed a mounted
+cache; prefer a platform Secret for shared deployments).
+
+```bash
+# 1. Register the deployment config (inline; replace HF_TOKEN first).
+nemo inference deployment-configs create jbd-config \
+  --engine nim \
+  --model-spec '{}' \
+  --executor-config '{
     "gpu": 0,
     "image_name": "nemo/jailbreak-detect",
     "image_tag": "0.1.0",
     "health_check_path": "/v1/health/ready",
-    "additional_envs": {
-      "JAILBREAK_CHECK_DEVICE": "cpu",
-      "HF_TOKEN": "REPLACE_WITH_HF_TOKEN"
-    }
-  },
-  "description": "Self-hosted NemoGuard JailbreakDetect model server (CPU, runtime weight download)."
-}
-```
-
-The `nim` engine's default readiness probe is `/v1/health/ready`, which the server
-already exposes (set explicitly via `health_check_path` for clarity). Add your
-`HF_TOKEN` to `additional_envs` for the gated forest weights (or pre-seed a mounted
-cache; prefer a platform Secret for shared deployments).
-
-```bash
-# 1. Register the deployment config from the recipe (replace HF_TOKEN first).
-nemo inference deployment-configs create jbd-config \
-  --input-file deploy/deployment-config.json
+    "additional_envs": {"JAILBREAK_CHECK_DEVICE": "cpu", "HF_TOKEN": "hf_..."}
+  }' \
+  --description "Self-hosted NemoGuard JailbreakDetect model server (CPU, runtime weight download)."
 
 # 2. Create the deployment (controller runs the container; --wait blocks until READY)
 nemo inference deployments create jbd --config jbd-config --wait
@@ -125,6 +115,9 @@ nemo inference deployments create jbd --config jbd-config --wait
 # 3. The controller mints a ModelProvider on READY; route to it via IGW passthrough.
 nemo inference deployments get jbd
 ```
+
+(`--engine`/`--model-spec`/`--executor-config` can also be supplied from a JSON file
+via `--input-file <file>` if you prefer keeping the config in version control.)
 
 > The Docker backend requires a reachable Docker daemon at platform startup. With
 > colima (no `/var/run/docker.sock`), export `DOCKER_HOST="unix://$HOME/.colima/default/docker.sock"`
