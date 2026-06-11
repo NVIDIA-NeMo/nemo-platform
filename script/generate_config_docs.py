@@ -40,6 +40,7 @@ from typing import Any, get_args, get_origin
 
 import yaml
 from nemo_safe_synthesizer_plugin.config import SafeSynthesizerConfig
+from nmp.automodel.config import AutomodelConfig
 from nmp.common.config.base import CommonServiceConfig, PlatformConfig
 from nmp.core.auth.config import AuthServiceConfig
 from nmp.core.entities.config import EntitiesConfig
@@ -48,9 +49,9 @@ from nmp.core.inference_gateway.config import InferenceGatewayConfig
 from nmp.core.jobs.config import JobsServiceConfig
 from nmp.core.models.config import ModelsConfig
 from nmp.core.secrets.config import SecretsServiceConfig
-from nmp.customizer.config import CustomizerConfig
 from nmp.evaluator.config import EvaluatorSettings
 from nmp.studio.config import StudioConfig
+from nmp.unsloth.config import UnslothConfig
 from ruamel.yaml import YAML
 from ruamel.yaml.comments import CommentedMap
 
@@ -69,7 +70,8 @@ CONFIG_CLASSES: list[type[Any]] = [
     JobsServiceConfig,
     ModelsConfig,
     SecretsServiceConfig,
-    CustomizerConfig,
+    AutomodelConfig,
+    UnslothConfig,
     EvaluatorSettings,
     SafeSynthesizerConfig,
     StudioConfig,

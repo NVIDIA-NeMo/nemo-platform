@@ -254,7 +254,6 @@ resources:
       filesets:
         models:
           fileset_filter: FilesetFilter
-          fileset_metadata_param: FilesetMetadataInput
         methods:
           create: post /apis/files/v2/workspaces/{workspace}/filesets
           list: get /apis/files/v2/workspaces/{workspace}/filesets
@@ -329,19 +328,19 @@ resources:
       pangea_rail_config: PangeaRailConfig
       pangea_rail_options: PangeaRailOptions
       patronus_evaluate_api_params: PatronusEvaluateApiParams
-      patronus_evaluate_config_param: PatronusEvaluateConfigInput
       patronus_evaluation_success_strategy: PatronusEvaluationSuccessStrategy
-      patronus_rail_config_param: PatronusRailConfigInput
       private_ai_detection: PrivateAIDetection
       private_ai_detection_options: PrivateAIDetectionOptions
       rail_status: RailStatus
-      rails_config_data_param: RailsConfigDataInput
-      rails_config_param: RailsConfigInput
-      rails_param: RailsInput
       reasoning_config: ReasoningConfig
       regex_detection: RegexDetection
       regex_detection_options: RegexDetectionOptions
       retrieval_rails: RetrievalRails
+      patronus_evaluate_config: PatronusEvaluateConfig
+      patronus_rail_config: PatronusRailConfig
+      rails: Rails
+      rails_config: RailsConfig
+      rails_config_data: RailsConfigData
       sensitive_data_detection: SensitiveDataDetection
       sensitive_data_detection_options: SensitiveDataDetectionOptions
       single_call_config: SingleCallConfig
@@ -361,11 +360,6 @@ resources:
           guardrail_config_param: GuardrailConfigInput
           guardrail_config_update: GuardrailConfigUpdate
           guardrail_configs_page: GuardrailConfigsPage
-          patronus_evaluate_config: PatronusEvaluateConfigOutput
-          patronus_rail_config: PatronusRailConfigOutput
-          rails: RailsOutput
-          rails_config: RailsConfigOutput
-          rails_config_data: RailsConfigDataOutput
         methods:
           list: get /apis/guardrails/v2/workspaces/{workspace}/configs
           create: post /apis/guardrails/v2/workspaces/{workspace}/configs
@@ -503,19 +497,13 @@ resources:
       compute_resource_spec: ComputeResourceSpec
       compute_resources: ComputeResources
       container_spec: ContainerSpec
-      cpu_execution_provider: CPUExecutionProviderOutput
-      cpu_execution_provider_param: CPUExecutionProviderInput
       create_platform_job_request: CreatePlatformJobRequest
-      distributed_gpu_execution_provider: DistributedGPUExecutionProviderOutput
-      distributed_gpu_execution_provider_param: DistributedGPUExecutionProviderInput
       docker_job_execution_profile: DockerJobExecutionProfile
       docker_job_execution_profile_config: DockerJobExecutionProfileConfig
       docker_job_network_config: DockerJobNetworkConfig
       docker_job_storage_config: DockerJobStorageConfig
       docker_volume_mount: DockerVolumeMount
       e2e_job_execution_profile: E2EJobExecutionProfile
-      gpu_execution_provider: GPUExecutionProviderOutput
-      gpu_execution_provider_param: GPUExecutionProviderInput
       image_pull_secret: ImagePullSecret
       job_execution_profile_config: JobExecutionProfileConfig
       kubernetes_empty_dir_volume: KubernetesEmptyDirVolume
@@ -531,11 +519,12 @@ resources:
       platform_job_responses_page: PlatformJobResponsesPage
       platform_job_secret_environment_variable_ref: PlatformJobSecretEnvironmentVariableRef
       platform_job_sort_field: PlatformJobSortField
-      platform_job_spec: PlatformJobSpecOutput
-      platform_job_spec_param: PlatformJobSpecInput
-      platform_job_step_spec: PlatformJobStepSpecOutput
-      platform_job_step_spec_param: PlatformJobStepSpecInput
       platform_jobs_list_filter: PlatformJobsListFilter
+      cpu_execution_provider: CPUExecutionProvider
+      distributed_gpu_execution_provider: DistributedGPUExecutionProvider
+      gpu_execution_provider: GPUExecutionProvider
+      platform_job_spec: PlatformJobSpec
+      platform_job_step_spec: PlatformJobStepSpec
       step_lifecycle: StepLifecycle
       subprocess_execution_provider: SubprocessExecutionProvider
       subprocess_job_execution_profile: SubprocessJobExecutionProfile
@@ -716,7 +705,7 @@ resources:
       #   shared/fileset_metadata -> files/dataset_metadata_content -> files/__init__
       #     -> files/fileset -> shared/fileset_metadata
       dataset_metadata_content: DatasetMetadataContent
-      fileset_metadata: FilesetMetadataOutput
+      fileset_metadata: FilesetMetadata
       tool_calling_metadata_content: ToolCallingMetadataContent
       backend_format: BackendFormat
       finetuning_type: FinetuningType

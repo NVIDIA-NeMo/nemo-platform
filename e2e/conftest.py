@@ -23,6 +23,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import time
 import uuid
 from collections.abc import Iterator
@@ -53,6 +54,9 @@ logger = logging.getLogger(__name__)
 
 _HEALTH_TIMEOUT = 60
 _HEALTH_POLL_INTERVAL = 1.0
+_AUTH_READY_TIMEOUT = 60
+_E2E_ADMIN_EMAIL = "admin@example.com"
+_SERVICES_LOG = Path(os.environ.get("E2E_SERVICES_LOG", os.path.join(tempfile.gettempdir(), "services.log")))
 
 # Number of log lines to dump from the services log on test failure.
 _TAIL_LINES_ON_FAILURE = 100
@@ -85,6 +89,48 @@ def services_log_path(request: pytest.FixtureRequest, tmp_path_factory: pytest.T
     return path
 
 
+_E2E_REPO_ROOT = Path(__file__).resolve().parents[1]
+_E2E_PLATFORM_CONFIG = _E2E_REPO_ROOT / "packages/nmp_platform/config/local.yaml"
+
+
+def _e2e_services_env() -> dict[str, str]:
+    """Environment for the ``nemo services run`` child process.
+
+    ``pytest_configure`` sets ``NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX`` on the
+    pytest process so ``add_mock_provider()`` can build providers, but the IGW
+    must see the same value in *its* process or mock routing and cache refresh
+    behave differently from the test client.  Mirror the Docker E2E backend
+    (``nmp.testing.e2e.docker``) by setting inference env vars explicitly here
+    rather than relying on inherited shell state.
+
+    Use ``packages/nmp_platform/config/local.yaml`` (``inference_gateway: {}``)
+    so IGW polls the Models service on the background refresh interval instead
+    of the dev-only ``debug_model_providers`` block in
+    ``services/core/inference-gateway/config/local.yaml``, which disables that
+    loop.
+    """
+    env = os.environ.copy()
+    env["NMP_SEED_ON_STARTUP"] = "true"
+    env["NMP_INFERENCE_GATEWAY_MOCK_PROVIDER_PREFIX"] = "igw-mock-"
+    env["NMP_CONFIG_FILE_PATH"] = str(_E2E_PLATFORM_CONFIG)
+    env["NMP_CONFIG_WARNINGS_DISABLED"] = "1"
+    if not _e2e_auth_enabled():
+        env["NMP_AUTH_ENABLED"] = "false"
+    elif "NMP_AUTH_ENABLED" not in env:
+        env["NMP_AUTH_ENABLED"] = "true"
+    return env
+
+
+def _e2e_auth_enabled() -> bool:
+    """Return whether the e2e harness should run with authorization enabled.
+
+    Default is disabled so ``make test-e2e`` does not depend on platform-admin
+    seeding, PDP refresh, or role propagation timing. Opt in with
+    ``E2E_AUTH_ENABLED=true`` (see ``make test-e2e-docker-auth``).
+    """
+    return os.environ.get("E2E_AUTH_ENABLED", "false").lower() in ("1", "true", "yes")
+
+
 def _find_free_port() -> int:
     """Bind to port 0 and let the OS assign a free port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -106,15 +152,80 @@ def _wait_for_healthy(url: str, timeout: float = _HEALTH_TIMEOUT) -> bool:
     return False
 
 
+def _admin_headers() -> dict[str, str]:
+    return {
+        "X-NMP-Principal-Id": _E2E_ADMIN_EMAIL,
+        "X-NMP-Principal-Email": _E2E_ADMIN_EMAIL,
+    }
+
+
+def _wait_for_auth_ready(url: str, timeout: float = _AUTH_READY_TIMEOUT) -> bool:
+    """Poll until platform admin can create entities in a fresh workspace.
+
+    Workspace create/list alone is insufficient: entity CRUD requires
+    PlatformAdmin (or entities.create, which workspace Admin lacks). The first
+    entity e2e test was flaky when only workspace visibility was probed.
+    """
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        probe_name = f"auth-probe-{uuid.uuid4().hex[:8]}"
+        entity_name = f"auth-probe-entity-{uuid.uuid4().hex[:8]}"
+        try:
+            create_resp = httpx.post(
+                f"{url}/apis/entities/v2/workspaces",
+                json={"name": probe_name},
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
+            if create_resp.status_code != 201:
+                time.sleep(_HEALTH_POLL_INTERVAL)
+                continue
+
+            entity_resp = httpx.post(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}/entities/e2e-auth-probe",
+                json={"name": entity_name, "data": {"ready": True}},
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
+            if entity_resp.status_code != 201:
+                httpx.delete(
+                    f"{url}/apis/entities/v2/workspaces/{probe_name}",
+                    headers=_admin_headers(),
+                    timeout=5.0,
+                )
+                time.sleep(_HEALTH_POLL_INTERVAL)
+                continue
+
+            httpx.delete(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}/entities/e2e-auth-probe/{entity_name}",
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
+            httpx.delete(
+                f"{url}/apis/entities/v2/workspaces/{probe_name}",
+                headers=_admin_headers(),
+                timeout=5.0,
+            )
+            return True
+        except httpx.RequestError as exc:
+            logger.debug("Auth readiness probe failed; will retry: %s", exc)
+        time.sleep(_HEALTH_POLL_INTERVAL)
+    return False
+
+
 @contextlib.contextmanager
-def background_process(args: list[str], stdout: IO[Any] | None = None) -> Iterator[subprocess.Popen]:
+def background_process(
+    args: list[str],
+    stdout: IO[Any] | None = None,
+    env: dict[str, str] | None = None,
+) -> Iterator[subprocess.Popen]:
     """Run a subprocess, yield the ``Popen``, and terminate on exit.
 
     Unlike ``Popen``'s built-in context manager (which only waits for the
     process), this sends SIGTERM/SIGKILL so long-running servers are
     cleaned up.
     """
-    proc = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(args, stdout=stdout, stderr=subprocess.STDOUT, env=env)
     try:
         yield proc
     finally:
@@ -177,15 +288,30 @@ def _services(services_log_path: Path) -> Iterator[str]:
     url = f"http://127.0.0.1:{port}"
 
     nemo_bin = str(Path(sys.executable).parent / "nemo")
-    args = [nemo_bin, "services", "run", "--port", str(port)]
+    args = [
+        nemo_bin,
+        "services",
+        "run",
+        "--service-group",
+        "all",
+        "--controller-group",
+        "all",
+        "--port",
+        str(port),
+    ]
+    env = _e2e_services_env()
 
     logger.info("Starting nemo services on port %d", port)
 
-    log_path = services_log_path
-    with open(log_path, "w") as log_file, background_process(args, stdout=log_file) as proc:
+    log_path = services_log_path or _SERVICES_LOG
+    with open(log_path, "w") as log_file, background_process(args, stdout=log_file, env=env) as proc:
         if not _wait_for_healthy(url):
             pytest.fail(
                 f"nemo services run did not become healthy within {_HEALTH_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
+            )
+        if _e2e_auth_enabled() and not _wait_for_auth_ready(url):
+            pytest.fail(
+                f"Platform auth seed did not become ready within {_AUTH_READY_TIMEOUT}s.\nlog:\n{log_path.read_text()}"
             )
 
         logger.info("Platform services ready on port %d (pid %d)", port, proc.pid)
@@ -196,7 +322,12 @@ def _services(services_log_path: Path) -> Iterator[str]:
 @pytest.fixture(scope="session")
 def sdk(_services: str) -> NeMoPlatform:
     """Provide an SDK client connected to the running platform."""
-    return NeMoPlatform(base_url=_services, max_retries=2)
+    headers = _admin_headers() if _e2e_auth_enabled() else {}
+    return NeMoPlatform(
+        base_url=_services,
+        max_retries=2,
+        default_headers=headers,
+    )
 
 
 @pytest.fixture(scope="function")

@@ -23,6 +23,7 @@ from .string_filter import StringFilter as StringFilter
 from .backend_format import BackendFormat as BackendFormat
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .finetuning_type import FinetuningType as FinetuningType
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .inference_params import InferenceParams as InferenceParams
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .api_endpoint_data import APIEndpointData as APIEndpointData

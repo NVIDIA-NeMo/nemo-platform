@@ -460,10 +460,11 @@ describe('analyze — new model scan', () => {
     expect(newModels.map((s) => s.model)).toEqual(['c', 'new-model-7b']);
     const newModel = newModels.find((s) => s.model === 'new-model-7b');
     expect(newModel?.model).toBe('new-model-7b');
-    expect(newModel?.suggested_actions?.[0]).toContain(
-      'nemo audit jobs create --model new-model-7b'
-    );
-    expect(newModel?.suggested_actions?.[1]).toContain(
+    expect(newModel?.suggested_actions?.[0]).toContain('nemo auditor targets create');
+    expect(newModel?.suggested_actions?.[0]).toContain('"model": "new-model-7b"');
+    expect(newModel?.suggested_actions?.[1]).toContain('nemo auditor audit run --spec');
+    expect(newModel?.suggested_actions?.[1]).toContain('"target": "default/<target>"');
+    expect(newModel?.suggested_actions?.[2]).toContain(
       'nemo evaluation jobs create --model new-model-7b'
     );
   });

@@ -32,7 +32,6 @@ from .local_storage_config import LocalStorageConfig as LocalStorageConfig
 from .fileset_create_params import FilesetCreateParams as FilesetCreateParams
 from .fileset_update_params import FilesetUpdateParams as FilesetUpdateParams
 from .file_list_files_params import FileListFilesParams as FileListFilesParams
-from .fileset_metadata_param import FilesetMetadataParam as FilesetMetadataParam
 from .file_upload_file_params import FileUploadFileParams as FileUploadFileParams
 from .s3_storage_config_param import S3StorageConfigParam as S3StorageConfigParam
 from .ngc_storage_config_param import NGCStorageConfigParam as NGCStorageConfigParam

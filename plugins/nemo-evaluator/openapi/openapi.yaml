@@ -1419,6 +1419,10 @@ components:
       description: 'Reference to a platform secret or local environment variable.
         Format: ''secret_name'' (uses request workspace) or ''workspace/secret_name''
         (explicit workspace).'
+      examples:
+      - my-secret
+      - my-workspace/my-secret
+      - NVIDIA_API_KEY
     StringFilter:
       additionalProperties: false
       properties:
