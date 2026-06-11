@@ -55,16 +55,18 @@ sdk = NeMoPlatform(
 )
 anonymizer = sdk.anonymizer
 
-preview = anonymizer.preview(PreviewRequest(
-    config=config,
-    data=AnonymizerInputSpec(
-        source=f"fileset://{WORKSPACE}/anonymizer-inputs#anonymizer-input.csv",
-        text_column="biography",
-        id_column="id",
-    ),
-    model_configs=model_configs,
-    num_records=10,
-))
+preview = anonymizer.preview(
+    PreviewRequest(
+        config=config,
+        data=AnonymizerInputSpec(
+            source=f"fileset://{WORKSPACE}/anonymizer-inputs#anonymizer-input.csv",
+            text_column="biography",
+            id_column="id",
+        ),
+        model_configs=model_configs,
+        num_records=10,
+    )
+)
 ```
 
 ## Service-Specific Considerations
@@ -79,7 +81,9 @@ When using Anonymizer as a NeMo Platform service:
 
 ## Prerequisites
 
-Complete [Setup](/documentation/get-started) to install NeMo Platform, run `nemo services run`, and configure an inference provider. The root workspace includes the Anonymizer plugin, so `nemo services run` discovers it automatically and mounts `/apis/anonymizer/...` on the gateway — no separate plugin install step is needed. Verify the CLI is registered:
+Complete [Setup](/documentation/get-started) to install NeMo Platform, run `nemo services run`, and configure an inference provider. The Anonymizer plugin is currently supported from the NeMo Platform monorepo workspace: run `make bootstrap` at the repo root, or `make bootstrap-python` / `uv sync` if you only need Python dependencies, so uv can resolve `nemo-anonymizer-plugin` and the workspace prerequisites `nmp-common`, `nemo-platform-plugin`, and `data-designer-nemo`.
+
+The root workspace includes the Anonymizer plugin, so `nemo services run` discovers it automatically and mounts `/apis/anonymizer/...` on the gateway. Standalone installation from a fresh environment outside the repo is not available. Verify the CLI is registered:
 
 ```bash
 nemo anonymizer --help
