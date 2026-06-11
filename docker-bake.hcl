@@ -135,7 +135,7 @@ function "get_arch_tag" {
 function "base_tags" {
   params = [name]
   result = [
-    notequal(BAKE_TAG, "") ? "${IMAGE_REGISTRY}/${name}:${BAKE_TAG}" : "",
+    notequal(BAKE_TAG, "") ? "${BASE_REGISTRY}/${name}:${BAKE_TAG}" : "",
   ]
 }
 
