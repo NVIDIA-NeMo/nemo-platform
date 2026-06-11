@@ -7,9 +7,7 @@ COPY docs/ docs/
 COPY openapi/ openapi/
 COPY skills/ skills/
 COPY packages/ packages/
-COPY skills/ skills/
 COPY plugins/ plugins/
-COPY skills/ skills/
 COPY services/ services/
 COPY packages/nmp_platform/ entrypoint/
 COPY sdk/ sdk/

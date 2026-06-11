@@ -27,7 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 #   - CVE-2025-8194 (High, out-of-SLA): Fixed by bumping the Python base image to
 #     python:3.11.14 in docker/base/Dockerfile.nmp-base
 # --only-upgrade: upgrades installed packages only; skips absent ones silently.
-RUN apt-get update && apt-get install -y --only-upgrade \
+RUN apt-get update && apt-get install -y --only-upgrade --no-install-recommends \
     gnupg gnupg2 gpg gpg-agent gpgconf gpgsm \
     dirmngr gnupg-utils gpgv \
     && apt-get clean && rm -rf /var/lib/apt/lists/*

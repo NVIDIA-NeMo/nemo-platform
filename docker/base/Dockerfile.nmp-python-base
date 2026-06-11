@@ -52,6 +52,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # nmp-python-dev-base-builder: Extends the runtime base with development tools.
 # Used as the builder base for services that compile native extensions (e.g., auditor).
 FROM nmp-python-base-builder AS nmp-python-dev-base-builder
+ARG TARGETARCH
+ARG RUSTUP_VERSION=1.28.2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     binutils \
@@ -71,5 +73,18 @@ RUN update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-11 60 \
 
 ENV CARGO_HOME="/etc/cargo" \
     RUSTUP_HOME="/etc/rustup"
-RUN curl https://sh.rustup.rs -sSf | sh -s -- -y
+RUN set -eux; \
+    case "${TARGETARCH:-$(dpkg --print-architecture)}" in \
+        amd64) rustup_target="x86_64-unknown-linux-gnu" ;; \
+        arm64|aarch64) rustup_target="aarch64-unknown-linux-gnu" ;; \
+        *) echo "Unsupported architecture: ${TARGETARCH:-unknown}" >&2; exit 1 ;; \
+    esac; \
+    rustup_url="https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${rustup_target}/rustup-init"; \
+    curl -fsSL -o /tmp/rustup-init "${rustup_url}"; \
+    curl -fsSL -o /tmp/rustup-init.sha256 "${rustup_url}.sha256"; \
+    rustup_sha256="$(cut -d ' ' -f 1 /tmp/rustup-init.sha256)"; \
+    echo "${rustup_sha256}  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y; \
+    rm -f /tmp/rustup-init /tmp/rustup-init.sha256
 ENV PATH="$CARGO_HOME/bin:$PATH"
