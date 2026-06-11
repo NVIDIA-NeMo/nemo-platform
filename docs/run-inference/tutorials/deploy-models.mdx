@@ -194,11 +194,14 @@ Deploy pre-built NIM containers from NGC.
 ```bash
 nemo inference deployment-configs create \
 --name "llama-3-2-1b-config" \
---nim-deployment '{
-"gpu": 1,
-"image_name": "nvcr.io/nim/meta/llama-3.2-1b-instruct",
-"image_tag": "1.8.6",
-"model_name": "meta/llama-3.2-1b-instruct"
+--engine "nim" \
+--model-spec '{
+    "model_name": "meta/llama-3.2-1b-instruct"
+}' \
+--executor-config '{
+    "gpu": 1,
+    "image_name": "nvcr.io/nim/meta/llama-3.2-1b-instruct",
+    "image_tag": "1.8.6"
 }'
 
 nemo inference deployments create \
@@ -218,11 +221,14 @@ nemo chat meta/llama-3.2-1b-instruct 'Hello!' \
 ```python
 config = client.inference.deployment_configs.create(
     name="llama-3-2-1b-config",
-    nim_deployment={
+    engine="nim",
+    model_spec={
+        "model_name": "meta/llama-3.2-1b-instruct",
+    },
+    executor_config={
         "gpu": 1,
         "image_name": "nvcr.io/nim/meta/llama-3.2-1b-instruct",
         "image_tag": "1.8.6",
-        "model_name": "meta/llama-3.2-1b-instruct",
     },
 )
 
@@ -260,10 +266,12 @@ Deploy classification NIMs like NemoGuard for content safety. Uses the `/v1/clas
 ```bash
 nemo inference deployment-configs create \
 --name "nemoguard-jailbreak-config" \
---nim-deployment '{
-"gpu": 1,
-"image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
-"image_tag": "1.10.1"
+--engine "nim" \
+--model-spec '{}' \
+--executor-config '{
+    "gpu": 1,
+    "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
+    "image_tag": "1.10.1"
 }'
 
 nemo inference deployments create \
@@ -283,7 +291,9 @@ nemo inference gateway provider post v1/classify \
 ```python
 config = client.inference.deployment_configs.create(
     name="nemoguard-jailbreak-config",
-    nim_deployment={
+    engine="nim",
+    model_spec={},
+    executor_config={
         "gpu": 1,
         "image_name": "nvcr.io/nim/nvidia/nemoguard-jailbreak-detect",
         "image_tag": "1.10.1",
@@ -346,10 +356,13 @@ nemo models create "qwen-2-5-1-5b" \
 
 # Create deployment config pointing to the model entity
 nemo inference deployment-configs create "qwen-fs-config" \
---nim-deployment '{
-"model_namespace": "default",
-"model_name": "qwen-2-5-1-5b",
-"gpu": 1
+--engine "nim" \
+--model-spec '{
+    "model_namespace": "default",
+    "model_name": "qwen-2-5-1-5b"
+}' \
+--executor-config '{
+    "gpu": 1
 }'
 
 nemo inference deployments create "qwen-fs-deployment" \
@@ -388,9 +401,12 @@ client.models.create(name="qwen-2-5-1-5b", fileset="default/qwen-2-5-1-5b")
 # Create deployment config pointing to the model entity
 config = client.inference.deployment_configs.create(
     name="qwen-fs-config",
-    nim_deployment={
+    engine="nim",
+    model_spec={
         "model_namespace": "default",
         "model_name": "qwen-2-5-1-5b",
+    },
+    executor_config={
         "gpu": 1,
     },
 )
@@ -423,6 +439,258 @@ response = client.inference.gateway.provider.post(
 The `fileset` format is `<workspace>/<fileset-name>`. This tells the deployment system to pull weights from the Files service, which proxies the download from HuggingFace using the fileset `token_secret`. For public models like Qwen, the `token_secret` on the fileset is optional.
 
 </Tip>
+---
+
+## Deploy with vLLM
+
+Serve any HuggingFace-format model with [vLLM](https://docs.vllm.ai/) by setting `engine: "vllm"` on the deployment config. The model is registered through the Files service exactly as in [Deploy from HuggingFace](#deploy-from-huggingface) — only the `engine` field on the deployment config changes. Tensor parallelism is computed automatically from the GPU count and the model's architecture.
+
+This example deploys [Qwen3-1.7B](https://huggingface.co/Qwen/Qwen3-1.7B) with vLLM.
+
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Create a fileset pointing to the HuggingFace model.
+# Qwen models are public — token_secret is optional.
+nemo files filesets create "qwen3-1-7b" \
+  --storage '{
+    "type": "huggingface",
+    "repo_id": "Qwen/Qwen3-1.7B",
+    "repo_type": "model"
+  }'
+
+# Register a model entity referencing the fileset
+nemo models create "qwen3-1-7b" \
+  --fileset "default/qwen3-1-7b"
+
+# Create deployment config with engine "vllm"
+nemo inference deployment-configs create "qwen3-vllm-config" \
+  --engine "vllm" \
+  --model-spec '{
+    "model_namespace": "default",
+    "model_name": "qwen3-1-7b"
+  }' \
+  --executor-config '{
+    "gpu": 1
+  }'
+
+nemo inference deployments create "qwen3-vllm-deployment" \
+  --config "qwen3-vllm-config"
+
+nemo wait inference deployment qwen3-vllm-deployment
+
+nemo chat default/qwen3-1-7b 'Hello!' \
+  --provider qwen3-vllm-deployment \
+  --max-tokens 100
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+# Create a fileset pointing to the HuggingFace model.
+# Qwen models are public — token_secret is optional.
+client.files.filesets.create(
+    name="qwen3-1-7b",
+    storage={
+        "type": "huggingface",
+        "repo_id": "Qwen/Qwen3-1.7B",
+        "repo_type": "model",
+    },
+)
+
+# Register a model entity referencing the fileset
+client.models.create(name="qwen3-1-7b", fileset="default/qwen3-1-7b")
+
+# Create deployment config with engine "vllm"
+config = client.inference.deployment_configs.create(
+    name="qwen3-vllm-config",
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": "qwen3-1-7b",
+    },
+    executor_config={
+        "gpu": 1,
+    },
+)
+
+deployment = client.inference.deployments.create(
+    name="qwen3-vllm-deployment", config="qwen3-vllm-config"
+)
+
+client.models.wait_for_status(
+    deployment_name="qwen3-vllm-deployment", desired_status="READY"
+)
+
+response = client.inference.gateway.provider.post(
+    "v1/chat/completions",
+    name="qwen3-vllm-deployment",
+    body={
+        "model": "default/qwen3-1-7b",
+        "messages": [{"role": "user", "content": "Hello!"}],
+        "max_tokens": 100,
+    },
+)
+```
+
+</Tab>
+
+</Tabs>
+
+### Deploy with LoRA Adapters
+
+vLLM deployments support LoRA adapters with hot-reload: enable LoRA on the deployment config, then register one or more adapters against the base model entity. An adapter sidecar delivers each enabled adapter to the running server, and vLLM serves it on a per-request basis. Adapters are registered on the **base model entity**, not as separate models.
+
+This example serves the [linear-algebra LoRA](https://huggingface.co/premjatin/qwen-linear-algebra-coder) on top of Qwen3-1.7B.
+
+
+<Tabs>
+
+<Tab title="CLI">
+
+```bash
+# Base model fileset + entity (skip if already created above)
+nemo files filesets create "qwen3-1-7b" \
+  --storage '{
+    "type": "huggingface",
+    "repo_id": "Qwen/Qwen3-1.7B",
+    "repo_type": "model"
+  }'
+
+nemo models create "qwen3-1-7b" \
+  --fileset "default/qwen3-1-7b"
+
+# Fileset for the LoRA adapter weights
+nemo files filesets create "linear-algebra-lora" \
+  --storage '{
+    "type": "huggingface",
+    "repo_id": "premjatin/qwen-linear-algebra-coder",
+    "repo_type": "model"
+  }'
+
+# Deployment config with LoRA enabled.
+# Set --max-lora-rank to the highest adapter rank you intend to serve.
+nemo inference deployment-configs create "qwen3-lora-config" \
+  --engine "vllm" \
+  --model-spec '{
+    "model_namespace": "default",
+    "model_name": "qwen3-1-7b",
+    "lora_enabled": true
+  }' \
+  --executor-config '{
+    "gpu": 1,
+    "additional_args": ["--max-lora-rank", "16"]
+  }'
+
+nemo inference deployments create "qwen3-lora-deployment" \
+  --config "qwen3-lora-config"
+
+nemo wait inference deployment qwen3-lora-deployment
+
+# Register the adapter against the base model entity.
+# The adapter is served under the name "<workspace>--<adapter-name>".
+nemo models adapters create "qwen3-1-7b" "linear-algebra" \
+  --fileset "default/linear-algebra-lora" \
+  --finetuning-type lora \
+  --enabled
+
+# Target the adapter by its served name in the request body
+nemo inference gateway provider post v1/chat/completions qwen3-lora-deployment \
+  --body '{
+    "model": "default--linear-algebra",
+    "messages": [{"role": "user", "content": "Find the determinant of [[2, 1], [1, 3]]."}],
+    "max_tokens": 256
+  }'
+```
+
+</Tab>
+<Tab title="Python SDK">
+
+```python
+# Base model fileset + entity (skip if already created above)
+client.files.filesets.create(
+    name="qwen3-1-7b",
+    storage={
+        "type": "huggingface",
+        "repo_id": "Qwen/Qwen3-1.7B",
+        "repo_type": "model",
+    },
+)
+
+client.models.create(name="qwen3-1-7b", fileset="default/qwen3-1-7b")
+
+# Fileset for the LoRA adapter weights
+client.files.filesets.create(
+    name="linear-algebra-lora",
+    storage={
+        "type": "huggingface",
+        "repo_id": "premjatin/qwen-linear-algebra-coder",
+        "repo_type": "model",
+    },
+)
+
+# Deployment config with LoRA enabled.
+# Set --max-lora-rank to the highest adapter rank you intend to serve.
+config = client.inference.deployment_configs.create(
+    name="qwen3-lora-config",
+    engine="vllm",
+    model_spec={
+        "model_namespace": "default",
+        "model_name": "qwen3-1-7b",
+        "lora_enabled": True,
+    },
+    executor_config={
+        "gpu": 1,
+        "additional_args": ["--max-lora-rank", "16"],
+    },
+)
+
+deployment = client.inference.deployments.create(
+    name="qwen3-lora-deployment", config="qwen3-lora-config"
+)
+
+client.models.wait_for_status(
+    deployment_name="qwen3-lora-deployment", desired_status="READY"
+)
+
+# Register the adapter against the base model entity.
+# The adapter is served under the name "<workspace>--<adapter-name>".
+client.models.adapters.create(
+    "qwen3-1-7b",
+    name="linear-algebra",
+    fileset="default/linear-algebra-lora",
+    finetuning_type="lora",
+    enabled=True,
+)
+
+# Target the adapter by its served name in the request body
+response = client.inference.gateway.provider.post(
+    "v1/chat/completions",
+    name="qwen3-lora-deployment",
+    body={
+        "model": "default--linear-algebra",
+        "messages": [
+            {"role": "user", "content": "Find the determinant of [[2, 1], [1, 3]]."}
+        ],
+        "max_tokens": 256,
+    },
+)
+```
+
+</Tab>
+
+</Tabs>
+
+<Tip>
+
+The default vLLM image is configurable by the platform operator. To override the image per deployment, set `image_name` / `image_tag` on `executor_config`. To pass raw `vllm serve` flags (for example `--max-model-len`), use `additional_args` on `executor_config`.
+
+</Tip>
+
 ---
 
 <a id="nemo-ms-delete-nim"></a>
@@ -509,9 +777,12 @@ nemo models create \
 # Create deployment config with 2 GPUs (TP=2 by default)
 nemo inference deployment-configs create \
 --name "qwen-14b-config" \
---nim-deployment '{
-"model_name": "default/qwen-2-5-14b",
-"gpu": 2
+--engine "nim" \
+--model-spec '{
+    "model_name": "default/qwen-2-5-14b"
+}' \
+--executor-config '{
+    "gpu": 2
 }'
 
 # Deploy
@@ -546,7 +817,9 @@ client.models.create(name="qwen-2-5-14b", fileset="default/qwen-2-5-14b")
 # Create deployment config with 2 GPUs (TP=2 by default)
 config = client.inference.deployment_configs.create(
     name="qwen-14b-config",
-    nim_deployment={"model_name": "default/qwen-2-5-14b", "gpu": 2},
+    engine="nim",
+    model_spec={"model_name": "default/qwen-2-5-14b"},
+    executor_config={"gpu": 2},
 )
 
 # Deploy
@@ -585,13 +858,16 @@ For larger models requiring more GPUs, you can configure specific TP/PP splits u
 ```bash
 nemo inference deployment-configs create \
 --name "multi-gpu-custom-config" \
---nim-deployment '{
-"model_name": "default/qwen-2-5-14b",
-"gpu": 4,
-"additional_envs": {
-"NIM_TENSOR_PARALLEL_SIZE": "2",
-"NIM_PIPELINE_PARALLEL_SIZE": "2"
-}
+--engine "nim" \
+--model-spec '{
+    "model_name": "default/qwen-2-5-14b"
+}' \
+--executor-config '{
+    "gpu": 4,
+    "additional_envs": {
+        "NIM_TENSOR_PARALLEL_SIZE": "2",
+        "NIM_PIPELINE_PARALLEL_SIZE": "2"
+    }
 }'
 ```
 
@@ -601,8 +877,11 @@ nemo inference deployment-configs create \
 ```python
 config = client.inference.deployment_configs.create(
     name="multi-gpu-custom-config",
-    nim_deployment={
+    engine="nim",
+    model_spec={
         "model_name": "default/qwen-2-5-14b",
+    },
+    executor_config={
         "gpu": 4,
         "additional_envs": {
             "NIM_TENSOR_PARALLEL_SIZE": "2",
@@ -647,7 +926,7 @@ There are two ways to configure chat templates and tool calling, with deployment
 | Source | Priority | When to Use |
 |--------|----------|-------------|
 | **Fileset `metadata.model.tool_calling`** | Base | Set once per model — applies to all deployments using that model |
-| **Deployment config (`nim_deployment`)** | Override | Per-deployment overrides — useful for A/B testing or deployment-specific behavior |
+| **Deployment config (`model_spec`)** | Override | Per-deployment overrides — useful for A/B testing or deployment-specific behavior |
 
 When both are set, deployment config values override fileset values.
 
@@ -661,7 +940,7 @@ When both are set, deployment config values override fileset values.
 flowchart LR
  FS["Fileset<br/>metadata.model.tool_calling"] -->|model-spec task| ME["Model Entity<br/>spec"]
  ME --> ENV["NIM Container<br/>env vars"]
- DC["Deployment Config<br/>nim_deployment"] -->|override| ENV
+ DC["Deployment Config<br/>model_spec"] -->|override| ENV
 ```
 
 ### Option 1: Set via Fileset (Recommended)
@@ -701,9 +980,12 @@ Set `chat_template` and tool calling configuration with fileset `metadata.model.
  # Deploy
  nemo inference deployment-configs create \
  --name "llama-tool-config" \
- --nim-deployment '{
- "model_name": "default/llama-3-2-1b-tool",
- "gpu": 1
+ --engine "nim" \
+ --model-spec '{
+    "model_name": "default/llama-3-2-1b-tool"
+ }' \
+ --executor-config '{
+    "gpu": 1
  }'
 
  nemo inference deployments create \
@@ -756,8 +1038,11 @@ client.models.create(
 # Deploy — chat_template and tool_call_config are inherited from the fileset
 config = client.inference.deployment_configs.create(
     name="llama-tool-config",
-    nim_deployment={
-        "model_name": "default/llama-3-2-1b-tool",
+    engine="nim",
+    model_spec={
+        "model_name": "default/llama-3-2-1b-tool"
+    },
+    executor_config={
         "gpu": 1
     }
 )
@@ -790,14 +1075,17 @@ Set `chat_template` and `tool_call_config` directly on the deployment config. Th
 
  nemo inference deployment-configs create \
  --name "llama-tool-override-config" \
- --nim-deployment '{
- "model_name": "default/llama-3-2-1b-tool",
- "gpu": 1,
- "chat_template": "{%- for message in messages %}{{ message[\"content\"] }}{%- endfor %}",
- "tool_call_config": {
- "tool_call_parser": "hermes",
- "auto_tool_choice": false
- }
+ --engine "nim" \
+ --model-spec '{
+    "model_name": "default/llama-3-2-1b-tool",
+    "chat_template": "{%- for message in messages %}{{ message[\"content\"] }}{%- endfor %}",
+    "tool_call_config": {
+        "tool_call_parser": "hermes",
+        "auto_tool_choice": false
+    }
+ }' \
+ --executor-config '{
+    "gpu": 1
  }'
 
  ```
@@ -809,14 +1097,17 @@ Set `chat_template` and `tool_call_config` directly on the deployment config. Th
 
 config = client.inference.deployment_configs.create(
     name="llama-tool-override-config",
-    nim_deployment={
+    engine="nim",
+    model_spec={
         "model_name": "default/llama-3-2-1b-tool",
-        "gpu": 1,
         "chat_template": "{%- for message in messages %}{{ message['content'] }}{%- endfor %}",
         "tool_call_config": {
             "tool_call_parser": "hermes",
             "auto_tool_choice": False,
         }
+    },
+    executor_config={
+        "gpu": 1
     }
 )
 
@@ -860,9 +1151,12 @@ nemo models create \
 # Update deployment config to use the new model, or create a new one
 nemo inference deployment-configs create \
 --name "llama-tool-config-v2" \
---nim-deployment '{
-"model_name": "default/llama-3-2-1b-tool-v2",
-"gpu": 1
+--engine "nim" \
+--model-spec '{
+    "model_name": "default/llama-3-2-1b-tool-v2"
+}' \
+--executor-config '{
+    "gpu": 1
 }'
 
 nemo inference deployments create \
@@ -905,7 +1199,9 @@ client.models.create(
 # Create a new deployment config and deployment
 config = client.inference.deployment_configs.create(
     name="llama-tool-config-v2",
-    nim_deployment={"model_name": "default/llama-3-2-1b-tool-v2", "gpu": 1},
+    engine="nim",
+    model_spec={"model_name": "default/llama-3-2-1b-tool-v2"},
+    executor_config={"gpu": 1},
 )
 
 deployment = client.inference.deployments.create(

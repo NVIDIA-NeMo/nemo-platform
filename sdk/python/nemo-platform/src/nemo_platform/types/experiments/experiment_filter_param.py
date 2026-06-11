@@ -50,6 +50,12 @@ class ExperimentFilterParam(TypedDict, total=False):
     experiment_group_id: str
     """Filter experiments by owning group id."""
 
+    is_deleted: bool
+    """When true, returns only soft-deleted experiments.
+
+    Omit (or false) to see only live experiments.
+    """
+
     name: str
     """Filter experiments by name."""
 

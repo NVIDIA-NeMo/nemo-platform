@@ -19,9 +19,11 @@ from .model_spec import ModelSpec as ModelSpec
 from .mo_e_config import MoEConfig as MoEConfig
 from .prompt_data import PromptData as PromptData
 from .mamba_config import MambaConfig as MambaConfig
+from .string_filter import StringFilter as StringFilter
 from .backend_format import BackendFormat as BackendFormat
 from .datetime_filter import DatetimeFilter as DatetimeFilter
 from .finetuning_type import FinetuningType as FinetuningType
+from .fileset_metadata import FilesetMetadata as FilesetMetadata
 from .inference_params import InferenceParams as InferenceParams
 from .tool_call_config import ToolCallConfig as ToolCallConfig
 from .api_endpoint_data import APIEndpointData as APIEndpointData

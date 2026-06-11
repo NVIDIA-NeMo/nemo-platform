@@ -33,9 +33,8 @@ User-facing skills in `packages/nemo_platform_ext/src/nemo_platform_ext/skills/`
 - `nemo-try-agent`: test a deployed agent or chat with a model.
 - `nemo-status`: read-only health dashboard. Run this before assuming the platform is up.
 - `nemo-teardown`: guided shutdown with confirmation.
-- `nemo-fine-tune`: fine-tuning. Not yet available; the skill tells the user it's not shipped instead of letting the agent improvise with another training library.
 
-Plugin-owned skills live under `plugins/*/src/*/skills/` and handle their own routing for guardrails, evaluations, optimization, data designer, anonymizer, and auditor.
+Plugin-owned skills live under `plugins/*/src/*/skills/` and handle their own routing for customization, guardrails, evaluations, optimization, data designer, anonymizer, and auditor.
 
 ### Working in a sandboxed coding-agent environment
 

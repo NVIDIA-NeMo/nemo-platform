@@ -345,7 +345,7 @@ class NmpArgument(TyperArgument):
             return None
 
         # Get the argument name (metavar) and strip any surrounding brackets
-        metavar = self.make_metavar()
+        metavar = self.make_metavar(ctx)
         # Remove square brackets that Click adds for optional arguments
         metavar = metavar.strip("[]")
 

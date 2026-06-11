@@ -36,28 +36,13 @@ def list_traces(
         typer.Option(
             "--filter",
             metavar="FILTER_JSON",
-            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, rolled-up status, root span started_at, and root-span evaluation context fields.",
+            help="Use --filter with JSON for complex/nested queries, or --filter.FIELD options for simple fields. Both can be combined, with field options taking precedence.\nJSON-only fields:\n  started_at: {gte: str, lte: str}\n\nFilter root-span-backed traces by id, session_id, root status, root span started_at, experiment_id, and test_case_id.",
             rich_help_panel="Filter Options",
         ),
     ] = None,
     filter_id: Annotated[str | None, typer.Option("--filter.id", rich_help_panel="Filter Options")] = None,
-    filter_dataset_id: Annotated[
-        str | None, typer.Option("--filter.dataset-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_dataset_name: Annotated[
-        str | None, typer.Option("--filter.dataset-name", rich_help_panel="Filter Options")
-    ] = None,
-    filter_dataset_version: Annotated[
-        str | None, typer.Option("--filter.dataset-version", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_id: Annotated[
-        str | None, typer.Option("--filter.evaluation-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_run_id: Annotated[
-        str | None, typer.Option("--filter.evaluation-run-id", rich_help_panel="Filter Options")
-    ] = None,
-    filter_evaluation_sha: Annotated[
-        str | None, typer.Option("--filter.evaluation-sha", rich_help_panel="Filter Options")
+    filter_experiment_id: Annotated[
+        str | None, typer.Option("--filter.experiment-id", rich_help_panel="Filter Options")
     ] = None,
     filter_session_id: Annotated[
         str | None, typer.Option("--filter.session-id", rich_help_panel="Filter Options")
@@ -100,12 +85,7 @@ def list_traces(
         filter=merge_filter_dict(
             filter,
             id=filter_id,
-            dataset_id=filter_dataset_id,
-            dataset_name=filter_dataset_name,
-            dataset_version=filter_dataset_version,
-            evaluation_id=filter_evaluation_id,
-            evaluation_run_id=filter_evaluation_run_id,
-            evaluation_sha=filter_evaluation_sha,
+            experiment_id=filter_experiment_id,
             session_id=filter_session_id,
             status=filter_status,
             test_case_id=filter_test_case_id,

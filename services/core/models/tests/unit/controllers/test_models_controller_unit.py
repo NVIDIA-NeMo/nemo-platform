@@ -449,10 +449,10 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_when_set(
 
     config = MagicMock()
     config.model_entity_id = "my-ws/my-model"
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.model_namespace = "other-ns"
-    config.nim_deployment.model_name = "other-model"
-    config.nim_deployment.model_revision = None
+    config.model_spec = MagicMock()
+    config.model_spec.model_namespace = "other-ns"
+    config.model_spec.model_name = "other-model"
+    config.model_spec.model_revision = None
 
     with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
         controller = ModelsController(backend_registry=mock_backend_registry)
@@ -472,7 +472,7 @@ async def test_retrieve_model_entity_for_config_uses_model_entity_id_with_revisi
 
     config = MagicMock()
     config.model_entity_id = "my-ws/my-model@v2"
-    config.nim_deployment = MagicMock()
+    config.model_spec = MagicMock()
 
     with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
         controller = ModelsController(backend_registry=mock_backend_registry)
@@ -495,10 +495,10 @@ async def test_retrieve_model_entity_for_config_falls_back_to_nim_deployment_whe
 
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.model_namespace = "nim-ns"
-    config.nim_deployment.model_name = "nim-model"
-    config.nim_deployment.model_revision = "v1"
+    config.model_spec = MagicMock()
+    config.model_spec.model_namespace = "nim-ns"
+    config.model_spec.model_name = "nim-model"
+    config.model_spec.model_revision = "v1"
 
     with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
         controller = ModelsController(backend_registry=mock_backend_registry)
@@ -515,7 +515,7 @@ async def test_retrieve_model_entity_for_config_returns_none_when_no_nim_deploym
     """When neither model_entity_id nor nim_deployment has model info, returns None."""
     config = MagicMock()
     config.model_entity_id = None
-    config.nim_deployment = None
+    config.model_spec = None
 
     with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
         controller = ModelsController(backend_registry=mock_backend_registry)
@@ -535,10 +535,10 @@ async def test_retrieve_model_entity_for_config_invalid_model_entity_id_falls_ba
 
     config = MagicMock()
     config.model_entity_id = "bogus"
-    config.nim_deployment = MagicMock()
-    config.nim_deployment.model_namespace = "fallback-ns"
-    config.nim_deployment.model_name = "fallback-model"
-    config.nim_deployment.model_revision = None
+    config.model_spec = MagicMock()
+    config.model_spec.model_namespace = "fallback-ns"
+    config.model_spec.model_name = "fallback-model"
+    config.model_spec.model_revision = None
 
     with patch("nmp.core.models.controllers.models_controller.get_async_platform_sdk", return_value=mock_models_sdk):
         controller = ModelsController(backend_registry=mock_backend_registry)

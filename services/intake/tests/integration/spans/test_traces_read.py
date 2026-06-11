@@ -22,6 +22,8 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
                     "openinference.span.kind": "AGENT",
                     "gen_ai.conversation.id": "trace-session",
                     "project": "project-a",
+                    "experiment.id": "experiment-a",
+                    "test_case.id": "case-a",
                     "experiment.run_id": "run-a",
                     "dataset.name": "dataset-a",
                     "experiment.metadata": {"split": "dev"},
@@ -66,7 +68,7 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
         "/apis/intake/v2/workspaces/default/traces",
         params={
             "filter[session_id]": "trace-session",
-            "filter[evaluation_run_id]": "run-a",
+            "filter[experiment_id]": "experiment-a",
             "page_size": 20,
         },
     )
@@ -89,9 +91,11 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     assert Decimal(str(trace["cost_output_usd"])) == Decimal("0.0037")
     assert trace["span_count"] == 2
     assert trace["error_count"] == 0
-    assert trace["evaluation_context"]["evaluation_run_id"] == "run-a"
-    assert trace["evaluation_context"]["dataset_name"] == "dataset-a"
-    assert trace["evaluation_context"]["metadata"] == {"split": "dev"}
+    assert trace["experiment_context"]["experiment_id"] == "experiment-a"
+    assert trace["experiment_context"]["test_case_id"] == "case-a"
+    assert "evaluation_context" not in trace
+    assert "experiment_id" not in trace
+    assert "test_case_id" not in trace
     assert "source_format" not in trace
     assert "input" not in trace
     assert "output" not in trace
@@ -110,7 +114,11 @@ def test_traces_read_returns_core_trace_summary(client: TestClient, make_otlp_re
     summary_trace = summary_response.json()["data"][0]
     assert summary_trace["id"] == trace["id"]
     assert summary_trace["status"] == "success"
-    assert summary_trace["evaluation_context"]["evaluation_run_id"] == "run-a"
+    assert summary_trace["experiment_context"]["experiment_id"] == "experiment-a"
+    assert summary_trace["experiment_context"]["test_case_id"] == "case-a"
+    assert "evaluation_context" not in summary_trace
+    assert "experiment_id" not in summary_trace
+    assert "test_case_id" not in summary_trace
     assert "input_tokens" not in summary_trace
     assert "cost_usd" not in summary_trace
     assert "span_count" not in summary_trace

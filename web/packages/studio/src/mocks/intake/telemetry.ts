@@ -32,9 +32,8 @@ const trace1: Trace = {
   cost_usd: 0.0032,
   span_count: 4,
   error_count: 0,
-  evaluation_context: {
-    evaluation_run_id: 'eval-run-1729',
-    dataset_name: 'support-policy-smoke',
+  experiment_context: {
+    experiment_id: 'support-policy-smoke',
     test_case_id: 'case-0042',
   },
 };

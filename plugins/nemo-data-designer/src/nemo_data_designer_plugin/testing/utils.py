@@ -40,7 +40,7 @@ from nmp.core.jobs.service import JobsService
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
 from nmp.platform_runner.plugin_adapter import NemoServiceAdapter
-from nmp.testing import ClientContext, TaskResult, add_mock_provider, create_test_client
+from nmp.testing import ClientContext, TaskResult, add_mock_provider, create_test_client, subprocess_job_executor_patch
 
 WORKSPACE_NAME = "my-workspace"
 
@@ -412,14 +412,17 @@ async def task_context(
         ephemeral.mkdir()
         persistent.mkdir()
 
-        with create_test_client(
-            _TestDataDesignerService,
-            FilesService,
-            JobsService,
-            client_type=ClientContext,
-            workspaces=["default"],
-            workspace="default",
-        ) as client_context:
+        with (
+            subprocess_job_executor_patch(),
+            create_test_client(
+                _TestDataDesignerService,
+                FilesService,
+                JobsService,
+                client_type=ClientContext,
+                workspaces=["default"],
+                workspace="default",
+            ) as client_context,
+        ):
             job = client_context.sdk.jobs.create(
                 workspace="default",
                 name=job_name,

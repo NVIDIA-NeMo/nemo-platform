@@ -29,6 +29,7 @@ test_normalize_endpoint if {
     mock_endpoints := {
         "/apis/models/v2/workspaces/{workspace}/models": {"get": {}},
         "/apis/models/v2/workspaces/{workspace}/models/{name}": {"get": {}},
+        "/apis/files/v2/workspaces/{workspace}/filesets": {"get": {}},
         "/apis/files/v2/workspaces/{workspace}/filesets/{name}": {"get": {}},
         "/apis/entities/v2/workspaces": {"get": {}},
         "/apis/entities/v2/workspaces/{workspace}/members": {"get": {}}
@@ -52,4 +53,7 @@ test_normalize_endpoint if {
     common.normalize_endpoint("/apis/entities/v2/workspaces") == "/apis/entities/v2/workspaces"
         with data.authz.endpoints as mock_endpoints
     
+    # Test filesets collection pattern
+    common.normalize_endpoint("/apis/files/v2/workspaces/test-ns/filesets") == "/apis/files/v2/workspaces/{workspace}/filesets"
+        with data.authz.endpoints as mock_endpoints
 }

@@ -3,13 +3,14 @@ name = "nmp-models"
 version = "0.1.0"
 description = "NeMo Platform Models provides model configuration, scaling, and deployment capabilities."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 
 classifiers = [
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 
 dependencies = [
@@ -37,8 +38,8 @@ packages = ["src/nmp"]
 [dependency-groups]
 # No task deps for models — `nmp.core.models.parallelism` is the only consumer of
 # torch/transformers/accelerate, and it's only invoked from the `model_spec` batch
-# task. That task runs in the `customizer-tasks` image, which installs torch
-# itself; parallelism tests in this repo guard with `pytest.importorskip("torch")`.
+# task. That task runs in the `nmp-automodel-tasks` image (PyTorch from
+# nmp-automodel-base); parallelism tests in this repo guard with `pytest.importorskip("torch")`.
 
 dev = [
     "pytest>=8.3.4",

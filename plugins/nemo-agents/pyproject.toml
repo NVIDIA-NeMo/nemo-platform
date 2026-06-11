@@ -2,7 +2,7 @@
 name = "nemo-agents-plugin"
 version = "0.1.0"
 description = "NeMo Agents Plugin — agent lifecycle management on the NeMo Platform."
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "nemo-platform",
     "nemo-platform-plugin",

@@ -2,7 +2,7 @@
 name = "nmp-platform-runner"
 version = "0.0.1"
 description = "Headless local platform runner for Nemo Platform services"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "fastapi[standard]>=0.115.4",
     "uvicorn[standard]>=0.12.0",

@@ -1,0 +1,3 @@
+# Newline-separated regexes for paths TruffleHog should skip.
+# uv.lock contains many sha256 hex digests that false-positive as SentryToken.
+uv\.lock

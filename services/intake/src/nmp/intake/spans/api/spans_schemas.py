@@ -10,8 +10,10 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal, Self
 
+from nmp.common.api.common import Page
 from nmp.common.entities.values import DatetimeFilter
 from nmp.intake.spans.domain import IntakeSpan, SpanKind, SpanStatus
+from nmp.intake.spans.domain import SpanGroup as IntakeSpanGroup
 from nmp.intake.spans.span_attribute_bags import SpanAttributeBags
 from nmp.intake.spans.span_semantic_attributes import SpanSemanticAttributes
 from pydantic import BaseModel, ConfigDict, Field
@@ -20,6 +22,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class SpanSortField(StrEnum):
     STARTED_AT_ASC = "started_at"
     STARTED_AT_DESC = "-started_at"
+
+
+class SpanGroupSortField(StrEnum):
+    SPAN_COUNT_ASC = "span_count"
+    SPAN_COUNT_DESC = "-span_count"
+
+
+class SpanGroupBy(StrEnum):
+    TRACE_ID = "trace_id"
+    SESSION_ID = "session_id"
 
 
 SpanMode = Literal["summary", "detailed"]
@@ -198,6 +210,19 @@ class Span(BaseModel):
             raw_attributes=None if summary else attribute_bags.raw_attributes_json(),
             ingested_at=span.event_ts,
         )
+
+
+class SpanGroup(BaseModel):
+    group: dict[str, str] = Field(description="Group key values, keyed by the requested group-by fields.")
+    span_count: int = Field(ge=0, description="Number of matching spans in this group.")
+
+    @classmethod
+    def from_domain(cls, group: IntakeSpanGroup) -> Self:
+        return cls(group=group.group, span_count=group.span_count)
+
+
+class SpanGroupsPage(Page[SpanGroup]):
+    grouped_by: list[SpanGroupBy] = Field(description="Span fields used to group the matching spans.")
 
 
 def _evaluation_context(

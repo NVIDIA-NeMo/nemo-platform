@@ -146,6 +146,23 @@ Methods:
 - <code title="get /apis/intake/v2/workspaces/{workspace}/spans/{span_id}">client.intake.spans.<a href="./src/nemo_platform/resources/intake/spans/spans.py">retrieve</a>(span_id, \*, workspace) -> <a href="./src/nemo_platform/types/intake/span.py">Span</a></code>
 - <code title="get /apis/intake/v2/workspaces/{workspace}/spans">client.intake.spans.<a href="./src/nemo_platform/resources/intake/spans/spans.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/span_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/span.py">SyncDefaultPagination[Span]</a></code>
 
+### Groups
+
+Types:
+
+```python
+from nemo_platform.types.intake.spans import (
+    SpanGroup,
+    SpanGroupBy,
+    SpanGroupSortField,
+    SpanGroupsPage,
+)
+```
+
+Methods:
+
+- <code title="get /apis/intake/v2/workspaces/{workspace}/spans/groups">client.intake.spans.groups.<a href="./src/nemo_platform/resources/intake/spans/groups.py">list</a>(\*, workspace, \*\*<a href="src/nemo_platform/types/intake/spans/group_list_params.py">params</a>) -> <a href="./src/nemo_platform/types/intake/spans/span_group.py">SyncDefaultPagination[SpanGroup]</a></code>
+
 ### EvaluatorResults
 
 Types:

@@ -146,7 +146,7 @@ class ModelsController(Controller):
         """Get model entity from Models API v2 based on deployment config.
 
         Extracts model information from the config and queries Models API v2 models endpoint.
-        If config.model_entity_id is set, it takes precedence over nim_deployment-derived values.
+        If config.model_entity_id is set, it takes precedence over model_spec-derived values.
 
         Args:
             config: The ModelDeploymentConfig
@@ -171,17 +171,17 @@ class ModelsController(Controller):
                         revision=revision,
                     )
 
-            # Extract model information from nim_deployment when model_entity_id not set
-            nim_config = config.nim_deployment
-            if not nim_config:
-                logger.debug("No nim_deployment config, skipping entity store query")
+            # Extract model information from model_spec when model_entity_id not set
+            model_spec = config.model_spec
+            if not model_spec:
+                logger.debug("No model_spec config, skipping entity store query")
                 return None
 
             # Parse model configuration using unified parsing utility
             model_workspace, model_name, revision = parse_model_name_revision(
-                model_namespace=nim_config.model_namespace,
-                model_name=nim_config.model_name,
-                model_revision=nim_config.model_revision,
+                model_namespace=model_spec.model_namespace,
+                model_name=model_spec.model_name,
+                model_revision=model_spec.model_revision,
             )
 
             if not model_workspace or not model_name:

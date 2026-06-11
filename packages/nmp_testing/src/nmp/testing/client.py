@@ -246,11 +246,11 @@ def create_test_client(
 
     Example (with access_log for request verification):
         with create_test_client(
-            EvaluatorService, auth_enabled=True, access_log=True, client_type=ClientContext
+            FilesService, auth_enabled=True, access_log=True, client_type=ClientContext
         ) as ctx:
             ctx.access_log.clear()  # Clear requests from setup
             ctx.test_client.get(
-                "/apis/evaluation/v2/workspaces/default/metrics",
+                "/apis/files/v2/workspaces/default/filesets",
                 headers={"X-NMP-Principal-Id": "test@example.com"},
             )
             # Verify internal entity requests used the same principal

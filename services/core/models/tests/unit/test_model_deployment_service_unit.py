@@ -13,11 +13,12 @@ from nmp.core.models.api.service.model_deployment_service import DeploymentStatu
 from nmp.core.models.entities import ModelDeployment as ModelDeploymentEntity
 from nmp.core.models.entities import ModelDeploymentConfig as ModelDeploymentConfigEntity
 from nmp.core.models.schemas import (
+    ContainerExecutorConfig,
     CreateModelDeploymentRequest,
     ModelDeployment,
+    ModelDeploymentConfigModelSpec,
     ModelDeploymentStatus,
     ModelType,
-    NIMDeployment,
     UpdateModelDeploymentRequest,
     UpdateModelDeploymentStatusRequest,
 )
@@ -83,12 +84,13 @@ def sample_config_entity():
         base_name="test-config",
         entity_version=1,
         project="test-project",
-        nim_deployment=NIMDeployment(
+        engine="nim",
+        model_spec=ModelDeploymentConfigModelSpec(
             model_type=ModelType.LLM,
-            gpu=1,
             model_namespace="nvidia",
             model_name="llama-3-8b",
         ),
+        executor_config=ContainerExecutorConfig(gpu=1),
     )
 
 

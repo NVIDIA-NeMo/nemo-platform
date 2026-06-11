@@ -130,6 +130,11 @@ class TestApplyRunEnvStandalone:
         apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
         assert env["NMP_BASE_URL"] == "http://127.0.0.1:8080"
 
+    def test_sets_embedded_pdp_base_url_from_base_url(self):
+        env: dict[str, str] = {}
+        apply_run_environment(_make_config(host="0.0.0.0", port=9090), env=env)
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://127.0.0.1:9090"
+
     def test_sets_service_host_when_not_present(self):
         env: dict[str, str] = {}
         apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
@@ -178,6 +183,14 @@ class TestApplyRunEnvDeployed:
         env: dict[str, str] = {"NMP_BASE_URL": "http://nemo-platform-api:8080"}
         apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
         assert env["NMP_BASE_URL"] == "http://nemo-platform-api:8080"
+
+    def test_preserves_existing_embedded_pdp_base_url(self):
+        env: dict[str, str] = {
+            "NMP_BASE_URL": "http://nemo-platform-api:8080",
+            "NMP_AUTH_POLICY_DECISION_POINT_BASE_URL": "http://nemo-auth:8080",
+        }
+        apply_run_environment(_make_config(host="0.0.0.0", port=8080), env=env)
+        assert env["NMP_AUTH_POLICY_DECISION_POINT_BASE_URL"] == "http://nemo-auth:8080"
 
     def test_preserves_existing_service_host(self):
         env: dict[str, str] = {"NMP_SERVICE_HOST": "nemo-platform-api"}

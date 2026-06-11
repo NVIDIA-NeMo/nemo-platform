@@ -39,6 +39,7 @@ runs:
         filters: |
           openapi:
             - 'openapi/**'
+            - 'plugins/*/openapi/**'
           tests:
             - 'tests/**'
             - 'pytest.ini'

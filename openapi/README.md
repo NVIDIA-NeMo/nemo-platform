@@ -19,7 +19,7 @@ The following table lists all the OpenAPI specifications that are merged into th
 | Entity Store | Generated from `entity_store.server:app` | `entity-store.openapi.yaml` |
 | Evaluator | Generated from `evaluator.server:app` | `evaluator.openapi.yaml` |
 | Guardrails | Generated from `guardrails.app:app` | `guardrails.openapi.yaml` |
-| Customizer | Generated via `customizer/openapi/generate_openapi_spec.py` | `customizer.openapi.yaml` |
+| Customization | Generated from `nemo-customizer-plugin` contributor routes | `customization.openapi.yaml` |
 | Deployment Management | Direct copy from `deployment.openapi.yaml` | `deployment-management.openapi.yaml` |
 | Jobs | Generated from `jobs.api.server:app` | `jobs.openapi.yaml` |
 | Data Designer | Generated from `data_designer.api.server:app` | `data-designer.openapi.yaml` |
