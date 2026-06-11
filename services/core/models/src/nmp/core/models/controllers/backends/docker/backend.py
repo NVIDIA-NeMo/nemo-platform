@@ -218,7 +218,12 @@ class DockerServiceBackend(ServiceBackend):
             return delete_result
         return await self.create_model_deployment(deployment, config, model_entity)
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(
+        self,
+        deployment: ModelDeployment,
+        config: Optional[ModelDeploymentConfig] = None,
+        model_entity: Optional[ModelEntity] = None,
+    ) -> DeploymentStatusUpdate:
         """Get the status of a Docker model deployment.
 
         While the deployment is still progressing through the creation

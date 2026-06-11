@@ -1,13 +1,16 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-"""vLLM compiler for the docker service backend.
+"""Backend-agnostic vLLM compiler.
 
 Turns a ``ModelDeploymentConfig`` whose ``engine`` is ``vllm`` into the image,
-``vllm serve`` argument vector, and environment variables for a ``docker run``
-container. The shared creation pipeline (GPU/port/volume allocation, the weight
-puller, container start) is reused from ``DockerDeploymentCreationReconciler``;
-this module only produces the vLLM-specific resource shape.
+``vllm serve`` argument vector, and environment variables for a vLLM server.
+
+These functions take a :class:`DeploymentConfigView` and a ``ModelEntity`` and
+return plain data (arg vectors, env dicts, image tuples, TP sizing) -- they are
+NOT specific to any service backend. The docker backend renders the result into
+a ``docker run`` container; the k8s backend renders it into native Kubernetes
+objects. Keep this module free of backend-specific imports so both can reuse it.
 """
 
 from logging import getLogger

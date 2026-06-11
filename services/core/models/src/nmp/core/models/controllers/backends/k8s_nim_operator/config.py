@@ -108,6 +108,16 @@ class K8sNimOperatorConfig(BaseModel):
         description="Default NIMService image tag (used if not specified in deployment config)",
     )
 
+    # vLLM image configuration (vLLM engine on k8s; raw-object emission path)
+    default_vllm_image: str = Field(
+        default="vllm/vllm-openai",
+        description="Default vLLM server image repository (used if not specified in deployment config)",
+    )
+    default_vllm_image_tag: str = Field(
+        default="v0.22.1",
+        description="Default vLLM server image tag (used if not specified in deployment config)",
+    )
+
     # NIM runtime configuration
     nim_guided_decoding_backend: str = Field(
         default="outlines",
@@ -118,6 +128,25 @@ class K8sNimOperatorConfig(BaseModel):
     namespace: Optional[str] = Field(
         default=None,
         description="Kubernetes namespace for NIM deployments (defaults to controller's namespace if not set)",
+    )
+
+    # ServiceAccount for directly-emitted workloads (vLLM Deployment pods + weight
+    # puller Job). A single shared models ServiceAccount is used; the platform Helm
+    # chart is responsible for creating it and granting any required RBAC/SCC.
+    # If not set, pods run under the namespace's default ServiceAccount.
+    service_account_name: Optional[str] = Field(
+        default=None,
+        description="ServiceAccount name for directly-emitted vLLM Deployment pods and the weight-puller Job. "
+        "If not set, the namespace default ServiceAccount is used.",
+    )
+
+    # Shared memory (/dev/shm) for directly-emitted vLLM Deployment pods. vLLM uses
+    # /dev/shm for tensor-parallel NCCL communication. If not set, the dshm emptyDir
+    # is mounted with no explicit size limit (uses the node default).
+    default_shared_memory_size_limit: Optional[str] = Field(
+        default=None,
+        description="Shared memory (/dev/shm) size limit for vLLM Deployment pods (e.g. '8Gi'). "
+        "If not set, the emptyDir uses the node default size.",
     )
 
     # Default Kubernetes configuration for all NIM deployments

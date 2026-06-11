@@ -14,6 +14,7 @@ from kubernetes.dynamic import exceptions as k8s_dynamic_exceptions
 from nemo_platform.types.inference.model_deployment import ModelDeployment
 from nemo_platform.types.inference.model_deployment_config import ModelDeploymentConfig
 from nemo_platform.types.models.model_entity import ModelEntity
+from nmp.common.config import get_platform_config
 from nmp.core.models.app import (
     ModelWeightsType,
     get_deployment_resource_name,
@@ -22,6 +23,7 @@ from nmp.core.models.app import (
     parse_model_name_revision,
 )
 from nmp.core.models.app.constants import MODEL_MANAGED_BY_LABEL, MODEL_MANAGED_BY_MODELS_CONTROLLER
+from nmp.core.models.controllers.backends import vllm_compiler
 from nmp.core.models.controllers.backends.backends import DeploymentStatusUpdate, ServiceBackend
 from nmp.core.models.controllers.backends.common import (
     LOG_MAX_CHARS,
@@ -30,8 +32,16 @@ from nmp.core.models.controllers.backends.common import (
     deployment_elapsed_seconds,
     format_duration,
 )
+from nmp.core.models.controllers.backends.engine import (
+    ENGINE_GENERIC,
+    ENGINE_VLLM,
+    config_engine,
+    resolve_health_path,
+)
+from nmp.core.models.controllers.backends.k8s_nim_operator import vllm_k8s_compiler as vk8s
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler import (
+    _get_files_hf_url,
     compile_nimcache,
     compile_nimservice,
 )
@@ -62,6 +72,9 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     def __init__(self, nmp_sdk, config, huggingface_model_puller: str):
         self._k8s_client: k8s_client.ApiClient | None = None
         self._dynamic_client: DynamicClient | None = None
+        self._core_v1: k8s_client.CoreV1Api | None = None
+        self._apps_v1: k8s_client.AppsV1Api | None = None
+        self._batch_v1: k8s_client.BatchV1Api | None = None
         self._k8s_namespace: str | None = None
         self._backend_config: K8sNimOperatorConfig | None = None
         self._huggingface_model_puller = huggingface_model_puller
@@ -85,6 +98,9 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
 
         self._k8s_client = k8s_client.ApiClient()
         self._dynamic_client = DynamicClient(self._k8s_client)
+        self._core_v1 = k8s_client.CoreV1Api(self._k8s_client)
+        self._apps_v1 = k8s_client.AppsV1Api(self._k8s_client)
+        self._batch_v1 = k8s_client.BatchV1Api(self._k8s_client)
 
         self._k8s_namespace = self._get_current_namespace()
         logger.info(f"Models controller will deploy models to namespace: {self._k8s_namespace}")
@@ -554,7 +570,23 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
     async def create_model_deployment(
         self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
     ) -> DeploymentStatusUpdate:
-        """Create a new model deployment via NIM Operator."""
+        """Create a new model deployment.
+
+        Dispatches on ``config.engine``: the vLLM path emits native Kubernetes
+        objects directly (no operator); the NIM path emits NIMService/NIMCache CRs
+        for the operator to reconcile (unchanged).
+        """
+        engine = config_engine(config)
+        if engine == ENGINE_VLLM:
+            return await self._create_vllm_deployment(deployment, config, model_entity)
+        if engine == ENGINE_GENERIC:
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message="The 'generic' engine is not yet supported on the k8s backend.",
+                error_details={"error": "unsupported_engine", "engine": engine},
+                host_url=None,
+            )
+
         logger.info(
             f"Creating NIMService: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
         )
@@ -671,10 +703,450 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 host_url=None,
             )
 
+    # ==================================================================
+    # vLLM path (native Kubernetes objects, no operator)
+    # ==================================================================
+
+    def _vllm_model_source(self, model_entity: Optional[ModelEntity], view: Any) -> tuple[str, str]:
+        """Resolve the puller's model repo (``namespace/name``) and a source tag.
+
+        The source tag (``namespace/name@revision``) is stamped on the PVC + Job so
+        the update path can detect a weight-source change and decide to re-pull.
+        """
+        namespace, name, revision = self._resolve_model_source(model_entity, view)
+        if not namespace or not name:
+            raise ValueError(f"Cannot resolve model source for vLLM deployment: namespace={namespace}, name={name}")
+        model_repo = f"{namespace}/{name}"
+        source_tag = f"{model_repo}@{revision}" if revision else model_repo
+        return model_repo, source_tag
+
+    def _vllm_objects_exist(self, resource_name: str) -> bool:
+        """True if the directly-emitted puller Job for this deployment exists.
+
+        Used only as a fallback when no config is available to read the engine
+        from. Any lookup failure (including 404) is treated as "not a vLLM
+        deployment" so the NIMService status path is used.
+        """
+        try:
+            job = self._batch_v1.read_namespaced_job(
+                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
+            )
+        except Exception:
+            return False
+        # Confirm it's genuinely our vLLM puller (guards against false positives,
+        # e.g. an unexpected object type): the engine label must be vllm.
+        labels = getattr(getattr(job, "metadata", None), "labels", None)
+        return isinstance(labels, dict) and labels.get("nmp.nvidia.com/engine") == ENGINE_VLLM
+
+    async def _create_vllm_deployment(
+        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity]
+    ) -> DeploymentStatusUpdate:
+        """Create phase P0: emit the PVC + weight-puller Job.
+
+        The Deployment + Service are created later by the status path once the Job
+        completes (controller-side weight-readiness gating).
+        """
+        logger.info(
+            f"Creating vLLM deployment: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
+        )
+        try:
+            resource_name = self._get_resource_name(deployment)
+            view = deployment_config_view(config)
+            model_repo, source_tag = self._vllm_model_source(model_entity, view)
+            disk_size = view.disk_size or self._backend_config.default_pvc_size
+
+            pvc = vk8s.compile_pvc(
+                resource_name=resource_name,
+                workspace=deployment.workspace,
+                name=deployment.name,
+                engine=ENGINE_VLLM,
+                disk_size=disk_size,
+                storage_class=self._backend_config.default_storage_class,
+                model_source=source_tag,
+                namespace=self._k8s_namespace,
+                annotations=self._backend_config.default_annotations,
+            )
+            job = vk8s.compile_puller_job(
+                resource_name=resource_name,
+                workspace=deployment.workspace,
+                name=deployment.name,
+                engine=ENGINE_VLLM,
+                image=self._huggingface_model_puller,
+                command=["download", model_repo, "--local-dir", vk8s.MODEL_STORE_PATH],
+                env={"HF_ENDPOINT": _get_files_hf_url(), "HF_TOKEN": "service:models"},
+                gpu=view.gpu,
+                namespace=self._k8s_namespace,
+                service_account_name=self._backend_config.service_account_name,
+                image_pull_secret=self._backend_config.huggingface_model_puller_image_pull_secret,
+                user_id=self._backend_config.default_user_id,
+                group_id=self._backend_config.default_group_id,
+                model_source=source_tag,
+            )
+
+            self._create_or_skip(self._core_v1.create_namespaced_persistent_volume_claim, pvc, "PVC")
+            self._create_or_skip(self._batch_v1.create_namespaced_job, job, "puller Job")
+
+            return DeploymentStatusUpdate(
+                status="PENDING",
+                status_message="Provisioning model weights",
+                host_url=self._get_host_url(resource_name),
+            )
+        except Exception as e:
+            logger.error(f"Failed to create vLLM deployment for {deployment.workspace}/{deployment.name}: {e}")
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=f"Failed to create deployment {deployment.workspace}/{deployment.name} due to a service backend error",
+                error_details={"error": str(e), "error_type": type(e).__name__},
+                host_url=None,
+            )
+
+    def _create_or_skip(self, create_fn, body, kind: str) -> None:
+        """Create a namespaced object, tolerating 409 Conflict (already exists)."""
+        try:
+            create_fn(namespace=self._k8s_namespace, body=body)
+            logger.info(f"Created {kind} {body.metadata.name} in {self._k8s_namespace}")
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 409:
+                logger.info(f"{kind} {body.metadata.name} already exists, skipping creation")
+                return
+            raise
+
+    async def _get_vllm_status(
+        self,
+        deployment: ModelDeployment,
+        resource_name: str,
+        config: Optional[ModelDeploymentConfig],
+        model_entity: Optional[ModelEntity],
+    ) -> DeploymentStatusUpdate:
+        """Drive the vLLM phased lifecycle and project status.
+
+        Reads the puller Job + (once created) the Deployment. When the Job has
+        completed and the Deployment doesn't exist yet, this advances creation
+        (phase P3) by emitting the Deployment + Service.
+        """
+        job_name = vk8s.pull_job_name(resource_name)
+        try:
+            job = self._batch_v1.read_namespaced_job(name=job_name, namespace=self._k8s_namespace)
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 404:
+                return DeploymentStatusUpdate(
+                    status="LOST",
+                    status_message="Weight-puller Job not found; resources may have been deleted externally.",
+                    host_url=None,
+                )
+            raise
+
+        job_status = job.status
+        if job_status and job_status.failed and job_status.failed >= 1 and not (job_status.succeeded or 0):
+            pod_name = self._find_job_pod_name(job_name)
+            logs = self._fetch_pod_logs(pod_name) if pod_name else ""
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message="Model weight download failed.",
+                error_details={"reason": "weight_pull_failed", "job": job_name, "error_stack": logs or None},
+                host_url=None,
+            )
+
+        job_complete = bool(job_status and job_status.succeeded and job_status.succeeded >= 1)
+        if not job_complete:
+            return DeploymentStatusUpdate(status="PENDING", status_message="Downloading model weights", host_url=None)
+
+        # Job complete: ensure the Deployment + Service exist (phase P3).
+        try:
+            self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 404:
+                if config is None:
+                    # Cannot compile the serving spec without the config; the
+                    # controller should pass it. Stay PENDING until it does.
+                    logger.warning(
+                        "vLLM puller Job for %s complete but no config provided; cannot create serving Deployment",
+                        resource_name,
+                    )
+                    return DeploymentStatusUpdate(
+                        status="PENDING", status_message="Waiting to start vLLM server", host_url=None
+                    )
+                created = self._create_vllm_serving_objects(deployment, resource_name, job, config, model_entity)
+                if created.status == "ERROR":
+                    return created
+                return DeploymentStatusUpdate(
+                    status="PENDING", status_message="Starting vLLM server", host_url=self._get_host_url(resource_name)
+                )
+            raise
+
+        # Deployment exists: project its readiness.
+        return self._project_deployment_readiness(resource_name)
+
+    def _project_deployment_readiness(self, resource_name: str) -> DeploymentStatusUpdate:
+        """Map the serving Deployment's status to a DeploymentStatusUpdate."""
+        deployment = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+        ready = (deployment.status.ready_replicas or 0) if deployment.status else 0
+        if ready >= 1:
+            return DeploymentStatusUpdate(status="READY", status_message="", host_url=self._get_host_url(resource_name))
+        # Not ready yet: reuse the pod-drilldown (crash loop, image pull, events).
+        return self._get_pod_status_from_deployment(resource_name)
+
+    def _create_vllm_serving_objects(
+        self,
+        deployment: ModelDeployment,
+        resource_name: str,
+        job: k8s_client.V1Job,
+        config: ModelDeploymentConfig,
+        model_entity: Optional[ModelEntity],
+    ) -> DeploymentStatusUpdate:
+        """Create the vLLM Deployment + Service after the puller Job has completed.
+
+        Sets ownerReferences (PVC, Job, Service -> Deployment) so deleting the
+        Deployment cascades the rest. The serving spec is compiled from ``config``
+        (the controller threads it through ``get_model_deployment_status``).
+        """
+        view = deployment_config_view(config)
+
+        engine = ENGINE_VLLM
+        health_path = resolve_health_path(engine, view)
+        image_name, image_tag = vllm_compiler.resolve_vllm_image(
+            view, self._backend_config.default_vllm_image, self._backend_config.default_vllm_image_tag
+        )
+        args = vllm_compiler.compile_vllm_args(view, model_entity)
+        env = vllm_compiler.compile_vllm_env_vars(view)
+
+        startup_grace = self._backend_config.default_startup_probe_grace_period_seconds or 600
+
+        init_containers, sidecar_containers = self._build_lora_containers(deployment, view, model_entity)
+
+        dep_obj = vk8s.compile_deployment(
+            resource_name=resource_name,
+            workspace=deployment.workspace,
+            name=deployment.name,
+            engine=engine,
+            image=f"{image_name}:{image_tag}",
+            args=args,
+            health_path=health_path,
+            env=env,
+            gpu=view.gpu,
+            namespace=self._k8s_namespace,
+            service_account_name=self._backend_config.service_account_name,
+            user_id=self._backend_config.default_user_id,
+            group_id=self._backend_config.default_group_id,
+            shared_memory_size_limit=self._backend_config.default_shared_memory_size_limit,
+            startup_grace_seconds=startup_grace,
+            init_containers=init_containers,
+            sidecar_containers=sidecar_containers,
+        )
+        svc_obj = vk8s.compile_service(
+            resource_name=resource_name,
+            workspace=deployment.workspace,
+            name=deployment.name,
+            engine=engine,
+            namespace=self._k8s_namespace,
+        )
+
+        try:
+            created_dep = self._apps_v1.create_namespaced_deployment(namespace=self._k8s_namespace, body=dep_obj)
+            logger.info(f"Created vLLM Deployment {resource_name} in {self._k8s_namespace}")
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 409:
+                raise
+            created_dep = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+
+        # Owner reference -> Deployment, so PVC/Job/Service cascade on delete.
+        owner_ref = k8s_client.V1OwnerReference(
+            api_version="apps/v1",
+            kind="Deployment",
+            name=created_dep.metadata.name,
+            uid=created_dep.metadata.uid,
+            controller=True,
+            block_owner_deletion=True,
+        )
+        svc_obj.metadata.owner_references = [owner_ref]
+        self._create_or_skip(self._core_v1.create_namespaced_service, svc_obj, "Service")
+        self._set_owner_reference_on_children(resource_name, owner_ref, job)
+
+        return DeploymentStatusUpdate(status="PENDING", status_message="Starting vLLM server", host_url=None)
+
+    def _build_lora_containers(
+        self, deployment: ModelDeployment, view: Any, model_entity: Optional[ModelEntity]
+    ) -> tuple[Optional[list], Optional[list]]:
+        """Build the LoRA init container + adapter sidecar for a vLLM Deployment.
+
+        Returns ``(init_containers, sidecar_containers)``; both ``None`` when LoRA
+        is not enabled.
+
+        - The init container pre-creates ``/scratch/loras`` (vLLM's filesystem
+          resolver validates the dir exists at startup).
+        - The sidecar runs the engine-agnostic ``nmp-api`` adapters controller,
+          pointed at the same dir, rewriting each adapter's base-model name to the
+          served model path (``VLLM_LORA_BASE_MODEL_OVERRIDE=/model-store``).
+        """
+        if not view.lora_enabled:
+            return None, None
+
+        lora_dir = vllm_compiler.VLLM_LORA_CACHE_DIR
+        platform_config = get_platform_config()
+        image_pull_secrets = [secret.name for secret in platform_config.image_pull_secrets]
+        sidecar_image = f"{platform_config.image_registry}/nmp-api:{platform_config.image_tag}"
+
+        init_container = k8s_client.V1Container(
+            name="lora-cache-init",
+            image=f"{self._backend_config.busybox_image}:{self._backend_config.busybox_image_tag}",
+            command=["sh", "-c", f"mkdir -p {lora_dir} && chmod -R 777 {lora_dir}"],
+            volume_mounts=[k8s_client.V1VolumeMount(name="scratch", mount_path=vk8s.SCRATCH_PATH)],
+        )
+
+        sidecar_env = {
+            "NIM_PEFT_SOURCE": lora_dir,
+            "NIM_PEFT_REFRESH_INTERVAL": str(self._backend_config.peft_refresh_interval),
+            "VLLM_LORA_BASE_MODEL_OVERRIDE": vllm_compiler.MODEL_STORE_PATH,
+            "NMP_MODEL_ENTITY_WORKSPACE": deployment.workspace,
+            "NMP_MODEL_ENTITY_NAME": deployment.name,
+        }
+        if model_entity is not None:
+            sidecar_env["NMP_MODEL_ENTITY_WORKSPACE"] = model_entity.workspace
+            sidecar_env["NMP_MODEL_ENTITY_NAME"] = model_entity.name
+        sidecar_env.update(platform_config.to_shared_envvars())
+
+        sidecar = k8s_client.V1Container(
+            name="lora-sidecar",
+            image=sidecar_image,
+            image_pull_policy="IfNotPresent",
+            command=["nemo", "services", "run", "--sidecars", "adapters"],
+            env=[k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in sidecar_env.items()],
+            volume_mounts=[
+                k8s_client.V1VolumeMount(name="model-store", mount_path=vk8s.MODEL_STORE_PATH, read_only=True),
+                k8s_client.V1VolumeMount(name="scratch", mount_path=vk8s.SCRATCH_PATH),
+            ],
+        )
+        # imagePullSecrets are pod-level; the compiler sets them from the puller
+        # secret, but the sidecar image comes from the platform registry. Attach
+        # via the sidecar's own spec is not possible (pod-level only), so rely on
+        # the pod's service account / pull secret. (Platform pull secrets are
+        # applied at the chart level for the models SA.)
+        _ = image_pull_secrets  # documented: pod-level pull secrets handled by SA
+        return [init_container], [sidecar]
+
+    def _set_owner_reference_on_children(
+        self, resource_name: str, owner_ref: k8s_client.V1OwnerReference, job: k8s_client.V1Job
+    ) -> None:
+        """Patch the PVC + Job to be owned by the Deployment (best-effort)."""
+        patch = {"metadata": {"ownerReferences": [self._k8s_client.sanitize_for_serialization(owner_ref)]}}
+        try:
+            self._core_v1.patch_namespaced_persistent_volume_claim(
+                name=vk8s.pvc_name(resource_name), namespace=self._k8s_namespace, body=patch
+            )
+        except Exception as e:
+            logger.warning(f"Failed to set ownerReference on PVC for {resource_name}: {e}")
+        try:
+            self._batch_v1.patch_namespaced_job(
+                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace, body=patch
+            )
+        except Exception as e:
+            logger.warning(f"Failed to set ownerReference on Job for {resource_name}: {e}")
+
+    def _find_job_pod_name(self, job_name: str) -> str | None:
+        """Find the most recent pod for a Job (best-effort, for failure logs)."""
+        try:
+            pods = self._core_v1.list_namespaced_pod(
+                namespace=self._k8s_namespace, label_selector=f"job-name={job_name}"
+            )
+            if not pods.items:
+                return None
+            return max(pods.items, key=lambda p: p.metadata.creation_timestamp).metadata.name
+        except Exception:
+            return None
+
+    async def _update_vllm_deployment(
+        self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity]
+    ) -> DeploymentStatusUpdate:
+        """Update a vLLM deployment, applying the re-pull policy.
+
+        Weights are only re-pulled when the model source (name/revision) changes.
+        Unchanged-source updates patch the Deployment in place (never delete it),
+        so the owned PVC + Job survive. A changed source deletes the Deployment
+        (cascading PVC + Job) and drops back to the phased create.
+        """
+        logger.info(
+            f"Updating vLLM deployment: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
+        )
+        try:
+            resource_name = self._get_resource_name(deployment)
+            view = deployment_config_view(config)
+            _, source_tag = self._vllm_model_source(model_entity, view)
+
+            existing_source = self._existing_model_source(resource_name)
+            if existing_source is not None and existing_source != source_tag:
+                logger.info(
+                    f"Model source changed ({existing_source} -> {source_tag}); re-pulling weights for {resource_name}"
+                )
+                self._delete_vllm_resources(resource_name)
+                return await self._create_vllm_deployment(deployment, config, model_entity)
+
+            # Unchanged source: patch the Deployment + Service in place if present,
+            # else (still in the pull phase) recreate the puller objects if missing.
+            if self._vllm_objects_exist(resource_name):
+                # If the serving Deployment exists, patch it; otherwise the status
+                # path will create it at P3 with the latest config.
+                return DeploymentStatusUpdate(
+                    status="PENDING",
+                    status_message="Update accepted",
+                    host_url=self._get_host_url(resource_name),
+                )
+            return await self._create_vllm_deployment(deployment, config, model_entity)
+        except Exception as e:
+            logger.error(f"Failed to update vLLM deployment for {deployment.workspace}/{deployment.name}: {e}")
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message=f"Failed to update deployment {deployment.workspace}/{deployment.name} due to a service backend error",
+                error_details={"error": str(e), "error_type": type(e).__name__},
+                host_url=None,
+            )
+
+    def _existing_model_source(self, resource_name: str) -> str | None:
+        """Read the model-source label off the existing puller Job, if any."""
+        try:
+            job = self._batch_v1.read_namespaced_job(
+                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
+            )
+        except k8s_client.exceptions.ApiException:
+            return None
+        labels = (job.metadata.labels or {}) if job.metadata else {}
+        return labels.get(vk8s.MODEL_SOURCE_LABEL)
+
+    def _delete_vllm_resources(self, resource_name: str) -> None:
+        """Delete the directly-emitted vLLM objects by name (idempotent)."""
+        deleters = [
+            (self._apps_v1.delete_namespaced_deployment, resource_name, "Deployment"),
+            (self._core_v1.delete_namespaced_service, resource_name, "Service"),
+            (self._batch_v1.delete_namespaced_job, vk8s.pull_job_name(resource_name), "puller Job"),
+            (
+                self._core_v1.delete_namespaced_persistent_volume_claim,
+                vk8s.pvc_name(resource_name),
+                "PVC",
+            ),
+        ]
+        for delete_fn, obj_name, kind in deleters:
+            try:
+                delete_fn(name=obj_name, namespace=self._k8s_namespace)
+                logger.info(f"Deleted {kind} {obj_name} in {self._k8s_namespace}")
+            except k8s_client.exceptions.ApiException as e:
+                if e.status == 404:
+                    continue
+                logger.warning(f"Error deleting {kind} {obj_name}: {e}")
+
     async def update_model_deployment(
         self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
     ) -> DeploymentStatusUpdate:
-        """Update an existing model deployment via NIM Operator."""
+        """Update an existing model deployment."""
+        engine = config_engine(config)
+        if engine == ENGINE_VLLM:
+            return await self._update_vllm_deployment(deployment, config, model_entity)
+        if engine == ENGINE_GENERIC:
+            return DeploymentStatusUpdate(
+                status="ERROR",
+                status_message="The 'generic' engine is not yet supported on the k8s backend.",
+                error_details={"error": "unsupported_engine", "engine": engine},
+                host_url=None,
+            )
+
         logger.info(
             f"Updating NIMService: {deployment.workspace}/{deployment.name} (version: {deployment.entity_version})"
         )
@@ -795,24 +1267,43 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 host_url=None,
             )
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
-        """Get the current status of a NIM Operator model deployment.
+    async def get_model_deployment_status(
+        self,
+        deployment: ModelDeployment,
+        config: Optional[ModelDeploymentConfig] = None,
+        model_entity: Optional[ModelEntity] = None,
+    ) -> DeploymentStatusUpdate:
+        """Get the current status of a model deployment.
 
         In addition to the NIMService/pod status, this method enforces:
         - PENDING timeout: if the deployment has been alive longer than
           ``pending_timeout_seconds`` (from config) and is still PENDING,
           transition to ERROR with diagnostic information.
         - Crash loop detection is handled inside ``_get_pod_status_from_deployment``.
+
+        For the vLLM path, ``config`` is required to advance creation (emit the
+        serving Deployment + Service once the weight-puller Job completes).
         """
         logger.debug(
-            f"Checking NIMService status: {deployment.workspace}/{deployment.name} "
+            f"Checking deployment status: {deployment.workspace}/{deployment.name} "
             f"(version: {deployment.entity_version})"
         )
 
         try:
             resource_name = self._get_resource_name(deployment)
 
-            result = self._get_nimservice_status(resource_name)
+            # Prefer the engine from the config when the controller provides it;
+            # fall back to detecting the vLLM path by the presence of its raw
+            # puller Job (e.g. orphan reconciliation paths that lack a config).
+            if config is not None:
+                is_vllm = config_engine(config) == ENGINE_VLLM
+            else:
+                is_vllm = self._vllm_objects_exist(resource_name)
+
+            if is_vllm:
+                result = await self._get_vllm_status(deployment, resource_name, config, model_entity)
+            else:
+                result = self._get_nimservice_status(resource_name)
 
             if result.status == "PENDING":
                 elapsed = deployment_elapsed_seconds(deployment)
@@ -867,9 +1358,15 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             except Exception as e:
                 logger.warning(f"Error deleting NIMCache {nimcache_name}: {e}")
 
+            # Also tear down any directly-emitted vLLM objects (idempotent; delete
+            # has no config/engine, so we clean up both paths by name). Deleting the
+            # Deployment cascades its owned PVC/Job/Service, but the puller objects
+            # may exist before the Deployment (phases P0-P2), so delete explicitly.
+            self._delete_vllm_resources(nimservice_name)
+
             return DeploymentStatusUpdate(
                 status="DELETED",
-                status_message="NIMService deletion initiated successfully",
+                status_message="Deployment deletion initiated successfully",
                 host_url=None,
             )
 
@@ -888,27 +1385,44 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         return self._delete_resources_by_model_deployment_id(workspace, name)
 
     async def list_managed_deployment_names(self) -> list[str]:
-        """List deployment names (workspace/name) the backend currently manages via NIMService labels."""
+        """List deployment names (workspace/name) the backend manages.
+
+        Unions the operator path (NIMServices) and the directly-emitted vLLM path
+        (raw Deployments), both labelled by the same managed-by + workspace/name
+        labels, for orphan reconciliation.
+        """
+        label_selector = f"{MODEL_MANAGED_BY_LABEL}={MODEL_MANAGED_BY_MODELS_CONTROLLER}"
+        seen: set[str] = set()
+
+        # Operator path: NIMServices.
         try:
             nimservice_api = self._dynamic_client.resources.get(
                 api_version=NIMSERVICE_API_VERSION,
                 kind="NIMService",
             )
-            result = nimservice_api.get(
-                namespace=self._k8s_namespace,
-                label_selector=f"{MODEL_MANAGED_BY_LABEL}={MODEL_MANAGED_BY_MODELS_CONTROLLER}",
-            )
+            result = nimservice_api.get(namespace=self._k8s_namespace, label_selector=label_selector)
+            for item in getattr(result, "items", None) or []:
+                labels = getattr(getattr(item, "metadata", None), "labels", None) or {}
+                if isinstance(labels, dict):
+                    workspace = labels.get("nmp.nvidia.com/deployment-workspace")
+                    name = labels.get("nmp.nvidia.com/deployment-name")
+                    if workspace and name:
+                        seen.add(f"{workspace}/{name}")
         except Exception as e:
             logger.warning(f"Failed to list NIMServices for orphan reconciliation: {e}")
-            return []
 
-        items = getattr(result, "items", None) or []
-        seen: set[str] = set()
-        for item in items:
-            labels = getattr(getattr(item, "metadata", None), "labels", None) or {}
-            if isinstance(labels, dict):
-                workspace = labels.get("nmp.nvidia.com/deployment-workspace")
-                name = labels.get("nmp.nvidia.com/deployment-name")
+        # vLLM path: directly-emitted Deployments.
+        try:
+            deployments = self._apps_v1.list_namespaced_deployment(
+                namespace=self._k8s_namespace, label_selector=label_selector
+            )
+            for dep in deployments.items:
+                labels = (dep.metadata.labels or {}) if dep.metadata else {}
+                workspace = labels.get(vk8s.DEPLOYMENT_WORKSPACE_LABEL)
+                name = labels.get(vk8s.DEPLOYMENT_NAME_LABEL)
                 if workspace and name:
                     seen.add(f"{workspace}/{name}")
+        except Exception as e:
+            logger.warning(f"Failed to list vLLM Deployments for orphan reconciliation: {e}")
+
         return sorted(seen)

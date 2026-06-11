@@ -276,8 +276,8 @@ async def test_reconcile_deployments_with_created_status(reconciler, mock_backen
     # Config is already in context so no retrieve call happens during reconciliation
     mock_backend.create_model_deployment.assert_called_once_with(created_deployment, mock_deployment_config, None)
 
-    # Verify backend.get_status was called for PENDING deployment
-    mock_backend.get_model_deployment_status.assert_called_once_with(pending_deployment)
+    # Verify backend.get_status was called for PENDING deployment with config + entity
+    mock_backend.get_model_deployment_status.assert_called_once_with(pending_deployment, None, None)
 
     # Verify SDK update was called twice (once for each deployment)
     assert reconciler._models_sdk.inference.deployments.update_status.call_count == 2

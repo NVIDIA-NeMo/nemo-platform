@@ -34,7 +34,12 @@ class NoneServiceBackend(ServiceBackend):
         """Update a model deployment."""
         raise NotImplementedError("NoneServiceBackend does not support deployments")
 
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(
+        self,
+        deployment: ModelDeployment,
+        config: Optional[ModelDeploymentConfig] = None,
+        model_entity: Optional[ModelEntity] = None,
+    ) -> DeploymentStatusUpdate:
         """Get the status of a model deployment."""
         return DeploymentStatusUpdate(
             status="UNKNOWN",

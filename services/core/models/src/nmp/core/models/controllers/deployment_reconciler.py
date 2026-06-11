@@ -198,8 +198,12 @@ class ModelDeploymentReconciler:
                             existing_provider=ctx.model_provider,
                         )
                     case "PENDING" | "READY" | "UNKNOWN":
-                        # Check status and handle drift/backend issues
-                        status_update = await backend.get_model_deployment_status(deployment)
+                        # Check status and handle drift/backend issues. Pass the
+                        # config + entity so backends that advance creation in the
+                        # status path (k8s vLLM) can compile the serving objects.
+                        status_update = await backend.get_model_deployment_status(
+                            deployment, ctx.model_deployment_config, ctx.model_entity
+                        )
 
                         if status_update.status == "LOST":
                             # Drift detected - attempt recovery

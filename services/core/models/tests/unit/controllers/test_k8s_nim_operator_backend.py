@@ -5,6 +5,7 @@
 
 import contextlib
 from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -1614,3 +1615,254 @@ async def test_delete_model_deployment_by_id_calls_delete_resources(mock_nmp_sdk
         result = await backend.delete_model_deployment("my-ws", "my-name")
     mock_delete.assert_called_once_with("my-ws", "my-name")
     assert result.status == "DELETED"
+
+
+# ===========================================================================
+# vLLM path (native Kubernetes objects, no operator)
+# ===========================================================================
+
+
+def _vllm_config(*, gpu: int = 1, lora_enabled: bool = False):
+    """A minimal vLLM ModelDeploymentConfig-like object for dispatch/compile."""
+    return SimpleNamespace(
+        engine="vllm",
+        model_spec=SimpleNamespace(
+            model_type=None,
+            model_namespace="default",
+            model_name="qwen",
+            model_revision=None,
+            chat_template=None,
+            tool_call_config=None,
+            lora_enabled=lora_enabled,
+        ),
+        executor_config=SimpleNamespace(
+            gpu=gpu,
+            disk_size="50Gi",
+            image_name=None,
+            image_tag=None,
+            health_check_path=None,
+            additional_envs=None,
+            additional_args=[],
+            k8s_nim_operator_config=None,
+            override_config=None,
+        ),
+    )
+
+
+def _vllm_backend(k8s_backend):
+    """Wire a k8s_backend with mocked typed clients for the vLLM path."""
+    k8s_backend._k8s_namespace = "nemo"
+    k8s_backend._backend_config = K8sNimOperatorConfig()
+    k8s_backend._k8s_client = MagicMock()
+    k8s_backend._core_v1 = MagicMock()
+    k8s_backend._apps_v1 = MagicMock()
+    k8s_backend._batch_v1 = MagicMock()
+    return k8s_backend
+
+
+def _api_exception(status: int):
+    return k8s_client.exceptions.ApiException(status=status)
+
+
+@pytest.mark.asyncio
+async def test_vllm_create_emits_pvc_and_job_only(k8s_backend, sample_deployment):
+    """vLLM create (phase P0) emits the PVC + puller Job, not the Deployment/Service."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=2)
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        result = await backend.create_model_deployment(sample_deployment, config, None)
+
+    assert result.status == "PENDING"
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.create_namespaced_job.assert_called_once()
+    # Deployment + Service are NOT created at P0.
+    backend._apps_v1.create_namespaced_deployment.assert_not_called()
+    backend._core_v1.create_namespaced_service.assert_not_called()
+
+    # The puller Job requests the same GPU as the server (topology pin).
+    job = backend._batch_v1.create_namespaced_job.call_args.kwargs["body"]
+    assert job.spec.template.spec.containers[0].resources.requests["nvidia.com/gpu"] == "2"
+
+
+@pytest.mark.asyncio
+async def test_generic_engine_rejected_on_k8s(k8s_backend, sample_deployment):
+    """The generic engine is explicitly unsupported on the k8s backend."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+    config.engine = "generic"
+    result = await backend.create_model_deployment(sample_deployment, config, None)
+    assert result.status == "ERROR"
+    assert "generic" in result.status_message.lower()
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_running_is_pending(k8s_backend, sample_deployment):
+    """While the puller Job is running, status is PENDING."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = None
+    backend._batch_v1.read_namespaced_job.return_value = job
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    assert result.status == "PENDING"
+    assert "weights" in result.status_message.lower()
+    backend._apps_v1.create_namespaced_deployment.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_failed_is_error(k8s_backend, sample_deployment):
+    """A failed puller Job surfaces as ERROR."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+    job = MagicMock()
+    job.status.failed = 5
+    job.status.succeeded = None
+    backend._batch_v1.read_namespaced_job.return_value = job
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    assert result.status == "ERROR"
+    assert result.error_details["reason"] == "weight_pull_failed"
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_complete_creates_deployment(k8s_backend, sample_deployment):
+    """When the Job completes (phase P3), the Deployment + Service are created."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1)
+
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = 1
+    backend._batch_v1.read_namespaced_job.return_value = job
+    # Deployment does not exist yet -> triggers P3 creation.
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+
+    assert result.status == "PENDING"
+    backend._apps_v1.create_namespaced_deployment.assert_called_once()
+    backend._core_v1.create_namespaced_service.assert_called_once()
+    # ownerRef patched onto PVC + Job so they cascade with the Deployment.
+    backend._core_v1.patch_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.patch_namespaced_job.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_complete_with_lora_wires_sidecar(k8s_backend, sample_deployment):
+    """At P3 with LoRA enabled, the Deployment gets the cache-init + adapter sidecar."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1, lora_enabled=True)
+
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = 1
+    backend._batch_v1.read_namespaced_job.return_value = job
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
+    platform_cfg = MagicMock()
+    platform_cfg.image_pull_secrets = []
+    platform_cfg.image_registry = "my-registry"
+    platform_cfg.image_tag = "local"
+    platform_cfg.to_shared_envvars.return_value = {"NMP_SHARED": "1"}
+    with patch(f"{_K8S_BACKEND_MODULE}.get_platform_config", return_value=platform_cfg):
+        result = await backend.get_model_deployment_status(sample_deployment, config, None)
+
+    assert result.status == "PENDING"
+    dep_obj = backend._apps_v1.create_namespaced_deployment.call_args.kwargs["body"]
+    pod = dep_obj.spec.template.spec
+    assert pod.init_containers[0].name == "lora-cache-init"
+    sidecar = next(ctr for ctr in pod.containers if ctr.name == "lora-sidecar")
+    env = {e.name: e.value for e in sidecar.env}
+    assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
+    assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
+    assert env["NMP_SHARED"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_deployment_ready_is_ready(k8s_backend, sample_deployment):
+    """A ready serving Deployment maps to READY + host_url."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = 1
+    backend._batch_v1.read_namespaced_job.return_value = job
+
+    dep = MagicMock()
+    dep.status.ready_replicas = 1
+    backend._apps_v1.read_namespaced_deployment.return_value = dep
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    assert result.status == "READY"
+    assert result.host_url is not None
+
+
+@pytest.mark.asyncio
+async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_deployment):
+    """Unchanged model source: no Job re-create, no resource deletion."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    existing_job = MagicMock()
+    existing_job.metadata.labels = {"nmp.nvidia.com/model-source": "default/qwen", "nmp.nvidia.com/engine": "vllm"}
+    backend._batch_v1.read_namespaced_job.return_value = existing_job
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
+        with patch.object(backend, "_delete_vllm_resources") as mock_delete:
+            result = await backend.update_model_deployment(sample_deployment, config, None)
+
+    mock_delete.assert_not_called()
+    backend._batch_v1.create_namespaced_job.assert_not_called()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment):
+    """Changed model source: delete resources and re-run the phased create."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config()
+
+    existing_job = MagicMock()
+    existing_job.metadata.labels = {"nmp.nvidia.com/model-source": "default/old-model", "nmp.nvidia.com/engine": "vllm"}
+    backend._batch_v1.read_namespaced_job.return_value = existing_job
+
+    with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):
+        with patch.object(backend, "_delete_vllm_resources") as mock_delete:
+            result = await backend.update_model_deployment(sample_deployment, config, None)
+
+    mock_delete.assert_called_once()
+    # Re-pull: a new PVC + Job are created.
+    backend._core_v1.create_namespaced_persistent_volume_claim.assert_called_once()
+    backend._batch_v1.create_namespaced_job.assert_called_once()
+    assert result.status == "PENDING"
+
+
+@pytest.mark.asyncio
+async def test_vllm_list_managed_unions_deployments(k8s_backend):
+    """list_managed_deployment_names unions NIMServices and raw vLLM Deployments."""
+    backend = _vllm_backend(k8s_backend)
+    backend._dynamic_client = MagicMock()
+    backend._dynamic_client.resources.get.return_value.get.return_value = MagicMock(items=[])
+
+    dep = MagicMock()
+    dep.metadata.labels = {
+        "nmp.nvidia.com/deployment-workspace": "default",
+        "nmp.nvidia.com/deployment-name": "qwen",
+    }
+    backend._apps_v1.list_namespaced_deployment.return_value = MagicMock(items=[dep])
+
+    names = await backend.list_managed_deployment_names()
+    assert "default/qwen" in names

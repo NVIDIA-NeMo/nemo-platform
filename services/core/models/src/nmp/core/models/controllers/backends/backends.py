@@ -105,11 +105,20 @@ class ServiceBackend(ABC):
         ...
 
     @abstractmethod
-    async def get_model_deployment_status(self, deployment: ModelDeployment) -> DeploymentStatusUpdate:
+    async def get_model_deployment_status(
+        self,
+        deployment: ModelDeployment,
+        config: Optional[ModelDeploymentConfig] = None,
+        model_entity: Optional[ModelEntity] = None,
+    ) -> DeploymentStatusUpdate:
         """Get the current status of a model deployment.
 
         Args:
             deployment: The ModelDeployment object to check
+            config: The ModelDeploymentConfig for this deployment. Some backends
+                need it to advance creation (e.g. the k8s vLLM path emits the
+                serving Deployment once the weight-puller Job completes).
+            model_entity: Optional Model entity from Entity Store.
 
         Returns:
             DeploymentStatusUpdate with the current deployment status
