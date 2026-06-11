@@ -36,6 +36,8 @@ from nemo_platform_plugin.jobs.api_factory import PlatformJobSpec
 from nemo_platform_plugin.jobs.result_manager import ResultManager
 from nmp.core.files.service import FilesService
 from nmp.core.inference_gateway.service import InferenceGatewayService
+from nmp.core.jobs.config import config as jobs_config
+from nmp.core.jobs.controllers.backends.subprocess import SubprocessJobExecutionProfile
 from nmp.core.jobs.service import JobsService
 from nmp.core.models.service import ModelsService
 from nmp.core.secrets.service import SecretsService
@@ -412,14 +414,19 @@ async def task_context(
         ephemeral.mkdir()
         persistent.mkdir()
 
-        with create_test_client(
-            _TestDataDesignerService,
-            FilesService,
-            JobsService,
-            client_type=ClientContext,
-            workspaces=["default"],
-            workspace="default",
-        ) as client_context:
+        with (
+            # Match Jobs' integration test fixture pattern. Ensures tests can still pass
+            # without requiring Docker running.
+            patch.object(jobs_config, "executors", [SubprocessJobExecutionProfile(profile="default")]),
+            create_test_client(
+                _TestDataDesignerService,
+                FilesService,
+                JobsService,
+                client_type=ClientContext,
+                workspaces=["default"],
+                workspace="default",
+            ) as client_context,
+        ):
             job = client_context.sdk.jobs.create(
                 workspace="default",
                 name=job_name,
