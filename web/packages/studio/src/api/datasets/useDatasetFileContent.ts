@@ -10,6 +10,7 @@ import {
 import type { EntityIdentifier } from '@studio/api/common/types';
 import { getDatasetFileContentQueryKey } from '@studio/api/datasets/invalidateDatasetCaches';
 import { isBinaryExtension } from '@studio/util/binaryFile';
+import { websiteLogger } from '@studio/util/logger';
 import { queryOptions, useQuery, UseQueryOptions, useSuspenseQuery } from '@tanstack/react-query';
 import { parquetRead } from 'hyparquet';
 
@@ -77,7 +78,7 @@ export const datasetFileContentQueryOptions = ({
           });
           return data;
         } catch (err) {
-          console.error(err);
+          websiteLogger.error(String(err));
           throw new Error('Invalid response while downloading parquet file');
         }
       } else {

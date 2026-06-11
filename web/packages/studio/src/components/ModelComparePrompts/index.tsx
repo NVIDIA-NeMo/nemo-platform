@@ -12,6 +12,7 @@ import { Button, Flex, Modal, Stack, Text } from '@nvidia/foundations-react-core
 import { DatasetInputFile, type DatasetInputFileResult } from '@studio/components/DatasetInputFile';
 import { FileSamplingMethodSelect } from '@studio/components/FileSamplingSnippet/FileSamplingMethodSelect';
 import type { SharedModelEntry } from '@studio/routes/ModelCompareRoute/types';
+import { websiteLogger } from '@studio/util/logger';
 import { Loader2, Maximize2, Play, Trash2 } from 'lucide-react';
 import { type FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
@@ -178,7 +179,7 @@ export const ModelComparePrompts: FC<ModelComparePromptsProps> = ({
               writeCell(row.sourceIndex, model.id, content);
             })
             .catch((error) => {
-              console.error('Inference request failed:', error);
+              websiteLogger.error(`Inference request failed: ${String(error)}`);
               writeCell(row.sourceIndex, model.id, null);
             })
         );

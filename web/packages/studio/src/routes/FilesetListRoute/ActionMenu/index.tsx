@@ -15,6 +15,7 @@ import { invalidateDatasetCaches } from '@studio/api/datasets/invalidateDatasetC
 import { DatasetCreateModal } from '@studio/components/DatasetCreateModal';
 import { DatasetCreateModalMode } from '@studio/components/DatasetCreateModal/constants';
 import { DeleteConfirmationModal } from '@studio/components/DeleteConfirmationModal';
+import { websiteLogger } from '@studio/util/logger';
 import { EllipsisVertical } from 'lucide-react';
 import { FC, useState } from 'react';
 
@@ -49,7 +50,7 @@ export const ActionMenu: FC<ActionMenuProps> = ({
       onDatasetDeleted?.(dataset);
       return true;
     } catch (error) {
-      console.error('Failed to delete dataset:', error);
+      websiteLogger.error(`Failed to delete dataset: ${String(error)}`);
       return false;
     }
   };

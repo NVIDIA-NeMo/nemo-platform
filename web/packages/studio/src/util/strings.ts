@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Row } from '@studio/util/files';
+import { websiteLogger } from '@studio/util/logger';
 import Papa from 'papaparse';
 
 /**
@@ -48,7 +49,7 @@ export const parseCSV = (props: { csvString: string; options: Papa.ParseConfig }
   const { data, errors } = Papa.parse(csvString, options);
 
   if (errors.length) {
-    console.error('CSV Parse Errors:', errors);
+    websiteLogger.error(`CSV Parse Errors: ${JSON.stringify(errors)}`);
     return [];
   }
 
