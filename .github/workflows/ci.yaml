@@ -781,7 +781,7 @@ jobs:
     needs:
       - changes
       - actionlint
-      - docker-canary
+      - docker-bake-graph
       - lint
       - policy-wasm
       - python-unit-test-tools
