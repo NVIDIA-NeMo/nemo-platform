@@ -24,12 +24,48 @@ variable "BASE_REGISTRY" {
   default = "my-registry"
 }
 
+variable "USE_PREBUILT_BASES" {
+  default = ""
+}
+
+variable "PYTHON_BASE_TARGET" {
+  default = ""
+}
+
+variable "PYTHON_DEV_BASE_TARGET" {
+  default = ""
+}
+
+variable "CUSTOMIZER_TASKS_BASE_CONTEXT" {
+  default = ""
+}
+
+variable "AUTOMODEL_BASE_CONTEXT" {
+  default = ""
+}
+
+variable "USE_LOCAL_WHEELS" {
+  default = ""
+}
+
+variable "FAISS_WHEEL_CONTEXT" {
+  default = ""
+}
+
+variable "CAUSAL_CONV1D_WHEEL_CONTEXT" {
+  default = ""
+}
+
+variable "MAMBA_SSM_WHEEL_CONTEXT" {
+  default = ""
+}
+
 variable "DISTROLESS_BASE" {
   default = "nvcr.io/nvidia/distroless/python:3.11-v4.0.3"
 }
 
 variable "DOCKERHUB_MIRROR" {
-  default = "dockerhub.nvidia.com"
+  default = "docker.io/library"
 }
 
 variable "WHEELS_REGISTRY" {
@@ -134,6 +170,41 @@ function "base_tags" {
   result = [
     notequal(BAKE_TAG, "") ? "${BASE_REGISTRY}/${name}:${BAKE_TAG}" : "",
   ]
+}
+
+function "python_base_target" {
+  params = []
+  result = notequal(PYTHON_BASE_TARGET, "") ? PYTHON_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-base" : "nmp-python-base-builder"
+}
+
+function "python_dev_base_target" {
+  params = []
+  result = notequal(PYTHON_DEV_BASE_TARGET, "") ? PYTHON_DEV_BASE_TARGET : notequal(USE_PREBUILT_BASES, "") ? "nmp-python-dev-base" : "nmp-python-dev-base-builder"
+}
+
+function "customizer_tasks_base_context" {
+  params = []
+  result = notequal(CUSTOMIZER_TASKS_BASE_CONTEXT, "") ? CUSTOMIZER_TASKS_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-customizer-tasks-base:${BASE_TAG_CUSTOMIZER_TASKS}" : "target:nmp-customizer-tasks-base-builder"
+}
+
+function "automodel_base_context" {
+  params = []
+  result = notequal(AUTOMODEL_BASE_CONTEXT, "") ? AUTOMODEL_BASE_CONTEXT : notequal(USE_PREBUILT_BASES, "") ? "docker-image://${BASE_REGISTRY}/nmp-automodel-base:${BASE_TAG_AUTOMODEL}" : "target:nmp-automodel-base-builder"
+}
+
+function "faiss_wheel_context" {
+  params = []
+  result = notequal(FAISS_WHEEL_CONTEXT, "") ? FAISS_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:faiss-gpu-wheel" : "docker-image://${get_faiss_wheel_image()}"
+}
+
+function "causal_conv1d_wheel_context" {
+  params = []
+  result = notequal(CAUSAL_CONV1D_WHEEL_CONTEXT, "") ? CAUSAL_CONV1D_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:causal-conv1d-wheel" : "docker-image://${get_causal_conv1d_wheel_image()}"
+}
+
+function "mamba_ssm_wheel_context" {
+  params = []
+  result = notequal(MAMBA_SSM_WHEEL_CONTEXT, "") ? MAMBA_SSM_WHEEL_CONTEXT : notequal(USE_LOCAL_WHEELS, "") ? "target:mamba-ssm-wheel" : "docker-image://${get_mamba_ssm_wheel_image()}"
 }
 
 function "wheel_tags" {
@@ -313,7 +384,7 @@ group "docker-customizer" {
 
 # Base images for consolidated containers
 target "nmp-python-base" {
-  target     = "nmp-python-base"
+  target     = python_base_target()
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
@@ -340,7 +411,7 @@ target "nmp-python-base-builder" {
 }
 
 target "nmp-python-dev-base" {
-  target     = "nmp-python-dev-base"
+  target     = python_dev_base_target()
   context    = "."
   dockerfile = "docker/base/Dockerfile.nmp-python-base"
   args = {
@@ -511,30 +582,26 @@ target "nmp-customizer-tasks-base-builder" {
   cache-from = maybe_registry_cache_from("nmp-customizer-tasks-base")
   tags       = base_tags("nmp-customizer-tasks-base")
   output     = image_output()
-  args = {
-    BASE_REGISTRY             = "${BASE_REGISTRY}"
-    BASE_TAG_CUSTOMIZER_TASKS = "${BASE_TAG_CUSTOMIZER_TASKS}"
-    FAISS_WHEEL_IMAGE         = get_faiss_wheel_image()
-    CAUSAL_CONV1D_WHEEL_IMAGE = get_causal_conv1d_wheel_image()
-    MAMBA_SSM_WHEEL_IMAGE     = get_mamba_ssm_wheel_image()
-  }
   contexts = {
-    nmp-gpu-base  = "target:nmp-gpu-base"
-    nmp-workspace = "target:nmp-workspace"
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    faiss-wheel-image         = faiss_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    nmp-gpu-base              = "target:nmp-gpu-base"
+    nmp-workspace             = "target:nmp-workspace"
   }
   platforms  = ["linux/amd64"]
 }
 
 # The base image for Customizer Tasks
 target "nmp-customizer-tasks-base" {
-  target     = "nmp-customizer-tasks-base"
+  target     = "nmp-customizer-tasks-base-builder"
   context    = "."
-  args = {
-    BASE_REGISTRY             = "${BASE_REGISTRY}"
-    BASE_TAG_CUSTOMIZER_TASKS = "${BASE_TAG_CUSTOMIZER_TASKS}"
-    FAISS_WHEEL_IMAGE         = get_faiss_wheel_image()
-    CAUSAL_CONV1D_WHEEL_IMAGE = get_causal_conv1d_wheel_image()
-    MAMBA_SSM_WHEEL_IMAGE     = get_mamba_ssm_wheel_image()
+  contexts = {
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    faiss-wheel-image         = faiss_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    nmp-gpu-base              = "target:nmp-gpu-base"
+    nmp-workspace             = "target:nmp-workspace"
   }
   dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
   platforms  = get_platforms()
@@ -808,15 +875,12 @@ target "customizer-tasks-smoke-test" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
   contexts = {
-    nmp-gpu-base    = "target:nmp-gpu-base"
-    nmp-workspace   = "target:nmp-workspace"
-  }
-  args = {
-    BASE_REGISTRY             = "${BASE_REGISTRY}"
-    BASE_TAG_CUSTOMIZER_TASKS = "${BASE_TAG_CUSTOMIZER_TASKS}"
-    FAISS_WHEEL_IMAGE         = get_faiss_wheel_image()
-    CAUSAL_CONV1D_WHEEL_IMAGE = get_causal_conv1d_wheel_image()
-    MAMBA_SSM_WHEEL_IMAGE     = get_mamba_ssm_wheel_image()
+    nmp-customizer-tasks-base = customizer_tasks_base_context()
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    faiss-wheel-image         = faiss_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    nmp-gpu-base              = "target:nmp-gpu-base"
+    nmp-workspace             = "target:nmp-workspace"
   }
   cache-from = maybe_registry_cache_from("customizer-tasks")
   output     = ["type=cacheonly"]
@@ -828,20 +892,17 @@ target "customizer-tasks-docker" {
   context    = "."
   dockerfile = "docker/Dockerfile.nmp-customizer-tasks"
   contexts = {
-    nmp-gpu-base    = "target:nmp-gpu-base"
-    nmp-workspace   = "target:nmp-workspace"
+    nmp-customizer-tasks-base = customizer_tasks_base_context()
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    faiss-wheel-image         = faiss_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
+    nmp-gpu-base              = "target:nmp-gpu-base"
+    nmp-workspace             = "target:nmp-workspace"
   }
   cache-to   = maybe_registry_cache_to("customizer-tasks")
   cache-from = maybe_registry_cache_from("customizer-tasks")
   tags       = sha_and_maybe_latest_tags("customizer-tasks")
   output     = image_output()
-  args = {
-    BASE_REGISTRY             = "${BASE_REGISTRY}"
-    BASE_TAG_CUSTOMIZER_TASKS = "${BASE_TAG_CUSTOMIZER_TASKS}"
-    FAISS_WHEEL_IMAGE         = get_faiss_wheel_image()
-    CAUSAL_CONV1D_WHEEL_IMAGE = get_causal_conv1d_wheel_image()
-    MAMBA_SSM_WHEEL_IMAGE     = get_mamba_ssm_wheel_image()
-  }
   platforms  = ["linux/amd64"]
 }
 
@@ -896,9 +957,9 @@ target "nmp-automodel-base-builder" {
   cache-from      = maybe_registry_cache_from("nmp-automodel-base")
   tags            = base_tags("nmp-automodel-base")
   output          = image_output()
-  args = {
-    CAUSAL_CONV1D_WHEEL_IMAGE = get_causal_conv1d_wheel_image()
-    MAMBA_SSM_WHEEL_IMAGE     = get_mamba_ssm_wheel_image()
+  contexts = {
+    causal-conv1d-wheel-image = causal_conv1d_wheel_context()
+    mamba-ssm-wheel-image     = mamba_ssm_wheel_context()
   }
   platforms = get_platforms()
 }
@@ -909,16 +970,12 @@ target "nmp-automodel-tasks-docker" {
   dockerfile = "docker/Dockerfile.nmp-automodel-tasks"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = "target:nmp-automodel-base-builder"
+    nmp-automodel-base = automodel_base_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-automodel-tasks")
   cache-from = maybe_registry_cache_from("nmp-automodel-tasks")
   tags       = sha_and_maybe_latest_tags("nmp-automodel-tasks")
   output     = image_output()
-  args = {
-    BASE_REGISTRY      = BASE_REGISTRY
-    BASE_TAG_AUTOMODEL = BASE_TAG_AUTOMODEL
-  }
   platforms = get_platforms()
 }
 
@@ -928,16 +985,12 @@ target "nmp-automodel-training-docker" {
   dockerfile = "docker/Dockerfile.nmp-automodel-training"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = "target:nmp-automodel-base-builder"
+    nmp-automodel-base = automodel_base_context()
   }
   cache-to   = maybe_registry_cache_to("nmp-automodel-training")
   cache-from = maybe_registry_cache_from("nmp-automodel-training")
   tags       = sha_and_maybe_latest_tags("nmp-automodel-training")
   output     = image_output()
-  args = {
-    BASE_REGISTRY      = BASE_REGISTRY
-    BASE_TAG_AUTOMODEL = BASE_TAG_AUTOMODEL
-  }
   platforms = get_platforms()
 }
 
@@ -947,11 +1000,9 @@ target "nmp-automodel-tasks-smoke-test" {
   dockerfile = "docker/Dockerfile.nmp-automodel-tasks"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = "target:nmp-automodel-base-builder"
+    nmp-automodel-base = automodel_base_context()
   }
   args = {
-    BASE_REGISTRY      = BASE_REGISTRY
-    BASE_TAG_AUTOMODEL = BASE_TAG_AUTOMODEL
     SMOKE_MARKER       = "smoke_nmp_automodel_tasks"
   }
   cache-from = maybe_registry_cache_from("nmp-automodel-tasks")
@@ -965,11 +1016,9 @@ target "nmp-automodel-training-smoke-test" {
   dockerfile = "docker/Dockerfile.nmp-automodel-training"
   contexts = {
     platform-workspace = "target:automodel-platform-workspace"
-    nmp-automodel-base = "target:nmp-automodel-base-builder"
+    nmp-automodel-base = automodel_base_context()
   }
   args = {
-    BASE_REGISTRY      = BASE_REGISTRY
-    BASE_TAG_AUTOMODEL = BASE_TAG_AUTOMODEL
     SMOKE_MARKER       = "smoke_nmp_automodel_training"
   }
   cache-from = maybe_registry_cache_from("nmp-automodel-training")

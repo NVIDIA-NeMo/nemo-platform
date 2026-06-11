@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 ARG NODE_VERSION=22
-ARG DOCKERHUB_MIRROR=dockerhub.nvidia.com
+ARG DOCKERHUB_MIRROR=docker.io/library
 
 # --------------- BASE --------------- #
 FROM ${DOCKERHUB_MIRROR}/node:${NODE_VERSION}-bookworm AS base

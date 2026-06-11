@@ -7,26 +7,18 @@
 # - causal-conv1d
 
 # =============================================================================
-# Global ARGs (must be declared before first FROM to be usable in FROM statements)
-# =============================================================================
-ARG BASE_TAG_CUSTOMIZER_TASKS=local
-ARG FAISS_WHEEL_IMAGE=local
-ARG CAUSAL_CONV1D_WHEEL_IMAGE=local
-ARG MAMBA_SSM_WHEEL_IMAGE=local
-ARG BASE_REGISTRY=my-registry
-
-# =============================================================================
 # Base Image
 # =============================================================================
-# Pulls a pre-built image built by the nmp-customizer-tasks-base-builder stage.
-FROM ${BASE_REGISTRY}/nmp-customizer-tasks-base:$BASE_TAG_CUSTOMIZER_TASKS AS nmp-customizer-tasks-base
+# Supplied by bake. Local builds use the base builder target; CI can override
+# the context to a pinned docker-image:// reference.
+FROM nmp-customizer-tasks-base AS customizer-tasks-base
 
 # =============================================================================
 # FAISS wheel source (ARM64 only)
 # =============================================================================
-# faiss-gpu-cu12 has no ARM64 wheel on PyPI. On linux/arm64 builds, pass
-# the faiss-gpu-wheel image here so the locally-built wheel can be installed.
-FROM ${FAISS_WHEEL_IMAGE} AS faiss-wheel-src
+# faiss-gpu-cu12 has no ARM64 wheel on PyPI. The bake file supplies this
+# context from a wheel image or from the local faiss-gpu-wheel target.
+FROM faiss-wheel-image AS faiss-wheel-src
 
 # =============================================================================
 # Wheel sources (causal-conv1d + mamba-ssm)
@@ -35,8 +27,8 @@ FROM ${FAISS_WHEEL_IMAGE} AS faiss-wheel-src
 # Both packages only ship source distributions on PyPI and require nvcc to
 # compile. Building them inline is slow; instead consume pre-built wheels
 # published by the gpu-wheels CI pipeline.
-FROM ${CAUSAL_CONV1D_WHEEL_IMAGE} AS causal-conv1d-wheel-src
-FROM ${MAMBA_SSM_WHEEL_IMAGE} AS mamba-ssm-wheel-src
+FROM causal-conv1d-wheel-image AS causal-conv1d-wheel-src
+FROM mamba-ssm-wheel-image AS mamba-ssm-wheel-src
 
 # =============================================================================
 # Builder: Install all dependencies
@@ -50,8 +42,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Install locally-built FAISS wheel on ARM64.
 # faiss-gpu-cu12 is excluded by platform marker on aarch64; the equivalent
-# FAISS GPU wheel is provided via the faiss-gpu-wheel-builder image.
-# Pass FAISS_WHEEL_IMAGE=<registry>/faiss-gpu-wheel:<tag> when building for arm64.
+# FAISS GPU wheel is provided by the faiss-wheel-src context.
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=from=faiss-wheel-src,target=/tmp/faiss-wheel-src \
     if ls /tmp/faiss-wheel-src/wheels/*.whl >/dev/null 2>&1; then \
@@ -78,27 +69,27 @@ FROM nmp-gpu-base AS runtime
 WORKDIR /app
 
 # Layer 1: NVIDIA CUDA libraries (~4.3GB)
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/nvidia \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/nvidia \
     /app/.venv/lib/python3.11/site-packages/nvidia
 
 # Layer 2: PyTorch (~2GB)
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torch \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torch \
     /app/.venv/lib/python3.11/site-packages/torch
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torchgen \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torchgen \
     /app/.venv/lib/python3.11/site-packages/torchgen
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/functorch \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/functorch \
     /app/.venv/lib/python3.11/site-packages/functorch
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torch-*.dist-info \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/torch-*.dist-info \
     /app/.venv/lib/python3.11/site-packages/
 
 # Layer 3: Inference engines (~3.4GB)
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/flashinfer_cubin \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/flashinfer_cubin \
     /app/.venv/lib/python3.11/site-packages/flashinfer_cubin
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/triton \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/triton \
     /app/.venv/lib/python3.11/site-packages/triton
 
 #TODO needs to be built for arm64
-COPY --from=nmp-customizer-tasks-base /app/.venv/lib/python3.11/site-packages/xformers \
+COPY --from=customizer-tasks-base /app/.venv/lib/python3.11/site-packages/xformers \
     /app/.venv/lib/python3.11/site-packages/xformers
 
 # Layer 4: CUDA Extensions (causal-conv1d, mamba-ssm)
