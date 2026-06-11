@@ -6,6 +6,7 @@
 import os
 from logging import getLogger
 from typing import Any, Dict, Optional
+from urllib.parse import urljoin
 
 from kubernetes import client as k8s_client
 from kubernetes import config as k8s_config
@@ -41,7 +42,6 @@ from nmp.core.models.controllers.backends.engine import (
 from nmp.core.models.controllers.backends.k8s_nim_operator import vllm_k8s_compiler as vk8s
 from nmp.core.models.controllers.backends.k8s_nim_operator.config import K8sNimOperatorConfig
 from nmp.core.models.controllers.backends.k8s_nim_operator.nimservice_compiler import (
-    _get_files_hf_url,
     compile_nimcache,
     compile_nimservice,
 )
@@ -721,22 +721,57 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         return model_repo, source_tag
 
     def _vllm_objects_exist(self, resource_name: str) -> bool:
-        """True if the directly-emitted puller Job for this deployment exists.
+        """True if directly-emitted vLLM objects for this deployment exist.
 
         Used only as a fallback when no config is available to read the engine
-        from. Any lookup failure (including 404) is treated as "not a vLLM
-        deployment" so the NIMService status path is used.
+        from. Checks the serving Deployment first (the puller Job is deleted once
+        the Deployment is created, so the Job alone is not a reliable marker), then
+        the puller Job for the pre-Deployment phase. Any lookup failure (including
+        404) means "not (yet) a vLLM deployment" -> the NIMService status path.
         """
+
+        def _has_vllm_engine_label(obj) -> bool:
+            labels = getattr(getattr(obj, "metadata", None), "labels", None)
+            return isinstance(labels, dict) and labels.get("nmp.nvidia.com/engine") == ENGINE_VLLM
+
+        try:
+            dep = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+            if _has_vllm_engine_label(dep):
+                return True
+        except Exception:
+            pass
         try:
             job = self._batch_v1.read_namespaced_job(
                 name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
         except Exception:
             return False
-        # Confirm it's genuinely our vLLM puller (guards against false positives,
-        # e.g. an unexpected object type): the engine label must be vllm.
-        labels = getattr(getattr(job, "metadata", None), "labels", None)
-        return isinstance(labels, dict) and labels.get("nmp.nvidia.com/engine") == ENGINE_VLLM
+        return _has_vllm_engine_label(job)
+
+    def _pvc_exists(self, resource_name: str) -> bool:
+        """True if the model-weights PVC for this deployment exists."""
+        try:
+            self._core_v1.read_namespaced_persistent_volume_claim(
+                name=vk8s.pvc_name(resource_name), namespace=self._k8s_namespace
+            )
+            return True
+        except k8s_client.exceptions.ApiException as e:
+            if e.status == 404:
+                return False
+            raise
+
+    def _remote_files_hf_url(self) -> str:
+        """Cluster-routable Files HF endpoint for the puller Job.
+
+        ``_get_files_hf_url`` resolves via the platform config's local-service
+        routing, which returns ``localhost`` when the Files service runs in this
+        same process. The puller is a *separate pod* and cannot reach localhost, so
+        we resolve the Files URL from ``service_discovery``/``base_url`` directly
+        (the cluster-routable address) and append the HF-compatible path.
+        """
+        platform_config = get_platform_config()
+        files_url = platform_config.service_discovery.get("files") or platform_config.base_url
+        return urljoin(files_url.rstrip("/") + "/", "apis/files/v2/hf")
 
     async def _create_vllm_deployment(
         self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity]
@@ -772,8 +807,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 name=deployment.name,
                 engine=ENGINE_VLLM,
                 image=self._huggingface_model_puller,
-                command=["download", model_repo, "--local-dir", vk8s.MODEL_STORE_PATH],
-                env={"HF_ENDPOINT": _get_files_hf_url(), "HF_TOKEN": "service:models"},
+                args=["download", model_repo, "--local-dir", vk8s.MODEL_STORE_PATH],
+                env={"HF_ENDPOINT": self._remote_files_hf_url(), "HF_TOKEN": "service:models"},
                 gpu=view.gpu,
                 namespace=self._k8s_namespace,
                 service_account_name=self._backend_config.service_account_name,
@@ -824,17 +859,39 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         completed and the Deployment doesn't exist yet, this advances creation
         (phase P3) by emitting the Deployment + Service.
         """
+        # The serving Deployment is the source of truth once it exists. We create
+        # it at P3 and delete the puller Job in the same step (to release the RWO
+        # volume), so a present Deployment means "past the pull phase" -- project
+        # its readiness and do NOT consult the (now-absent) Job.
+        try:
+            self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
+            deployment_exists = True
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 404:
+                raise
+            deployment_exists = False
+
+        if deployment_exists:
+            return self._project_deployment_readiness(resource_name)
+
+        # No Deployment yet: we're still in the pull phase. Consult the puller Job.
         job_name = vk8s.pull_job_name(resource_name)
         try:
             job = self._batch_v1.read_namespaced_job(name=job_name, namespace=self._k8s_namespace)
         except k8s_client.exceptions.ApiException as e:
-            if e.status == 404:
-                return DeploymentStatusUpdate(
-                    status="LOST",
-                    status_message="Weight-puller Job not found; resources may have been deleted externally.",
-                    host_url=None,
-                )
-            raise
+            if e.status != 404:
+                raise
+            # Job absent. This is either (a) the transient P3 window after we
+            # deleted a *succeeded* puller Job to release the RWO volume (the PVC
+            # still exists and holds the weights -> resume P3 by creating the
+            # serving objects), or (b) genuine drift (PVC also gone -> LOST).
+            if self._pvc_exists(resource_name) and config is not None:
+                return self._create_vllm_serving_objects(deployment, resource_name, config, model_entity)
+            return DeploymentStatusUpdate(
+                status="LOST",
+                status_message="Weight-puller Job and PVC not found; resources may have been deleted externally.",
+                host_url=None,
+            )
 
         job_status = job.status
         if job_status and job_status.failed and job_status.failed >= 1 and not (job_status.succeeded or 0):
@@ -851,31 +908,17 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         if not job_complete:
             return DeploymentStatusUpdate(status="PENDING", status_message="Downloading model weights", host_url=None)
 
-        # Job complete: ensure the Deployment + Service exist (phase P3).
-        try:
-            self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
-        except k8s_client.exceptions.ApiException as e:
-            if e.status == 404:
-                if config is None:
-                    # Cannot compile the serving spec without the config; the
-                    # controller should pass it. Stay PENDING until it does.
-                    logger.warning(
-                        "vLLM puller Job for %s complete but no config provided; cannot create serving Deployment",
-                        resource_name,
-                    )
-                    return DeploymentStatusUpdate(
-                        status="PENDING", status_message="Waiting to start vLLM server", host_url=None
-                    )
-                created = self._create_vllm_serving_objects(deployment, resource_name, job, config, model_entity)
-                if created.status == "ERROR":
-                    return created
-                return DeploymentStatusUpdate(
-                    status="PENDING", status_message="Starting vLLM server", host_url=self._get_host_url(resource_name)
-                )
-            raise
-
-        # Deployment exists: project its readiness.
-        return self._project_deployment_readiness(resource_name)
+        # Job complete and no Deployment yet: phase P3. Need the config to compile
+        # the serving spec (the controller threads it through).
+        if config is None:
+            logger.warning(
+                "vLLM puller Job for %s complete but no config provided; cannot create serving Deployment",
+                resource_name,
+            )
+            return DeploymentStatusUpdate(
+                status="PENDING", status_message="Waiting to start vLLM server", host_url=None
+            )
+        return self._create_vllm_serving_objects(deployment, resource_name, config, model_entity)
 
     def _project_deployment_readiness(self, resource_name: str) -> DeploymentStatusUpdate:
         """Map the serving Deployment's status to a DeploymentStatusUpdate."""
@@ -890,16 +933,33 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         self,
         deployment: ModelDeployment,
         resource_name: str,
-        job: k8s_client.V1Job,
         config: ModelDeploymentConfig,
         model_entity: Optional[ModelEntity],
     ) -> DeploymentStatusUpdate:
         """Create the vLLM Deployment + Service after the puller Job has completed.
 
-        Sets ownerReferences (PVC, Job, Service -> Deployment) so deleting the
+        Before creating the Deployment, the completed puller Job is deleted so its
+        pod releases the ReadWriteOnce PVC's volume attachment: a completed pod
+        keeps the volume attached to its node, which would otherwise block the
+        server pod from mounting the same RWO PVC if it schedules onto a different
+        node (Multi-Attach error). This runs only on the success path (the Job has
+        succeeded); a failed Job is left in place so the status path can read it +
+        its logs and report ERROR.
+
+        Sets ownerReferences (PVC, Service -> Deployment) so deleting the
         Deployment cascades the rest. The serving spec is compiled from ``config``
         (the controller threads it through ``get_model_deployment_status``).
         """
+        # Release the RWO volume from the completed puller before the server needs
+        # it. Idempotent: if already deleted on a prior poll, _delete_puller_job
+        # treats NotFound as done.
+        if not self._delete_puller_job(resource_name):
+            return DeploymentStatusUpdate(
+                status="PENDING",
+                status_message="Releasing model weights volume",
+                host_url=self._get_host_url(resource_name),
+            )
+
         view = deployment_config_view(config)
 
         engine = ENGINE_VLLM
@@ -949,7 +1009,8 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 raise
             created_dep = self._apps_v1.read_namespaced_deployment(name=resource_name, namespace=self._k8s_namespace)
 
-        # Owner reference -> Deployment, so PVC/Job/Service cascade on delete.
+        # Owner reference -> Deployment, so PVC/Service cascade on delete. (The
+        # puller Job was already deleted above to release the RWO volume.)
         owner_ref = k8s_client.V1OwnerReference(
             api_version="apps/v1",
             kind="Deployment",
@@ -960,9 +1021,39 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         )
         svc_obj.metadata.owner_references = [owner_ref]
         self._create_or_skip(self._core_v1.create_namespaced_service, svc_obj, "Service")
-        self._set_owner_reference_on_children(resource_name, owner_ref, job)
+        self._set_owner_reference_on_pvc(resource_name, owner_ref)
 
         return DeploymentStatusUpdate(status="PENDING", status_message="Starting vLLM server", host_url=None)
+
+    def _delete_puller_job(self, resource_name: str) -> bool:
+        """Delete the puller Job and confirm its pod is gone (releases RWO volume).
+
+        Deletes the Job with foreground/background propagation so its pod is
+        removed, freeing the volume attachment for the server pod. Returns True
+        once no puller pod remains; False if a pod is still terminating (caller
+        should retry on the next poll). Idempotent: a missing Job/pod counts as
+        released.
+        """
+        job_name = vk8s.pull_job_name(resource_name)
+        try:
+            self._batch_v1.delete_namespaced_job(
+                name=job_name,
+                namespace=self._k8s_namespace,
+                propagation_policy="Background",
+            )
+            logger.info(f"Deleted puller Job {job_name} to release the model-weights volume")
+        except k8s_client.exceptions.ApiException as e:
+            if e.status != 404:
+                raise
+
+        # The volume stays attached until the pod object is gone, so confirm.
+        try:
+            pods = self._core_v1.list_namespaced_pod(
+                namespace=self._k8s_namespace, label_selector=f"job-name={job_name}"
+            )
+        except Exception:
+            return True
+        return len(pods.items) == 0
 
     def _build_lora_containers(
         self, deployment: ModelDeployment, view: Any, model_entity: Optional[ModelEntity]
@@ -1024,10 +1115,13 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         _ = image_pull_secrets  # documented: pod-level pull secrets handled by SA
         return [init_container], [sidecar]
 
-    def _set_owner_reference_on_children(
-        self, resource_name: str, owner_ref: k8s_client.V1OwnerReference, job: k8s_client.V1Job
-    ) -> None:
-        """Patch the PVC + Job to be owned by the Deployment (best-effort)."""
+    def _set_owner_reference_on_pvc(self, resource_name: str, owner_ref: k8s_client.V1OwnerReference) -> None:
+        """Patch the PVC to be owned by the Deployment (best-effort).
+
+        The puller Job is deleted before the Deployment is created (to release the
+        RWO volume), so only the PVC needs an ownerRef here; the Service gets its
+        ownerRef at create time.
+        """
         patch = {"metadata": {"ownerReferences": [self._k8s_client.sanitize_for_serialization(owner_ref)]}}
         try:
             self._core_v1.patch_namespaced_persistent_volume_claim(
@@ -1035,12 +1129,6 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             )
         except Exception as e:
             logger.warning(f"Failed to set ownerReference on PVC for {resource_name}: {e}")
-        try:
-            self._batch_v1.patch_namespaced_job(
-                name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace, body=patch
-            )
-        except Exception as e:
-            logger.warning(f"Failed to set ownerReference on Job for {resource_name}: {e}")
 
     def _find_job_pod_name(self, job_name: str) -> str | None:
         """Find the most recent pod for a Job (best-effort, for failure logs)."""
@@ -1101,15 +1189,15 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
             )
 
     def _existing_model_source(self, resource_name: str) -> str | None:
-        """Read the model-source label off the existing puller Job, if any."""
+        """Read the model-source annotation off the existing puller Job, if any."""
         try:
             job = self._batch_v1.read_namespaced_job(
                 name=vk8s.pull_job_name(resource_name), namespace=self._k8s_namespace
             )
         except k8s_client.exceptions.ApiException:
             return None
-        labels = (job.metadata.labels or {}) if job.metadata else {}
-        return labels.get(vk8s.MODEL_SOURCE_LABEL)
+        annotations = (job.metadata.annotations or {}) if job.metadata else {}
+        return annotations.get(vk8s.MODEL_SOURCE_ANNOTATION)
 
     def _delete_vllm_resources(self, resource_name: str) -> None:
         """Delete the directly-emitted vLLM objects by name (idempotent)."""
@@ -1408,6 +1496,9 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                     name = labels.get("nmp.nvidia.com/deployment-name")
                     if workspace and name:
                         seen.add(f"{workspace}/{name}")
+        except k8s_dynamic_exceptions.ForbiddenError:
+            # No RBAC for the NIM CRDs (e.g. a vLLM-only deployment). Not an error.
+            logger.debug("No access to NIMServices for orphan reconciliation; skipping NIM path")
         except Exception as e:
             logger.warning(f"Failed to list NIMServices for orphan reconciliation: {e}")
 

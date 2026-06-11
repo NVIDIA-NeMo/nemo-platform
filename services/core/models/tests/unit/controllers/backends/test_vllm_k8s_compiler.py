@@ -56,7 +56,8 @@ def test_compile_pvc_storage_class_and_model_source():
         model_source="default/qwen@main",
     )
     assert pvc.spec.storage_class_name == "fast-ssd"
-    assert pvc.metadata.labels[c.MODEL_SOURCE_LABEL] == "default/qwen@main"
+    # model source is an annotation (its value contains '/' and '@', invalid for labels).
+    assert pvc.metadata.annotations[c.MODEL_SOURCE_ANNOTATION] == "default/qwen@main"
 
 
 def test_compile_pvc_custom_access_modes():
@@ -83,7 +84,7 @@ def test_compile_puller_job_basic():
         name="qwen",
         engine="vllm",
         image="hf-cli:25.10",
-        command=["download", "default/qwen", "--local-dir", "/model-store"],
+        args=["download", "default/qwen", "--local-dir", "/model-store"],
         env={"HF_ENDPOINT": "http://files/apis/files/v2/hf", "HF_TOKEN": "service:models"},
         gpu=2,
         namespace="nemo",
@@ -101,7 +102,8 @@ def test_compile_puller_job_basic():
     assert pod.image_pull_secrets[0].name == "nvcrimagepullsecret"
 
     ctr = pod.containers[0]
-    assert ctr.command == ["download", "default/qwen", "--local-dir", "/model-store"]
+    assert ctr.args == ["download", "default/qwen", "--local-dir", "/model-store"]
+    assert ctr.command is None
     env = {e.name: e.value for e in ctr.env}
     assert env["HF_ENDPOINT"] == "http://files/apis/files/v2/hf"
     assert env["HF_TOKEN"] == "service:models"
@@ -109,8 +111,8 @@ def test_compile_puller_job_basic():
     assert ctr.resources.requests["nvidia.com/gpu"] == "2"
     assert ctr.resources.limits["nvidia.com/gpu"] == "2"
     assert ctr.volume_mounts[0].mount_path == "/model-store"
-    # Job label carries the model source for the re-pull policy.
-    assert job.metadata.labels[c.MODEL_SOURCE_LABEL] == "default/qwen@main"
+    # Job annotation carries the model source for the re-pull policy.
+    assert job.metadata.annotations[c.MODEL_SOURCE_ANNOTATION] == "default/qwen@main"
 
 
 def test_compile_puller_job_cpu_only_no_gpu_request():
@@ -120,7 +122,7 @@ def test_compile_puller_job_cpu_only_no_gpu_request():
         name="n",
         engine="vllm",
         image="hf-cli",
-        command=["download", "w/n", "--local-dir", "/model-store"],
+        args=["download", "w/n", "--local-dir", "/model-store"],
         gpu=0,
     )
     assert job.spec.template.spec.containers[0].resources is None
@@ -133,7 +135,7 @@ def test_compile_puller_job_no_image_pull_secret():
         name="n",
         engine="vllm",
         image="hf-cli",
-        command=["download"],
+        args=["download"],
     )
     assert job.spec.template.spec.image_pull_secrets is None
 
@@ -182,8 +184,9 @@ def test_compile_deployment_basic():
     assert vols["model-store"].persistent_volume_claim.claim_name == "md-default-qwen-pvc"
     assert vols["dshm"].empty_dir.medium == "Memory"
 
-    # health-path label stamped for status readback.
-    assert dep.spec.template.metadata.labels["nmp.nvidia.com/health-path"] == "/health"
+    # health-path stamped as an annotation (its value contains '/', invalid for labels).
+    assert dep.spec.template.metadata.annotations[c.HEALTH_PATH_ANNOTATION] == "/health"
+    assert dep.metadata.annotations[c.HEALTH_PATH_ANNOTATION] == "/health"
 
 
 def test_compile_deployment_cpu_only_no_gpu():

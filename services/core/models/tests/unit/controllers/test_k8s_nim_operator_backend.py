@@ -1705,6 +1705,8 @@ async def test_vllm_status_job_running_is_pending(k8s_backend, sample_deployment
     job.status.failed = None
     job.status.succeeded = None
     backend._batch_v1.read_namespaced_job.return_value = job
+    # No serving Deployment yet (still in pull phase).
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
 
     result = await backend.get_model_deployment_status(sample_deployment, config, None)
     assert result.status == "PENDING"
@@ -1722,6 +1724,8 @@ async def test_vllm_status_job_failed_is_error(k8s_backend, sample_deployment):
     job.status.succeeded = None
     backend._batch_v1.read_namespaced_job.return_value = job
     backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+    # No serving Deployment yet (failed during pull phase).
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
 
     result = await backend.get_model_deployment_status(sample_deployment, config, None)
     assert result.status == "ERROR"
@@ -1740,6 +1744,8 @@ async def test_vllm_status_job_complete_creates_deployment(k8s_backend, sample_d
     backend._batch_v1.read_namespaced_job.return_value = job
     # Deployment does not exist yet -> triggers P3 creation.
     backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    # After the puller Job is deleted, no puller pod remains (volume released).
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
     created_dep = MagicMock()
     created_dep.metadata.name = backend._get_resource_name(sample_deployment)
     created_dep.metadata.uid = "dep-uid"
@@ -1748,11 +1754,35 @@ async def test_vllm_status_job_complete_creates_deployment(k8s_backend, sample_d
     result = await backend.get_model_deployment_status(sample_deployment, config, None)
 
     assert result.status == "PENDING"
+    # Puller Job deleted (release RWO volume) before the Deployment is created.
+    backend._batch_v1.delete_namespaced_job.assert_called_once()
     backend._apps_v1.create_namespaced_deployment.assert_called_once()
     backend._core_v1.create_namespaced_service.assert_called_once()
-    # ownerRef patched onto PVC + Job so they cascade with the Deployment.
+    # ownerRef patched onto the PVC so it cascades with the Deployment (Job is gone).
     backend._core_v1.patch_namespaced_persistent_volume_claim.assert_called_once()
-    backend._batch_v1.patch_namespaced_job.assert_called_once()
+    backend._batch_v1.patch_namespaced_job.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_p3_waits_for_puller_pod_to_release_volume(k8s_backend, sample_deployment):
+    """At P3, if the puller pod is still present, defer Deployment creation (RWO release)."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1)
+
+    job = MagicMock()
+    job.status.failed = None
+    job.status.succeeded = 1
+    backend._batch_v1.read_namespaced_job.return_value = job
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    # Puller pod still terminating -> volume not yet released.
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[MagicMock()])
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+
+    assert result.status == "PENDING"
+    backend._batch_v1.delete_namespaced_job.assert_called_once()
+    # Deployment is NOT created until the puller pod is gone.
+    backend._apps_v1.create_namespaced_deployment.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1766,6 +1796,7 @@ async def test_vllm_status_job_complete_with_lora_wires_sidecar(k8s_backend, sam
     job.status.succeeded = 1
     backend._batch_v1.read_namespaced_job.return_value = job
     backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
     created_dep = MagicMock()
     created_dep.metadata.name = backend._get_resource_name(sample_deployment)
     created_dep.metadata.uid = "dep-uid"
@@ -1788,6 +1819,43 @@ async def test_vllm_status_job_complete_with_lora_wires_sidecar(k8s_backend, sam
     assert env["NIM_PEFT_SOURCE"] == "/scratch/loras"
     assert env["VLLM_LORA_BASE_MODEL_OVERRIDE"] == "/model-store"
     assert env["NMP_SHARED"] == "1"
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_absent_pvc_present_resumes_p3_not_lost(k8s_backend, sample_deployment):
+    """Job deleted (RWO release) + PVC present + no Deployment -> resume P3, not LOST."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1)
+
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)  # Job already deleted
+    # PVC still present -> we're mid-P3, not orphaned.
+    backend._core_v1.read_namespaced_persistent_volume_claim.return_value = MagicMock()
+    backend._core_v1.list_namespaced_pod.return_value = MagicMock(items=[])
+    created_dep = MagicMock()
+    created_dep.metadata.name = backend._get_resource_name(sample_deployment)
+    created_dep.metadata.uid = "dep-uid"
+    backend._apps_v1.create_namespaced_deployment.return_value = created_dep
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+
+    assert result.status == "PENDING"
+    assert result.status != "LOST"
+    backend._apps_v1.create_namespaced_deployment.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_vllm_status_job_and_pvc_absent_is_lost(k8s_backend, sample_deployment):
+    """Both Job and PVC gone + no Deployment -> genuine drift -> LOST."""
+    backend = _vllm_backend(k8s_backend)
+    config = _vllm_config(gpu=1)
+
+    backend._apps_v1.read_namespaced_deployment.side_effect = _api_exception(404)
+    backend._batch_v1.read_namespaced_job.side_effect = _api_exception(404)
+    backend._core_v1.read_namespaced_persistent_volume_claim.side_effect = _api_exception(404)
+
+    result = await backend.get_model_deployment_status(sample_deployment, config, None)
+    assert result.status == "LOST"
 
 
 @pytest.mark.asyncio
@@ -1817,7 +1885,8 @@ async def test_vllm_update_unchanged_source_does_not_repull(k8s_backend, sample_
     config = _vllm_config()
 
     existing_job = MagicMock()
-    existing_job.metadata.labels = {"nmp.nvidia.com/model-source": "default/qwen", "nmp.nvidia.com/engine": "vllm"}
+    existing_job.metadata.labels = {"nmp.nvidia.com/engine": "vllm"}
+    existing_job.metadata.annotations = {"nmp.nvidia.com/model-source": "default/qwen"}
     backend._batch_v1.read_namespaced_job.return_value = existing_job
 
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", None)):
@@ -1836,7 +1905,8 @@ async def test_vllm_update_changed_source_repulls(k8s_backend, sample_deployment
     config = _vllm_config()
 
     existing_job = MagicMock()
-    existing_job.metadata.labels = {"nmp.nvidia.com/model-source": "default/old-model", "nmp.nvidia.com/engine": "vllm"}
+    existing_job.metadata.labels = {"nmp.nvidia.com/engine": "vllm"}
+    existing_job.metadata.annotations = {"nmp.nvidia.com/model-source": "default/old-model"}
     backend._batch_v1.read_namespaced_job.return_value = existing_job
 
     with patch.object(backend, "_resolve_model_source", return_value=("default", "qwen", "v2")):

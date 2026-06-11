@@ -34,8 +34,14 @@ logger = getLogger(__name__)
 DEPLOYMENT_WORKSPACE_LABEL = "nmp.nvidia.com/deployment-workspace"
 DEPLOYMENT_NAME_LABEL = "nmp.nvidia.com/deployment-name"
 # Records the resolved model source on the PVC + Job so update can detect a change
-# and decide whether to re-pull weights (see backend re-pull policy).
-MODEL_SOURCE_LABEL = "nmp.nvidia.com/model-source"
+# and decide whether to re-pull weights (see backend re-pull policy). This is an
+# ANNOTATION, not a label: the value is "<ns>/<name>@<rev>" which contains '/'
+# and ':' and is therefore not a valid label value.
+MODEL_SOURCE_ANNOTATION = "nmp.nvidia.com/model-source"
+
+# Records the resolved readiness-probe path so status reads can recover it.
+# ANNOTATION, not a label: the value (e.g. "/health") contains '/'.
+HEALTH_PATH_ANNOTATION = "nmp.nvidia.com/health-path"
 
 # In-pod paths.
 MODEL_STORE_PATH = "/model-store"
@@ -83,6 +89,17 @@ def common_labels(
     return labels
 
 
+def _merge_annotations(
+    base: Optional[dict[str, str]],
+    model_source: Optional[str],
+) -> Optional[dict[str, str]]:
+    """Merge caller annotations with the model-source annotation (re-pull marker)."""
+    annotations = dict(base) if base else {}
+    if model_source:
+        annotations[MODEL_SOURCE_ANNOTATION] = model_source
+    return annotations or None
+
+
 def _gpu_resources(gpu: int) -> Optional[k8s_client.V1ResourceRequirements]:
     """GPU resource requirements (requests == limits). None when gpu == 0."""
     if gpu < 1:
@@ -94,12 +111,21 @@ def _gpu_resources(gpu: int) -> Optional[k8s_client.V1ResourceRequirements]:
 def _pod_security_context(
     user_id: Optional[int],
     group_id: Optional[int],
-) -> k8s_client.V1PodSecurityContext:
-    """Pod securityContext mirroring the operator's uid/gid defaults."""
+) -> Optional[k8s_client.V1PodSecurityContext]:
+    """Pod securityContext from explicitly-configured uid/gid only.
+
+    Returns ``None`` when neither is set, so the pod runs as the container image's
+    default user. We intentionally do NOT force the operator's 1000/2000 default:
+    some images (e.g. vLLM) lack an ``/etc/passwd`` entry for uid 1000, which makes
+    libraries that call ``getpass.getuser()`` (torch inductor) crash with
+    ``getpwuid(): uid not found``. NIM can opt into a uid/gid via config.
+    """
+    if user_id is None and group_id is None:
+        return None
     return k8s_client.V1PodSecurityContext(
-        run_as_user=user_id if user_id is not None else DEFAULT_USER_ID,
-        run_as_group=group_id if group_id is not None else DEFAULT_GROUP_ID,
-        fs_group=group_id if group_id is not None else DEFAULT_GROUP_ID,
+        run_as_user=user_id,
+        run_as_group=group_id,
+        fs_group=group_id,
     )
 
 
@@ -119,16 +145,16 @@ def compile_pvc(
     """Compile the model-weights PVC.
 
     ``access_modes`` defaults to ``["ReadWriteOnce"]`` (single-pod; the puller and
-    server co-locate). ``model_source`` is stamped as a label so the backend's
-    update path can detect a weight-source change and decide whether to re-pull.
+    server co-locate). ``model_source`` is stamped as an annotation so the
+    backend's update path can detect a weight-source change and decide whether to
+    re-pull.
     """
-    extra = {MODEL_SOURCE_LABEL: model_source} if model_source else None
     return k8s_client.V1PersistentVolumeClaim(
         metadata=k8s_client.V1ObjectMeta(
             name=pvc_name(resource_name),
             namespace=namespace,
-            labels=common_labels(workspace, name, engine, extra=extra),
-            annotations=annotations or None,
+            labels=common_labels(workspace, name, engine),
+            annotations=_merge_annotations(annotations, model_source),
         ),
         spec=k8s_client.V1PersistentVolumeClaimSpec(
             access_modes=access_modes or ["ReadWriteOnce"],
@@ -145,7 +171,7 @@ def compile_puller_job(
     name: str,
     engine: str,
     image: str,
-    command: list[str],
+    args: list[str],
     env: Optional[dict[str, str]] = None,
     gpu: int = 0,
     namespace: Optional[str] = None,
@@ -160,21 +186,24 @@ def compile_puller_job(
 ) -> k8s_client.V1Job:
     """Compile the weight-puller Job.
 
-    Mirrors the docker puller: a single container running ``command`` against the
-    weight source, mounting the PVC at ``/model-store``. The puller requests the
-    same ``gpu`` as the server -- not for compute, but to pin it into GPU topology
-    so the shared RWO PVC binds where the server can mount it (correct across any
-    StorageClass ``volumeBindingMode``).
+    Mirrors the docker puller: a single container running the puller image's
+    entrypoint with ``args`` (e.g. ``["download", "<repo>", "--local-dir",
+    "/model-store"]``), mounting the PVC at ``/model-store``. ``args`` is passed as
+    the container ``args`` (appended to the image ENTRYPOINT) -- NOT ``command``,
+    which would override the entrypoint and try to exec the first token as a
+    binary. The puller requests the same ``gpu`` as the server -- not for compute,
+    but to pin it into GPU topology so the shared RWO PVC binds where the server
+    can mount it (correct across any StorageClass ``volumeBindingMode``).
     """
-    extra = {MODEL_SOURCE_LABEL: model_source} if model_source else None
-    labels = common_labels(workspace, name, engine, extra=extra)
+    labels = common_labels(workspace, name, engine)
+    job_annotations = _merge_annotations(annotations, model_source)
 
     env_list = [k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in (env or {}).items()]
 
     container = k8s_client.V1Container(
         name="weight-puller",
         image=image,
-        command=command,
+        args=args,
         env=env_list or None,
         resources=_gpu_resources(gpu),
         security_context=k8s_client.V1SecurityContext(
@@ -189,10 +218,19 @@ def compile_puller_job(
         ],
     )
 
+    # The puller writes to a freshly-provisioned PVC, so it needs fsGroup to own
+    # the volume's filesystem (without it, a non-root puller can't create files at
+    # the PVC root -> PermissionError on /model-store). Default to 1000/2000; the
+    # puller image (huggingface-cli) has a passwd entry for these.
+    puller_security_context = k8s_client.V1PodSecurityContext(
+        run_as_user=user_id if user_id is not None else DEFAULT_USER_ID,
+        run_as_group=group_id if group_id is not None else DEFAULT_GROUP_ID,
+        fs_group=group_id if group_id is not None else DEFAULT_GROUP_ID,
+    )
     pod_spec = k8s_client.V1PodSpec(
         restart_policy="Never",
         service_account_name=service_account_name,
-        security_context=_pod_security_context(user_id, group_id),
+        security_context=puller_security_context,
         image_pull_secrets=([k8s_client.V1LocalObjectReference(name=image_pull_secret)] if image_pull_secret else None),
         containers=[container],
         volumes=[
@@ -210,7 +248,7 @@ def compile_puller_job(
             name=pull_job_name(resource_name),
             namespace=namespace,
             labels=labels,
-            annotations=annotations or None,
+            annotations=job_annotations,
         ),
         spec=k8s_client.V1JobSpec(
             backoff_limit=backoff_limit,
@@ -268,10 +306,12 @@ def compile_deployment(
     pod_labels = {
         **selector_labels,
         **common_labels(workspace, name, engine),
-        "nmp.nvidia.com/health-path": health_path,
     }
     if extra_labels:
         pod_labels.update(extra_labels)
+    # health path is recorded as an annotation, not a label: the value (e.g.
+    # "/health") contains '/', which is invalid in a k8s label value.
+    health_annotations = {HEALTH_PATH_ANNOTATION: health_path}
 
     env_list = [k8s_client.V1EnvVar(name=k, value=str(v)) for k, v in (env or {}).items()]
     period = 10
@@ -328,12 +368,13 @@ def compile_deployment(
             name=resource_name,
             namespace=namespace,
             labels=common_labels(workspace, name, engine),
+            annotations=dict(health_annotations),
         ),
         spec=k8s_client.V1DeploymentSpec(
             replicas=1,
             selector=k8s_client.V1LabelSelector(match_labels=selector_labels),
             template=k8s_client.V1PodTemplateSpec(
-                metadata=k8s_client.V1ObjectMeta(labels=pod_labels),
+                metadata=k8s_client.V1ObjectMeta(labels=pod_labels, annotations=dict(health_annotations)),
                 spec=pod_spec,
             ),
         ),
