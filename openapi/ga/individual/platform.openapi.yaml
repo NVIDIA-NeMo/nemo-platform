@@ -4154,6 +4154,17 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SpanGroupsPage'
+        '400':
+          description: Invalid group-by parameter
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  detail:
+                    type: string
+                required:
+                - detail
         '422':
           description: Validation Error
           content:

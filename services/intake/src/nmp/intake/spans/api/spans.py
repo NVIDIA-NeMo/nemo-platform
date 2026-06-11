@@ -106,6 +106,20 @@ async def list_spans(
     response_model=SpanGroupsPage,
     response_model_exclude_none=True,
     tags=[API_TAG],
+    responses={
+        400: {
+            "description": "Invalid group-by parameter",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {"detail": {"type": "string"}},
+                        "required": ["detail"],
+                    }
+                }
+            },
+        }
+    },
     openapi_extra=generate_openapi_extra_params(
         filter_schema=SpanFilter,
         filter_description=(

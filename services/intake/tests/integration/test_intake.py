@@ -36,6 +36,8 @@ def test_intake_openapi_keeps_span_era_routes(sdk: NeMoPlatform) -> None:
 
     assert "/apis/intake/v2/workspaces/{workspace}/spans" in paths
     assert "get" in paths["/apis/intake/v2/workspaces/{workspace}/spans"]
+    span_groups_operation = paths["/apis/intake/v2/workspaces/{workspace}/spans/groups"]["get"]
+    assert "400" in span_groups_operation["responses"]
     assert "/apis/intake/v2/workspaces/{workspace}/spans/{span_id}" in paths
     assert "get" in paths["/apis/intake/v2/workspaces/{workspace}/spans/{span_id}"]
     assert "/apis/intake/v2/workspaces/{workspace}/traces" in paths
