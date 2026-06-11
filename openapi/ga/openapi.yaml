@@ -9828,10 +9828,6 @@ components:
         description:
           title: Description
           type: string
-        is_deleted:
-          type: boolean
-          title: Is Deleted
-          default: false
         created_at:
           title: Created At
           type: string
@@ -9970,10 +9966,6 @@ components:
         summary:
           title: Summary
           type: string
-        is_deleted:
-          type: boolean
-          title: Is Deleted
-          default: false
         created_at:
           title: Created At
           type: string

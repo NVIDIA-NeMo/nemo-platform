@@ -36,6 +36,4 @@ class ExperimentGroupResponse(BaseModel):
 
     description: Optional[str] = None
 
-    is_deleted: Optional[bool] = None
-
     updated_at: Optional[datetime] = None

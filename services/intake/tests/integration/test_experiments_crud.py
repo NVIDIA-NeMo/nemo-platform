@@ -329,8 +329,9 @@ def test_filter_is_deleted_true_returns_only_deleted(client: TestClient) -> None
     response = client.get(EXPERIMENTS, params={"filter[is_deleted]": "true"})
     assert response.status_code == 200, response.text
     data = response.json()["data"]
-    # Live experiments are excluded; only deleted rows (with mangled names) appear.
-    assert all(e["is_deleted"] is True for e in data)
+    # Live experiments are excluded; only deleted rows (with mangled names) appear. The
+    # response body intentionally omits ``is_deleted``; the filter context and mangled name
+    # are the signal that these are trash-bin rows.
     assert any(e["name"].startswith("exp-trash-deleted-") for e in data)
     assert not any(e["name"] == "exp-still-here" for e in data)
 

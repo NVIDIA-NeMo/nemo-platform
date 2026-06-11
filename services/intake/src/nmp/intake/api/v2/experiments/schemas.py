@@ -54,7 +54,6 @@ class ExperimentGroupResponse(BaseModel):
     name: str
     workspace: str
     description: str | None = None
-    is_deleted: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -65,7 +64,6 @@ class ExperimentGroupResponse(BaseModel):
             name=entity.name,
             workspace=entity.workspace,
             description=entity.description,
-            is_deleted=entity.is_deleted,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )
@@ -100,7 +98,6 @@ class ExperimentResponse(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
     description: str | None = None
     summary: str | None = None
-    is_deleted: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -133,7 +130,6 @@ class ExperimentResponse(BaseModel):
             metadata=entity.metadata,
             description=entity.description,
             summary=entity.summary,
-            is_deleted=entity.is_deleted,
             created_at=entity.created_at,
             updated_at=entity.updated_at,
         )

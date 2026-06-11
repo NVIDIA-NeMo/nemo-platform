@@ -56,8 +56,6 @@ class ExperimentResponse(BaseModel):
 
     evaluator_names: Optional[List[str]] = None
 
-    is_deleted: Optional[bool] = None
-
     latency_ms: Optional[EvaluatorAggregate] = None
     """Aggregate statistics over evaluator scores or session-level metric values."""
 
