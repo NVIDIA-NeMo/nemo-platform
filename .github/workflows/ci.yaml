@@ -798,18 +798,3 @@ jobs:
           printf '%s\n' "${NEEDS_JSON}" \
             | jq -e 'to_entries | map(.value.result) | all(. as $result | ["success", "skipped"] | any($result == .))'
 
-  notify-ci-consumer:
-    name: Notify CI consumer
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Send completion event
-        env:
-          GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
-          DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
-        run: |
-          jq -n --arg ref "${GITHUB_SHA}" \
-            '{event_type: "ci-passed", client_payload: {ref: $ref}}' \
-          | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -
