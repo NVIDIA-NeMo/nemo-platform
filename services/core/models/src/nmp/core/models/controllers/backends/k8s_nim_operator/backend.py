@@ -1199,26 +1199,24 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
         annotations = (job.metadata.annotations or {}) if job.metadata else {}
         return annotations.get(vk8s.MODEL_SOURCE_ANNOTATION)
 
-    def _delete_vllm_resources(self, resource_name: str) -> None:
-        """Delete the directly-emitted vLLM objects by name (idempotent)."""
+    def _delete_vllm_resources(self, resource_name: str) -> list[str]:
+        """Delete the directly-emitted vLLM objects by name (idempotent).
+
+        Returns a list of concise error strings for any real (non-404) failures;
+        empty when everything was deleted or already absent.
+        """
         deleters = [
-            (self._apps_v1.delete_namespaced_deployment, resource_name, "Deployment"),
-            (self._core_v1.delete_namespaced_service, resource_name, "Service"),
-            (self._batch_v1.delete_namespaced_job, vk8s.pull_job_name(resource_name), "puller Job"),
-            (
-                self._core_v1.delete_namespaced_persistent_volume_claim,
-                vk8s.pvc_name(resource_name),
-                "PVC",
-            ),
+            (self._apps_v1.delete_namespaced_deployment, "Deployment", resource_name),
+            (self._core_v1.delete_namespaced_service, "Service", resource_name),
+            (self._batch_v1.delete_namespaced_job, "puller Job", vk8s.pull_job_name(resource_name)),
+            (self._core_v1.delete_namespaced_persistent_volume_claim, "PVC", vk8s.pvc_name(resource_name)),
         ]
-        for delete_fn, obj_name, kind in deleters:
-            try:
-                delete_fn(name=obj_name, namespace=self._k8s_namespace)
-                logger.info(f"Deleted {kind} {obj_name} in {self._k8s_namespace}")
-            except k8s_client.exceptions.ApiException as e:
-                if e.status == 404:
-                    continue
-                logger.warning(f"Error deleting {kind} {obj_name}: {e}")
+        errors: list[str] = []
+        for delete_fn, kind, obj_name in deleters:
+            err = self._delete_one(delete_fn, kind, obj_name)
+            if err:
+                errors.append(err)
+        return errors
 
     async def update_model_deployment(
         self, deployment: ModelDeployment, config: ModelDeploymentConfig, model_entity: Optional[ModelEntity] = None
@@ -1411,61 +1409,92 @@ class K8sNimOperatorServiceBackend(ServiceBackend):
                 host_url=None,
             )
 
+    def _delete_one(self, delete_fn, kind: str, obj_name: str) -> Optional[str]:
+        """Delete a single namespaced object by name, tolerating "already gone".
+
+        Teardown deletes every resource type by name (no engine detection): this is
+        idempotent and self-heals partial-deletion states. A 404 (object absent) is
+        success. Any other failure is logged concisely (no stack trace) and
+        returned as a short error string so the caller can aggregate and surface it
+        (we must NOT mark a deployment DELETED if cluster resources may remain).
+        """
+        try:
+            delete_fn(name=obj_name, namespace=self._k8s_namespace)
+            logger.info(f"Deleted {kind} {self._k8s_namespace}/{obj_name}")
+            return None
+        except (k8s_client.exceptions.ApiException, k8s_dynamic_exceptions.NotFoundError) as e:
+            # NotFound (typed status 404 or dynamic NotFoundError) -> already gone.
+            if isinstance(e, k8s_dynamic_exceptions.NotFoundError) or getattr(e, "status", None) == 404:
+                logger.debug(f"{kind} {obj_name} not found, already deleted")
+                return None
+            return self._classify_delete_error(e, kind, obj_name)
+        except k8s_dynamic_exceptions.ForbiddenError as e:
+            return self._classify_delete_error(e, kind, obj_name)
+
+    @staticmethod
+    def _classify_delete_error(e: Exception, kind: str, obj_name: str) -> str:
+        """Concise, human-readable delete failure (no stack trace) for aggregation."""
+        status = getattr(e, "status", None)
+        is_forbidden = status == 403 or isinstance(e, k8s_dynamic_exceptions.ForbiddenError)
+        if is_forbidden:
+            # With the models ServiceAccount RBAC in place this should not happen;
+            # if it does, the SA is missing delete on this resource type.
+            msg = f"forbidden to delete {kind} {obj_name} (ServiceAccount lacks RBAC)"
+            logger.error(msg)
+            return msg
+        msg = f"error deleting {kind} {obj_name}: {status or type(e).__name__}"
+        logger.warning(msg)
+        return msg
+
     def _delete_resources_by_model_deployment_id(self, workspace: str, name: str) -> DeploymentStatusUpdate:
-        """Delete NIMService and NIMCache for the given model deployment (by workspace/name)."""
+        """Delete every resource a deployment could own, by name (engine-agnostic).
+
+        Delete has only workspace/name (no config/engine -- it is also called for
+        orphan reconciliation), so we attempt deletion of BOTH the operator path
+        (NIMService/NIMCache CRs) and the directly-emitted vLLM path (Deployment/
+        Service/Job/PVC). Each delete is independent and 404-tolerant; one
+        resource's failure never aborts the others. Real (non-404) failures are
+        aggregated and surfaced as ERROR so we never report DELETED while cluster
+        resources may remain.
+        """
         nimservice_name = get_deployment_resource_name(workspace, name)
         nimcache_name = get_nimcache_resource_name(workspace, name)
-        try:
-            nimservice_api = self._dynamic_client.resources.get(
-                api_version=NIMSERVICE_API_VERSION,
-                kind="NIMService",
-            )
+        errors: list[str] = []
 
+        # Operator path: NIMService / NIMCache CRs (via the dynamic client).
+        for api_version, kind, cr_name in (
+            (NIMSERVICE_API_VERSION, "NIMService", nimservice_name),
+            (NIMCACHE_API_VERSION, "NIMCache", nimcache_name),
+        ):
             try:
-                nimservice_api.delete(
-                    name=nimservice_name,
-                    namespace=self._k8s_namespace,
-                )
-                logger.info(f"Successfully deleted NIMService {self._k8s_namespace}/{nimservice_name}")
-            except k8s_dynamic_exceptions.NotFoundError:
-                logger.info(f"NIMService {nimservice_name} not found, may have been already deleted")
-
-            # Try to delete associated NIMCache if it exists
-            try:
-                nimcache_api = self._dynamic_client.resources.get(
-                    api_version=NIMCACHE_API_VERSION,
-                    kind="NIMCache",
-                )
-                nimcache_api.delete(
-                    name=nimcache_name,
-                    namespace=self._k8s_namespace,
-                )
-                logger.info(f"Successfully deleted NIMCache {self._k8s_namespace}/{nimcache_name}")
-            except k8s_dynamic_exceptions.NotFoundError:
-                logger.debug(f"No NIMCache found for {nimcache_name}, skipping cleanup")
+                cr_api = self._dynamic_client.resources.get(api_version=api_version, kind=kind)
             except Exception as e:
-                logger.warning(f"Error deleting NIMCache {nimcache_name}: {e}")
-
-            # Also tear down any directly-emitted vLLM objects (idempotent; delete
-            # has no config/engine, so we clean up both paths by name). Deleting the
-            # Deployment cascades its owned PVC/Job/Service, but the puller objects
-            # may exist before the Deployment (phases P0-P2), so delete explicitly.
-            self._delete_vllm_resources(nimservice_name)
-
-            return DeploymentStatusUpdate(
-                status="DELETED",
-                status_message="Deployment deletion initiated successfully",
-                host_url=None,
+                errors.append(f"error resolving {kind} API: {e}")
+                continue
+            err = self._delete_one(
+                lambda name, namespace, _api=cr_api: _api.delete(name=name, namespace=namespace),
+                kind,
+                cr_name,
             )
+            if err:
+                errors.append(err)
 
-        except Exception as e:
-            logger.exception(f"Failed to delete NIMService {nimservice_name}")
+        # Directly-emitted vLLM path: Deployment / Service / puller Job / PVC.
+        errors.extend(self._delete_vllm_resources(nimservice_name))
+
+        if errors:
+            summary = "; ".join(errors)
             return DeploymentStatusUpdate(
                 status="ERROR",
-                status_message=f"Failed to delete deployment {nimservice_name} due to a service backend error",
-                error_details={"error": str(e), "error_type": type(e).__name__},
+                status_message=f"Failed to fully delete deployment {workspace}/{name}: {summary}",
+                error_details={"errors": errors},
                 host_url=None,
             )
+        return DeploymentStatusUpdate(
+            status="DELETED",
+            status_message="Deployment deletion initiated successfully",
+            host_url=None,
+        )
 
     async def delete_model_deployment(self, workspace: str, name: str) -> DeploymentStatusUpdate:
         """Delete a NIM Operator model deployment by workspace and name (model deployment ID)."""

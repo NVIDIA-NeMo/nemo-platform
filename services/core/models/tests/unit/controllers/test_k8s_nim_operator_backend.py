@@ -461,6 +461,77 @@ async def test_k8s_backend_delete_model_deployment_without_secret(k8s_backend, s
     assert status_update.status == "DELETED"
 
 
+@pytest.mark.asyncio
+async def test_delete_attempts_all_resource_types_and_tolerates_404(k8s_backend, sample_deployment):
+    """Delete attempts CRs + raw vLLM objects by name; 404s are success -> DELETED."""
+    k8s_backend._k8s_namespace = "default"
+    k8s_backend._dynamic_client = MagicMock()
+    k8s_backend._core_v1 = MagicMock()
+    k8s_backend._apps_v1 = MagicMock()
+    k8s_backend._batch_v1 = MagicMock()
+    cr_api = MagicMock()
+    cr_api.delete.side_effect = k8s_dynamic_exceptions.NotFoundError(MagicMock(status=404))
+    k8s_backend._dynamic_client.resources.get.return_value = cr_api
+    notfound = k8s_client.exceptions.ApiException(status=404)
+    k8s_backend._apps_v1.delete_namespaced_deployment.side_effect = notfound
+    k8s_backend._core_v1.delete_namespaced_service.side_effect = notfound
+    k8s_backend._batch_v1.delete_namespaced_job.side_effect = notfound
+    k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.side_effect = notfound
+
+    result = await k8s_backend.delete_model_deployment("default", "qwen")
+
+    assert result.status == "DELETED"
+    assert k8s_backend._dynamic_client.resources.get.call_count == 2
+    k8s_backend._apps_v1.delete_namespaced_deployment.assert_called_once()
+    k8s_backend._core_v1.delete_namespaced_service.assert_called_once()
+    k8s_backend._batch_v1.delete_namespaced_job.assert_called_once()
+    k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_real_failure_surfaces_error_but_attempts_all(k8s_backend, sample_deployment):
+    """A non-404 delete failure -> ERROR (not DELETED), and other deletes still run."""
+    k8s_backend._k8s_namespace = "default"
+    k8s_backend._dynamic_client = MagicMock()
+    k8s_backend._core_v1 = MagicMock()
+    k8s_backend._apps_v1 = MagicMock()
+    k8s_backend._batch_v1 = MagicMock()
+    cr_api = MagicMock()
+    cr_api.delete.side_effect = k8s_dynamic_exceptions.NotFoundError(MagicMock(status=404))
+    k8s_backend._dynamic_client.resources.get.return_value = cr_api
+    k8s_backend._apps_v1.delete_namespaced_deployment.side_effect = k8s_client.exceptions.ApiException(status=500)
+    notfound = k8s_client.exceptions.ApiException(status=404)
+    k8s_backend._core_v1.delete_namespaced_service.side_effect = notfound
+    k8s_backend._batch_v1.delete_namespaced_job.side_effect = notfound
+    k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.side_effect = notfound
+
+    result = await k8s_backend.delete_model_deployment("default", "qwen")
+
+    assert result.status == "ERROR"
+    k8s_backend._core_v1.delete_namespaced_service.assert_called_once()
+    k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_delete_forbidden_cr_does_not_block_vllm_cleanup(k8s_backend, sample_deployment):
+    """A 403 deleting a NIMService still lets the raw vLLM objects be deleted (and surfaces ERROR)."""
+    k8s_backend._k8s_namespace = "default"
+    k8s_backend._dynamic_client = MagicMock()
+    k8s_backend._core_v1 = MagicMock()
+    k8s_backend._apps_v1 = MagicMock()
+    k8s_backend._batch_v1 = MagicMock()
+    cr_api = MagicMock()
+    cr_api.delete.side_effect = k8s_dynamic_exceptions.ForbiddenError(MagicMock(status=403))
+    k8s_backend._dynamic_client.resources.get.return_value = cr_api
+
+    result = await k8s_backend.delete_model_deployment("default", "qwen")
+
+    assert result.status == "ERROR"
+    assert "forbidden" in result.status_message.lower()
+    k8s_backend._apps_v1.delete_namespaced_deployment.assert_called_once()
+    k8s_backend._core_v1.delete_namespaced_persistent_volume_claim.assert_called_once()
+
+
 def test_k8s_backend_initialization(mock_nmp_sdk, mock_k8s_config):
     """Test K8s NIM Operator backend initializes correctly with custom namespace config."""
     config = {"namespace": "nim-system"}
