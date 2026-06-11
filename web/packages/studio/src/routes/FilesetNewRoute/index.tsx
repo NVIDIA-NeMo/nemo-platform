@@ -174,59 +174,6 @@ function toFileList(value: unknown): File[] {
   );
 }
 
-interface DatasetQualityReportViewProps {
-  report: DatasetQualityReport;
-}
-
-const DatasetQualityReportView: FC<DatasetQualityReportViewProps> = ({ report }) => {
-  const partialScanNote = report.scannedLines < report.totalLines && (
-    <Text kind="body/regular/sm" color="secondary">
-      Scanned first {report.scannedLines.toLocaleString()} of {report.totalLines.toLocaleString()}{' '}
-      lines.
-    </Text>
-  );
-
-  if (!report.hasErrors && !report.hasWarnings) {
-    return (
-      <Stack gap="density-xs">
-        <Flex gap="density-sm" align="center">
-          <CheckCircle2 size={16} className="text-green-500 shrink-0" />
-          <Text kind="body/regular/sm">{report.fileName}: all quality checks passed.</Text>
-        </Flex>
-        {partialScanNote}
-      </Stack>
-    );
-  }
-
-  return (
-    <Stack gap="density-sm">
-      <Text kind="label/bold/sm">{report.fileName}</Text>
-      {report.issues.map((issue, idx) => (
-        <Flex key={idx} gap="density-sm" align="start">
-          {issue.severity === 'error' ? (
-            <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-          )}
-          <Stack gap="density-xs">
-            <Text kind="body/regular/sm">{issue.message}</Text>
-            {issue.affectedLines && issue.affectedLines.length > 0 && (
-              <Text kind="body/regular/sm" color="secondary">
-                {'Line' + (issue.affectedLines.length > 1 ? 's' : '') + ': '}
-                {issue.affectedLines.join(', ')}
-                {issue.count && issue.count > issue.affectedLines.length
-                  ? ` (+${issue.count - issue.affectedLines.length} more)`
-                  : ''}
-              </Text>
-            )}
-          </Stack>
-        </Flex>
-      ))}
-      {partialScanNote}
-    </Stack>
-  );
-};
-
 export const FilesetNewRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const [activeTab, setActiveTab] = useState<DatasetType>(DATASET_TYPE_CUSTOM);
