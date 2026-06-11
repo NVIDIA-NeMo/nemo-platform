@@ -66,6 +66,16 @@ export interface ClaudeCodeHistorySession {
   chat_artifacts: ClaudeCodeChatArtifacts;
 }
 
+export interface ClaudeCodeSkill {
+  name: string;
+  claude_name: string;
+  description: string;
+  source: string;
+  source_path?: string | null;
+  install_path: string;
+  installed: boolean;
+}
+
 export interface ClaudeCodeUserHistoryItem {
   kind: 'user';
   text: string;

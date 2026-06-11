@@ -1,19 +1,34 @@
 # LoRA Customization Job (CLI, GPU)
 
-Tests the agent's ability to set up and submit a real LoRA fine-tuning job through the NeMo Platform Customizer service using the CLI.
+Tests the agent's ability to set up and submit a real LoRA fine-tuning job through the **nemo-customizer** plugin with the **nmp-automodel** backend.
 
 ## What This Tests
 
 - Creating workspaces and filesets via NeMo Platform CLI
 - Preparing and uploading SFT training data in JSONL format
-- Submitting a LoRA customization job with correct hyperparameters
-- Monitoring job progress
+- Submitting a LoRA job with `nemo customization automodel submit`
+- Monitoring job progress via the jobs API
+
+## Prerequisites
+
+Build and push platform/automodel images before running this eval. From the repo root:
+
+```bash
+export BAKE_TAG=$(git rev-parse --short HEAD)
+export BASE_TAG_AUTOMODEL=$BAKE_TAG
+export NMP_IMAGE_TAG=$BAKE_TAG
+export NMP_IMAGE_REGISTRY=my-registry/nemo-platform-dev
+echo "$NMP_IMAGE_TAG"
+
+# Bake/push nmp-automodel images (and platform task images as needed)
+docker buildx bake -f docker-bake.hcl --push
+```
+
+The eval container sources `environment/image-env.sh`, which defaults to the same registry and derives `NMP_IMAGE_TAG` from `git rev-parse --short HEAD` when unset.
 
 ## GPU Requirements
 
-This eval requires **1 GPU** allocated to the Harbor container. The customization job performs actual LoRA fine-tuning on the GPU.
-
-If the NeMo Platform job executor is not configured to run inside the Harbor container, the eval still validates correct job submission. To enable end-to-end training, ensure the job dispatcher backend is configured for local GPU execution.
+This eval requires **1 GPU** allocated to the Harbor container (via `environment/docker-compose.yaml`). The customization job performs actual LoRA fine-tuning on the GPU using `nmp-automodel-training`.
 
 ## Flow Reference
 

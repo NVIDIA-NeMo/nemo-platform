@@ -412,6 +412,8 @@ jobs:
   reconcile_interval_seconds: 2
   # Interval in seconds for the job scheduler to run | default: 5
   schedule_interval_seconds: 5
+  # Register the subprocess/default execution profile. When unset, defaults to true for docker/none runtimes and false for kubernetes.
+  enable_subprocess_executor:
 ```
 
 ### `models`
@@ -761,20 +763,18 @@ secrets:
           token:
 ```
 
-### `customizer`
+### `automodel`
 
-Configuration for the Customizer service.
+Environment variables use the NMP_AUTOMODEL_ prefix.
 
 ```yaml
-customizer:
-  # Port to run the service on | default: 8000
-  port: 8000
-  # Enable debug mode | default: False
-  debug: false
-  # Override container image for Automodel training. If not set, uses platform defaults.
-  training_automodel_image:
-  # Override container image for DPO training. If not set, uses platform defaults.
-  training_rl_image:
+automodel:
+  # Registry host/path prefix for nmp-automodel-tasks and nmp-automodel-training. Override via NMP_AUTOMODEL_IMAGE_REGISTRY for other environments, defaults to the platform's image registry.
+  image_registry:
+  # Override entire GPU training image (registry/name:tag).
+  training_image:
+  # Override entire CPU tasks image (registry/name:tag).
+  tasks_image:
   # default: '1'
   default_job_resource_cpu_request: '1'
   # default: '8Gi'
@@ -783,10 +783,34 @@ customizer:
   default_job_resource_cpu_limit: '4'
   # default: '16Gi'
   default_job_resource_memory_limit: 16Gi
-  # Terminate a training step if no task reports progress within this many seconds. 0 disables the check. | default: 3600
+  # Terminate training if no task progress within this many seconds (0 disables). | default: 3600
   training_staleness_timeout_seconds: 3600
-  # Default execution profile for GPU training steps. Used for all training jobs unless the user specifies one explicitly. | default: 'default'
-  default_training_execution_profile: default
+  # Default GPU execution profile when the job spec omits training.execution_profile. | default: 'gpu'
+  default_training_execution_profile: gpu
+```
+
+### `unsloth`
+
+Environment variables use the ``NMP_UNSLOTH_`` prefix.
+
+```yaml
+unsloth:
+  # Registry host/path prefix for nmp-unsloth-tasks and nmp-unsloth-training. Override via NMP_UNSLOTH_IMAGE_REGISTRY for other environments, defaults to the platform's image registry.
+  image_registry:
+  # Override entire GPU training image (registry/name:tag).
+  training_image:
+  # Override entire CPU tasks image (registry/name:tag).
+  tasks_image:
+  # default: '1'
+  default_job_resource_cpu_request: '1'
+  # default: '8Gi'
+  default_job_resource_memory_request: 8Gi
+  # default: '4'
+  default_job_resource_cpu_limit: '4'
+  # default: '16Gi'
+  default_job_resource_memory_limit: 16Gi
+  # Default GPU execution profile when the job spec omits training.execution_profile. | default: 'gpu'
+  default_training_execution_profile: gpu
 ```
 
 ### `evaluator`

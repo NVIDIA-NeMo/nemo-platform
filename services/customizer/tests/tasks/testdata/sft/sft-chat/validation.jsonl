@@ -1,2 +1,0 @@
-{"messages": [{"role": "user", "content": "What is a neural network?"}, {"role": "assistant", "content": "A neural network is a computational model inspired by biological neural networks."}]}
-{"messages": [{"role": "user", "content": "Define deep learning"}, {"role": "assistant", "content": "Deep learning uses neural networks with multiple layers."}]}

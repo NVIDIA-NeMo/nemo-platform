@@ -102,7 +102,7 @@ Future expansion will support mounting service-specific MCP servers from:
 
 - `nmp.guardrails.mcp`
 - `nmp.evaluator.mcp`
-- `nmp.customizer.mcp`
+- `nemo_customizer` plugin MCP tools (when enabled)
 - etc.
 
 ## Development

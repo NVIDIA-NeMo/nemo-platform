@@ -20,7 +20,6 @@ from nmp.common.api.utils import clear_query_param_schemas, register_query_param
 from nmp.common.version import platform_api_version
 from uvicorn.importer import import_from_string
 
-from .openapi_helper.customizer_generator import generate_customizer_openapi
 from .openapi_helper.openapi_tools import (
     copy_tags,
     fix_openai_streaming_endpoints,
@@ -87,7 +86,6 @@ class ServiceConfig:
     output_file: str
     app_dir: Optional[str] = None
     env_vars: Optional[Dict[str, str]] = None
-    custom_generation: Optional[str] = None  # For special cases like customizer
     copy_from: Optional[str] = None  # For deployment-management
     spec_type: SpecType = SpecType.GA
 
@@ -154,28 +152,6 @@ def extract_openapi_spec(service: ServiceConfig) -> tuple[str, bool, str]:
             # Copy to both locations
             shutil.copy(service.copy_from, temp_path)
             return service.name, True, ""
-
-        # Handle special cases
-        if service.custom_generation:
-            if service.custom_generation == "customizer":
-                # Generate the customizer OpenAPI spec
-                generated_file = generate_customizer_openapi(output_dir="openapi")
-
-                if os.path.exists(generated_file):
-                    temp_path = service.temp_output_path()
-
-                    # Ensure directories exist
-                    os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
-                    shutil.move(generated_file, temp_path)
-                else:
-                    return (
-                        service.name,
-                        False,
-                        f"Generated file {generated_file} not found",
-                    )
-
-                return service.name, True, ""
 
         # Set environment variables if specified
         old_env = {}

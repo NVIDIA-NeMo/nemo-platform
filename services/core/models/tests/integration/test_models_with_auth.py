@@ -1324,6 +1324,7 @@ class TestFilesetPermissions:
 
 
 @pytest.mark.integration
+@pytest.mark.usefixtures("no_hf_network")
 class TestTrustRemoteCodePermission:
     """Test trust_remote_code permission (models.trust-remote-code.set) at the API layer.
 

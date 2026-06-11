@@ -20,6 +20,7 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
+from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
 from pydantic import BaseModel, Field
 from starlette.routing import NoMatchFound
 
@@ -906,6 +907,15 @@ def get_session_history(session_id: str) -> SessionHistoryResponse:
 
     _initialized_sessions.add(sid)
     return SessionHistoryResponse(session_id=sid, items=items, chat_artifacts=summary.chat_artifacts)
+
+
+@router.get("/skills", response_model=list[ClaudeSkillResponse])
+def list_claude_skills() -> list[ClaudeSkillResponse]:
+    """List NeMo skills that the repo's Claude Code installer exposes."""
+    try:
+        return list_claude_skill_responses(SERVER_CWD)
+    except DuplicateSkillError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 def _mcp_url(

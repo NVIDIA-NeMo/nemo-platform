@@ -4,6 +4,7 @@
 import { BASE_URL } from '@studio/constants/environment';
 import {
   getClaudeCodeSessionHistory,
+  listClaudeCodeSkills,
   resolveClaudeCodePermission,
   streamClaudeCodeMessage,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
@@ -219,5 +220,37 @@ describe('Claude Code API helpers', () => {
         method: 'POST',
       })
     );
+  });
+
+  it('loads Claude Code skill metadata', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify([
+          {
+            name: 'inference',
+            claude_name: 'nemo-inference',
+            description: 'Use NeMo Platform inference.',
+            source: 'nemo-platform',
+            source_path: 'packages/nemo_platform_ext/src/nemo_platform_ext/skills/inference',
+            install_path: '.claude/skills/nemo-inference/SKILL.md',
+            installed: false,
+          },
+        ]),
+        { status: 200 }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(listClaudeCodeSkills()).resolves.toEqual([
+      {
+        name: 'inference',
+        claude_name: 'nemo-inference',
+        description: 'Use NeMo Platform inference.',
+        source: 'nemo-platform',
+        source_path: 'packages/nemo_platform_ext/src/nemo_platform_ext/skills/inference',
+        install_path: '.claude/skills/nemo-inference/SKILL.md',
+        installed: false,
+      },
+    ]);
   });
 });

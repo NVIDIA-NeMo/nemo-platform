@@ -121,6 +121,26 @@ def test_legacy_evaluation_service_is_not_registered_by_default():
     assert "evaluation" not in registry.get_openapi_service_names(available)
 
 
+def test_customization_in_openapi_when_plugin_service_available(monkeypatch):
+    clear_registry_caches()
+
+    class CustomizationService(NemoService):
+        name = "customization"
+
+        def get_routers(self) -> list[RouterSpec]:
+            return [RouterSpec(router=APIRouter())]
+
+    monkeypatch.setattr(
+        registry,
+        "AVAILABLE_SERVICES",
+        {"auth": "nmp.core.auth.main:service"},
+    )
+    monkeypatch.setattr(registry, "discover_services", lambda: {"customization": CustomizationService})
+
+    available = registry.get_available_services()
+    assert "customization" in registry.get_openapi_service_names(available)
+
+
 def test_intake_is_registered_as_api_and_openapi_service():
     clear_registry_caches()
     available = registry.get_available_services()
