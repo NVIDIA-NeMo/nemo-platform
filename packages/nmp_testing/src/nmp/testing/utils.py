@@ -23,6 +23,8 @@ from nmp.common.entities.utils import get_random_id
 
 NemoRun = Callable[..., subprocess.CompletedProcess[str]]
 
+_E2E_IGW_WAIT_TIMEOUT_SEC = 60
+
 _ENTITY_NAME_PATTERN = re.compile(NAME_PATTERN)
 
 
@@ -96,11 +98,17 @@ def wait_for_model_entity(
     sdk: NeMoPlatform,
     workspace: str,
     model_name: str,
-    timeout: float = 20,
+    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
     ensure_virtual_model: bool = False,
 ) -> None:
     """Poll until a model entity is available in IGW's model cache.
+
+    Uses the OpenAI ``GET /v1/models/{name}`` route, which reads
+    :attr:`~nmp.core.inference_gateway.api.model_cache.ModelCache.model_entity_info_map`
+    and does **not** require a VirtualModel. Do not poll the model-entity proxy route
+    here — that route resolves a VirtualModel first and will 404 until IGW's separate
+    VirtualModel cache refreshes, even when the model entity is already served.
 
     Useful in E2E tests that create a mock provider to wait for the model cache to refresh.
 
@@ -108,7 +116,7 @@ def wait_for_model_entity(
         sdk: The NeMoPlatform SDK client.
         workspace: The workspace containing the model entity.
         model_name: The model entity name (without workspace prefix).
-        timeout: Maximum time to wait in seconds (default: 20).
+        timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
         ensure_virtual_model: Recreate the passthrough VirtualModel before
             each poll. Useful for E2E tests where controller cleanup and IGW
@@ -147,23 +155,22 @@ def wait_for_virtual_model(
     sdk: NeMoPlatform,
     workspace: str,
     name: str,
-    timeout: float = 20,
+    timeout: float = _E2E_IGW_WAIT_TIMEOUT_SEC,
     poll_interval: float = 0.5,
 ) -> None:
-    """Poll until a VirtualModel is available via the platform SDK.
+    """Poll until a VirtualModel exists in the entity store (platform SDK).
 
-    Companion to :func:`wait_for_model_entity`. The IGW now requires every
-    inference request to resolve to a VirtualModel, and the production provider
-    reconciler creates one autoprovisioned VM per served entity asynchronously.
-    E2E tests that create a provider and immediately fire inference requests
-    can race the controller; this helper bounds that race.
+    This confirms the VirtualModel document was persisted. It does **not** mean
+    IGW's in-process VirtualModel cache has refreshed yet — use
+    :func:`wait_for_igw_virtual_model` before hitting model-entity or OpenAI
+    inference proxy routes.
 
     Args:
         sdk: The NeMoPlatform SDK client.
         workspace: The workspace containing the VirtualModel.
         name: The VirtualModel name (without workspace prefix). For an
             autoprovisioned passthrough VM, this is the served model entity name.
-        timeout: Maximum time to wait in seconds (default: 20).
+        timeout: Maximum time to wait in seconds (default: 60).
         poll_interval: Time between polls in seconds (default: 0.5).
 
     Raises:
@@ -481,6 +488,10 @@ def add_mock_provider(
     # reconciler calls GET /v1/models on each provider, and MOCK_SERVED_MODELS_HEADER tells
     # the mock which IDs to return. Without it, the mock returns the generic "mock-model"
     # default, causing the reconciler to overwrite our update_status served_models mapping.
+    # Use model *entity* names (the served_models keys), not served_model_name values:
+    # discovery builds model_entity_id from the mock's /v1/models ids, and passthrough
+    # VirtualModels are named after that entity. Advertising served names here makes the
+    # reconciler delete VMs created for the entity and recreate them under the wrong name.
     if served_models is None:
         if mock_response_body_by_model:
             served_models = {
@@ -501,7 +512,7 @@ def add_mock_provider(
         if mock_status is not None:
             default_extra_headers[MOCK_STATUS_HEADER] = str(mock_status)
 
-    default_extra_headers[MOCK_SERVED_MODELS_HEADER] = json.dumps(list(served_models.values()))
+    default_extra_headers[MOCK_SERVED_MODELS_HEADER] = json.dumps(list(served_models.keys()))
 
     # Create the provider via SDK API (served_models not supported in SDK API).
     # If a provider with the same name already exists (ex. in a shared workspace),
@@ -584,8 +595,7 @@ def add_mock_provider(
 
         # Also seed the local VirtualModel cache so requests fired immediately after
         # this call hit the right cache state without waiting for the IGW's next
-        # background refresh tick. The SDK create above is what makes this survive
-        # subsequent refreshes; this in-place seed is purely a latency optimization.
+        # background refresh tick. This in-place seed is purely a latency optimization.
         from datetime import datetime as _datetime
 
         from nemo_platform.types.inference.virtual_model import VirtualModel as _SDKVirtualModel
@@ -608,14 +618,11 @@ def add_mock_provider(
                 updated_at=now_iso,
             )
     except RuntimeError:
-        # From E2E tests, the local cache is not available (app runs in container).
+        # From E2E tests, the local cache is not available (app runs in a separate process).
         # Wait for model entities AND their autoprovisioned VirtualModels to become
-        # available in the container's caches. The container's caches pick up served_models
-        # from the update_status above; the production provider reconciler then creates
-        # the passthrough VirtualModel asynchronously. Inference requests now require
-        # a VirtualModel, so both must be present before the test fires requests.
-        # (We've also created VMs via the SDK above, but the container's cache is
-        # decoupled from this process so it still needs to refresh and pick them up.)
+        # available in the remote IGW caches. The provider reconciler creates passthrough
+        # VirtualModels asynchronously after update_status; inference routes require both
+        # the model entity and its VirtualModel to be visible before requests succeed.
         for entity_name in served_models.keys():
             wait_for_model_entity(sdk, workspace, entity_name, timeout=60, ensure_virtual_model=True)
             ensure_passthrough_virtual_model(sdk, workspace, entity_name, timeout=60)

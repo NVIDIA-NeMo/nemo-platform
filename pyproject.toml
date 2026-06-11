@@ -33,13 +33,12 @@ dependencies = [
   "sacrebleu",
   "jinja2==3.1.6",
   "h11>=0.16.0",
-  "protobuf<7.0.dev0,>=6.33.5",      # fix for GHSA OOS
+  "protobuf<7.0.dev0,>=6.33.5", # fix for GHSA OOS
   "pyyaml>=6.0.2",
   "pydantic>=2.10.6",
   "mypy-extensions==1.0.0",
-  "tornado>=6.5.5",                  # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
+  "tornado>=6.5.5",             # pinned for CVE GHSA-7cx3-6m66-7c5m (>=6.5.0) + GHSA-qjxf-f2mg-c6mc (<=6.5.4, fixed in 6.5.5)
   "tomlkit>=0.13.3",
-  "nmp-customizer",
   "nmp-evaluator",
   "nmp-guardrails",
   "nmp-hello-world",
@@ -86,12 +85,12 @@ dev = [
   "ty==0.0.17",
   "hatchling>=1.26.3",
   "nmp-testing",
-  "mlflow-skinny",                         # Optional dep for fine-tuning (shipped in training images); skinny variant to test API surface without bloating uv.lock
-  "nemo-platform-plugin",                           # Optional runtime dep; included here for type checking
-  "nvidia-nat-atif>=1.7.0,<1.8",           # ATIF schema models for agentic-use trajectory validation
-  "nemo-platform-sdk-tools",               # Include SDK/license tool migration target for testing
-  "nmp-build-tools",                       # Build hook helpers imported by package-local hatch_build.py files
-  "nmp-dev-mcp",                           # Include MCP dev tools
+  "mlflow-skinny",               # Optional dep for fine-tuning (shipped in training images); skinny variant to test API surface without bloating uv.lock
+  "nemo-platform-plugin",        # Optional runtime dep; included here for type checking
+  "nvidia-nat-atif>=1.7.0,<1.8", # ATIF schema models for agentic-use trajectory validation
+  "nemo-platform-sdk-tools",     # Include SDK/license tool migration target for testing
+  "nmp-build-tools",             # Build hook helpers imported by package-local hatch_build.py files
+  "nmp-dev-mcp",                 # Include MCP dev tools
   # These are the dev dependencies from `sdk/python/nemo-platform`.
   # Including here until we find a better way to include them.
   "pyright==1.1.399",
@@ -121,7 +120,6 @@ dev = [
   "sphinx-design>=0.6.0",
   "python-dotenv>=1.2.2",
   # Service packages for local development (not in root deps to allow --only-group in containers)
-  "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nmp-evaluator",
@@ -156,7 +154,12 @@ dev = [
 # `nemo-platform` for task-oriented backward compatibility.
 # nemo-platform-plugin provides the runtime interfaces used by first-party plugins bundled into images.
 # Each container group explicitly lists only the services it needs.
-nmp-base = ["nmp-common", "nemo-platform", "nmp-platform", "nemo-platform-plugin"]
+nmp-base = [
+  "nmp-common",
+  "nemo-platform",
+  "nmp-platform",
+  "nemo-platform-plugin",
+]
 
 # Extra runtime needed specifically for `nemo services run` in service images.
 nmp-services-runtime = ["nemo-platform[services]"]
@@ -171,6 +174,9 @@ enabled-plugins = [
   "nemo-safe-synthesizer-plugin",
   "nemo-switchyard",
   "nemo-agents-plugin",
+  "nemo-customizer-plugin",
+  "nemo-automodel-plugin",
+  "nemo-unsloth-plugin",
 ]
 
 # Legacy runtime needed specifically for task images that still invoke
@@ -199,7 +205,6 @@ functional-services = [
   "nmp-studio",
   "nmp-evaluator",
   "nmp-guardrails",
-  "nmp-customizer",
   "nemo-data-designer-plugin",
   "nemo-anonymizer-plugin",
   "nmp-intake",
@@ -213,7 +218,6 @@ cpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nmp-evaluator",
-  "nmp-customizer",
   "nemo-anonymizer-plugin",
   "nemo-data-designer-plugin",
   "nmp-hello-world",
@@ -225,7 +229,6 @@ gpu-tasks = [
   { include-group = "nmp-base" },
   { include-group = "nmp-task-runtime" },
   "nmp-models",
-  "nmp-customizer",
 ]
 
 
@@ -254,35 +257,36 @@ environments = [
 ]
 
 constraint-dependencies = [
-    "GitPython>=3.1.49",
-    "Mako>=1.3.12",
-    "Pygments>=2.20.0",
-    "aiohttp>=3.13.4",       # High/Medium/Low OOS – auditor-tasks + customizer
-    "authlib>=1.6.11",
-    "black>=26.3.1",
-    "cryptography>=46.0.7",
-    "diffusers>=0.38.0",
-    "filelock>=3.20.3",
-    "jupyter-server>=2.18.0",
-    "jupyterlab>=4.5.7",
-    "langchain-core>=1.3.3",
-    "langchain-openai>=1.1.14",
-    "langgraph>=1.0.10",
-    "langsmith>=0.7.31",
-    "litellm>=1.83.10",
-    "lxml>=6.1.0",
-    "mistune>=3.2.1",
-    "nbconvert>=7.17.1",
-    "nltk>=3.9.4",
-    "pillow>=12.2.0",
-    "postcss>=8.5.10",
-    "pyasn1>=0.6.3",
-    "python-multipart>=0.0.27",
-    "regex>=2025.10.22",
-    "safetensors>=0.8.0rc0",   # explicit prerelease so uv allows the rc
-    "sqlfluff==4.1.0",
-    "urllib3>=2.7.0",
-    "uv>=0.9.14,<0.10.0",
+  "GitPython>=3.1.49",
+  "Mako>=1.3.12",
+  "Pygments>=2.20.0",
+  "aiohttp>=3.13.4",          # High/Medium/Low OOS – auditor-tasks + customizer
+  "authlib>=1.6.11",
+  "black>=26.3.1",
+  "cryptography>=46.0.7",
+  "diffusers>=0.38.0",
+  "filelock>=3.20.3",
+  "jupyter-server>=2.18.0",
+  "jupyterlab>=4.5.7",
+  "langchain-core>=1.3.3",
+  "langchain-openai>=1.1.14",
+  "langgraph>=1.0.10",
+  "langsmith==0.8.2",         # osv-scanner UNKNOWN for 0.8.9+; PyPI metadata is MIT
+  "json-repair==0.58.7",      # osv-scanner UNKNOWN for 0.60.1+; PyPI metadata is MIT
+  "litellm>=1.83.10",
+  "lxml>=6.1.0",
+  "mistune>=3.2.1",
+  "nbconvert>=7.17.1",
+  "nltk>=3.9.4",
+  "pillow>=12.2.0",
+  "postcss>=8.5.10",
+  "pyasn1>=0.6.3",
+  "python-multipart>=0.0.27",
+  "regex>=2025.10.22",
+  "safetensors>=0.8.0rc0",    # explicit prerelease so uv allows the rc
+  "sqlfluff==4.1.0",
+  "urllib3>=2.7.0",
+  "uv>=0.9.14,<0.10.0",
 ]
 
 override-dependencies = [
@@ -291,36 +295,36 @@ override-dependencies = [
   "jsonpath-ng>=1.6.1",
   "grpcio>=1.71.0",
   "huggingface-hub>=1.0.1,<2.0.0",
-  "pydantic[email]>=2.9.2",       # openai-harmony depends on a later pydantic, but that causes the stainless gen to hit an infinite loop
-  "ray; sys_platform == 'never'", # ray has an unfixed critical CVE, as for why we're removing it this way see https://github.com/astral-sh/uv/issues/9174
+  "pydantic[email]>=2.9.2",          # openai-harmony depends on a later pydantic, but that causes the stainless gen to hit an infinite loop
+  "ray; sys_platform == 'never'",    # ray has an unfixed critical CVE, as for why we're removing it this way see https://github.com/astral-sh/uv/issues/9174
   "fschat; sys_platform == 'never'", # fschat is unmaintained with unfixed High/Medium CVEs; transitive via garak but never imported
-  "botocore>=1.40.46,<1.40.62",   # ngcsdk requires botocore>=1.37; upper bound required by aiobotocore 2.25.1 (aioboto3 15.5.0)
+  "botocore>=1.40.46,<1.40.62",      # ngcsdk requires botocore>=1.37; upper bound required by aiobotocore 2.25.1 (aioboto3 15.5.0)
   "langchain>=1.0.0",
-  "langchain-core>=1.3.3",        # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
-  "nltk>=3.9.4",                  # NLTK CVEs with available patches; remaining NLTK alerts have no upstream fix
-  "Pillow>=12.2.0",               # Pillow CVEs through CVE-2026-48624; override: fastembed (via nemoguardrails) pins Pillow<12
+  "langchain-core>=1.3.3",           # LangChain Core CVEs through GHSA-qh6h-p6c9-ff54 and CVE-2026-44843
+  "nltk>=3.9.4",                     # NLTK CVEs with available patches; remaining NLTK alerts have no upstream fix
+  "Pillow>=12.2.0",                  # Pillow CVEs through CVE-2026-48624; override: fastembed (via nemoguardrails) pins Pillow<12
   # todo(dn-v2): unpin these. this was originally causing tests to fail.
   "aiodns==3.5.0",
   "pycares==4.11.0",
-  "authlib>=1.6.9",        # Critical – nmp-api/core/cpu-tasks/gpu-tasks
-  "aiohttp>=3.13.4",       # High/Medium/Low OOS – auditor-tasks + customizer
-  "jaraco-context>=6.1.0", # High OOS – auditor-tasks + customizer
-  "pyasn1>=0.6.3",         # High OOS – auditor-tasks + customizer
-  "setuptools>=78.1.1",    # High OOS – nmp-cpu-tasks/gpu-tasks/customizer-tasks
-  "urllib3>=2.7.0",        # High OOS – auditor-tasks + customizer
-  "wheel>=0.46.2",         # High OOS – widespread
-  "cbor2>=5.9.0",          # High – customizer + nmp-gpu-tasks
-  "simpleeval>=1.0.5",     # High – nmp-api + nmp-gpu-tasks
-  "ujson>=5.12.0",         # High – nmp-api/cpu-tasks/gpu-tasks
-  "xgrammar>=0.1.32",      # High – customizer + nmp-gpu-tasks
-  "fastmcp>=3.2.0",        # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
-  "wandb>=0.25.1",         # CVE-2026-33186
-  "click>=8.2.0",          # Below CVEs are based on constraints that garak has
+  "authlib>=1.6.9",           # Critical – nmp-api/core/cpu-tasks/gpu-tasks
+  "aiohttp>=3.13.4",          # High/Medium/Low OOS – auditor-tasks + customizer
+  "jaraco-context>=6.1.0",    # High OOS – auditor-tasks + customizer
+  "pyasn1>=0.6.3",            # High OOS – auditor-tasks + customizer
+  "setuptools>=78.1.1",       # High OOS – nmp-cpu-tasks/gpu-tasks/customizer-tasks
+  "urllib3>=2.7.0",           # High OOS – auditor-tasks + customizer
+  "wheel>=0.46.2",            # High OOS – widespread
+  "cbor2>=5.9.0",             # High – customizer + nmp-gpu-tasks
+  "simpleeval>=1.0.5",        # High – nmp-api + nmp-gpu-tasks
+  "ujson>=5.12.0",            # High – nmp-api/cpu-tasks/gpu-tasks
+  "xgrammar>=0.1.32",         # High – customizer + nmp-gpu-tasks
+  "fastmcp>=3.2.0",           # GHSA-vv7q-7jx5-f767 (Critical) + GHSA-rww4-4w9c-7733 (High); overrides vendored sdk/python/nemo-platform <3 constraint
+  "wandb>=0.25.1",            # CVE-2026-33186
+  "click>=8.2.0",             # Below CVEs are based on constraints that garak has
   "langchain-openai>=1.1.14",
-  "litellm>=1.83.10",              # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
+  "litellm>=1.83.10",         # CVE-2026-42208 (Critical SQL injection), CVE-2026-40217, and 5 other High CVEs
   "python-dotenv>=1.2.2",
   "openai>=2.26.0",
-  "sqlfluff>=4.1.0",       # CVE-2026-46373
+  "sqlfluff>=4.1.0",          # CVE-2026-46373
 
 ]
 
@@ -352,7 +356,6 @@ nmp-platform-runner = { workspace = true }
 nmp-platform-seed = { workspace = true }
 nmp-hello-world = { workspace = true }
 nmp-studio = { workspace = true }
-nmp-customizer = { workspace = true }
 nmp-secrets = { workspace = true }
 nmp-dev-mcp = { workspace = true }
 nmp-testing = { workspace = true }
@@ -366,6 +369,11 @@ nemo-safe-synthesizer-plugin = { workspace = true }
 nemo-switchyard = { workspace = true }
 nemo-agents-plugin = { workspace = true }
 nemo-agents-example-calculator = { workspace = true }
+nemo-customizer-plugin = { workspace = true }
+nemo-automodel-plugin = { workspace = true }
+nemo-unsloth-plugin = { workspace = true }
+nmp-automodel = { workspace = true }
+nmp-unsloth = { workspace = true }
 
 
 [tool.uv.workspace]
@@ -385,7 +393,6 @@ members = [
   "services/studio",
   "services/guardrails",
   "services/evaluator",
-  "services/customizer",
   "services/intake",
   "plugins/nemo-anonymizer",
   "plugins/nemo-data-designer",
@@ -414,6 +421,11 @@ members = [
   "plugins/nemo-switchyard",
   "plugins/nemo-agents",
   "plugins/nemo-agents/examples/calculator-agent",
+  "plugins/nemo-customizer",
+  "plugins/nemo-automodel",
+  "plugins/nemo-unsloth",
+  "services/automodel",
+  "services/unsloth",
 ]
 
 
@@ -488,13 +500,16 @@ output = "coverage.xml"
 
 [tool.pyright]
 extraPaths = [
-    "plugins/nemo-guardrails/src",
-    "plugins/nemo-evaluator/src",
-    "tests/agentic-use",
-    "tests/agentic-use/shared",
+  "plugins/nemo-guardrails/src",
+  "plugins/nemo-evaluator/src",
+  "tests/agentic-use",
+  "tests/agentic-use/shared",
 ]
 executionEnvironments = [
-    { root = "tests/agentic-use", extraPaths = ["tests/agentic-use", "tests/agentic-use/shared"] },
+  { root = "tests/agentic-use", extraPaths = [
+    "tests/agentic-use",
+    "tests/agentic-use/shared",
+  ] },
 ]
 
 [tool.ty.environment]
@@ -546,7 +561,10 @@ exclude = [
 
   "packages/garak_api/",
 
-  "./services/customizer/",
+  # GPU-container training drivers import torch/peft/nemo_automodel/unsloth at runtime only.
+  "services/automodel/src/nmp/automodel/tasks/training/backends/",
+  "services/automodel/src/nmp/automodel/tasks/training/utils.py",
+  "services/unsloth/src/nmp/unsloth/tasks/training/backends/",
 
   "./services/guardrails/",
 

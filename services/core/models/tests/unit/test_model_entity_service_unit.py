@@ -11,7 +11,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from nemo_platform import AsyncNeMoPlatform
 from nemo_platform.filesets import ListFilesResponse
-from nemo_platform.types import FilesetMetadata
 from nemo_platform.types.files import (
     Fileset,
     FilesetFile,
@@ -19,6 +18,7 @@ from nemo_platform.types.files import (
     LocalStorageConfig,
     NGCStorageConfig,
 )
+from nemo_platform.types.shared import FilesetMetadata
 from nmp.common.api.common import Page, PaginationData
 from nmp.common.api.filter import ComparisonOperation, FilterOperator, LogicalOperation
 from nmp.common.api.parsed_filter import ParsedFilter

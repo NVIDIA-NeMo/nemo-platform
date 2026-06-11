@@ -20,7 +20,11 @@ import {
   useModelsGetDeploymentConfigVersion,
   useModelsGetLatestDeployment,
 } from '@nemo/sdk/generated/platform/api';
-import { type ModelDeployment, ModelDeploymentStatus } from '@nemo/sdk/generated/platform/schema';
+import {
+  Engine,
+  type ModelDeployment,
+  ModelDeploymentStatus,
+} from '@nemo/sdk/generated/platform/schema';
 import { Banner, Button, Flex, SidePanel, Stack, Text } from '@nvidia/foundations-react-core';
 import { ErrorMessageWithRetry } from '@studio/components/ErrorMessageWithRetry';
 import { Loading } from '@studio/components/Layouts/Loading';
@@ -29,12 +33,13 @@ import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
 import { formatElapsedTime } from '@studio/util/date';
 import { type FC, useMemo } from 'react';
 
-function formatModelProviderType(provider: string | undefined): string {
-  if (!provider) return '-';
-  const p = provider.toLowerCase();
-  if (p === 'hf') return 'HuggingFace';
-  if (p === 'nmp') return 'NeMo Platform';
-  return provider;
+function formatDeploymentEngine(engine: string | undefined): string {
+  if (!engine) return '-';
+  const normalized = engine.toLowerCase();
+  if (normalized === Engine.nim) return 'NIM';
+  if (normalized === Engine.vllm) return 'vLLM';
+  if (normalized === Engine.generic) return 'Generic';
+  return engine;
 }
 
 function isStatusMessageError(status: ModelDeploymentStatus | undefined): boolean {
@@ -114,8 +119,8 @@ export const DeploymentDetailsSidePanel: FC<DeploymentDetailsSidePanelProps> = (
     };
   }, [data, deploymentConfig]);
 
-  const modelProviderDisplay = useMemo(() => {
-    return formatModelProviderType(deploymentConfig?.nim_deployment?.model_provider);
+  const engineDisplay = useMemo(() => {
+    return formatDeploymentEngine(deploymentConfig?.engine);
   }, [deploymentConfig]);
 
   const liveSeconds = useLiveSeconds({
@@ -216,32 +221,32 @@ export const DeploymentDetailsSidePanel: FC<DeploymentDetailsSidePanelProps> = (
               />
             ) : null}
             <KVPair
-              label="Model Provider"
+              label="Engine"
               orientation="horizontal"
               size="medium"
               loading={isLoadingDeploymentConfig}
-              value={modelProviderDisplay}
+              value={engineDisplay}
             />
             <KVPair
               label="Image Name"
               orientation="horizontal"
               size="medium"
               loading={isLoadingDeploymentConfig}
-              value={deploymentConfig?.nim_deployment?.image_name}
+              value={deploymentConfig?.executor_config?.image_name}
             />
             <KVPair
               label="Image Tag"
               orientation="horizontal"
               size="medium"
               loading={isLoadingDeploymentConfig}
-              value={deploymentConfig?.nim_deployment?.image_tag ?? '—'}
+              value={deploymentConfig?.executor_config?.image_tag ?? '—'}
             />
             <KVPair
               label="Model Name"
               orientation="horizontal"
               size="medium"
               loading={isLoadingDeploymentConfig}
-              value={deploymentConfig?.nim_deployment?.model_name ?? '—'}
+              value={deploymentConfig?.model_spec?.model_name ?? '—'}
             />
             <KVPair
               label="Created"

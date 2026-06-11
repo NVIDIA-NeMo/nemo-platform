@@ -1,0 +1,131 @@
+# SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+"""Input → canonical spec transformation.
+
+Mirrors the automodel pattern: validates the platform refs (model
+entity + dataset fileset) against the live SDK, then resolves output
+naming and the fileset name. :meth:`~nemo_unsloth_plugin.jobs.jobs.UnslothJob.compile`
+turns the canonical spec into a 4-step container job that performs
+download → train → upload → model_entity on the platform cluster.
+
+Only platform refs are accepted today (per the strict-refs design
+choice). Bare HF ids and arbitrary local paths are rejected before
+submit because the container pipeline expects a real fileset to
+download from.
+"""
+
+from __future__ import annotations
+
+import re
+import uuid
+from typing import TYPE_CHECKING
+
+from nmp.common.entities.utils import parse_entity_ref
+from nmp.unsloth.platform_client import check_dataset_access, fetch_model_entity
+from nmp.unsloth.schemas import OutputResponse, UnslothJobOutput
+
+from nemo_unsloth_plugin.schema import OutputRequest, UnslothJobInput
+
+if TYPE_CHECKING:
+    from nemo_platform import AsyncNeMoPlatform
+
+_MAX_PREFIX_LEN = 50
+_HEX_LEN = 12
+_NAME_SAFE_RE = re.compile(r"[^a-zA-Z0-9_-]+")
+
+
+def _slugify(token: str) -> str:
+    cleaned = _NAME_SAFE_RE.sub("-", token).strip("-")
+    return cleaned or "x"
+
+
+def _model_basename(model_ref: str, workspace: str) -> str:
+    """Last segment of a model entity ref (handles 'workspace/name' and 'name')."""
+    return _slugify(parse_entity_ref(model_ref, workspace).name)
+
+
+def _dataset_basename(uri: str) -> str:
+    """Last segment of a fileset ref (handles 'workspace/name' and 'name')."""
+    cleaned = uri.split("://", 1)[-1]
+    last = cleaned.rsplit("/", 1)[-1] or cleaned
+    return _slugify(last)
+
+
+def _random_suffix(prefix: str) -> str:
+    truncated = prefix[:_MAX_PREFIX_LEN].rstrip("-")
+    return f"{truncated}-{uuid.uuid4().hex[:_HEX_LEN]}"
+
+
+def _infer_output_type(output_request: OutputRequest) -> str:
+    """Adapter when saving the LoRA, model otherwise (merged or full)."""
+    if output_request.save_method == "lora":
+        return "adapter"
+    return "model"
+
+
+async def transform_input_to_output(
+    input_spec: UnslothJobInput,
+    workspace: str,
+    sdk: "AsyncNeMoPlatform",
+) -> UnslothJobOutput:
+    """Enrich submitter input into a canonical :class:`UnslothJobOutput`.
+
+    Args:
+        input_spec: Submitter-facing input shape.
+        workspace: The job's workspace; used as the default for any bare
+            entity / fileset refs.
+        sdk: Async platform SDK handle for validation.
+
+    Returns:
+        Canonical :class:`UnslothJobOutput` with ``output.fileset``
+        populated.
+
+    Raises:
+        ValueError: When the model entity or dataset fileset cannot be
+            resolved.
+        PermissionError: When access to the model or dataset is denied.
+    """
+    # Strict refs: both calls error if the entity / fileset is missing.
+    model_entity = await fetch_model_entity(input_spec.model.name, workspace, sdk)
+    await check_dataset_access(sdk, input_spec.dataset.path, workspace)
+    if input_spec.dataset.validation_path:
+        await check_dataset_access(sdk, input_spec.dataset.validation_path, workspace)
+
+    is_embedding = bool(
+        model_entity.spec and getattr(model_entity.spec, "is_embedding_model", False),
+    )
+    if is_embedding:
+        raise ValueError(
+            "Embedding-model SFT is not supported by the unsloth backend. Use a causal LM model entity instead.",
+        )
+
+    output_request = input_spec.output or OutputRequest()
+    if output_request.name is None:
+        model_part = _model_basename(input_spec.model.name, workspace)
+        dataset_part = _dataset_basename(input_spec.dataset.path)
+        out_name = _random_suffix(f"{model_part}-{dataset_part}")
+    else:
+        out_name = output_request.name
+
+    output = OutputResponse(
+        name=out_name,
+        type=_infer_output_type(output_request),
+        save_method=output_request.save_method,
+        fileset=out_name,  # default the fileset to the entity name (mirrors automodel)
+        description=output_request.description,
+    )
+
+    return UnslothJobOutput(
+        name=input_spec.name,
+        model=input_spec.model,
+        dataset=input_spec.dataset,
+        training=input_spec.training,
+        schedule=input_spec.schedule,
+        batch=input_spec.batch,
+        optimizer=input_spec.optimizer,
+        hardware=input_spec.hardware,
+        integrations=input_spec.integrations,
+        output=output,
+        deployment_config=input_spec.deployment_config,
+    )

@@ -38,7 +38,6 @@ repos:
               packages/nmp_common/src/nmp_common/api/.*|
 
               # Individual microservices
-              services/customizer/src/customizer/api/v1/.*|
               services/evaluator/src/evaluator/api/.*|
               services/guardrails/src/guardrails/api/.*|
               services/core/infrastructure/jobs/src/jobs/api/.*|
