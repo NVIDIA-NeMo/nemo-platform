@@ -816,6 +816,7 @@ def test_mcp_studio_link_returns_started_evaluation_result_markdown(service_clie
         "markdown": "[Evaluation result eval run 01](/workspaces/default/evaluation/results/eval%20run%2001)",
     }
 
+
 def test_mcp_rejects_malformed_json(service_client: TestClient):
     session_id = str(uuid.uuid4())
 

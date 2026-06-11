@@ -19,10 +19,6 @@ from urllib.parse import urlencode, urlparse
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 from nmp.studio import studio_links
-from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
-from pydantic import BaseModel, Field
-from starlette.routing import NoMatchFound
-
 from nmp.studio.coding_agent_mcp_tools import (
     APPROVAL_TOOL_NAME,
     CLAUDE_MCP_SERVER_NAME,
@@ -37,6 +33,9 @@ from nmp.studio.coding_agent_mcp_tools import (
     allowed_mcp_tools,
     permission_prompt_tool,
 )
+from nmp.studio.coding_agent_skills import ClaudeSkillResponse, DuplicateSkillError, list_claude_skill_responses
+from pydantic import BaseModel, Field
+from starlette.routing import NoMatchFound
 
 logger = logging.getLogger(__name__)
 
