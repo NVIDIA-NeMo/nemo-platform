@@ -7243,18 +7243,24 @@ components:
       description: Filter for Adapter list queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by adapter name.
           title: Name
-          type: string
         model:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by parent (base) model entity reference in the form
             {workspace}/{model_name}.
           title: Model
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         fileset:
           description: Filter by fileset reference in the form {workspace}/{fileset_name}.
           title: Fileset
@@ -7933,12 +7939,14 @@ components:
       description: Filter for base model properties.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name of the base model.
           title: Name
-          type: string
       title: BaseModelFilter
       type: object
-    CPUExecutionProviderInput:
+    CPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -7958,34 +7966,7 @@ components:
       type: object
       required:
       - container
-      title: CPUExecutionProviderInput
-      description: 'CPU-based execution provider.
-
-
-        Provides configuration for running jobs on CPU resources with
-
-        resource requests and limits.'
-    CPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: cpu
-          title: Provider
-          default: cpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for CPU execution.
-      type: object
-      required:
-      - container
-      title: CPUExecutionProviderOutput
+      title: CPUExecutionProvider
       description: 'CPU-based execution provider.
 
 
@@ -8433,6 +8414,77 @@ components:
       type: object
       title: ComputeResources
       description: Resource requirements matching k8s ResourceRequirements format.
+    ContainerExecutorConfig:
+      properties:
+        gpu:
+          type: integer
+          minimum: 0.0
+          title: Gpu
+          description: Number of GPUs required for the deployment. 0 = CPU-only.
+        disk_size:
+          type: string
+          title: Disk Size
+          description: Disk size for the deployment
+          default: 50Gi
+        image_name:
+          title: Image Name
+          description: Container image name. If not specified, defaults to the engine's
+            configured image (e.g. default_vllm_image / default_nimservice_image).
+            Required for engine='generic'.
+          type: string
+          maxLength: 255
+        image_tag:
+          title: Image Tag
+          description: Container image tag. If not specified, defaults to the engine's
+            configured image tag.
+          type: string
+          maxLength: 255
+        health_check_path:
+          title: Health Check Path
+          description: HTTP path used for the container readiness probe. If not specified,
+            defaults to the engine's standard health endpoint (e.g. '/v1/health/ready'
+            for NIM, '/health' for vLLM). Set this for engine='generic' containers
+            that expose a non-standard health endpoint.
+          type: string
+          maxLength: 255
+        additional_envs:
+          title: Additional Envs
+          description: Additional environment variables for the deployment
+          additionalProperties:
+            type: string
+          type: object
+        additional_args:
+          items:
+            type: string
+          type: array
+          title: Additional Args
+          description: Raw container/`serve` args appended verbatim to the container's
+            arg vector.
+        k8s_nim_operator_config:
+          allOf:
+          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
+          description: Typed Kubernetes configuration for common NIMService Spec fields
+            (NIM engine on k8s). Applied after defaults but before override_config.
+            Ignored by non-NIM engines.
+        override_config:
+          title: Override Config
+          description: Raw NIMService spec configuration that takes precedence over
+            generated config (NIM engine on k8s). Allows advanced configuration options
+            directly. Ignored by non-NIM engines.
+          additionalProperties: true
+          type: object
+      type: object
+      required:
+      - gpu
+      title: ContainerExecutorConfig
+      description: 'Compute + container settings shared by the docker and k8s executors.
+
+
+        Both the docker and k8s executors run containers and share this shape.
+
+        A future non-container executor (e.g. subprocess) would warrant turning
+
+        ``executor_config`` into a discriminated union.'
     ContainerSpec:
       properties:
         image:
@@ -8558,7 +8610,7 @@ components:
           default: generic
         metadata:
           allOf:
-          - $ref: '#/components/schemas/FilesetMetadataInput'
+          - $ref: '#/components/schemas/FilesetMetadata'
           description: 'Purpose-specific metadata. Use the purpose as the key (e.g.,
             {dataset: {...}}).'
         custom_fields:
@@ -8641,10 +8693,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -8653,7 +8715,9 @@ components:
       type: object
       required:
       - name
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: CreateModelDeploymentConfigRequest
       description: Request model for creating a ModelDeploymentConfig.
     CreateModelDeploymentRequest:
@@ -8891,7 +8955,7 @@ components:
           type: object
           title: Spec
         platform_spec:
-          $ref: '#/components/schemas/PlatformJobSpecInput'
+          $ref: '#/components/schemas/PlatformJobSpec'
         source:
           type: string
           title: Source
@@ -9073,7 +9137,7 @@ components:
       type: object
       title: DialogRails
       description: Configuration of topical rails.
-    DistributedGPUExecutionProviderInput:
+    DistributedGPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -9093,34 +9157,7 @@ components:
       type: object
       required:
       - container
-      title: DistributedGPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    DistributedGPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu_distributed
-          title: Provider
-          default: gpu_distributed
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for distributed GPU execution.
-      type: object
-      required:
-      - container
-      title: DistributedGPUExecutionProviderOutput
+      title: DistributedGPUExecutionProvider
       description: 'GPU-based execution provider.
 
 
@@ -9296,6 +9333,21 @@ components:
         This backend auto-completes jobs without actually running containers,
 
         making tests fast and deterministic.'
+    Engine:
+      type: string
+      enum:
+      - nim
+      - vllm
+      - generic
+      title: Engine
+      description: 'Inference engine selecting the compiler path for a deployment.
+
+
+        The engine determines what command, image, and env a deployment compiles to.
+
+        The fields a compiler consumes are not engine-specific; engines take the same
+
+        inputs (model_spec + executor_config) and differ in what they do with them.'
     EntitiesPage:
       properties:
         data:
@@ -10302,13 +10354,17 @@ components:
       description: Filter schema for listing filesets.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by fileset description.
           title: Description
-          type: string
         purpose:
           allOf:
           - $ref: '#/components/schemas/FilesetPurpose'
@@ -10329,25 +10385,14 @@ components:
             (on or before) datetime filters.
       title: FilesetFilter
       type: object
-    FilesetMetadataInput:
+    FilesetMetadata:
       properties:
         dataset:
           $ref: '#/components/schemas/DatasetMetadataContent'
         model:
           $ref: '#/components/schemas/ModelMetadataContent'
       type: object
-      title: FilesetMetadataInput
-      description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
-        \    metadata = FilesetMetadata(\n        dataset=DatasetMetadataContent(\n\
-        \            schema={\"columns\": [\"id\", \"name\"]},\n        )\n    )"
-    FilesetMetadataOutput:
-      properties:
-        dataset:
-          $ref: '#/components/schemas/DatasetMetadataContent'
-        model:
-          $ref: '#/components/schemas/ModelMetadataContent'
-      type: object
-      title: FilesetMetadataOutput
+      title: FilesetMetadata
       description: "Tagged metadata container - the key indicates the type.\n\nExample:\n\
         \    metadata = FilesetMetadata(\n        dataset=DatasetMetadataContent(\n\
         \            schema={\"columns\": [\"id\", \"name\"]},\n        )\n    )"
@@ -10375,7 +10420,7 @@ components:
           - $ref: '#/components/schemas/S3StorageConfig'
           title: Storage
         metadata:
-          $ref: '#/components/schemas/FilesetMetadataOutput'
+          $ref: '#/components/schemas/FilesetMetadata'
         custom_fields:
           additionalProperties: true
           type: object
@@ -10580,7 +10625,7 @@ components:
       type: object
       title: GLiNERDetectionOptions
       description: Configuration options for GLiNER.
-    GPUExecutionProviderInput:
+    GPUExecutionProvider:
       properties:
         provider:
           type: string
@@ -10600,34 +10645,7 @@ components:
       type: object
       required:
       - container
-      title: GPUExecutionProviderInput
-      description: 'GPU-based execution provider.
-
-
-        Provides configuration for running jobs on GPU resources with
-
-        resource requests and limits.'
-    GPUExecutionProviderOutput:
-      properties:
-        provider:
-          type: string
-          const: gpu
-          title: Provider
-          default: gpu
-        profile:
-          type: string
-          title: Profile
-          default: default
-        container:
-          $ref: '#/components/schemas/ContainerSpec'
-        resources:
-          allOf:
-          - $ref: '#/components/schemas/ComputeResources'
-          description: Resource requests and limits for GPU execution.
-      type: object
-      required:
-      - container
-      title: GPUExecutionProviderOutput
+      title: GPUExecutionProvider
       description: 'GPU-based execution provider.
 
 
@@ -11058,7 +11076,7 @@ components:
           type: string
         data:
           allOf:
-          - $ref: '#/components/schemas/RailsConfigOutput'
+          - $ref: '#/components/schemas/RailsConfig'
           type: object
           description: Guardrail configuration data
           additionalProperties: true
@@ -11113,13 +11131,17 @@ components:
       description: Filter schema for listing guardrail configs.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config description.
           title: Description
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -11237,7 +11259,7 @@ components:
           - type: string
             title: Reference
             description: A reference to RailsConfig.
-          - $ref: '#/components/schemas/RailsConfigInput'
+          - $ref: '#/components/schemas/RailsConfig'
           title: Config
           description: The id of the configuration or its dict representation to be
             used.
@@ -12579,10 +12601,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -12595,7 +12627,9 @@ components:
       - created_at
       - updated_at
       - entity_version
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: ModelDeploymentConfig
       description: 'ModelDeploymentConfig stores the configuration details for deploying
         a model.
@@ -12621,13 +12655,17 @@ components:
           title: Model Entity Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -12638,6 +12676,55 @@ components:
           description: Filter by update date.
       title: ModelDeploymentConfigFilter
       type: object
+    ModelDeploymentConfigModelSpec:
+      properties:
+        model_type:
+          allOf:
+          - $ref: '#/components/schemas/ModelType'
+          description: Type of model being deployed
+        model_namespace:
+          title: Model Namespace
+          description: Model repository namespace - organization/user namespace as
+            it exists in repo_id.
+          type: string
+          maxLength: 255
+        model_name:
+          title: Model Name
+          description: Model name - model repository name for model weights.
+          type: string
+          maxLength: 255
+        model_revision:
+          title: Model Revision
+          description: Model revision (branch, tag, or commit). If not specified,
+            parsed from model_name @revision suffix or defaults to 'main'
+          type: string
+          maxLength: 255
+        chat_template:
+          title: Chat Template
+          description: Jinja2 chat template string for the model. Overrides the chat_template
+            from ModelEntity.spec if both are set. Used by the engine to format chat
+            completions.
+          type: string
+        tool_call_config:
+          allOf:
+          - $ref: '#/components/schemas/ToolCallConfig'
+          description: Tool calling configuration for the deployment. Overrides tool_call_config
+            from ModelEntity.spec if both are set. Controls how the model handles
+            function/tool calling.
+        lora_enabled:
+          type: boolean
+          title: Lora Enabled
+          description: Whether to enable LoRA support
+          default: false
+      type: object
+      title: ModelDeploymentConfigModelSpec
+      description: 'What model to serve and how -- independent of the executor it
+        runs on.
+
+
+        Executor-invariant facts about the model. The compiler resolves the weight
+
+        source per engine; serving fields override the model entity spec when set.'
     ModelDeploymentConfigsPage:
       properties:
         data:
@@ -12679,21 +12766,27 @@ components:
           - $ref: '#/components/schemas/ModelDeploymentStatus'
           description: Filter by status.
         config:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by config name.
           title: Config
-          type: string
         model_provider_id:
           description: Filter by model provider ID.
           title: Model Provider Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by deployment name.
           title: Name
-          type: string
         status_message:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by status message.
           title: Status Message
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -12885,9 +12978,11 @@ components:
       description: Filter for Model Entity queries.
       properties:
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         project:
           description: Filter by project name.
           title: Project
@@ -12925,9 +13020,11 @@ components:
           title: Lora Enabled
           type: boolean
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13174,17 +13271,23 @@ components:
           title: Model Deployment Id
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by name.
           title: Name
-          type: string
         description:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by description.
           title: Description
-          type: string
         host_url:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by host URL.
           title: Host Url
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -13457,94 +13560,6 @@ components:
       - target
       - api_key_secret
       title: NGCStorageConfig
-    NIMDeployment:
-      properties:
-        model_type:
-          allOf:
-          - $ref: '#/components/schemas/ModelType'
-          description: Type of model being deployed
-        lora_enabled:
-          type: boolean
-          title: Lora Enabled
-          description: Whether to enable LoRA support
-          default: false
-        gpu:
-          type: integer
-          minimum: 0.0
-          title: Gpu
-          description: Number of GPUs required for the deployment
-        disk_size:
-          type: string
-          title: Disk Size
-          description: Disk size for the deployment
-          default: 50Gi
-        image_name:
-          title: Image Name
-          description: Container image name from NGC. If not specified, defaults to
-            multi-llm
-          type: string
-          maxLength: 255
-        image_tag:
-          title: Image Tag
-          description: Container image tag from NGC
-          type: string
-          maxLength: 255
-        model_namespace:
-          title: Model Namespace
-          description: Model repository namespace - organization/user namespace as
-            it exists in repo_id.
-          type: string
-          maxLength: 255
-        model_name:
-          title: Model Name
-          description: Model name - model repository name for model weights.
-          type: string
-          maxLength: 255
-        model_revision:
-          title: Model Revision
-          description: Model revision (branch, tag, or commit). If not specified,
-            parsed from model_name @revision suffix or defaults to 'main'
-          type: string
-          maxLength: 255
-        model_provider:
-          title: Model Provider
-          description: 'Model provider: ''hf'' for HuggingFace or ''nmp'' for NeMo
-            Platform'
-          type: string
-          maxLength: 255
-        chat_template:
-          title: Chat Template
-          description: Jinja2 chat template string for the model. Overrides the chat_template
-            from ModelEntity.spec if both are set. Used by NIM to format chat completions.
-          type: string
-        tool_call_config:
-          allOf:
-          - $ref: '#/components/schemas/ToolCallConfig'
-          description: Tool calling configuration for NIM deployments. Overrides tool_call_config
-            from ModelEntity.spec if both are set. Controls how the model handles
-            function/tool calling.
-        additional_envs:
-          title: Additional Envs
-          description: Additional environment variables for the deployment
-          additionalProperties: true
-          type: object
-        k8s_nim_operator_config:
-          allOf:
-          - $ref: '#/components/schemas/K8sNIMOperatorConfig'
-          description: Typed Kubernetes configuration for common NIMService Spec fields.
-            Applied after defaults but before override_config.
-        override_config:
-          title: Override Config
-          description: Raw NIMService spec configuration that takes precedence over
-            generated config. Allows end users to provide advanced configuration options
-            directly.
-          additionalProperties: true
-          type: object
-      type: object
-      required:
-      - gpu
-      title: NIMDeployment
-      description: Configuration for NIM-based model deployment.
     NoteAnnotation:
       properties:
         annotation_id:
@@ -13864,23 +13879,14 @@ components:
       type: object
       title: PatronusEvaluateApiParams
       description: Config to parameterize the Patronus Evaluate API call
-    PatronusEvaluateConfigInput:
+    PatronusEvaluateConfig:
       properties:
         evaluate_config:
           allOf:
           - $ref: '#/components/schemas/PatronusEvaluateApiParams'
           description: Configuration passed to the Patronus Evaluate API
       type: object
-      title: PatronusEvaluateConfigInput
-      description: Config for the Patronus Evaluate API call
-    PatronusEvaluateConfigOutput:
-      properties:
-        evaluate_config:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateApiParams'
-          description: Configuration passed to the Patronus Evaluate API
-      type: object
-      title: PatronusEvaluateConfigOutput
+      title: PatronusEvaluateConfig
       description: Config for the Patronus Evaluate API call
     PatronusEvaluationSuccessStrategy:
       type: string
@@ -13897,31 +13903,18 @@ components:
         ALL_PASS requires all evaluators to pass for success.
 
         ANY_PASS requires only one evaluator to pass for success.'
-    PatronusRailConfigInput:
+    PatronusRailConfig:
       properties:
         input:
           allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigInput'
+          - $ref: '#/components/schemas/PatronusEvaluateConfig'
           description: Patronus Evaluate API configuration for an Input Guardrail
         output:
           allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigInput'
+          - $ref: '#/components/schemas/PatronusEvaluateConfig'
           description: Patronus Evaluate API configuration for an Output Guardrail
       type: object
-      title: PatronusRailConfigInput
-      description: Configuration data for the Patronus Evaluate API
-    PatronusRailConfigOutput:
-      properties:
-        input:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigOutput'
-          description: Patronus Evaluate API configuration for an Input Guardrail
-        output:
-          allOf:
-          - $ref: '#/components/schemas/PatronusEvaluateConfigOutput'
-          description: Patronus Evaluate API configuration for an Output Guardrail
-      type: object
-      title: PatronusRailConfigOutput
+      title: PatronusRailConfig
       description: Configuration data for the Patronus Evaluate API
     PlatformJobEnvironmentVariable:
       properties:
@@ -14046,7 +14039,7 @@ components:
           title: Spec
           description: Job Spec
         platform_spec:
-          $ref: '#/components/schemas/PlatformJobSpecOutput'
+          $ref: '#/components/schemas/PlatformJobSpec'
         fileset:
           type: string
           title: Fileset
@@ -14185,31 +14178,18 @@ components:
       - updated_at
       - -updated_at
       title: PlatformJobSortField
-    PlatformJobSpecInput:
+    PlatformJobSpec:
       properties:
         steps:
           items:
-            $ref: '#/components/schemas/PlatformJobStepSpecInput'
+            $ref: '#/components/schemas/PlatformJobStepSpec'
           type: array
           title: Steps
           description: List of steps to be executed in the job
       type: object
       required:
       - steps
-      title: PlatformJobSpecInput
-      description: Specification for a platform job, containing steps and secrets.
-    PlatformJobSpecOutput:
-      properties:
-        steps:
-          items:
-            $ref: '#/components/schemas/PlatformJobStepSpecOutput'
-          type: array
-          title: Steps
-          description: List of steps to be executed in the job
-      type: object
-      required:
-      - steps
-      title: PlatformJobSpecOutput
+      title: PlatformJobSpec
       description: Specification for a platform job, containing steps and secrets.
     PlatformJobStatus:
       type: string
@@ -14384,7 +14364,7 @@ components:
 
 
         Parent-scoped: unique within (workspace, entity_type, parent=attempt_id).'
-    PlatformJobStepSpecInput:
+    PlatformJobStepSpec:
       properties:
         name:
           type: string
@@ -14406,18 +14386,18 @@ components:
           type: array
         executor:
           oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderInput'
-          - $ref: '#/components/schemas/GPUExecutionProviderInput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderInput'
+          - $ref: '#/components/schemas/CPUExecutionProvider'
+          - $ref: '#/components/schemas/GPUExecutionProvider'
+          - $ref: '#/components/schemas/DistributedGPUExecutionProvider'
           - $ref: '#/components/schemas/SubprocessExecutionProvider'
           title: Executor
           description: The executor for the step
           discriminator:
             propertyName: provider
             mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderInput'
-              gpu: '#/components/schemas/GPUExecutionProviderInput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderInput'
+              cpu: '#/components/schemas/CPUExecutionProvider'
+              gpu: '#/components/schemas/GPUExecutionProvider'
+              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProvider'
               subprocess: '#/components/schemas/SubprocessExecutionProvider'
         config:
           additionalProperties: true
@@ -14432,57 +14412,7 @@ components:
       required:
       - name
       - executor
-      title: PlatformJobStepSpecInput
-      description: Specification for a single step in a platform job.
-    PlatformJobStepSpecOutput:
-      properties:
-        name:
-          type: string
-          pattern: ^[a-z](?!.*--)[a-z0-9\-@.+_]{1,62}(?<!-)$
-          title: Name
-          description: The name of the step. Must be unique for all steps in a job.
-            Name must start with a lowercase letter, be 2-63 characters, and contain
-            only lowercase letters, digits, and hyphens (no consecutive hyphens, cannot
-            end with a hyphen).
-          examples:
-          - preprocess
-          - train-model
-          - eval-step-v1
-        environment:
-          title: Environment
-          description: Environment variables for the step
-          items:
-            $ref: '#/components/schemas/PlatformJobEnvironmentVariable'
-          type: array
-        executor:
-          oneOf:
-          - $ref: '#/components/schemas/CPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/GPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/DistributedGPUExecutionProviderOutput'
-          - $ref: '#/components/schemas/SubprocessExecutionProvider'
-          title: Executor
-          description: The executor for the step
-          discriminator:
-            propertyName: provider
-            mapping:
-              cpu: '#/components/schemas/CPUExecutionProviderOutput'
-              gpu: '#/components/schemas/GPUExecutionProviderOutput'
-              gpu_distributed: '#/components/schemas/DistributedGPUExecutionProviderOutput'
-              subprocess: '#/components/schemas/SubprocessExecutionProvider'
-        config:
-          additionalProperties: true
-          type: object
-          title: Config
-          description: Configuration for the step
-        lifecycle:
-          allOf:
-          - $ref: '#/components/schemas/StepLifecycle'
-          description: Lifecycle configuration settings for the step
-      type: object
-      required:
-      - name
-      - executor
-      title: PlatformJobStepSpecOutput
+      title: PlatformJobStepSpec
       description: Specification for a single step in a platform job.
     PlatformJobStepStatusResponse:
       properties:
@@ -14547,7 +14477,7 @@ components:
           type: string
           title: Name
         step_spec:
-          $ref: '#/components/schemas/PlatformJobStepSpecOutput'
+          $ref: '#/components/schemas/PlatformJobStepSpec'
         status:
           allOf:
           - $ref: '#/components/schemas/PlatformJobStatus'
@@ -14788,9 +14718,11 @@ components:
           title: Project
           type: string
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Name of the job.
           title: Name
-          type: string
         created_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
@@ -14808,9 +14740,11 @@ components:
           description: The current status.
           title: Status
         source:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: The source of the job.
           title: Source
-          type: string
       title: PlatformJobsListFilter
       type: object
     PlatformSecretAccessResponse:
@@ -15108,153 +15042,45 @@ components:
       required:
       - status
       title: RailStatus
-    RailsConfigDataInput:
+    Rails:
       properties:
-        fact_checking:
+        config:
           allOf:
-          - $ref: '#/components/schemas/FactCheckingRailConfig'
-          description: Configuration data for the fact-checking rail.
-        autoalign:
+          - $ref: '#/components/schemas/RailsConfigData'
+          description: Configuration data for specific rails that are supported out-of-the-box.
+        input:
           allOf:
-          - $ref: '#/components/schemas/AutoAlignRailConfig'
-          description: Configuration data for the AutoAlign guardrails API.
-        patronus:
+          - $ref: '#/components/schemas/InputRails'
+          description: Configuration of the input rails.
+        output:
           allOf:
-          - $ref: '#/components/schemas/PatronusRailConfigInput'
-          description: Configuration data for the Patronus Evaluate API.
-        sensitive_data_detection:
+          - $ref: '#/components/schemas/OutputRails'
+          description: Configuration of the output rails.
+        retrieval:
           allOf:
-          - $ref: '#/components/schemas/SensitiveDataDetection'
-          description: Configuration for detecting sensitive data.
-        regex_detection:
+          - $ref: '#/components/schemas/RetrievalRails'
+          description: Configuration of the retrieval rails.
+        dialog:
           allOf:
-          - $ref: '#/components/schemas/RegexDetection'
-          description: Configuration for regex pattern detection.
-        jailbreak_detection:
+          - $ref: '#/components/schemas/DialogRails'
+          description: Configuration of the dialog rails.
+        actions:
           allOf:
-          - $ref: '#/components/schemas/JailbreakDetectionConfig'
-          description: Configuration for jailbreak detection.
-        injection_detection:
+          - $ref: '#/components/schemas/ActionRails'
+          description: Configuration of action rails.
+        tool_output:
           allOf:
-          - $ref: '#/components/schemas/InjectionDetection'
-          description: Configuration for injection detection.
-        privateai:
+          - $ref: '#/components/schemas/ToolOutputRails'
+          description: Configuration of tool output rails.
+        tool_input:
           allOf:
-          - $ref: '#/components/schemas/PrivateAIDetection'
-          description: Configuration for Private AI.
-        gliner:
-          allOf:
-          - $ref: '#/components/schemas/GLiNERDetection'
-          description: Configuration for GLiNER PII detection.
-        fiddler:
-          allOf:
-          - $ref: '#/components/schemas/FiddlerGuardrails'
-          description: Configuration for Fiddler Guardrails.
-        clavata:
-          allOf:
-          - $ref: '#/components/schemas/ClavataRailConfig'
-          description: Configuration for Clavata.
-        crowdstrike_aidr:
-          allOf:
-          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
-          description: Configuration for CrowdStrike AIDR.
-        pangea:
-          allOf:
-          - $ref: '#/components/schemas/PangeaRailConfig'
-          description: Configuration for Pangea.
-        guardrails_ai:
-          allOf:
-          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
-          description: Configuration for Guardrails AI validators.
-        trend_micro:
-          allOf:
-          - $ref: '#/components/schemas/TrendMicroRailConfig'
-          description: Configuration for Trend Micro.
-        ai_defense:
-          allOf:
-          - $ref: '#/components/schemas/AIDefenseRailConfig'
-          description: Configuration for Cisco AI Defense.
-        content_safety:
-          allOf:
-          - $ref: '#/components/schemas/ContentSafetyConfig'
-          description: Configuration for content safety rails.
+          - $ref: '#/components/schemas/ToolInputRails'
+          description: Configuration of tool input rails.
+      additionalProperties: false
       type: object
-      title: RailsConfigDataInput
-      description: Configuration data for specific rails that are supported out-of-the-box.
-    RailsConfigDataOutput:
-      properties:
-        fact_checking:
-          allOf:
-          - $ref: '#/components/schemas/FactCheckingRailConfig'
-          description: Configuration data for the fact-checking rail.
-        autoalign:
-          allOf:
-          - $ref: '#/components/schemas/AutoAlignRailConfig'
-          description: Configuration data for the AutoAlign guardrails API.
-        patronus:
-          allOf:
-          - $ref: '#/components/schemas/PatronusRailConfigOutput'
-          description: Configuration data for the Patronus Evaluate API.
-        sensitive_data_detection:
-          allOf:
-          - $ref: '#/components/schemas/SensitiveDataDetection'
-          description: Configuration for detecting sensitive data.
-        regex_detection:
-          allOf:
-          - $ref: '#/components/schemas/RegexDetection'
-          description: Configuration for regex pattern detection.
-        jailbreak_detection:
-          allOf:
-          - $ref: '#/components/schemas/JailbreakDetectionConfig'
-          description: Configuration for jailbreak detection.
-        injection_detection:
-          allOf:
-          - $ref: '#/components/schemas/InjectionDetection'
-          description: Configuration for injection detection.
-        privateai:
-          allOf:
-          - $ref: '#/components/schemas/PrivateAIDetection'
-          description: Configuration for Private AI.
-        gliner:
-          allOf:
-          - $ref: '#/components/schemas/GLiNERDetection'
-          description: Configuration for GLiNER PII detection.
-        fiddler:
-          allOf:
-          - $ref: '#/components/schemas/FiddlerGuardrails'
-          description: Configuration for Fiddler Guardrails.
-        clavata:
-          allOf:
-          - $ref: '#/components/schemas/ClavataRailConfig'
-          description: Configuration for Clavata.
-        crowdstrike_aidr:
-          allOf:
-          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
-          description: Configuration for CrowdStrike AIDR.
-        pangea:
-          allOf:
-          - $ref: '#/components/schemas/PangeaRailConfig'
-          description: Configuration for Pangea.
-        guardrails_ai:
-          allOf:
-          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
-          description: Configuration for Guardrails AI validators.
-        trend_micro:
-          allOf:
-          - $ref: '#/components/schemas/TrendMicroRailConfig'
-          description: Configuration for Trend Micro.
-        ai_defense:
-          allOf:
-          - $ref: '#/components/schemas/AIDefenseRailConfig'
-          description: Configuration for Cisco AI Defense.
-        content_safety:
-          allOf:
-          - $ref: '#/components/schemas/ContentSafetyConfig'
-          description: Configuration for content safety rails.
-      type: object
-      title: RailsConfigDataOutput
-      description: Configuration data for specific rails that are supported out-of-the-box.
-    RailsConfigInput:
+      title: Rails
+      description: Configuration of specific rails.
+    RailsConfig:
       properties:
         models:
           items:
@@ -15338,7 +15164,7 @@ components:
           description: Any custom configuration data that might be needed.
         rails:
           allOf:
-          - $ref: '#/components/schemas/RailsInput'
+          - $ref: '#/components/schemas/Rails'
           description: Configuration for the various rails (input, output, etc.).
         enable_rails_exceptions:
           type: boolean
@@ -15356,188 +15182,81 @@ components:
           - $ref: '#/components/schemas/TracingConfig'
           description: Configuration for tracing.
       type: object
-      title: RailsConfigInput
+      title: RailsConfig
       description: Configuration object for the models and the rails.
-    RailsConfigOutput:
+    RailsConfigData:
       properties:
-        models:
-          items:
-            $ref: '#/components/schemas/Model'
-          type: array
-          title: Models
-          description: The list of models used by the rails configuration.
-        instructions:
-          title: Instructions
-          description: List of instructions in natural language that the LLM should
-            use.
-          default:
-          - type: general
-            content: Below is a conversation between a helpful AI assistant and a
-              user. The bot is designed to generate human-like text based on the input
-              that it receives. The bot is talkative and provides lots of specific
-              details. If the bot does not know the answer to a question, it truthfully
-              says it does not know.
-          items:
-            $ref: '#/components/schemas/Instruction'
-          type: array
-        actions_server_url:
-          title: Actions Server Url
-          description: The URL of the actions server that should be used for the rails.
-          type: string
-        sample_conversation:
-          title: Sample Conversation
-          description: The sample conversation that should be used inside the prompts.
-          default: "user \"Hello there!\"\n  express greeting\nbot express greeting\n\
-            \  \"Hello! How can I assist you today?\"\nuser \"What can you do for\
-            \ me?\"\n  ask about capabilities\nbot respond about capabilities\n  \"\
-            As an AI assistant, I can help you with a wide range of tasks. This includes\
-            \ question answering on various topics, generating text for various purposes\
-            \ and providing suggestions based on your preferences.\"\nuser \"Tell\
-            \ me a bit about the history of NVIDIA.\"\n  ask general question\nbot\
-            \ response for general question\n  \"NVIDIA is a technology company that\
-            \ specializes in designing and manufacturing graphics processing units\
-            \ (GPUs) and other computer hardware. The company was founded in 1993\
-            \ by Jen-Hsun Huang, Chris Malachowsky, and Curtis Priem.\"\nuser \"tell\
-            \ me more\"\n  request more information\nbot provide more information\n\
-            \  \"Initially, the company focused on developing 3D graphics processing\
-            \ technology for the PC gaming market. In 1999, NVIDIA released the GeForce\
-            \ 256, the world's first GPU, which was a major breakthrough for the gaming\
-            \ industry. The company continued to innovate in the GPU space, releasing\
-            \ new products and expanding into other markets such as professional graphics,\
-            \ mobile devices, and artificial intelligence.\"\nuser \"thanks\"\n  express\
-            \ appreciation\nbot express appreciation and offer additional help\n \
-            \ \"You're welcome. If you have any more questions or if there's anything\
-            \ else I can help you with, please don't hesitate to ask.\"\n"
-          type: string
-        prompts:
-          title: Prompts
-          description: The prompts that should be used for the various LLM tasks.
-          items:
-            $ref: '#/components/schemas/TaskPrompt'
-          type: array
-        prompting_mode:
-          title: Prompting Mode
-          description: Allows choosing between different prompting strategies.
-          default: standard
-          type: string
-        lowest_temperature:
-          title: Lowest Temperature
-          description: The lowest temperature that should be used for the LLM.
-          default: 0.001
-          type: number
-        enable_multi_step_generation:
-          title: Enable Multi Step Generation
-          description: Whether to enable multi-step generation for the LLM.
-          default: false
-          type: boolean
-        colang_version:
-          type: string
-          title: Colang Version
-          description: The Colang version to use.
-          default: '1.0'
-        custom_data:
-          additionalProperties: true
-          type: object
-          title: Custom Data
-          description: Any custom configuration data that might be needed.
-        rails:
+        fact_checking:
           allOf:
-          - $ref: '#/components/schemas/RailsOutput'
-          description: Configuration for the various rails (input, output, etc.).
-        enable_rails_exceptions:
-          type: boolean
-          title: Enable Rails Exceptions
-          description: If set, the pre-defined guardrails raise exceptions instead
-            of returning pre-defined messages.
-          default: false
-        passthrough:
-          title: Passthrough
-          description: 'Whether the original prompt should pass through the guardrails
-            configuration as is. This means it will not be altered in any way. '
-          type: boolean
-        tracing:
+          - $ref: '#/components/schemas/FactCheckingRailConfig'
+          description: Configuration data for the fact-checking rail.
+        autoalign:
           allOf:
-          - $ref: '#/components/schemas/TracingConfig'
-          description: Configuration for tracing.
+          - $ref: '#/components/schemas/AutoAlignRailConfig'
+          description: Configuration data for the AutoAlign guardrails API.
+        patronus:
+          allOf:
+          - $ref: '#/components/schemas/PatronusRailConfig'
+          description: Configuration data for the Patronus Evaluate API.
+        sensitive_data_detection:
+          allOf:
+          - $ref: '#/components/schemas/SensitiveDataDetection'
+          description: Configuration for detecting sensitive data.
+        regex_detection:
+          allOf:
+          - $ref: '#/components/schemas/RegexDetection'
+          description: Configuration for regex pattern detection.
+        jailbreak_detection:
+          allOf:
+          - $ref: '#/components/schemas/JailbreakDetectionConfig'
+          description: Configuration for jailbreak detection.
+        injection_detection:
+          allOf:
+          - $ref: '#/components/schemas/InjectionDetection'
+          description: Configuration for injection detection.
+        privateai:
+          allOf:
+          - $ref: '#/components/schemas/PrivateAIDetection'
+          description: Configuration for Private AI.
+        gliner:
+          allOf:
+          - $ref: '#/components/schemas/GLiNERDetection'
+          description: Configuration for GLiNER PII detection.
+        fiddler:
+          allOf:
+          - $ref: '#/components/schemas/FiddlerGuardrails'
+          description: Configuration for Fiddler Guardrails.
+        clavata:
+          allOf:
+          - $ref: '#/components/schemas/ClavataRailConfig'
+          description: Configuration for Clavata.
+        crowdstrike_aidr:
+          allOf:
+          - $ref: '#/components/schemas/CrowdStrikeAIDRRailConfig'
+          description: Configuration for CrowdStrike AIDR.
+        pangea:
+          allOf:
+          - $ref: '#/components/schemas/PangeaRailConfig'
+          description: Configuration for Pangea.
+        guardrails_ai:
+          allOf:
+          - $ref: '#/components/schemas/GuardrailsAIRailConfig'
+          description: Configuration for Guardrails AI validators.
+        trend_micro:
+          allOf:
+          - $ref: '#/components/schemas/TrendMicroRailConfig'
+          description: Configuration for Trend Micro.
+        ai_defense:
+          allOf:
+          - $ref: '#/components/schemas/AIDefenseRailConfig'
+          description: Configuration for Cisco AI Defense.
+        content_safety:
+          allOf:
+          - $ref: '#/components/schemas/ContentSafetyConfig'
+          description: Configuration for content safety rails.
       type: object
-      title: RailsConfigOutput
-      description: Configuration object for the models and the rails.
-    RailsInput:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/RailsConfigDataInput'
-          description: Configuration data for specific rails that are supported out-of-the-box.
-        input:
-          allOf:
-          - $ref: '#/components/schemas/InputRails'
-          description: Configuration of the input rails.
-        output:
-          allOf:
-          - $ref: '#/components/schemas/OutputRails'
-          description: Configuration of the output rails.
-        retrieval:
-          allOf:
-          - $ref: '#/components/schemas/RetrievalRails'
-          description: Configuration of the retrieval rails.
-        dialog:
-          allOf:
-          - $ref: '#/components/schemas/DialogRails'
-          description: Configuration of the dialog rails.
-        actions:
-          allOf:
-          - $ref: '#/components/schemas/ActionRails'
-          description: Configuration of action rails.
-        tool_output:
-          allOf:
-          - $ref: '#/components/schemas/ToolOutputRails'
-          description: Configuration of tool output rails.
-        tool_input:
-          allOf:
-          - $ref: '#/components/schemas/ToolInputRails'
-          description: Configuration of tool input rails.
-      additionalProperties: false
-      type: object
-      title: RailsInput
-      description: Configuration of specific rails.
-    RailsOutput:
-      properties:
-        config:
-          allOf:
-          - $ref: '#/components/schemas/RailsConfigDataOutput'
-          description: Configuration data for specific rails that are supported out-of-the-box.
-        input:
-          allOf:
-          - $ref: '#/components/schemas/InputRails'
-          description: Configuration of the input rails.
-        output:
-          allOf:
-          - $ref: '#/components/schemas/OutputRails'
-          description: Configuration of the output rails.
-        retrieval:
-          allOf:
-          - $ref: '#/components/schemas/RetrievalRails'
-          description: Configuration of the retrieval rails.
-        dialog:
-          allOf:
-          - $ref: '#/components/schemas/DialogRails'
-          description: Configuration of the dialog rails.
-        actions:
-          allOf:
-          - $ref: '#/components/schemas/ActionRails'
-          description: Configuration of action rails.
-        tool_output:
-          allOf:
-          - $ref: '#/components/schemas/ToolOutputRails'
-          description: Configuration of tool output rails.
-        tool_input:
-          allOf:
-          - $ref: '#/components/schemas/ToolInputRails'
-          description: Configuration of tool input rails.
-      additionalProperties: false
-      type: object
-      title: RailsOutput
-      description: Configuration of specific rails.
+      title: RailsConfigData
+      description: Configuration data for specific rails that are supported out-of-the-box.
     ReasoningConfig:
       properties:
         enabled:
@@ -15640,21 +15359,27 @@ components:
       description: Filter for role bindings.
       properties:
         principal:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by principal ID
           title: Principal
-          type: string
         workspace:
           description: Filter by workspace
           title: Workspace
           type: string
         role:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by role
           title: Role
-          type: string
         granted_by:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Filter by who granted the role
           title: Granted By
-          type: string
         is_active:
           description: Filter for active (True) or revoked (False) bindings
           title: Is Active
@@ -15784,6 +15509,9 @@ components:
       title: SecretRef
       description: 'Reference to a secret. Format: ''secret_name'' (uses request workspace)
         or ''workspace/secret_name'' (explicit workspace).'
+      examples:
+      - my-secret
+      - my-workspace/my-secret
     SensitiveDataDetection:
       properties:
         recognizers:
@@ -16216,6 +15944,31 @@ components:
       - s3
       title: StorageConfigType
       type: string
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
     SubprocessExecutionProvider:
       properties:
         provider:
@@ -16709,7 +16462,7 @@ components:
           description: The purpose of the fileset.
         metadata:
           allOf:
-          - $ref: '#/components/schemas/FilesetMetadataInput'
+          - $ref: '#/components/schemas/FilesetMetadata'
           description: 'Purpose-specific metadata. Use the purpose as the key (e.g.,
             {dataset: {...}}).'
         custom_fields:
@@ -16726,10 +16479,20 @@ components:
           description: Optional description of the deployment configuration
           type: string
           maxLength: 1000
-        nim_deployment:
+        engine:
           allOf:
-          - $ref: '#/components/schemas/NIMDeployment'
-          description: Configuration for NIM-based deployment
+          - $ref: '#/components/schemas/Engine'
+          description: Inference engine selecting the compiler path (nim/vllm/generic)
+        model_spec:
+          allOf:
+          - $ref: '#/components/schemas/ModelDeploymentConfigModelSpec'
+          description: What model to serve and how -- independent of the executor
+            it runs on
+        executor_config:
+          allOf:
+          - $ref: '#/components/schemas/ContainerExecutorConfig'
+          description: Compute + container settings for the executor the deployment
+            runs on
         model_entity_id:
           title: Model Entity Id
           description: Optional reference to the base model entity ID for this deployment
@@ -16737,7 +16500,9 @@ components:
           maxLength: 255
       type: object
       required:
-      - nim_deployment
+      - engine
+      - model_spec
+      - executor_config
       title: UpdateModelDeploymentConfigRequest
       description: Request model for updating a ModelDeploymentConfig (creates new
         version).

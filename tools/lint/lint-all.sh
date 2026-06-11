@@ -72,9 +72,12 @@ if [[ ${#failed[@]} -gt 0 ]]; then
       break
     fi
   done
-  if [[ "${has_fix}" == "true" ]]; then
+  if [[ "${has_fix}" == "true" && "${LINT_AFTER_FIX:-}" != "1" ]]; then
     echo "To fix auto-fixable issues, run:"
     echo "  make lint-fix"
+    echo ""
+  elif [[ "${LINT_AFTER_FIX:-}" == "1" ]]; then
+    echo "Auto-fix completed; remaining issues require manual fixes (see output above)."
     echo ""
   fi
   for name in "${failed[@]}"; do

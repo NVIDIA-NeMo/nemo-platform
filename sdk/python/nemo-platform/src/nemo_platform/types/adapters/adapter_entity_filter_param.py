@@ -17,12 +17,20 @@
 
 from __future__ import annotations
 
-from typing_extensions import TypedDict
+from typing import Union
+from typing_extensions import TypeAlias, TypedDict
 
 from ..shared.finetuning_type import FinetuningType
+from ..shared_params.string_filter import StringFilter
 from ..shared_params.datetime_filter import DatetimeFilter
 
-__all__ = ["AdapterEntityFilterParam"]
+__all__ = ["AdapterEntityFilterParam", "Description", "Model", "Name"]
+
+Description: TypeAlias = Union[StringFilter, str]
+
+Model: TypeAlias = Union[StringFilter, str]
+
+Name: TypeAlias = Union[StringFilter, str]
 
 
 class AdapterEntityFilterParam(TypedDict, total=False):
@@ -31,7 +39,7 @@ class AdapterEntityFilterParam(TypedDict, total=False):
     created_at: DatetimeFilter
     """Filter entities based on creation date."""
 
-    description: str
+    description: Description
     """Filter by description."""
 
     enabled: bool
@@ -43,13 +51,13 @@ class AdapterEntityFilterParam(TypedDict, total=False):
     finetuning_type: FinetuningType
     """Finetuning types."""
 
-    model: str
+    model: Model
     """
     Filter by parent (base) model entity reference in the form
     {workspace}/{model_name}.
     """
 
-    name: str
+    name: Name
     """Filter by adapter name."""
 
     updated_at: DatetimeFilter

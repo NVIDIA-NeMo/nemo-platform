@@ -85,15 +85,6 @@ core-service = [
 ]
 
 # Generated from [tool.bundle-package]; do not edit by hand.
-customizer-service = [
-  "fastapi[standard]>=0.115.4",
-  "uvicorn[standard]>=0.12.0",
-  "pydantic>=2.10.3",
-  "pydantic-settings>=2.6.1",
-  "nmp-common",
-]
-
-# Generated from [tool.bundle-package]; do not edit by hand.
 data-designer-nemo = [
   "data-designer==0.6.1",
   "anyio>=4.0",
@@ -143,7 +134,7 @@ evaluator-service = [
   "kubernetes>=31.0.0",
   "openai>=1.61.0",
   "ragas==0.3.5",
-  "langchain-community>=0.3.27,<0.4",
+  "langchain-community>=0.3.31,<0.4",
   "pymilvus==2.6.9",
   "langchain-nvidia-ai-endpoints>=1.0.0,<2.0.0",
   "nemo-evaluator-sdk",
@@ -470,7 +461,6 @@ services = [
   "nemo-platform[hello-world-service]",
   "nemo-platform[guardrails-service]",
   "nemo-platform[evaluator-service]",
-  "nemo-platform[customizer-service]",
   "nemo-platform[plugins]",
 ]
 
@@ -647,7 +637,6 @@ nmp-inference-gateway = { source = "../../services/core/inference-gateway/src/nm
 
 # Non-core services
 nmp-guardrails = { source = "../../services/guardrails/src/nmp/guardrails", module = "nmp/guardrails", deps_group = "guardrails-service" }
-nmp-customizer = { source = "../../services/customizer/src/nmp/customizer", module = "nmp/customizer", deps_group = "customizer-service" }
 nmp-evaluator = { source = "../../services/evaluator/src/nmp/evaluator", module = "nmp/evaluator", deps_group = "evaluator-service" }
 nmp-platform-seed = { source = "../../services/platform-seed/src/nmp/platform_seed", module = "nmp/platform_seed", deps_group = "platform-seed-service" }
 nmp-hello-world = { source = "../../services/hello-world/src/nmp/hello_world", module = "nmp/hello_world", deps_group = "hello-world-service" }
