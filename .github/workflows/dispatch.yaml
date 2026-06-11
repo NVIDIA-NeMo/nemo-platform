@@ -21,7 +21,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.CI_DISPATCH_TOKEN }}
           DISPATCH_REPO: ${{ secrets.CI_DISPATCH_REPO }}
+        shell: bash
         run: |
+          set -euo pipefail
           jq -n --arg ref "${GITHUB_SHA}" \
             '{event_type: "ci-passed", client_payload: {ref: $ref}}' \
           | gh api -X POST "/repos/${DISPATCH_REPO}/dispatches" --input -
