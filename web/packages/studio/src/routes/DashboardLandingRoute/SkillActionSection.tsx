@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { Banner, Button, Card, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
+import { Card, Flex, Skeleton, Stack, Text } from '@nvidia/foundations-react-core';
 import { Empty } from '@studio/components/Empty';
-import type { SkillActionSuggestion } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
+import type { SkillActionTemplate } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
 import type { FC } from 'react';
 
 const SKILL_ACTION_CARD_CLASS = 'h-40 w-72 flex-none cursor-pointer shadow-none!';
@@ -20,8 +20,13 @@ const HORIZONTAL_SCROLLBAR_CLASS = [
   '[&::-webkit-scrollbar-thumb:hover]:bg-[var(--border-color-interaction-strong)]',
 ].join(' ');
 
+export interface SkillActionCard extends SkillActionTemplate {
+  skillName?: string;
+  claudeName?: string;
+}
+
 interface SkillActionListProps {
-  actions: SkillActionSuggestion[];
+  actions: SkillActionCard[];
   onSelect: (prompt: string) => void;
 }
 
@@ -31,15 +36,17 @@ const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
       aria-label="Skill action suggestions"
       className={`w-full overflow-x-auto ${HORIZONTAL_SCROLLBAR_CLASS}`}
     >
-      <div
-        className="flex w-max min-w-full items-stretch gap-density-md pb-density-lg"
+      <Flex
+        align="stretch"
+        gap="density-md"
+        className="w-max min-w-full pb-density-lg"
         data-testid="skill-action-row"
       >
         {actions.map((action) => (
           <div
-            key={`${action.skillName}:${action.claudeName}`}
+            key={`${action.skillName ?? action.title}:${action.claudeName ?? action.prompt}`}
             className="w-72 flex-none"
-            data-testid={`skill-action-card-${action.skillName}`}
+            data-testid={action.skillName ? `skill-action-card-${action.skillName}` : undefined}
           >
             <Card asChild interactive className="h-40 w-full cursor-pointer shadow-none!">
               <button
@@ -50,27 +57,29 @@ const SkillActionList: FC<SkillActionListProps> = ({ actions, onSelect }) => {
                 <span className="flex size-8 shrink-0 items-center justify-center rounded bg-surface-raised text-accent">
                   {action.icon}
                 </span>
-                <span className="flex min-h-0 flex-1 flex-col gap-density-xxs">
+                <Flex direction="col" gap="density-xxs" className="min-h-0 flex-1">
                   <Text kind="label/bold/sm" className="line-clamp-1 block">
                     {action.title}
                   </Text>
-                  <Text
-                    kind="body/regular/xs"
-                    color="secondary"
-                    className="block truncate"
-                    data-testid="skill-action-skill-name"
-                  >
-                    {action.skillName}
-                  </Text>
+                  {action.skillName ? (
+                    <Text
+                      kind="body/regular/xs"
+                      color="secondary"
+                      className="block truncate"
+                      data-testid="skill-action-skill-name"
+                    >
+                      {action.skillName}
+                    </Text>
+                  ) : null}
                   <Text kind="body/regular/sm" color="secondary" className="line-clamp-2 block">
                     {action.description}
                   </Text>
-                </span>
+                </Flex>
               </button>
             </Card>
           </div>
         ))}
-      </div>
+      </Flex>
     </div>
   );
 };
@@ -84,39 +93,20 @@ const SkillActionSkeleton = () => (
 );
 
 export interface SkillActionSectionProps {
-  actions: SkillActionSuggestion[];
-  isError: boolean;
+  actions: SkillActionCard[];
   isLoading: boolean;
-  onRetry: () => void;
   onSelect: (prompt: string) => void;
   totalSkillCount: number;
 }
 
 export const SkillActionSection: FC<SkillActionSectionProps> = ({
   actions,
-  isError,
   isLoading,
-  onRetry,
   onSelect,
   totalSkillCount,
 }) => {
   if (isLoading) {
     return <SkillActionSkeleton />;
-  }
-
-  if (isError) {
-    return (
-      <Stack gap="density-sm" className="w-full" data-testid="skill-actions-error">
-        <Banner kind="inline" status="error">
-          Could not load Claude skills.
-        </Banner>
-        <Flex justify="center">
-          <Button kind="secondary" size="small" type="button" onClick={onRetry}>
-            Retry
-          </Button>
-        </Flex>
-      </Stack>
-    );
   }
 
   if (!totalSkillCount) {

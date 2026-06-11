@@ -12,11 +12,14 @@ import {
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
-import { SkillActionSection } from '@studio/routes/DashboardLandingRoute/SkillActionSection';
+import {
+  SkillActionSection,
+  type SkillActionCard,
+} from '@studio/routes/DashboardLandingRoute/SkillActionSection';
 import { getSkillActionSuggestions } from '@studio/routes/DashboardLandingRoute/skillActionSuggestions';
 import { getClaudeCodeChatRoute } from '@studio/routes/utils';
 import { useQuery } from '@tanstack/react-query';
-import { Send, Terminal } from 'lucide-react';
+import { GitBranch, Hammer, Search, Send, Terminal } from 'lucide-react';
 import {
   type ChangeEvent,
   type FC,
@@ -99,6 +102,27 @@ const LandingComposer = ({
   );
 };
 
+const DEFAULT_LANDING_ACTIONS = [
+  {
+    title: 'Explore repo',
+    description: 'Give me a concise map of this repo and the main places I should know about.',
+    prompt: 'Give me a concise map of this repo and the main places I should know about.',
+    icon: <Search size={18} />,
+  },
+  {
+    title: 'Draft a change',
+    description: 'Help me plan and implement the next small product improvement in nemo-platform.',
+    prompt: 'Help me plan and implement the next small product improvement in nemo-platform.',
+    icon: <Hammer size={18} />,
+  },
+  {
+    title: 'Review recent work',
+    description: 'Review the current working tree and call out anything risky or unfinished.',
+    prompt: 'Review the current working tree and call out anything risky or unfinished.',
+    icon: <GitBranch size={18} />,
+  },
+] satisfies SkillActionCard[];
+
 export const DashboardLandingRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const navigate = useNavigate();
@@ -107,12 +131,17 @@ export const DashboardLandingRoute: FC = () => {
     data: skills,
     isError: isSkillsError,
     isLoading: isSkillsLoading,
-    refetch: refetchSkills,
   } = useQuery({
     queryKey: CLAUDE_CODE_SKILLS_QUERY_KEY,
     queryFn: listClaudeCodeSkills,
   });
-  const skillActionSuggestions = useMemo(() => getSkillActionSuggestions(skills ?? []), [skills]);
+  const skillActionSuggestions = useMemo(
+    () => (isSkillsError ? DEFAULT_LANDING_ACTIONS : getSkillActionSuggestions(skills ?? [])),
+    [isSkillsError, skills]
+  );
+  const totalActionSourceCount = isSkillsError
+    ? DEFAULT_LANDING_ACTIONS.length
+    : (skills?.length ?? 0);
 
   useBreadcrumbs({
     items: [{ slotLabel: 'Dashboard' }],
@@ -146,11 +175,9 @@ export const DashboardLandingRoute: FC = () => {
 
               <SkillActionSection
                 actions={skillActionSuggestions}
-                isError={isSkillsError}
                 isLoading={isSkillsLoading}
-                onRetry={() => void refetchSkills()}
                 onSelect={handlePromptSelect}
-                totalSkillCount={skills?.length ?? 0}
+                totalSkillCount={totalActionSourceCount}
               />
             </Flex>
           </main>

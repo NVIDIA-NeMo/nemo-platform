@@ -253,13 +253,16 @@ describe('DashboardLandingRoute', () => {
     expect(await screen.findByTestId('skill-actions-disabled')).toBeInTheDocument();
   });
 
-  it('shows an error state when Claude skills fail to load', async () => {
+  it('falls back to default action cards when Claude skills fail to load', async () => {
     mocks.listClaudeCodeSkills.mockRejectedValue(new Error('skills unavailable'));
 
     renderRoute();
 
-    expect(await screen.findByTestId('skill-actions-error')).toBeInTheDocument();
-    expect(screen.getByText('Could not load Claude skills.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Explore repo/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Draft a change/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Review recent work/ })).toBeInTheDocument();
+    expect(screen.queryByText('Could not load Claude skills.')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('skill-actions-error')).not.toBeInTheDocument();
   });
 
   it('shows an empty state when no Claude skills are available', async () => {
