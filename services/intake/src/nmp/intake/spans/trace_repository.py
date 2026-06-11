@@ -152,7 +152,7 @@ def _trace_rows_sql(
             SELECT
                 {_trace_select_columns(include_aggregates=False)}
             FROM page_traces AS traces
-            ORDER BY {_order_by(sort, qualifier="traces")}
+            ORDER BY {_order_by(sort, table_alias="traces")}
         """
         return query, {}
     if mode == "detailed":
@@ -175,7 +175,7 @@ def _trace_rows_sql(
                 ON traces.workspace = rollups.workspace
                 AND traces.source_format = rollups.source_format
                 AND traces.id = rollups.trace_id
-            ORDER BY {_order_by(sort, qualifier="traces")}
+            ORDER BY {_order_by(sort, table_alias="traces")}
         """
         return query, parameters
     raise ValueError(f"Unsupported trace mode: {mode}")
@@ -368,15 +368,15 @@ def _metric_columns(source_alias: str) -> tuple[str, dict[str, Any]]:
     return ",\n            ".join(columns), parameters
 
 
-def _order_by(sort: str, *, qualifier: str | None = None) -> str:
+def _order_by(sort: str, *, table_alias: str | None = None) -> str:
     direction = "DESC" if sort.startswith("-") else "ASC"
     field = sort.removeprefix("-")
     column = TRACE_SORT_COLUMNS.get(field)
     if column is None:
         raise ValueError(f"Unsupported trace sort field: {field}")
-    if qualifier is not None:
-        column = f"{qualifier}.{column}"
-        id_column = f"{qualifier}.id"
+    if table_alias is not None:
+        column = f"{table_alias}.{column}"
+        id_column = f"{table_alias}.id"
     else:
         id_column = "id"
     return f"{column} {direction}, {id_column} ASC"
