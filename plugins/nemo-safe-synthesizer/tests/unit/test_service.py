@@ -4,7 +4,8 @@
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from nemo_platform_plugin.authz import merge_authz_contributions, validate_static_authz_data
+from nemo_platform_plugin.authz_format import validate_static_authz_data
+from nemo_platform_plugin.authz_merge import merge_authz_contributions
 from nemo_safe_synthesizer_plugin.service import SafeSynthesizerService
 
 

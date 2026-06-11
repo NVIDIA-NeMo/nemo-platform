@@ -33,9 +33,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from nemo_platform_plugin.authz_format import validate_static_authz_data as validate_static_authz_data
-from nemo_platform_plugin.authz_merge import merge_authz_contributions as merge_authz_contributions
-
 
 @dataclass(frozen=True)
 class AuthzEndpointMethod:
