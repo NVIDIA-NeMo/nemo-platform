@@ -2,6 +2,7 @@
 # Impossible markers block uv from re-resolving these when adding platform glue.
 transformers; sys_platform == 'never'
 huggingface-hub; sys_platform == 'never'
+bitsandbytes; sys_platform == 'never'
 torch; sys_platform == 'never'
 torchvision; sys_platform == 'never'
 torchaudio; sys_platform == 'never'

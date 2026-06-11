@@ -275,7 +275,7 @@ nemo models adapters retrieve qwen-unsloth-smoke-out \
 | `compile()` errors with "platform.runtime: docker" | Set `platform.runtime: docker` in `~/.nemo/config.yaml` and restart services. |
 | `compile()` errors with "Docker daemon unreachable" | Confirm `docker info` works as the user running `nemo services`. |
 | First job step errors with `Model 'X' has no fileset attached` | Attach a fileset to the model entity (`nemo models update --fileset ...`). |
-| `training` step errors with `bitsandbytes`/CUDA mismatch | Rebuild the image — the base NGC PyTorch tag may have moved. |
+| `training` step errors with `bitsandbytes`/CUDA mismatch (`libbitsandbytes_cuda131.so` not found) | Rebuild `nmp-unsloth-training` — the image compiles bitsandbytes from source against NGC CUDA 13.1 (same pattern as `nmp-automodel-base`). Override `BNB_MAX_JOBS` at build time if nvcc OOMs. |
 | `training` step OOMs on a small GPU | Reduce `model.max_seq_length` and / or set `model.load_in_4bit: true`. |
 | `model-entity-creation` errors with "Adapter already exists" | Pick a fresh `output.name` (the unsloth compiler is "always create"; no overwrite). |
 | Step config not picked up (`NEMO_JOB_STEP_CONFIG_FILE_PATH is not set`) | The container was started outside the Jobs runner — only platform-driven submit populates this. |
@@ -307,6 +307,6 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via
   `--system-site-packages` and `preserve_base_torch.txt` / `no_override_requirements.txt`
   overrides (same impossible-marker pattern as automodel).
-- **No CUDA wheels are pre-built** — `bitsandbytes` ships PyPI wheels
-  (Ampere+; for older arches, swap to a source build or pin a compatible
-  release).
+- **bitsandbytes** — compiled from source in the image (v0.49.1, same approach as
+  `nmp-automodel-base`) because NGC 26.02 is CUDA 13.1 and PyPI only ships
+  prebuilt libs through cuda130.

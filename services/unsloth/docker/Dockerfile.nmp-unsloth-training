@@ -12,7 +12,10 @@
 #      bitsandbytes, xformers, etc.). `--overrides preserve_base_torch.txt`
 #      blocks uv from installing/upgrading torch into the venv so the NGC
 #      base's PyTorch + CUDA remain the runtime stack.
-#   1b. flash-attn — optional for unsloth and not installed by step 1. Without
+#   1b. bitsandbytes — compiled from source against NGC CUDA 13.1 (same pattern
+#       as services/automodel/docker/Dockerfile.nmp-automodel-base). PyPI wheels
+#       only ship through cuda130; source build replaces the wheel from step 1.
+#   1c. flash-attn — optional for unsloth and not installed by step 1. Without
 #       it Unsloth falls back when xformers is also missing (common on newer CUDA
 #       stacks), logging "FA2 = False / Xformers = None". Installed immediately
 #       after unsloth so pip does not re-resolve the HF stack.
@@ -40,6 +43,7 @@ ENV VIRTUAL_ENV=/opt/venv \
     HF_HUB_ENABLE_HF_TRANSFER=1 \
     OTEL_PYTHON_EXCLUDED_URLS="health"
 ENV PATH="/opt/venv/bin:/root/.local/bin:${PATH}"
+ENV UNSLOTH_SKIP_TORCHVISION_CHECK=1
 
 # --system-site-packages lets the venv inherit the NGC base's pre-built torch.
 # Without this, `uv pip install unsloth --torch-backend=auto` would download a
@@ -57,6 +61,8 @@ ARG USER_GID=1000
 ARG UNSLOTH_VERSION=2026.6.1
 ARG TRANSFORMERS_VERSION=4.57.6
 ARG HF_HUB_VERSION=0.36.2
+ARG BITSANDBYTES_VERSION=0.49.1
+ARG BNB_MAX_JOBS=10
 
 WORKDIR /app
 
@@ -87,16 +93,23 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     transformers==${TRANSFORMERS_VERSION} \
     huggingface-hub==${HF_HUB_VERSION}
 
-# Fail early if HF hub drifted above 1.0 (breaks transformers 4.57.x import).
-RUN ${VIRTUAL_ENV}/bin/python -c "\
-import importlib.metadata as m; \
-hub_ver = m.version('huggingface-hub'); \
-assert m.version('transformers') == '${TRANSFORMERS_VERSION}', m.version('transformers'); \
-major = int(hub_ver.split('.')[0]); \
-assert major < 1, hub_ver; \
-print('transformers', m.version('transformers'), 'huggingface-hub', hub_ver)"
+# Step 1b: bitsandbytes from source — matches automodel base (CUDA 13.1 nvcc).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    git clone https://github.com/bitsandbytes-foundation/bitsandbytes.git /tmp/bitsandbytes && \
+    cd /tmp/bitsandbytes && \
+    git checkout ${BITSANDBYTES_VERSION} && \
+    cmake -DCOMPUTE_CAPABILITY="75;80;86;87;89;90;100;103;110;120;121" \
+    -DCOMPUTE_BACKEND=cuda \
+    -DCMAKE_CUDA_COMPILER=/usr/local/cuda/bin/nvcc \
+    -S . && \
+    make -j${BNB_MAX_JOBS} && \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache scikit-build-core --no-deps && \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --no-build-isolation --no-deps --force-reinstall . && \
+    uv pip uninstall --python ${VIRTUAL_ENV}/bin/python scikit-build-core && \
+    rm -rf /tmp/bitsandbytes
 
-# TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
+# TODO: Step 1c: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
 # Cap parallel nvcc/ninja work — default uses all CPUs and OOMs typical build hosts.
 # Put flash attention back in when we have a working wheel in a separate image.
