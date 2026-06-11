@@ -4,13 +4,12 @@
 # model_entity).
 #
 # Install steps:
-#   1. `uv pip install unsloth --torch-backend=auto`. This is unsloth's
-#      canonical install command (per their README). It pulls unsloth +
-#      unsloth_zoo + the entire HF stack (transformers, trl, peft, accelerate,
-#      datasets, bitsandbytes, xformers, etc.) at the versions unsloth's own
-#      pyproject.toml has constrained — including explicit !=X.Y.Z blocklists
-#      for known-broken transformers/trl releases. We deliberately don't
-#      second-guess these pins; they're tested upstream.
+#   1. `uv pip install unsloth --torch-backend=auto` plus an explicit
+#      `transformers==4.57.6` pin. Unsloth's resolver still pulls unsloth_zoo
+#      and the rest of the HF stack (trl, peft, accelerate, datasets,
+#      bitsandbytes, xformers, etc.). `--overrides preserve_base_torch.txt`
+#      blocks uv from installing/upgrading torch into the venv so the NGC
+#      base's PyTorch + CUDA remain the runtime stack.
 #   1b. flash-attn — optional for unsloth and not installed by step 1. Without
 #       it Unsloth falls back when xformers is also missing (common on newer CUDA
 #       stacks), logging "FA2 = False / Xformers = None". Installed immediately
@@ -54,19 +53,33 @@ ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=1000
 ARG UNSLOTH_VERSION=2026.6.1
+ARG TRANSFORMERS_VERSION=4.57.6
 
 WORKDIR /app
+
+COPY services/unsloth/docker/preserve_base_torch.txt /opt/docker/preserve_base_torch.txt
+COPY services/unsloth/docker/no_override_requirements.txt /opt/docker/no_override_requirements.txt
 
 RUN mkdir -p /home/${USERNAME}/.cache && \
     chown -R ${USER_UID}:${USER_GID} /home/${USERNAME}
 
-# Step 1: install unsloth via its own resolver. --torch-backend=auto tells uv
+# Step 1: install unsloth + pinned transformers. --torch-backend=auto tells uv
 # to detect the existing torch's CUDA build (from --system-site-packages
 # inheritance) and pick the matching xformers / bitsandbytes wheels.
+# preserve_base_torch.txt prevents uv from replacing the NGC torch stack.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --torch-backend=auto \
-    unsloth==${UNSLOTH_VERSION}
+    --overrides /opt/docker/preserve_base_torch.txt \
+    unsloth==${UNSLOTH_VERSION} \
+    transformers==${TRANSFORMERS_VERSION}
+
+# Re-pin transformers without touching torch or re-resolving the full HF stack.
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /opt/docker/preserve_base_torch.txt \
+    --reinstall-package transformers \
+    transformers==${TRANSFORMERS_VERSION}
 
 # TODO: Step 1b: Flash Attention 2 — compiled from source against the NGC 26.02 torch.
 # /usr/local/cuda symlinks to an older toolkit; use /usr/local/cuda-13.1 instead.
@@ -93,6 +106,7 @@ RUN chown -R ${USER_UID}:${USER_GID} /app
 # resolver to re-evaluate the whole HF stack.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
+    --overrides /opt/docker/no_override_requirements.txt \
     -e /app/sdk/python/nemo-platform \
     -e /app/packages/nemo_platform_plugin \
     -e /app/packages/nmp_common \

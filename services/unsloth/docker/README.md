@@ -49,12 +49,12 @@ docker buildx bake \
 The build pulls the NGC PyTorch base, then runs unsloth's canonical install
 in two steps:
 
-1. `uv pip install unsloth --torch-backend=auto` — this is the command
-   straight from unsloth's README. It pulls `unsloth`, `unsloth_zoo`, and the
-   full HF stack (transformers, trl, peft, accelerate, datasets, bitsandbytes,
-   xformers) at versions tested upstream — we deliberately don't pin any of
-   them on our end, because unsloth's pyproject already has precise
-   `!=X.Y.Z` blocklists for known-broken releases.
+1. `uv pip install unsloth --torch-backend=auto transformers==4.57.6` with
+   `preserve_base_torch.txt` overrides so the NGC base's PyTorch + CUDA are not
+   replaced. Unsloth's resolver still pulls `unsloth_zoo`, trl, peft,
+   accelerate, datasets, bitsandbytes, and xformers. **transformers is pinned
+   explicitly** to `4.57.6` (override at build time via
+   `--build-arg TRANSFORMERS_VERSION=...`).
 1b. Flash Attention 2 (Dockerfile step 1b) — source build with
     `--no-build-isolation` against the NGC base torch (cached Docker layer).
     Parallelism is capped via `MAX_JOBS` (default `2`, override with bake arg
@@ -300,13 +300,12 @@ nemo files filesets delete qwen-unsloth-smoke-out -w default
   separate ML stack. If you need both backends on the same cluster, run
   both images side by side; jobs from each backend route to their own
   `nmp-{backend}-training` image via env-var overrides.
-- **Why we don't pin transformers / trl / peft / bitsandbytes** — unsloth's
-  own pyproject already constrains them tightly (e.g.
-  `transformers>=4.51.3,!=4.52.0..3,!=4.53.0,!=4.54.0,!=4.55.0..1,!=4.57.0,
-  !=4.57.4..5,!=5.0.0,!=5.1.0,<=5.5.0`). Our `[unsloth]` extra in
-  `services/unsloth/pyproject.toml` is just `["unsloth[huggingface]"]` —
-  delegating everything to upstream so we don't ship our own subtly-wrong
-  constraints.
+- **transformers pin** — the training image pins `transformers==4.57.6` in
+  `Dockerfile.nmp-unsloth-training` (compatible with unsloth's upstream
+  blocklists). Other HF deps (trl, peft, bitsandbytes, etc.) still come from
+  unsloth's resolver. **PyTorch + CUDA** stay on the NGC base stack via
+  `--system-site-packages` and `preserve_base_torch.txt` / `no_override_requirements.txt`
+  overrides (same impossible-marker pattern as automodel).
 - **No CUDA wheels are pre-built** — `bitsandbytes` ships PyPI wheels
   (Ampere+; for older arches, swap to a source build or pin a compatible
   release).

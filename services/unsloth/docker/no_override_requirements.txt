@@ -1,0 +1,9 @@
+# Preserve NGC base torch/CUDA and the transformers pin from Dockerfile step 1.
+# Impossible markers block uv from re-resolving these when adding platform glue.
+transformers; sys_platform == 'never'
+torch; sys_platform == 'never'
+torchvision; sys_platform == 'never'
+torchaudio; sys_platform == 'never'
+tokenizers; sys_platform == 'never'
+accelerate; sys_platform == 'never'
+safetensors; sys_platform == 'never'
