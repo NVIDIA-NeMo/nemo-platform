@@ -24,6 +24,10 @@ from nmp.unsloth.app.constants import (
     DEFAULT_MODEL_PATH,
     DEFAULT_OUTPUT_MODEL_PATH,
 )
+from nmp.customization_common.integrations import (
+    collect_integration_secret_envs,
+    warn_incomplete_integrations,
+)
 from nmp.unsloth.app.jobs.training.schemas import TrainingStepConfig
 from nmp.unsloth.images import UNSLOTH_PYTHON_ENTRYPOINT, get_training_image
 from nmp.unsloth.schemas import UnslothJobOutput
@@ -76,9 +80,10 @@ def compile_training_step(
     if profile is not None:
         executor["profile"] = profile
 
+    warn_incomplete_integrations(job_spec.integrations)
     return PlatformJobStep(
         name="training",
         executor=executor,
-        environment=base_env,
+        environment=[*base_env, *collect_integration_secret_envs(job_spec.integrations)],
         config=step_config.model_dump(mode="json"),
     )

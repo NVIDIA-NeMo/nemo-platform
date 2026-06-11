@@ -7,13 +7,11 @@ from nmp.automodel.app.jobs.training.schemas import (
     EmbeddingConfig,
     GPUInfo,
     LoRAConfig,
-    MLflowConfig,
     ModelConfig,
     OptimizerType,
     TrainingMetrics,
     TrainingResult,
     TrainingStepConfig,
-    WandBConfig,
 )
 from nmp.automodel.entities.values import (
     CheckpointFormat,
@@ -32,11 +30,9 @@ __all__ = [
     "EmbeddingConfig",
     "GPUInfo",
     "LoRAConfig",
-    "MLflowConfig",
     "ModelConfig",
     "OptimizerType",
     "TrainingMetrics",
     "TrainingResult",
     "TrainingStepConfig",
-    "WandBConfig",
 ]

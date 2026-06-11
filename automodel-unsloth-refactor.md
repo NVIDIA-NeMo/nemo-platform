@@ -138,7 +138,7 @@ nmp/customization_common/
 The two backends converge on a shared, opinionated training-parameter surface so a job spec means the
 same thing on both:
 
-- **Integrations object** — one shared `schemas/integrations.py` (`IntegrationsSpec` / `WandbIntegration`).
+- **Integrations object** — one shared `nmp.common.integrations` schema (`IntegrationsSpec` / `WandbIntegration`).
 - **Epoch behavior** — `epochs` defaults to `1` on both (Unsloth's old epochs/max_steps mutex removed).
 - **Steps behavior** — `max_steps`, when set, caps/overrides epochs on both.
 - **All-weights / full naming** — Unsloth's finetuning type is now `all_weights` (was `full`).
@@ -164,7 +164,7 @@ original import paths. Verified: plugin + customizer suites and both service sui
   `model_entity` step schema extracted; backends re-export/subclass.
 - **Opinionated shared training parameters** (PR-review items):
   - **Integrations object** — one shared `IntegrationsSpec` / `WandbIntegration`
-    (`nmp.customization_common.integrations`) used by both backends.
+    (`nmp.common.integrations`); runtime helpers in `nmp.customization_common.integrations`.
   - **Epoch behavior** — Unsloth now matches Automodel: `epochs` defaults to `1` (the old
     epochs/max_steps mutex is removed).
   - **Steps behavior** — `max_steps`, when set, caps/overrides epochs on both backends (trl semantics).

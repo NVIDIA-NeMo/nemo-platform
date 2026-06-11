@@ -24,8 +24,11 @@ import os
 from typing import Any, Literal
 
 from nemo_platform_plugin.job_context import JobContext
+from nmp.unsloth.app.jobs.context import NMPJobContext
+from nmp.unsloth.integrations import apply_integrations_to_sft_config
 from nmp.unsloth.schemas import UnslothJobOutput
 from nmp.unsloth.tasks.training.backends.callbacks import TrainingProgressCallback
+from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
 
 logger = logging.getLogger(__name__)
 
@@ -203,6 +206,16 @@ def train_sft(
     bf16 = spec.hardware.precision == "bf16"
     fp16 = spec.hardware.precision == "fp16"
 
+    report_to, integration_kwargs, integration_env = apply_integrations_to_sft_config(
+        integrations=spec.integrations,
+        job_ctx=NMPJobContext.from_env(),
+        output_name=spec.output.name,
+        workspace_path=output_dir,
+        model_name=spec.model.name,
+    )
+    for key, value in integration_env.items():
+        os.environ[key] = value
+
     args_kwargs: dict[str, Any] = {
         "output_dir": str(output_dir),
         "per_device_train_batch_size": spec.batch.per_device_train_batch_size,
@@ -216,11 +229,7 @@ def train_sft(
         "seed": spec.schedule.seed,
         "bf16": bf16,
         "fp16": fp16,
-        "report_to": list(
-            spec.integrations.report_to
-            if spec.integrations is not None and spec.integrations.report_to
-            else ["none"],
-        ),
+        "report_to": list(report_to),
         # SFT-specific — belong on SFTConfig in trl>=0.13, not on SFTTrainer.
         "dataset_text_field": spec.dataset.text_field,
         "max_length": spec.model.max_seq_length,
@@ -253,13 +262,7 @@ def train_sft(
         args_kwargs["eval_steps"] = eval_steps
         args_kwargs["eval_strategy"] = "steps"
 
-    # Wandb run-name: surfaces in W&B when WANDB_API_KEY is set in the
-    # environment. We don't manage the secret — the user does.
-    if spec.integrations is not None and spec.integrations.wandb is not None and spec.integrations.wandb.enabled:
-        if spec.integrations.wandb.run_name:
-            args_kwargs["run_name"] = spec.integrations.wandb.run_name
-        if spec.integrations.wandb.project:
-            os.environ.setdefault("WANDB_PROJECT", spec.integrations.wandb.project)
+    args_kwargs.update(integration_kwargs)
 
     args = SFTConfig(**args_kwargs)
 
@@ -299,9 +302,6 @@ def train_sft(
 
 def _create_progress_callback() -> TrainingProgressCallback:
     """Build a Jobs-service progress callback from platform env vars."""
-    from nmp.unsloth.app.jobs.context import NMPJobContext
-    from nmp.unsloth.tasks.training.progress import JobsServiceProgressReporter
-
     return TrainingProgressCallback(JobsServiceProgressReporter(NMPJobContext.from_env()))
 
 

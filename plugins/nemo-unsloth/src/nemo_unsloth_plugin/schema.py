@@ -23,12 +23,12 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
+from nmp.common.integrations import IntegrationsSpec
 from nmp.unsloth.schemas import (
     BatchSpec,
     DatasetSpec,
     DeploymentParams,
     HardwareSpec,
-    IntegrationsSpec,
     LoRAParams,
     ModelLoadSpec,
     OptimizerSpec,
@@ -37,7 +37,6 @@ from nmp.unsloth.schemas import (
     ToolCallParams,
     TrainingSpec,
     UnslothJobOutput,
-    WandbIntegration,
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -46,7 +45,6 @@ __all__ = [
     "DatasetSpec",
     "DeploymentParams",
     "HardwareSpec",
-    "IntegrationsSpec",
     "LoRAParams",
     "ModelLoadSpec",
     "OptimizerSpec",
@@ -57,7 +55,6 @@ __all__ = [
     "TrainingSpec",
     "UnslothJobInput",
     "UnslothJobOutput",
-    "WandbIntegration",
 ]
 
 

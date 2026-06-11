@@ -31,8 +31,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-# IntegrationsSpec is used below; WandbIntegration is re-exported for callers (plugin schema).
-from nmp.customization_common.schemas.integrations import IntegrationsSpec, WandbIntegration  # noqa: F401
+from nmp.common.integrations import IntegrationsSpec
 from pydantic import BaseModel, ConfigDict, Field
 
 

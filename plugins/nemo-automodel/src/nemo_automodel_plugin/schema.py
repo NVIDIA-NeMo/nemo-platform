@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
-from nmp.customization_common.schemas.integrations import IntegrationsSpec, WandbIntegration
+from nmp.common.integrations import IntegrationsSpec
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
@@ -15,7 +15,6 @@ __all__ = [
     "AutomodelJobOutput",
     "BatchSpec",
     "DatasetSpec",
-    "IntegrationsSpec",
     "LoRAParams",
     "OptimizerSpec",
     "OutputRequest",
@@ -24,7 +23,6 @@ __all__ = [
     "ScheduleSpec",
     "TrainingSpec",
     "ValidationError",
-    "WandbIntegration",
 ]
 
 

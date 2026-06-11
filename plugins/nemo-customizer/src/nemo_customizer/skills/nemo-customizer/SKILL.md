@@ -564,7 +564,10 @@ For other terminal errors, keep the same header template; put remediation detail
 | Multi-GPU same node | **Multi-GPU (same node)** under automodel batch sizing (unsloth is single-GPU) |
 | Backend choice, execution profiles, submit failure, container images, missing image on remote platform, CLI, connection errors | `references/troubleshooting.md` (§ **Parsing CLI JSON** for `2>&1` / `json.load`) |
 | Live JSON schema | `uv run nemo customization automodel explain` / `uv run nemo customization unsloth explain` |
-| Job JSON fixture (automodel) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
-| Job JSON fixture (unsloth) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (automodel, minimal) | `plugins/nemo-automodel/tests/fixtures/qwen3_0.6b_sft_lora.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (unsloth, minimal) | `plugins/nemo-unsloth/tests/fixtures/minimal_unsloth_sft.json` (ignore `max_steps` for real runs) |
+| Job JSON fixture (integrations, both backends) | `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`, `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json` |
+| Automodel compile-path contract configs | `services/automodel/tests/contract/input_configs/` → YAML in `output_configs/` (legacy `TrainingStepConfig` shape, not submit JSON) |
+| W&B / MLflow field reference | `references/hyperparameters.md` § **Integrations (automodel + unsloth)** |
 
 Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**.
