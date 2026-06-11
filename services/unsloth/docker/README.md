@@ -276,6 +276,7 @@ nemo models adapters retrieve qwen-unsloth-smoke-out \
 | `compile()` errors with "Docker daemon unreachable" | Confirm `docker info` works as the user running `nemo services`. |
 | First job step errors with `Model 'X' has no fileset attached` | Attach a fileset to the model entity (`nemo models update --fileset ...`). |
 | `training` step errors with `bitsandbytes`/CUDA mismatch (`libbitsandbytes_cuda131.so` not found) | Rebuild `nmp-unsloth-training` — the image compiles bitsandbytes from source against NGC CUDA 13.1 (same pattern as `nmp-automodel-base`). Override `BNB_MAX_JOBS` at build time if nvcc OOMs. |
+| `WandbCallback requires wandb to be installed` | Rebuild `nmp-unsloth-training` — the image installs `wandb` and `mlflow-skinny` for integrations. |
 | `training` step OOMs on a small GPU | Reduce `model.max_seq_length` and / or set `model.load_in_4bit: true`. |
 | `model-entity-creation` errors with "Adapter already exists" | Pick a fresh `output.name` (the unsloth compiler is "always create"; no overwrite). |
 | Step config not picked up (`NEMO_JOB_STEP_CONFIG_FILE_PATH is not set`) | The container was started outside the Jobs runner — only platform-driven submit populates this. |
