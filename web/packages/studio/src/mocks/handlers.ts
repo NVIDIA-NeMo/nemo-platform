@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
+import type { EvaluateJob } from '@nemo/sdk/generated/evaluator/schema';
 import {
   type AnnotationInput,
   HTTPValidationError,
-  type MetricEvaluationJob,
   ModelEntitySortField,
   PlatformJobLogPage,
   PlatformJobResponsesPage,
@@ -67,30 +67,32 @@ export interface HypermodelParams {
 export const handlers = [
   ...sampleDatasetsHandlers,
 
-  // Evaluation V2 (Platform) — fixtures loaded on first use to keep initial handler graph smaller
+  // Evaluator V2 — fixtures loaded on first use to keep initial handler graph smaller
   http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs`,
-    async () => {
+    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs`,
+    async ({ request }) => {
+      const rejection = rejectLegacySearchParam(request);
+      if (rejection) return rejection;
       const { metricEvaluationJobsPage } = await import('@studio/mocks/evaluation/v1/evaluations');
       return HttpResponse.json(metricEvaluationJobsPage);
     }
   ),
   http.post(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/`,
+    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs`,
     async () => {
       const { metricEvaluationJob1 } = await import('@studio/mocks/evaluation/v1/evaluations');
       return HttpResponse.json(metricEvaluationJob1);
     }
   ),
   http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/:name`,
+    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs/:name`,
     async () => {
       const { metricEvaluationJob1 } = await import('@studio/mocks/evaluation/v1/evaluations');
       return HttpResponse.json(metricEvaluationJob1);
     }
   ),
   http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metric-jobs/:name/logs`,
+    `${PLATFORM_BASE_URL}/apis/evaluator/v2/workspaces/:workspace/evaluate/jobs/:name/logs`,
     ({ params }) => {
       const jobName = params.name as string;
       return HttpResponse.json({
@@ -100,7 +102,7 @@ export const handlers = [
             job: jobName,
             job_step: 'initialization',
             job_task: 'task-abc123',
-            message: 'Starting metric evaluation job',
+            message: 'Starting evaluate job',
           },
           {
             timestamp: '2026-02-27T23:17:02.234567',
@@ -114,54 +116,13 @@ export const handlers = [
             job: jobName,
             job_step: 'evaluation',
             job_task: 'task-ghi789',
-            message: 'Running metric evaluation on 150 samples',
+            message: 'Running evaluation on 150 samples',
           },
         ],
         total: 3,
         next_page: '',
         prev_page: '',
       });
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metrics`,
-    async ({ request }) => {
-      const rejection = rejectLegacySearchParam(request);
-      if (rejection) return rejection;
-      const { getEvaluationConfigsListResponse } =
-        await import('@studio/mocks/evaluation/v1/evaluations');
-      return HttpResponse.json(getEvaluationConfigsListResponse);
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/benchmarks`,
-    ({ request }) => {
-      const rejection = rejectLegacySearchParam(request);
-      if (rejection) return rejection;
-      return HttpResponse.json({
-        data: [],
-        pagination: {
-          page: 1,
-          page_size: 50,
-          current_page_size: 0,
-          total_pages: 0,
-          total_results: 0,
-        },
-      });
-    }
-  ),
-  http.get(
-    `${PLATFORM_BASE_URL}/apis/evaluation/v2/workspaces/:workspace/metrics/:name`,
-    async ({ params: { name } }) => {
-      const { getEvaluationConfigsListResponse } =
-        await import('@studio/mocks/evaluation/v1/evaluations');
-      const config = getEvaluationConfigsListResponse.data.find(
-        (c: MetricEvaluationJob) => c.name === name
-      );
-      if (!config) {
-        return HttpResponse.json({ detail: 'Config not found' }, { status: 404 });
-      }
-      return HttpResponse.json(config);
     }
   ),
 
@@ -742,3 +703,7 @@ export const handlers = [
   ...filesetsHandlers,
   ...guardrailsHandlers,
 ];
+
+// Re-export EvaluateJob so consumers of this module that previously relied on
+// MetricEvaluationJob can import it from here without touching their own imports.
+export type { EvaluateJob };

@@ -5,6 +5,13 @@
 
 from typing import Optional
 
+from nemo_platform_plugin.authz_format import (
+    InvalidPermissionFormatError as InvalidPermissionFormatError,
+)
+from nemo_platform_plugin.authz_format import (
+    InvalidScopeFormatError as InvalidScopeFormatError,
+)
+
 
 class AuthorizationError(Exception):
     """Exception for when a principal is not authorized to perform an operation."""
@@ -21,11 +28,3 @@ class InvalidPrincipalHeader(ValueError):
 
     The middleware translates this into a 400 Bad Request response.
     """
-
-
-class InvalidPermissionFormatError(ValueError):
-    """Raised when a string is not valid NeMo Platform permission syntax (dot-separated segments)."""
-
-
-class InvalidScopeFormatError(ValueError):
-    """Raised when a string is not valid NeMo Platform scope syntax, or a permission was used as a scope."""

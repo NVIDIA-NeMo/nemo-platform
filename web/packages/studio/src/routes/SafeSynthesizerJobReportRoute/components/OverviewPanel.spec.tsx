@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { triggerDownload } from '@nemo/common/src/utils/file';
-import * as safeSynthesizerApi from '@nemo/sdk/vendored/safe-synthesizer/api';
-import type { SafeSynthesizerJob } from '@nemo/sdk/vendored/safe-synthesizer/schema';
+import * as safeSynthesizerApi from '@nemo/sdk/generated/safe-synthesizer/api';
+import type { SafeSynthesizerJob } from '@nemo/sdk/generated/safe-synthesizer/schema';
 import { ThemeProvider } from '@nvidia/foundations-react-core';
 import { OverviewPanel } from '@studio/routes/SafeSynthesizerJobReportRoute/components/OverviewPanel';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';

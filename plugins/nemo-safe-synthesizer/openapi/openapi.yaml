@@ -842,14 +842,18 @@ components:
         structured_generation_schema_method:
           type: string
           enum:
+          - auto
           - regex
           - json_schema
+          - structural_tag
           title: structured_generation_schema_method
           description: The method used to generate the schema from your dataset and
-            pass it to the generation backend. 'regex' uses a custom regex construction
+            pass it to the generation backend. 'auto' picks 'structural_tag' on xgrammar-capable
+            backends and 'regex' otherwise. 'regex' uses a custom regex construction
             method that tends to be more comprehensive than 'json_schema' at the cost
-            of speed.
-          default: regex
+            of speed. 'structural_tag' uses XGrammar Structural Tag to compose schema-constrained
+            JSONL output.
+          default: auto
         structured_generation_use_single_sequence:
           type: boolean
           title: structured_generation_use_single_sequence
@@ -1510,9 +1514,11 @@ components:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Jobs created at 'gte' datetime or 'lte' datetime.
         name:
+          anyOf:
+          - $ref: '#/components/schemas/StringFilter'
+          - type: string
           description: Name of the job.
           title: Name
-          type: string
         workspace:
           description: Workspace of the job.
           title: Workspace
@@ -1791,6 +1797,31 @@ components:
       title: StepDefinition
       description: Single transformation step with optional variables, column actions,
         and row actions.
+    StringFilter:
+      additionalProperties: false
+      properties:
+        $eq:
+          description: Filter for results equal to this value.
+          title: $Eq
+          type: string
+        $like:
+          description: Filter for results matching this pattern.
+          title: $Like
+          type: string
+        $in:
+          description: Filter for results in this list of values.
+          title: $In
+          items:
+            type: string
+          type: array
+        $nin:
+          description: Filter for results not in this list of values.
+          title: $Nin
+          items:
+            type: string
+          type: array
+      title: StringFilter
+      type: object
     TimeSeriesParameters:
       properties:
         is_timeseries:

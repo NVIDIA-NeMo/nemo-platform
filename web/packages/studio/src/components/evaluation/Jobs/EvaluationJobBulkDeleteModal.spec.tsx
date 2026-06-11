@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: Copyright (c) 2025-2026 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // SPDX-License-Identifier: Apache-2.0
 
-import { MetricEvaluationJob, PlatformJobStatus } from '@nemo/sdk/generated/platform/schema';
+import { EvaluateJob, PlatformJobStatus } from '@nemo/sdk/generated/evaluator/schema';
 import { EvaluationJobBulkDeleteModal } from '@studio/components/evaluation/Jobs/EvaluationJobBulkDeleteModal';
 import { ROUTE_PARAMS } from '@studio/constants/routes';
 import { mockUseParams } from '@studio/tests/util/mockUseParams';
@@ -11,32 +11,28 @@ import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 const TEST_WORKSPACE = 'test-workspace';
 
 // Mock the delete API
-const mockDeleteMetricJob = vi.fn();
-vi.mock('@nemo/sdk/generated/platform/api', async (importOriginal) => {
+const mockDeleteEvaluateJob = vi.fn();
+vi.mock('@nemo/sdk/generated/evaluator/api', async (importOriginal) => {
   const original = await importOriginal();
   return {
     // @ts-expect-error expect issue here with spread
     ...original,
-    useEvaluationDeleteMetricJob: vi.fn(() => ({
-      mutateAsync: mockDeleteMetricJob,
+    useEvaluatorDeleteEvaluateJob: vi.fn(() => ({
+      mutateAsync: mockDeleteEvaluateJob,
     })),
   };
 });
 
 describe('EvaluationJobBulkDeleteModal', () => {
-  const mockJobs: MetricEvaluationJob[] = [
+  const mockJobs: EvaluateJob[] = [
     {
       id: 'job-1',
       name: 'job-1',
       status: PlatformJobStatus.completed,
       created_at: '2024-01-01T00:00:00Z',
       spec: {
-        metric: 'test-namespace/test-config-1',
-        dataset: 'default/test-dataset',
-        params: {
-          ignore_request_failure: false,
-          parallelism: 8,
-        },
+        metrics: [],
+        dataset: [],
       },
       custom_fields: {},
     },
@@ -46,12 +42,8 @@ describe('EvaluationJobBulkDeleteModal', () => {
       status: PlatformJobStatus.active,
       created_at: '2024-01-02T00:00:00Z',
       spec: {
-        metric: 'test-namespace/test-config-2',
-        dataset: 'default/test-dataset',
-        params: {
-          ignore_request_failure: false,
-          parallelism: 8,
-        },
+        metrics: [],
+        dataset: [],
       },
       custom_fields: {},
     },
@@ -61,7 +53,7 @@ describe('EvaluationJobBulkDeleteModal', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    mockDeleteMetricJob.mockResolvedValue(undefined);
+    mockDeleteEvaluateJob.mockResolvedValue(undefined);
     mockUseParams({
       [ROUTE_PARAMS.workspace]: TEST_WORKSPACE,
     });
@@ -157,16 +149,16 @@ describe('EvaluationJobBulkDeleteModal', () => {
       fireEvent.click(deleteButton);
 
       await waitFor(() => {
-        expect(mockDeleteMetricJob).toHaveBeenCalledTimes(2);
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledTimes(2);
       });
       await waitFor(() => {
-        expect(mockDeleteMetricJob).toHaveBeenCalledWith({
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledWith({
           workspace: TEST_WORKSPACE,
           name: 'job-1',
         });
       });
       await waitFor(() => {
-        expect(mockDeleteMetricJob).toHaveBeenCalledWith({
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledWith({
           workspace: TEST_WORKSPACE,
           name: 'job-2',
         });
@@ -183,7 +175,7 @@ describe('EvaluationJobBulkDeleteModal', () => {
 
     it('should handle deletion errors gracefully', async () => {
       const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-      mockDeleteMetricJob.mockRejectedValue(new Error('Delete failed'));
+      mockDeleteEvaluateJob.mockRejectedValue(new Error('Delete failed'));
 
       render(
         <EvaluationJobBulkDeleteModal
@@ -245,16 +237,16 @@ describe('EvaluationJobBulkDeleteModal', () => {
 
       await waitFor(() => {
         // Should only call delete for jobs with valid names
-        expect(mockDeleteMetricJob).toHaveBeenCalledTimes(2);
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledTimes(2);
       });
       await waitFor(() => {
-        expect(mockDeleteMetricJob).toHaveBeenCalledWith({
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledWith({
           workspace: TEST_WORKSPACE,
           name: 'job-2',
         });
       });
       await waitFor(() => {
-        expect(mockDeleteMetricJob).toHaveBeenCalledWith({
+        expect(mockDeleteEvaluateJob).toHaveBeenCalledWith({
           workspace: TEST_WORKSPACE,
           name: 'job-3',
         });

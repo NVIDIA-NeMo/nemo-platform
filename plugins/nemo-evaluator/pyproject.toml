@@ -3,13 +3,12 @@ name = "nemo-evaluator-plugin"
 version = "0.1.0"
 description = "Evaluator plugin scaffold for NeMo Platform."
 readme = "README.md"
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.11,<3.15"
 dependencies = [
     "cloudpickle>=3.1.1",
     "nemo-evaluator-sdk",
     "nemo-platform-plugin",
     "nemo-platform-sdk",
-    "nmp-common",
     "pydantic>=2.10.6",
     "typer>=0.20.0",
 ]
@@ -43,7 +42,6 @@ packages = ["src/nemo_evaluator"]
 nemo-evaluator-sdk = { workspace = true }
 nemo-platform-plugin = { workspace = true }
 nemo-platform-sdk = { workspace = true }
-nmp-common = { workspace = true }
 
 [dependency-groups]
 dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "ruff>=0.11.8"]
@@ -52,6 +50,9 @@ dev = ["pytest>=8.3.4", "pytest-asyncio>=0.25.3", "ruff>=0.11.8"]
 asyncio_mode = "auto"
 pythonpath = ["src"]
 testpaths = ["tests"]
+
+# Opt this plugin into OpenAPI spec generation
+[tool.nemo.openapi]
 
 [tool.pyright]
 extraPaths = ["src"]

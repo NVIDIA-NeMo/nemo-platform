@@ -33,6 +33,8 @@ export interface DatasetQualityReport {
 
 const MAX_SCAN_LINES = 1000;
 
+const MAX_AFFECTED_LINE_COUNT = 10;
+
 /** ~8192 tokens at ~4 chars/token */
 const LONG_ENTRY_CHAR_THRESHOLD = 32_768;
 
@@ -103,7 +105,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
   }
 
   const scanLines = allLines.slice(0, MAX_SCAN_LINES);
-  const scannedLines = scanLines.length;
+  const scannedLines = Math.min(MAX_SCAN_LINES, totalLines);
 
   // 3. Parse each line — collect invalid and valid rows separately
   const invalidLineNums: number[] = [];
@@ -128,7 +130,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
       severity: 'error',
       code: 'INVALID_JSON_LINES',
       message: `${plural(invalidLineNums.length, 'line')} could not be parsed as JSON objects.`,
-      affectedLines: invalidLineNums.slice(0, 10),
+      affectedLines: invalidLineNums.slice(0, MAX_AFFECTED_LINE_COUNT),
       count: invalidLineNums.length,
     });
   }
@@ -162,7 +164,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
         severity: 'warning',
         code: 'NULL_OR_EMPTY_FIELDS',
         message: `${plural(nullFieldLines.length, 'row')} contain null or empty field values.`,
-        affectedLines: nullFieldLines.slice(0, 10),
+        affectedLines: nullFieldLines.slice(0, MAX_AFFECTED_LINE_COUNT),
         count: nullFieldLines.length,
       });
     }
@@ -179,7 +181,7 @@ export async function checkDatasetQuality(file: File): Promise<DatasetQualityRep
         severity: 'warning',
         code: 'LONG_ENTRIES',
         message: `${plural(longLines.length, 'row')} may exceed the model's context window (~8,192 tokens).`,
-        affectedLines: longLines.slice(0, 10),
+        affectedLines: longLines.slice(0, MAX_AFFECTED_LINE_COUNT),
         count: longLines.length,
       });
     }

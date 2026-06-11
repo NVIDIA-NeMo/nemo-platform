@@ -14,6 +14,7 @@ import {
   getClaudeCodeSessionHistoryQueryKey,
 } from '@studio/routes/agents/ClaudeCodeChatRoute/api';
 import { ClaudeCodeLayout } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeLayout';
+import { ClaudeCodeStudioLink } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeStudioLink';
 import { ClaudeCodeToolCallPart } from '@studio/routes/agents/ClaudeCodeChatRoute/ClaudeCodeToolCallPart';
 import type { ClaudeCodeChatRouteState } from '@studio/routes/agents/ClaudeCodeChatRoute/types';
 import { useClaudeCodeChatRuntime } from '@studio/routes/agents/ClaudeCodeChatRoute/useClaudeCodeChatRuntime';
@@ -102,6 +103,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
     initialMessages,
     initialSessionId,
     onError: (error) => toast.error(error.message),
+    workspace,
   });
   const activeSessionId = initialSessionId ?? sessionId ?? undefined;
 
@@ -160,6 +162,7 @@ const ClaudeCodeChatSurface: FC<ClaudeCodeChatSurfaceProps> = ({
                 placeholder="Ask Claude Code to work in this workspace"
                 onReset={handleChatReset}
                 showRunningIndicator={!decisionRequest}
+                messageContentProps={{ markdownLinkComponent: ClaudeCodeStudioLink }}
                 emptyState={{
                   slotHeading: 'Start a Claude Code session',
                   slotSubheading: 'Ask Claude Code to work in this workspace.',

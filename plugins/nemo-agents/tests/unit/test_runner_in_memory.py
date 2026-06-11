@@ -29,7 +29,7 @@ import pytest
 import yaml
 from nemo_agents_plugin.config import AgentsConfig, ControllerConfig
 from nemo_agents_plugin.runner.in_memory import InMemoryRunnerBackend, _resolve_nat_bin
-from nmp.common.config import Configuration, nmp_user_data_dir
+from nemo_platform_plugin.config import Configuration, nmp_user_data_dir
 
 
 def _backend(workspace_dir: Path) -> InMemoryRunnerBackend:

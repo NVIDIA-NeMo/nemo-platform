@@ -27,9 +27,12 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import typer
 from data_designer.cli.ui import console, print_error, print_header, print_success, wait_for_navigation_key
 from data_designer.cli.utils.sample_records_pager import PAGER_FILENAME, create_sample_records_pager
 from data_designer.config.preview_results import PreviewResults
+from data_designer.errors import DataDesignerError
+from data_designer_nemo.errors import NDDError
 from nemo_data_designer_plugin.cli.inputs import get_current_config_builder
 from nemo_data_designer_plugin.functions._types import (
     AnalysisFrame,
@@ -249,6 +252,7 @@ class PreviewRenderer(CLIRenderer):
 
     def on_error(self, error: BaseException, *, ctx: RendererContext) -> None:
         print_error(f"Preview failed: {error}")
+        _handle_error(error)
 
 
 class CreateRenderer(CLIRenderer):
@@ -279,6 +283,7 @@ class CreateRenderer(CLIRenderer):
 
     def on_error(self, error: BaseException, *, ctx: RendererContext) -> None:
         print_error(f"Create failed: {error}")
+        _handle_error(error)
 
 
 def _print_log(frame: LogFrame) -> None:
@@ -306,3 +311,13 @@ def _can_browse_interactively(ctx: RendererContext, total: int) -> bool:
     if ctx.cli_kwargs.get("non_interactive"):
         return False
     return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _handle_error(error: BaseException) -> None:
+    """Raises a typer.Exit error if the error is a first-class
+    Data Designer (library or platform plugin) error. This ensures
+    the stacktrace doesn't leak out, and instead we only present
+    the custom error message.
+    """
+    if isinstance(error, (DataDesignerError, NDDError)):
+        raise typer.Exit(code=1) from error

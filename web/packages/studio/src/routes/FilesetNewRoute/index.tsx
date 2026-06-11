@@ -36,6 +36,7 @@ import {
   RadioGroupRoot,
   SegmentedControl,
   SidePanel,
+  Spinner,
   Stack,
   TabsContent,
   TabsTrigger,
@@ -49,6 +50,7 @@ import { useSampleDatasetFiles } from '@studio/api/datasets/useSampleDatasetFile
 import { FILESET_DETAILS_ENABLED } from '@studio/constants/environment';
 import { SAMPLE_DATASETS, SampleDataset } from '@studio/constants/sampleDatasets';
 import { useWorkspaceFromPath } from '@studio/hooks/useWorkspaceFromPath';
+import { DatasetQualityReportView } from '@studio/routes/FilesetNewRoute/components/DatasetQualityReportView';
 import { CreateSecretModal } from '@studio/routes/SecretsListRoute/CreateSecretModal';
 import { SecretSearchableSelect } from '@studio/routes/SecretsListRoute/SecretSearchableSelect';
 import {
@@ -63,7 +65,7 @@ import {
   storageConfigFromUrl,
 } from '@studio/util/storageConfigFromUrl';
 import { QueryObserverResult, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, FileCheck, XCircle, CheckCircle2 } from 'lucide-react';
+import { FileCheck } from 'lucide-react';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Controller, useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
@@ -172,59 +174,6 @@ function toFileList(value: unknown): File[] {
   );
 }
 
-interface DatasetQualityReportViewProps {
-  report: DatasetQualityReport;
-}
-
-const DatasetQualityReportView: FC<DatasetQualityReportViewProps> = ({ report }) => {
-  const partialScanNote = report.scannedLines < report.totalLines && (
-    <Text kind="body/regular/sm" color="secondary">
-      Scanned first {report.scannedLines.toLocaleString()} of {report.totalLines.toLocaleString()}{' '}
-      lines.
-    </Text>
-  );
-
-  if (!report.hasErrors && !report.hasWarnings) {
-    return (
-      <Stack gap="density-xs">
-        <Flex gap="density-sm" align="center">
-          <CheckCircle2 size={16} className="text-green-500 shrink-0" />
-          <Text kind="body/regular/sm">{report.fileName}: all quality checks passed.</Text>
-        </Flex>
-        {partialScanNote}
-      </Stack>
-    );
-  }
-
-  return (
-    <Stack gap="density-sm">
-      <Text kind="label/bold/sm">{report.fileName}</Text>
-      {report.issues.map((issue, idx) => (
-        <Flex key={idx} gap="density-sm" align="start">
-          {issue.severity === 'error' ? (
-            <XCircle size={16} className="text-red-500 shrink-0 mt-0.5" />
-          ) : (
-            <AlertTriangle size={16} className="text-amber-500 shrink-0 mt-0.5" />
-          )}
-          <Stack gap="density-xs">
-            <Text kind="body/regular/sm">{issue.message}</Text>
-            {issue.affectedLines && issue.affectedLines.length > 0 && (
-              <Text kind="body/regular/sm" color="secondary">
-                {'Line' + (issue.affectedLines.length > 1 ? 's' : '') + ': '}
-                {issue.affectedLines.join(', ')}
-                {issue.count && issue.count > issue.affectedLines.length
-                  ? ` (+${issue.count - issue.affectedLines.length} more)`
-                  : ''}
-              </Text>
-            )}
-          </Stack>
-        </Flex>
-      ))}
-      {partialScanNote}
-    </Stack>
-  );
-};
-
 export const FilesetNewRoute: FC = () => {
   const workspace = useWorkspaceFromPath();
   const [activeTab, setActiveTab] = useState<DatasetType>(DATASET_TYPE_CUSTOM);
@@ -273,6 +222,14 @@ export const FilesetNewRoute: FC = () => {
 
   const url = watch('url');
   const purpose = watch('purpose');
+
+  useEffect(() => {
+    if (purpose !== FilesetPurpose.dataset) {
+      setQualityReports([]);
+      setIsValidating(false);
+    }
+  }, [purpose]);
+
   const selectedSecretName = watch('secretKey');
   const secretKeyLabel = useMemo(() => {
     if (!url?.trim()) return 'Secret Key';
@@ -407,7 +364,8 @@ export const FilesetNewRoute: FC = () => {
     ]
   );
 
-  const hasValidationErrors = qualityReports.some((r) => r.hasErrors);
+  const hasValidationErrors =
+    purpose === FilesetPurpose.dataset && qualityReports.some((r) => r.hasErrors);
 
   const onSubmit = useCallback(
     async (data: DatasetFormFields) => {
@@ -691,14 +649,12 @@ export const FilesetNewRoute: FC = () => {
                               void handleFilesChange(toFileList(list));
                             }}
                           >
-                            Supports JSONL, CSV, and Parquet files up to 50 MB.
+                            Supports JSONL, JSON, CSV, and Parquet files up to 50 MB.
                           </Upload>
                           {purpose === FilesetPurpose.dataset && (
                             <Stack gap="density-sm" ref={qualityReportRef}>
                               {isValidating && (
-                                <Text kind="body/regular/sm" color="secondary">
-                                  Checking file quality…
-                                </Text>
+                                <Spinner size="small" description="Validating dataset…" />
                               )}
                               {qualityReports.map((report) => (
                                 <DatasetQualityReportView key={report.fileName} report={report} />

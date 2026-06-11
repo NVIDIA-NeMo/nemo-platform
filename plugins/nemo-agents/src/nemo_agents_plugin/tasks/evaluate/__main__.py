@@ -19,8 +19,8 @@ import sys
 from types import FrameType
 
 from nemo_agents_plugin.jobs.evaluate_agent import EvaluateAgentJob
+from nemo_platform_plugin.sdk_provider import get_task_sdk
 from nemo_platform_plugin.tasks.dispatcher import run_task
-from nmp.common.sdk_factory import get_task_sdk
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import {
-  MetricEvaluationJob,
-  MetricEvaluationJobsPage,
+  type EvaluateJob,
+  type EvaluateJobsPage,
   PlatformJobStatus,
-} from '@nemo/sdk/generated/platform/schema';
+} from '@nemo/sdk/generated/evaluator/schema';
 
 export const mockEvalConfigOnline1 = {
   id: 'eval-config-online-1',
@@ -66,7 +66,7 @@ export const mockEvalConfigOffline1 = {
   params: {},
 };
 
-export const getEvaluationConfigsListResponse: MetricEvaluationJobsPage = {
+export const getEvaluationConfigsListResponse: EvaluateJobsPage = {
   pagination: {
     total_results: 2,
     total_pages: 1,
@@ -74,11 +74,10 @@ export const getEvaluationConfigsListResponse: MetricEvaluationJobsPage = {
     page: 1,
     page_size: 2,
   },
-  data: [mockEvalConfigOnline1, mockEvalConfigOffline1] as unknown as MetricEvaluationJob[],
+  data: [mockEvalConfigOnline1, mockEvalConfigOffline1] as unknown as EvaluateJob[],
 };
 
-// V2 Metric Evaluation Jobs (Platform API)
-export const metricEvaluationJob1: MetricEvaluationJob = {
+export const metricEvaluationJob1: EvaluateJob = {
   id: 'eval-job-1',
   name: 'eval-job-1',
   workspace: 'default',
@@ -86,13 +85,13 @@ export const metricEvaluationJob1: MetricEvaluationJob = {
   updated_at: '2024-01-01T01:00:00Z',
   status: PlatformJobStatus.completed,
   spec: {
-    metric: `default/${mockEvalConfigOnline1.name}`,
-    dataset: 'default/test-dataset', // FilesetRef is a string
+    metrics: [],
+    dataset: `default/test-dataset` as unknown as EvaluateJob['spec']['dataset'],
   },
   custom_fields: {},
 };
 
-export const metricEvaluationJob2: MetricEvaluationJob = {
+export const metricEvaluationJob2: EvaluateJob = {
   id: 'eval-job-2',
   name: 'eval-job-2',
   workspace: 'default',
@@ -100,13 +99,13 @@ export const metricEvaluationJob2: MetricEvaluationJob = {
   updated_at: '2024-01-02T01:00:00Z',
   status: PlatformJobStatus.completed,
   spec: {
-    metric: `default/${mockEvalConfigOffline1.name}`,
-    dataset: 'default/test-dataset-2',
+    metrics: [],
+    dataset: `default/test-dataset-2` as unknown as EvaluateJob['spec']['dataset'],
   },
   custom_fields: {},
 };
 
-export const metricEvaluationJob3: MetricEvaluationJob = {
+export const metricEvaluationJob3: EvaluateJob = {
   id: 'eval-job-3',
   name: 'eval-job-3',
   workspace: 'default',
@@ -114,13 +113,13 @@ export const metricEvaluationJob3: MetricEvaluationJob = {
   updated_at: '2024-01-03T01:00:00Z',
   status: PlatformJobStatus.completed,
   spec: {
-    metric: `default/${mockEvalConfigOnline1.name}`,
-    dataset: 'default/test-dataset-3',
+    metrics: [],
+    dataset: `default/test-dataset-3` as unknown as EvaluateJob['spec']['dataset'],
   },
   custom_fields: {},
 };
 
-export const metricEvaluationJobsPage: MetricEvaluationJobsPage = {
+export const metricEvaluationJobsPage: EvaluateJobsPage = {
   data: [metricEvaluationJob1, metricEvaluationJob2, metricEvaluationJob3],
   pagination: {
     total_results: 3,

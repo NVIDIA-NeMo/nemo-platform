@@ -107,6 +107,15 @@ class DataDesignerJobResource(WithRecordSamplerMixin):
         self._workspace = workspace
         self._consecutive_poll_errors = 0
 
+    @property
+    def name(self) -> str:
+        """The unique identifying name of the job.
+
+        Returns:
+            The job name.
+        """
+        return self._job_name
+
     def get_job(self) -> dict[str, object]:
         """Get the current job.
 
@@ -313,6 +322,15 @@ class AsyncDataDesignerJobResource(WithRecordSamplerMixin):
         self._platform = platform
         self._workspace = workspace
         self._consecutive_poll_errors = 0
+
+    @property
+    def name(self) -> str:
+        """The unique identifying name of the job.
+
+        Returns:
+            The job name.
+        """
+        return self._job_name
 
     async def get_job(self) -> dict[str, object]:
         """Get the current job.

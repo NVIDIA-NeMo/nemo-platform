@@ -2,7 +2,6 @@ docker-bake.hcl
 .venv
 .ruff_cache
 Dockerfile.bake
-services/customizer/tests
 **/Dockerfile*
 .dockerignore
 **/__pycache__
