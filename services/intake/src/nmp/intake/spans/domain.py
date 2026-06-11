@@ -9,7 +9,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, Field, model_validator
 
 
 class SpanKind(StrEnum):
@@ -95,40 +95,11 @@ class TraceListFilter(BaseModel):
     status: SpanStatus | None = None
     started_at_gte: datetime | None = None
     started_at_lte: datetime | None = None
-    root_attribute_filters: list[SpanAttributeFilter] = Field(default_factory=list)
-    span_attribute_filters: list[SpanAttributeFilter] = Field(default_factory=list)
+    experiment_id: str | None = None
+    test_case_id: str | None = None
 
 
 TraceMode = Literal["summary", "detailed"]
-
-
-class TraceEvaluationContext(BaseModel):
-    # Read model for root-span evaluation context. Historical rows may have
-    # partial context, so this intentionally does not reuse ingest validation.
-    model_config = ConfigDict(extra="forbid")
-
-    evaluation_id: str | None = None
-    evaluation_sha: str | None = None
-    evaluation_run_id: str | None = None
-    dataset_id: str | None = None
-    dataset_name: str | None = None
-    dataset_version: str | None = None
-    test_case_id: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-    def has_scalar_values(self) -> bool:
-        return any(
-            value is not None
-            for value in (
-                self.evaluation_id,
-                self.evaluation_sha,
-                self.evaluation_run_id,
-                self.dataset_id,
-                self.dataset_name,
-                self.dataset_version,
-                self.test_case_id,
-            )
-        )
 
 
 class IntakeTrace(BaseModel):
@@ -141,7 +112,8 @@ class IntakeTrace(BaseModel):
     input: str | None = None
     output: str | None = None
     project: str | None = None
-    evaluation_context: TraceEvaluationContext | None = None
+    experiment_id: str | None = None
+    test_case_id: str | None = None
     started_at: datetime
     ended_at: datetime | None = None
     duration_ms: float | None = None

@@ -122,9 +122,10 @@ async def test_experiment_rollups_anchor_on_root_session_membership():
     assert rollup.latency_ms.count == 4
 
     assert len(client.queries) == 3
-    assert "FROM experiment_sessions FINAL" in client.queries[0]
+    assert "FROM trace_index FINAL" in client.queries[0]
     assert "count() AS run_count" in client.queries[0]
     assert "experiment_id IN (%(experiment_id_0)s)" in client.queries[0]
+    assert "ORDER BY root_started_at ASC, root_span_id ASC" in client.queries[0]
     assert "FROM evaluator_results FINAL" in client.queries[1]
     assert "quantileExact(0.5)(value) AS median" in client.queries[1]
     assert "quantileExact(0.99)(value) AS p99" in client.queries[1]

@@ -4301,8 +4301,8 @@ paths:
         explode: true
         schema:
           $ref: '#/components/schemas/TraceFilter'
-        description: Filter root-span-backed traces by id, session_id, rolled-up status,
-          root span started_at, and root-span evaluation context fields.
+        description: Filter root-span-backed traces by id, session_id, root status,
+          root span started_at, experiment_id, and test_case_id.
       responses:
         '200':
           description: Successful Response
@@ -10315,9 +10315,9 @@ components:
       - status
       title: ExperimentSessionResponse
       description: "One ingested session of an Experiment \u2014 a single test case\
-        \ execution.\n\nHydrated from ClickHouse at read time by joining ``experiment_sessions``\
-        \ with\nthe session's root span (for status, input, tokens, cost) and\n``evaluator_results``\
-        \ (for per-evaluator session-mean scores)."
+        \ execution.\n\nHydrated from ClickHouse at read time by reading root/session\
+        \ membership from\n``trace_index`` and joining page-bounded span/evaluator\
+        \ rollups."
     ExperimentSessionResponsesPage:
       properties:
         data:
@@ -16763,8 +16763,8 @@ components:
         name:
           title: Name
           type: string
-        evaluation_context:
-          $ref: '#/components/schemas/SpanEvaluationContext'
+        experiment_context:
+          $ref: '#/components/schemas/ExperimentContext'
         started_at:
           type: string
           format: date-time
@@ -16832,37 +16832,17 @@ components:
         status:
           allOf:
           - $ref: '#/components/schemas/SpanStatus'
-          description: Filter by rolled-up trace status.
+          description: Filter by root span status.
         started_at:
           allOf:
           - $ref: '#/components/schemas/DatetimeFilter'
           description: Filter by root span start timestamp.
-        evaluation_id:
-          description: Filter by root-span evaluation id.
-          title: Evaluation Id
-          type: string
-        evaluation_sha:
-          description: Filter by root-span evaluation sha.
-          title: Evaluation Sha
-          type: string
-        evaluation_run_id:
-          description: Filter by root-span evaluation run id.
-          title: Evaluation Run Id
-          type: string
-        dataset_id:
-          description: Filter by root-span dataset id.
-          title: Dataset Id
-          type: string
-        dataset_name:
-          description: Filter by root-span dataset name.
-          title: Dataset Name
-          type: string
-        dataset_version:
-          description: Filter by root-span dataset version.
-          title: Dataset Version
+        experiment_id:
+          description: Filter by root-span experiment id.
+          title: Experiment Id
           type: string
         test_case_id:
-          description: Filter by root-span dataset test case id.
+          description: Filter by root-span experiment test case id.
           title: Test Case Id
           type: string
       title: TraceFilter

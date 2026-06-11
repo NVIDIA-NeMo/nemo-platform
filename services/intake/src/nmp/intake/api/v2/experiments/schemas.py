@@ -181,9 +181,8 @@ class ExperimentSessionFilter(Filter):
 class ExperimentSessionResponse(BaseModel):
     """One ingested session of an Experiment — a single test case execution.
 
-    Hydrated from ClickHouse at read time by joining ``experiment_sessions`` with
-    the session's root span (for status, input, tokens, cost) and
-    ``evaluator_results`` (for per-evaluator session-mean scores).
+    Hydrated from ClickHouse at read time by reading root/session membership from
+    ``trace_index`` and joining page-bounded span/evaluator rollups.
     """
 
     workspace: str

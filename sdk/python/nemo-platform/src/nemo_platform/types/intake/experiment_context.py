@@ -15,35 +15,18 @@
 
 # File generated from our OpenAPI spec by Stainless. See CONTRIBUTING.md for details.
 
-from __future__ import annotations
+from typing import Optional
 
-from typing_extensions import Literal, TypedDict
+from ..._models import BaseModel
 
-from .trace_sort_field import TraceSortField
-from .trace_filter_param import TraceFilterParam
-
-__all__ = ["TraceListParams"]
+__all__ = ["ExperimentContext"]
 
 
-class TraceListParams(TypedDict, total=False):
-    workspace: str
+class ExperimentContext(BaseModel):
+    """Experiment context accepted by ingest endpoints."""
 
-    filter: TraceFilterParam
-    """
-    Filter root-span-backed traces by id, session_id, root status, root span
-    started_at, experiment_id, and test_case_id.
-    """
+    experiment_id: str
+    """Name of an existing Experiment entity."""
 
-    mode: Literal["summary", "detailed"]
-    """
-    Use summary for root-span trace fields only, or detailed to include token, cost,
-    and span-count rollups.
-    """
-
-    page: int
-    """Page number."""
-
-    page_size: int
-    """Page size."""
-
-    sort: TraceSortField
+    test_case_id: Optional[str] = None
+    """Optional producer-supplied test case id."""
