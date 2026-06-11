@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import logging
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
+from nemo_platform_plugin.discovery import discover_manifests
 from nmp.common.controller import ControllerManager
 from nmp.common.service import Service
 from nmp.platform_runner.schemas import (
@@ -18,6 +20,8 @@ from nmp.platform_runner.schemas import (
     HealthReadyResponse,
     NotReadyServiceInfo,
     PlatformStatusResponse,
+    PluginInfo,
+    PluginsResponse,
     ServiceStatusBreakdown,
 )
 from nmp.platform_runner.version import get_platform_version, get_revision
@@ -84,6 +88,39 @@ def create_platform_health_router(services: list[Service]) -> APIRouter:
             ),
             controllers=ControllerStatusBreakdown(healthy=all_healthy, status=controllers),
         )
+
+    @router.get("/plugins", operation_id="platform_plugins", response_model=PluginsResponse)
+    async def plugins() -> PluginsResponse:
+
+        manifests = discover_manifests()
+        ready, not_ready_list = await _get_service_status_breakdown(services)
+        ready_set = set(ready)
+        not_ready_set = {item["name"] for item in not_ready_list}
+
+        plugin_list: list[PluginInfo] = []
+        for manifest in manifests.values():
+            if manifest.name in ready_set:
+                status: Literal["ready", "not_ready", "unknown", "installed"] = "ready"
+            elif manifest.name in not_ready_set:
+                status = "not_ready"
+            elif "service" not in manifest.surfaces:
+                # Plugin has no service entry point — contributes CLI, MCP, Studio, etc.
+                # There is no service health to check.
+                status = "installed"
+            else:
+                status = "unknown"
+            plugin_list.append(
+                PluginInfo(
+                    name=manifest.name,
+                    version=manifest.version,
+                    description=manifest.description,
+                    status=status,
+                    surfaces=manifest.surfaces,
+                )
+            )
+
+        plugin_list.sort(key=lambda p: p.name)
+        return PluginsResponse(plugins=plugin_list)
 
     @router.get("/health/live", operation_id="platform_health_live", response_model=HealthLiveResponse)
     async def health_live() -> HealthLiveResponse:

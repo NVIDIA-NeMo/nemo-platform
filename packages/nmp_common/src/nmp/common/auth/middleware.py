@@ -56,6 +56,7 @@ HEALTH_ENDPOINTS = {
     "/health/live",
     "/health/ready",
     "/metrics",
+    "/plugins",
     "/apis/auth/discovery",  # Discovery endpoint for CLI/SDK
 }
 

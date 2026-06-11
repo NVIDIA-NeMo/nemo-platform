@@ -108,6 +108,25 @@ _SURFACE_ALLOWLIST_ENV_VARS: dict[str, str] = {
 
 CUSTOMIZATION_CONTRIBUTORS_GROUP = "nemo.customization.contributors"
 
+# Maps entry-point group → short surface label shown in manifests / UI.
+_GROUP_TO_SURFACE: dict[str, str] = {
+    "nemo.services": "service",
+    "nemo.cli": "cli",
+    "nemo.jobs": "jobs",
+    "nemo.functions": "functions",
+    "nemo.controllers": "controller",
+    "nemo.sdk": "sdk",
+    "nemo.mcp": "mcp",
+    "nemo.studio": "studio",
+    "nemo.skills": "skills",
+    "nemo.docs": "docs",
+    "nemo.executors": "executor",
+    "nemo.inference_middleware": "middleware",
+    "nemo.customization.contributors": "customization",
+    "nemo.seed": "seed",
+    "nemo.authz": "authz",
+}
+
 
 def _manifest_plugin_name(group: str, entry_point_name: str) -> str:
     if group in _DOT_SCOPED_GROUPS:
@@ -206,34 +225,46 @@ def discover_manifests() -> dict[str, PluginManifest]:
     No ``nemo.plugins`` entry point is required.  Each unique name found across
     any surface group becomes one :class:`~nemo_platform_plugin.interface.PluginManifest`.
     ``version`` and ``description`` are read from the installing distribution's
-    package metadata (``Version`` / ``Summary`` fields).
+    package metadata (``Version`` / ``Summary`` fields).  ``surfaces`` is the
+    sorted list of short surface labels the plugin contributes to (e.g.
+    ``["cli", "mcp", "service"]``).
 
     Entry-point values are **not loaded** — this function is cheap and has no
     import side-effects.
     """
-    manifests: dict[str, PluginManifest] = {}
+    # First pass: collect metadata and surfaces per plugin name.
+    plugin_meta: dict[str, tuple[str, str]] = {}  # name → (version, description)
+    plugin_surfaces: dict[str, set[str]] = {}
 
     for group in _ALL_SURFACE_GROUPS:
+        surface = _GROUP_TO_SURFACE.get(group, group)
         for ep in discover_entry_points(group).values():
             plugin_name = _manifest_plugin_name(group, ep.name)
-            if plugin_name in manifests:
-                continue
-            try:
-                dist = ep.dist
-                # ``dist.metadata`` is ``email.message.Message``-compatible
-                # and supports ``.get`` at runtime; ty's stub for
-                # ``importlib.metadata.PackageMetadata`` doesn't expose it.
-                version = dist.metadata.get("Version", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
-                description = dist.metadata.get("Summary", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
-            except Exception:
-                version = ""
-                description = ""
-            manifests[plugin_name] = PluginManifest(
-                name=plugin_name,
-                version=version,
-                description=description,
-            )
-            logger.debug("Discovered plugin %r (v%s) via %r", plugin_name, version, group)
+            if plugin_name not in plugin_meta:
+                try:
+                    dist = ep.dist
+                    # ``dist.metadata`` is ``email.message.Message``-compatible
+                    # and supports ``.get`` at runtime; ty's stub for
+                    # ``importlib.metadata.PackageMetadata`` doesn't expose it.
+                    version = dist.metadata.get("Version", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+                    description = dist.metadata.get("Summary", "") if dist is not None else ""  # ty: ignore[unresolved-attribute]
+                except Exception:
+                    version = ""
+                    description = ""
+                plugin_meta[plugin_name] = (version, description)
+                plugin_surfaces[plugin_name] = set()
+            plugin_surfaces[plugin_name].add(surface)
+
+    manifests: dict[str, PluginManifest] = {}
+    for plugin_name, (version, description) in plugin_meta.items():
+        surfaces = sorted(plugin_surfaces[plugin_name])
+        manifests[plugin_name] = PluginManifest(
+            name=plugin_name,
+            version=version,
+            description=description,
+            surfaces=surfaces,
+        )
+        logger.debug("Discovered plugin %r (v%s) surfaces=%r", plugin_name, version, surfaces)
 
     return manifests
 

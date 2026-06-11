@@ -21,8 +21,11 @@ class PluginManifest:
         name: Entry-point key (e.g. ``"example"``).
         version: Distribution ``Version`` field, or ``""`` if unavailable.
         description: Distribution ``Summary`` field, or ``""`` if unavailable.
+        surfaces: Sorted list of surface labels this plugin contributes to
+            (e.g. ``["cli", "mcp", "service"]``).
     """
 
     name: str
     version: str
     description: str = field(default="")
+    surfaces: list[str] = field(default_factory=list)

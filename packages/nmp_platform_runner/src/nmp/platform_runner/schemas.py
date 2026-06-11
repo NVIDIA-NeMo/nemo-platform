@@ -48,3 +48,15 @@ class PlatformStatusResponse(BaseModel):
     controllers: ControllerStatusBreakdown = Field(
         default_factory=lambda: ControllerStatusBreakdown(healthy=True, status={})
     )
+
+
+class PluginInfo(BaseModel):
+    name: str
+    version: str
+    description: str
+    status: Literal["ready", "not_ready", "unknown", "installed"]
+    surfaces: list[str] = Field(default_factory=list)
+
+
+class PluginsResponse(BaseModel):
+    plugins: list[PluginInfo]
