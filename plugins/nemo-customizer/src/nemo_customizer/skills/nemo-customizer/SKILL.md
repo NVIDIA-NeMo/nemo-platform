@@ -550,6 +550,7 @@ Use the user's platform URL in `NEMO_BASE_URL` when they overrode it; omit the e
 | Error type | Append |
 |------------|--------|
 | Missing training image + user-overridden `NEMO_BASE_URL` / `NMP_BASE_URL` | `references/troubleshooting.md` § **Missing training images** — on-target build steps, env vars, re-submit commands. **Do not** `docker build` locally for a remote platform. |
+| W&B not syncing / no `[launcher]` secret lines / `WandbCallback requires wandb` / wandb 401 | `references/troubleshooting.md` § **W&B / integrations not working** (jobs-launcher build, secret update, unsloth image). Setup: `references/integrations-setup.md`. |
 
 For other terminal errors, keep the same header template; put remediation detail in **Notes** or a short **Next steps** section as appropriate.
 
@@ -569,5 +570,6 @@ For other terminal errors, keep the same header template; put remediation detail
 | Job JSON fixture (integrations, both backends) | `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`, `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json` |
 | Automodel compile-path contract configs | `services/automodel/tests/contract/input_configs/` → YAML in `output_configs/` (legacy `TrainingStepConfig` shape, not submit JSON) |
 | W&B / MLflow field reference | `references/hyperparameters.md` § **Integrations (automodel + unsloth)** |
+| W&B secret + MLflow local server + jobs-launcher | `references/integrations-setup.md` |
 
-Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**.
+Related: `plugins/nemo-automodel/README.md`, `plugins/nemo-unsloth/README.md`, `plugins/nemo-customizer/docs/CUSTOMIZATION.md`, skills **`nemo-files`**, **`nemo-status`**, **`nemo-secrets`**.

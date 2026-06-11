@@ -13,6 +13,19 @@ from nmp.customization_common.integrations.context import IntegrationRuntimeCont
 logger = logging.getLogger(__name__)
 
 
+def _resolve_wandb_dir(workspace_path: str) -> Path:
+    """Return a W&B run directory outside model artifact upload trees.
+
+    Container jobs write uploadable checkpoints under ``output_model`` (unsloth)
+    or keep training scratch under ``training`` (automodel). W&B metadata must
+    not live in those trees — use sibling ``ephemeral/wandb`` instead.
+    """
+    workspace = Path(workspace_path)
+    if workspace.name in ("output_model", "training"):
+        return workspace.parent / "ephemeral" / "wandb"
+    return workspace / "wandb"
+
+
 def _resolve_with_fallback(
     primary: str | None,
     fallback: str | None,
@@ -107,7 +120,7 @@ def build_wandb_config(ctx: IntegrationRuntimeContext) -> dict[str, Any] | None:
             logger.warning("WandB API key is not set and no base_url is provided, skipping WandB integration")
             return None
 
-    run_dir = Path(ctx.workspace_path) / "wandb"
+    run_dir = _resolve_wandb_dir(ctx.workspace_path)
 
     tags: list[str] = ["service:nemo-platform", f"framework:{ctx.framework}"]
     if ctx.job_ctx.workspace:

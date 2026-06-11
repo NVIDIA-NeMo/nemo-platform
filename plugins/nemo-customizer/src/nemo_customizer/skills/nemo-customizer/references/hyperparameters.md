@@ -55,6 +55,8 @@ Both backends accept the same `integrations` object on job JSON (`IntegrationsSp
 
 Set `"integrations": null` or omit the field when tracking is not needed. Contract examples: `plugins/nemo-automodel/tests/fixtures/integrations_wandb_mlflow.json`, `plugins/nemo-unsloth/tests/fixtures/integrations_wandb_mlflow.json`.
 
+**Local setup (MLflow server, `docker0` tracking URI, jobs-launcher, W&B secret):** `references/integrations-setup.md`.
+
 **Unsloth note:** HuggingFace `TrainingArguments.run_name` is shared by W&B and MLflow. When both backends are active, `wandb.name` wins if set; otherwise `mlflow.name` is used. If both names are set to different values, a runtime warning is logged and W&B's name is used.
 
 ---

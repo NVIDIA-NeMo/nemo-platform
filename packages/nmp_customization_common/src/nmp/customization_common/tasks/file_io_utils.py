@@ -8,8 +8,10 @@ Re-exported by each backend's ``tasks/file_io/utils.py``.
 
 import json
 import logging
+import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 
 import httpx
@@ -31,6 +33,55 @@ from nmp.customization_common.schemas.file_io import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class LocalFileInfo:
+    """A local file entry for upload/download progress accounting."""
+
+    path: str
+    size: int
+
+
+def list_local_files(src_path: Path) -> list[LocalFileInfo]:
+    """List files under *src_path* for progress totals.
+
+    Skips individual unreadable or transient paths (e.g. W&B log files deleted
+    mid-walk) instead of failing the entire listing.
+    """
+    if not src_path.exists():
+        logger.warning(f"Failed to list local files. Source path does not exist: {src_path}")
+        return []
+
+    def _on_walk_error(err: OSError) -> None:
+        logger.warning(
+            f"Skipping inaccessible path during upload listing: {getattr(err, 'filename', src_path)}. Error: {err}"
+        )
+
+    try:
+        if src_path.is_file():
+            size = src_path.stat().st_size
+            logger.info(f"Found 1 file: {src_path.name}")
+            return [LocalFileInfo(path=src_path.name, size=size)]
+
+        files: list[LocalFileInfo] = []
+        for root, _, filenames in os.walk(src_path, onerror=_on_walk_error):
+            for filename in filenames:
+                full_path = Path(root) / filename
+                try:
+                    if not full_path.is_file():
+                        continue
+                    relative_path = full_path.relative_to(src_path)
+                    files.append(
+                        LocalFileInfo(path=str(relative_path), size=full_path.stat().st_size),
+                    )
+                except OSError as e:
+                    logger.warning(f"Skipping unreadable file during upload listing: {full_path}. Error: {e}")
+        logger.info(f"Found {len(files)} files in {src_path}")
+        return files
+    except Exception as e:
+        logger.warning(f"Failed to list local files. Source path: {src_path}. Error: {e}")
+        return []
 
 
 @contextmanager

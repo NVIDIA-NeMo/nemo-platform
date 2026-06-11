@@ -74,6 +74,25 @@ class TestApplyIntegrationsToSftConfig:
         assert env["WANDB_DIR"] == str(tmp_path / "wandb")
         assert "MLFLOW_RUN_NAME" not in env
 
+    def test_wandb_dir_outside_output_model_upload_tree(
+        self,
+        job_ctx: NMPJobContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("WANDB_API_KEY", "test-key")
+        integrations = IntegrationsSpec.model_validate({"wandb": {"project": "my-project"}})
+        output_model = Path("/var/run/scratch/job/output_model")
+
+        _, _, env = apply_integrations_to_sft_config(
+            integrations=integrations,
+            job_ctx=job_ctx,
+            output_name="my-output",
+            workspace_path=output_model,
+            model_name="meta/llama",
+        )
+
+        assert env["WANDB_DIR"] == "/var/run/scratch/job/ephemeral/wandb"
+
     def test_wandb_skipped_without_api_key(
         self,
         job_ctx: NMPJobContext,

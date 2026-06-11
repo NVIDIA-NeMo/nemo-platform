@@ -127,8 +127,7 @@ RUN chown -R ${USER_UID}:${USER_GID} /app
 
 # Step 2: install the platform glue editably. No [unsloth] extra here — that's
 # what we just installed in step 1, and re-triggering it would force the
-# resolver to re-evaluate the whole HF stack. [integrations] pulls wandb +
-# mlflow-skinny for HF Trainer report_to callbacks.
+# resolver to re-evaluate the whole HF stack.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv pip install --python ${VIRTUAL_ENV}/bin/python --no-cache \
     --overrides /opt/docker/no_override_requirements.txt \

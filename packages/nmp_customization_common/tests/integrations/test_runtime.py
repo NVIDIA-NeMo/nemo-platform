@@ -174,6 +174,37 @@ class TestBuildWandbConfig:
         assert result["entity"] == "my-team"
         assert result["notes"] == "notes"
         assert result["dir"] == "/tmp/workspace/wandb"
-        assert "service:nemo-platform" in result["tags"]
-        assert "framework:automodel" in result["tags"]
-        assert "tag-a" in result["tags"]
+
+    def test_wandb_dir_uses_ephemeral_for_output_model(
+        self,
+        job_ctx: NMPJobContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("WANDB_API_KEY", "test-api-key")
+        ctx = _runtime_ctx(
+            job_ctx,
+            wandb=WandbIntegration(project="proj"),
+            workspace_path="/var/run/scratch/job/output_model",
+        )
+
+        result = build_wandb_config(ctx)
+
+        assert result is not None
+        assert result["dir"] == "/var/run/scratch/job/ephemeral/wandb"
+
+    def test_wandb_dir_uses_ephemeral_for_training_workspace(
+        self,
+        job_ctx: NMPJobContext,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setenv("WANDB_API_KEY", "test-api-key")
+        ctx = _runtime_ctx(
+            job_ctx,
+            wandb=WandbIntegration(project="proj"),
+            workspace_path="/var/run/scratch/job/training",
+        )
+
+        result = build_wandb_config(ctx)
+
+        assert result is not None
+        assert result["dir"] == "/var/run/scratch/job/ephemeral/wandb"

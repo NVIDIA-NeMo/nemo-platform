@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Read this file when submit fails, jobs fail on images, the platform is unreachable, or the user asks for Unsloth.
+Read this file when submit fails, jobs fail on images, the platform is unreachable, W&B/MLflow integrations fail, or the user asks for Unsloth.
 
 ## Platform unreachable (connection error)
 
@@ -154,6 +154,50 @@ uv run nemo customization <plugin> submit /tmp/job.json --workspace default [--p
 ```
 
 Then poll until terminal status. Offer to re-submit once the user confirms the image is on the target — do not attempt a local Docker build from the agent for a remote platform.
+
+## W&B / integrations not working
+
+Job JSON has `integrations.wandb` (and/or `integrations.mlflow`) but tracking fails or never starts. Full setup: `references/integrations-setup.md`.
+
+| Symptom / log excerpt | Likely cause | Fix |
+|-----------------------|--------------|-----|
+| Training logs **omit** `[launcher]` lines; entrypoint is the training module directly (e.g. `Running main process: /opt/venv/bin/python [-m nmp.unsloth.tasks.training]` with **no** preceding `Fetching secret wandb-api-key`) | **jobs-launcher** binary missing or `launcher_tool_path` wrong — secrets are never injected | Build launcher on the **platform host**, set absolute `launcher_tool_path`, restart services. See § **jobs-launcher missing** below and `integrations-setup.md` § **jobs-launcher**. |
+| `wandb: ERROR` / HTTP 401 / `permission denied` after launcher lines present | Platform secret `wandb-api-key` has wrong or placeholder value; local `wandb login` cache is **not** used | `uv run nemo secrets update wandb-api-key --value "$WANDB_API_KEY" --workspace default` (or `--from-file -`). Re-submit. |
+| `RuntimeError: WandbCallback requires wandb to be installed` (unsloth) | `nmp-unsloth-training` image lacks `wandb` | Rebuild image with `nmp-unsloth[integrations]` extra; set `NMP_UNSLOTH_TRAINING_IMAGE`; restart platform. See **Missing training images**. |
+| Compile/submit warning: `integrations.wandb is configured but api_key_secret is missing` | Job JSON has `wandb` block without `api_key_secret` | Add `"api_key_secret": "default/wandb-api-key"` (or your secret ref). |
+| MLflow run never appears; W&B works | `tracking_uri` unreachable from container (`localhost`, wrong port) | Use `docker0` host IP + published port (e.g. `http://${DOCKER_HOST_IP}:5001`). See `integrations-setup.md` § **`tracking_uri`**. |
+
+### jobs-launcher missing (W&B secret not injected)
+
+The Docker executor wraps the training entrypoint with **jobs-launcher** only when `launcher_tool_path` points to a built binary on the platform host. If the path is missing or still the default stub, the container runs training **without** secret injection — `WANDB_API_KEY` never reaches the process even when `integrations.wandb.api_key_secret` is set in job JSON.
+
+**Working** — launcher fetched the secret before training:
+
+```text
+[launcher] 2026/06/11 22:03:03 Fetching secret wandb-api-key from workspace default...
+[launcher] 2026/06/11 22:03:03 Successfully fetched secret wandb-api-key and mapped to WANDB_API_KEY
+[launcher] 2026/06/11 22:03:03 Injected 1 secret(s) as environment variables
+[launcher] 2026/06/11 22:03:03 Running main process: /opt/venv/bin/python [-m nmp.unsloth.tasks.training]
+...
+wandb: Syncing run my-run
+```
+
+**Broken** — no launcher wrapper (typical when binary was never built or path is wrong):
+
+```text
+2026-06-11 21:47:42,848 - __main__ - INFO - Container: CUDA_VISIBLE_DEVICES=0
+...
+# No wandb: Syncing run … — W&B never initialized because WANDB_API_KEY was not injected
+```
+
+On the platform host:
+
+```bash
+cd /path/to/nemo-platform/services/core/jobs/jobs-launcher
+./build-manual.sh linux amd64
+```
+
+Set `jobs.executors.docker.launcher_tool_path` in `~/.nemo/config.yaml` to the **absolute** path of the built `jobs-launcher` binary, then `uv run nemo services restart`. Re-submit with a fresh `output.name`.
 
 ## Unsloth submit errors
 
